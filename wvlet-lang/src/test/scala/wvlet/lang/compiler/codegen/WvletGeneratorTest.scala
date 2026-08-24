@@ -82,6 +82,15 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "model rm_all: rm_users"
   }
 
+  test("should round-trip a trait declaration as `trait`, not `type`") {
+    val printed = print("""trait ip_address in duckdb extends string = {
+        |  def country_name: string = sql"'N/A'"
+        |}""".stripMargin)
+    printed shouldContain "trait ip_address in duckdb extends string"
+    printed.contains("type ip_address") shouldBe false
+    print(printed) shouldContain "trait ip_address in duckdb extends string"
+  }
+
   test("should round-trip a table declaration with an `in` binding") {
     val printed = print("""table events in mydb.analytics = {
         |  id: int

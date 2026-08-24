@@ -46,7 +46,7 @@ object WvletParser:
     * They are plain identifiers everywhere else, but a bare occurrence after a query terminates the
     * query block instead of being read as a partial query application
     */
-  val statementHeadSoftKeywords: Set[String] = Set("table", "reshape")
+  val statementHeadSoftKeywords: Set[String] = Set("table", "trait", "reshape")
 
 class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends LogSupport:
 
@@ -986,6 +986,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         renameStatement()
       case WvletToken.IDENTIFIER if t.str == "table" =>
         tableShapeDef()
+      case WvletToken.IDENTIFIER if t.str == "trait" =>
+        traitDef()
       case WvletToken.IDENTIFIER if t.str == "reshape" =>
         reshapeStatement()
       case _ =>
@@ -1097,6 +1099,68 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val elems = typeElems()
     consume(WvletToken.R_BRACE)
     TypeDef(name, Nil, scopes, None, elems, spanFrom(t), isTableDef = true)
+  }
+
+  /**
+    * Parse a trait definition — a method interface attached to a type (#2001):
+    * {{{
+    *   trait <name> [in <dialect>] [extends <type>] = { <def members> }
+    * }}}
+    * Traits share the TypeDef machinery (isTrait = true), so same-name definitions merge per
+    * dialect exactly like `type` definitions do. A trait never describes storage: column fields are
+    * rejected, and `in` accepts only single-part dialect scopes, never `<catalog>.<schema>` table
+    * bindings. `trait` is a soft keyword, matched only at statement head.
+    */
+  def traitDef(): TypeDef = node {
+    val t       = consume(WvletToken.IDENTIFIER) // the `trait` soft keyword
+    val name    = Name.typeName(identifier().leafName)
+    val tp      = typeParams()
+    val scopes  = context()
+    val parents = typeExtends()
+    if parents.size > 1 then
+      throw StatusCode
+        .SYNTAX_ERROR
+        .newException(
+          s"extending multiple types is not supported: ${name} extends ${parents
+              .map(_.fullName)
+              .mkString(", ")}",
+          t.sourceLocation
+        )
+    scopes
+      .find(_.contextType.nameParts.sizeIs > 1)
+      .foreach { c =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            s"A trait cannot bind to a table location 'in ${c.contextType.fullName}': `in` on " +
+              s"a trait names an engine dialect. Declare stored relations with " +
+              s"'table ${name.name} in ${c.contextType.fullName} = {...}'",
+            t.sourceLocation
+          )
+      }
+    var elems: List[TypeElem] = Nil
+    scanner.lookAhead().token match
+      case WvletToken.EQ =>
+        consume(WvletToken.EQ)
+        consume(WvletToken.L_BRACE)
+        elems = typeElems()
+        consume(WvletToken.R_BRACE)
+      case _ =>
+      // no body
+    elems
+      .collectFirst { case f: FieldDef =>
+        f
+      }
+      .foreach { f =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            s"A trait body cannot declare columns ('${f.name.name}'): traits carry def members " +
+              s"only. Declare stored relations with 'table ${name.name} = {...}'",
+            t.sourceLocation
+          )
+      }
+    TypeDef(name, tp, scopes, parents.headOption, elems, spanFrom(t), isTrait = true)
   }
 
   /** Parse a trailing `if not exists` modifier */

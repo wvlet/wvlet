@@ -100,6 +100,22 @@ case class GenericTyperError(message: String, span: Span) extends TyperError
   * @param span
   *   the span of the table reference that resolved through the `type` definition
   */
+/**
+  * Deprecation warning for method interfaces declared with the `type` keyword (#2001). A `type`
+  * whose body carries only `def` members declares a method interface, whose canonical spelling is
+  * `trait <name> = {...}`; `type` remains for aliases
+  *
+  * @param span
+  *   the span of the `type` definition
+  */
+case class MethodInterfaceDeclaredAsType(typeName: String, span: Span) extends TyperError:
+  override def severity: TyperError.Severity = TyperError.Severity.Warning
+
+  def message: String =
+    s"Method interface '${typeName}' is declared with 'type'. Declare method interfaces as " +
+      s"'trait ${typeName} = {...}'; def-only 'type' declarations will be removed in a " +
+      s"future release"
+
 case class TableShapeDeclaredAsType(typeName: String, binding: Option[String], span: Span)
     extends TyperError:
   override def severity: TyperError.Severity = TyperError.Severity.Warning

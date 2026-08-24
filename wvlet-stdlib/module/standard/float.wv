@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type float = {
+trait float = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_int in bigquery: int = sql"cast(${this} as int64)"
   def to_long: long = sql"cast(${this} as bigint)"
@@ -35,7 +35,7 @@ type float = {
 }
 
 -- `real` is a distinct primitive type (e.g. 4-byte floating point columns)
-type real = {
+trait real = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_int in bigquery: int = sql"cast(${this} as int64)"
   def to_long: long = sql"cast(${this} as bigint)"

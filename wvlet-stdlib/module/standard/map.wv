@@ -1,7 +1,7 @@
 package wvlet.standard
 
 -- Functions of map values (e.g. map {'a': 1, 'b': 2})
-type map[K,V] = {
+trait map[K,V] = {
   -- Number of entries in the map
   def size: int = sql"cardinality(${this})"
   def size in hive: int = sql"size(${this})"

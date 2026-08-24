@@ -75,15 +75,53 @@ Notes on how bound declarations resolve:
 Instead of writing these declarations by hand, you can generate them from a live database with
 [`wvlet catalog import`](../usage/catalog-import.md).
 
-#### `table` vs `type`
+### Traits: Method Interfaces
 
-Use `table` for anything that denotes a stored relation, and `type` for reusable types that make
-no claim about storage: scalar domains with methods (e.g. `type ip_address extends string`
-with `def` members), engine-dialect method extensions (e.g. `type any in duckdb`), and abstract
-row shapes used only as column or parameter types. On a `type` or `def`, `in <name>` always
-means an engine dialect; on a `table` declaration it always means a `<catalog>.<schema>`
-storage location.
+A `trait` attaches reusable `def` members to a type — a method interface in the Scala/Rust
+sense. Declare a new value domain by extending a base type, then use it as a column type; the
+columns get the trait's methods:
 
-Declaring a table's shape with `type` (the pre-2026 spelling `type orders in mydb.sales = ...`)
-still resolves, but reports a deprecation warning steering to the `table` spelling, and will be
-removed in a future release.
+```wvlet
+trait ip_address extends string = {
+  def country_name: string = sql"ip_to_country(${this})"
+}
+
+table access_logs = {
+  time: timestamp
+  client_ip: ip_address
+
+  -- Row methods can call trait methods of the declared column types
+  def client_country: string = client_ip.country_name
+}
+```
+
+A trait re-opening an existing type with a *dialect scope* provides engine-specific
+implementations — the standard library defines its methods this way:
+
+```wvlet
+trait ip_address in duckdb extends string = {
+  def country_name: string = sql"'N/A'"   -- DuckDB has no IP database
+}
+```
+
+Trait bodies carry `def` members only — column fields are a compile-time error, because a trait
+never describes storage. Likewise `in` on a trait always names an engine dialect; binding a
+trait to a `<catalog>.<schema>` location is an error (declare a `table` instead).
+
+#### `table` vs `trait` vs `type`
+
+The three declarations answer one question each: **columns live in `table`, methods live in
+`trait` (or travel with a `table`), and `type` is for aliases.**
+
+- **`table`** — anything that denotes a stored relation: columns, an optional
+  `in <catalog>.<schema>` location, optional row methods.
+- **`trait`** — a method interface: new value domains (`trait ip_address extends string`) and
+  engine-dialect method packages (`trait any in duckdb`). Never storage.
+- **`type`** — aliases and marker types (e.g. `type td_trino extends trino`). The braces-body
+  `type` forms are deprecated: a columns-carrying `type` that resolves a table reference warns
+  toward `table`, and a def-only `type` warns toward `trait`; both will be removed in a future
+  release.
+
+The `in` clause is unambiguous across the family: on a `trait` or `def` it always names an
+engine dialect; on a `table` declaration, `create schema`, or `use` it always names a storage
+location.

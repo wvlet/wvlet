@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type timestamp = {
+trait timestamp = {
   def extract(field:string): int = sql"extract(${field} from ${this})"
 
   def year: int = sql"extract(year from ${this})"
@@ -28,7 +28,7 @@ type timestamp = {
   def between(l:timestamp, r:timestamp): boolean = sql"${this} between ${l} and ${r}"
 }
 
-type timestamp in duckdb = {
+trait timestamp in duckdb = {
   -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
   def day_of_week: int = sql"extract(isodow from ${this})"
   def day_of_year: int = sql"extract(dayofyear from ${this})"
@@ -50,7 +50,7 @@ type timestamp in duckdb = {
   def to_string: string = sql"cast(${this} as varchar)"
 }
 
-type timestamp in trino = {
+trait timestamp in trino = {
   -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
   def day_of_week: int = sql"day_of_week(${this})"
   def day_of_year: int = sql"day_of_year(${this})"
@@ -74,7 +74,7 @@ type timestamp in trino = {
   def to_string: string = sql"date_format(${this},'%Y-%m-%d %H:%i:%s')"
 }
 
-type timestamp in hive = {
+trait timestamp in hive = {
   -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
   def day_of_week: int = sql"pmod(dayofweek(${this}) + 5, 7) + 1"
   def day_of_year: int = sql"cast(date_format(${this},'D') as int)"
@@ -94,7 +94,7 @@ type timestamp in hive = {
   def to_string: string = sql"cast(${this} as string)"
 }
 
-type timestamp in snowflake = {
+trait timestamp in snowflake = {
   -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
   def day_of_week: int = sql"dayofweekiso(${this})"
   def day_of_year: int = sql"dayofyear(${this})"
@@ -121,7 +121,7 @@ type timestamp in snowflake = {
   def to_string: string = sql"to_char(${this},'YYYY-MM-DD HH24:MI:SS')"
 }
 
-type timestamp in bigquery = {
+trait timestamp in bigquery = {
   -- ISO day of week (1 = Monday, 7 = Sunday; BigQuery's DAYOFWEEK starts at 1 = Sunday)
   def day_of_week: int = sql"mod(extract(dayofweek from ${this}) + 5, 7) + 1"
   def day_of_year: int = sql"extract(dayofyear from ${this})"

@@ -138,7 +138,7 @@
         },
         {
           "name": "keyword.other.wvlet",
-          "match": "\\b(asof|test|should|be|contain|debug|def|inline|type|extends|native|show|sample|this|of|in|by|as|to|with|from|agg|select|for|let|where|group|having|order|limit|transform|pivot|distinct|asc|desc|join|on|left|right|full|inner|cross|add|prepend|exclude|rename|shift|drop|describe|concat|dedup|intersect|except|all|over|partition|unbounded|preceding|following|current|range|row|run|import|export|package|model|execute|val|save|append|delete|truncate|update|reshape|replace|use|table|schema|view|unnest|lateral|subscribe|watermark|incremental|insert|into|create|route|fork|merge|depends|wait|activate|escape)\\b"
+          "match": "\\b(asof|test|should|be|contain|debug|def|inline|type|extends|native|show|sample|this|of|in|by|as|to|with|from|agg|select|for|let|where|group|having|order|limit|transform|pivot|distinct|asc|desc|join|on|left|right|full|inner|cross|add|prepend|exclude|rename|shift|drop|describe|concat|dedup|intersect|except|all|over|partition|unbounded|preceding|following|current|range|row|run|import|export|package|model|execute|val|save|append|delete|truncate|update|reshape|replace|use|table|trait|schema|view|unnest|lateral|subscribe|watermark|incremental|insert|into|create|route|fork|merge|depends|wait|activate|escape)\\b"
         }
       ]
     },
