@@ -1,0 +1,8 @@
+-- A declaration extending itself is the shortest `extends` cycle (#2017)
+
+table cyc_self extends cyc_self = {
+  a: int
+}
+
+from cyc_self
+select a

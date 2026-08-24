@@ -493,17 +493,22 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     // `table <name> like <source>` (#1995) copies the source declaration's columns. This runs
     // from a completer after all units are labeled, so forcing the source's completion here
     // resolves cross-unit references; a completion already in progress signals a reference
-    // cycle (`table a like b` + `table b like a`), which resolves to no columns with an error
+    // cycle (`table a like b` + `table b like a`, or one closed through `extends`), reported
+    // at the declaration that closes it (#2017)
     val likeColumns: List[NamedType] = t
       .likeSource
       .toList
       .flatMap { src =>
         val srcName = Name.typeName(src.leafName)
-        ctx
-          .scope
-          .lookupSymbol(srcName)
-          .orElse(ctx.findSymbolByName(srcName))
-          .filterNot(_.isCompleting) match
+        ctx.scope.lookupSymbol(srcName).orElse(ctx.findSymbolByName(srcName)) match
+          case Some(srcSym) if srcSym.isCompleting =>
+            throw StatusCode
+              .CYCLIC_SYMBOL_REFERENCE
+              .newException(
+                s"Cyclic reference detected: ${declKind(t)} ${typeName.name} like " +
+                  s"'${src.leafName}', whose definition refers back to ${typeName.name}",
+                ctx.sourceLocationAt(t.span)
+              )
           case Some(srcSym) =>
             srcSym.symbolInfo.dataType match
               case s: SchemaType =>
@@ -526,17 +531,30 @@ object SymbolLabeler extends Phase("symbol-labeler"):
               )
             )
             Nil
+        end match
       }
 
     // Mixin composition (#2012): each `extends` parent contributes its columns (structural
     // types and table shapes carry fields; traits carry none — their def members resolve
     // through the parent symbols at method-lookup time). Forcing a parent's completion here
     // resolves cross-unit references; a completion already in progress signals an `extends`
-    // cycle, whose columns resolve empty (Symbol.dataType yields UnknownType while completing)
+    // cycle (#2017), reported at the declaration that closes it
     val parentTypeSymbols: List[(NameExpr, Symbol)] = t
       .parents
       .map(p => p -> registerParentSymbols(p))
     val mixinColumns: List[NamedType] = parentTypeSymbols.flatMap { (p, psym) =>
+      if psym.isCompleting then
+        val cycle =
+          if p.leafName == typeName.name then
+            "extends itself"
+          else
+            s"extends '${p.leafName}', whose definition refers back to ${typeName.name}"
+        throw StatusCode
+          .CYCLIC_SYMBOL_REFERENCE
+          .newException(
+            s"Cyclic extends chain detected: ${declKind(t)} ${typeName.name} ${cycle}",
+            ctx.sourceLocationAt(t.span)
+          )
       psym.dataType match
         case s: SchemaType =>
           if t.isTrait && s.fields.nonEmpty then
@@ -604,6 +622,15 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     )
 
   end computeTypeDefSymbolInfo
+
+  /** The user-facing keyword of a declaration sharing the TypeDef machinery, for diagnostics */
+  private def declKind(t: TypeDef): String =
+    if t.isTrait then
+      "trait"
+    else if t.isTableDef then
+      "table"
+    else
+      "type"
 
   private def registerParentSymbols(parent: NameExpr)(using ctx: Context): Symbol =
     // TODO support full type path
