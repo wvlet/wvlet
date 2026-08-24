@@ -281,6 +281,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(d.schema)
           )
         )
+      case r: RenameDatabase =>
+        group(wl("alter", "schema", expr(r.database), "rename", "to", expr(r.renameTo)))
       case a: AlterTable =>
         def alterOp(op: AlterTableOps): Doc =
           op match
