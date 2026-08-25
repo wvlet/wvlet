@@ -33,7 +33,9 @@ enum DBType(
     // values 1, 2, ...   or (values 1, 2, ...)
     val requireParenForValues: Boolean = false,
     // RLIKE operator support (regex pattern matching)
-    val supportRLike: Boolean = false
+    val supportRLike: Boolean = false,
+    // Column DEFAULT clauses in CREATE TABLE are supported
+    val supportColumnDefaultValues: Boolean = true
 ):
 
   /**
@@ -66,7 +68,9 @@ enum DBType(
         arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
         mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair,
         requireParenForValues = true,
-        supportRLike = true
+        supportRLike = true,
+        // Trino's CREATE TABLE grammar has no column DEFAULT clause
+        supportColumnDefaultValues = false
       )
 
   case Hive

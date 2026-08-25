@@ -1,0 +1,39 @@
+-- Column defaults on table declarations (#1997): `name: type = expr` renders a DEFAULT
+-- clause into generated CREATE TABLE columns, and the engine fills omitted columns
+
+table ddl_defaults = {
+  id: int
+  name: string
+  active: boolean = true
+  score: double = 1.5
+}
+
+create table ddl_defaults
+
+-- Append only a subset of the declared columns; the engine fills the rest from defaults
+append to ddl_defaults (id, name) {
+  from [[1, 'alice'], [2, 'bob']] as t(id, name)
+}
+
+from ddl_defaults
+test _.size should be 2
+test _.columns should contain 'active'
+
+-- Both rows got the declared defaults for the omitted columns
+from ddl_defaults
+where active = true and score = 1.5
+test _.size should be 2
+
+-- Auto-creation via append also carries the defaults into the created table
+table ddl_defaults_auto like ddl_defaults
+
+append to ddl_defaults_auto (id, name) {
+  from [[3, 'carol']] as t(id, name)
+}
+
+from ddl_defaults_auto
+where active = true and score = 1.5
+test _.size should be 1
+
+drop table ddl_defaults_auto
+drop table ddl_defaults
