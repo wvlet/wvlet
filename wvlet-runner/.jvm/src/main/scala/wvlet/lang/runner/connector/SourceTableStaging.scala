@@ -31,15 +31,20 @@ import java.nio.file.Files
   */
 object SourceTableStaging extends LogSupport:
 
-  /** Read every row of a connector's table as JSON object strings */
-  def readTableAsJsonRows(source: Connector, qualifiedName: List[String]): Seq[String] =
+  /**
+    * Stream every row of a connector's table as JSON object strings through `body`, without
+    * materializing the table. The iterator is only valid inside `body`
+    */
+  def streamTableAsJsonRows[U](source: Connector, qualifiedName: List[String])(
+      body: Iterator[String] => U
+  ): U =
     source match
       case db: DBConnector =>
         // Quote each identifier part: source engines have their own casing/keyword rules
         val qualified = qualifiedName.map(part => s"\"${part}\"").mkString(".")
-        db.queryJsonRows(s"select * from ${qualified}")
+        db.streamJsonRows(s"select * from ${qualified}")(body)
       case other =>
-        other
+        val rows = other
           .catalog
           .map(_.scan(qualifiedName.last))
           .getOrElse(
@@ -49,18 +54,37 @@ object SourceTableStaging extends LogSupport:
                 s"Connector '${other.name}' (${other.connectorType}) exposes no tables to read"
               )
           )
+        body(rows.iterator)
 
   /**
-    * Land JSON rows in `stagingTable` on the target engine. `schemaFields` builds the empty table
-    * when there are no rows (read_json_auto cannot infer a schema from an empty file)
+    * Copy a source connector's table into `stagingTable` on the target engine, streaming rows as
+    * JSON lines through a temporary file. Returns the number of staged rows. `schemaFields` builds
+    * the empty table when there are no rows (read_json_auto cannot infer a schema from an empty
+    * file)
+    */
+  def stageTable(
+      source: Connector,
+      qualifiedName: List[String],
+      engine: DBConnector,
+      engineName: String,
+      stagingTable: String,
+      schemaFields: Seq[NamedType]
+  ): Long =
+    streamTableAsJsonRows(source, qualifiedName) { rows =>
+      loadJsonRows(engine, engineName, stagingTable, rows, schemaFields)
+    }
+
+  /**
+    * Land JSON rows in `stagingTable` on the target engine, consuming the row iterator
+    * incrementally. Returns the number of loaded rows
     */
   def loadJsonRows(
       engine: DBConnector,
       engineName: String,
       stagingTable: String,
-      rows: Seq[String],
+      rows: Iterator[String],
       schemaFields: Seq[NamedType]
-  ): Unit =
+  ): Long =
     if engine.dbType != DBType.DuckDB then
       throw StatusCode
         .NOT_IMPLEMENTED
@@ -73,6 +97,7 @@ object SourceTableStaging extends LogSupport:
     // the SQL literal
     val filePath = file.toAbsolutePath.toString.replace('\\', '/')
     try
+      var rowCount = 0L
       scala
         .util
         .Using
@@ -80,9 +105,10 @@ object SourceTableStaging extends LogSupport:
           rows.foreach { row =>
             writer.write(row)
             writer.newLine()
+            rowCount += 1
           }
         }
-      if rows.nonEmpty then
+      if rowCount > 0 then
         engine.execute(
           s"""create or replace table "${stagingTable}" as select * from read_json_auto('${filePath}')"""
         )
@@ -91,6 +117,7 @@ object SourceTableStaging extends LogSupport:
           .map(f => s""""${f.name.name}" ${duckdbTypeOf(f.dataType)}""")
           .mkString(", ")
         engine.execute(s"""create or replace table "${stagingTable}" (${columns})""")
+      rowCount
     finally
       Files.deleteIfExists(file)
 

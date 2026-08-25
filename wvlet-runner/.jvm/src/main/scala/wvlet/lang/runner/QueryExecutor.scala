@@ -178,7 +178,6 @@ class QueryExecutor(
         val stagingTable = staged.getOrElseUpdate(
           (sourceName, t.name.name), {
             val source = profileEngineResolver(sourceName)
-            val rows   = SourceTableStaging.readTableAsJsonRows(source, List(t.name.name))
             // ULID-suffixed so concurrent queries staging the same source never collide;
             // the table is dropped when this query finishes
             val staging =
@@ -188,14 +187,15 @@ class QueryExecutor(
                   .ULID
                   .newULIDString
                   .toLowerCase}"
-            workEnv.info(s"Staging ${sourceName}.${t.name.name} (${rows.size} rows) as ${staging}")
-            SourceTableStaging.loadJsonRows(
+            val rowCount = SourceTableStaging.stageTable(
+              source,
+              List(t.name.name),
               activeDBConnector,
               activeEngine.name,
               staging,
-              rows,
               t.schema.fields
             )
+            workEnv.info(s"Staged ${sourceName}.${t.name.name} (${rowCount} rows) as ${staging}")
             staging
           }
         )
@@ -373,25 +373,31 @@ class QueryExecutor(
       rowCount
 
     // Cross-platform variant for backends that don't expose a JDBC ResultSet (Trino HTTP).
-    // Stream the materialized QueryResult through the same JSON writer the JDBC path produces.
-    def writeJSONLFromXP(r: XPQueryResult, out: File): Long =
+    // Streams the result page by page through the same JSON writer the JDBC path produces, so
+    // large exports never hold the whole result set in memory.
+    def writeJSONLFromXP(batches: Iterator[XPQueryResult], out: File): Long =
       val rowCodec = summon[Weaver[ListMap[String, Any]]]
-      val names    = r.columns.map(_.name.name)
+      var rowCount = 0L
       Using.resource(BufferedWriter(OutputStreamWriter(GZIPOutputStream(FileOutputStream(out))))) {
         w =>
-          r.rows
-            .foreach { row =>
-              val pairs = names
-                .iterator
-                .zip(row.values.iterator)
-                .map { case (n, v) =>
-                  n -> v.orNull.asInstanceOf[Any]
-                }
-              w.write(rowCodec.toJson(ListMap.from(pairs)))
-              w.newLine()
-            }
+          batches.foreach { batch =>
+            val names = batch.columns.map(_.name.name)
+            batch
+              .rows
+              .foreach { row =>
+                val pairs = names
+                  .iterator
+                  .zip(row.values.iterator)
+                  .map { case (n, v) =>
+                    n -> v.orNull.asInstanceOf[Any]
+                  }
+                w.write(rowCodec.toJson(ListMap.from(pairs)))
+                w.newLine()
+                rowCount += 1
+              }
+          }
       }
-      r.rowCount.toLong
+      rowCount
 
     // 1) Execute on Trino (or current engine) and dump to JSONL
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
@@ -400,8 +406,10 @@ class QueryExecutor(
     val n                               =
       sourceConn.sqlConnector match
         case Some(sc) =>
-          // HTTP-based engines (e.g. Trino): no JDBC ResultSet, materialize via SqlConnector.
-          writeJSONLFromXP(sc.execute(baseSQL.sql), jsonlFile)
+          // HTTP-based engines (e.g. Trino): no JDBC ResultSet — stream the paginated result.
+          val handle = sc.submit(baseSQL.sql)
+          try writeJSONLFromXP(handle.batches(), jsonlFile)
+          finally handle.close()
         case None =>
           sourceConn.runQuery(baseSQL.sql) { rs =>
             writeJSONL(rs, jsonlFile)

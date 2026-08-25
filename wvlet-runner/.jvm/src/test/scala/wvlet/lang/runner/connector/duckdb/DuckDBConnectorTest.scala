@@ -91,6 +91,14 @@ class DuckDBConnectorTest extends WvletDITest:
     val duckdb = dep[DuckDBConnector]
     duckdb.sqlConnector shouldBe empty
 
+  test("should stream JSON rows from a live JDBC result set"):
+    val duckdb   = dep[DuckDBConnector]
+    val rowCount = duckdb.streamJsonRows("select * from range(1000) as t(id)")(_.size)
+    rowCount shouldBe 1000
+    // queryJsonRows materializes on top of the same streaming route
+    val rows = duckdb.queryJsonRows("select 42 as answer")
+    rows shouldBe List("""{"answer":42}""")
+
   test("should return an already-finished handle from asSqlConnector.submit"):
     given QueryProgressMonitor = QueryProgressMonitor.noOp
     val duckdb                 = dep[DuckDBConnector]

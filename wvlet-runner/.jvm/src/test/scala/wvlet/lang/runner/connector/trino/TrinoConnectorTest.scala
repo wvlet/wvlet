@@ -100,6 +100,28 @@ class TrinoConnectorTest extends WvletDITest:
       result.columns.map(_.name.name) shouldBe List("one", "src")
       result.rows.head.values shouldBe List(Some("1"), Some("http"))
     }
+
+    test("stream query results in batches over the HTTP protocol") {
+      val handle = trino.submit("select * from unnest(sequence(1, 1000)) as t(id)")
+      try
+        val batches = handle.batches().toList
+        batches.map(_.rowCount).sum shouldBe 1000
+        batches.foreach(b => b.columns.map(_.name.name) shouldBe List("id"))
+      finally
+        handle.close()
+    }
+
+    test("stream JSON rows through the paginated result") {
+      val connector = dep[TrinoConnector]
+      val rowCount  =
+        connector.streamJsonRows("select * from unnest(sequence(1, 1000)) as t(id)")(_.size)
+      rowCount shouldBe 1000
+      // queryJsonRows keeps the materialized List behavior on top of the stream
+      val rows = connector.queryJsonRows("select 1 as id")
+      rows.size shouldBe 1
+      rows.head shouldContain "id"
+      rows.head shouldContain "1"
+    }
   }
 
 end TrinoConnectorTest

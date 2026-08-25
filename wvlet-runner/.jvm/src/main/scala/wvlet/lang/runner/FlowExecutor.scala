@@ -1369,12 +1369,19 @@ class FlowExecutor(
       engineName: String
   ): Unit =
     val qualifiedName = table.name.catalog.toList ++ table.name.schema.toList :+ table.name.name
-    val rows          = SourceTableStaging.readTableAsJsonRows(source, qualifiedName)
-    workEnv.info(
-      s"Staging ${table.connectorName.getOrElse("")}.${table.name.name} (${rows
-          .size} rows) as ${stagingTable}"
+    val rowCount      = SourceTableStaging.stageTable(
+      source,
+      qualifiedName,
+      engine,
+      engineName,
+      stagingTable,
+      table.schema.fields
     )
-    SourceTableStaging.loadJsonRows(engine, engineName, stagingTable, rows, table.schema.fields)
+    workEnv.info(
+      s"Staged ${table.connectorName.getOrElse("")}.${table
+          .name
+          .name} (${rowCount} rows) as ${stagingTable}"
+    )
 
   end materializeForeignTable
 

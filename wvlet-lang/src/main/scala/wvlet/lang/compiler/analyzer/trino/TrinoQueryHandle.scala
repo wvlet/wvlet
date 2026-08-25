@@ -71,6 +71,9 @@ class TrinoQueryHandle(
   @volatile
   private var cachedResult: Option[QueryResult] = None
 
+  @volatile
+  private var streaming: Boolean = false
+
   private var columnsSnapshot: Option[Seq[NamedType]] = None
   private val rowsBuilder                             = List.newBuilder[QueryResultRow]
 
@@ -94,17 +97,89 @@ class TrinoQueryHandle(
       case Some(r) =>
         r
       case None =>
+        if streaming then
+          throw IllegalStateException(
+            s"Query ${_queryId.getOrElse(
+                "?"
+              )} is being streamed via batches(); its rows are handed off page by page and cannot be materialized with await()"
+          )
         while lastNextUri.isDefined && !cancelRequested do
-          val uri  = lastNextUri.get
-          val req  = Trino.withTrinoHeaders(Request(method = HttpMethod.GET, uri = uri), config)
-          val resp = Trino.sendOrThrow(client, req)
-          val json = Trino.parseBody(resp)
-          Trino.checkError(json)
-          consume(json)
+          consume(fetchNextPage())
         val result = QueryResult(columnsSnapshot.getOrElse(Seq.empty), rowsBuilder.result())
         cachedResult = Some(result)
         result
   }
+
+  /**
+    * Stream the result one Trino protocol page per batch, never holding more than a page of rows in
+    * memory. The first batch replays any rows already folded in by `submit`'s initial `consume`;
+    * subsequent pages are fetched lazily as the iterator advances. Follows the [[QueryHandle]]
+    * contract: every batch carries the column metadata, an empty result yields one zero-row batch,
+    * and `await()` becomes unavailable once streaming has started.
+    */
+  override def batches(): Iterator[QueryResult] = synchronized {
+    cachedResult match
+      case Some(r) =>
+        Iterator.single(r)
+      case None =>
+        if streaming then
+          throw IllegalStateException(
+            s"batches() of query ${_queryId.getOrElse(
+                "?"
+              )} was already consumed — the stream is single-pass"
+          )
+        streaming = true
+        new Iterator[QueryResult]:
+          // Rows accumulated before streaming began (the pages `submit` consumed eagerly)
+          private var firstRows: Option[List[QueryResultRow]] =
+            val rows = rowsBuilder.result()
+            rowsBuilder.clear()
+            Some(rows)
+          private var pending: Option[QueryResult] = None
+          private var yieldedAny                   = false
+
+          private def columns: Seq[NamedType] = columnsSnapshot.getOrElse(Seq.empty)
+
+          override def hasNext: Boolean =
+            while pending.isEmpty do
+              firstRows match
+                case Some(rows) =>
+                  firstRows = None
+                  if rows.nonEmpty then
+                    pending = Some(QueryResult(columns, rows))
+                case None =>
+                  if lastNextUri.isEmpty || cancelRequested then
+                    // Drained (or cancelled): emit a final empty batch if nothing was yielded so
+                    // consumers always observe the result schema
+                    if !yieldedAny then
+                      yieldedAny = true
+                      pending = Some(QueryResult(columns, Nil))
+                    else
+                      return false
+                  else
+                    val pageRows = consume(fetchNextPage())
+                    if pageRows.nonEmpty then
+                      pending = Some(QueryResult(columns, pageRows))
+            true
+
+          override def next(): QueryResult =
+            if !hasNext then
+              throw java.util.NoSuchElementException("next on an exhausted Trino batch stream")
+            val batch = pending.get
+            pending = None
+            yieldedAny = true
+            batch
+        end new
+  }
+
+  /** GET the next page of the pagination loop and parse its body, surfacing Trino errors. */
+  private def fetchNextPage(): JSONObject =
+    val uri  = lastNextUri.get
+    val req  = Trino.withTrinoHeaders(Request(method = HttpMethod.GET, uri = uri), config)
+    val resp = Trino.sendOrThrow(client, req)
+    val json = Trino.parseBody(resp)
+    Trino.checkError(json)
+    json
 
   /**
     * Ask Trino to abort the query. Sets a cooperative flag the `await()` loop checks at the next
@@ -128,23 +203,27 @@ class TrinoQueryHandle(
       // observe the terminal state without having to await.
       _stats = _stats.copy(state = QueryState.Canceled)
       progressMonitor.reportProgress(_stats)
-      lastNextUri.foreach { uri =>
-        val cancelClient = Http.client.withBaseUri(config.baseUri).newSyncClient
-        try
-          val req  = Trino.withTrinoHeaders(Request(method = HttpMethod.DELETE, uri = uri), config)
-          val resp = cancelClient.send(req)
-          if !resp.status.isSuccessful then
-            warn(
-              s"Trino cancel for query ${_queryId.getOrElse("?")} returned ${resp
-                  .status
-                  .code} ${resp.status.reason}"
-            )
-        catch
-          case e: Throwable =>
-            warn(s"Trino cancel for query ${_queryId.getOrElse("?")} failed: ${e.getMessage}")
-        finally
-          cancelClient.close()
-      }
+      lastNextUri.foreach(sendCancelRequest)
+
+  /**
+    * Fire the best-effort DELETE of `cancel()`. Factored out so protocol-level tests can stub it.
+    */
+  protected def sendCancelRequest(uri: String): Unit =
+    val cancelClient = Http.client.withBaseUri(config.baseUri).newSyncClient
+    try
+      val req  = Trino.withTrinoHeaders(Request(method = HttpMethod.DELETE, uri = uri), config)
+      val resp = cancelClient.send(req)
+      if !resp.status.isSuccessful then
+        warn(
+          s"Trino cancel for query ${_queryId.getOrElse("?")} returned ${resp.status.code} ${resp
+              .status
+              .reason}"
+        )
+    catch
+      case e: Throwable =>
+        warn(s"Trino cancel for query ${_queryId.getOrElse("?")} failed: ${e.getMessage}")
+    finally
+      cancelClient.close()
 
   override def close(): Unit =
     if !closed then
@@ -155,17 +234,22 @@ class TrinoQueryHandle(
       finally client.close()
 
   /**
-    * Internal: fold one Trino response page into the handle's accumulator. Used both by
-    * `Trino.submit` (first page) and `await()` (subsequent pages).
+    * Internal: fold one Trino response page into the handle's state and return the page's rows.
+    * Used by `Trino.submit` (first page), `await()`, and the `batches()` stream (subsequent pages).
+    * While streaming, rows are NOT accumulated in the handle — the returned page is the only copy,
+    * which is what keeps memory bounded.
     */
-  private[trino] def consume(json: JSONObject): Unit =
+  private[trino] def consume(json: JSONObject): List[QueryResultRow] =
     extractQueryId(json)
     collectColumns(json)
-    collectRows(json)
+    val pageRows = collectRows(json)
+    if !streaming then
+      rowsBuilder ++= pageRows
     val newStats = parseStats(json)
     _stats = newStats
     lastNextUri = nextUri(json)
     progressMonitor.reportProgress(newStats)
+    pageRows
 
   private def extractQueryId(json: JSONObject): Unit =
     if _queryId.isEmpty then
@@ -196,19 +280,17 @@ class TrinoQueryHandle(
           case _ =>
         }
 
-  private def collectRows(json: JSONObject): Unit = json
+  private def collectRows(json: JSONObject): List[QueryResultRow] = json
     .get("data")
-    .foreach {
-      case arr: JSONArray =>
-        arr
-          .v
-          .foreach {
-            case row: JSONArray =>
-              rowsBuilder += QueryResultRow(row.v.map(Trino.stringifyCell).toList)
-            case _ =>
-          }
-      case _ =>
+    .collect { case arr: JSONArray =>
+      arr
+        .v
+        .collect { case row: JSONArray =>
+          QueryResultRow(row.v.map(Trino.stringifyCell).toList)
+        }
+        .toList
     }
+    .getOrElse(Nil)
 
   private def nextUri(json: JSONObject): Option[String] = json
     .get("nextUri")
