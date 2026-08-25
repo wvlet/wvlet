@@ -723,11 +723,17 @@ Runs are managed with `wvlet flow session` subcommands:
 
 ### Flow Runs in the Web UI
 
-`wvlet ui -w <folder>` serves a read-only **Flow Runs** page next to the query editor:
-recent runs with state badges, and per-run stage states, attempts, and errors. The page
-reads the same run store as the `wvlet flow session` commands, so runs triggered from the
-CLI or a scheduler daemon on the same working folder appear as they happen. Cancelling and
-resuming runs stays in the CLI.
+`wvlet ui -w <folder>` serves a **Flow Runs** page next to the query editor: recent runs
+with state badges, per-run stage states, attempts, and errors, and a flow-name filter. The
+page reads the same run store as the `wvlet flow session` commands, so runs triggered from
+the CLI or a scheduler daemon on the same working folder appear as they happen, and the
+list auto-refreshes while a run is in flight.
+
+A selected run also offers **Cancel** (for running runs) and **Resume** (for failed or
+cancelled runs) buttons, each with a confirmation step. They follow the same semantics as
+`wvlet flow session cancel`/`resume`: cancellation is requested through the shared run
+store, so it reaches runs owned by other processes, and a resumed flow is recompiled from
+the server's working folder and re-executed in the background with its recorded arguments.
 
 ### Run Liveness Leases
 

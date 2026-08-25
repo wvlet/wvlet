@@ -35,6 +35,7 @@ import wvlet.lang.model.plan.Query
 import wvlet.lang.model.plan.RunFlow
 import wvlet.lang.runner.CronSchedule
 import wvlet.lang.runner.FlowExecutor
+import wvlet.lang.runner.FlowRunLauncher
 import wvlet.lang.runner.FlowRunRecord
 import wvlet.lang.runner.FlowRunRetention
 import wvlet.lang.runner.FlowRunStore
@@ -108,51 +109,18 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       resumeFrom: Option[FlowRunRecord],
       args: List[FunctionArg] = Nil
   ): Unit =
-    withFlows(flowOption) { (flows, compileResult, workEnv) =>
-      val (unit, flow) = findFlow(flows, name)
-      val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
-      // System.exit is deferred until the resource blocks release the connector and run store
-      var failed = false
-      Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
-        val connector = dbConnectorProvider.getConnector(profile)
-
-        given ctx: Context = compileResult
-          .context
-          .withCompilationUnit(unit)
-          .newContext(Symbol.NoSymbol)
-
-        Control.withResource(newRunStore(flowOption, workEnv)) { store =>
-          val result = FlowExecutor(
-            connector,
-            workEnv,
-            registry = Some(store),
-            engineResolver = Some(name =>
-              profile
-                .connectors
-                .find(_.name == name)
-                .map(dbConnectorProvider.getConnector)
-                .getOrElse(
-                  throw StatusCode
-                    .INVALID_ARGUMENT
-                    .newException(s"Connector '${name}' is not defined in the profile")
-                )
-            ),
-            defaultEngineName = profile.defaultEngine.name,
-            activationSinks =
-              FlowExecutor.defaultActivationSinks ++
-                profile
-                  .connectors
-                  .map(c =>
-                    ConnectorActivationSink(c.name, () => dbConnectorProvider.getConnector(c))
-                  )
-          ).execute(flow, resumeFrom, args)
-          println(result.toPrettyBox())
-          failed = result.hasError
-        }
-      }
-      if failed && !WvletMain.isInSbt then
-        System.exit(1)
+    val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
+    val loaded  = FlowRunLauncher.loadFlows(flowOption.workFolder, workEnv)
+    val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+    // System.exit is deferred until the resource block releases the run store
+    var failed = false
+    Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+      val result = FlowRunLauncher.execute(loaded, name, profile, workEnv, store, resumeFrom, args)
+      println(result.toPrettyBox())
+      failed = result.hasError
     }
+    if failed && !WvletMain.isInSbt then
+      System.exit(1)
 
   /** Create the run store selected with --run-store (or the WVLET_FLOW_STORE environment) */
   private def newRunStore(flowOption: WvletFlowOption, workEnv: WorkEnv): FlowRunStore = flowOption
@@ -737,22 +705,9 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
   private def loadFlows(
       flowOption: WvletFlowOption
   ): (List[(CompilationUnit, FlowDef)], CompileResult, WorkEnv) =
-    val workEnv  = WorkEnv(flowOption.workFolder, opts.logLevel)
-    val compiler = Compiler(
-      CompilerOptions(sourceFolders = List(flowOption.workFolder), workEnv = workEnv)
-    )
-    val compileResult = compiler.compile()
-    val flows         = List.newBuilder[(CompilationUnit, FlowDef)]
-    compileResult
-      .units
-      .foreach { unit =>
-        unit
-          .resolvedPlan
-          .traverse { case f: FlowDef =>
-            flows += unit -> f
-          }
-      }
-    (flows.result(), compileResult, workEnv)
+    val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
+    val loaded  = FlowRunLauncher.loadFlows(flowOption.workFolder, workEnv)
+    (loaded.flows, loaded.compileResult, workEnv)
 
   /** Extract the flows that have a cron schedule, paired with their defining units */
   private def scheduledFlowsOf(
