@@ -1,0 +1,36 @@
+-- Column constraints on table declarations (#1997): `primary key`, `unique`, and `not null`
+-- as soft words in field position render into the generated CREATE TABLE, so the engine
+-- enforces integrity on declared tables
+
+table ddl_constrained = {
+  id: int primary key
+  email: string unique not null
+  score: double not null = 1.5
+}
+
+create table ddl_constrained
+
+append to ddl_constrained (id, email) {
+  from [[1, 'alice@example.com'], [2, 'bob@example.com']] as t(id, email)
+}
+
+from ddl_constrained
+test _.size should be 2
+
+-- The default fills the not-null column, satisfying its constraint
+from ddl_constrained
+where score = 1.5
+test _.size should be 2
+
+-- Constraints ride along on auto-created tables, too
+table ddl_constrained_auto like ddl_constrained
+
+append to ddl_constrained_auto (id, email) {
+  from [[3, 'carol@example.com']] as t(id, email)
+}
+
+from ddl_constrained_auto
+test _.size should be 1
+
+drop table ddl_constrained_auto
+drop table ddl_constrained

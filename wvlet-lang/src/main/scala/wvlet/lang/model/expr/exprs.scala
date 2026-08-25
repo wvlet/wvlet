@@ -1004,7 +1004,10 @@ case class ColumnDef(
     comment: Option[String] = None,
     defaultValue: Option[Expression] = None,
     properties: List[(NameExpr, Expression)] = Nil,
-    position: Option[String] = None // FIRST, LAST, or AFTER column_name
+    position: Option[String] = None, // FIRST, LAST, or AFTER column_name
+    // Key constraints (#1997), declared as soft words in table-declaration field position
+    primaryKey: Boolean = false,
+    unique: Boolean = false
 ) extends TableElement
     with UnaryExpression:
   override def toString: String                   = s"${columnName.leafName}:${columnType.wvExpr}"

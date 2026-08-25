@@ -128,7 +128,11 @@ case class FieldDef(
     fieldType: NameExpr,
     params: List[TypeParameter],
     body: Option[Expression],
-    span: Span
+    span: Span,
+    // Column constraints (#1997): soft words in field position, e.g. `id: int primary key`
+    primaryKey: Boolean = false,
+    unique: Boolean = false,
+    notNull: Boolean = false
 ) extends TypeElem:
   override def children: List[Expression] = Nil
 

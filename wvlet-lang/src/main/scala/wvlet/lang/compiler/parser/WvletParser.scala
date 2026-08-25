@@ -1643,19 +1643,54 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case id if id.isIdentifier =>
         val name = identifier()
         consume(WvletToken.COLON)
-        val valType      = identifier()
-        val tp           = typeParams()
-        val defaultValue =
-          scanner.lookAhead().token match
+        val valType = identifier()
+        val tp      = typeParams()
+        // Field constraints (#1997) and the `= expr` default trail the type as soft words, in
+        // any order. A constraint word must sit on the same line as its field: type bodies
+        // have no separators, so the line check tells a trailing `unique` constraint apart
+        // from a next-line field named `unique`
+        val fieldLine                        = src.offsetToLine(t.offset)
+        var primaryKey                       = false
+        var unique                           = false
+        var notNull                          = false
+        var defaultValue: Option[Expression] = None
+        var continue                         = true
+        while continue do
+          val la                   = scanner.lookAhead()
+          def onFieldLine: Boolean = src.offsetToLine(la.offset) == fieldLine
+          la.token match
             case WvletToken.EQ =>
               consume(WvletToken.EQ)
-              Some(expression())
+              defaultValue = Some(expression())
+            case WvletToken.NOT if onFieldLine =>
+              consume(WvletToken.NOT)
+              consume(WvletToken.NULL)
+              notNull = true
+            case w if w.isIdentifier && onFieldLine && la.str.equalsIgnoreCase("primary") =>
+              identifier()
+              val key = identifier()
+              if !key.leafName.equalsIgnoreCase("key") then
+                unexpected(la)
+              primaryKey = true
+            case w if w.isIdentifier && onFieldLine && la.str.equalsIgnoreCase("unique") =>
+              identifier()
+              unique = true
             case _ =>
-              None
+              continue = false
 
-        FieldDef(Name.termName(name.leafName), valType, tp, defaultValue, spanFrom(t))
+        FieldDef(
+          Name.termName(name.leafName),
+          valType,
+          tp,
+          defaultValue,
+          spanFrom(t),
+          primaryKey = primaryKey,
+          unique = unique,
+          notNull = notNull
+        )
       case _ =>
         unexpected(t)
+    end match
   }
 
   def tableAlias(input: Relation): AliasedRelation = node {

@@ -171,12 +171,15 @@ object GenSQL extends Phase("generate-sql"):
               s"on ${context.dbType}",
             c.sourceLocation
           )
-      // Declared column defaults render as DEFAULT clauses; engines without them (e.g. Trino)
-      // reject the create loudly instead of dropping the semantics. Generic stays
-      // dialect-neutral and prints the standard spelling
-      case c: CreateTable
-          if hasColumnDefaults(c.tableElems) && !context.dbType.supportColumnDefaultValues =>
-        throw columnDefaultsNotSupported(c.table.fullName, c.sourceLocation)
+      // Declared column defaults and key constraints render into the CREATE TABLE columns;
+      // engines without them (e.g. Trino) reject the create loudly instead of dropping the
+      // semantics. Generic stays dialect-neutral and prints the standard spelling
+      case c: CreateTable if unsupportedColumnFeature(c.tableElems).nonEmpty =>
+        throw columnFeatureNotSupported(
+          unsupportedColumnFeature(c.tableElems).get,
+          c.table.fullName,
+          c.sourceLocation
+        )
       case c: CreateTable if c.replace && !context.dbType.supportCreateOrReplace =>
         // Engines without CREATE OR REPLACE decompose it into an explicit drop + create
         List(
@@ -223,20 +226,32 @@ object GenSQL extends Phase("generate-sql"):
     * inferred ones) and the rows are inserted into it; otherwise the append reduces to CREATE TABLE
     * AS with the query's shape
     */
-  private def hasColumnDefaults(tableElems: List[TableElement]): Boolean = tableElems.exists {
-    case c: ColumnDef =>
-      c.defaultValue.nonEmpty
-    case _ =>
-      false
-  }
-
-  private def columnDefaultsNotSupported(tableName: String, loc: SourceLocation)(using
+  /**
+    * The declared column feature the target engine cannot express in CREATE TABLE, if any: column
+    * defaults (#1997 defaults slice) or key constraints (#1997 constraints slice)
+    */
+  private def unsupportedColumnFeature(tableElems: List[TableElement])(using
       context: Context
+  ): Option[String] =
+    def has(f: ColumnDef => Boolean): Boolean = tableElems.exists {
+      case c: ColumnDef =>
+        f(c)
+      case _ =>
+        false
+    }
+    if has(_.defaultValue.nonEmpty) && !context.dbType.supportColumnDefaultValues then
+      Some("column default values")
+    else if has(c => c.primaryKey || c.unique) && !context.dbType.supportKeyConstraints then
+      Some("key constraints (primary key / unique)")
+    else
+      None
+
+  private def columnFeatureNotSupported(feature: String, tableName: String, loc: SourceLocation)(
+      using context: Context
   ): WvletLangException = StatusCode
     .NOT_IMPLEMENTED
     .newException(
-      s"creating table ${tableName} with column default values is not supported on ${context
-          .dbType}",
+      s"creating table ${tableName} with ${feature} is not supported on ${context.dbType}",
       loc
     )
 
@@ -247,8 +262,9 @@ object GenSQL extends Phase("generate-sql"):
       baseSQL: String
   )(using context: Context): List[String] =
     if declaredCols.nonEmpty then
-      if hasColumnDefaults(declaredCols) && !context.dbType.supportColumnDefaultValues then
-        throw columnDefaultsNotSupported(fullTableName, a.sourceLocation)
+      unsupportedColumnFeature(declaredCols).foreach { feature =>
+        throw columnFeatureNotSupported(feature, fullTableName, a.sourceLocation)
+      }
       val gen       = sqlGeneratorFor(context.dbType)
       val createSQL = gen.print(
         CreateTable(

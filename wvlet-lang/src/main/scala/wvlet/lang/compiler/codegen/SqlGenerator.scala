@@ -1837,6 +1837,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val baseColumn       = wl(expr(c.columnName), text(c.columnType.sqlExpr))
         val columnAttributes =
           List(
+            // Add key constraints
+            Option.when(c.primaryKey)(text("primary key")),
+            Option.when(c.unique)(text("unique")),
             // Add NOT NULL constraint
             Option.when(c.notNull)(text("not null")),
             // Add COMMENT attribute
