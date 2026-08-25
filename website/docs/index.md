@@ -222,6 +222,23 @@ join address_table
   on p.id = address_table.person_id
 ```
 
+### Flow Orchestration (Experimental)
+
+Organize queries into data pipelines with `flow` and `stage` constructs, including retries, timeouts, scheduling, sensors, and failure notifications:
+
+```wvlet
+flow daily_report with {
+  schedule: cron('0 2 * * *')  -- 2 AM daily
+  concurrency: 1
+} = {
+  stage extract = from raw_events | where event_date = current_date
+  stage load = from extract | append to daily_summary
+  stage fallback if extract.failed = from backup_events | append to daily_summary
+}
+```
+
+Flow orchestration is experimental — see [Flow & Stage Syntax](./syntax/flow) for details, and share syntax feedback on [this tracking issue](https://github.com/wvlet/wvlet/issues/2021).
+
 ### Managing Queries As A Reusable Module
 
 :::warning
