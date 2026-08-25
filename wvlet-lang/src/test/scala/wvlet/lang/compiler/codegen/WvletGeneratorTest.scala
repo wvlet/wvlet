@@ -74,6 +74,17 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "table users"
   }
 
+  test("should round-trip table field defaults (#1997)") {
+    val printed = print("""table users = {
+        |  id: int
+        |  active: boolean = true
+        |  created_at: timestamp = now()
+        |}""".stripMargin)
+    printed shouldContain "active: boolean = true"
+    printed shouldContain "= now()"
+    print(printed) shouldContain "active: boolean = true"
+  }
+
   test("should round-trip a model with a type annotation") {
     val printed = print("""model rm_all: rm_users = {
         |  from rm_users

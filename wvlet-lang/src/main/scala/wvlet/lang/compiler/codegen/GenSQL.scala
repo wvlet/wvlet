@@ -16,6 +16,7 @@ package wvlet.lang.compiler.codegen
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.analyzer.TableBindings
@@ -170,6 +171,12 @@ object GenSQL extends Phase("generate-sql"):
               s"on ${context.dbType}",
             c.sourceLocation
           )
+      // Declared column defaults render as DEFAULT clauses; engines without them (e.g. Trino)
+      // reject the create loudly instead of dropping the semantics. Generic stays
+      // dialect-neutral and prints the standard spelling
+      case c: CreateTable
+          if hasColumnDefaults(c.tableElems) && !context.dbType.supportColumnDefaultValues =>
+        throw columnDefaultsNotSupported(c.table.fullName, c.sourceLocation)
       case c: CreateTable if c.replace && !context.dbType.supportCreateOrReplace =>
         // Engines without CREATE OR REPLACE decompose it into an explicit drop + create
         List(
@@ -216,6 +223,23 @@ object GenSQL extends Phase("generate-sql"):
     * inferred ones) and the rows are inserted into it; otherwise the append reduces to CREATE TABLE
     * AS with the query's shape
     */
+  private def hasColumnDefaults(tableElems: List[TableElement]): Boolean = tableElems.exists {
+    case c: ColumnDef =>
+      c.defaultValue.nonEmpty
+    case _ =>
+      false
+  }
+
+  private def columnDefaultsNotSupported(tableName: String, loc: SourceLocation)(using
+      context: Context
+  ): WvletLangException = StatusCode
+    .NOT_IMPLEMENTED
+    .newException(
+      s"creating table ${tableName} with column default values is not supported on ${context
+          .dbType}",
+      loc
+    )
+
   private def appendToNewTableSQL(
       a: AppendTo,
       fullTableName: String,
@@ -223,6 +247,8 @@ object GenSQL extends Phase("generate-sql"):
       baseSQL: String
   )(using context: Context): List[String] =
     if declaredCols.nonEmpty then
+      if hasColumnDefaults(declaredCols) && !context.dbType.supportColumnDefaultValues then
+        throw columnDefaultsNotSupported(fullTableName, a.sourceLocation)
       val gen       = sqlGeneratorFor(context.dbType)
       val createSQL = gen.print(
         CreateTable(

@@ -48,6 +48,32 @@ table users = {
 }
 ```
 
+### Column Defaults
+
+A column can declare a default value with `= expr`. The default renders as a `DEFAULT`
+clause in the generated `CREATE TABLE` — both for explicit `create table` actions and for
+tables auto-created by `append to` — so the engine fills omitted columns on insert:
+
+```wvlet
+table users = {
+  id: int
+  name: string
+  active: boolean = true
+  created_at: timestamp = now()
+}
+
+create table users
+
+-- Appending only a subset of columns: active and created_at get their defaults
+append to users (id, name) {
+  from new_signups select id, name
+}
+```
+
+Defaults compose with `like` and `extends`: a reused or mixed-in column keeps its declared
+default. Engines whose `CREATE TABLE` grammar has no `DEFAULT` clause (e.g. Trino) reject a
+create with column defaults at compile time instead of silently dropping them.
+
 ### Reusing a Shape with `like`
 
 `table <name> like <source>` declares a second table with the same columns as an existing
