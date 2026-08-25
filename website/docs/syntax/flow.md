@@ -6,6 +6,10 @@ sidebar_position: 2
 
 Wvlet provides `flow` and `stage` constructs for defining data pipelines with orchestration capabilities such as retries, timeouts, scheduling, and error handling. Flows organize stages into directed acyclic graphs (DAGs) with explicit data and control dependencies.
 
+:::info Experimental
+Flow orchestration is **experimental**: it works end-to-end (DuckDB and Trino execution, scheduling, sensors, run stores, web UI), but the syntax and semantics described here may still change based on user feedback. In particular, the `wait until` sensor grammar, sensor row semantics, and notification payload shapes are open for refinement — share feedback on the [flow syntax feedback issue](https://github.com/wvlet/wvlet/issues/2021). Breaking changes will be called out in release notes while the feature is experimental.
+:::
+
 ## From Queries to Data Flows
 
 | Construct | Purpose | Scope | Reusable |
