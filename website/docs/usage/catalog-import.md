@@ -194,6 +194,12 @@ automatically: after an import, table references resolve in the editor — diagn
 column completion, and hover work offline against the imported schemas, and imported engine
 functions appear in name completion with their signatures.
 
+Destructive statements are checked against the snapshot too: a `drop table`, `reshape`, or
+`truncate` targeting a table the imported catalog does not know gets an editor **warning**
+(not an error — the snapshot may be stale; re-run `wvlet catalog import` if the table was
+created after the import). Adding `if exists` to the statement acknowledges the table may
+be missing and silences the warning.
+
 ## Notes
 
 - Table and column names that are not plain identifiers are written as backquoted identifiers

@@ -364,6 +364,9 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   private def registerTypeDefSymbol(t: TypeDef)(using ctx: Context): Symbol =
     val typeName = t.name
     warnMethodInterfaceDeclaredAsType(t)
+    // Record the binding location so DDL statements can tell whether an imported static
+    // catalog governs their target (#1999)
+    t.tableBinding.foreach(b => ctx.global.declaredTableBindings += b)
 
     ctx.scope.lookupSymbol(typeName) match
       case Some(sym) =>
