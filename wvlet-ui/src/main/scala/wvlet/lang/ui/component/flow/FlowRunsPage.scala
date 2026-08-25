@@ -23,23 +23,50 @@ import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.ui.component.MainFrame
 import wvlet.uni.dom.RxElement
 import wvlet.uni.dom.all.{*, given}
+import wvlet.uni.rx.Cancelable
 import wvlet.uni.rx.Rx
 
 import scala.scalajs.js
 
 /**
-  * A read-only list of recorded flow runs with per-run stage details, backed by [[FlowApi]].
-  * Mutations (cancel, resume) stay in the `wvlet flow session` CLI
+  * A list of recorded flow runs with per-run stage details, backed by [[FlowApi]]. The list
+  * auto-refreshes while a run is in flight, can be filtered by flow name, and offers cancel/resume
+  * actions (with a confirmation step) that delegate to the same run-store paths as the `wvlet flow
+  * session` CLI
   */
 class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
 
   private val runs        = Rx.variable(List.empty[FlowRunSummary])
   private val selectedRun = Rx.variable(Option.empty[FlowRunDetail])
   private val loadError   = Rx.variable(Option.empty[String])
+  // The flow-name filter passed to listRuns; empty means no filter
+  private val flowNameFilter = Rx.variable("")
+  // A requested mutation ("cancel" or "resume", run id) awaiting user confirmation
+  private val pendingAction = Rx.variable(Option.empty[(String, String)])
+  // The outcome message of the last confirmed mutation
+  private val actionMessage = Rx.variable(Option.empty[String])
+
+  // Auto-refresh while any listed run is in flight and this page is visible. The page stays
+  // mounted permanently (MainFrame toggles visibility with a hidden class), so the timer guards
+  // on the current page instead of relying on unmount
+  private var autoRefresh = Cancelable.empty
+
+  override def onMount(node: Any): Unit =
+    autoRefresh = Rx
+      .intervalMillis(3000)
+      .map { _ =>
+        if MainFrame.currentPage.get == MainFrame.PAGE_FLOW_RUNS &&
+          runs.get.exists(_.state == "running")
+        then
+          refresh()
+      }
+      .subscribe()
+
+  override def beforeUnmount: Unit = autoRefresh.cancel
 
   private def refresh(): Unit = rpcClient
     .FlowApi
-    .listRuns(FlowRunListRequest())
+    .listRuns(FlowRunListRequest(flowName = Some(flowNameFilter.get.trim).filter(_.nonEmpty)))
     .map { lst =>
       loadError := None
       runs      := lst
@@ -65,6 +92,26 @@ class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
       loadError := Some(e.getMessage)
     }
     .run()
+
+  /** Run a confirmed cancel/resume action and surface its outcome message */
+  private def performAction(action: String, runId: String): Unit =
+    val call =
+      action match
+        case "cancel" =>
+          rpcClient.FlowApi.cancelRun(FlowRunRequest(runId))
+        case _ =>
+          rpcClient.FlowApi.resumeRun(FlowRunRequest(runId))
+    pendingAction := None
+    call
+      .map { result =>
+        actionMessage := Some(result.message)
+        refresh()
+        showRun(runId)
+      }
+      .recover { case e: Throwable =>
+        actionMessage := Some(e.getMessage)
+      }
+      .run()
 
   private def stateBadge(state: String): RxElement =
     val color =
@@ -168,6 +215,40 @@ class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
       )
   }
 
+  private def actionButton(label: String, action: String, runId: String): RxElement = button(
+    cls     -> "rounded-md bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600",
+    onclick -> { (_: dom.MouseEvent) =>
+      actionMessage := None
+      pendingAction := Some((action, runId))
+    },
+    label
+  )
+
+  /** The confirmation step of a requested cancel/resume, rendered inline in the detail header */
+  private def confirmStrip = pendingAction.map {
+    case Some((action, runId)) =>
+      span(
+        cls -> "flex items-center gap-x-2 text-xs text-amber-300",
+        span(s"${action.capitalize} run ${runId}?"),
+        button(
+          cls     -> "rounded-md bg-amber-700 px-2 py-1 text-xs text-amber-100 hover:bg-amber-600",
+          onclick -> { (_: dom.MouseEvent) =>
+            performAction(action, runId)
+          },
+          "Confirm"
+        ),
+        button(
+          cls     -> "rounded-md bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600",
+          onclick -> { (_: dom.MouseEvent) =>
+            pendingAction := None
+          },
+          "Dismiss"
+        )
+      )
+    case None =>
+      span()
+  }
+
   private def runDetail = selectedRun.map {
     case None =>
       div(cls -> "text-sm text-gray-400 px-3 py-4", "Select a run to see its stages")
@@ -177,7 +258,24 @@ class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
           cls -> "px-3 py-2 text-sm text-gray-200 flex items-center gap-x-2",
           span(cls -> "font-mono text-xs text-gray-400", detail.run.runId),
           span(detail.run.flowCall),
-          stateBadge(detail.run.state)
+          stateBadge(detail.run.state),
+          // Cancel applies to in-flight runs; resume to failed/cancelled ones (a crashed
+          // process's stale running record is already reported as failed)
+          detail.run.state match
+            case "running" =>
+              actionButton("Cancel", "cancel", detail.run.runId)
+            case "failed" | "cancelled" =>
+              actionButton("Resume", "resume", detail.run.runId)
+            case _ =>
+              span()
+          ,
+          confirmStrip,
+          actionMessage.map {
+            case Some(msg) =>
+              span(cls -> "text-xs text-gray-400", msg)
+            case None =>
+              span()
+          }
         ),
         table(
           cls -> "w-full",
@@ -225,6 +323,16 @@ class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
           refresh()
         },
         "Refresh"
+      ),
+      input(
+        cls ->
+          "rounded-md bg-zinc-700 px-2 py-1 text-xs text-gray-200 placeholder-gray-500 border border-zinc-600 focus:outline-none",
+        placeholder -> "Filter by flow name",
+        value       -> flowNameFilter.get,
+        oninput     -> { (e: dom.Event) =>
+          flowNameFilter := e.target.asInstanceOf[dom.html.Input].value
+          refresh()
+        }
       ),
       loadError.map {
         case Some(msg) =>

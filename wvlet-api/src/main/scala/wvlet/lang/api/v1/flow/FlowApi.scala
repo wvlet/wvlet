@@ -17,8 +17,9 @@ import wvlet.uni.http.router.RxRouter
 import wvlet.uni.http.router.RxRouterProvider
 
 /**
-  * Read-only inspection of recorded flow runs for the web UI. Mutations (cancel, resume) stay in
-  * the `wvlet flow session` CLI
+  * Inspection and control of recorded flow runs for the web UI: read endpoints for the runs view,
+  * plus cancel/resume mutations delegating to the same run-store and launcher paths as the `wvlet
+  * flow session` CLI
   */
 trait FlowApi:
   import FlowApi.*
@@ -28,6 +29,21 @@ trait FlowApi:
 
   /** The per-stage details of a recorded run */
   def getRun(request: FlowRunRequest): FlowRunDetail
+
+  /**
+    * Request cancellation of a running flow run. The owning executor observes the request through
+    * the shared run store, so cancelling works across processes. Cancelling an already-terminal run
+    * is a no-op reported in the result message
+    */
+  def cancelRun(request: FlowRunRequest): FlowRunActionResult
+
+  /**
+    * Resume a failed, cancelled, or stale-running (crashed process) run. The flow is recompiled
+    * from the server's work folder and re-executed in the background with its recorded arguments;
+    * completed stages are skipped. Resuming a succeeded run is a no-op; a run still held by a live
+    * process cannot be resumed
+    */
+  def resumeRun(request: FlowRunRequest): FlowRunActionResult
 
 object FlowApi extends RxRouterProvider:
   override def router = RxRouter.of[FlowApi]
@@ -84,5 +100,18 @@ object FlowApi extends RxRouterProvider:
 
   /** A recorded run with its per-stage states, attempts, and errors */
   case class FlowRunDetail(run: FlowRunSummary, stages: List[StageRunInfo])
+
+  /**
+    * Outcome of a cancel/resume mutation
+    *
+    * @param runId
+    *   The targeted run id
+    * @param accepted
+    *   True when the action was applied (cancellation requested, resume launched); false for no-op
+    *   outcomes such as cancelling a terminal run or resuming a succeeded one
+    * @param message
+    *   Human-readable description of what happened
+    */
+  case class FlowRunActionResult(runId: String, accepted: Boolean, message: String)
 
 end FlowApi

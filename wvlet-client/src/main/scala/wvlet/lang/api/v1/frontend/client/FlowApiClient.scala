@@ -15,6 +15,7 @@ package wvlet.lang.api.v1.frontend.client
 
 import wvlet.lang.api.v1.flow.FlowApi
 import wvlet.lang.api.v1.flow.FlowApi.{
+  FlowRunActionResult,
   FlowRunDetail,
   FlowRunListRequest,
   FlowRunRequest,
@@ -45,6 +46,18 @@ object FlowApiClient:
       Seq(request)
     )
 
+    def cancelRun(request: FlowRunRequest): FlowRunActionResult = rpc.callSync(
+      client,
+      "cancelRun",
+      Seq(request)
+    )
+
+    def resumeRun(request: FlowRunRequest): FlowRunActionResult = rpc.callSync(
+      client,
+      "resumeRun",
+      Seq(request)
+    )
+
   class AsyncClient(client: HttpAsyncClient):
     def listRuns(request: FlowRunListRequest): Rx[List[FlowRunSummary]] = rpc.callAsync(
       client,
@@ -55,6 +68,18 @@ object FlowApiClient:
     def getRun(request: FlowRunRequest): Rx[FlowRunDetail] = rpc.callAsync(
       client,
       "getRun",
+      Seq(request)
+    )
+
+    def cancelRun(request: FlowRunRequest): Rx[FlowRunActionResult] = rpc.callAsync(
+      client,
+      "cancelRun",
+      Seq(request)
+    )
+
+    def resumeRun(request: FlowRunRequest): Rx[FlowRunActionResult] = rpc.callAsync(
+      client,
+      "resumeRun",
       Seq(request)
     )
 
