@@ -32,6 +32,25 @@ trait QueryHandle extends AutoCloseable:
   def await(): QueryResult
   def cancel(): Unit
 
+  /**
+    * Stream the result in batches instead of materializing it whole. The contract:
+    *   - Every batch carries the full column metadata; concatenating the batches' rows in iteration
+    *     order yields the complete result.
+    *   - At least one batch is always produced — an empty result yields a single zero-row batch, so
+    *     consumers can read the result schema without a separate call.
+    *   - The iterator is single-pass and must be consumed on one thread. `cancel()` from another
+    *     thread stops iteration at the next batch boundary.
+    *   - Once streaming has begun, `await()` is no longer available (the streamed rows are handed
+    *     off, not retained) — implementations that truly stream throw `IllegalStateException` from
+    *     `await()` after `batches()` has been called. Calling `batches()` after `await()` is always
+    *     fine: it returns the materialized result as a single batch.
+    *
+    * The default implementation materializes via `await()` and yields one batch — correct for
+    * backends without result pagination and for small results. Paginating backends (Trino HTTP)
+    * override it to yield one batch per protocol page, keeping memory bounded by the page size.
+    */
+  def batches(): Iterator[QueryResult] = Iterator.single(await())
+
 /**
   * Normalized lifecycle states across SQL backends. Per-backend mapping functions live next to the
   * connector implementation (e.g. `QueryState.fromTrino`).

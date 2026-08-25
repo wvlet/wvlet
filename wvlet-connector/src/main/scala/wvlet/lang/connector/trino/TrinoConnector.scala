@@ -100,10 +100,10 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
     * monitor implicitly so callers that already have one (e.g. `execute` / `executeUpdate`) can
     * thread it through, while metadata callers fall back to the class-level `noOp` default.
     *
-    * Note: `SqlConnector.execute` materializes the full result set today — same tradeoff PR-B
-    * shipped for `QueryExecutor`'s Trino path. Large exports that previously streamed through the
-    * JDBC `ResultSet` now build the whole `QueryResult` in memory. Adding chunked iteration to
-    * `QueryHandle` is the right fix; tracked as a follow-up.
+    * Note: `SqlConnector.execute` materializes the full result set — acceptable here because every
+    * caller of `http` is a metadata query or DDL with a small result. Row-streaming callers
+    * (activation sinks, file exports) go through `streamJsonRows`, which pages through the result
+    * via `QueryHandle.batches()` instead.
     */
   private def http(sql: String)(using QueryProgressMonitor): QueryResult = asSqlConnector.execute(
     sql
@@ -170,14 +170,29 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
       deregister()
       handle.close()
 
-  override private[lang] def queryJsonRows(sql: String): List[String] =
-    val result    = http(sql)
-    val names     = result.columns.map(_.name.name)
-    val rowWeaver = summon[Weaver[ListMap[String, Any]]]
-    result
-      .rows
-      .map(row => rowWeaver.toJson(ListMap.from(names.zip(row.values.map(v => v.orNull: Any)))))
-      .toList
+  /**
+    * Stream rows as JSON objects by paging through the Trino HTTP result via
+    * `QueryHandle.batches()`. Only one protocol page of rows is held in memory at a time, so
+    * activation sinks and file exports can process arbitrarily large results.
+    */
+  override private[lang] def streamJsonRows[U](sql: String)(body: Iterator[String] => U): U =
+    val handle = asSqlConnector.submit(sql)
+    try
+      val rowWeaver = summon[Weaver[ListMap[String, Any]]]
+      val jsonRows  = handle
+        .batches()
+        .flatMap { batch =>
+          val names = batch.columns.map(_.name.name)
+          batch
+            .rows
+            .iterator
+            .map(row =>
+              rowWeaver.toJson(ListMap.from(names.zip(row.values.map(v => v.orNull: Any))))
+            )
+        }
+      body(jsonRows)
+    finally
+      handle.close()
 
   override def createSchema(catalog: String, schema: String): TableSchema =
     http(s"create schema if not exists ${catalog}.${schema}")

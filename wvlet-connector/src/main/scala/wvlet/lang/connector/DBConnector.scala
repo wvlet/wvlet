@@ -160,18 +160,28 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv)
 
   /**
     * Run a query on a dedicated session and serialize each row as a JSON object string. Provides
-    * engine-independent row access for activation sinks and notification hooks; connectors without
-    * JDBC result sets (e.g. Trino over HTTP) override this
+    * engine-independent row access for activation sinks and notification hooks. Materializes the
+    * full result — for unbounded results use [[streamJsonRows]] instead
     */
-  private[lang] def queryJsonRows(sql: String): List[String] = withSession { conn =>
-    withResource(conn.createStatement()) { stmt =>
-      withResource(stmt.executeQuery(sql)) { rs =>
-        val rowWeaver = summon[Weaver[ListMap[String, Any]]]
-        JDBCCodec(rs)
-          .mapMsgPackMapRows(msgpack => rowWeaver.toJson(rowWeaver.unweave(msgpack)))
-          .toList
+  private[lang] def queryJsonRows(sql: String): List[String] = streamJsonRows(sql)(_.toList)
+
+  /**
+    * Run a query on a dedicated session and process its rows as JSON object strings through a
+    * single-pass iterator, without materializing the whole result set. The iterator is only valid
+    * inside `body` (it is backed by a live result set or HTTP page stream); return materialized
+    * data from `body` if rows must outlive the call. Connectors without JDBC result sets (e.g.
+    * Trino over HTTP) override this with their paginated result stream
+    */
+  private[lang] def streamJsonRows[U](sql: String)(body: Iterator[String] => U): U = withSession {
+    conn =>
+      withResource(conn.createStatement()) { stmt =>
+        withResource(stmt.executeQuery(sql)) { rs =>
+          val rowWeaver = summon[Weaver[ListMap[String, Any]]]
+          body(
+            JDBCCodec(rs).mapMsgPackMapRows(msgpack => rowWeaver.toJson(rowWeaver.unweave(msgpack)))
+          )
+        }
       }
-    }
   }
 
   protected def withStatement[U](
