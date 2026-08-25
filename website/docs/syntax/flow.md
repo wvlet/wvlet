@@ -396,9 +396,10 @@ that is still executing.
 external target. Two sinks are built in:
 
 - `activate('file', path: 'out.csv')` exports to a local file. The format comes from the
-  path extension or a `format:` parameter (csv, parquet, or json). File export uses the
-  engine's `COPY TO` statement and is available on DuckDB only; on other engines the stage
-  fails with a clear error
+  path extension or a `format:` parameter (csv, parquet, or json). On DuckDB the file is
+  written directly with `COPY TO`; on engines without local file output (e.g. Trino) the
+  stage output is streamed page by page through a local DuckDB that writes the file, so
+  large results export without holding all rows in memory
 - `activate('webhook', url: 'https://...')` posts the rows to an HTTP endpoint as a JSON
   array, or as newline-delimited JSON with `format: 'ndjson'`. At most `max_rows:` rows
   (1000 by default) are sent
