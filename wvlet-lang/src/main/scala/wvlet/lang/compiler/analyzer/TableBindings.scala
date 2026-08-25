@@ -128,7 +128,10 @@ object TableBindings:
             // fieldType decimal + params [10, 2]), so pass both to keep parameterized types
             DataTypeParser.parse(f.fieldType.fullName, f.params),
             f.span,
-            defaultValue = f.body
+            defaultValue = f.body,
+            notNull = f.notNull,
+            primaryKey = f.primaryKey,
+            unique = f.unique
           )
         }
       val inherited = (current.parents.map(_.leafName) ++ current.likeSource.map(_.leafName))

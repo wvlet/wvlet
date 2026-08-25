@@ -74,6 +74,30 @@ Defaults compose with `like` and `extends`: a reused or mixed-in column keeps it
 default. Engines whose `CREATE TABLE` grammar has no `DEFAULT` clause (e.g. Trino) reject a
 create with column defaults at compile time instead of silently dropping them.
 
+### Column Constraints
+
+Columns can declare `primary key`, `unique`, and `not null` constraints as soft words after
+the type, making the declaration faithful to production tables and letting the engine
+enforce integrity:
+
+```wvlet
+table users = {
+  id: int primary key
+  email: string unique not null
+  name: string
+  active: boolean not null = true
+}
+```
+
+Constraints render into the generated `CREATE TABLE` — for explicit `create table` actions
+and auto-created append targets alike — and compose with `like` and `extends` the same way
+defaults do. Engines without column constraints in `CREATE TABLE` (e.g. Trino) reject the
+create at compile time.
+
+Keyed `append to ... on <keys>` works without any declared constraints (its MERGE lowering
+deliberately requires none); declaring them simply lets the engine enforce what the pipeline
+already assumes.
+
 ### Reusing a Shape with `like`
 
 `table <name> like <source>` declares a second table with the same columns as an existing

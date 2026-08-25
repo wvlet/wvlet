@@ -1175,7 +1175,16 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             d.defaultValue.map(x => wl("=", expr(x)))
           )
         case f: FieldDef =>
-          group(wl(f.name.name + ":", expr(f.fieldType), f.body.map(b => wl("=", expr(b)))))
+          group(
+            wl(
+              f.name.name + ":",
+              expr(f.fieldType),
+              Option.when(f.primaryKey)(text("primary key")),
+              Option.when(f.unique)(text("unique")),
+              Option.when(f.notNull)(text("not null")),
+              f.body.map(b => wl("=", expr(b)))
+            )
+          )
         case e: Extract =>
           // Convert EXTRACT(field FROM expr) to expr.extract(field)
           expr(e.expr) + text(".extract") + paren(text(s"'${e.interval.toString.toLowerCase}'"))
