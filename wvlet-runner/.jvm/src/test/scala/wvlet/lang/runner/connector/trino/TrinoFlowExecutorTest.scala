@@ -1,6 +1,5 @@
 package wvlet.lang.runner.connector.trino
 
-import wvlet.lang.api.v1.flow.StageState
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.CompilationUnit
@@ -131,19 +130,40 @@ class TrinoFlowExecutorTest extends UniTest:
     FlowExecutor.dropRunTables(connector, result.runId, result.stageResults.map(_.name))
   }
 
-  test("fail activate('file') on Trino with a clear non-retryable error") {
+  test("export activate('file') output on Trino via the DuckDB handoff") {
+    val exportPath = java.nio.file.Paths.get("target/trino-file-activation.csv")
+    java.nio.file.Files.deleteIfExists(exportPath)
     val (flow, ctx) = compileFlow("""flow TrinoFileFlow = {
-        |  stage src = from [[1]] as t(id)
-        |  stage export = from src | activate('file', path: 'target/trino-export.csv')
+        |  stage src = from [[1, 'a'], [2, 'b']] as t(id, name)
+        |  stage export = from src | activate('file', path: 'target/trino-file-activation.csv')
         |}""".stripMargin)
     val result = FlowExecutor(connector, workEnv).execute(flow)(using ctx)
-    result.isSuccess shouldBe false
-    val exportStage = result.stageResult("export").getOrElse(fail("export stage not found"))
-    exportStage.state shouldBe StageState.Failed
-    // NOT_IMPLEMENTED is non-retryable: the stage fails on the first attempt
-    exportStage.attempts shouldBe 1
-    val error = exportStage.error.getOrElse(fail("export stage has no error"))
-    error.getMessage shouldContain "not supported"
+    result.isSuccess shouldBe true
+    val content = java.nio.file.Files.readString(exportPath)
+    content shouldContain "id"
+    content shouldContain "name"
+    content shouldContain "1"
+    content shouldContain "a"
+    content shouldContain "2"
+    content shouldContain "b"
+    java.nio.file.Files.deleteIfExists(exportPath)
+    FlowExecutor.dropRunTables(connector, result.runId, result.stageResults.map(_.name))
+  }
+
+  test("export an empty stage output on Trino as a schema-only file") {
+    val exportPath = java.nio.file.Paths.get("target/trino-file-activation-empty.csv")
+    java.nio.file.Files.deleteIfExists(exportPath)
+    val (flow, ctx) = compileFlow("""flow TrinoEmptyFileFlow = {
+        |  stage src = from [[1, 'a']] as t(id, name)
+        |  stage export = from src | where id > 100 | activate('file', path: 'target/trino-file-activation-empty.csv')
+        |}""".stripMargin)
+    val result = FlowExecutor(connector, workEnv).execute(flow)(using ctx)
+    result.isSuccess shouldBe true
+    // Header-only CSV: the schema survives even with zero rows
+    val content = java.nio.file.Files.readString(exportPath)
+    content shouldContain "id"
+    content shouldContain "name"
+    java.nio.file.Files.deleteIfExists(exportPath)
     FlowExecutor.dropRunTables(connector, result.runId, result.stageResults.map(_.name))
   }
 
