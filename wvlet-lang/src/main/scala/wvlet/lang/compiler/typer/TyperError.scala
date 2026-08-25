@@ -126,6 +126,23 @@ case class TableShapeDeclaredAsType(typeName: String, binding: Option[String], s
       s"'table ${typeName}${inClause} = {...}'; relation-shaped 'type' declarations " +
       s"will be removed in a future release"
 
+/**
+  * Warning for a `drop table`, `reshape`, or `truncate` target that neither the imported static
+  * catalog (`table ... in <catalog>.<schema>` declarations from `wvlet catalog import`) nor a live
+  * catalog knows (#1999). A warning rather than an error because the imported snapshot may be stale
+  * — the table may have been created after the import
+  *
+  * @param span
+  *   the span of the statement's table reference
+  */
+case class UnknownStaticCatalogTarget(statement: String, tableName: String, span: Span)
+    extends TyperError:
+  override def severity: TyperError.Severity = TyperError.Severity.Warning
+
+  def message: String =
+    s"Table '${tableName}' targeted by '${statement}' is not in the imported catalog. " +
+      s"If the table exists, refresh the snapshot with 'wvlet catalog import'"
+
 case class DuplicateTypeDefinition(
     typeName: String,
     thisBinding: Option[String],

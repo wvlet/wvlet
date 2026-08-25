@@ -82,6 +82,11 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // against the connectors activated by the current profile (#1861 Phase 2)
   val connectorCatalogs = scala.collection.mutable.Map.empty[String, ConnectorCatalogEntry]
 
+  // (catalog, schema) locations bound by `table ... in <catalog>.<schema>` declarations,
+  // recorded by SymbolLabeler. A non-empty set means an imported static catalog is active for
+  // those locations, so DDL statements can warn on targets the snapshot does not know (#1999)
+  val declaredTableBindings = scala.collection.mutable.Set.empty[(String, String)]
+
   var workEnv: WorkEnv = compilerOptions.workEnv
 
   def init(using rootContext: Context): Unit =

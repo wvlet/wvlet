@@ -14,6 +14,7 @@
 package wvlet.lang.compiler.typer
 
 import wvlet.lang.api.StatusCode
+import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ModelSymbolInfo
@@ -363,6 +364,8 @@ object Typer extends Phase("typer") with LogSupport:
             markNamespaceRef(s.schema)
           case dt: DropTable =>
             markNamespaceRef(dt.table)
+            if !dt.ifExists then
+              warnUnknownStaticCatalogTarget("drop table", dt.table)
           case ct: CreateTable =>
             markNamespaceRef(ct.table)
           case v: DropView =>
@@ -374,6 +377,8 @@ object Typer extends Phase("typer") with LogSupport:
             markNamespaceRef(a.alias)
           case a: AlterTable =>
             markNamespaceRef(a.table)
+            if !a.ifExists then
+              warnUnknownStaticCatalogTarget("reshape", a.table)
             a.operations
               .foreach {
                 case c: AddColumnOp =>
@@ -394,6 +399,7 @@ object Typer extends Phase("typer") with LogSupport:
         t.target match
           case q: QualifiedName =>
             markNamespaceRef(q)
+            warnUnknownStaticCatalogTarget("truncate", q)
           case _ =>
         typeNode(t)
       // Default: bottom-up typing for other nodes
@@ -834,6 +840,30 @@ object Typer extends Phase("typer") with LogSupport:
   private def markNamespaceRef(name: Expression): Unit =
     name.tpe = DataType.NullType
     name.children.foreach(markNamespaceRef)
+
+  /**
+    * Warn when a destructive-DDL target (`drop table`, `reshape`, `truncate`) is governed by an
+    * imported static catalog but appears in neither its declarations nor a live catalog (#1999). A
+    * warning rather than an error: the imported snapshot may be stale. Locations without any
+    * `table ... in <catalog>.<schema>` declaration stay silent — with no snapshot there is nothing
+    * to check against — as do SQL sources, which manage tables outside wvlet declarations
+    */
+  private def warnUnknownStaticCatalogTarget(statement: String, table: NameExpr)(using
+      ctx: Context
+  ): Unit =
+    if !ctx.compilationUnit.sourceFile.isSQL then
+      val target    = TableName.parse(table.fullName)
+      val qualifier = List(target.catalog, target.schema).flatten
+      // The static catalog governs this target only when a declared binding matches the
+      // reference the same way reads would resolve through it
+      val governed = ctx
+        .global
+        .declaredTableBindings
+        .exists(b => TableBindings.qualifierMatches(qualifier, b))
+      if governed && TableBindings.declarationFor(table.fullName).isEmpty &&
+        !ctx.catalog.tableExists(target.schema.getOrElse(ctx.defaultSchema), target.name)
+      then
+        ctx.addTyperError(UnknownStaticCatalogTarget(statement, table.fullName, table.span))
 
   /**
     * Returns true if the relation tree may contain function applications, method or native function
