@@ -48,9 +48,17 @@ object DuckDBAnalyzer:
   /** Same as [[guessSchema]] for a path whose extension has already been classified */
   def guessSchema(path: String, dataFile: Option[DataFilePath]): RelationType =
     dataFile match
-      case Some(f) if f.canUseJsonAnalyzer =>
+      case Some(f) if usesJsonAnalyzer(path, f) =>
         JSONAnalyzer.analyzeJSONFile(path, f)
       case _ =>
         DuckDB.schemaOf(path)
+
+  /**
+    * True if the schema of the file is inferred by [[JSONAnalyzer]] rather than DuckDB: local
+    * JSON-family files that are plain or gzip-compressed. Remote files are left to DuckDB, which
+    * fetches them itself.
+    */
+  def usesJsonAnalyzer(path: String, dataFile: DataFilePath): Boolean =
+    dataFile.canUseJsonAnalyzer && !DataFilePath.isRemote(path)
 
 end DuckDBAnalyzer

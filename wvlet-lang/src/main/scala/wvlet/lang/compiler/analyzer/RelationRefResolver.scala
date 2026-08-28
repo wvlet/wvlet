@@ -21,6 +21,7 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.RelationAliasSymbolInfo
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.ValSymbolInfo
+import wvlet.lang.compiler.analyzer.duckdb.DuckDB
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.typer.TableShapeDeclaredAsType
 import wvlet.lang.model.DataType
@@ -368,15 +369,20 @@ object RelationRefResolver extends ContextLogSupport:
     */
   def resolveDataFileRef(f: FileRef)(using context: Context): Option[Relation] = DataFilePath
     .parse(f.filePath)
-    .map { dataFile =>
-      val file =
-        if dataFile.canUseJsonAnalyzer then
-          // JSONAnalyzer reads the file itself, so fail early with FILE_NOT_FOUND when missing
-          context.getDataFile(f.filePath)
-        else
-          context.dataFilePath(f.filePath)
-      val relationType = DuckDBAnalyzer.guessSchema(file, Some(dataFile))
-      FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span)
+    .flatMap { dataFile =>
+      if DuckDBAnalyzer.usesJsonAnalyzer(f.filePath, dataFile) then
+        // JSONAnalyzer reads the file itself, so fail early with FILE_NOT_FOUND when missing
+        val file         = context.getDataFile(f.filePath)
+        val relationType = JSONAnalyzer.analyzeJSONFile(file, dataFile)
+        Some(FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span))
+      else if DuckDB.isAvailable then
+        val file         = context.dataFilePath(f.filePath)
+        val relationType = DuckDB.schemaOf(file)
+        Some(FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span))
+      else
+        // No DuckDB on this platform (e.g. Scala.js without libduckdb): leave the reference
+        // unresolved so the query can still be compiled and run by the engine
+        None
     }
 
 end RelationRefResolver

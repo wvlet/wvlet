@@ -15,6 +15,7 @@ package wvlet.lang.compiler.analyzer
 
 import wvlet.uni.json.JSON
 import wvlet.uni.json.JSON.*
+import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType.NamedType
@@ -49,17 +50,26 @@ object JSONAnalyzer extends LogSupport:
     */
   private val maxJsonLinesSample = 10000
 
-  private def analyzeJSONContent(json: String, isJsonLines: Boolean): RelationType =
+  private[analyzer] def analyzeJSONContent(json: String, isJsonLines: Boolean): RelationType =
     debug(json)
     val jsonValue =
       if isJsonLines then
         // Each non-blank line is a standalone JSON value; treat them as one array of records
         val records = json
           .linesIterator
-          .map(_.trim)
-          .filter(_.nonEmpty)
+          .zipWithIndex
+          .map((line, i) => (line.trim, i + 1))
+          .filter(_._1.nonEmpty)
           .take(maxJsonLinesSample)
-          .map(JSON.parse)
+          .map { (line, lineNumber) =>
+            try
+              JSON.parse(line)
+            catch
+              case e: Exception =>
+                throw StatusCode
+                  .SYNTAX_ERROR
+                  .newException(s"Invalid JSON at line ${lineNumber}: ${e.getMessage}", e)
+          }
         JSONArray(records.toIndexedSeq)
       else
         JSON.parse(json)

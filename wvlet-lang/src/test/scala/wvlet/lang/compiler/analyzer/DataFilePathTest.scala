@@ -37,6 +37,22 @@ class DataFilePathTest extends UniTest:
     DataFilePath.parse("archive.gz") shouldBe None
     DataFilePath.parse("noext") shouldBe None
     DataFilePath.parse(".json") shouldBe None
+    // Parquet carries its own compression; DuckDB cannot read gzip-wrapped parquet
+    DataFilePath.parse("data.parquet.gz") shouldBe None
+  }
+
+  test("should ignore URL query strings and fragments") {
+    DataFilePath.parse("https://host/data.parquet?X-Amz-Signature=abc") shouldBe
+      Some(DataFilePath(Format.PARQUET, None))
+    DataFilePath.parse("https://host/data.csv.gz#part") shouldBe
+      Some(DataFilePath(Format.CSV, Some(Compression.GZ)))
+  }
+
+  test("should leave remote JSON files to the query engine") {
+    val jsonl = DataFilePath.parse("events.jsonl").get
+    DuckDBAnalyzer.usesJsonAnalyzer("events.jsonl", jsonl) shouldBe true
+    DuckDBAnalyzer.usesJsonAnalyzer("https://host/events.jsonl", jsonl) shouldBe false
+    DuckDBAnalyzer.usesJsonAnalyzer("s3://bucket/events.jsonl", jsonl) shouldBe false
   }
 
   test("should route JSON family to JSONAnalyzer unless zstd-compressed") {

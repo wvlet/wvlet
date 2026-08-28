@@ -34,6 +34,7 @@ case class DataFilePath(format: Format, compression: Option[Compression]):
   /** True for JSON-family files (`.json`, `.jsonl`, `.ndjson`) */
   def isJson: Boolean = format == Format.JSON || isJsonLines
 
+  /** True if the file is gzip-compressed */
   def isGzip: Boolean = compression.contains(Compression.GZ)
 
   /**
@@ -44,13 +45,17 @@ case class DataFilePath(format: Format, compression: Option[Compression]):
   def canUseJsonAnalyzer: Boolean = isJson && (compression.isEmpty || isGzip)
 
 object DataFilePath:
-  enum Format(val extension: String):
-    case JSON    extends Format("json")
-    case JSONL   extends Format("jsonl")
-    case NDJSON  extends Format("ndjson")
-    case CSV     extends Format("csv")
-    case TSV     extends Format("tsv")
-    case PARQUET extends Format("parquet")
+  /**
+    * Base file formats readable by DuckDB. `compressible` formats may carry an extra
+    * [[Compression]] suffix (e.g. `.csv.gz`); Parquet has its own internal compression.
+    */
+  enum Format(val extension: String, val compressible: Boolean):
+    case JSON    extends Format("json", true)
+    case JSONL   extends Format("jsonl", true)
+    case NDJSON  extends Format("ndjson", true)
+    case CSV     extends Format("csv", true)
+    case TSV     extends Format("tsv", true)
+    case PARQUET extends Format("parquet", false)
 
   /** Compression suffixes DuckDB auto-detects for CSV/JSON files */
   enum Compression(val extension: String):
@@ -68,14 +73,22 @@ object DataFilePath:
     * `.wv`, `.sql`, or a path without an extension.
     */
   def parse(path: String): Option[DataFilePath] =
-    val parts = SourceIO.fileName(path).toLowerCase.split('.').toList
+    // Drop URL query/fragment (e.g. S3 presigned URLs) before inspecting the extension
+    val pathWithoutQuery = path.takeWhile(c => c != '?' && c != '#')
+    val parts            = SourceIO.fileName(pathWithoutQuery).toLowerCase.split('.').toList
     parts.reverse match
       case ext :: format :: rest if compressionByExtension.contains(ext) && hasStem(rest) =>
-        formatByExtension.get(format).map(f => DataFilePath(f, compressionByExtension.get(ext)))
+        formatByExtension
+          .get(format)
+          .filter(_.compressible)
+          .map(f => DataFilePath(f, compressionByExtension.get(ext)))
       case ext :: rest if hasStem(rest) =>
         formatByExtension.get(ext).map(f => DataFilePath(f, None))
       case _ =>
         None
+
+  /** True for remote locations (`s3://`, `https://`, …) that are read by the query engine itself */
+  def isRemote(path: String): Boolean = path.contains("://")
 
   /** The file name must have a non-empty stem before the extension (`.json` is a dotfile) */
   private def hasStem(stemParts: List[String]): Boolean = stemParts.exists(_.nonEmpty)

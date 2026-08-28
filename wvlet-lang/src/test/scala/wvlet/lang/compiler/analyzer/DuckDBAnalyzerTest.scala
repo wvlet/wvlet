@@ -1,5 +1,7 @@
 package wvlet.lang.compiler.analyzer
 
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.analyzer.duckdb.DuckDB
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
@@ -50,6 +52,14 @@ class DuckDBAnalyzerTest extends UniTest:
   test("guess JSONL schema dispatches to JSONAnalyzer, including gzip-compressed files") {
     for path <- Seq("spec/basic/person.jsonl", "spec/basic/person.jsonl.gz") do
       columnNamesOf(path) shouldBe List("id", "name", "age")
+  }
+
+  test("report the line number of a malformed JSONL record") {
+    val e = intercept[WvletLangException] {
+      JSONAnalyzer.analyzeJSONContent("{\"id\":1}\n{\"id\":\n", isJsonLines = true)
+    }
+    e.statusCode shouldBe StatusCode.SYNTAX_ERROR
+    e.getMessage shouldContain "line 2"
   }
 
   test("guess gzip-compressed CSV and TSV schema goes through the DuckDB backend") {
