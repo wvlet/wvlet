@@ -1,5 +1,7 @@
 package wvlet.lang.compiler.analyzer
 
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.analyzer.duckdb.DuckDB
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
@@ -20,6 +22,15 @@ import wvlet.uni.test.UniTest
   */
 class DuckDBAnalyzerTest extends UniTest:
 
+  private def columnNamesOf(path: String): List[String] =
+    DuckDBAnalyzer.guessSchema(path) match
+      case SchemaType(_, _, cols) =>
+        cols.collect { case n: NamedType =>
+          n.name.name
+        }
+      case other =>
+        fail(s"unexpected relation type for ${path}: ${other}")
+
   test("guess JSON schema dispatches to JSONAnalyzer (cross-platform)") {
     val rel = DuckDBAnalyzer.guessSchema("spec/basic/person.json")
     rel shouldMatch { case SchemaType(_, _, cols) =>
@@ -36,6 +47,27 @@ class DuckDBAnalyzerTest extends UniTest:
       byName("name") shouldBe DataType.StringType
       byName("age") shouldBe DataType.LongType
     }
+  }
+
+  test("guess JSONL schema dispatches to JSONAnalyzer, including gzip-compressed files") {
+    for path <- Seq("spec/basic/person.jsonl", "spec/basic/person.jsonl.gz") do
+      columnNamesOf(path) shouldBe List("id", "name", "age")
+  }
+
+  test("report the line number of a malformed JSONL record") {
+    val e = intercept[WvletLangException] {
+      JSONAnalyzer.analyzeJSONContent("{\"id\":1}\n{\"id\":\n", isJsonLines = true)
+    }
+    e.statusCode shouldBe StatusCode.SYNTAX_ERROR
+    e.getMessage shouldContain "line 2"
+  }
+
+  test("guess gzip-compressed CSV and TSV schema goes through the DuckDB backend") {
+    if !DuckDB.isAvailable then
+      ignore("DuckDB backend not available on this platform (Scala.js stub)")
+    else
+      for path <- Seq("spec/basic/people.csv.gz", "spec/basic/people.tsv") do
+        columnNamesOf(path) shouldBe List("id", "name", "age", "salary")
   }
 
   test("guess parquet schema goes through the DuckDB backend") {

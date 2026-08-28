@@ -643,10 +643,14 @@ Read rows from a given table:
 from nation
 ```
 
-In DuckDB backend, you can read data from local Parquet or JSON files:
+In DuckDB backend, you can read data from local Parquet, CSV/TSV, JSON, or
+newline-delimited JSON (`.jsonl`, `.ndjson`) files. CSV and JSON files may be
+gzip (`.gz`) or zstd (`.zst`) compressed; the format is detected from the file extension:
 
 ```wvlet
-from 'sample.parquet' 
+from 'sample.parquet'
+from 'events.jsonl.gz'
+from 'users.csv.zst'
 ```
 
 Or from files on the Web:

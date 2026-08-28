@@ -18,10 +18,10 @@ import wvlet.lang.model.RelationType
 
 /**
   * File schema inference. Dispatches by file extension:
-  *   - `*.json` / `*.json.gz` → [[JSONAnalyzer]] (cross-platform — uses uni.io for read + uni.json
-  *     for parsing, no DuckDB needed)
-  *   - everything else (parquet, csv, …) → [[DuckDB]] (JVM uses JDBC; JS/Native throw until
-  *     `@duckdb/node-api` and `libduckdb` bindings land)
+  *   - JSON-family files (`.json`, `.jsonl`, `.ndjson`, plain or `.gz`) → [[JSONAnalyzer]]
+  *     (cross-platform — uses uni.io for read + uni.json for parsing, no DuckDB needed)
+  *   - everything else (parquet, csv, tsv, `.zst`, …) → [[DuckDB]] (JVM uses JDBC; JS/Native use
+  *     the `libduckdb` C API)
   *
   * Naming: kept as `DuckDBAnalyzer` to avoid churn in the single call site
   * (`RelationRefResolver.resolveDataFileRef`). The non-DuckDB JSON dispatch is an internal
@@ -43,8 +43,22 @@ object DuckDBAnalyzer:
     * @return
     *   inferred `RelationType` for the file, or `EmptyRelationType` if the file is missing
     */
-  def guessSchema(path: String): RelationType =
-    if path.endsWith(".json") || path.endsWith(".json.gz") then
-      JSONAnalyzer.analyzeJSONFile(path)
-    else
-      DuckDB.schemaOf(path)
+  def guessSchema(path: String): RelationType = guessSchema(path, DataFilePath.parse(path))
+
+  /** Same as [[guessSchema]] for a path whose extension has already been classified */
+  def guessSchema(path: String, dataFile: Option[DataFilePath]): RelationType =
+    dataFile match
+      case Some(f) if usesJsonAnalyzer(path, f) =>
+        JSONAnalyzer.analyzeJSONFile(path, f)
+      case _ =>
+        DuckDB.schemaOf(path)
+
+  /**
+    * True if the schema of the file is inferred by [[JSONAnalyzer]] rather than DuckDB: local
+    * JSON-family files that are plain or gzip-compressed. Remote files are left to DuckDB, which
+    * fetches them itself.
+    */
+  def usesJsonAnalyzer(path: String, dataFile: DataFilePath): Boolean =
+    dataFile.canUseJsonAnalyzer && !DataFilePath.isRemote(path)
+
+end DuckDBAnalyzer

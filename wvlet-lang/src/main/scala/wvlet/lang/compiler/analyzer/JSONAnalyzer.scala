@@ -15,6 +15,7 @@ package wvlet.lang.compiler.analyzer
 
 import wvlet.uni.json.JSON
 import wvlet.uni.json.JSON.*
+import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType.NamedType
@@ -26,17 +27,52 @@ import wvlet.uni.log.LogSupport
 import scala.collection.immutable.ListMap
 
 object JSONAnalyzer extends LogSupport:
+  /**
+    * Infer the schema of a JSON (`.json`), or newline-delimited JSON (`.jsonl`, `.ndjson`) file.
+    * Gzip-compressed files (`.gz` suffix) are decompressed on the fly.
+    */
   def analyzeJSONFile(path: String): RelationType =
+    val dataFile = DataFilePath.parse(path).getOrElse(DataFilePath(DataFilePath.Format.JSON, None))
+    analyzeJSONFile(path, dataFile)
+
+  /** Same as [[analyzeJSONFile]] for a path whose extension has already been classified */
+  def analyzeJSONFile(path: String, dataFile: DataFilePath): RelationType =
     val json =
-      if path.endsWith(".gz") then
+      if dataFile.isGzip then
         SourceIO.readGzipAsString(path)
       else
         SourceIO.readAsString(path)
-    analyzeJSONContent(json)
+    analyzeJSONContent(json, dataFile.isJsonLines)
 
-  private def analyzeJSONContent(json: String): RelationType =
+  /**
+    * Maximum number of JSON Lines records inspected for schema inference. Type counts converge long
+    * before this, and it bounds the parse cost for large `.jsonl` files
+    */
+  private val maxJsonLinesSample = 10000
+
+  private[analyzer] def analyzeJSONContent(json: String, isJsonLines: Boolean): RelationType =
     debug(json)
-    val jsonValue = JSON.parse(json)
+    val jsonValue =
+      if isJsonLines then
+        // Each non-blank line is a standalone JSON value; treat them as one array of records
+        val records = json
+          .linesIterator
+          .zipWithIndex
+          .map((line, i) => (line.trim, i + 1))
+          .filter(_._1.nonEmpty)
+          .take(maxJsonLinesSample)
+          .map { (line, lineNumber) =>
+            try
+              JSON.parse(line)
+            catch
+              case e: Exception =>
+                throw StatusCode
+                  .SYNTAX_ERROR
+                  .newException(s"Invalid JSON at line ${lineNumber}: ${e.getMessage}", e)
+          }
+        JSONArray(records.toIndexedSeq)
+      else
+        JSON.parse(json)
     guessSchema(jsonValue)
 
   class TypeCountMap:

@@ -21,6 +21,7 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.RelationAliasSymbolInfo
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.ValSymbolInfo
+import wvlet.lang.compiler.analyzer.duckdb.DuckDB
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.typer.TableShapeDeclaredAsType
 import wvlet.lang.model.DataType
@@ -362,28 +363,26 @@ object RelationRefResolver extends ContextLogSupport:
         m
 
   /**
-    * Returns true if the given path points to a data file that can be resolved into a FileScan
+    * Resolve a data-file reference (json/jsonl/parquet/csv/tsv, optionally gz/zst compressed) into
+    * a FileScan by analyzing the file schema. References to `.wv`/`.sql` files are not handled
+    * here.
     */
-  def isDataFilePath(path: String): Boolean =
-    path.endsWith(".json") || path.endsWith(".json.gz") || path.endsWith(".parquet") ||
-      path.endsWith(".csv")
-
-  /**
-    * Resolve a data-file reference (json/parquet/csv) into a FileScan by analyzing the file schema.
-    * References to `.wv`/`.sql` files are not handled here.
-    */
-  def resolveDataFileRef(f: FileRef)(using context: Context): Option[Relation] =
-    if f.filePath.endsWith(".json") || f.filePath.endsWith(".json.gz") then
-      val file             = context.getDataFile(f.filePath)
-      val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
-      val cols             = jsonRelationType.fields
-      Some(FileScan(SingleQuoteString(file, f.span), jsonRelationType, cols, f.span))
-    else if f.filePath.endsWith(".parquet") || f.filePath.endsWith(".csv") then
-      val file         = context.dataFilePath(f.filePath)
-      val relationType = DuckDBAnalyzer.guessSchema(file)
-      val cols         = relationType.fields
-      Some(FileScan(SingleQuoteString(file, f.span), relationType, cols, f.span))
-    else
-      None
+  def resolveDataFileRef(f: FileRef)(using context: Context): Option[Relation] = DataFilePath
+    .parse(f.filePath)
+    .flatMap { dataFile =>
+      if DuckDBAnalyzer.usesJsonAnalyzer(f.filePath, dataFile) then
+        // JSONAnalyzer reads the file itself, so fail early with FILE_NOT_FOUND when missing
+        val file         = context.getDataFile(f.filePath)
+        val relationType = JSONAnalyzer.analyzeJSONFile(file, dataFile)
+        Some(FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span))
+      else if DuckDB.isAvailable then
+        val file         = context.dataFilePath(f.filePath)
+        val relationType = DuckDB.schemaOf(file)
+        Some(FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span))
+      else
+        // No DuckDB on this platform (e.g. Scala.js without libduckdb): leave the reference
+        // unresolved so the query can still be compiled and run by the engine
+        None
+    }
 
 end RelationRefResolver
