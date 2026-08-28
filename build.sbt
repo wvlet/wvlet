@@ -485,8 +485,8 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         // TestingTrinoServer pattern below. Binaries are resolved as jar dependencies per
         // platform, so tests run offline after the first sbt update
         "io.zonky.test"          % "embedded-postgres"                         % "2.2.2"  % Test,
-        "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "18.4.0" % Test,
-        "io.zonky.test.postgres" % "embedded-postgres-binaries-linux-amd64"    % "18.4.0" % Test,
+        "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "18.6.0" % Test,
+        "io.zonky.test.postgres" % "embedded-postgres-binaries-linux-amd64"    % "18.6.0" % Test,
         // trino-jdbc removed in PR-D: TrinoConnector now talks the Trino REST protocol via uni's
         // HttpSyncClient (see wvlet-lang's TrinoSqlConnector). trino-testing stays in test scope
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.
