@@ -59,8 +59,9 @@ object JSONAnalyzer extends LogSupport:
       dataFile: DataFilePath,
       sampleSize: Int = DefaultSampleSize
   ): RelationType =
-    // uni's IO has no bounded read, so the whole file is loaded. Loading bytes is cheap compared
-    // to building JSON values for every record, which is what the sampling avoids.
+    // The whole file is loaded (a bounded prefix read via uni's readChunks is a possible
+    // follow-up). Loading bytes is cheap compared to building JSON values for every record,
+    // which is what the sampling avoids.
     val bytes =
       if dataFile.isGzip then
         SourceIO.readGzipAsBytes(path)
