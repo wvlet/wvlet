@@ -37,6 +37,13 @@ export default defineConfig({
   server: {
     open: true,
   },
+  // Vite 8's default minifier (Rolldown's oxc-minify) drops the `if (!ok) throw ...` guard
+  // that the Scala.js linker emits inside `java.time.Instant`'s constructor, which turns
+  // every `Instant` allocation into an unconditional `DateTimeException: Invalid seconds`.
+  // Pin the minifier to esbuild until upstream oxc-minify handles Scala.js output correctly.
+  build: {
+    minify: 'esbuild'
+  },
   // `wvlet-lang.js` imports `koffi` for its Node-side DuckDB backend. koffi's index.js has
   // platform-specific `require("./build/koffi/<platform>/koffi.node")` calls that the bundler
   // can't follow. Replace koffi with a browser stub that throws on use — the playground never
