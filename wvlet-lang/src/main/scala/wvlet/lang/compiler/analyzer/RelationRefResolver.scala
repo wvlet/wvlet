@@ -370,19 +370,24 @@ object RelationRefResolver extends ContextLogSupport:
   def resolveDataFileRef(f: FileRef)(using context: Context): Option[Relation] = DataFilePath
     .parse(f.filePath)
     .flatMap { dataFile =>
-      if DuckDBAnalyzer.usesJsonAnalyzer(f.filePath, dataFile) then
-        // JSONAnalyzer reads the file itself, so fail early with FILE_NOT_FOUND when missing
-        val file         = context.getDataFile(f.filePath)
-        val relationType = JSONAnalyzer.analyzeJSONFile(file, dataFile)
-        Some(FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span))
-      else if DuckDB.isAvailable then
-        val file         = context.dataFilePath(f.filePath)
-        val relationType = DuckDB.schemaOf(file)
-        Some(FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span))
-      else
-        // No DuckDB on this platform (e.g. Scala.js without libduckdb): leave the reference
-        // unresolved so the query can still be compiled and run by the engine
-        None
+      val file =
+        if DuckDBAnalyzer.usesJsonAnalyzer(f.filePath, dataFile) then
+          // JSONAnalyzer reads the file itself, so fail early with FILE_NOT_FOUND when missing
+          Some(context.getDataFile(f.filePath))
+        else if DuckDB.isAvailable then
+          Some(context.dataFilePath(f.filePath))
+        else
+          // No DuckDB on this platform (e.g. Scala.js without libduckdb): leave the reference
+          // unresolved so the query can still be compiled and run by the engine
+          None
+      file.map { path =>
+        val relationType =
+          context
+            .global
+            .fileSchemaCache
+            .getOrElseUpdate(path)(DuckDBAnalyzer.guessSchema(path, Some(dataFile)))
+        FileScan(SingleQuoteString(path, f.span), relationType, relationType.fields, f.span)
+      }
     }
 
 end RelationRefResolver

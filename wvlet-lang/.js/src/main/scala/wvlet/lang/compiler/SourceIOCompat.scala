@@ -19,7 +19,11 @@ trait SourceIOCompat:
   def readAsString(filePath: String): String = IO.readString(IOPath.parse(filePath))
 
   def readGzipAsString(filePath: String): String =
-    new String(Gzip.decompress(IO.readBytes(IOPath.parse(filePath))), StandardCharsets.UTF_8)
+    new String(readGzipAsBytes(filePath), StandardCharsets.UTF_8)
+
+  def readAsBytes(filePath: String): Array[Byte] = IO.readBytes(IOPath.parse(filePath))
+
+  def readGzipAsBytes(filePath: String): Array[Byte] = Gzip.decompress(readAsBytes(filePath))
 
   def existsFile(path: String): Boolean = IO.exists(IOPath.parse(path))
 
