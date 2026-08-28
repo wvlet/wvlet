@@ -2,7 +2,7 @@
 
 All notable changes to the Wvlet extension will be documented in this file.
 
-## [2026.3.0] - 2026-07-13
+## [2026.3.0] - 2026-08-28
 
 ### Added
 - Workspace-aware language server: each file is analyzed together with the other
@@ -19,6 +19,16 @@ All notable changes to the Wvlet extension will be documented in this file.
 - Typing diagnostics: type errors and warnings are now reported inline in the
   editor (previously only the first syntax error was shown), including a new
   warning when the same type name is bound to different database schemas
+- Standard-library function signatures and documentation are shown in
+  completion and hover, alongside engine functions imported via
+  `wvlet catalog import`
+- Completion for user-defined `trait` and row methods after `.` on a table or
+  alias
+- Completion for statement heads such as `table`, `trait`, and `reshape` at
+  the start of a statement
+- Syntax highlighting for the new table-management statements (`table`,
+  `trait`, `create`/`drop`/`alter`, `reshape`, `rename`, `view`) and the
+  `extends` mixin clause
 
 ## [2026.2.0] - 2026-07-10
 
