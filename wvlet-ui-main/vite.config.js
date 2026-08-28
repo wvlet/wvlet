@@ -34,6 +34,13 @@ export default defineConfig({
       '^/wvlet.lang.api.v1*': 'http://127.0.0.1:9090'
     }
   },
+  // Vite 8's default minifier (Rolldown's oxc-minify) drops the `if (!ok) throw ...` guard
+  // that the Scala.js linker emits inside `java.time.Instant`'s constructor, which turns
+  // every `Instant` allocation into an unconditional `DateTimeException: Invalid seconds`.
+  // Pin the minifier to esbuild until upstream oxc-minify handles Scala.js output correctly.
+  build: {
+    minify: 'esbuild'
+  },
   plugins: [
     tailwindcss(),
     replace({
