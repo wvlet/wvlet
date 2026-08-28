@@ -38,6 +38,29 @@ class DuckDBAnalyzerTest extends UniTest:
     }
   }
 
+  test("guess JSONL schema dispatches to JSONAnalyzer, including gzip-compressed files") {
+    for path <- Seq("spec/basic/person.jsonl", "spec/basic/person.jsonl.gz") do
+      val rel = DuckDBAnalyzer.guessSchema(path)
+      rel shouldMatch { case SchemaType(_, _, cols) =>
+        cols.collect { case n: NamedType =>
+          n.name.name
+        } shouldBe List("id", "name", "age")
+      }
+  }
+
+  test("guess gzip-compressed CSV and TSV schema goes through the DuckDB backend") {
+    if !DuckDB.isAvailable then
+      ignore("DuckDB backend not available on this platform (Scala.js stub)")
+    else
+      for path <- Seq("spec/basic/people.csv.gz", "spec/basic/people.tsv") do
+        val rel = DuckDBAnalyzer.guessSchema(path)
+        rel shouldMatch { case SchemaType(_, _, cols) =>
+          cols.collect { case n: NamedType =>
+            n.name.name
+          } shouldBe List("id", "name", "age", "salary")
+        }
+  }
+
   test("guess parquet schema goes through the DuckDB backend") {
     if !DuckDB.isAvailable then
       ignore("DuckDB backend not available on this platform (Scala.js stub)")

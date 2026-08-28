@@ -26,17 +26,27 @@ import wvlet.uni.log.LogSupport
 import scala.collection.immutable.ListMap
 
 object JSONAnalyzer extends LogSupport:
+  /**
+    * Infer the schema of a JSON (`.json`), or newline-delimited JSON (`.jsonl`, `.ndjson`) file.
+    * Gzip-compressed files (`.gz` suffix) are decompressed on the fly.
+    */
   def analyzeJSONFile(path: String): RelationType =
     val json =
       if path.endsWith(".gz") then
         SourceIO.readGzipAsString(path)
       else
         SourceIO.readAsString(path)
-    analyzeJSONContent(json)
+    val isJsonLines = DataFilePath.parse(path).exists(_.isJsonLines)
+    analyzeJSONContent(json, isJsonLines)
 
-  private def analyzeJSONContent(json: String): RelationType =
+  private def analyzeJSONContent(json: String, isJsonLines: Boolean): RelationType =
     debug(json)
-    val jsonValue = JSON.parse(json)
+    val jsonValue =
+      if isJsonLines then
+        // Each non-blank line is a standalone JSON value; treat them as one array of records
+        JSONArray(json.linesIterator.map(_.trim).filter(_.nonEmpty).map(JSON.parse).toIndexedSeq)
+      else
+        JSON.parse(json)
     guessSchema(jsonValue)
 
   class TypeCountMap:

@@ -364,26 +364,24 @@ object RelationRefResolver extends ContextLogSupport:
   /**
     * Returns true if the given path points to a data file that can be resolved into a FileScan
     */
-  def isDataFilePath(path: String): Boolean =
-    path.endsWith(".json") || path.endsWith(".json.gz") || path.endsWith(".parquet") ||
-      path.endsWith(".csv")
+  def isDataFilePath(path: String): Boolean = DataFilePath.isDataFile(path)
 
   /**
-    * Resolve a data-file reference (json/parquet/csv) into a FileScan by analyzing the file schema.
-    * References to `.wv`/`.sql` files are not handled here.
+    * Resolve a data-file reference (json/jsonl/parquet/csv/tsv, optionally gz/zst compressed) into
+    * a FileScan by analyzing the file schema. References to `.wv`/`.sql` files are not handled
+    * here.
     */
-  def resolveDataFileRef(f: FileRef)(using context: Context): Option[Relation] =
-    if f.filePath.endsWith(".json") || f.filePath.endsWith(".json.gz") then
-      val file             = context.getDataFile(f.filePath)
-      val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
-      val cols             = jsonRelationType.fields
-      Some(FileScan(SingleQuoteString(file, f.span), jsonRelationType, cols, f.span))
-    else if f.filePath.endsWith(".parquet") || f.filePath.endsWith(".csv") then
-      val file         = context.dataFilePath(f.filePath)
+  def resolveDataFileRef(f: FileRef)(using context: Context): Option[Relation] = DataFilePath
+    .parse(f.filePath)
+    .map { dataFile =>
+      val file =
+        if DuckDBAnalyzer.usesJsonAnalyzer(dataFile) then
+          // JSONAnalyzer reads the file itself, so fail early with FILE_NOT_FOUND when missing
+          context.getDataFile(f.filePath)
+        else
+          context.dataFilePath(f.filePath)
       val relationType = DuckDBAnalyzer.guessSchema(file)
-      val cols         = relationType.fields
-      Some(FileScan(SingleQuoteString(file, f.span), relationType, cols, f.span))
-    else
-      None
+      FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span)
+    }
 
 end RelationRefResolver

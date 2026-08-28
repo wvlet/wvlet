@@ -1,0 +1,44 @@
+package wvlet.lang.compiler.analyzer
+
+import wvlet.lang.compiler.analyzer.DataFilePath.Format
+import wvlet.uni.test.UniTest
+
+class DataFilePathTest extends UniTest:
+
+  test("should recognize plain data file extensions") {
+    DataFilePath.parse("data.json") shouldBe Some(DataFilePath(Format.JSON, None))
+    DataFilePath.parse("data.jsonl") shouldBe Some(DataFilePath(Format.JSONL, None))
+    DataFilePath.parse("data.ndjson") shouldBe Some(DataFilePath(Format.NDJSON, None))
+    DataFilePath.parse("data.csv") shouldBe Some(DataFilePath(Format.CSV, None))
+    DataFilePath.parse("data.tsv") shouldBe Some(DataFilePath(Format.TSV, None))
+    DataFilePath.parse("dir/data.parquet") shouldBe Some(DataFilePath(Format.PARQUET, None))
+  }
+
+  test("should recognize compressed data files") {
+    DataFilePath.parse("data.json.gz") shouldBe Some(DataFilePath(Format.JSON, Some("gz")))
+    DataFilePath.parse("data.jsonl.gz") shouldBe Some(DataFilePath(Format.JSONL, Some("gz")))
+    DataFilePath.parse("data.csv.zst") shouldBe Some(DataFilePath(Format.CSV, Some("zst")))
+    DataFilePath.parse("s3://bucket/x/data.tsv.gz") shouldBe
+      Some(DataFilePath(Format.TSV, Some("gz")))
+  }
+
+  test("should be case-insensitive") {
+    DataFilePath.parse("DATA.JSONL.GZ") shouldBe Some(DataFilePath(Format.JSONL, Some("gz")))
+  }
+
+  test("should reject non-data files") {
+    DataFilePath.parse("query.wv") shouldBe None
+    DataFilePath.parse("query.sql") shouldBe None
+    DataFilePath.parse("archive.gz") shouldBe None
+    DataFilePath.parse("noext") shouldBe None
+    DataFilePath.parse(".json") shouldBe None
+  }
+
+  test("should route JSON family to JSONAnalyzer unless zstd-compressed") {
+    DuckDBAnalyzer.usesJsonAnalyzer(DataFilePath.parse("a.json").get) shouldBe true
+    DuckDBAnalyzer.usesJsonAnalyzer(DataFilePath.parse("a.jsonl.gz").get) shouldBe true
+    DuckDBAnalyzer.usesJsonAnalyzer(DataFilePath.parse("a.jsonl.zst").get) shouldBe false
+    DuckDBAnalyzer.usesJsonAnalyzer(DataFilePath.parse("a.csv").get) shouldBe false
+  }
+
+end DataFilePathTest

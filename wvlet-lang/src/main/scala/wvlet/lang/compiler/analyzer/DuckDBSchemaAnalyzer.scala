@@ -44,7 +44,18 @@ object DuckDBAnalyzer:
     *   inferred `RelationType` for the file, or `EmptyRelationType` if the file is missing
     */
   def guessSchema(path: String): RelationType =
-    if path.endsWith(".json") || path.endsWith(".json.gz") then
-      JSONAnalyzer.analyzeJSONFile(path)
-    else
-      DuckDB.schemaOf(path)
+    DataFilePath.parse(path) match
+      case Some(dataFile) if usesJsonAnalyzer(dataFile) =>
+        JSONAnalyzer.analyzeJSONFile(path)
+      case _ =>
+        DuckDB.schemaOf(path)
+
+  /**
+    * JSON-family files that are uncompressed or gzip-compressed are analyzed by the pure-Scala
+    * [[JSONAnalyzer]], which works on every platform (including Scala.js without DuckDB). Other
+    * formats and compressions (e.g. `.zst`) need DuckDB.
+    */
+  def usesJsonAnalyzer(dataFile: DataFilePath): Boolean =
+    dataFile.isJson && dataFile.compression.forall(_ == "gz")
+
+end DuckDBAnalyzer
