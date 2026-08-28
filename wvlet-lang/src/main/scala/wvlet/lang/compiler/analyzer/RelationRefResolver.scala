@@ -362,11 +362,6 @@ object RelationRefResolver extends ContextLogSupport:
         m
 
   /**
-    * Returns true if the given path points to a data file that can be resolved into a FileScan
-    */
-  def isDataFilePath(path: String): Boolean = DataFilePath.isDataFile(path)
-
-  /**
     * Resolve a data-file reference (json/jsonl/parquet/csv/tsv, optionally gz/zst compressed) into
     * a FileScan by analyzing the file schema. References to `.wv`/`.sql` files are not handled
     * here.
@@ -375,12 +370,12 @@ object RelationRefResolver extends ContextLogSupport:
     .parse(f.filePath)
     .map { dataFile =>
       val file =
-        if DuckDBAnalyzer.usesJsonAnalyzer(dataFile) then
+        if dataFile.canUseJsonAnalyzer then
           // JSONAnalyzer reads the file itself, so fail early with FILE_NOT_FOUND when missing
           context.getDataFile(f.filePath)
         else
           context.dataFilePath(f.filePath)
-      val relationType = DuckDBAnalyzer.guessSchema(file)
+      val relationType = DuckDBAnalyzer.guessSchema(file, Some(dataFile))
       FileScan(SingleQuoteString(file, f.span), relationType, relationType.fields, f.span)
     }
 

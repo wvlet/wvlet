@@ -18,10 +18,10 @@ import wvlet.lang.model.RelationType
 
 /**
   * File schema inference. Dispatches by file extension:
-  *   - `*.json` / `*.json.gz` → [[JSONAnalyzer]] (cross-platform — uses uni.io for read + uni.json
-  *     for parsing, no DuckDB needed)
-  *   - everything else (parquet, csv, …) → [[DuckDB]] (JVM uses JDBC; JS/Native throw until
-  *     `@duckdb/node-api` and `libduckdb` bindings land)
+  *   - JSON-family files (`.json`, `.jsonl`, `.ndjson`, plain or `.gz`) → [[JSONAnalyzer]]
+  *     (cross-platform — uses uni.io for read + uni.json for parsing, no DuckDB needed)
+  *   - everything else (parquet, csv, tsv, `.zst`, …) → [[DuckDB]] (JVM uses JDBC; JS/Native use
+  *     the `libduckdb` C API)
   *
   * Naming: kept as `DuckDBAnalyzer` to avoid churn in the single call site
   * (`RelationRefResolver.resolveDataFileRef`). The non-DuckDB JSON dispatch is an internal
@@ -43,19 +43,14 @@ object DuckDBAnalyzer:
     * @return
     *   inferred `RelationType` for the file, or `EmptyRelationType` if the file is missing
     */
-  def guessSchema(path: String): RelationType =
-    DataFilePath.parse(path) match
-      case Some(dataFile) if usesJsonAnalyzer(dataFile) =>
-        JSONAnalyzer.analyzeJSONFile(path)
+  def guessSchema(path: String): RelationType = guessSchema(path, DataFilePath.parse(path))
+
+  /** Same as [[guessSchema]] for a path whose extension has already been classified */
+  def guessSchema(path: String, dataFile: Option[DataFilePath]): RelationType =
+    dataFile match
+      case Some(f) if f.canUseJsonAnalyzer =>
+        JSONAnalyzer.analyzeJSONFile(path, f)
       case _ =>
         DuckDB.schemaOf(path)
-
-  /**
-    * JSON-family files that are uncompressed or gzip-compressed are analyzed by the pure-Scala
-    * [[JSONAnalyzer]], which works on every platform (including Scala.js without DuckDB). Other
-    * formats and compressions (e.g. `.zst`) need DuckDB.
-    */
-  def usesJsonAnalyzer(dataFile: DataFilePath): Boolean =
-    dataFile.isJson && dataFile.compression.forall(_ == "gz")
 
 end DuckDBAnalyzer

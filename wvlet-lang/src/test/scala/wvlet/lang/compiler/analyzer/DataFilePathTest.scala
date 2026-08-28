@@ -1,5 +1,6 @@
 package wvlet.lang.compiler.analyzer
 
+import wvlet.lang.compiler.analyzer.DataFilePath.Compression
 import wvlet.lang.compiler.analyzer.DataFilePath.Format
 import wvlet.uni.test.UniTest
 
@@ -15,15 +16,19 @@ class DataFilePathTest extends UniTest:
   }
 
   test("should recognize compressed data files") {
-    DataFilePath.parse("data.json.gz") shouldBe Some(DataFilePath(Format.JSON, Some("gz")))
-    DataFilePath.parse("data.jsonl.gz") shouldBe Some(DataFilePath(Format.JSONL, Some("gz")))
-    DataFilePath.parse("data.csv.zst") shouldBe Some(DataFilePath(Format.CSV, Some("zst")))
+    DataFilePath.parse("data.json.gz") shouldBe
+      Some(DataFilePath(Format.JSON, Some(Compression.GZ)))
+    DataFilePath.parse("data.jsonl.gz") shouldBe
+      Some(DataFilePath(Format.JSONL, Some(Compression.GZ)))
+    DataFilePath.parse("data.csv.zst") shouldBe
+      Some(DataFilePath(Format.CSV, Some(Compression.ZST)))
     DataFilePath.parse("s3://bucket/x/data.tsv.gz") shouldBe
-      Some(DataFilePath(Format.TSV, Some("gz")))
+      Some(DataFilePath(Format.TSV, Some(Compression.GZ)))
   }
 
   test("should be case-insensitive") {
-    DataFilePath.parse("DATA.JSONL.GZ") shouldBe Some(DataFilePath(Format.JSONL, Some("gz")))
+    DataFilePath.parse("DATA.JSONL.GZ") shouldBe
+      Some(DataFilePath(Format.JSONL, Some(Compression.GZ)))
   }
 
   test("should reject non-data files") {
@@ -35,10 +40,11 @@ class DataFilePathTest extends UniTest:
   }
 
   test("should route JSON family to JSONAnalyzer unless zstd-compressed") {
-    DuckDBAnalyzer.usesJsonAnalyzer(DataFilePath.parse("a.json").get) shouldBe true
-    DuckDBAnalyzer.usesJsonAnalyzer(DataFilePath.parse("a.jsonl.gz").get) shouldBe true
-    DuckDBAnalyzer.usesJsonAnalyzer(DataFilePath.parse("a.jsonl.zst").get) shouldBe false
-    DuckDBAnalyzer.usesJsonAnalyzer(DataFilePath.parse("a.csv").get) shouldBe false
+    DataFilePath.parse("a.json").get.canUseJsonAnalyzer shouldBe true
+    DataFilePath.parse("a.ndjson").get.canUseJsonAnalyzer shouldBe true
+    DataFilePath.parse("a.jsonl.gz").get.canUseJsonAnalyzer shouldBe true
+    DataFilePath.parse("a.jsonl.zst").get.canUseJsonAnalyzer shouldBe false
+    DataFilePath.parse("a.csv").get.canUseJsonAnalyzer shouldBe false
   }
 
 end DataFilePathTest

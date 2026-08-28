@@ -20,6 +20,15 @@ import wvlet.uni.test.UniTest
   */
 class DuckDBAnalyzerTest extends UniTest:
 
+  private def columnNamesOf(path: String): List[String] =
+    DuckDBAnalyzer.guessSchema(path) match
+      case SchemaType(_, _, cols) =>
+        cols.collect { case n: NamedType =>
+          n.name.name
+        }
+      case other =>
+        fail(s"unexpected relation type for ${path}: ${other}")
+
   test("guess JSON schema dispatches to JSONAnalyzer (cross-platform)") {
     val rel = DuckDBAnalyzer.guessSchema("spec/basic/person.json")
     rel shouldMatch { case SchemaType(_, _, cols) =>
@@ -40,12 +49,7 @@ class DuckDBAnalyzerTest extends UniTest:
 
   test("guess JSONL schema dispatches to JSONAnalyzer, including gzip-compressed files") {
     for path <- Seq("spec/basic/person.jsonl", "spec/basic/person.jsonl.gz") do
-      val rel = DuckDBAnalyzer.guessSchema(path)
-      rel shouldMatch { case SchemaType(_, _, cols) =>
-        cols.collect { case n: NamedType =>
-          n.name.name
-        } shouldBe List("id", "name", "age")
-      }
+      columnNamesOf(path) shouldBe List("id", "name", "age")
   }
 
   test("guess gzip-compressed CSV and TSV schema goes through the DuckDB backend") {
@@ -53,12 +57,7 @@ class DuckDBAnalyzerTest extends UniTest:
       ignore("DuckDB backend not available on this platform (Scala.js stub)")
     else
       for path <- Seq("spec/basic/people.csv.gz", "spec/basic/people.tsv") do
-        val rel = DuckDBAnalyzer.guessSchema(path)
-        rel shouldMatch { case SchemaType(_, _, cols) =>
-          cols.collect { case n: NamedType =>
-            n.name.name
-          } shouldBe List("id", "name", "age", "salary")
-        }
+        columnNamesOf(path) shouldBe List("id", "name", "age", "salary")
   }
 
   test("guess parquet schema goes through the DuckDB backend") {

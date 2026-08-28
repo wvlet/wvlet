@@ -31,20 +31,36 @@ object JSONAnalyzer extends LogSupport:
     * Gzip-compressed files (`.gz` suffix) are decompressed on the fly.
     */
   def analyzeJSONFile(path: String): RelationType =
+    val dataFile = DataFilePath.parse(path).getOrElse(DataFilePath(DataFilePath.Format.JSON, None))
+    analyzeJSONFile(path, dataFile)
+
+  /** Same as [[analyzeJSONFile]] for a path whose extension has already been classified */
+  def analyzeJSONFile(path: String, dataFile: DataFilePath): RelationType =
     val json =
-      if path.endsWith(".gz") then
+      if dataFile.isGzip then
         SourceIO.readGzipAsString(path)
       else
         SourceIO.readAsString(path)
-    val isJsonLines = DataFilePath.parse(path).exists(_.isJsonLines)
-    analyzeJSONContent(json, isJsonLines)
+    analyzeJSONContent(json, dataFile.isJsonLines)
+
+  /**
+    * Maximum number of JSON Lines records inspected for schema inference. Type counts converge long
+    * before this, and it bounds the parse cost for large `.jsonl` files
+    */
+  private val maxJsonLinesSample = 10000
 
   private def analyzeJSONContent(json: String, isJsonLines: Boolean): RelationType =
     debug(json)
     val jsonValue =
       if isJsonLines then
         // Each non-blank line is a standalone JSON value; treat them as one array of records
-        JSONArray(json.linesIterator.map(_.trim).filter(_.nonEmpty).map(JSON.parse).toIndexedSeq)
+        val records = json
+          .linesIterator
+          .map(_.trim)
+          .filter(_.nonEmpty)
+          .take(maxJsonLinesSample)
+          .map(JSON.parse)
+        JSONArray(records.toIndexedSeq)
       else
         JSON.parse(json)
     guessSchema(jsonValue)

@@ -813,7 +813,8 @@ object Typer extends Phase("typer") with LogSupport:
       RelationRefResolver.resolveModelScan(m)
     case f: FileRef if f.filePath.endsWith(".wv") || f.filePath.endsWith(".sql") =>
       resolveQueryFileRef(f)
-    case f: FileRef if RelationRefResolver.isDataFilePath(f.filePath) =>
+    case f: FileRef =>
+      // Data files (json/jsonl/csv/tsv/parquet, optionally compressed); other paths stay as-is
       RelationRefResolver.resolveDataFileRef(f).getOrElse(f)
     case p: PartialQueryApply =>
       // The inlined body is spliced above the already-resolved child and is not revisited by
