@@ -103,3 +103,26 @@ platform backends; multi-file globs; `s3://` JSON.
 - `./sbt "runnerJVM/testOnly *RunnerSpecBasic"` — specs reading `spec/basic/*.json` still pass
 - `./sbt "langJVM/testOnly *TyperCoverageCheck"` — ratchet unaffected
 - `./sbt scalafmtAll` before commit
+
+## Outcome (PR #2043)
+
+Implemented as designed, rebased on #2042 (`DataFilePath`, jsonl/tsv/zst). Learnings:
+
+- **uni `JSONScanner` contexts push values into their parent.** The scanner calls
+  `stack.head.objectContext/arrayContext` to create child contexts and never calls `add` from the
+  outside; each `JSONValueBuilder` child calls `$outer.add(result)` on `closeContext`. A wrapper
+  that delegates `objectContext` therefore loses the elements — the limited array context must
+  *be* the parent, i.e. subclass `JSONValueBuilder` and override `add`. `JSON.parse` scans with
+  `builder.singleContext(...)` as the root handler, so the sampling root is likewise a tiny
+  `JSONValueBuilder` subclass rather than the builder itself.
+- `JSON.JSONNull` is not typed as a `JSONValue` in uni 2026.1.21, so an empty root holder is an
+  `Option`, not a `JSONNull` default.
+- Simplify-review consolidation: the four angles converged on (1) the 5-line root builder instead
+  of an 11-method delegator, (2) one cached funnel through `DuckDBAnalyzer.guessSchema` instead of
+  per-extension branches, (3) caching remote paths (mtime 0 otherwise meant "never cached" for the
+  slowest inputs), (4) `ConcurrentHashMap` like the other `GlobalContext` caches, (5) byte-based
+  `JSONSource` to skip the String round-trip.
+- JS tests need `pnpm install` in a fresh worktree (`koffi` is loaded by `wvlet-lang.js` test
+  bundle) — otherwise the runner exits with "Cannot find module 'koffi'".
+
+Deferred: single DuckDB session for parquet/csv inference; bounded prefix read for huge JSON.
