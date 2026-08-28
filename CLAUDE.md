@@ -310,6 +310,10 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## Development Checklist
 - Before commiting changes, confirm compilation passes for src/main, src/test, and Scala.js
 
+## Design Records
+
+- `adr/2026-08-28-data-file-schema-inference-routing.md` — how `from '<file>'` picks JSONAnalyzer vs DuckDB for schema inference (`DataFilePath` classifier, remote paths and DuckDB-less platforms)
+
 ## Memory
 - For creating temporary files, use target folder, which will be ignored in git
 - `vscode-wvlet` is VS Code plugin folder
