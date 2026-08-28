@@ -661,6 +661,14 @@ from 'https://(path to your data)/sample.parquet'
 
 Reading data from an URL will also work for S3 Presigned URLs.
 
+The column names and types of a file are inferred when the query is compiled. For Parquet and
+CSV files, DuckDB reads only the metadata it needs. For a JSON file containing an array of
+records, or a JSON Lines file, the schema is inferred from the first 20,480 records (the same
+sample size DuckDB uses), so a field that first appears after that point will not be part of the
+inferred schema.
+Inferred schemas are cached while the file is unchanged, so repeated compiles of the same query
+do not re-read the file.
+
 #### Raw SQL statements
 
 In case you need to use a raw SQL statement, you can use the `sql` string interpolation:

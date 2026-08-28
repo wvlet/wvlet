@@ -18,6 +18,7 @@ import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.InMemoryCatalog
+import wvlet.lang.compiler.analyzer.FileSchemaCache
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.compiler.typer.TyperError
 import wvlet.lang.compiler.typer.TyperState
@@ -86,6 +87,10 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // recorded by SymbolLabeler. A non-empty set means an imported static catalog is active for
   // those locations, so DDL statements can warn on targets the snapshot does not know (#1999)
   val declaredTableBindings = scala.collection.mutable.Set.empty[(String, String)]
+
+  // Schemas inferred for `from '<file>'` references, validated by file mtime, so interactive
+  // recompiles (LSP, REPL) do not re-open DuckDB or re-parse JSON for unchanged files
+  val fileSchemaCache = FileSchemaCache()
 
   var workEnv: WorkEnv = compilerOptions.workEnv
 
