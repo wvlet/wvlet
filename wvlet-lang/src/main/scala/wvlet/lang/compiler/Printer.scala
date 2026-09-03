@@ -17,4 +17,4 @@ object Printer:
           buf.append(x.toString)
 
     iter(v)
-    buf.result
+    buf.result()

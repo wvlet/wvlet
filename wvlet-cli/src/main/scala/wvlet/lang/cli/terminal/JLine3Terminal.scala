@@ -57,8 +57,8 @@ class JLine3Terminal(workEnv: WorkEnv) extends REPLTerminal:
 
   private val history = new JLine3History(jlineReader)
 
-  override def width: Int  = jlineTerminal.getWidth
-  override def height: Int = jlineTerminal.getHeight
+  override def width: Int  = jlineTerminal.getColumns()
+  override def height: Int = jlineTerminal.getRows()
 
   override def setSize(width: Int, height: Int): Unit = jlineTerminal.setSize(Size(width, height))
 
@@ -162,7 +162,7 @@ class JLine3Terminal(workEnv: WorkEnv) extends REPLTerminal:
       subqueryRun: Widget
   ): Unit =
     // Set the default size when opening a new window or inside sbt console
-    if jlineTerminal.getWidth == 0 || jlineTerminal.getHeight == 0 then
+    if jlineTerminal.getColumns() == 0 || jlineTerminal.getRows() == 0 then
       jlineTerminal.setSize(Size(120, 40))
 
     // Add shortcut keys

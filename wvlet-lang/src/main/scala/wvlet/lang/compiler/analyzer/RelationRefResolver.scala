@@ -173,6 +173,10 @@ object RelationRefResolver extends ContextLogSupport:
             case _ =>
               None
         }
+      case _ =>
+        // Unreachable: Nil and :+ cover all Lists, but the compiler cannot prove
+        // :+ exhaustiveness, so keep a fallback to silence the warning
+        None
 
   /**
     * Deprecation warning when a table reference resolves through a relation-shaped `type`
