@@ -474,7 +474,7 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"        % "jline"        % "4.4.1",
+        "org.jline"        % "jline"        % "4.4.2",
         "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
         "org.xerial" % "sqlite-jdbc" % "3.53.4.0",
