@@ -143,9 +143,9 @@ val noPublish = Seq(
 
 Global / excludeLintKeys += ideSkipProject
 
-lazy val projectJVM    = project.settings(noPublish).aggregate(jvmProjects: _*)
-lazy val projectJS     = project.settings(noPublish).aggregate(jsProjects: _*)
-lazy val projectNative = project.settings(noPublish).aggregate(nativeProjects: _*)
+lazy val projectJVM    = project.settings(noPublish).aggregate(jvmProjects*)
+lazy val projectJS     = project.settings(noPublish).aggregate(jsProjects*)
+lazy val projectNative = project.settings(noPublish).aggregate(nativeProjects*)
 
 lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -394,7 +394,7 @@ lazy val cli = project
     },
     // Non-UI pack for faster development iteration
     packQuick := Def.uncached(pack.value),
-    pack      := Def.uncached((pack dependsOn packUiAssets).value),
+    pack      := Def.uncached(pack.dependsOn(packUiAssets).value),
     packMain  :=
       Map(
         // Wvlet REPL launcher
@@ -492,7 +492,7 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
-        "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),
+        ("io.trino" % "trino-testing" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch"),
         // Trino uses trino-plugin packaging name in pom.xml, so we need to specify jar() package explicitly
         ("io.trino" % "trino-delta-lake" % TRINO_VERSION % Test)
           .exclude("io.trino", "trino-tpch")
