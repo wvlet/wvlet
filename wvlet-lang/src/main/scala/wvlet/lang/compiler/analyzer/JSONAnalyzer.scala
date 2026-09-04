@@ -207,7 +207,7 @@ object JSONAnalyzer extends LogSupport:
 
   private def guessDataType(v: JSONValue): DataType =
     v match
-      case JSONNull =>
+      case _: JSONNull =>
         DataType.NullType
       case b: JSONBoolean =>
         DataType.BooleanType
