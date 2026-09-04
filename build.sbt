@@ -143,9 +143,9 @@ val noPublish = Seq(
 
 Global / excludeLintKeys += ideSkipProject
 
-lazy val projectJVM    = project.settings(noPublish).aggregate(jvmProjects*)
-lazy val projectJS     = project.settings(noPublish).aggregate(jsProjects*)
-lazy val projectNative = project.settings(noPublish).aggregate(nativeProjects*)
+lazy val projectJVM    = project.settings(noPublish).aggregate(jvmProjects *)
+lazy val projectJS     = project.settings(noPublish).aggregate(jsProjects *)
+lazy val projectNative = project.settings(noPublish).aggregate(nativeProjects *)
 
 lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -627,7 +627,7 @@ lazy val server = project
     name := "wvlet-server",
     // Route SLF4J calls (e.g. from JDBC drivers) into java.util.logging so they share the
     // same handler as wvlet.uni.log.
-    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.18",
+    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.19",
     uniRestart / baseDirectory        := (ThisBuild / baseDirectory).value
   )
   .dependsOn(api.jvm, client.jvm, runner.jvm, httpServer, testUtil % Test)
