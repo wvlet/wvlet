@@ -52,7 +52,7 @@
   "dependencies": {
     "vscode-languageclient": "^10.1.0",
     "vscode-languageserver": "^10.1.0",
-    "vscode-languageserver-textdocument": "^1.0.12"
+    "vscode-languageserver-textdocument": "^1.0.14"
   },
   "devDependencies": {
     "@types/vscode": "^1.125.0",
