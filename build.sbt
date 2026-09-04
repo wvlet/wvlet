@@ -653,6 +653,7 @@ lazy val ui = project
   .in(file("wvlet-ui"))
   .settings(
     buildSettings,
+    rxHtmlSettings,
     name        := "wvlet-ui",
     description := "UI components that can be testable with Node.js",
     // Run UI tests in headless Chromium via Playwright — gives real DOM APIs plus ES-module
@@ -702,13 +703,21 @@ lazy val playground = project
   )
   .dependsOn(uiMain, lang.js)
 
-def uiSettings: Seq[Setting[?]] = Seq(
-  Test / jsEnv                    := Def.uncached(new org.scalajs.jsenv.nodejs.NodeJSEnv()),
-  scalaJSUseMainModuleInitializer := true,
-  scalaJSLinkerConfig ~= {
-    linkerConfig(_)
-  }
-)
+// uni's rx-html embeds plain strings and DOM nodes as element children through `given
+// Conversion`s (wvlet.uni.dom.all.stringToDomNode etc.), which Scala 3 gates behind the
+// implicitConversions language feature. Enable it for the UI modules here rather than importing
+// scala.language.implicitConversions in every component file.
+val rxHtmlSettings: Seq[Setting[?]] = Seq(scalacOptions += "-language:implicitConversions")
+
+def uiSettings: Seq[Setting[?]] =
+  rxHtmlSettings ++
+    Seq(
+      Test / jsEnv                    := Def.uncached(new org.scalajs.jsenv.nodejs.NodeJSEnv()),
+      scalaJSUseMainModuleInitializer := true,
+      scalaJSLinkerConfig ~= {
+        linkerConfig(_)
+      }
+    )
 
 def linkerConfig(config: StandardConfig): StandardConfig = {
   config
