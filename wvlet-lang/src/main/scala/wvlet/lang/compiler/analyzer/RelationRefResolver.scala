@@ -147,12 +147,14 @@ object RelationRefResolver extends ContextLogSupport:
     nameParts(ref.name) match
       case Nil =>
         None
-      case qualifier :+ leaf if qualifier.headOption.flatMap(context.connectorCatalog).isDefined =>
+      case parts if parts.init.headOption.flatMap(context.connectorCatalog).isDefined =>
         // Connector names shadow catalog/schema names, and connector-qualified scans carry
         // routing metadata (connectorName) that bound types must not drop; leave the
         // reference to resolveConnectorQualifiedRef
         None
-      case qualifier :+ leaf =>
+      case parts =>
+        val qualifier = parts.init
+        val leaf      = parts.last
         lookupType(Name.typeName(leaf), context).flatMap { sym =>
           sym.symbolInfo.dataType match
             case tpe: SchemaType =>
@@ -173,10 +175,6 @@ object RelationRefResolver extends ContextLogSupport:
             case _ =>
               None
         }
-      case _ =>
-        // Unreachable: Nil and :+ cover all Lists, but the compiler cannot prove
-        // :+ exhaustiveness, so keep a fallback to silence the warning
-        None
 
   /**
     * Deprecation warning when a table reference resolves through a relation-shaped `type`
