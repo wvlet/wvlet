@@ -2515,7 +2515,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           nextItem
 
     nextItem
-    ExcludeColumnsFromRelation(input, items.result, spanFrom(t))
+    ExcludeColumnsFromRelation(input, items.result(), spanFrom(t))
   }
 
   /**
@@ -2602,7 +2602,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           nextItem()
 
     nextItem()
-    RenameColumnsFromRelation(relation, items.result, spanFrom(t))
+    RenameColumnsFromRelation(relation, items.result(), spanFrom(t))
   }
 
   def shiftColumnsExpr(input: Relation): ShiftColumns = node {
@@ -2642,7 +2642,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           nextItem
 
     nextItem
-    ShiftColumns(input, isLeftShift, items.result, spanFrom(t))
+    ShiftColumns(input, isLeftShift, items.result(), spanFrom(t))
   }
 
   def groupByExpr(input: Relation): GroupBy = node {

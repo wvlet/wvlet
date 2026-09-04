@@ -200,6 +200,7 @@ test _.output should be """
 
 ### Code Style
 - **Scala 3**: Latest Scala version (check `SCALA_VERSION` file). No Scala 2 support needed.
+  - `SCALA_VERSION` must be >= the Scala version uni is built with (3.9 since uni 2026.1.22): TASTy compatibility is one-way, so an older compiler cannot read uni's class files. Bump both `UNI_VERSION` (build.sbt and project/plugin.sbt) and `SCALA_VERSION` together
 - For cross-platform projects, use .jvm, .js, and .native folders for platform-specific code
 - Omit `new` for object instantiation (e.g., `StringBuilder()` instead of `new StringBuilder()`)
 - Always enclose expressions in string interpolation with brackets: `${...}`

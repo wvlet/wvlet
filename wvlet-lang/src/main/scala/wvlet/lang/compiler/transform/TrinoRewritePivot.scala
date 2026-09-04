@@ -137,7 +137,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                   )
               }
             end if
-            exprs.result
+            exprs.result()
           }
         pivotExprs
       }
