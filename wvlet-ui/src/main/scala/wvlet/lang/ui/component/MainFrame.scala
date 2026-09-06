@@ -63,7 +63,7 @@ object MainFrame extends RxComponent:
 
     private def wvletIcon = a(
       href -> "https://wvlet.org/",
-      img(cls -> "size-8", src -> "./img/apple-touch-icon.png", alt -> "Wvlet")
+      img(cls -> "size-8", src -> "./img/wvlet-icon.svg", alt -> "Wvlet")
     )
 
     override def render: RxElement = nav(

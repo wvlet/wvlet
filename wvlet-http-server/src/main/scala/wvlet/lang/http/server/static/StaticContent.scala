@@ -115,6 +115,10 @@ object StaticContent extends LogSupport:
         "image/png"
       case "jpeg" | "jpg" =>
         "image/jpeg"
+      case "svg" =>
+        "image/svg+xml"
+      case "ico" =>
+        "image/x-icon"
       case "css" =>
         "text/css"
       case "gz" =>
