@@ -20,6 +20,8 @@ jobs:
             src:
               - '.github/workflows/test-doc.yml'
               - 'website/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
   build-doc:
     name: Build doc
     needs: changes
