@@ -35,6 +35,14 @@ class StaticContentTest extends UniTest:
     resp.header("Content-Type") shouldBe Some("text/plain")
   }
 
+  // Browsers never MIME-sniff SVG, so the packaged web UI's vector icon must be served with
+  // its proper content type or it renders as a broken image.
+  test("serve SVG with image/svg+xml content type") {
+    val resp = content("icon.svg")
+    resp.status shouldBe HttpStatus.Ok_200
+    resp.header("Content-Type") shouldBe Some("image/svg+xml")
+  }
+
   test("404 on missing file") {
     val resp = content("does-not-exist")
     resp.status shouldBe HttpStatus.NotFound_404

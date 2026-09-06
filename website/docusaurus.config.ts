@@ -6,6 +6,18 @@ const config: Config = {
   title: 'Wvlet',
   tagline: 'Wvlet: A New Flow-Style Query Language',
   favicon: 'img/favicon.ico',
+  // Vector favicon for browsers that support it; `favicon` above stays the ICO fallback.
+  // headTags hrefs are used verbatim, so the baseUrl is included explicitly.
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/svg+xml',
+        href: '/wvlet/img/logos/wvlet-icon.svg',
+      },
+    },
+  ],
 
   // Set the production url of your site here
   url: 'https://wvlet.org',
