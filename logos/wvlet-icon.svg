@@ -1,17 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Wvlet icon: two teal strokes over two gray strokes forming a "W" -->
+  <!--
+    Wvlet icon: two teal strokes drawn over two gray strokes, forming a "W".
+    All four strokes are the same parallelogram: the gray ones are the teal
+    ones mirrored horizontally, and the second stroke of each color is the
+    first shifted right by 135.3.
+  -->
   <defs>
-    <linearGradient id="wv-teal" gradientUnits="userSpaceOnUse" x1="0" y1="134.95" x2="0" y2="377.05">
+    <linearGradient id="wv-teal" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#00d2e9"/>
       <stop offset="1" stop-color="#045962"/>
     </linearGradient>
-    <linearGradient id="wv-gray" gradientUnits="userSpaceOnUse" x1="0" y1="134.95" x2="0" y2="377.05">
+    <linearGradient id="wv-gray" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#bfbfbf"/>
       <stop offset="1" stop-color="#737373"/>
     </linearGradient>
+    <path id="wv-stroke" d="M37.4 134.95 L129.3 134.95 L232.6 377.05 L140.7 377.05 Z"/>
   </defs>
-  <path fill="url(#wv-gray)" d="M339.3 134.95 L247.4 134.95 L144.1 377.05 L236.0 377.05 Z"/>
-  <path fill="url(#wv-gray)" d="M474.6 134.95 L382.7 134.95 L279.4 377.05 L371.3 377.05 Z"/>
-  <path fill="url(#wv-teal)" d="M37.4 134.95 L129.3 134.95 L232.6 377.05 L140.7 377.05 Z"/>
-  <path fill="url(#wv-teal)" d="M172.7 134.95 L264.6 134.95 L367.9 377.05 L276.0 377.05 Z"/>
+  <g fill="url(#wv-gray)" transform="matrix(-1 0 0 1 512 0)">
+    <use href="#wv-stroke"/>
+    <use href="#wv-stroke" x="135.3"/>
+  </g>
+  <g fill="url(#wv-teal)">
+    <use href="#wv-stroke"/>
+    <use href="#wv-stroke" x="135.3"/>
+  </g>
 </svg>
