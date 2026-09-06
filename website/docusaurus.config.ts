@@ -78,7 +78,7 @@ const config: Config = {
       title: 'Wvlet',
       logo: {
         alt: 'Wvlet',
-        src: 'img/logos/android-chrome-512x512.png',
+        src: 'img/logos/wvlet-icon.svg',
       },
       items: [
         {

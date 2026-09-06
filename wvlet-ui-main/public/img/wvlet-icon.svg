@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Wvlet icon: two teal strokes over two gray strokes forming a "W" -->
+  <defs>
+    <linearGradient id="wv-teal" gradientUnits="userSpaceOnUse" x1="0" y1="134.95" x2="0" y2="377.05">
+      <stop offset="0" stop-color="#00d2e9"/>
+      <stop offset="1" stop-color="#045962"/>
+    </linearGradient>
+    <linearGradient id="wv-gray" gradientUnits="userSpaceOnUse" x1="0" y1="134.95" x2="0" y2="377.05">
+      <stop offset="0" stop-color="#bfbfbf"/>
+      <stop offset="1" stop-color="#737373"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#wv-gray)" d="M339.3 134.95 L247.4 134.95 L144.1 377.05 L236.0 377.05 Z"/>
+  <path fill="url(#wv-gray)" d="M474.6 134.95 L382.7 134.95 L279.4 377.05 L371.3 377.05 Z"/>
+  <path fill="url(#wv-teal)" d="M37.4 134.95 L129.3 134.95 L232.6 377.05 L140.7 377.05 Z"/>
+  <path fill="url(#wv-teal)" d="M172.7 134.95 L264.6 134.95 L367.9 377.05 L276.0 377.05 Z"/>
+</svg>
