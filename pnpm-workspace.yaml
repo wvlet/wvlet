@@ -17,7 +17,8 @@ overrides:
   mermaid: ^11.16.1
   'brace-expansion@5': ^5.0.9
   '@babel/plugin-transform-modules-systemjs': ^7.29.4
-  fast-uri: ^3.1.5
+  browserslist: ^4.28.7
+  fast-uri: ^3.1.6
   nanoid: ^3.3.18
   'js-yaml@3': ^3.15.0
   'js-yaml@4': ^4.2.0
@@ -33,7 +34,7 @@ overrides:
   joi: ^17.13.4
   shell-quote: ^1.9.0
   tmp: ^0.2.7
-  qs: ^6.15.3
+  qs: ^6.16.0
   '@babel/core@7': ^7.29.7
 
 onlyBuiltDependencies:
