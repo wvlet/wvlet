@@ -21,11 +21,21 @@ import wvlet.lang.connector.ConnectorFactory
 object DuckDBConnectorFactory extends ConnectorFactory:
   override def connectorType: String = "duckdb"
 
-  override def create(config: ConnectorConfig, workEnv: WorkEnv): Connector = DuckDBConnector(
-    workEnv,
-    prepareTPCH = config.properties.getOrElse("prepareTPCH", "false").toString.toBoolean,
-    prepareTPCDS = config.properties.getOrElse("prepareTPCDS", "false").toString.toBoolean
-  ).withName(config.name)
+  override def create(config: ConnectorConfig, workEnv: WorkEnv): Connector =
+    def booleanProperty(key: String): Boolean =
+      config.properties.getOrElse(key, "false").toString.toBoolean
+    def scaleFactorProperty(key: String): Double = config
+      .properties
+      .get(key)
+      .map(_.toString.toDouble)
+      .getOrElse(DuckDBConnector.defaultScaleFactor)
+    DuckDBConnector(
+      workEnv,
+      prepareTPCH = booleanProperty("prepareTPCH"),
+      prepareTPCDS = booleanProperty("prepareTPCDS"),
+      tpchScaleFactor = scaleFactorProperty("tpchScaleFactor"),
+      tpcdsScaleFactor = scaleFactorProperty("tpcdsScaleFactor")
+    ).withName(config.name)
 
 object GenericConnectorFactory extends ConnectorFactory:
   override def connectorType: String = "generic"

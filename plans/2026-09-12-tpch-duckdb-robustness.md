@@ -92,10 +92,10 @@ operator-shaped stdlib methods to exactly the SQL their stdlib definitions inlin
 
 | member call | generated SQL |
 |---|---|
-| `q.like(p)` / `q.not_like(p)` | `q like p` / `q not like p` |
+| `q.like(p)` | `q like p` |
 | `q.in(a, b, ...)` / `q.not_in(...)` | `q in (a, b, ...)` / `q not in (...)`; a single subquery argument is printed as `q in (subquery)` like the `In` node does |
-| `q.between(a, b)` / `q.not_between(a, b)` | `q between a and b` |
-| `q.extract('year')` | `extract(YEAR from q)`; the field must be a string literal naming an `IntervalField` |
+| `q.between(a, b)` | `q between a and b` |
+| `q.extract('year')` | `extract (YEAR from q)`, the same spelling as the `Extract` node; the field must be a string literal naming an `IntervalField` |
 
 - Emitted text matches the `FunctionInliner` output for typed qualifiers, so `spec/tpch` with the
   schema and the schema-less copy generate identical SQL. No parentheses are added, matching the
@@ -133,7 +133,7 @@ Tests:
 - Documented in a new `website/docs/development/benchmark.md` together with the manual recipe:
   build `tpch_sf10.duckdb` with the duckdb CLI, dump SQL with `wvlet compile -f`, and run
   `EXPLAIN ANALYZE` N times per query. The `run_bench.sh` from the study is committed as
-  `scripts/tpch-bench.sh` so the recipe is runnable as-is. `CLAUDE.md` gets the one-line
+  `spec/tpch/bench/run_bench.sh` so the recipe is runnable as-is. `CLAUDE.md` gets the one-line
   command next to the `TyperBench` note.
 
 ### 3. Configurable scale factor and observable DuckDB init
