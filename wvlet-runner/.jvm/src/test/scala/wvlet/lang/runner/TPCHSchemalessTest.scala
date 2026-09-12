@@ -35,8 +35,10 @@ class TPCHSchemalessTest extends UniTest:
   private val specDir = File("spec/tpch")
   private val workDir = File("target/tpch-schemaless")
 
-  // Copy only the query files: no schema.wv, no test/ folder
+  // Copy only the query files: no schema.wv, no test/ folder. Clear stale copies first so a
+  // query removed from spec/tpch does not linger here
   workDir.mkdirs()
+  Option(workDir.listFiles()).getOrElse(Array.empty[File]).foreach(_.delete())
   private val queryFiles: Seq[File] = Option(specDir.listFiles())
     .getOrElse(Array.empty[File])
     .toSeq
