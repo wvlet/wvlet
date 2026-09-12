@@ -314,6 +314,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## Design Records
 
 - `adr/2026-08-28-data-file-schema-inference-routing.md` — how `from '<file>'` picks JSONAnalyzer vs DuckDB for schema inference (`DataFilePath` classifier, remote paths and DuckDB-less platforms)
+- `adr/2026-09-12-keyword-member-call-lowering.md` — why un-inlined `x.like(...)`/`in`/`between`/`extract` calls are lowered to operators in `SqlGenerator` (not FunctionInliner or the `any` type) and why there is no fail-fast for other keyword-named calls
 
 ## Memory
 - For creating temporary files, use target folder, which will be ignored in git
