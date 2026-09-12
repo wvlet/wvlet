@@ -157,8 +157,7 @@ Tests:
 
 - **Add `like`/`in`/`extract` to the stdlib `any` type** so the existing AnyType fallback in
   `findFunctionDef` resolves them: minimal Scala change, but it changes typing (`any` would accept
-  `like`), alters the generated stdlib docs and engine catalogs (freshness-gated in CI), and does
-  not cover the fail-fast half.
+  `like`), alters the generated stdlib docs and engine catalogs (freshness-gated in CI).
 - **Fail fast on every keyword-named member call**: rejected in review, because qualified
   function calls (`main.left(...)`) share the AST shape and are valid SQL; the generator has no
   type information to separate the two.
