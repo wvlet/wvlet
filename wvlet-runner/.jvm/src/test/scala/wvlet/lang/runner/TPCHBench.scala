@@ -40,7 +40,9 @@ class TPCHBench extends UniTest:
       case None =>
         ignore("Set WVLET_TPCH_BENCH_SF=<scale factor> (e.g. 1) to run the TPC-H timing probe")
       case Some(sf) =>
-        runBench(sf, runs = sys.env.get("WVLET_TPCH_BENCH_RUNS").map(_.toInt).getOrElse(3))
+        val runs = sys.env.get("WVLET_TPCH_BENCH_RUNS").map(_.toInt).getOrElse(3)
+        require(runs >= 1, s"WVLET_TPCH_BENCH_RUNS must be at least 1, but got ${runs}")
+        runBench(sf, runs)
   }
 
   private def runBench(sf: Double, runs: Int): Unit =
@@ -86,7 +88,11 @@ class TPCHBench extends UniTest:
           millisSince(start)
         executeOnce() // warm-up
         val times  = (1 to runs).map(_ => executeOnce()).sorted
-        val median = times(times.size / 2)
+        val median =
+          if times.size % 2 == 1 then
+            times(times.size / 2)
+          else
+            (times(times.size / 2 - 1) + times(times.size / 2)) / 2
         totalMedian += median
         info(
           f"${unit.sourceFile.fileName}%-8s compile ${compileMs}%7.1f ms  exec min ${times

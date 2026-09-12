@@ -20,6 +20,11 @@ for f in "$DIR"/*.sql; do
   for _ in $(seq 1 "$RUNS"); do
     total=$(duckdb "$DB" -c "PRAGMA threads=${THREADS}; EXPLAIN ANALYZE ${sql}" 2>/dev/null \
       | grep -oE "Total Time: [0-9.]+s" | head -1)
+    if [ -z "$total" ]; then
+      echo "error: EXPLAIN ANALYZE failed for ${f}" >&2
+      duckdb "$DB" -c "EXPLAIN ANALYZE ${sql}" >/dev/null || true
+      exit 1
+    fi
     seconds=${total#Total Time: }
     seconds=${seconds%s}
     times+=("$(awk -v t="$seconds" 'BEGIN { printf "%.1f", t * 1000 }')")

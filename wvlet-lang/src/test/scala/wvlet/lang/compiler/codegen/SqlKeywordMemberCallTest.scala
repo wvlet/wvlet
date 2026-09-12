@@ -23,8 +23,9 @@ import wvlet.uni.test.UniTest
 /**
   * Member calls whose qualifier type is unknown (no table schema declared) reach the SQL generator
   * un-inlined. Keyword-named ones (`like`, `in`, `between`, `extract`) must lower to their operator
-  * form instead of the invalid `x."like"(...)` function call, and other keyword-named calls must
-  * fail at compile time rather than at execution.
+  * form instead of the invalid `x."like"(...)` function call. Other member calls keep the plain
+  * function-call form: a schema-qualified call such as `main.left(...)` has the same shape and is
+  * valid SQL, so nothing is rejected at this level.
   */
 class SqlKeywordMemberCallTest extends UniTest:
 
@@ -90,12 +91,24 @@ class SqlKeywordMemberCallTest extends UniTest:
     e.statusCode shouldBe StatusCode.SYNTAX_ERROR
   }
 
-  test("fail fast on other keyword-named member calls") {
+  test("reject in without arguments") {
     val e = intercept[WvletLangException] {
-      generateSQL("from part where p_size.exists(1)")
+      generateSQL("from part where p_size.in()")
     }
     e.statusCode shouldBe StatusCode.SYNTAX_ERROR
-    e.getMessage shouldContain "exists"
+  }
+
+  test("match method names exactly like the typed resolution path") {
+    // LIKE is not a stdlib method name, so it stays a plain call as with a typed qualifier
+    val sql = generateSQL("from orders where o_comment.LIKE('%x%')")
+    sql shouldNotContain "o_comment like"
+  }
+
+  test("keep schema-qualified keyword-named function calls untouched") {
+    // A qualified function reference such as main.left(...) has the same shape as a member
+    // call; engines accept it as main."left"(...), so it must not be rejected or lowered
+    val sql = generateSQL("from t select main.left(s, 1)")
+    sql shouldContain "main.\"left\"(s, 1)"
   }
 
   test("keep non-keyword member calls as function calls") {

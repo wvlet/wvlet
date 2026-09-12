@@ -84,7 +84,7 @@ LogLevel` in the option parser (a follow-up issue).
 
 ## Design
 
-### 1. Lower keyword-named member calls in `SqlGenerator`, fail fast otherwise
+### 1. Lower keyword-named member calls in `SqlGenerator`
 
 In `SqlGenerator`'s `case f: FunctionApply` (`SqlGenerator.scala:1372`), before the regular
 function branch, match `f.base` against `DotRef(qual, method: Identifier)` and lower the
@@ -102,17 +102,21 @@ operator-shaped stdlib methods to exactly the SQL their stdlib definitions inlin
   inlined form (`and not o_comment like '...'`).
 - The lowering fires only when the node survived the analyzer un-inlined, i.e. when the
   qualifier's type could not be resolved. Resolved calls never reach this branch.
-- Any other `DotRef`-based call whose method name `requiresQuotation` (a SQL keyword) raises
-  `StatusCode.SYNTAX_ERROR` via the generator's existing error helper, with a message naming the
-  call and suggesting a schema/table declaration. Emitting `x."keyword"(...)` is never valid SQL,
-  so failing at compile time is strictly better than at execution.
+- No fail-fast for other keyword-named calls: review found that a schema-qualified function call
+  such as `main.left(s, 1)` parses to the same `FunctionApply(DotRef(main, left))` shape and is
+  valid SQL as `main."left"(s, 1)`, so the generator cannot tell it apart from an unresolved
+  member call. Those calls keep today's pass-through behavior.
+- The lowered forms are built as the existing `Like` / `In` / `NotIn` / `Between` / `Extract`
+  nodes and printed through `expr`, so the text stays identical to the parser-produced operators.
+  Calls carrying a window, filter or argument modifiers (name, DISTINCT, ORDER BY) are not
+  lowered; method names are matched exactly, as the typed resolution path does.
 - `FunctionInliner` is left unchanged: keeping the fallback in codegen keeps the RLike →
   `regexp_matches` precedent and avoids adding these methods to the `any` type, which would widen
   the language surface (`1.like('x')` would type-check).
 
 Tests:
 - `SqlKeywordMemberCallTest` (wvlet-lang, parse-only generator like `SqlQuotingTest`) covering
-  each lowered form, the subquery `in`, and the fail-fast error.
+  each lowered form, the subquery `in`, exact-case matching and the qualified-call pass-through.
 - `TPCHSchemalessTest` (wvlet-runner JVM): copy `spec/tpch/q*.wv` (not `schema.wv`) into a
   `target/` folder, compile them with a schema-less compiler, and execute each on a DuckDB
   connector with `prepareTPCH` at sf=0.01. This is the exact `wvlet compile` failure mode from
@@ -155,8 +159,9 @@ Tests:
   `findFunctionDef` resolves them: minimal Scala change, but it changes typing (`any` would accept
   `like`), alters the generated stdlib docs and engine catalogs (freshness-gated in CI), and does
   not cover the fail-fast half.
-- **Fail fast only, no lowering**: simpler, but `wvlet compile` on the 9 queries would then fail
-  where it could just work; the lowering table is small and mirrors the stdlib exactly.
+- **Fail fast on every keyword-named member call**: rejected in review, because qualified
+  function calls (`main.left(...)`) share the AST shape and are valid SQL; the generator has no
+  type information to separate the two.
 - **Run the perf probe in CI with a threshold**: rejected by the item; timings are machine-bound
   and dbgen(sf=1) alone is 1.6 s of setup.
 - **Cache the TPC-H extension / add a `--tpch` flag to `wv`** as the item suggested: the

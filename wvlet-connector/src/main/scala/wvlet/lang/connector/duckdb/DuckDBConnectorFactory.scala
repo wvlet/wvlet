@@ -13,6 +13,7 @@
  */
 package wvlet.lang.connector.duckdb
 
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.connector.Connector
@@ -22,13 +23,25 @@ object DuckDBConnectorFactory extends ConnectorFactory:
   override def connectorType: String = "duckdb"
 
   override def create(config: ConnectorConfig, workEnv: WorkEnv): Connector =
-    def booleanProperty(key: String): Boolean =
-      config.properties.getOrElse(key, "false").toString.toBoolean
-    def scaleFactorProperty(key: String): Double = config
+    def property[A](key: String, default: A)(parse: String => A): A = config
       .properties
       .get(key)
-      .map(_.toString.toDouble)
-      .getOrElse(DuckDBConnector.defaultScaleFactor)
+      .map { v =>
+        try
+          parse(v.toString)
+        catch
+          case e: IllegalArgumentException =>
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(
+                s"Invalid value '${v}' for property ${key} of connector ${config.name}",
+                e
+              )
+      }
+      .getOrElse(default)
+    def booleanProperty(key: String): Boolean    = property(key, false)(_.toBoolean)
+    def scaleFactorProperty(key: String): Double =
+      property(key, DuckDBConnector.defaultScaleFactor)(_.toDouble)
     DuckDBConnector(
       workEnv,
       prepareTPCH = booleanProperty("prepareTPCH"),
@@ -36,6 +49,8 @@ object DuckDBConnectorFactory extends ConnectorFactory:
       tpchScaleFactor = scaleFactorProperty("tpchScaleFactor"),
       tpcdsScaleFactor = scaleFactorProperty("tpcdsScaleFactor")
     ).withName(config.name)
+
+end DuckDBConnectorFactory
 
 object GenericConnectorFactory extends ConnectorFactory:
   override def connectorType: String = "generic"

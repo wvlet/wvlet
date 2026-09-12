@@ -151,37 +151,39 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
   /**
     * Lower an un-inlined operator-shaped member call (`x.like(p)`, `x.in(a, b)`, `x.not_in(...)`,
-    * `x.between(a, b)`, `x.extract('year')`) to its SQL operator form, mirroring the stdlib
-    * definitions in wvlet-stdlib/module/standard
+    * `x.between(a, b)`, `x.extract('year')`) to the expression node of its SQL operator form,
+    * mirroring the stdlib definitions in wvlet-stdlib/module/standard
     */
-  private def lowerOperatorMethodCall(f: FunctionApply, qual: Expression, method: String): Doc =
+  private def lowerOperatorMethodCall(
+      f: FunctionApply,
+      qual: Expression,
+      method: String
+  ): Expression =
     val args                     = f.args.map(_.value)
-    val operator                 = method.replace('_', ' ')
     def expectArgs(n: Int): Unit =
       if args.size != n then
         syntaxError(s"${qual}.${method} expects ${n} argument(s), but got ${args.size}")
     method match
       case "like" =>
         expectArgs(1)
-        wl(expr(qual), operator, expr(args.head))
+        Like(qual, args.head, None, f.span)
       case "in" | "not_in" =>
-        val right =
-          args match
-            case (s: SubQueryExpression) :: Nil =>
-              expr(s)
-            case _ =>
-              paren(cl(args.map(x => expr(x))))
-        wl(expr(qual), operator, right)
+        if args.isEmpty then
+          syntaxError(s"${qual}.${method} expects at least one argument")
+        if method == "in" then
+          In(qual, args, f.span)
+        else
+          NotIn(qual, args, f.span)
       case "between" =>
         expectArgs(2)
-        wl(expr(qual), operator, expr(args(0)), "and", expr(args(1)))
+        Between(qual, args(0), args(1), f.span)
       case "extract" =>
         expectArgs(1)
         args.head match
           case s: StringLiteral =>
             IntervalField.unapply(s.unquotedValue) match
               case Some(field) =>
-                expr(Extract(field, qual, f.span))
+                Extract(field, qual, f.span)
               case None =>
                 syntaxError(s"Unknown extract field '${s.unquotedValue}' in ${qual}.extract")
           case other =>
@@ -1537,21 +1539,16 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                     text("MAP") + paren(cl(List(expr(keysArr), expr(valuesArr))))
             end match
 
-          case DotRef(qual, method: Identifier, _, _)
-              if SqlGenerator.operatorMethods.contains(method.unquotedValue.toLowerCase) =>
+          case DotRef(qual, method: UnquotedIdentifier, _, _)
+              if SqlGenerator.operatorMethods.contains(method.unquotedValue) && f.window.isEmpty &&
+                f.filter.isEmpty && f.args.forall(_.isPlainArg) =>
             // A member call that survived the analyzer un-inlined (the qualifier's type is
             // unknown, e.g. when compiling without a table schema) would print as
             // `x."like"(...)`, which no engine accepts. Lower the operator-shaped stdlib
-            // methods to the SQL their stdlib definitions inline to
-            lowerOperatorMethodCall(f, qual, method.unquotedValue.toLowerCase)
-          case DotRef(qual, method: Identifier, _, _)
-              if NameExpr.requiresQuotation(method.unquotedValue) =>
-            // Any other keyword-named member call would be printed as x."keyword"(...),
-            // which is never valid SQL. Fail at compile time instead of at execution
-            syntaxError(
-              s"Cannot resolve method ${method
-                  .unquotedValue} of ${qual}: the type of ${qual} is unknown. Declare the table schema (or a type with this method) so the call can be resolved"
-            )
+            // methods to the SQL their stdlib definitions inline to. The method name is
+            // matched exactly, as the typed resolution path does, and calls carrying a
+            // window, filter or argument modifiers are left to the regular path
+            expr(lowerOperatorMethodCall(f, qual, method.unquotedValue))
           case _ =>
             // Regular function handling
             val base =

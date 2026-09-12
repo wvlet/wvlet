@@ -69,6 +69,6 @@ Point step 3 at a directory of canonical TPC-H SQL to get the baseline for the s
 `wvlet compile` from a folder without table declarations cannot type the columns, so member
 calls such as `o_comment.like('%x%')` are not inlined by the analyzer. The SQL generator lowers
 the keyword-named ones (`like`, `in`, `not_in`, `between`, `extract`) to their operator form, and
-`TPCHSchemalessTest` executes all 22 queries compiled this way on DuckDB. Other keyword-named
-member calls on an untyped qualifier are rejected at compile time, since `x."keyword"(...)` is
-never valid SQL.
+`TPCHSchemalessTest` executes all 22 queries compiled this way on DuckDB. Other member calls keep
+the plain function-call form, because a schema-qualified call such as `main.left(...)` has the
+same shape and is valid SQL.
