@@ -476,6 +476,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         }
       case e: EmptyRelation =>
         selectAll(empty, block)
+      case x: ExternalApply =>
+        // External functions run in the runner at a materialization boundary, which replaces
+        // this node with a scan of the materialized result before SQL generation
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(
+            s"External function '${x.functionName.name}' cannot be compiled to SQL; run the query with `wvlet run` or the REPL so the function can be executed",
+            x.sourceLocation(using ctx)
+          )
       case q: WithQuery =>
         val subQueries: List[Doc] = q
           .queryDefs
@@ -1654,6 +1663,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         expr(t.child)
       case p: ParenthesizedExpression =>
         paren(expr(p.child))
+      case i: InterpolatedString if ExternalApply.isShellBody(i) =>
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            "A shell function (`sh\"...\"`) is a table function; apply it to a relation (`from t | f(...)`) instead of calling it in an expression",
+            i.sourceLocation(using ctx)
+          )
       case i: InterpolatedString =>
         concat(i.parts.map(expr))
       case s: SubQueryExpression =>

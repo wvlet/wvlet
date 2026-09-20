@@ -31,6 +31,9 @@ import wvlet.lang.connector.CancellableStatement
 import wvlet.lang.connector.Connector
 import wvlet.lang.connector.DBConnector
 import wvlet.lang.runner.connector.SourceTableStaging
+import wvlet.lang.runner.external.ExternalFunctionExecutor
+import wvlet.lang.runner.external.ExternalFunctionRegistry
+import wvlet.uni.json.JSON
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
 
@@ -285,6 +288,12 @@ class FlowExecutor(
     .map(e => resolveEngine(e.leafName))
     .getOrElse(connector)
 
+  // Executes code-backed functions declared with `= native` or `= sh"..."`
+  private lazy val externalFunctions = ExternalFunctionExecutor(
+    workEnv,
+    ExternalFunctionRegistry.forWorkEnv(workEnv)
+  )
+
   private def engineNameFor(ls: FlowLowering.LoweredStage): String = ls
     .stage
     .engine
@@ -514,6 +523,11 @@ class FlowExecutor(
       Option(heartbeatChecks.remove(key)).foreach(_.cancel(false))
       lastBeats.remove(key)
 
+    // Metadata returned by the external functions of each stage, by function name. Written by
+    // the stage worker threads and read when the run record is persisted
+    val stageMetadata =
+      java.util.concurrent.ConcurrentHashMap[String, Seq[(String, JSON.JSONObject)]]()
+
     val runBody: (FlowLowering.LoweredStage, String, (String, Int)) => Unit =
       stageRunner match
         case Some(r) =>
@@ -585,6 +599,15 @@ class FlowExecutor(
                 () =>
                   activeStatements.remove(attemptKey)
                   beat(attemptKey)
+              ,
+              onFunctionMetadata =
+                (function, meta) =>
+                  workEnv.info(s"[function] stage ${ls.name}: ${function} metadata: ${meta.toJSON}")
+                  stageMetadata.merge(
+                    ls.name,
+                    Seq(function -> meta),
+                    (recorded, added) => recorded.filterNot(_._1 == function) ++ added
+                  )
             )
             // Deliver the materialized output to activation sinks. A missing sink logs the
             // delivery instead of failing (local stub); a sink exception fails the attempt
@@ -738,6 +761,8 @@ class FlowExecutor(
               lastPollAt.get(name)
             else
               None
+          ,
+          metadata = Option(stageMetadata.get(name)).map(m => JSON.JSONObject(m).toJSON)
         )
       }
       val flowState =
@@ -1250,7 +1275,8 @@ class FlowExecutor(
       tableFor: String => String,
       routeFilters: Map[(String, String), Expression],
       registerStatement: CancellableStatement => Unit,
-      deregisterStatement: () => Unit
+      deregisterStatement: () => Unit,
+      onFunctionMetadata: (String, JSON.JSONObject) => Unit
   )(using ctx: Context): Unit =
     val body = ls
       .body
@@ -1271,13 +1297,32 @@ class FlowExecutor(
 
     // Materialize tables living on other connectors into run-scoped staging tables on this
     // stage's engine, and point the body at them
-    val (staged, stagingTables) = stageForeignTables(
+    val (sourcesStaged, sourceStagingTables) = stageForeignTables(
       executable,
       engineName,
       stageConnector,
       tableFor,
       ls.name
     )
+
+    // Run code-backed functions (`= native` / `= sh"..."`) at a materialization boundary and
+    // point the body at their results. The registered handle lets a timeout or cancellation
+    // stop a running function like it stops a running statement
+    val (staged, functionTables) =
+      try
+        externalFunctions.materialize(
+          sourcesStaged,
+          stageConnector,
+          engineName,
+          onMetadata = onFunctionMetadata,
+          register = registerStatement,
+          deregister = deregisterStatement
+        )
+      catch
+        case NonFatal(e) =>
+          dropStagingTables(stageConnector, sourceStagingTables)
+          throw e
+    val stagingTables = sourceStagingTables ++ functionTables
 
     val sql = GenSQL.generateSQLFromRelation(staged, addHeader = false).sql
 
@@ -1300,15 +1345,18 @@ class FlowExecutor(
     finally
       // Staging tables only feed the CTAS above; drop them immediately (a retried attempt
       // re-stages from the source)
-      stagingTables.foreach { staging =>
-        try
-          stageConnector.execute(s"""drop table if exists "${staging}"""")
-        catch
-          case NonFatal(e) =>
-            debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
-      }
+      dropStagingTables(stageConnector, stagingTables)
 
   end materializeStage
+
+  private def dropStagingTables(stageConnector: DBConnector, tables: Iterable[String]): Unit = tables
+    .foreach { staging =>
+      try
+        stageConnector.execute(s"""drop table if exists "${staging}"""")
+      catch
+        case NonFatal(e) =>
+          debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
+    }
 
   /**
     * Replace TableScans that were resolved through a different connector with run-scoped staging
