@@ -311,10 +311,6 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## Development Checklist
 - Before commiting changes, confirm compilation passes for src/main, src/test, and Scala.js
 
-## Custom (External) Functions
-
-`def f(...): T = native` and `def f: T = sh"..."` declare code-backed functions (docs: `website/docs/syntax/custom-functions.md`, design: `plans/2026-09-15-custom-functions.md`). The compiler resolves them into `ExternalApply` plan nodes; only the JVM runner executes them (`wvlet-runner/.jvm/.../runner/external`), at a materialization boundary before SQL generation, so `ExternalApply` must never reach `SqlGenerator`. Implementations are found by name: JVM `wvlet.lang.ext.FunctionProvider`s via ServiceLoader, or TypeScript/JavaScript modules in `<workdir>/plugins` run through the bundled Node host. Test with `./sbt "runnerJVM/testOnly *ExternalFunctionTest"` (TypeScript cases skip below Node 22.6).
-
 ## Design Records
 
 - `adr/2026-08-28-data-file-schema-inference-routing.md` — how `from '<file>'` picks JSONAnalyzer vs DuckDB for schema inference (`DataFilePath` classifier, remote paths and DuckDB-less platforms)
