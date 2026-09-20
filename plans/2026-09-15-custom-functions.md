@@ -14,8 +14,8 @@ commands, and JVM plugin jars from queries and flow stages.
   contract: TypeScript/Node scripts, arbitrary shell commands, and functions packaged in a jar.
 - Keep it safe to share `.wv` files: query text must never be able to name an arbitrary command.
 
-Non-goals for the first PR: per-row scalar UDFs inside SQL expressions (`select score(amount)`),
-engine-side UDF registration (DuckDB/Trino), and Scala.js / Native execution.
+Non-goals: engine-side UDF registration (DuckDB/Trino), Scala.js / Native execution, and
+isolation of the executed code (left to a future container-based execution engine).
 
 ## Background
 
@@ -76,7 +76,9 @@ def dedupe: scored = sh"python3 scripts/dedupe.py"
   implementation is Scala or TypeScript. An unresolved `native` def stays what it is today:
   an engine-native function passed through to SQL (`#1896`), so engine catalogs keep working.
 - **`sh"..."`** is a new interpolated-string body, symmetrical with `sql"..."`. `${arg}`
-  splices are shell-quoted; all named args also arrive as JSON in `WVLET_FUNCTION_ARGS`.
+  splices are shell-quoted; every argument is also exported as `WVLET_ARG_<name>` and all of
+  them as JSON in `WVLET_FUNCTION_ARGS` (triple-quoted strings do not interpolate `${...}`
+  in the scanner today, so the environment variables are the way to pass arguments there).
 - **The return type decides the shape.** A scalar type (`string`, `double`, …) is a scalar
   function: one value per input row. A row type (a declared `type`/`trait` name) is a table
   function: rows in, one **result object** out (section 4). `sh` bodies are table functions
@@ -108,8 +110,9 @@ from dedupe()          -- no input: runs with an empty input relation
   `def` with a row return type and an external body becomes `ExternalApply(child, fn, args)`
   instead of being inlined. `from f(args)` is the existing `TableFunctionCall` extended the
   same way. No operator keyword.
-- Constant folding: a scalar external function whose args are all literals is evaluated once
-  at execution planning time and replaced by a literal (generalizes today's `ulid_string`).
+- Arguments use the regular function-call syntax: positional or `name = value`, with `def`
+  defaults filled in. Table function arguments must be literals; scalar function arguments
+  are any expression.
 
 ### 3. Execution: lowering to materialization boundaries (JVM runner)
 
@@ -118,12 +121,16 @@ server-side deployment), so custom code runs in the runner between two SQL fragm
 runner-side pass, `ExternalFunctionLowering`, runs before SQL generation in both
 `QueryExecutor.executeQuery` and `FlowExecutor.materializeStage`:
 
-1. **Scalar calls in expressions.** For each relation operator whose expressions contain
-   external scalar calls (Project, Filter, GroupBy keys, Sort, aggregate inputs), the pass
-   inserts under the operator an `ExternalApply` over the operator's input that computes
-   each call as an appended column (`__wv_fn_1`, …), with the call's argument expressions
-   projected as engine-computed helper columns first. The original expression becomes a
-   column reference. Nested calls `f(g(x))` lower inside-out; the pass iterates to a fixpoint.
+1. **Scalar calls in expressions.** For each `select` / `add` / `where` operator whose
+   expressions contain external scalar calls, the pass inserts under the operator an
+   `ExternalApply` (scalar-map shape) over the operator's input that computes each call as an
+   appended column (`__wv_fn_1`, …), with the call's argument expressions projected as
+   engine-computed helper columns first. The original expression becomes a column reference,
+   and helper columns are excluded again above operators that pass all columns through.
+   Nested calls `f(g(x))` lower inside-out over repeated passes. Other operators (group by,
+   order by, join conditions) report a clear error asking to compute the value with `add`
+   first. Only a row id and the argument values leave the engine; the result is joined back
+   by row id, so passthrough columns keep their exact values and types.
 2. **Each `ExternalApply` is executed** as: generate SQL for its child; stream input rows
    with `DBConnector.streamJsonRows`; feed them to the implementation (JVM plugin
    in-process, TS module through the Node harness, or the `sh` subprocess); receive one
@@ -131,14 +138,18 @@ runner-side pass, `ExternalFunctionLowering`, runs before SQL generation in both
    with the declared schema (DuckDB `read_json`, or the DuckDB-handoff staging for
    Trino/Snowflake, the `activate('file')` route from #2028); replace the node with a
    `TableRef` (query path) or write into the stage table (flow path). The result's metadata
-   fields are logged and, in flows, stored with the stage attempt in the run store
-   (`wvlet flow show` displays them).
+   fields are logged and, in flows, stored with the stage record in the run store (file,
+   SQLite, Postgres; `wvlet flow session show` displays them). Output is loaded with the
+   declared column types rather than inferred ones, and decimal inputs are handed to functions
+   as doubles, because JSON rows carry decimals as strings.
 3. Input rows are streamed through one process per query, not one process per row; scalar
    TS functions are called per row inside the harness.
 
-In flows this rides everything already there: the stage is a normal stage, so `retry`,
-`timeout` (process killed on cancel), `heartbeat` (ticked per batch), materialization, and
-`session resume` need no special casing.
+In flows this rides everything already there: the stage is a normal stage, so `retries`,
+`timeout` (the running process is registered as the attempt's cancellable handle and
+killed), `heartbeat` (ticked every second while a function runs), materialization, and
+`session resume` need no special casing. The boundary currently requires DuckDB as the
+engine receiving the rows (the same limit as cross-connector staging).
 
 Non-zero exit or a thrown exception fails the attempt with the stderr tail in the message.
 
@@ -162,16 +173,17 @@ naturally produce. Contract:
 
 ```scala
 trait FunctionProvider:            // registered in META-INF/services
-  def functions: Seq[NativeFunction]
-trait NativeFunction { def name: String }
-trait ScalarFunction extends NativeFunction { def eval(args: Seq[Any]): Any }
-trait TableFunction  extends NativeFunction {
+  def functions: Seq[ExternalFunction]
+trait ExternalFunction { def name: String }          // in wvlet-lang, package wvlet.lang.ext
+trait ScalarFunction extends ExternalFunction { def eval(args: Seq[Any]): Any }
+trait TableFunction  extends ExternalFunction {
   def apply(args: JSONObject, input: Iterator[JSONObject]): JSONObject }   // result object
 ```
 
 Discovered with `ServiceLoader` (the `ActivationSink` pattern) from the application
-classpath plus jars on the plugin path (`WVLET_PLUGIN_PATH` / `--plugin-dir`, child
-classloader). Built-ins (`ulid_string`) move to the same interface.
+classpath plus jars in the plugin folders: `<workdir>/plugins` by convention, plus the
+directories in `WVLET_PLUGIN_PATH` (child classloader). A name provided twice is an error,
+never first-wins. The compile-time built-in `ulid_string` is left as it is.
 
 **TypeScript / JavaScript.** A module on the plugin path exports functions by name:
 
@@ -208,31 +220,29 @@ which this design leaves room for by keeping every implementation behind the sam
 (`ExternalApply` → implementation → result object). Compile is always side-effect free, so
 the LSP and playground never execute anything.
 
-### 6. Delivery plan
+### 6. Delivery (single PR)
 
-This is one feature but two PRs, so each stays reviewable:
+- Lang: `ExternalApply` plan node; resolution of external `def`s in pipe (`PartialQueryApply`)
+  and `from f()` (`TableFunctionCall`) positions with argument binding; SQL generation guards
+  so external code never leaks into SQL text; `wvlet.lang.ext` SPI traits; status codes
+  `FUNCTION_NOT_FOUND` and `EXTERNAL_FUNCTION_FAILED`.
+- Runner (JVM): `ExternalFunctionRegistry` (ServiceLoader + plugin folders + Node export
+  listing), `ExternalProcess`, `ExternalFunctionExecutor` (result-object handling, typed load,
+  scalar join-back), `ExternalFunctionLowering`, the Node host `wvlet-udf-host.mjs`, hooks in
+  `QueryExecutor.executeQuery` and `FlowExecutor.materializeStage`, stage metadata in the run
+  record and all three run stores, `flow session show` output.
+- Specs and tests: `spec/basic/external-function.wv`, `spec/basic/flow-external-function.wv`,
+  three `spec/neg` cases, and `ExternalFunctionTest` (JVM provider through the real
+  ServiceLoader path, JavaScript and TypeScript modules, scalar lowering incl. nesting, error
+  paths, flow metadata, stage timeout killing a running function).
+- Docs: `website/docs/syntax/custom-functions.md`, linked from `stdlib.md` and `flow.md`.
 
-**PR 1 (this cycle): registry, declarations, table functions.**
-- Parser: `sh"..."` def body; plan node `ExternalApply`.
-- Function registry (`NativeFunction` → registry with args and row streaming),
-  `FunctionProvider` SPI + ServiceLoader + plugin path, Node harness, `sh` runner.
-- Typer/FunctionInliner: external-def resolution in pipe and `from f()` positions; scalar
-  external calls in expressions are a compile error with a hint (until PR 2).
-- Runner: `ExternalApply` boundary in `QueryExecutor` and `FlowExecutor.materializeStage`,
-  result-object handling (`rows` / `rows_path` / one-row object, metadata to run store),
-  process lifecycle, heartbeat, stderr surfacing.
-- Specs: `spec/basic/external-function.wv` (portable `sh` commands, a `node` table
-  function), negatives (unknown function, scalar-position use), a flow spec with `test` on a
-  stage fed by an external function; an in-repo test `FunctionProvider`.
-- Docs: `website/docs/syntax/custom-functions.md` (declaration, result object, JVM,
-  TypeScript, shell, trust model) linked from `stdlib.md` and `flow.md`.
-
-**PR 2: scalar functions in expressions.** `ExternalFunctionLowering` (section 3, step 1),
-constant folding, scalar TS/JVM examples, specs for Project/Filter/aggregate inputs/nesting.
-
-Follow-ups: `@wvlet/udf` typed helper, `agent()` as a table function, container-based
-execution engine for isolation, execution on the Native/Node CLIs (`wvc`, `@wvlet/cli`),
-inline `{ ... }` return types on `def`, typed access to result metadata from queries.
+Follow-ups: `--plugin-dir` CLI flag and a profile `plugins:` key, `@wvlet/udf` typed helper,
+`agent()` as a table function, container-based execution engine for isolation, non-DuckDB
+result engines (DuckDB handoff), execution on the Native/Node CLIs (`wvc`, `@wvlet/cli`),
+inline `{ ... }` return types on `def`, `${...}` interpolation in triple-quoted strings,
+batching several scalar calls of one operator into one round trip, constant folding of
+literal-only scalar calls, typed access to result metadata from queries.
 
 ## Alternatives and Why Not?
 
@@ -258,9 +268,10 @@ inline `{ ... }` return types on `def`, typed access to result metadata from que
 - **A flow-only `FlowOp`.** Would make custom code flow-only; in the relation algebra it works
   in ad-hoc queries, `test` statements, and models, and flows inherit it.
 
-## Open decisions
+## Decisions taken in review
 
-1. Plugin path configuration: `WVLET_PLUGIN_PATH` + `--plugin-dir` (proposed), plus a
-   `plugins: [...]` list in the profile? Proposed: both env/flag now, profile key later.
-2. Name collisions: two plugins exporting the same function name is an error at resolution
-   time (proposed), rather than first-wins.
+- Single result object (metadata plus optional rows) instead of a row iterator as the return
+  value of table functions.
+- No `--allow-shell` gate; isolation is deferred to the container-based execution engine.
+- `sh"..."` as the shell body prefix; no operator keyword for invocation.
+- Scalar-in-expression support ships in the same PR as table functions.

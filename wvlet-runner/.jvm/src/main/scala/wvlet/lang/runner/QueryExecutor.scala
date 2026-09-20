@@ -649,13 +649,16 @@ class QueryExecutor(
     finally
       // Staged source tables and function results are per-query scratch space; drop them so
       // persistent engine databases do not accumulate them
-      scratchTables.result().foreach { staging =>
-        try
-          activeDBConnector.execute(s"""drop table if exists "${staging}"""")
-        catch
-          case scala.util.control.NonFatal(e) =>
-            debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
-      }
+      scratchTables
+        .result()
+        .foreach { staging =>
+          try
+            activeDBConnector.execute(s"""drop table if exists "${staging}"""")
+          catch
+            case scala.util.control.NonFatal(e) =>
+              debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
+        }
+    end try
   end executeQuery
 
   private def executeQueryPlan(plan: LogicalPlan)(using context: Context): QueryResult =

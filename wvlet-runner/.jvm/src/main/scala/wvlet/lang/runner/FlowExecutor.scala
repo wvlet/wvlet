@@ -525,8 +525,10 @@ class FlowExecutor(
 
     // Metadata returned by the external functions of each stage, by function name. Written by
     // the stage worker threads and read when the run record is persisted
-    val stageMetadata =
-      java.util.concurrent.ConcurrentHashMap[String, Seq[(String, JSON.JSONObject)]]()
+    val stageMetadata = java
+      .util
+      .concurrent
+      .ConcurrentHashMap[String, Seq[(String, JSON.JSONObject)]]()
 
     val runBody: (FlowLowering.LoweredStage, String, (String, Int)) => Unit =
       stageRunner match
@@ -608,6 +610,8 @@ class FlowExecutor(
                     Seq(function -> meta),
                     (recorded, added) => recorded.filterNot(_._1 == function) ++ added
                   )
+              ,
+              heartbeat = () => beat(attemptKey)
             )
             // Deliver the materialized output to activation sinks. A missing sink logs the
             // delivery instead of failing (local stub); a sink exception fails the attempt
@@ -1276,7 +1280,8 @@ class FlowExecutor(
       routeFilters: Map[(String, String), Expression],
       registerStatement: CancellableStatement => Unit,
       deregisterStatement: () => Unit,
-      onFunctionMetadata: (String, JSON.JSONObject) => Unit
+      onFunctionMetadata: (String, JSON.JSONObject) => Unit,
+      heartbeat: () => Unit
   )(using ctx: Context): Unit =
     val body = ls
       .body
@@ -1316,7 +1321,8 @@ class FlowExecutor(
           engineName,
           onMetadata = onFunctionMetadata,
           register = registerStatement,
-          deregister = deregisterStatement
+          deregister = deregisterStatement,
+          heartbeat = heartbeat
         )
       catch
         case NonFatal(e) =>
@@ -1349,8 +1355,8 @@ class FlowExecutor(
 
   end materializeStage
 
-  private def dropStagingTables(stageConnector: DBConnector, tables: Iterable[String]): Unit = tables
-    .foreach { staging =>
+  private def dropStagingTables(stageConnector: DBConnector, tables: Iterable[String]): Unit =
+    tables.foreach { staging =>
       try
         stageConnector.execute(s"""drop table if exists "${staging}"""")
       catch

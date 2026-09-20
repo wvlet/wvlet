@@ -24,8 +24,8 @@ trait ExternalFunction:
   def name: String
 
 /**
-  * A scalar function: evaluated once per input row. Arguments arrive in declaration order as
-  * plain values (String, Long, Double, Boolean, or null), and the result is converted to JSON
+  * A scalar function: evaluated once per input row. Arguments arrive in declaration order as plain
+  * values (String, Long, Double, Boolean, or null), and the result is converted to JSON
   */
 trait ScalarFunction extends ExternalFunction:
   def eval(args: Seq[Any]): Any

@@ -482,7 +482,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         throw StatusCode
           .NOT_IMPLEMENTED
           .newException(
-            s"External function '${x.functionName.name}' cannot be compiled to SQL; run the query with `wvlet run` or the REPL so the function can be executed",
+            s"External function '${x
+                .functionName
+                .name}' cannot be compiled to SQL; run the query with `wvlet run` or the REPL so the function can be executed",
             x.sourceLocation(using ctx)
           )
       case q: WithQuery =>

@@ -31,7 +31,9 @@ import scala.collection.mutable
   * by line to `onStderr`. A non-zero exit code fails with the tail of stderr in the message.
   */
 object ExternalProcess extends LogSupport:
-  private val stderrTailLines = 20
+  private val stderrTailLines         = 20
+  private val heartbeatRows           = 10000L
+  private val heartbeatIntervalMillis = 1000L
 
   def run[U](
       label: String,
@@ -41,7 +43,8 @@ object ExternalProcess extends LogSupport:
       input: Iterator[String],
       onStderr: String => Unit,
       register: CancellableStatement => Unit,
-      deregister: () => Unit
+      deregister: () => Unit,
+      heartbeat: () => Unit = () => ()
   )(body: Path => U): U =
     val stdoutFile = Files.createTempFile("wv_fn_out_", ".json")
     try
@@ -49,7 +52,8 @@ object ExternalProcess extends LogSupport:
       pb.directory(workDir)
       env.foreach((k, v) => pb.environment().put(k, v))
       val process =
-        try pb.start()
+        try
+          pb.start()
         catch
           case e: IOException =>
             throw StatusCode
@@ -61,41 +65,53 @@ object ExternalProcess extends LogSupport:
           override def cancel(): Unit = process.destroyForcibly()
       )
       val stderrTail = mutable.Queue.empty[String]
-      val stdoutPump = daemon(s"${label}-stdout") {
-        Files.copy(process.getInputStream, stdoutFile, StandardCopyOption.REPLACE_EXISTING)
-      }
-      val stderrPump = daemon(s"${label}-stderr") {
-        scala
-          .io
-          .Source
-          .fromInputStream(process.getErrorStream, "UTF-8")
-          .getLines()
-          .foreach { line =>
-            stderrTail.synchronized {
-              stderrTail.enqueue(line)
-              if stderrTail.size > stderrTailLines then
-                stderrTail.dequeue()
+      val stdoutPump =
+        daemon(s"${label}-stdout") {
+          Files.copy(process.getInputStream, stdoutFile, StandardCopyOption.REPLACE_EXISTING)
+        }
+      val stderrPump =
+        daemon(s"${label}-stderr") {
+          scala
+            .io
+            .Source
+            .fromInputStream(process.getErrorStream, "UTF-8")
+            .getLines()
+            .foreach { line =>
+              stderrTail.synchronized {
+                stderrTail.enqueue(line)
+                if stderrTail.size > stderrTailLines then
+                  stderrTail.dequeue()
+              }
+              onStderr(line)
             }
-            onStderr(line)
-          }
-      }
+        }
       try
         // Feed the rows on the calling thread: the iterator is usually backed by an open
         // database cursor that must not be shared across threads
         try
           val out = process.outputWriter(StandardCharsets.UTF_8)
           try
+            var written = 0L
             input.foreach { row =>
               out.write(row)
               out.write('\n')
+              written += 1
+              if written % heartbeatRows == 0 then
+                heartbeat()
             }
-          finally out.close()
+          finally
+            out.close()
         catch
           case _: IOException =>
           // The function exited (or closed stdin) without reading all input; its exit code
           // below decides whether that is a failure
 
-        val exitCode = process.waitFor()
+        // Report liveness while the function works, so a stage `heartbeat:` watchdog does not
+        // mistake a long-running function for a stalled one
+        while !process.waitFor(heartbeatIntervalMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
+        do
+          heartbeat()
+        val exitCode = process.exitValue()
         stdoutPump.join()
         stderrPump.join()
         if exitCode != 0 then
@@ -129,7 +145,8 @@ object ExternalProcess extends LogSupport:
   private def daemon(name: String)(body: => Unit): Thread =
     val t = Thread(
       () =>
-        try body
+        try
+          body
         catch
           case e: IOException =>
             debug(s"${name}: ${e.getMessage}")

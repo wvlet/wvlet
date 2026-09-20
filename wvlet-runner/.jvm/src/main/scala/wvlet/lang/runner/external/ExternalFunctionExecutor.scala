@@ -15,6 +15,7 @@ package wvlet.lang.runner.external
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.connector.CancellableStatement
@@ -63,7 +64,8 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
       engineName: String,
       onMetadata: (String, JSONObject) => Unit = (_, _) => (),
       register: CancellableStatement => Unit = _ => (),
-      deregister: () => Unit = () => ()
+      deregister: () => Unit = () => (),
+      heartbeat: () => Unit = () => ()
   )(using ctx: Context): (Relation, List[String]) =
     val tables  = List.newBuilder[String]
     val lowered = ExternalFunctionLowering.lower(relation, registry)
@@ -71,7 +73,7 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
     // scan of a materialized table
     val rewritten = lowered.transformUp { case x: ExternalApply =>
       val table = s"__wv_fn_${x.functionName.name}_${ULID.newULIDString.toLowerCase}"
-      run(x, engine, engineName, table, onMetadata, register, deregister)
+      run(x, engine, engineName, table, onMetadata, register, deregister, heartbeat)
       tables += table
       val ref = TableRef(DoubleQuotedIdentifier(table, x.span), x.span)
       // Keep the declared schema on the scan so operators deriving their select items from
@@ -88,13 +90,15 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
       table: String,
       onMetadata: (String, JSONObject) => Unit,
       register: CancellableStatement => Unit,
-      deregister: () => Unit
+      deregister: () => Unit,
+      heartbeat: () => Unit
   )(using ctx: Context): Unit =
     val name = x.functionName.name
     val args = JSONObject(
       x.args.map(a => a.name.map(_.name).getOrElse("") -> LiteralArgs.toJson(name, a.value))
     )
-    if engine.dbType != wvlet.lang.compiler.DBType.DuckDB then
+    // The generic (no-profile) engine is backed by DuckDB as well
+    if engine.dbType != DBType.DuckDB && engine.dbType != DBType.Generic then
       throw StatusCode
         .NOT_IMPLEMENTED
         .newException(
@@ -104,7 +108,7 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
     val spool = Files.createTempFile("wv_fn_rows_", ".jsonl")
     try
       def invoke(input: Iterator[String]): Long =
-        val (rows, meta) = call(x, args, input, register, deregister)
+        val (rows, meta) = call(x, args, input, register, deregister, heartbeat)
         meta.foreach(m => onMetadata(name, m))
         writeRows(spool, rows)
 
@@ -117,7 +121,10 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
             SourceTableStaging.loadDeclaredJsonFile(engine, table, spool, x.schema.fields)
             n
           case (child, None) =>
-            val sql = GenSQL.generateSQLFromRelation(child, addHeader = false).sql
+            val sql = numericInput(
+              GenSQL.generateSQLFromRelation(child, addHeader = false).sql,
+              child.relationType.fields
+            )
             debug(s"Input of external function ${name}:\n${sql}")
             val n = engine.streamJsonRows(sql)(invoke)
             SourceTableStaging.loadDeclaredJsonFile(engine, table, spool, x.schema.fields)
@@ -125,26 +132,43 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
           case (child, Some(out)) =>
             // Scalar map: only a row id and the argument columns leave the engine; the result
             // is joined back, so the other columns keep their exact values and types
-            val sql       = GenSQL.generateSQLFromRelation(child, addHeader = false).sql
-            val inTable   = s"${table}_in"
-            val outTable  = s"${table}_out"
-            val argList   = x.argColumns.map(c => s""""${c}"""")
+            val sql      = GenSQL.generateSQLFromRelation(child, addHeader = false).sql
+            val inTable  = s"${table}_in"
+            val outTable = s"${table}_out"
+            // Only the shipped argument columns are converted; the rest never leave the engine
+            val decimalArgs =
+              child
+                .relationType
+                .fields
+                .collect {
+                  case f if f.dataType.isInstanceOf[DataType.DecimalType] =>
+                    f.name.name
+                }
+                .toSet
+            val argList = x
+              .argColumns
+              .map { c =>
+                if decimalArgs.contains(c) then
+                  s"""cast("${c}" as double) as "${c}""""
+                else
+                  s""""${c}""""
+              }
             val helperIds = (rowIdColumn :: x.argColumns).map(c => s""""${c}"""").mkString(", ")
             try
               engine.execute(
                 s"""create or replace table "${inTable}" as select row_number() over () as "${rowIdColumn}", * from (${sql})"""
               )
-              val n = engine.streamJsonRows(
-                s"""select ${(s""""${rowIdColumn}"""" :: argList).mkString(", ")} from "${inTable}""""
-              )(invoke)
+              val n =
+                engine.streamJsonRows(
+                  s"""select ${(s""""${rowIdColumn}"""" :: argList).mkString(
+                      ", "
+                    )} from "${inTable}""""
+                )(invoke)
               SourceTableStaging.loadDeclaredJsonFile(
                 engine,
                 outTable,
                 spool,
-                Seq(
-                  NamedType(Name.termName(rowIdColumn), DataType.LongType),
-                  x.schema.fields.last
-                )
+                Seq(NamedType(Name.termName(rowIdColumn), DataType.LongType), x.schema.fields.last)
               )
               engine.execute(
                 s"""create or replace table "${table}" as select i.* exclude (${helperIds}), o."${out}" from "${inTable}" i join "${outTable}" o using ("${rowIdColumn}") order by "${rowIdColumn}""""
@@ -166,9 +190,10 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
       args: JSONObject,
       input: Iterator[String],
       register: CancellableStatement => Unit,
-      deregister: () => Unit
+      deregister: () => Unit,
+      heartbeat: () => Unit
   ): (Iterator[String], Option[JSONObject]) =
-    val name                                                        = x.functionName.name
+    val name = x.functionName.name
     def process[U](command: Seq[String], env: Map[String, String])(body: Path => U): U =
       ExternalProcess.run(
         label = s"function '${name}'",
@@ -178,7 +203,8 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
         input = input,
         onStderr = line => workEnv.info(s"[${name}] ${line}"),
         register = register,
-        deregister = deregister
+        deregister = deregister,
+        heartbeat = heartbeat
       )(body)
 
     if x.isShell then
@@ -216,22 +242,24 @@ class ExternalFunctionExecutor(workEnv: WorkEnv, registry: ExternalFunctionRegis
             val row    = parseRow(name, line)
             val values = x.argColumns.map(c => row.get(c).map(toScala).orNull)
             val result = toJson(f.eval(values))
-            JSONObject(row.v.filterNot((k, _) => x.argColumns.contains(k)) :+ (out -> result)).toJSON
+            JSONObject(row.v.filterNot((k, _) => x.argColumns.contains(k)) :+ (out -> result))
+              .toJSON
           }
           // Evaluate eagerly: the input cursor closes when this call returns
           (rows.toList.iterator, None)
         case (ExternalFunctionImpl.NodeModule(_, module), None) =>
-          process(registry.nodeCommandLine("table", Seq(module), Some(name)), registry.nodeEnv)(out =>
-            parseResult(name, Files.readString(out), allowJsonLines = false)
+          process(registry.nodeCommandLine("table", Seq(module), Some(name)), registry.nodeEnv)(
+            out => parseResult(name, Files.readString(out), allowJsonLines = false)
           )
         case (ExternalFunctionImpl.NodeModule(_, module), Some(out)) =>
           process(
             registry.nodeCommandLine("scalar", Seq(module), Some(name)),
-            registry.nodeEnv ++ Map(
-              "WVLET_ARG_COLUMNS" ->
-                JSONArray(x.argColumns.map(JSONString(_)).toIndexedSeq).toJSON,
-              "WVLET_OUTPUT_COLUMN" -> out
-            )
+            registry.nodeEnv ++
+              Map(
+                "WVLET_ARG_COLUMNS" ->
+                  JSONArray(x.argColumns.map(JSONString(_)).toIndexedSeq).toJSON,
+                "WVLET_OUTPUT_COLUMN" -> out
+              )
           )(file => (nonEmptyLines(Files.readString(file)).iterator, None))
         case (ExternalFunctionImpl.Jvm(f), mode) =>
           val expected =
@@ -257,7 +285,22 @@ object ExternalFunctionExecutor:
   // Row id that joins scalar function results back to their input rows
   private val rowIdColumn = "__wv_rid"
 
-  private def nonEmptyLines(s: String): List[String] = s.linesIterator.filter(_.trim.nonEmpty).toList
+  /**
+    * JSON rows carry decimals as strings to keep their precision, which functions would then have
+    * to parse. Hand decimal columns over as doubles instead, so numbers arrive as numbers
+    */
+  private def numericInput(sql: String, fields: Seq[NamedType]): String =
+    val decimals = fields.collect {
+      case f if f.dataType.isInstanceOf[DataType.DecimalType] =>
+        s"""cast("${f.name.name}" as double) as "${f.name.name}""""
+    }
+    if decimals.isEmpty then
+      sql
+    else
+      s"select * replace (${decimals.mkString(", ")}) from (${sql})"
+
+  private def nonEmptyLines(s: String): List[String] =
+    s.linesIterator.filter(_.trim.nonEmpty).toList
 
   private def writeRows(file: Path, rows: Iterator[String]): Long =
     var count = 0L
@@ -288,9 +331,10 @@ object ExternalFunctionExecutor:
       stdout: String,
       allowJsonLines: Boolean
   ): (Iterator[String], Option[JSONObject]) =
-    val lines = nonEmptyLines(stdout)
+    val lines                        = nonEmptyLines(stdout)
     def isObject(s: String): Boolean =
-      try JSON.parse(s).isInstanceOf[JSONObject]
+      try
+        JSON.parse(s).isInstanceOf[JSONObject]
       catch
         case scala.util.control.NonFatal(_) =>
           false
@@ -301,14 +345,15 @@ object ExternalFunctionExecutor:
       (lines.iterator, None)
     else
       val parsed =
-        try JSON.parse(stdout)
+        try
+          JSON.parse(stdout)
         catch
           case scala.util.control.NonFatal(e) =>
             throw StatusCode
               .EXTERNAL_FUNCTION_FAILED
               .newException(
-                s"Function '${name}' did not return a JSON result object (${e
-                    .getMessage}): ${stdout.take(200)}",
+                s"Function '${name}' did not return a JSON result object (${e.getMessage}): ${stdout
+                    .take(200)}",
                 e
               )
       parsed match
@@ -320,6 +365,8 @@ object ExternalFunctionExecutor:
             .newException(
               s"Function '${name}' must return a JSON object, got: ${other.toJSON.take(200)}"
             )
+
+  end parseResult
 
   /** Split a result object into its rows and its metadata */
   private[external] def toRows(
@@ -337,7 +384,9 @@ object ExternalFunctionExecutor:
         throw StatusCode
           .EXTERNAL_FUNCTION_FAILED
           .newException(
-            s"Function '${name}': 'rows' must be an array of objects, got: ${other.toJSON.take(200)}"
+            s"Function '${name}': 'rows' must be an array of objects, got: ${other
+                .toJSON
+                .take(200)}"
           )
       case (None, Some(JSONString(path))) =>
         (nonEmptyLines(Files.readString(Path.of(path))).iterator, metadata)
@@ -363,7 +412,9 @@ object ExternalFunctionExecutor:
               throw StatusCode
                 .INVALID_ARGUMENT
                 .newException(
-                  s"Shell function '${x.functionName.name}' can only interpolate its parameters, found: ${other}"
+                  s"Shell function '${x
+                      .functionName
+                      .name}' can only interpolate its parameters, found: ${other}"
                 )
           }
           .mkString

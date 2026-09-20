@@ -707,6 +707,8 @@ object FunctionInliner extends ContextLogSupport:
           )
         )
 
+  end resolveExternalApply
+
   /**
     * Resolve the declared return type of an external function into a relation type. Named types
     * (`type scored = {...}`) arrive from the parser as opaque generic types and are looked up here
@@ -748,9 +750,7 @@ object FunctionInliner extends ContextLogSupport:
         false
     }
     if positional.size > params.size then
-      fail(
-        s"Function '${fname}' expects ${params.size} arguments, but ${args.size} were provided"
-      )
+      fail(s"Function '${fname}' expects ${params.size} arguments, but ${args.size} were provided")
     val namedMap: Map[String, Expression] =
       named
         .collect { case f: FunctionArg =>

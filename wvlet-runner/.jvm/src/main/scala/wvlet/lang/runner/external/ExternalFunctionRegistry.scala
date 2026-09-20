@@ -64,25 +64,27 @@ class ExternalFunctionRegistry(
     .sortBy(_.getPath)
 
   private lazy val jvmFunctions: Map[String, ExternalFunction] =
-    val parent = Thread.currentThread().getContextClassLoader match
-      case null =>
-        getClass.getClassLoader
-      case cl =>
-        cl
+    val parent =
+      Thread.currentThread().getContextClassLoader match
+        case null =>
+          getClass.getClassLoader
+        case cl =>
+          cl
     val jars   = pluginFiles(Set(".jar"))
     val loader =
       if jars.isEmpty then
         parent
       else
         URLClassLoader(jars.map(_.toURI.toURL).toArray, parent)
-    val provided = java
-      .util
-      .ServiceLoader
-      .load(classOf[FunctionProvider], loader)
-      .iterator()
-      .asScala
-      .flatMap(_.functions)
-      .toList
+    val provided =
+      java
+        .util
+        .ServiceLoader
+        .load(classOf[FunctionProvider], loader)
+        .iterator()
+        .asScala
+        .flatMap(_.functions)
+        .toList
     uniqueByName((extraFunctions ++ provided).map(f => f.name -> f), "JVM function providers")
 
   lazy val moduleFiles: Seq[File] = pluginFiles(moduleExtensions)
@@ -92,16 +94,17 @@ class ExternalFunctionRegistry(
     if moduleFiles.isEmpty then
       Map.empty
     else
-      val listing = ExternalProcess.run(
-        label = "plugin module listing",
-        command = nodeCommandLine("list", moduleFiles),
-        env = nodeEnv,
-        workDir = File("."),
-        input = Iterator.empty,
-        onStderr = line => debug(line),
-        register = _ => (),
-        deregister = () => ()
-      )(out => Files.readString(out))
+      val listing =
+        ExternalProcess.run(
+          label = "plugin module listing",
+          command = nodeCommandLine("list", moduleFiles),
+          env = nodeEnv,
+          workDir = File("."),
+          input = Iterator.empty,
+          onStderr = line => debug(line),
+          register = _ => (),
+          deregister = () => ()
+        )(out => Files.readString(out))
       JSON.parse(listing) match
         case o: JSONObject =>
           o.v
@@ -135,8 +138,11 @@ class ExternalFunctionRegistry(
   def isEmpty: Boolean = jvmFunctions.isEmpty && moduleFiles.isEmpty
 
   /** The command line running the Node host in the given mode over the given modules */
-  def nodeCommandLine(mode: String, modules: Seq[File], functionName: Option[String] = None)
-      : Seq[String] =
+  def nodeCommandLine(
+      mode: String,
+      modules: Seq[File],
+      functionName: Option[String] = None
+  ): Seq[String] =
     val stripTypes =
       if modules.exists(m => m.getName.endsWith(".ts") || m.getName.endsWith(".mts")) then
         Seq("--experimental-strip-types")
@@ -170,16 +176,15 @@ object ExternalFunctionRegistry:
       .map(File(_))
     ExternalFunctionRegistry(File(workEnv.path, defaultPluginDirName) +: fromEnv)
 
-  private def uniqueByName[A](entries: Seq[(String, A)], source: String): Map[String, A] =
-    entries
-      .groupBy(_._1)
-      .map { (name, defs) =>
-        if defs.size > 1 then
-          throw StatusCode
-            .INVALID_ARGUMENT
-            .newException(s"Function '${name}' is provided ${defs.size} times by ${source}")
-        name -> defs.head._2
-      }
+  private def uniqueByName[A](entries: Seq[(String, A)], source: String): Map[String, A] = entries
+    .groupBy(_._1)
+    .map { (name, defs) =>
+      if defs.size > 1 then
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"Function '${name}' is provided ${defs.size} times by ${source}")
+      name -> defs.head._2
+    }
 
   // The Node host ships as a classpath resource; node needs it as a file
   private lazy val nodeHostScript: File =

@@ -86,8 +86,8 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
       }
     List("waiting_since" -> "integer", "last_poll_at" -> "integer", "metadata" -> "text").foreach {
       (column, sqlType) =>
-      if !existingStageColumns.contains(column) then
-        stmt.execute(s"alter table stages add column ${column} ${sqlType}")
+        if !existingStageColumns.contains(column) then
+          stmt.execute(s"alter table stages add column ${column} ${sqlType}")
     }
   }
 

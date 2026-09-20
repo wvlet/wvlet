@@ -18,8 +18,8 @@ import wvlet.lang.model.expr.*
 import wvlet.uni.json.JSON
 
 /**
-  * Converts the literal argument expressions of a tool call or an external function call into
-  * JSON values
+  * Converts the literal argument expressions of a tool call or an external function call into JSON
+  * values
   */
 object LiteralArgs:
   /**
@@ -72,5 +72,8 @@ object LiteralArgs:
         JSON.JSONString(l.stringValue)
       case other =>
         notLiteral(other)
+    end match
+
+  end toJson
 
 end LiteralArgs

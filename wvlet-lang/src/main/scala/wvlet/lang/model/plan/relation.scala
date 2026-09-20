@@ -437,8 +437,8 @@ case class PartialQueryApply(
   * @param args
   *   Arguments bound to the def's parameter names, in declaration order
   * @param body
-  *   The def body: a NativeExpression (resolved by name from the function registry) or an
-  *   `sh"..."` InterpolatedString (a shell command)
+  *   The def body: a NativeExpression (resolved by name from the function registry) or an `sh"..."`
+  *   InterpolatedString (a shell command)
   * @param schema
   *   The declared output relation type
   */
@@ -452,7 +452,8 @@ case class ExternalApply(
     outputColumn: Option[String] = None,
     argColumns: List[String] = Nil
 ) extends UnaryRelation:
-  override def toString: String = s"ExternalApply[${functionName.name}(${args.mkString(", ")})](${child})"
+  override def toString: String =
+    s"ExternalApply[${functionName.name}(${args.mkString(", ")})](${child})"
 
   override def relationType: RelationType = schema
 

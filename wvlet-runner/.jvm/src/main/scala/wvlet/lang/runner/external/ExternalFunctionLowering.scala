@@ -29,8 +29,8 @@ import wvlet.uni.log.LogSupport
 
 /**
   * Lowers calls of code-backed scalar functions (`def f(x: string): string = native` with an
-  * implementation in the function registry) that appear inside expressions. Engines cannot call
-  * out to user code, so each call is moved below the operator that uses it:
+  * implementation in the function registry) that appear inside expressions. Engines cannot call out
+  * to user code, so each call is moved below the operator that uses it:
   *
   * {{{
   *   Filter[geocode(address) != ''](C)
@@ -51,7 +51,7 @@ object ExternalFunctionLowering extends LogSupport:
     if registry.isEmpty then
       relation
     else
-      var counter = 0
+      var counter       = 0
       def nextId(): Int =
         counter += 1
         counter
@@ -73,13 +73,12 @@ object ExternalFunctionLowering extends LogSupport:
           throw StatusCode
             .UNEXPECTED_STATE
             .newException("External function lowering did not converge")
-        current =
-          current
-            .transformUp {
-              case op: UnaryRelation if containsCall(op, registry) =>
-                lowerOperator(op, registry, () => nextId())
-            }
-            .asInstanceOf[Relation]
+        current = current
+          .transformUp {
+            case op: UnaryRelation if containsCall(op, registry) =>
+              lowerOperator(op, registry, () => nextId())
+          }
+          .asInstanceOf[Relation]
       current
 
   // A scalar external call whose arguments contain no further external call (innermost first)
@@ -88,8 +87,7 @@ object ExternalFunctionLowering extends LogSupport:
   ): Boolean =
     e match
       case fa: FunctionApply if fa.window.isEmpty =>
-        scalarFunction(fa, registry).isDefined &&
-        !fa.args.exists(a => containsCall(a, registry))
+        scalarFunction(fa, registry).isDefined && !fa.args.exists(a => containsCall(a, registry))
       case _ =>
         false
 
@@ -143,7 +141,7 @@ object ExternalFunctionLowering extends LogSupport:
   )(using ctx: Context): Relation =
     op match
       case _: Project | _: Filter | _: AddColumnsToRelation =>
-      case other =>
+      case other                                            =>
         throw StatusCode
           .NOT_IMPLEMENTED
           .newException(

@@ -43,11 +43,11 @@ import java.nio.file.Path
 class TestFunctionProvider extends FunctionProvider:
   override def functions: Seq[ExternalFunction] = Seq(
     new ScalarFunction:
-      override def name: String                = "test_shout"
+      override def name: String              = "test_shout"
       override def eval(args: Seq[Any]): Any = s"${args.head.toString.toUpperCase}!"
     ,
     new TableFunction:
-      override def name: String                                                      = "test_repeat"
+      override def name: String                                                     = "test_repeat"
       override def apply(args: JSONObject, input: Iterator[JSONObject]): JSONObject =
         val times =
           args.get("times") match
@@ -168,16 +168,14 @@ class ExternalFunctionTest extends UniTest:
 
   test("run table and scalar functions exported by a JavaScript module") {
     requireNode(typescript = false)
-    val workEnv = newWorkDir(
-      "udf.mjs" ->
-        """export async function js_top(rows, args) {
+    val workEnv = newWorkDir("udf.mjs" -> """export async function js_top(rows, args) {
           |  const out = []
           |  for await (const r of rows) if (r.score >= args.threshold) out.push(r)
           |  return { rows: out, model: 'v3' }
           |}
           |export function js_len(s) { return s.length }
-          |""".stripMargin
-    )
+          |export function js_typeof(v) { return typeof v }
+          |""".stripMargin)
     run(
       """type scored = {
         |  id: int
@@ -185,6 +183,7 @@ class ExternalFunctionTest extends UniTest:
         |}
         |def js_top(threshold: double): scored = native
         |def js_len(s: string): long = native
+        |def js_typeof(v: any): string = native
         |
         |from [[1, 0.5], [2, 0.9]] as t(id, score)
         || js_top(0.8)
@@ -193,6 +192,11 @@ class ExternalFunctionTest extends UniTest:
         |from [[1, 'abc'], [2, 'de']] as t(id, name)
         |select id, js_len(name) as len
         |test _.rows should be [[1, 3], [2, 2]]
+        |
+        |-- Decimal columns reach the function as numbers, not as strings
+        |from [[1, 0.5]] as t(id, score)
+        |select js_typeof(score) as score_type, js_typeof(id) as id_type, score
+        |test _.rows should be [['number', 'number', 0.5]]
         |""".stripMargin,
       workEnv
     )
@@ -200,16 +204,13 @@ class ExternalFunctionTest extends UniTest:
 
   test("run a function exported by a TypeScript module") {
     requireNode(typescript = true)
-    val workEnv = newWorkDir(
-      "geo.ts" ->
-        """type Row = { id: number; city: string }
+    val workEnv = newWorkDir("geo.ts" -> """type Row = { id: number; city: string }
           |export async function ts_cities(rows: AsyncIterable<Row>, args: { suffix: string }) {
           |  const out: Row[] = []
           |  for await (const r of rows) out.push({ id: r.id, city: r.city + args.suffix })
           |  return { rows: out }
           |}
-          |""".stripMargin
-    )
+          |""".stripMargin)
     run(
       """type place = {
         |  id: int
@@ -275,8 +276,7 @@ class ExternalFunctionTest extends UniTest:
     val store    = FlowRunStore.ofType("sqlite", workEnv)
     try
       val compiler = Compiler(CompilerOptions(workEnv = workEnv))
-      val unit     = CompilationUnit.fromWvletString(
-        """type scored = {
+      val unit     = CompilationUnit.fromWvletString("""type scored = {
           |  id: int
           |  score: double
           |}
@@ -287,21 +287,21 @@ class ExternalFunctionTest extends UniTest:
           |  stage scored = from orders | rescore
           |  stage top = from scored | where score > 0.5
           |}
-          |""".stripMargin
-      )
+          |""".stripMargin)
       val ctx = compiler
         .compileSingleUnit(unit)
         .context
         .withCompilationUnit(unit)
         .newContext(Symbol.NoSymbol)
       var flow: Option[FlowDef] = None
-      unit.resolvedPlan.traverse { case f: FlowDef =>
-        flow = Some(f)
-      }
+      unit
+        .resolvedPlan
+        .traverse { case f: FlowDef =>
+          flow = Some(f)
+        }
       val connector = provider.getConnector(Profile.defaultDuckDBProfile)
-      val result    = FlowExecutor(connector, workEnv, registry = Some(store)).execute(flow.get)(using
-        ctx
-      )
+      val result    =
+        FlowExecutor(connector, workEnv, registry = Some(store)).execute(flow.get)(using ctx)
       result.isSuccess shouldBe true
       val top = result.stageResult("top").flatMap(_.table).get
       connector.runQuery(s"""select count(*) from "${top}"""") { rs =>
@@ -316,6 +316,49 @@ class ExternalFunctionTest extends UniTest:
     finally
       store.close()
       provider.close()
+    end try
+  }
+
+  test("stop a running function when its stage times out") {
+    val workEnv  = newWorkDir()
+    val provider = ConnectorProvider(workEnv)
+    try
+      val compiler = Compiler(CompilerOptions(workEnv = workEnv))
+      val unit     = CompilationUnit.fromWvletString("""type r = {
+          |  id: int
+          |}
+          |def hangs: r = sh"sleep 60"
+          |
+          |flow Slow = {
+          |  stage stuck with {
+          |    timeout: 1s
+          |    heartbeat: 5s
+          |  } = from hangs()
+          |  stage fallback if stuck.failed = from [[0]] as t(id)
+          |}
+          |""".stripMargin)
+      val ctx = compiler
+        .compileSingleUnit(unit)
+        .context
+        .withCompilationUnit(unit)
+        .newContext(Symbol.NoSymbol)
+      var flow: Option[FlowDef] = None
+      unit
+        .resolvedPlan
+        .traverse { case f: FlowDef =>
+          flow = Some(f)
+        }
+      val connector = provider.getConnector(Profile.defaultDuckDBProfile)
+      val started   = System.currentTimeMillis()
+      val result    = FlowExecutor(connector, workEnv).execute(flow.get)(using ctx)
+      val elapsed   = System.currentTimeMillis() - started
+      result.stageResult("stuck").map(_.state.stateName) shouldBe Some("failed")
+      result.stageResult("fallback").map(_.state.stateName) shouldBe Some("success")
+      // Far below the 60s the command would take if it were left running
+      (elapsed < 30000L) shouldBe true
+    finally
+      provider.close()
+    end try
   }
 
 end ExternalFunctionTest
