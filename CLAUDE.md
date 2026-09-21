@@ -313,8 +313,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 
 ## Design Records
 
-- `adr/2026-08-28-data-file-schema-inference-routing.md` — how `from '<file>'` picks JSONAnalyzer vs DuckDB for schema inference (`DataFilePath` classifier, remote paths and DuckDB-less platforms)
-- `adr/2026-09-20-for-loop-runtime-iteration.md` — why `for` loops iterate at run time with a per-iteration `Context` (not compile-time unrolling), and why loop variables bind with `scope.add`
+- Design decisions are recorded as ADRs under `adr/`; see `adr/README.md` for the index and format, and add new records there
 
 ## Memory
 - For creating temporary files, use target folder, which will be ignored in git
