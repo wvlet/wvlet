@@ -292,10 +292,16 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   // directly following a query). statements() drains it right after the enclosing statement
   private var pendingStatement: Option[LogicalPlan] = None
 
+  // The nesting depth of statement blocks (e.g. `for` loop bodies). Inside a block, a closing
+  // brace at statement head ends the statement list
+  private var statementBlockDepth: Int = 0
+
   def statements(): List[LogicalPlan] =
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.EOF =>
+        List.empty
+      case WvletToken.R_BRACE if statementBlockDepth > 0 =>
         List.empty
       case WvletToken.SEMICOLON =>
         consume(WvletToken.SEMICOLON)
@@ -951,6 +957,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         callToolStatement()
       case WvletToken.VAL =>
         valDef()
+      case WvletToken.FOR =>
+        forLoop()
       case WvletToken.SHOW =>
         showExpr()
       case WvletToken.EXECUTE =>
@@ -1886,6 +1894,34 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         scopes.result()
       case _ =>
         Nil
+
+  /**
+    * Statement repetition over an array value or the first column of a query result:
+    * {{{
+    *   for <identifier> in <array expression> { <statements> }
+    *   for <identifier> in (<query>) { <statements> }
+    * }}}
+    */
+  def forLoop(): ForLoop = node {
+    val t    = consume(WvletToken.FOR)
+    val name = identifierSingle()
+    consume(WvletToken.IN)
+    // `(<query>)` parses as a parenthesized sub-query expression: keep only the sub-query
+    def unwrap(e: Expression): Expression =
+      e match
+        case ParenthesizedExpression(child, _) =>
+          unwrap(child)
+        case other =>
+          other
+    val iterable = unwrap(expression())
+    consume(WvletToken.L_BRACE)
+    statementBlockDepth += 1
+    val body =
+      try statements()
+      finally statementBlockDepth -= 1
+    consume(WvletToken.R_BRACE)
+    ForLoop(Name.termName(name.leafName), iterable, body, spanFrom(t))
+  }
 
   def valDef(): ValDef = node {
     val t    = consume(WvletToken.VAL)

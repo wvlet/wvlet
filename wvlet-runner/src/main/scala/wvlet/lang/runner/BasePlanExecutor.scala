@@ -20,6 +20,11 @@ import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.SqlGenerator
 import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.transform.ExpressionEvaluator
+import wvlet.lang.model.DataType
+import wvlet.lang.model.expr.ArrayConstructor
+import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.SubQueryExpression
 import wvlet.lang.model.plan.*
 import wvlet.uni.log.LogSupport
 
@@ -134,6 +139,25 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
           )
           ctx.enter(v.symbol)
           QueryResult.empty
+        case ExecuteFor(loop, body) =>
+          val results = loopValues(loop).map { value =>
+            // Each iteration gets a fresh child context, so the loop variable and the vals
+            // defined in the body are scoped to the iteration
+            val iterCtx = ctx.newContext(loop.symbol)
+            val sym     = Symbol(ctx.global.newSymbolId, loop.span)
+            sym.tree = loop
+            sym.symbolInfo = ValSymbolInfo(
+              iterCtx.owner,
+              sym,
+              loop.variable,
+              value.dataType,
+              value,
+              ctx.compilationUnit
+            )
+            iterCtx.enter(sym)
+            process(body)(using iterCtx)
+          }
+          QueryResult.fromList(results)
         case ExecuteNothing =>
           report(QueryResult.empty)
 
@@ -154,6 +178,71 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
     // TODO: Output to REPL
     workEnv.info(result)
     QueryResult.empty
+
+  /**
+    * Evaluate the iterable of a for-loop to the literal values to bind, in iteration order: the
+    * elements of an array expression, or the first column of a query result
+    */
+  private def loopValues(loop: ForLoop)(using ctx: Context): List[Expression] =
+    def invalid(msg: String) = StatusCode
+      .INVALID_LOOP_ITERABLE
+      .newException(msg, loop.sourceLocation)
+
+    def arrayValues(e: Expression, depth: Int = 0): List[Expression] =
+      e match
+        case a: ArrayConstructor =>
+          a.values.map(v => ExpressionEvaluator.eval(v))
+        case i: Identifier if depth < 10 =>
+          // A reference to a val (or an enclosing loop variable) holding an array
+          ctx.findTermSymbolByName(i.leafName).map(_.symbolInfo) match
+            case Some(v: ValSymbolInfo) =>
+              arrayValues(v.expr, depth + 1)
+            case _ =>
+              throw invalid(s"for-loop iterable '${i.fullName}' is not an array value")
+        case other =>
+          throw invalid(
+            s"for-loop iterable must be an array value or a (query), but found: ${other.pp}"
+          )
+
+    val values =
+      loop.iterable match
+        case s: SubQueryExpression =>
+          executeQuery(s.query) match
+            case t: TableRows =>
+              if t.isTruncated then
+                throw StatusCode
+                  .LOOP_LIMIT_EXCEEDED
+                  .newException(
+                    s"for-loop query returned ${t
+                        .totalRows} rows, exceeding the result row limit ${t.rows.size}",
+                    loop.sourceLocation
+                  )
+              val elemType = t
+                .schema
+                .fields
+                .headOption
+                .map(_.dataType)
+                .getOrElse(DataType.UnknownType)
+              t.rows
+                .map(row => LoopValue.toLiteral(row.values.headOption.orNull, elemType, s.span))
+                .toList
+            case other =>
+              other.getError.foreach(e => throw e)
+              throw invalid(s"for-loop query returned no table result")
+        case other =>
+          arrayValues(other)
+
+    if values.size > BasePlanExecutor.maxLoopIterations then
+      throw StatusCode
+        .LOOP_LIMIT_EXCEEDED
+        .newException(
+          s"for-loop has ${values.size} iterations, exceeding the limit ${BasePlanExecutor
+              .maxLoopIterations}",
+          loop.sourceLocation
+        )
+    values
+
+  end loopValues
 
   protected def executeCommand(cmd: Command)(using context: Context): QueryResult =
     cmd match
@@ -222,3 +311,7 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
   end executeCommand
 
 end BasePlanExecutor
+
+object BasePlanExecutor:
+  /** Upper bound of for-loop iterations, guarding against unbounded engine queries */
+  val maxLoopIterations: Int = 10000

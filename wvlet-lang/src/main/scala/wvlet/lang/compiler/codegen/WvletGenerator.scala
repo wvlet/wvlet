@@ -39,24 +39,25 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         expr(other)
 
   override def render(l: LogicalPlan): Doc =
+    def concatStmts(lst: List[LogicalPlan]): Doc =
+      lst match
+        case Nil =>
+          empty
+        case head :: Nil =>
+          val d = toDoc(head)
+          d
+        case head :: tail =>
+          val d = toDoc(head)
+          head match
+            case q: Relation =>
+              (d + linebreak + ";" + linebreak) / concatStmts(tail)
+            case _ =>
+              d + linebreak + concatStmts(tail)
+    end concatStmts
+
     def toDoc(plan: LogicalPlan): Doc =
       plan match
         case p: PackageDef =>
-          def concatStmts(lst: List[LogicalPlan]): Doc =
-            lst match
-              case Nil =>
-                empty
-              case head :: Nil =>
-                val d = toDoc(head)
-                d
-              case head :: tail =>
-                val d = toDoc(head)
-                head match
-                  case q: Relation =>
-                    (d + linebreak + ";" + linebreak) / concatStmts(tail)
-                  case _ =>
-                    d + linebreak + concatStmts(tail)
-          end concatStmts
 
           code(p) {
             if p.name.isEmpty then
@@ -64,6 +65,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             else
               group(text("package") + ws + expr(p.name)(using InStatement)) + linebreak +
                 concatStmts(p.statements)
+          }
+        case f: ForLoop =>
+          code(f) {
+            group(wl("for", f.variable.name, "in", expr(f.iterable)(using InStatement))) + ws +
+              indentedBrace(concatStmts(f.body))
           }
         case d: DDL =>
           ddl(d)(using InStatement)

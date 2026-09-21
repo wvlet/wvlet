@@ -56,7 +56,7 @@ object GenSQL extends Phase("generate-sql"):
   ): String =
     val statements = List.newBuilder[String]
 
-    def loop(p: ExecutionPlan): Unit =
+    def loop(p: ExecutionPlan)(using ctx: Context): Unit =
       p match
         case ExecuteTasks(tasks) =>
           tasks.foreach(loop)
@@ -81,6 +81,29 @@ object GenSQL extends Phase("generate-sql"):
             ctx.compilationUnit
           )
           ctx.enter(v.symbol)
+        case ExecuteFor(f, body) =>
+          // Without an engine, only constant array iterables can be unrolled into SQL
+          f.iterable match
+            case a: ArrayConstructor =>
+              a.values
+                .foreach { v =>
+                  val value   = ExpressionEvaluator.eval(v)(using ctx)
+                  val iterCtx = ctx.newContext(f.symbol)
+                  val sym     = Symbol(ctx.global.newSymbolId, f.span)
+                  sym.tree = f
+                  sym.symbolInfo = ValSymbolInfo(
+                    iterCtx.owner,
+                    sym,
+                    f.variable,
+                    value.dataType,
+                    value,
+                    ctx.compilationUnit
+                  )
+                  iterCtx.enter(sym)
+                  loop(body)(using iterCtx)
+                }
+            case other =>
+              warn(s"Cannot generate SQL for a for-loop over a non-constant iterable: ${other.pp}")
         case cmd: ExecuteCommand =>
           cmd.execute match
             case ExecuteExpr(e, _) =>
@@ -293,8 +316,51 @@ object GenSQL extends Phase("generate-sql"):
 
   end appendToNewTableSQL
 
-  def generateSaveSQL(save: Save, context: Context): List[String] =
+  /**
+    * Evaluate a backquote-interpolated save target (e.g. save to s`tbl_${d}`) with the val and
+    * loop-variable bindings of the current context
+    */
+  private def bindSaveTarget(save: Save)(using ctx: Context): Save =
+    def bind(target: TableOrFileName): TableOrFileName =
+      target match
+        case b: BackquoteInterpolatedIdentifier =>
+          val boundParts = b
+            .parts
+            .map {
+              _.transformUpExpression { case i: Identifier =>
+                ctx.scope.lookupSymbol(Name.termName(i.leafName)).map(_.symbolInfo) match
+                  case Some(v: ValSymbolInfo) =>
+                    v.expr
+                  case _ =>
+                    i
+              }
+            }
+          PreprocessLocalExpr
+            .EvalBackquoteInterpolation
+            .transformExpression(b.copy(parts = boundParts), ctx) match
+            case q: QualifiedName =>
+              q
+            case _ =>
+              target
+        case _ =>
+          target
+
+    val bound =
+      save match
+        case s: SaveTo =>
+          s.copy(target = bind(s.target))
+        case a: AppendTo =>
+          a.copy(target = bind(a.target))
+        case other =>
+          other
+    bound.copyMetadataFrom(save)
+    bound
+
+  end bindSaveTarget
+
+  def generateSaveSQL(unboundSave: Save, context: Context): List[String] =
     given Context  = context
+    val save       = bindSaveTarget(unboundSave)
     val statements = List.newBuilder[String]
     save match
       case c: CreateTableAs =>

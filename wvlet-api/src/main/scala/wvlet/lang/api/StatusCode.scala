@@ -54,6 +54,8 @@ enum StatusCode(statusType: StatusType):
   case CYCLIC_SYMBOL_REFERENCE           extends StatusCode(StatusType.UserError)
   case MODEL_EXPANSION_LIMIT_EXCEEDED    extends StatusCode(StatusType.UserError)
   case RECURSIVE_FUNCTION_REFERENCE      extends StatusCode(StatusType.UserError)
+  case INVALID_LOOP_ITERABLE             extends StatusCode(StatusType.UserError)
+  case LOOP_LIMIT_EXCEEDED               extends StatusCode(StatusType.UserError)
   case RECURSIVE_PARTIAL_QUERY_REFERENCE extends StatusCode(StatusType.UserError)
   case INLINE_EXPANSION_LIMIT_EXCEEDED   extends StatusCode(StatusType.UserError)
   case NOT_A_RELATION                    extends StatusCode(StatusType.UserError)
