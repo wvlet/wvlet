@@ -1,5 +1,7 @@
 # For-loop statement
 
+Status: implemented · PR #2073 · ADR: `adr/2026-09-20-for-loop-runtime-iteration.md`
+
 ## Goals
 
 - Answer "does Wvlet have a for-loop?" — **no**. `for` is already a reserved keyword
@@ -71,7 +73,7 @@ for d in ['2026-09-01', '2026-09-02', '2026-09-03'] {
   (`LanguageStatement`, next to `ValDef` in `plan.scala`) and
   `ExecuteFor(loop: ForLoop, body: ExecutionPlan)` in `execution.scala`.
 - **Compile time**: SymbolLabeler creates a symbol for the loop variable in a fresh scope owned by
-  the loop; Typer types the iterable, requires an array type (new
+  the loop (bound with `scope.add` so it shadows same-named outer symbols); Typer types the iterable, requires an array type when the type is known (new
   `StatusCode.INVALID_LOOP_ITERABLE` otherwise), and types the body **once** with the variable at
   the element type. Tables named through `` s`..${d}` `` stay unresolved at compile time, exactly
   as they do inside models today.
