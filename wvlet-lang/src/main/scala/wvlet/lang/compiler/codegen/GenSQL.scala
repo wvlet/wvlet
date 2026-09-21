@@ -88,18 +88,7 @@ object GenSQL extends Phase("generate-sql"):
               a.values
                 .foreach { v =>
                   val value   = ExpressionEvaluator.eval(v)(using ctx)
-                  val iterCtx = ctx.newContext(f.symbol)
-                  val sym     = Symbol(ctx.global.newSymbolId, f.span)
-                  sym.tree = f
-                  sym.symbolInfo = ValSymbolInfo(
-                    iterCtx.owner,
-                    sym,
-                    f.variable,
-                    value.dataType,
-                    value,
-                    ctx.compilationUnit
-                  )
-                  iterCtx.enter(sym)
+                  val iterCtx = loopIterationContext(f, value)(using ctx)
                   loop(body)(using iterCtx)
                 }
             case other =>
@@ -315,6 +304,26 @@ object GenSQL extends Phase("generate-sql"):
       List(withHeader(s"create table ${fullTableName} as\n${baseSQL}", a.sourceLocation))
 
   end appendToNewTableSQL
+
+  /**
+    * Create the context of one for-loop iteration: a child context where the loop variable is bound
+    * to the given value like a val. Vals defined in the loop body enter this context too, so they
+    * stay scoped to the iteration
+    */
+  def loopIterationContext(loop: ForLoop, value: Expression)(using ctx: Context): Context =
+    val iterCtx = ctx.newContext(loop.symbol)
+    val sym     = Symbol(ctx.global.newSymbolId, loop.span)
+    sym.tree = loop
+    sym.symbolInfo = ValSymbolInfo(
+      iterCtx.owner,
+      sym,
+      loop.variable,
+      value.dataType,
+      value,
+      ctx.compilationUnit
+    )
+    iterCtx.enter(sym)
+    iterCtx
 
   /**
     * Evaluate a backquote-interpolated save target (e.g. save to s`tbl_${d}`) with the val and

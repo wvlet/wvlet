@@ -141,20 +141,7 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
           QueryResult.empty
         case ExecuteFor(loop, body) =>
           val results = loopValues(loop).map { value =>
-            // Each iteration gets a fresh child context, so the loop variable and the vals
-            // defined in the body are scoped to the iteration
-            val iterCtx = ctx.newContext(loop.symbol)
-            val sym     = Symbol(ctx.global.newSymbolId, loop.span)
-            sym.tree = loop
-            sym.symbolInfo = ValSymbolInfo(
-              iterCtx.owner,
-              sym,
-              loop.variable,
-              value.dataType,
-              value,
-              ctx.compilationUnit
-            )
-            iterCtx.enter(sym)
+            val iterCtx = GenSQL.loopIterationContext(loop, value)
             process(body)(using iterCtx)
           }
           QueryResult.fromList(results)
