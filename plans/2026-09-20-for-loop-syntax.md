@@ -90,8 +90,8 @@ for d in ['2026-09-01', '2026-09-02', '2026-09-03'] {
 - Result of the statement: the results of all iterations, like `ExecuteTasks`.
 - `wvlet compile` (SQL output without execution): emit each iteration's SQL in order, separated by
   `;`, since a constant iterable is fully known at compile time.
-- Safety net: iteration count capped (default 10,000, `StatusCode.LOOP_LIMIT_EXCEEDED`) so a typo'd
-  iterable can't issue unbounded engine queries.
+- No iteration cap: a loop is bounded by its iterable, and an arbitrary limit would only add a
+  knob to manage. Query iterables fetch every row, ignoring the runner's display row limit.
 
 ### Out of scope for the first PR (follow-ups, called out so the syntax leaves room)
 

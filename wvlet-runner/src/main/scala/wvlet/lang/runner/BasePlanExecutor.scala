@@ -40,6 +40,12 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
   /** Run the compiled SQL of a query plan on the active engine and materialize the result. */
   protected def executeQuery(plan: LogicalPlan)(using Context): QueryResult
 
+  /**
+    * Run a query and materialize every row, ignoring the display row limit. Used where the result
+    * drives execution (for-loop query iterables) rather than being shown to the user
+    */
+  protected def executeQueryAllRows(plan: LogicalPlan)(using Context): QueryResult
+
   /** Run side-effecting SQL statements (DDL, execute commands) on the active engine. */
   protected def runStatements(sqls: List[String])(using Context): Unit
 
@@ -177,16 +183,8 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
     val values =
       loop.iterable match
         case s: SubQueryExpression =>
-          executeQuery(s.query) match
+          executeQueryAllRows(s.query) match
             case t: TableRows =>
-              if t.isTruncated then
-                throw StatusCode
-                  .LOOP_LIMIT_EXCEEDED
-                  .newException(
-                    s"for-loop query returned ${t
-                        .totalRows} rows, exceeding the result row limit ${t.rows.size}",
-                    loop.sourceLocation
-                  )
               val elemType = t
                 .schema
                 .fields
@@ -208,14 +206,6 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
               )
             }
 
-    if values.size > BasePlanExecutor.maxLoopIterations then
-      throw StatusCode
-        .LOOP_LIMIT_EXCEEDED
-        .newException(
-          s"for-loop has ${values.size} iterations, exceeding the limit ${BasePlanExecutor
-              .maxLoopIterations}",
-          loop.sourceLocation
-        )
     values
 
   end loopValues
@@ -287,7 +277,3 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
   end executeCommand
 
 end BasePlanExecutor
-
-object BasePlanExecutor:
-  /** Upper bound of for-loop iterations, guarding against unbounded engine queries */
-  val maxLoopIterations: Int = 10000

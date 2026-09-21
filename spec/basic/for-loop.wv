@@ -70,3 +70,13 @@ append to for_loop_shadow
 
 from for_loop_shadow
 test _.rows should be [['x'], ['a'], ['x'], ['b'], ['outer']]
+
+-- A query iterable is not cut off by the display row limit
+for n in (from sql"select range as n from range(100)") {
+  from [[n]] as t(n)
+  append to for_loop_many
+}
+
+from for_loop_many
+agg _.count as cnt
+test _.rows should be [[100]]
