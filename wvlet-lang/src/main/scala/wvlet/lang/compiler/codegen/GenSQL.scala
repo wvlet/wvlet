@@ -83,16 +83,15 @@ object GenSQL extends Phase("generate-sql"):
           ctx.enter(v.symbol)
         case ExecuteFor(f, body) =>
           // Without an engine, only constant array iterables can be unrolled into SQL
-          f.iterable match
-            case a: ArrayConstructor =>
-              a.values
-                .foreach { v =>
-                  val value   = ExpressionEvaluator.eval(v)(using ctx)
-                  val iterCtx = loopIterationContext(f, value)(using ctx)
-                  loop(body)(using iterCtx)
-                }
-            case other =>
-              warn(s"Cannot generate SQL for a for-loop over a non-constant iterable: ${other.pp}")
+          loopArrayValues(f.iterable)(using ctx) match
+            case Some(values) =>
+              values.foreach { value =>
+                loop(body)(using loopIterationContext(f, value)(using ctx))
+              }
+            case None =>
+              warn(
+                s"Cannot generate SQL for a for-loop over a non-constant iterable: ${f.iterable.pp}"
+              )
         case cmd: ExecuteCommand =>
           cmd.execute match
             case ExecuteExpr(e, _) =>
@@ -306,6 +305,25 @@ object GenSQL extends Phase("generate-sql"):
   end appendToNewTableSQL
 
   /**
+    * The values of a constant for-loop iterable in iteration order: the elements of an array
+    * expression, or of the array bound to a referenced val. None for any other expression
+    */
+  def loopArrayValues(iterable: Expression, depth: Int = 0)(using
+      ctx: Context
+  ): Option[List[Expression]] =
+    iterable match
+      case a: ArrayConstructor =>
+        Some(a.values.map(v => ExpressionEvaluator.eval(v)))
+      case i: Identifier if depth < 10 =>
+        ctx.findTermSymbolByName(i.leafName).map(_.symbolInfo) match
+          case Some(v: ValSymbolInfo) =>
+            loopArrayValues(v.expr, depth + 1)
+          case _ =>
+            None
+      case _ =>
+        None
+
+  /**
     * Create the context of one for-loop iteration: a child context where the loop variable is bound
     * to the given value like a val. Vals defined in the loop body enter this context too, so they
     * stay scoped to the iteration
@@ -322,7 +340,8 @@ object GenSQL extends Phase("generate-sql"):
       value,
       ctx.compilationUnit
     )
-    iterCtx.enter(sym)
+    // Add rather than enter: the loop variable shadows a same-named outer val or loop variable
+    iterCtx.scope.add(loop.variable, sym)
     iterCtx
 
   /**
@@ -333,20 +352,7 @@ object GenSQL extends Phase("generate-sql"):
     def bind(target: TableOrFileName): TableOrFileName =
       target match
         case b: BackquoteInterpolatedIdentifier =>
-          val boundParts = b
-            .parts
-            .map {
-              _.transformUpExpression { case i: Identifier =>
-                ctx.scope.lookupSymbol(Name.termName(i.leafName)).map(_.symbolInfo) match
-                  case Some(v: ValSymbolInfo) =>
-                    v.expr
-                  case _ =>
-                    i
-              }
-            }
-          PreprocessLocalExpr
-            .EvalBackquoteInterpolation
-            .transformExpression(b.copy(parts = boundParts), ctx) match
+          b.transformUpExpression(contextBindingRule(Set.empty)) match
             case q: QualifiedName =>
               q
             case _ =>
@@ -643,6 +649,25 @@ object GenSQL extends Phase("generate-sql"):
       .asInstanceOf[Relation]
 
   /**
+    * The expression rewrite behind context binding: identifiers bound to val symbols (vals, model
+    * arguments, loop variables) become their bound expressions, and backquote interpolations are
+    * evaluated. Identifiers named in excludedNames are left as is
+    */
+  private def contextBindingRule(excludedNames: Set[String])(using
+      ctx: Context
+  ): PartialFunction[Expression, Expression] =
+    case b: BackquoteInterpolatedIdentifier =>
+      PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
+    // Don't replace identifiers that are table references in qualified names
+    case i: Identifier if !excludedNames.contains(i.leafName) =>
+      ctx.scope.lookupSymbol(Name.termName(i.leafName)).map(_.symbolInfo) match
+        case Some(b: ValSymbolInfo) =>
+          // Replace to the bounded expression
+          b.expr
+        case _ =>
+          i
+
+  /**
     * Replace identifiers bound to val symbols in the current context with their expressions, and
     * evaluate backquote interpolations
     */
@@ -675,27 +700,7 @@ object GenSQL extends Phase("generate-sql"):
       case _ =>
     }
 
-    r.transformUpExpressions {
-        case b: BackquoteInterpolatedIdentifier =>
-          PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
-        case i: Identifier =>
-          // Don't replace identifiers that are table references in qualified names
-          if tableRefQualifiers.contains(i.leafName) then
-            i
-          else
-            val nme = Name.termName(i.leafName)
-            ctx.scope.lookupSymbol(nme) match
-              case Some(sym) =>
-                sym.symbolInfo match
-                  case b: ValSymbolInfo =>
-                    // Replace to the bounded expression
-                    b.expr
-                  case _ =>
-                    i
-              case None =>
-                i
-      }
-      .asInstanceOf[Relation]
+    r.transformUpExpressions(contextBindingRule(tableRefQualifiers.toSet)).asInstanceOf[Relation]
   end substituteContextBindings
 
   /**

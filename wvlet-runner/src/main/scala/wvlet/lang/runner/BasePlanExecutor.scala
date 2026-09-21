@@ -21,7 +21,6 @@ import wvlet.lang.compiler.codegen.SqlGenerator
 import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
-import wvlet.lang.model.expr.ArrayConstructor
 import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.expr.Identifier
 import wvlet.lang.model.expr.SubQueryExpression
@@ -175,22 +174,6 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
       .INVALID_LOOP_ITERABLE
       .newException(msg, loop.sourceLocation)
 
-    def arrayValues(e: Expression, depth: Int = 0): List[Expression] =
-      e match
-        case a: ArrayConstructor =>
-          a.values.map(v => ExpressionEvaluator.eval(v))
-        case i: Identifier if depth < 10 =>
-          // A reference to a val (or an enclosing loop variable) holding an array
-          ctx.findTermSymbolByName(i.leafName).map(_.symbolInfo) match
-            case Some(v: ValSymbolInfo) =>
-              arrayValues(v.expr, depth + 1)
-            case _ =>
-              throw invalid(s"for-loop iterable '${i.fullName}' is not an array value")
-        case other =>
-          throw invalid(
-            s"for-loop iterable must be an array value or a (query), but found: ${other.pp}"
-          )
-
     val values =
       loop.iterable match
         case s: SubQueryExpression =>
@@ -217,7 +200,13 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
               other.getError.foreach(e => throw e)
               throw invalid(s"for-loop query returned no table result")
         case other =>
-          arrayValues(other)
+          GenSQL
+            .loopArrayValues(other)
+            .getOrElse {
+              throw invalid(
+                s"for-loop iterable must be an array value or a (query), but found: ${other.pp}"
+              )
+            }
 
     if values.size > BasePlanExecutor.maxLoopIterations then
       throw StatusCode

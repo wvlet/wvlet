@@ -944,7 +944,15 @@ object Typer extends Phase("typer") with LogSupport:
           other.dataType match
             case DataType.ArrayType(elemType) =>
               elemType
+            case t if t.isResolved =>
+              throw StatusCode
+                .INVALID_LOOP_ITERABLE
+                .newException(
+                  s"for-loop iterable must be an array value or a (query), but found: ${t}",
+                  f.sourceLocation
+                )
             case _ =>
+              // e.g. a reference to a val, resolved at run time
               DataType.UnknownType
     // Bind the loop variable for typing the body. The run-time value is bound per iteration
     f.symbol.symbolInfo = ValSymbolInfo(
@@ -956,7 +964,8 @@ object Typer extends Phase("typer") with LogSupport:
       ctx.compilationUnit
     )
     val bodyCtx = ctx.newContext(f.symbol)
-    bodyCtx.enter(f.symbol)
+    // Add rather than enter: the loop variable shadows a same-named outer symbol
+    bodyCtx.scope.add(f.variable, f.symbol)
     f.body.foldLeft(bodyCtx)(preScanStatement)
     val typedLoop = f.copy(iterable = typedIterable, body = typeStatements(f.body, bodyCtx))
     // A case-class copy does not carry over the mutable symbol/comment fields
