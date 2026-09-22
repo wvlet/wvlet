@@ -314,6 +314,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## Design Records
 
 - `adr/2026-08-28-data-file-schema-inference-routing.md` — how `from '<file>'` picks JSONAnalyzer vs DuckDB for schema inference (`DataFilePath` classifier, remote paths and DuckDB-less platforms)
+- `adr/2026-09-12-keyword-member-call-lowering.md` — why un-inlined `x.like(...)`/`in`/`between`/`extract` calls are lowered to operators in `SqlGenerator` (not FunctionInliner or the `any` type) and why there is no fail-fast for other keyword-named calls
 
 ## Memory
 - For creating temporary files, use target folder, which will be ignored in git
@@ -336,4 +337,5 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 - Typing coverage over spec/basic is guarded by a CI ratchet: `./sbt "langJVM/testOnly *TyperCoverageCheck"` (raise its thresholds when improving type resolution; never lower them)
 - The stdlib is freshness-gated in CI: after changing `wvlet-stdlib/module/standard/*.wv` or bumping an engine dependency, regenerate the engine catalogs (`./sbt "runnerJVM/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator"` for DuckDB, `...StdLibTrinoFunctionCatalogGenerator` for Trino) and the docs reference page (`./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.StdLibDocGenerator"`); `StdLibCatalogFreshnessTest` and `StdLibDocFreshnessTest` fail on drift with the exact command to run
 - For compiler performance work, compare before/after with `./sbt "langJVM/testOnly *TyperBench"` (log-only timing probe)
+- For TPC-H execution timing on DuckDB, run the opt-in probe `WVLET_TPCH_BENCH_SF=1 ./sbt "runnerJVM/testOnly *TPCHBench"` (log-only, ignored without the env var); the manual `EXPLAIN ANALYZE` recipe is in website/docs/development/benchmark.md
 
