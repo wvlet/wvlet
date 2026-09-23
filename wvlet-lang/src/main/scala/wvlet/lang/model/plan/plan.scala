@@ -163,9 +163,10 @@ case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Sp
 
 /**
   * Statement repetition: `for <variable> in <iterable> { <body> }`. The iterable is an array-valued
-  * expression, or a SubQueryExpression whose first result column supplies the values. The body is
-  * compiled once; at run time each iteration binds the variable like a `val` in a new child context
-  * and executes the body statements in order.
+  * expression, or a SubQueryExpression that supplies the values of its single column, or its rows
+  * as structs when it has several columns. The body is compiled once; at run time each iteration
+  * binds the variable like a `val` in a new child context and executes the body statements in
+  * order.
   */
 case class ForLoop(variable: TermName, iterable: Expression, body: List[LogicalPlan], span: Span)
     extends LanguageStatement:

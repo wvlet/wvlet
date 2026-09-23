@@ -937,19 +937,24 @@ object Typer extends Phase("typer") with LogSupport:
     val elemType =
       typedIterable match
         case s: SubQueryExpression =>
+          // A single-column query yields its values, and a multi-column query yields its rows,
+          // whose fields are accessed as p.<column>
+          val fields  = s.query.relationType.fields
+          val rowType =
+            fields match
+              case List(column) =>
+                column.dataType
+              case _ =>
+                SchemaType(None, s.query.relationType.typeName, fields)
           // A query whose schema is only known at run time (e.g. raw SQL) still yields values;
           // bind them as `any` so the body can be typed
-          val columnType = s
-            .query
-            .relationType
-            .fields
-            .headOption
-            .map(_.dataType)
-            .filter(_.isResolved)
-            .getOrElse(DataType.AnyType)
-          // The iterable evaluates to the values of the first result column
-          s.tpe = DataType.ArrayType(columnType)
-          columnType
+          val boundType =
+            if fields.nonEmpty && rowType.isResolved then
+              rowType
+            else
+              DataType.AnyType
+          s.tpe = DataType.ArrayType(boundType)
+          boundType
         case a: ArrayConstructor =>
           a.elementType
         case other =>

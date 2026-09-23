@@ -81,3 +81,10 @@ for n in (from sql"select range as n from range(100)") {
 from for_loop_many
 agg _.count as cnt
 test _.rows should be [[100]]
+
+-- A multi-column query iterable binds each row; its columns are accessed as fields. Each row
+-- carries its expected result, so one test checks every iteration
+for p in (from [[1, 10], [2, 20]] as t(id, expected) select id, expected) {
+  select p.id * 10 = p.expected as ok
+  test _.rows should be [[true]]
+}

@@ -173,7 +173,8 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
 
   /**
     * Evaluate the iterable of a for-loop to the literal values to bind, in iteration order: the
-    * elements of an array expression, or the first column of a query result
+    * elements of an array expression, or the rows of a query result (the cell of a single-column
+    * row)
     */
   private def loopValues(loop: ForLoop)(using ctx: Context): List[Expression] =
     def invalid(msg: String) = StatusCode
@@ -185,15 +186,7 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
         case s: SubQueryExpression =>
           executeQueryAllRows(s.query) match
             case t: TableRows =>
-              val elemType = t
-                .schema
-                .fields
-                .headOption
-                .map(_.dataType)
-                .getOrElse(DataType.UnknownType)
-              t.rows
-                .map(row => LoopValue.toLiteral(row.values.headOption.orNull, elemType, s.span))
-                .toList
+              t.rows.map(row => LoopValue.fromRow(row, t.schema.fields, s.span)).toList
             case other =>
               other.getError.foreach(e => throw e)
               throw invalid(s"for-loop query returned no table result")

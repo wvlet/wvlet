@@ -385,7 +385,9 @@ in expressions, in `s"..."` strings, and in backquote-interpolated table names, 
 `save to` and `append to` targets.
 
 The values can come from an array, a `val` holding an array, or a parenthesized query. A query is
-run once before the loop starts, and the loop iterates over the values of its first column:
+run once before the loop starts. For a single-column query, the loop variable is bound to each
+value. For a query with several columns, it is bound to each row, and the body reads the columns
+as fields (`p.dt`):
 
 ```wvlet
 val regions = ['us', 'eu', 'jp']
@@ -403,12 +405,19 @@ for t in (from tenants where active select tenant_id order by tenant_id) {
   add t as tenant_id
   append to order_counts
 }
+
+-- Iterate over rows: each column is a field of the loop variable
+for p in (from partitions select dt, region) {
+  from events
+  where dt = p.dt and region = p.region
+  save to s`events_${p.dt}_${p.region}`
+}
 ```
 
 Iterations run one after another in order, and an error stops the loop. The body can contain any
-statements, including `test` assertions (checked on every iteration) and nested `for` loops. To
-transform the rows of a table, use relational operators such as `select` and `add` instead — a
-`for` loop repeats statements, not rows.
+statements, including `test` assertions (checked on every iteration; expected values must be
+constants, not the loop variable) and nested `for` loops. To transform the rows of a table, use
+relational operators such as `select` and `add` instead — a `for` loop repeats statements, not rows.
 
 ### Conditional Expressions
 
