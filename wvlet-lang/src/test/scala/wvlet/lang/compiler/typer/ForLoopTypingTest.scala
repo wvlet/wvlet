@@ -59,7 +59,7 @@ class ForLoopTypingTest extends UniTest:
     e.statusCode shouldBe StatusCode.INVALID_LOOP_ITERABLE
   }
 
-  test("type a query iterable as an array of its first column") {
+  test("type a single-column query iterable as an array of its values") {
     val f = compileForLoop("""for id in (from [[1, 'a']] as t(id, name) select id) {
         |  select id
         |}""".stripMargin)
@@ -72,6 +72,20 @@ class ForLoopTypingTest extends UniTest:
         |}""".stripMargin)
     f.iterable.dataType shouldBe DataType.ArrayType(DataType.AnyType)
     f.body.forall(_.relationType.isResolved) shouldBe true
+  }
+
+  test("type a multi-column query iterable as an array of rows with typed fields") {
+    val f = compileForLoop("""for p in (from [[1, 'a']] as t(id, name) select id, name) {
+        |  select p.id as id, p.name as name
+        |}""".stripMargin)
+    f.iterable.dataType match
+      case DataType.ArrayType(row: DataType.SchemaType) =>
+        row.fields.map(f => f.name.name -> f.dataType) shouldBe
+          List("id" -> DataType.LongType, "name" -> DataType.StringType)
+      case other =>
+        fail(s"Expected an array of rows, but got ${other}")
+    f.body.head.relationType.fields.map(_.dataType) shouldBe
+      List(DataType.LongType, DataType.StringType)
   }
 
 end ForLoopTypingTest

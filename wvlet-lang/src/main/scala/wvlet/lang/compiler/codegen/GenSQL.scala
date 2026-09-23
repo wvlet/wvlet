@@ -658,6 +658,10 @@ object GenSQL extends Phase("generate-sql"):
   ): PartialFunction[Expression, Expression] =
     case b: BackquoteInterpolatedIdentifier =>
       PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
+    // Field access on a bound struct (e.g. a for-loop row p.<column>): the qualifier has already
+    // been replaced by the struct, so read the field value
+    case d @ DotRef(s: StructValue, name, _, _) =>
+      s.fields.find(_.name == name.leafName).map(_.value).getOrElse(d)
     // Don't replace identifiers that are table references in qualified names
     case i: Identifier if !excludedNames.contains(i.leafName) =>
       ctx.scope.lookupSymbol(Name.termName(i.leafName)).map(_.symbolInfo) match

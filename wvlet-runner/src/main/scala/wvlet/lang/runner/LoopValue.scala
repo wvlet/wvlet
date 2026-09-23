@@ -15,7 +15,10 @@ package wvlet.lang.runner
 
 import wvlet.lang.api.Span
 import wvlet.lang.model.DataType
+import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.expr.*
+
+import scala.collection.immutable.ListMap
 
 /**
   * Converts a query result cell to the literal bound to a for-loop variable. Engines return cells
@@ -23,6 +26,24 @@ import wvlet.lang.model.expr.*
   * decides how a string cell is read back
   */
 object LoopValue:
+
+  /**
+    * The value bound to a for-loop variable for one query result row: the cell of a single-column
+    * row, or a struct of all columns so that the loop body can access them as p.<column>
+    */
+  def fromRow(row: ListMap[String, Any], columns: List[NamedType], span: Span): Expression =
+    val cells = row.values.toList
+    columns match
+      case List(column) =>
+        toLiteral(cells.headOption.orNull, column.dataType, span)
+      case _ =>
+        val fields = columns
+          .zip(cells)
+          .map { (column, cell) =>
+            StructField(column.name.name, toLiteral(cell, column.dataType, span), span)
+          }
+        StructValue(fields, span)
+
   def toLiteral(value: Any, dataType: DataType, span: Span): Literal =
     def bool(b: Boolean): Literal =
       if b then
