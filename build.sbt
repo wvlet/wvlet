@@ -14,7 +14,7 @@ val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.5.1"
 val SNOWFLAKE_JDBC_VERSION = "4.3.4"
-val CAFFEINE_VERSION       = "3.2.4"
+val CAFFEINE_VERSION       = "3.3.0"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
@@ -474,7 +474,7 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"        % "jline"        % "4.4.5",
+        "org.jline"        % "jline"        % "4.4.6",
         "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
         "org.xerial" % "sqlite-jdbc" % "3.53.4.0",
@@ -627,7 +627,7 @@ lazy val server = project
     name := "wvlet-server",
     // Route SLF4J calls (e.g. from JDBC drivers) into java.util.logging so they share the
     // same handler as wvlet.uni.log.
-    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.19",
+    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.20",
     uniRestart / baseDirectory        := (ThisBuild / baseDirectory).value
   )
   .dependsOn(api.jvm, client.jvm, runner.jvm, httpServer, testUtil % Test)
