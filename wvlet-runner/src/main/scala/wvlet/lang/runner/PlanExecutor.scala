@@ -54,13 +54,20 @@ class PlanExecutor(
   override def close(): Unit = ()
 
   override protected def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
+    executeQuery(plan, rowLimit)
+
+  override protected def executeQueryAllRows(plan: LogicalPlan)(using
+      context: Context
+  ): QueryResult = executeQuery(plan, Int.MaxValue)
+
+  private def executeQuery(plan: LogicalPlan, limit: Int)(using context: Context): QueryResult =
     plan match
       case q: Relation =>
         val generatedSQL = GenSQL.generateSQLFromRelation(q)
         workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         given monitor: QueryProgressMonitor = context.queryProgressMonitor
-        TableRows.fromCrossPlatformResult(activeConnector.execute(generatedSQL.sql), rowLimit)
+        TableRows.fromCrossPlatformResult(activeConnector.execute(generatedSQL.sql), limit)
       case _ =>
         QueryResult.empty
 

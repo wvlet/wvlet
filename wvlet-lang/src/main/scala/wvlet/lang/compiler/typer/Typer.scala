@@ -21,6 +21,8 @@ import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.TermName
+import wvlet.lang.compiler.ValSymbolInfo
+import wvlet.lang.model.expr.ArrayConstructor
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.compiler.analyzer.AggregationResolver
 import wvlet.lang.compiler.analyzer.FunctionInliner
@@ -237,38 +239,8 @@ object Typer extends Phase("typer") with LogSupport:
     plan match
       // Handle PackageDef - creates new scope for statements
       case p: PackageDef =>
-        val packageCtx      = ctx.newContext(p.symbol)
-        var currentCtx      = packageCtx
-        val typedStatements = p
-          .statements
-          .map { stmt =>
-            val typedStmt = typePlan(stmt)(using currentCtx)
-            // Update context for imports
-            currentCtx = updateContextForStatement(typedStmt, currentCtx)
-            // Point the symbol to the typed tree so later references (e.g. ModelScan) see it
-            typedStmt match
-              case m: ModelDef =>
-                m.symbol.tree = m
-                // Complete the model symbol with the resolved relation type so a pending
-                // completer does not re-type the original (untyped) tree on a later access
-                m.symbol.symbolInfo = ModelSymbolInfo(
-                  currentCtx.owner,
-                  m.symbol,
-                  Name.termName(m.name.name),
-                  m.relationType,
-                  currentCtx.compilationUnit
-                )
-              case t: TypeDef =>
-                t.symbol.tree = t
-              case _ =>
-            // Re-point relation alias symbols (select as ...) to the rewritten child relation so
-            // later references expand to the resolved query
-            typedStmt.traverse { case s: SelectAsAlias =>
-              s.symbol.tree = s.child
-            }
-            typedStmt
-          }
-        val typedPackage = p.copy(statements = typedStatements)
+        val typedStatements = typeStatements(p.statements, ctx.newContext(p.symbol))
+        val typedPackage    = p.copy(statements = typedStatements)
         // A case-class copy does not carry over the mutable symbol/comment fields
         typedPackage.copyMetadataFrom(p)
         TyperRules.typeStatement(typedPackage)
@@ -298,6 +270,9 @@ object Typer extends Phase("typer") with LogSupport:
       // Handle Relation - propagate input type through relational operators
       case r: Relation =>
         resolveRelation(r)
+      // Handle ForLoop - types the body once with the loop variable in scope
+      case f: ForLoop =>
+        typeForLoop(f)
       // Handle ValDef - resolve native function references in the bound expression so it can be
       // evaluated once at execution time (e.g. val id = ulid_string)
       case v: ValDef =>
@@ -911,6 +886,106 @@ object Typer extends Phase("typer") with LogSupport:
             throw StatusCode
               .SYNTAX_ERROR
               .newException(s"${unit.sourceFile} is not a single query file")
+
+  /**
+    * Type a statement list (a package or a loop body) in order, threading the context so that
+    * imports apply to the following statements
+    */
+  private def typeStatements(statements: List[LogicalPlan], startCtx: Context): List[LogicalPlan] =
+    var currentCtx = startCtx
+    statements.map { stmt =>
+      val typedStmt = typePlan(stmt)(using currentCtx)
+      // Update context for imports
+      currentCtx = updateContextForStatement(typedStmt, currentCtx)
+      // Point the symbol to the typed tree so later references (e.g. ModelScan) see it
+      typedStmt match
+        case m: ModelDef =>
+          m.symbol.tree = m
+          // Complete the model symbol with the resolved relation type so a pending
+          // completer does not re-type the original (untyped) tree on a later access
+          m.symbol.symbolInfo = ModelSymbolInfo(
+            currentCtx.owner,
+            m.symbol,
+            Name.termName(m.name.name),
+            m.relationType,
+            currentCtx.compilationUnit
+          )
+        case t: TypeDef =>
+          t.symbol.tree = t
+        case _ =>
+      // Re-point relation alias symbols (select as ...) to the rewritten child relation so
+      // later references expand to the resolved query
+      typedStmt.traverse { case s: SelectAsAlias =>
+        s.symbol.tree = s.child
+      }
+      typedStmt
+    }
+
+  /**
+    * Type a for-loop: the iterable is typed in the enclosing context, and the body once in a child
+    * context where the loop variable is bound at the iterable's element type
+    */
+  private def typeForLoop(f: ForLoop)(using ctx: Context): ForLoop =
+    val typedIterable =
+      f.iterable match
+        case s: SubQueryExpression =>
+          val q = s.copy(query = resolveRelation(s.query))
+          q.copyMetadataFrom(s)
+          q
+        case other =>
+          typeExpression(other)
+    val elemType =
+      typedIterable match
+        case s: SubQueryExpression =>
+          // A query whose schema is only known at run time (e.g. raw SQL) still yields values;
+          // bind them as `any` so the body can be typed
+          val columnType = s
+            .query
+            .relationType
+            .fields
+            .headOption
+            .map(_.dataType)
+            .filter(_.isResolved)
+            .getOrElse(DataType.AnyType)
+          // The iterable evaluates to the values of the first result column
+          s.tpe = DataType.ArrayType(columnType)
+          columnType
+        case a: ArrayConstructor =>
+          a.elementType
+        case other =>
+          other.dataType match
+            case DataType.ArrayType(elemType) =>
+              elemType
+            case t if t.isResolved =>
+              throw StatusCode
+                .INVALID_LOOP_ITERABLE
+                .newException(
+                  s"for-loop iterable must be an array value or a (query), but found: ${t}",
+                  f.sourceLocation
+                )
+            case _ =>
+              // e.g. a reference to a val, resolved at run time
+              DataType.UnknownType
+    // Bind the loop variable for typing the body. The run-time value is bound per iteration
+    f.symbol.symbolInfo = ValSymbolInfo(
+      ctx.owner,
+      f.symbol,
+      f.variable,
+      elemType,
+      typedIterable,
+      ctx.compilationUnit
+    )
+    val bodyCtx = ctx.newContext(f.symbol)
+    // Add rather than enter: the loop variable shadows a same-named outer symbol
+    bodyCtx.scope.add(f.variable, f.symbol)
+    f.body.foldLeft(bodyCtx)(preScanStatement)
+    val typedLoop = f.copy(iterable = typedIterable, body = typeStatements(f.body, bodyCtx))
+    // A case-class copy does not carry over the mutable symbol/comment fields
+    typedLoop.copyMetadataFrom(f)
+    f.symbol.tree = typedLoop
+    typedLoop
+
+  end typeForLoop
 
   /**
     * Update context based on a typed statement (e.g., adding imports)

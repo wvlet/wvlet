@@ -674,6 +674,14 @@ class QueryExecutor(
       }
   end executeQuery
 
+  override protected def executeQueryAllRows(plan: LogicalPlan)(using
+      context: Context
+  ): QueryResult =
+    val savedConfig = config
+    config = config.copy(rowLimit = Int.MaxValue)
+    try executeQuery(plan)
+    finally config = savedConfig
+
   private def executeQueryPlan(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")

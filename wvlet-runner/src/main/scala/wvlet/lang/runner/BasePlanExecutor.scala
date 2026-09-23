@@ -20,6 +20,10 @@ import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.SqlGenerator
 import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.transform.ExpressionEvaluator
+import wvlet.lang.model.DataType
+import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.SubQueryExpression
 import wvlet.lang.model.plan.*
 import wvlet.uni.log.LogSupport
 
@@ -35,6 +39,12 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
 
   /** Run the compiled SQL of a query plan on the active engine and materialize the result. */
   protected def executeQuery(plan: LogicalPlan)(using Context): QueryResult
+
+  /**
+    * Run a query and materialize every row, ignoring the display row limit. Used where the result
+    * drives execution (for-loop query iterables) rather than being shown to the user
+    */
+  protected def executeQueryAllRows(plan: LogicalPlan)(using Context): QueryResult
 
   /** Run side-effecting SQL statements (DDL, execute commands) on the active engine. */
   protected def runStatements(sqls: List[String])(using Context): Unit
@@ -134,6 +144,12 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
           )
           ctx.enter(v.symbol)
           QueryResult.empty
+        case ExecuteFor(loop, body) =>
+          val results = loopValues(loop).map { value =>
+            val iterCtx = GenSQL.loopIterationContext(loop, value)
+            process(body)(using iterCtx)
+          }
+          QueryResult.fromList(results)
         case ExecuteNothing =>
           report(QueryResult.empty)
 
@@ -154,6 +170,45 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
     // TODO: Output to REPL
     workEnv.info(result)
     QueryResult.empty
+
+  /**
+    * Evaluate the iterable of a for-loop to the literal values to bind, in iteration order: the
+    * elements of an array expression, or the first column of a query result
+    */
+  private def loopValues(loop: ForLoop)(using ctx: Context): List[Expression] =
+    def invalid(msg: String) = StatusCode
+      .INVALID_LOOP_ITERABLE
+      .newException(msg, loop.sourceLocation)
+
+    val values =
+      loop.iterable match
+        case s: SubQueryExpression =>
+          executeQueryAllRows(s.query) match
+            case t: TableRows =>
+              val elemType = t
+                .schema
+                .fields
+                .headOption
+                .map(_.dataType)
+                .getOrElse(DataType.UnknownType)
+              t.rows
+                .map(row => LoopValue.toLiteral(row.values.headOption.orNull, elemType, s.span))
+                .toList
+            case other =>
+              other.getError.foreach(e => throw e)
+              throw invalid(s"for-loop query returned no table result")
+        case other =>
+          GenSQL
+            .loopArrayValues(other)
+            .getOrElse {
+              throw invalid(
+                s"for-loop iterable must be an array value or a (query), but found: ${other.pp}"
+              )
+            }
+
+    values
+
+  end loopValues
 
   protected def executeCommand(cmd: Command)(using context: Context): QueryResult =
     cmd match

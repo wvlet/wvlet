@@ -162,6 +162,17 @@ case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Sp
     extends LanguageStatement
 
 /**
+  * Statement repetition: `for <variable> in <iterable> { <body> }`. The iterable is an array-valued
+  * expression, or a SubQueryExpression whose first result column supplies the values. The body is
+  * compiled once; at run time each iteration binds the variable like a `val` in a new child context
+  * and executes the body statements in order.
+  */
+case class ForLoop(variable: TermName, iterable: Expression, body: List[LogicalPlan], span: Span)
+    extends LanguageStatement:
+  override def isEmpty: Boolean            = body.isEmpty
+  override def children: List[LogicalPlan] = body
+
+/**
   * A partial query definition that can be applied to relations via pipe. Unlike ModelDef which
   * defines a complete query starting with 'from', PartialQueryDef defines a query fragment starting
   * with an operator (where, select, etc.) that can be composed with any relation.
