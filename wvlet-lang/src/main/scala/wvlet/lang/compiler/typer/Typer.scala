@@ -937,7 +937,19 @@ object Typer extends Phase("typer") with LogSupport:
     val elemType =
       typedIterable match
         case s: SubQueryExpression =>
-          s.query.relationType.fields.headOption.map(_.dataType).getOrElse(DataType.UnknownType)
+          // A query whose schema is only known at run time (e.g. raw SQL) still yields values;
+          // bind them as `any` so the body can be typed
+          val elemType = s
+            .query
+            .relationType
+            .fields
+            .headOption
+            .map(_.dataType)
+            .filter(_.isResolved)
+            .getOrElse(DataType.AnyType)
+          // The iterable evaluates to the values of the first result column
+          s.tpe = DataType.ArrayType(elemType)
+          elemType
         case a: ArrayConstructor =>
           a.elementType
         case other =>

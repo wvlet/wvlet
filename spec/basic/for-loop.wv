@@ -47,9 +47,10 @@ from for_loop_pairs
 order by x, y
 test _.rows should be [[1, 3], [1, 4], [2, 3], [2, 4]]
 
--- An empty iterable runs nothing
+-- An empty iterable runs nothing: this test would fail if the body ran
 for e in [] {
-  from for_loop_missing_table
+  from [[1]] as t(x)
+  test _.size should be 0
 }
 
 -- The loop variable shadows a same-named outer val, and a nested loop variable shadows the
