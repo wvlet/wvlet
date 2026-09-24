@@ -20,6 +20,7 @@ import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.DataType
+import wvlet.lang.model.expr.SubQueryExpression
 import wvlet.lang.model.plan.ForLoop
 import wvlet.uni.test.UniTest
 
@@ -86,6 +87,16 @@ class ForLoopTypingTest extends UniTest:
         fail(s"Expected an array of rows, but got ${other}")
     f.body.head.relationType.fields.map(_.dataType) shouldBe
       List(DataType.LongType, DataType.StringType)
+  }
+
+  test("type an iterable computed by the engine as an unnest query") {
+    val f = compileForLoop("""for i in range(1, 4) {
+        |  select i * 10 as v
+        |}""".stripMargin)
+    f.iterable shouldMatch { case _: SubQueryExpression =>
+    }
+    f.iterable.dataType shouldBe DataType.ArrayType(DataType.LongType)
+    f.body.head.relationType.fields.map(_.dataType) shouldBe List(DataType.LongType)
   }
 
 end ForLoopTypingTest

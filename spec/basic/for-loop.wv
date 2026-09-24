@@ -88,3 +88,18 @@ for p in (from [[1, 10], [2, 20]] as t(id, expected) select id, expected) {
   select p.id * 10 = p.expected as ok
   test _.rows should be [[true]]
 }
+
+-- Iterate over an array computed by the engine, e.g. a range of integers
+for i in range(1, 4) {
+  select i * 10 as v
+  append to for_loop_range
+}
+
+from for_loop_range
+test _.rows should be [[10], [20], [30]]
+
+-- An empty range runs nothing: this test would fail if the body ran
+for i in range(3, 1) {
+  select i as v
+  test _.size should be 0
+}

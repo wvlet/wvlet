@@ -932,8 +932,31 @@ object Typer extends Phase("typer") with LogSupport:
           val q = s.copy(query = resolveRelation(s.query))
           q.copyMetadataFrom(s)
           q
+        case constant @ (_: ArrayConstructor | _: Identifier) =>
+          // Array literals and vals are expanded without an engine
+          typeExpression(constant)
         case other =>
-          typeExpression(other)
+          val typed = typeExpression(other)
+          typed.dataType match
+            case t if t.isResolved && !t.isInstanceOf[DataType.ArrayType] =>
+              // Reported as an invalid iterable below
+              typed
+            case _ =>
+              // An array computed by the engine (e.g. range(1, 10)) is iterated as the query
+              // (from unnest(<expr>) as _for_<var>(<var>)), which also inlines the function for
+              // the target engine
+              val span   = other.span
+              val unnest = AliasedRelation(
+                TableFunctionCall(
+                  UnquotedIdentifier("unnest", span),
+                  List(FunctionArg(value = other, span = span)),
+                  span
+                ),
+                UnquotedIdentifier(s"_for_${f.variable.name}", span),
+                Some(List(NamedType(f.variable, DataType.UnknownType))),
+                span
+              )
+              SubQueryExpression(resolveRelation(unnest), span)
     val elemType =
       typedIterable match
         case s: SubQueryExpression =>
