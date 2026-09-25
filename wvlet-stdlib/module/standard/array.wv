@@ -155,3 +155,13 @@ trait array[A of numeric] = {
   def approx_quantile(pos:double) in snowflake: A = sql"approx_percentile(${this}, ${pos})"
   def approx_quantile(pos:double) in bigquery: A = sql"approx_quantiles(${this}, 100)[offset(cast(${pos} * 100 as int64))]"
 }
+
+-- Integers from start (inclusive) to stop (exclusive), e.g. range(1, 4) = [1, 2, 3].
+-- An empty array when stop <= start
+def range(start: long, stop: long) in duckdb: array[long] = sql"range(${start}, ${stop})"
+def range(start: long, stop: long) in trino: array[long] = sql"if(${start} < ${stop}, sequence(${start}, ${stop} - 1), array[])"
+
+-- Integers from start (inclusive) to stop (exclusive) in increments of step, e.g.
+-- range(0, 10, 3) = [0, 3, 6, 9] and range(3, 0, -1) = [3, 2, 1]
+def range(start: long, stop: long, step: long) in duckdb: array[long] = sql"range(${start}, ${stop}, ${step})"
+def range(start: long, stop: long, step: long) in trino: array[long] = sql"if((${step} > 0 and ${start} < ${stop}) or (${step} < 0 and ${start} > ${stop}), sequence(${start}, ${stop} - sign(${step}), ${step}), array[])"

@@ -30,6 +30,7 @@ import wvlet.lang.model.DataType.TimestampField
 import wvlet.lang.model.DataType.TimestampType
 import wvlet.lang.model.DataType.TypeParameter
 import wvlet.lang.model.DataType.TypeVariable
+import wvlet.lang.model.DataType.UnresolvedTypeParameter
 import wvlet.lang.model.DataType.VarcharType
 import wvlet.lang.model.expr.Identifier
 import wvlet.lang.model.expr.Literal
@@ -54,6 +55,18 @@ object DataTypeParser extends LogSupport:
     .SYNTAX_ERROR
     .newException(msg)
 
+  /**
+    * Resolve a type argument naming a primitive type (e.g. `long` in `array[long]`). The parser
+    * reads every bracketed name as a type parameter, which is right only for generic ones such as
+    * `A` in `array[A]`
+    */
+  private def elementType(param: DataType): DataType =
+    param match
+      case UnresolvedTypeParameter(name, None) if DataType.isPrimitiveTypeName(name.toLowerCase) =>
+        DataType.getPrimitiveType(name.toLowerCase)
+      case other =>
+        other
+
   private def toDataType(typeName: String, params: List[DataType]): DataType =
     // SQL type names are case-insensitive: CAST(x AS DECIMAL(17,2)) must produce the same
     // DecimalType as decimal(17,2), not fall through to an opaque GenericType
@@ -66,9 +79,9 @@ object DataTypeParser extends LogSupport:
         else
           VarcharType(params.headOption)
       case "array" if params.size == 1 =>
-        ArrayType(params(0))
+        ArrayType(elementType(params(0)))
       case "map" if params.size == 2 =>
-        MapType(params(0), params(1))
+        MapType(elementType(params(0)), elementType(params(1)))
       case "decimal" =>
         if params.size == 0 then
           // Use the default precision and scale of DuckDb

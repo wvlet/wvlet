@@ -376,6 +376,8 @@ Called without a receiver value (window functions require an `over(...)` clause)
 
 | Function | Returns | Engines | Description |
 |----------|---------|---------|-------------|
+| `range(start: long, stop: long)` | array[long] | duckdb, trino | Integers from start (inclusive) to stop (exclusive), e.g. range(1, 4) = [1, 2, 3]. An empty array when stop <= start |
+| `range(start: long, stop: long, step: long)` | array[long] | duckdb, trino | Integers from start (inclusive) to stop (exclusive) in increments of step, e.g. range(0, 10, 3) = [0, 3, 6, 9] and range(3, 0, -1) = [3, 2, 1] |
 | `ulid_string` | string | all | Generate a new ULID |
 | `row_number` | long | all | Sequential row number within the window (1, 2, 3, ...) |
 | `rank` | long | all | Rank with gaps after ties (1, 1, 3, ...) |

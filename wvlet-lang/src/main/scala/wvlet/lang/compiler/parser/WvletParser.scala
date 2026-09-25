@@ -2922,7 +2922,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     def partitionKeys(): List[Expression] =
       val t = scanner.lookAhead()
       t.token match
-        case WvletToken.R_PAREN | WvletToken.ORDER | WvletToken.RANGE | WvletToken.ROWS =>
+        case WvletToken.R_PAREN | WvletToken.ORDER | WvletToken.ROWS =>
           Nil
         case _ =>
           val e = expression()
@@ -3002,7 +3002,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           consume(WvletToken.R_BRACKET)
           Some(WindowFrame(FrameType.RowsFrame, frameStart, frameEnd, spanFrom(t)))
         case _ =>
-          // TODO Support WvletToken.RANGE
+          // TODO Support range frames, parsing `range` as a soft keyword (it is also a function name)
           None
       end match
     end windowFrame

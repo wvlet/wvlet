@@ -22,6 +22,7 @@ import wvlet.lang.model.DataType.GenericType
 import wvlet.lang.model.DataType.IntConstant
 import wvlet.lang.model.DataType.MapType
 import wvlet.lang.model.DataType.TimestampField
+import wvlet.lang.model.DataType.UnresolvedTypeParameter
 import wvlet.uni.test.UniTest
 
 class DataTypeParserTest extends UniTest:
@@ -156,6 +157,19 @@ class DataTypeParserTest extends UniTest:
 
   test("parse date") {
     parse("date") shouldBe DataType.DateType
+  }
+
+  test("resolve primitive type arguments of bracketed array and map types") {
+    // Function signatures such as `def f: array[long]` pass bracketed names as type parameters
+    def param(name: String) = UnresolvedTypeParameter(name, None)
+    DataTypeParser.parse("array", List(param("long"))) shouldBe ArrayType(DataType.LongType)
+    DataTypeParser.parse("map", List(param("string"), param("long"))) shouldBe
+      MapType(DataType.StringType, DataType.LongType)
+  }
+
+  test("keep generic type arguments of bracketed array types unresolved") {
+    DataTypeParser.parse("array", List(UnresolvedTypeParameter("A", None))) shouldBe
+      ArrayType(UnresolvedTypeParameter("A", None))
   }
 
 end DataTypeParserTest
