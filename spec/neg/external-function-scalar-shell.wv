@@ -1,0 +1,9 @@
+-- A shell function is a table function: it cannot be called inside an expression
+type one_row = {
+  id: int
+}
+
+def as_table: one_row = sh"cat"
+
+from [[1]] as t(id)
+select as_table() as x

@@ -417,6 +417,68 @@ case class PartialQueryApply(
   // The relation type will be determined after the partial query is resolved
   override def relationType: RelationType = child.relationType
 
+/**
+  * Application of an external (code-backed) function at a materialization boundary. The runner
+  * evaluates the child relation, hands its rows to the function implementation (a JVM plugin, a
+  * TypeScript module, or a shell command), and materializes the returned result object as a table,
+  * so this node never reaches SQL generation.
+  *
+  * Two shapes share this node:
+  *   - table function (`outputColumn = None`): rows in, a result object out whose `rows` become the
+  *     relation typed by `schema`
+  *   - scalar map (`outputColumn = Some(c)`): the function is evaluated once per input row from the
+  *     `argColumns` of the child, the argument columns are dropped, and the result is appended as
+  *     column `c`. Produced by the runner's scalar lowering pass
+  *
+  * @param child
+  *   The input relation (EmptyRelation for `from f(args)`)
+  * @param functionName
+  *   Name of the `def` that declared the function
+  * @param args
+  *   Arguments bound to the def's parameter names, in declaration order
+  * @param body
+  *   The def body: a NativeExpression (resolved by name from the function registry) or an `sh"..."`
+  *   InterpolatedString (a shell command)
+  * @param schema
+  *   The declared output relation type
+  */
+case class ExternalApply(
+    child: Relation,
+    functionName: TermName,
+    args: List[FunctionArg],
+    body: Expression,
+    schema: RelationType,
+    span: Span,
+    outputColumn: Option[String] = None,
+    argColumns: List[String] = Nil
+) extends UnaryRelation:
+  override def toString: String =
+    s"ExternalApply[${functionName.name}(${args.mkString(", ")})](${child})"
+
+  override def relationType: RelationType = schema
+
+  /** True when the function body is an `sh"..."` shell command */
+  def isShell: Boolean = ExternalApply.isShellBody(body)
+
+object ExternalApply:
+  /** The interpolated-string prefix that marks a shell-command function body */
+  val shellPrefix = "sh"
+
+  def isShellBody(body: Expression): Boolean =
+    body match
+      case i: InterpolatedString =>
+        i.prefix.fullName == shellPrefix
+      case _ =>
+        false
+
+  /** True when the def body is implemented outside SQL: `= native` or `= sh"..."` */
+  def isExternalBody(body: Expression): Boolean =
+    body match
+      case _: NativeExpression =>
+        true
+      case other =>
+        isShellBody(other)
+
 // Flow-related classes have been moved to flow.scala
 
 case class AddColumnsToRelation(child: Relation, newColumns: List[Attribute], span: Span)
