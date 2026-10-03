@@ -13,17 +13,11 @@
  */
 package wvlet.lang.runner.connector.trino
 
-import io.trino.plugin.deltalake.DeltaLakeConnectorFactory
-import io.trino.plugin.deltalake.DeltaLakePlugin
 import io.trino.plugin.memory.MemoryPlugin
 import io.trino.server.testing.TestingTrinoServer
 import wvlet.uni.log.LogSupport
 import wvlet.uni.log.Logger
-import wvlet.uni.util.ULID
 
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.logging.Level
 import scala.jdk.CollectionConverters.*
 
@@ -31,11 +25,6 @@ class TestTrinoServer() extends AutoCloseable with LogSupport:
   private def setLogLevel(loggerName: String, level: Level): Unit =
     val l = java.util.logging.Logger.getLogger(loggerName)
     l.setLevel(level)
-
-  private val tempMetastoreDir =
-    val dir = new File(s"target/trino-hive-metastore/${ULID.newULIDString}")
-    dir.mkdirs()
-    dir
 
   private val trino = Logger
     .rootLogger
@@ -52,27 +41,9 @@ class TestTrinoServer() extends AutoCloseable with LogSupport:
     trino.createCatalog("memory", "wvlet")
     this
 
-  def withDeltaLakePlugin: TestTrinoServer =
+  def withMemoryPlugin: TestTrinoServer =
     trino.installPlugin(MemoryPlugin())
     trino.createCatalog("memory", "memory")
-
-    // For supporting insert into to Delta Lake, need to provide TransactionLogSynchronizer implementation to the plugin
-    trino.installPlugin(new TestingDeltaLakePlugin(tempMetastoreDir.toPath))
-
-    info(s"Using metastore dir: ${tempMetastoreDir}")
-    trino.createCatalog(
-      "delta",
-      DeltaLakeConnectorFactory.CONNECTOR_NAME,
-      Map[String, String](
-        "hive.metastore"                         -> "file",
-        "hive.metastore.catalog.dir"             -> s"file://${tempMetastoreDir.getAbsolutePath}",
-        "hive.metastore.disable-location-checks" -> "true",
-        "fs.hadoop.enabled"                      -> "true",
-        // Allow call delta system.register_table
-        "delta.register-table-procedure.enabled" -> "true",
-        "delta.enable-non-concurrent-writes"     -> "true"
-      ).asJava
-    )
     this
 
   def address: String = trino.getAddress.toString
@@ -86,20 +57,6 @@ class TestTrinoServer() extends AutoCloseable with LogSupport:
       .suppressLogs {
         trino.close()
       }
-
-    // clean up tempMetastoreDir files and dirs recursively
-
-    def delete(f: File): Unit =
-      if f.isFile then
-        f.delete()
-      else if f.isDirectory then
-        f.listFiles() match
-          case lst: Array[File] =>
-            lst.foreach(delete)
-          case null =>
-        f.delete()
-
-    delete(tempMetastoreDir)
 
     // io.airlift redirects stdout/stderr to loggers, so we need to clear all handlers
     Logger.init

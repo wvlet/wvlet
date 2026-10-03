@@ -116,7 +116,6 @@ pnpm --filter website run build
 ### Database Connectors
 - **DuckDB**: Default for testing and lightweight execution
 - **Trino**: Production distributed query engine
-- **Delta Lake**: Support for Delta table format
 
 ## Testing Framework
 

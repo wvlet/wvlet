@@ -9,7 +9,7 @@ import WvletBuildKeys.*
 
 val UNI_VERSION = "2026.1.23"
 
-val TRINO_VERSION          = "476"
+val TRINO_VERSION          = "483"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.6.0"
@@ -471,7 +471,12 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(uniNativeCurlLinking)
   .jvmSettings(
     specRunnerSettings,
-    Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
+    Test / javaOptions ++=
+      Seq(
+        "--enable-native-access=ALL-UNNAMED",
+        // TestingTrinoServer (Trino 477+) uses the Vector API for block encoding
+        "--add-modules=jdk.incubator.vector"
+      ),
     libraryDependencies ++=
       Seq(
         "org.jline"        % "jline"        % "4.4.6",
@@ -492,15 +497,10 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
-        ("io.trino" % "trino-testing" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch"),
-        // Trino uses trino-plugin packaging name in pom.xml, so we need to specify jar() package explicitly
-        ("io.trino" % "trino-delta-lake" % TRINO_VERSION % Test)
+        ("io.trino" % "trino-testing" % TRINO_VERSION % Test)
           .exclude("io.trino", "trino-tpch")
-          .exclude("io.trino", "trino-hive")
-          .jar(),
-        // hive and hdfs are necessary for accessing delta lake tables
-        ("io.trino" % "trino-hive" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar(),
-        ("io.trino" % "trino-hdfs" % TRINO_VERSION % Test).jar(),
+          .exclude("io.trino", "trino-exchange-filesystem"),
+        ("io.trino" % "trino-exchange-filesystem" % TRINO_VERSION % Test).jar(),
         ("io.trino" % "trino-memory" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar()
         //        // Add Spark as a reference impl (Scala 2)
         //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
