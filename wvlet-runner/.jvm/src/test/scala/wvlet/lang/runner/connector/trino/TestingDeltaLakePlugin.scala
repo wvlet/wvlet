@@ -24,6 +24,7 @@ import io.trino.filesystem.TrinoFileSystemFactory
 import io.trino.plugin.deltalake.transactionlog.writer.TransactionLogSynchronizer
 import io.trino.plugin.deltalake.DeltaLakeConnectorFactory
 import io.trino.plugin.deltalake.DeltaLakePlugin
+import io.trino.plugin.deltalake.DeltaLakeTableCredentials
 import io.trino.spi.connector.Connector
 import io.trino.spi.connector.ConnectorContext
 import io.trino.spi.connector.ConnectorFactory
@@ -32,6 +33,7 @@ import io.trino.spi.connector.ConnectorSession
 import java.io.IOException
 import java.io.UncheckedIOException
 import java.nio.file.Path
+import java.util.Optional
 
 class TestingDeltaLakePlugin(localFileSystemRootPath: Path) extends DeltaLakePlugin:
   override def getConnectorFactories: java.lang.Iterable[ConnectorFactory] = ImmutableList.of(
@@ -66,6 +68,7 @@ class FileTestingTransactionLogSynchronizer @Inject (fileSystemFactory: TrinoFil
 
   def write(
       session: ConnectorSession,
+      tableCredentials: Optional[DeltaLakeTableCredentials],
       clusterId: String,
       newLogEntryPath: Location,
       entryContents: Array[Byte]

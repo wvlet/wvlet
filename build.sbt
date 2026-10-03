@@ -9,7 +9,7 @@ import WvletBuildKeys.*
 
 val UNI_VERSION = "2026.1.23"
 
-val TRINO_VERSION          = "476"
+val TRINO_VERSION          = "483"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.5.1"
@@ -471,7 +471,12 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(uniNativeCurlLinking)
   .jvmSettings(
     specRunnerSettings,
-    Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
+    Test / javaOptions ++=
+      Seq(
+        "--enable-native-access=ALL-UNNAMED",
+        // TestingTrinoServer (Trino 477+) uses the Vector API for block encoding
+        "--add-modules=jdk.incubator.vector"
+      ),
     libraryDependencies ++=
       Seq(
         "org.jline"        % "jline"        % "4.4.6",
@@ -492,12 +497,15 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
-        ("io.trino" % "trino-testing" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch"),
-        // Trino uses trino-plugin packaging name in pom.xml, so we need to specify jar() package explicitly
-        ("io.trino" % "trino-delta-lake" % TRINO_VERSION % Test)
+        ("io.trino" % "trino-testing" % TRINO_VERSION % Test)
           .exclude("io.trino", "trino-tpch")
-          .exclude("io.trino", "trino-hive")
-          .jar(),
+          .exclude("io.trino", "trino-exchange-filesystem"),
+        ("io.trino" % "trino-exchange-filesystem" % TRINO_VERSION % Test).jar(),
+        // trino-delta-lake is no longer on Maven Central (see project/TrinoPlugins.scala), so its
+        // jar comes from Test / unmanagedJars below; declare its non-Trino dependencies here
+        "io.delta"          % "delta-kernel-api" % "4.3.1"  % Test,
+        "org.roaringbitmap" % "RoaringBitmap"    % "1.6.15" % Test,
+        // Trino uses trino-plugin packaging name in pom.xml, so we need to specify jar() package explicitly
         // hive and hdfs are necessary for accessing delta lake tables
         ("io.trino" % "trino-hive" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar(),
         ("io.trino" % "trino-hdfs" % TRINO_VERSION % Test).jar(),
@@ -507,7 +515,11 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         //          // exclude sbt-parser-combinators as it conflicts with Scala 3
         //          ExclusionRule(organization = "org.scala-lang.modules", name = "scala-parser-combinators_2.13")
         //        ) cross (CrossVersion.for3Use2_13)
-      )
+      ),
+    Test / unmanagedJars += {
+      val jar = TrinoPlugins.deltaLakeJar(TRINO_VERSION, streams.value.log)
+      Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(jar.toPath))
+    }
   )
   // `client` provides the RPC client for the remote wvlet-server backend (WvletServerClient)
   .dependsOn(lang, client)
