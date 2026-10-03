@@ -501,25 +501,13 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
           .exclude("io.trino", "trino-tpch")
           .exclude("io.trino", "trino-exchange-filesystem"),
         ("io.trino" % "trino-exchange-filesystem" % TRINO_VERSION % Test).jar(),
-        // trino-delta-lake is no longer on Maven Central (see project/TrinoPlugins.scala), so its
-        // jar comes from Test / unmanagedJars below; declare its non-Trino dependencies here
-        "io.delta"          % "delta-kernel-api" % "4.3.1"  % Test,
-        "org.roaringbitmap" % "RoaringBitmap"    % "1.6.15" % Test,
-        // Trino uses trino-plugin packaging name in pom.xml, so we need to specify jar() package explicitly
-        // hive and hdfs are necessary for accessing delta lake tables
-        ("io.trino" % "trino-hive" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar(),
-        ("io.trino" % "trino-hdfs" % TRINO_VERSION % Test).jar(),
         ("io.trino" % "trino-memory" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar()
         //        // Add Spark as a reference impl (Scala 2)
         //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
         //          // exclude sbt-parser-combinators as it conflicts with Scala 3
         //          ExclusionRule(organization = "org.scala-lang.modules", name = "scala-parser-combinators_2.13")
         //        ) cross (CrossVersion.for3Use2_13)
-      ),
-    Test / unmanagedJars += {
-      val jar = TrinoPlugins.deltaLakeJar(TRINO_VERSION, streams.value.log)
-      Attributed.blank[xsbti.HashedVirtualFileRef](fileConverter.value.toVirtualFile(jar.toPath))
-    }
+      )
   )
   // `client` provides the RPC client for the remote wvlet-server backend (WvletServerClient)
   .dependsOn(lang, client)

@@ -19,12 +19,10 @@ import wvlet.lang.connector.trino.TrinoConnector
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.test.WvletDITest
 
-import java.io.File
-
 class TrinoConnectorTest extends WvletDITest:
 
   initDesign { d =>
-    d.bindInstance[TestTrinoServer](new TestTrinoServer().withDeltaLakePlugin)
+    d.bindInstance[TestTrinoServer](new TestTrinoServer().withMemoryPlugin)
       .bindProvider { (server: TestTrinoServer) =>
         TrinoConfig(
           catalog = "memory",
@@ -63,28 +61,6 @@ class TrinoConnectorTest extends WvletDITest:
 
     test("drop schema") {
       trino.execute("drop schema if exists memory.main")
-    }
-
-    test("Create delta Lake table") {
-      val baseDir = new File(sys.props("user.dir")).getAbsolutePath
-      trino.execute("create schema if not exists delta.delta_db")
-
-      test("create a local delta lake file") {
-        trino.execute("create table delta.delta_db.a as select 1 as id, 'leo' as name")
-        trino.execute("insert into delta.delta_db.a values(2, 'yui')")
-        val r = trino.execute("select * from delta.delta_db.a order by id")
-        debug(r.rows.map(_.values))
-        r.rowCount shouldBe 2
-      }
-
-      test("register a local delta lake table") {
-        trino.execute(
-          s"call delta.system.register_table(schema_name => 'delta_db', table_name => 'www_access', table_location => 'file://${baseDir}/spec/delta/data/www_access')"
-        )
-        val r = trino.execute("select * from delta.delta_db.www_access limit 5")
-        debug(r.rows.map(_.values))
-        r.rowCount shouldBe 5
-      }
     }
 
     test("list functions") {

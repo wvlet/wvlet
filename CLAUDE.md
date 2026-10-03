@@ -146,7 +146,6 @@ pnpm --filter website run build
 - **DuckDB**: Default for testing and lightweight execution
 - **Trino**: Production distributed query engine
 - **Snowflake**: Cloud data warehouse via JDBC
-- **Delta Lake**: Support for Delta table format
 
 ## Testing Framework
 
