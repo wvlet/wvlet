@@ -51,6 +51,16 @@ object DataTypeParser extends LogSupport:
 
   def parse(str: String, typeParams: List[DataType]): DataType = toDataType(str, typeParams)
 
+  /**
+    * Build a type from a SQL type name, keeping element type names as written (e.g. `BIGINT` in
+    * `ARRAY(BIGINT)`) so that they are rendered back in the engine's spelling
+    */
+  def parseSqlType(str: String, typeParams: List[DataType]): DataType = toDataType(
+    str,
+    typeParams,
+    resolvePrimitiveParams = false
+  )
+
   private def unexpected(msg: String): WvletLangException = StatusCode
     .SYNTAX_ERROR
     .newException(msg)
@@ -67,7 +77,17 @@ object DataTypeParser extends LogSupport:
       case other =>
         other
 
-  private def toDataType(typeName: String, params: List[DataType]): DataType =
+  private def toDataType(
+      typeName: String,
+      params: List[DataType],
+      resolvePrimitiveParams: Boolean = true
+  ): DataType =
+    def elem(p: DataType): DataType =
+      if resolvePrimitiveParams then
+        elementType(p)
+      else
+        p
+
     // SQL type names are case-insensitive: CAST(x AS DECIMAL(17,2)) must produce the same
     // DecimalType as decimal(17,2), not fall through to an opaque GenericType
     typeName.toLowerCase match
@@ -79,9 +99,9 @@ object DataTypeParser extends LogSupport:
         else
           VarcharType(params.headOption)
       case "array" if params.size == 1 =>
-        ArrayType(elementType(params(0)))
+        ArrayType(elem(params(0)))
       case "map" if params.size == 2 =>
-        MapType(elementType(params(0)), elementType(params(1)))
+        MapType(elem(params(0)), elem(params(1)))
       case "decimal" =>
         if params.size == 0 then
           // Use the default precision and scale of DuckDb
@@ -96,6 +116,8 @@ object DataTypeParser extends LogSupport:
               throw unexpected(s"Invalid decimal type parameters: ${params}")
       case _ =>
         GenericType(Name.typeName(typeName), params)
+
+  end toDataType
 
 end DataTypeParser
 

@@ -99,4 +99,14 @@ class ForLoopTypingTest extends UniTest:
     f.body.head.relationType.fields.map(_.dataType) shouldBe List(DataType.LongType)
   }
 
+  test("iterate a val holding an engine-computed array through the engine") {
+    val f = compileForLoop("""val r = range(1, 4)
+        |for i in r {
+        |  select i * 10 as v
+        |}""".stripMargin)
+    f.iterable shouldMatch { case _: SubQueryExpression =>
+    }
+    f.body.head.relationType.fields.map(_.dataType) shouldBe List(DataType.LongType)
+  }
+
 end ForLoopTypingTest

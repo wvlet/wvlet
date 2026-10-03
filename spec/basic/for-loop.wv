@@ -98,6 +98,13 @@ for i in range(1, 4) {
 from for_loop_range
 test _.rows should be [[10], [20], [30]]
 
+-- A val holding an engine-computed array is also iterated through the engine
+val evens = range(0, 6, 2)
+for i in evens {
+  select i % 2 = 0 and i between 0 and 4 as ok
+  test _.rows should be [[true]]
+}
+
 -- An empty range runs nothing: this test would fail if the body ran
 for i in range(3, 1) {
   select i as v

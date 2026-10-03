@@ -925,6 +925,38 @@ object Typer extends Phase("typer") with LogSupport:
     * Type a for-loop: the iterable is typed in the enclosing context, and the body once in a child
     * context where the loop variable is bound at the iterable's element type
     */
+  /**
+    * True for an array literal, or a val (chain) bound to one, which a for-loop expands at compile
+    * time. A val bound to an engine-computed array (e.g. `val r = range(1, 4)`) is not constant
+    */
+  private def isConstantArray(e: Expression, depth: Int = 0)(using ctx: Context): Boolean =
+    e match
+      case _: ArrayConstructor =>
+        true
+      case i: Identifier if depth < 10 =>
+        ctx.findTermSymbolByName(i.leafName).map(_.symbolInfo) match
+          case Some(v: ValSymbolInfo) =>
+            isConstantArray(v.expr, depth + 1)
+          case _ =>
+            // An unknown name is reported as an invalid iterable at run time
+            true
+      case _ =>
+        false
+
+  /**
+    * The expression a val (chain) is bound to, or the given expression if it is not a val reference
+    */
+  private def valExpression(e: Expression, depth: Int = 0)(using ctx: Context): Expression =
+    e match
+      case i: Identifier if depth < 10 =>
+        ctx.findTermSymbolByName(i.leafName).map(_.symbolInfo) match
+          case Some(v: ValSymbolInfo) =>
+            valExpression(v.expr, depth + 1)
+          case _ =>
+            e
+      case _ =>
+        e
+
   private def typeForLoop(f: ForLoop)(using ctx: Context): ForLoop =
     val typedIterable =
       f.iterable match
@@ -932,10 +964,12 @@ object Typer extends Phase("typer") with LogSupport:
           val q = s.copy(query = resolveRelation(s.query))
           q.copyMetadataFrom(s)
           q
-        case constant @ (_: ArrayConstructor | _: Identifier) =>
-          // Array literals and vals are expanded without an engine
+        case constant if isConstantArray(constant) =>
+          // Array literals and vals holding them are expanded without an engine
           typeExpression(constant)
-        case other =>
+        case iterable =>
+          // Iterate the expression a val is bound to, as its reference carries no type
+          val other = valExpression(iterable)
           val typed = typeExpression(other)
           typed.dataType match
             case t if t.isResolved && !t.isInstanceOf[DataType.ArrayType] =>
@@ -949,7 +983,7 @@ object Typer extends Phase("typer") with LogSupport:
               val unnest = AliasedRelation(
                 TableFunctionCall(
                   UnquotedIdentifier("unnest", span),
-                  List(FunctionArg(value = other, span = span)),
+                  List(FunctionArg(value = typed, span = span)),
                   span
                 ),
                 UnquotedIdentifier(s"_for_${f.variable.name}", span),
