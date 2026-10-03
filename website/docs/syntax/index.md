@@ -384,10 +384,11 @@ The loop variable behaves like a `val` that is visible only inside the loop body
 in expressions, in `s"..."` strings, and in backquote-interpolated table names, including
 `save to` and `append to` targets.
 
-The values can come from an array, a `val` holding an array, or a parenthesized query. A query is
-run once before the loop starts. For a single-column query, the loop variable is bound to each
-value. For a query with several columns, it is bound to each row, and the body reads the columns
-as fields (`p.dt`):
+The values can come from an array, a `val` holding an array, an array computed by the database
+engine such as `range(1, 4)` (integers from 1 up to, but not including, 4), or a parenthesized
+query. A computed array or a query is evaluated once before the loop starts. For a single-column
+query, the loop variable is bound to each value. For a query with several columns, it is bound to
+each row, and the body reads the columns as fields (`p.dt`):
 
 ```wvlet
 val regions = ['us', 'eu', 'jp']
@@ -396,6 +397,12 @@ for r in regions {
   from sales
   where region = r
   save to s`sales_${r}`
+}
+
+-- Iterate over a range of integers: 1, 2, 3
+for i in range(1, 4) {
+  from s`shard_${i}`
+  append to all_shards
 }
 
 -- Iterate over values discovered at run time

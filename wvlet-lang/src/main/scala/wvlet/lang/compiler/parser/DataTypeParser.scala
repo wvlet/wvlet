@@ -30,6 +30,7 @@ import wvlet.lang.model.DataType.TimestampField
 import wvlet.lang.model.DataType.TimestampType
 import wvlet.lang.model.DataType.TypeParameter
 import wvlet.lang.model.DataType.TypeVariable
+import wvlet.lang.model.DataType.UnresolvedTypeParameter
 import wvlet.lang.model.DataType.VarcharType
 import wvlet.lang.model.expr.Identifier
 import wvlet.lang.model.expr.Literal
@@ -50,11 +51,43 @@ object DataTypeParser extends LogSupport:
 
   def parse(str: String, typeParams: List[DataType]): DataType = toDataType(str, typeParams)
 
+  /**
+    * Build a type from a SQL type name, keeping element type names as written (e.g. `BIGINT` in
+    * `ARRAY(BIGINT)`) so that they are rendered back in the engine's spelling
+    */
+  def parseSqlType(str: String, typeParams: List[DataType]): DataType = toDataType(
+    str,
+    typeParams,
+    resolvePrimitiveParams = false
+  )
+
   private def unexpected(msg: String): WvletLangException = StatusCode
     .SYNTAX_ERROR
     .newException(msg)
 
-  private def toDataType(typeName: String, params: List[DataType]): DataType =
+  /**
+    * Resolve a type argument naming a primitive type (e.g. `long` in `array[long]`). The parser
+    * reads every bracketed name as a type parameter, which is right only for generic ones such as
+    * `A` in `array[A]`
+    */
+  private def elementType(param: DataType): DataType =
+    param match
+      case UnresolvedTypeParameter(name, None) if DataType.isPrimitiveTypeName(name.toLowerCase) =>
+        DataType.getPrimitiveType(name.toLowerCase)
+      case other =>
+        other
+
+  private def toDataType(
+      typeName: String,
+      params: List[DataType],
+      resolvePrimitiveParams: Boolean = true
+  ): DataType =
+    def elem(p: DataType): DataType =
+      if resolvePrimitiveParams then
+        elementType(p)
+      else
+        p
+
     // SQL type names are case-insensitive: CAST(x AS DECIMAL(17,2)) must produce the same
     // DecimalType as decimal(17,2), not fall through to an opaque GenericType
     typeName.toLowerCase match
@@ -66,9 +99,9 @@ object DataTypeParser extends LogSupport:
         else
           VarcharType(params.headOption)
       case "array" if params.size == 1 =>
-        ArrayType(params(0))
+        ArrayType(elem(params(0)))
       case "map" if params.size == 2 =>
-        MapType(params(0), params(1))
+        MapType(elem(params(0)), elem(params(1)))
       case "decimal" =>
         if params.size == 0 then
           // Use the default precision and scale of DuckDb
@@ -83,6 +116,8 @@ object DataTypeParser extends LogSupport:
               throw unexpected(s"Invalid decimal type parameters: ${params}")
       case _ =>
         GenericType(Name.typeName(typeName), params)
+
+  end toDataType
 
 end DataTypeParser
 
