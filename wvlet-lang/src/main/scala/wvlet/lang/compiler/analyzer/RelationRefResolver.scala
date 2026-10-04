@@ -16,6 +16,7 @@ package wvlet.lang.compiler.analyzer
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ContextLogSupport
+import wvlet.lang.compiler.MethodSymbolInfo
 import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.RelationAliasSymbolInfo
@@ -342,7 +343,14 @@ object RelationRefResolver extends ContextLogSupport:
               ref.span
             )
           case _ =>
-            ref
+            si match
+              case m: MethodSymbolInfo if m.body.exists(ExternalApply.isExternalBody) =>
+                // `from f(args)`: a code-backed table function invoked with no input rows
+                FunctionInliner
+                  .resolveExternalApply(EmptyRelation(ref.span), sym, m, ref.args, ref.span)
+                  .getOrElse(ref)
+              case _ =>
+                ref
       case None =>
         context.logTrace(s"Unresolved model ref: ${ref.name.fullName}")
         ref

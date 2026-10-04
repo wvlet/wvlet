@@ -40,7 +40,9 @@ case class StageRunRecord(
     error: Option[String] = None,
     table: Option[String] = None,
     waitingSinceMillis: Option[Long] = None,
-    lastPollAtMillis: Option[Long] = None
+    lastPollAtMillis: Option[Long] = None,
+    // Metadata returned by the external functions of the stage: a JSON object by function name
+    metadata: Option[String] = None
 )
 
 /**

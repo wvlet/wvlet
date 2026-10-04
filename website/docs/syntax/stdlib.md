@@ -218,3 +218,5 @@ def bit_count(x: long) in trino: int = sql"bitwise_bit_count(${x})"
 Supported dialect contexts include `duckdb`, `trino`, `hive`, `snowflake`, and `bigquery`. Note that pattern strings remain engine-specific even when the function name is mapped: `format` takes a strftime-style pattern on DuckDB and BigQuery (`'%Y-%m-%d'`), a MySQL-style pattern on Trino (`'%Y-%m-%d'` with `%i` for minutes), a Java SimpleDateFormat pattern on Hive (`'yyyy-MM-dd'`), and a SQL format model on Snowflake (`'YYYY-MM-DD'`). Similarly, Hive's `split` treats the separator as a regular expression, and Snowflake's JSON paths omit the leading `$.`.
 
 All DuckDB and Trino engine functions are bundled with the standard library, so calls like `bit_count(x)` type-check offline out of the box and compile to the SQL of the engine you target. For other databases, or engine-specific UDFs, import the engine's function catalog with [`wvlet catalog import`](../usage/catalog-import.md).
+
+When the logic cannot be written in SQL at all, implement it in TypeScript, on the JVM, or as a shell command: see [Custom Functions](./custom-functions.md).

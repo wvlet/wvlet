@@ -386,6 +386,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
               println(
                 f"  stage ${s.name}%-24s ${s.state}%-14s attempts: ${s.attempts}${waiting}${err}"
               )
+              // Metadata returned by the external functions of the stage, by function name
+              s.metadata.foreach(m => println(s"    functions: ${m}"))
             }
         case "cancel" =>
           val id = requireRunId("cancel <run_id>")

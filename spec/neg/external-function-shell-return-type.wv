@@ -1,0 +1,5 @@
+-- A shell function must declare a row type as its return type
+def not_a_table: string = sh"echo hello"
+
+from [[1]] as t(id)
+| not_a_table

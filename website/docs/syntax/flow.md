@@ -433,6 +433,22 @@ flow main_flow = {
 stage done = from send | end()
 ```
 
+### Custom Functions in Stages
+
+A stage can hand its rows to your own code, written in TypeScript, on the JVM, or as a shell command, and continue the pipeline with the rows that come back:
+
+```wvlet
+def score(threshold: double): scored = native
+
+flow ScoreOrders = {
+  stage orders = from raw_orders where status = 'paid'
+  stage scored = from orders | score(threshold = 0.5)
+  stage report = from scored | where score > 0.8
+}
+```
+
+Such a stage is an ordinary stage: retries, timeouts, triggers, and resume apply unchanged. See [Custom Functions](./custom-functions.md) for how to declare and implement them.
+
 ## Flow Dependencies
 
 ### Success Dependencies
