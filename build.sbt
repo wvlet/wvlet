@@ -485,7 +485,7 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.xerial" % "sqlite-jdbc" % "3.53.4.0",
         // Postgres-backed flow run store (shared across machines: concurrency claims,
         // scheduler catch-up, and the web UI observe runs from any process)
-        "org.postgresql" % "postgresql" % "42.7.13",
+        "org.postgresql" % "postgresql" % "42.7.14",
         // In-process real PostgreSQL for run-store tests (no Docker needed), mirroring the
         // TestingTrinoServer pattern below. Binaries are resolved as jar dependencies per
         // platform, so tests run offline after the first sbt update
