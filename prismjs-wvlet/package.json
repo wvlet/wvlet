@@ -20,7 +20,7 @@
   "devDependencies": {
     "prismjs": "^1.29.0",
     "terser": "^5.51.2",
-    "jest": "^30.5.1"
+    "jest": "^30.5.2"
   },
   "keywords": [
     "prism",
