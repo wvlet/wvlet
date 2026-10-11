@@ -138,8 +138,9 @@ jobs:
       - name: Install LLVM and Clang
         run: |
           if ("${{ matrix.arch }}" -eq "arm64") {
-            # Chocolatey LLVM package doesn't support ARM64, download directly
-            $llvmVersion = "19.1.7"
+            # Chocolatey LLVM package doesn't support ARM64, download directly.
+            # The MSVC STL on the runner (14.51+) requires Clang 20 or newer (STL1000)
+            $llvmVersion = "22.1.8"
             $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/LLVM-$llvmVersion-woa64.exe"
             Write-Host "Downloading LLVM $llvmVersion for ARM64..."
             Invoke-WebRequest -Uri $url -OutFile "llvm-installer.exe"

@@ -42,8 +42,22 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.Try
 import scala.util.Using
 
-class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPCDS: Boolean = false)
-    extends DBConnector(DuckDB, workEnv)
+/**
+  * In-memory DuckDB connector. The connection (and the optional TPC-H/TPC-DS demo data) is prepared
+  * in a background thread so that the first query only waits for whatever is still outstanding.
+  *
+  * @param prepareTPCH
+  *   load the DuckDB tpch extension and generate the TPC-H tables with `tpchScaleFactor`
+  * @param prepareTPCDS
+  *   load the DuckDB tpcds extension and generate the TPC-DS tables with `tpcdsScaleFactor`
+  */
+class DuckDBConnector(
+    workEnv: WorkEnv,
+    prepareTPCH: Boolean = false,
+    prepareTPCDS: Boolean = false,
+    tpchScaleFactor: Double = DuckDBConnector.defaultScaleFactor,
+    tpcdsScaleFactor: Double = DuckDBConnector.defaultScaleFactor
+) extends DBConnector(DuckDB, workEnv)
     with AutoCloseable
     with LogSupport:
 
@@ -57,27 +71,35 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPC
   private val initThread = ThreadUtil.runBackgroundTask { () =>
     val nano = System.nanoTime()
     logger.trace("Initializing DuckDB connection")
-    conn = newConnection
+    // The first connection in a JVM loads the DuckDB native library, which dominates the
+    // session start-up time; log each phase separately so a slow first query is attributable
+    conn = timed("Opened DuckDB connection")(newConnection)
     if prepareTPCH then
-      loadTPCH()
+      timed(s"Loaded TPC-H data (sf=${tpchScaleFactor})")(loadTPCH())
     if prepareTPCDS then
-      loadTPCDS()
+      timed(s"Loaded TPC-DS data (sf=${tpcdsScaleFactor})")(loadTPCDS())
 
     initialized.set(true)
     logger.trace(s"Finished initializing DuckDB. ${ElapsedTime.nanosSince(nano)}")
   }
 
+  private def timed[A](message: String)(body: => A): A =
+    val nano   = System.nanoTime()
+    val result = body
+    logger.debug(s"${message} in ${ElapsedTime.nanosSince(nano)}")
+    result
+
   def loadTPCH(): Unit =
     Using.resource(conn.createStatement()): stmt =>
       stmt.execute("install tpch")
       stmt.execute("load tpch")
-      stmt.execute("call dbgen(sf = 0.01)")
+      stmt.execute(s"call dbgen(sf = ${tpchScaleFactor})")
 
   def loadTPCDS(): Unit =
     Using.resource(conn.createStatement()): stmt =>
       stmt.execute("install tpcds")
       stmt.execute("load tpcds")
-      stmt.execute("call dsdgen(sf = 0.01)")
+      stmt.execute(s"call dsdgen(sf = ${tpcdsScaleFactor})")
 
   /**
     * Cross-platform [[SqlConnector]] view over this connector's long-lived connection. Unlike the
@@ -203,3 +225,7 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPC
   end listFunctions
 
 end DuckDBConnector
+
+object DuckDBConnector:
+  /** Default scale factor of the generated TPC-H/TPC-DS demo data (small enough for tests) */
+  val defaultScaleFactor: Double = 0.01

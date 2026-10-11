@@ -18,7 +18,7 @@
     "README.md"
   ],
   "dependencies": {
-    "koffi": "^3.2.1"
+    "koffi": "^3.3.2"
   },
   "keywords": [
     "wvlet",

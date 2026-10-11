@@ -178,6 +178,9 @@ object DataType extends LogSupport:
   private[lang] def parse(s: String, typeParams: List[TypeParameter]): DataType = DataTypeParser
     .parse(s, typeParams)
 
+  private[lang] def parseSqlType(s: String, typeParams: List[TypeParameter]): DataType =
+    DataTypeParser.parseSqlType(s, typeParams)
+
   def unapply(str: String): Option[DataType] = Try(parse(str)).toOption
 
   def toSQLType(t: DataType, dbType: DBType): String =

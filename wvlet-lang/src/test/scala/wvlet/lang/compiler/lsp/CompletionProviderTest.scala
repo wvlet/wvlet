@@ -370,4 +370,18 @@ class CompletionProviderTest extends UniTest:
     details shouldContain ": string"
     details shouldNotContain ": int"
 
+  test("should complete loop variables and body vals inside a for-loop"):
+    val body  = "for outer_v in [1, 2] {\n  for inner_v in [3] {\n    val body_v = 0\n    select "
+    val src   = s"${body}1\n  }\n}\nselect 2"
+    val items = complete(src, body.length)
+    items.find(_.label == "outer_v").map(_.detail) shouldBe Some("loop variable")
+    items.find(_.label == "inner_v").map(_.kind) shouldBe Some(CompletionItemKind.Variable)
+    items.find(_.label == "body_v").map(_.detail) shouldBe Some("val")
+
+  test("should not complete loop variables outside the for-loop"):
+    val src   = "for outer_v in [1, 2] {\n  val body_v = 0\n  select 1\n}\nselect "
+    val items = complete(src, src.length)
+    items.map(_.label) shouldNotContain "outer_v"
+    items.map(_.label) shouldNotContain "body_v"
+
 end CompletionProviderTest

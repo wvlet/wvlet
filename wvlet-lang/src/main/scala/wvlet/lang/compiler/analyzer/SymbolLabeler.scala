@@ -128,6 +128,24 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           sym.tree = v
           ctx.enterGlobalSymbol(sym)
           ctx
+        case f: ForLoop =>
+          // The loop variable is scoped to the loop body: it is bound by the Typer (and per
+          // iteration at run time) in a child context, and never entered as a global symbol
+          val sym = attachNewSymbol(f, ctx)
+          sym.symbolInfo = ValSymbolInfo(
+            ctx.owner,
+            sym,
+            f.variable,
+            DataType.UnknownType,
+            f.iterable,
+            ctx.compilationUnit
+          )
+          // Body statements are labeled like top-level ones: declarations compile once
+          f.body
+            .foldLeft(ctx) { (prevContext, stmt) =>
+              iter(stmt, prevContext)
+            }
+          ctx
         case s: Save if s.isForTable =>
           iter(s.child, ctx)
           registerSave(s)(using ctx)

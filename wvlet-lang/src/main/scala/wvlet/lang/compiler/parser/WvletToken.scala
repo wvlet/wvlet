@@ -236,7 +236,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case OVER      extends WvletToken(Keyword, "over")
   case PARTITION extends WvletToken(Keyword, "partition")
   case ROWS      extends WvletToken(Keyword, "rows")
-  case RANGE     extends WvletToken(Keyword, "range")
+  // `range` is not a keyword so that the stdlib range(start, stop) function can be called
 
   // model management keywords
   case RUN     extends WvletToken(Keyword, "run")

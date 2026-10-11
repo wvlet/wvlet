@@ -11,6 +11,7 @@ import io.airlift.bootstrap.LifeCycleManager
 import io.airlift.json.JsonModule
 import io.airlift.slice.Slice
 import io.airlift.slice.Slices
+import io.trino.plugin.base.ConnectorContextModule
 import io.trino.plugin.memory.*
 import io.trino.spi.Page
 import io.trino.spi.Plugin
@@ -20,7 +21,6 @@ import io.trino.spi.`type`.IntegerType
 import io.trino.spi.`type`.VarcharType
 import io.trino.spi.block.Block
 import io.trino.spi.block.VariableWidthBlockBuilder
-import io.trino.spi.connector.ConnectorSplitSource.ConnectorSplitBatch
 import io.trino.spi.connector.*
 import io.trino.spi.function.FunctionProvider
 import io.trino.spi.function.table.ReturnTypeSpecification.DescribedTable
@@ -64,8 +64,10 @@ class CustomMemoryConnectorFactory extends MemoryConnectorFactory:
     // A plugin is not required to use Guice; it is just very convenient
     val app =
       new Bootstrap(
+        s"io.trino.bootstrap.catalog.${catalogName}",
         new JsonModule,
-        new MemoryModule(context.getTypeManager, context.getNodeManager),
+        ConnectorContextModule(catalogName, context),
+        MemoryModule(),
         CustomMemoryModule()
       )
 
@@ -119,13 +121,13 @@ class CustomMemorySplitManager @Inject (config: MemoryConfig, metadata: MemoryMe
       transaction: ConnectorTransactionHandle,
       session: ConnectorSession,
       table: ConnectorTableHandle,
-      dynamicFilter: DynamicFilter,
+      dynamicFilterColumns: util.Set[ColumnHandle],
       constraint: Constraint
   ): ConnectorSplitSource = memorySplitManager.getSplits(
     transaction,
     session,
     table,
-    dynamicFilter,
+    dynamicFilterColumns,
     constraint
   )
 
@@ -200,6 +202,7 @@ object HelloTableFunction extends ConnectorTableFunction:
     override def getSplitProcessor(
         session: ConnectorSession,
         handle: ConnectorTableFunctionHandle,
+        tableCredentials: Optional[ConnectorTableCredentials],
         split: ConnectorSplit
     ): TableFunctionSplitProcessor =
       split match
@@ -325,6 +328,7 @@ object DuckDBSQLFunction extends ConnectorTableFunction with LogSupport:
     override def getSplitProcessor(
         session: ConnectorSession,
         handle: ConnectorTableFunctionHandle,
+        tableCredentials: Optional[ConnectorTableCredentials],
         split: ConnectorSplit
     ): TableFunctionSplitProcessor =
       split match

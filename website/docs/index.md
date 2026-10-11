@@ -293,4 +293,4 @@ where
   and user_id is not null;
 ```
 
-If supported, modern table formats like Delta Lake and Iceberg are used for optimized processing.
+If supported, modern table formats like Iceberg and DuckLake are used for optimized processing.

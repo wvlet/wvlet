@@ -9,12 +9,12 @@ import WvletBuildKeys.*
 
 val UNI_VERSION = "2026.1.23"
 
-val TRINO_VERSION          = "476"
+val TRINO_VERSION          = "483"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
-val DUCKDB_JDBC_VERSION    = "1.5.5.1"
-val SNOWFLAKE_JDBC_VERSION = "4.3.4"
-val CAFFEINE_VERSION       = "3.2.4"
+val DUCKDB_JDBC_VERSION    = "1.5.6.0"
+val SNOWFLAKE_JDBC_VERSION = "4.4.0"
+val CAFFEINE_VERSION       = "3.3.0"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
@@ -471,16 +471,21 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(uniNativeCurlLinking)
   .jvmSettings(
     specRunnerSettings,
-    Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
+    Test / javaOptions ++=
+      Seq(
+        "--enable-native-access=ALL-UNNAMED",
+        // TestingTrinoServer (Trino 477+) uses the Vector API for block encoding
+        "--add-modules=jdk.incubator.vector"
+      ),
     libraryDependencies ++=
       Seq(
-        "org.jline"        % "jline"        % "4.4.5",
+        "org.jline"        % "jline"        % "4.4.7",
         "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
         "org.xerial" % "sqlite-jdbc" % "3.53.4.0",
         // Postgres-backed flow run store (shared across machines: concurrency claims,
         // scheduler catch-up, and the web UI observe runs from any process)
-        "org.postgresql" % "postgresql" % "42.7.13",
+        "org.postgresql" % "postgresql" % "42.7.14",
         // In-process real PostgreSQL for run-store tests (no Docker needed), mirroring the
         // TestingTrinoServer pattern below. Binaries are resolved as jar dependencies per
         // platform, so tests run offline after the first sbt update
@@ -492,15 +497,10 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
-        ("io.trino" % "trino-testing" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch"),
-        // Trino uses trino-plugin packaging name in pom.xml, so we need to specify jar() package explicitly
-        ("io.trino" % "trino-delta-lake" % TRINO_VERSION % Test)
+        ("io.trino" % "trino-testing" % TRINO_VERSION % Test)
           .exclude("io.trino", "trino-tpch")
-          .exclude("io.trino", "trino-hive")
-          .jar(),
-        // hive and hdfs are necessary for accessing delta lake tables
-        ("io.trino" % "trino-hive" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar(),
-        ("io.trino" % "trino-hdfs" % TRINO_VERSION % Test).jar(),
+          .exclude("io.trino", "trino-exchange-filesystem"),
+        ("io.trino" % "trino-exchange-filesystem" % TRINO_VERSION % Test).jar(),
         ("io.trino" % "trino-memory" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar()
         //        // Add Spark as a reference impl (Scala 2)
         //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
@@ -627,7 +627,7 @@ lazy val server = project
     name := "wvlet-server",
     // Route SLF4J calls (e.g. from JDBC drivers) into java.util.logging so they share the
     // same handler as wvlet.uni.log.
-    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.19",
+    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.20",
     uniRestart / baseDirectory        := (ThisBuild / baseDirectory).value
   )
   .dependsOn(api.jvm, client.jvm, runner.jvm, httpServer, testUtil % Test)

@@ -347,6 +347,9 @@ case class FunctionArg(
     orderBy: List[SortItem] = Nil,
     span: Span
 ) extends Expression:
+  /** True when the argument is a bare value: no name, no DISTINCT and no ORDER BY */
+  def isPlainArg: Boolean = name.isEmpty && !isDistinct && orderBy.isEmpty
+
   override def children: Seq[Expression]          = value +: orderBy
   override protected def structuralType: DataType = value.dataType
 

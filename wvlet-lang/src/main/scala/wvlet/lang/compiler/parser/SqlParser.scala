@@ -3454,7 +3454,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.COLON)
         val tpeName   = identifier().fullName
         val tpeParams = typeParams()
-        NamedType(name, DataType.parse(tpeName, tpeParams))
+        NamedType(name, DataType.parseSqlType(tpeName, tpeParams))
       case _ =>
         NamedType(name, DataType.UnknownType)
 
@@ -3469,11 +3469,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       scanner.lookAhead().token match
         case SqlToken.L_PAREN =>
           val tpeParams = typeParams()
-          DataType.parse(name.name, tpeParams)
+          DataType.parseSqlType(name.name, tpeParams)
         case SqlToken.LT =>
           // Support Hive-style array<T>, map<K,V> syntax with angle brackets
           val tpeParams = typeParamsWithAngleBrackets()
-          DataType.parse(name.name, tpeParams)
+          DataType.parseSqlType(name.name, tpeParams)
         case _ =>
           DataType.parse(name.name)
 
@@ -3605,7 +3605,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case SqlToken.LT =>
               // This type has its own type parameters
               val nestedParams = typeParamsWithAngleBrackets()
-              val fullType     = DataType.parse(typeName.unquotedValue, nestedParams)
+              val fullType     = DataType.parseSqlType(typeName.unquotedValue, nestedParams)
               UnresolvedTypeParameter(fullType.toString, None)
             case _ =>
               // Simple type without parameters

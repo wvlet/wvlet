@@ -118,6 +118,10 @@ object ExecutionPlanner extends Phase("execution-plan"):
           ExecuteDDL(t)
         case v: ValDef =>
           ExecuteValDef(v)
+        case f: ForLoop =>
+          // Each body statement is a top-level statement of its iteration
+          val bodyPlans = f.body.map(stmt => plan(stmt, evalQuery = true)).filter(!_.isEmpty)
+          ExecuteFor(f, ExecutionPlan(bodyPlans))
         case f: FlowDef if f eq targetPlan =>
           // A flow runs only when its definition is the directly selected target statement.
           // Flow definitions embedded in a compilation unit are declarations and do not run on

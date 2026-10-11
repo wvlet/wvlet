@@ -16,6 +16,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # @types/vscode must not exceed vscode-wvlet's engines.vscode (vsce rejects the
+      # package otherwise), so bump it manually together with engines.vscode
+      - dependency-name: "@types/vscode"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       # Grouping Docusaurus module updates into a single PR
       docusaurus:

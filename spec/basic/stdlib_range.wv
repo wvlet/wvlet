@@ -1,0 +1,13 @@
+-- range(start, stop[, step]) yields integers from start up to stop (exclusive).
+-- Array results are joined to strings so the expected value is engine-independent
+select
+  range(1, 4).mk_string(',') as a,
+  range(0, 10, 3).mk_string(',') as b,
+  range(3, 0, -1).mk_string(',') as c,
+  range(5, 1).size as empty_size,
+  range(0, 5, -1).size as wrong_direction_size,
+
+test _.rows should be [['1,2,3', '0,3,6,9', '3,2,1', 0, 0]]
+
+from unnest(range(1, 4)) as t(i)
+test _.rows should be [[1], [2], [3]]

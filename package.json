@@ -15,19 +15,19 @@
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
     "apache-arrow": "^21.2.0",
-    "koffi": "^3.2.1",
-    "monaco-editor": "^0.56.0",
-    "rollup": "^4.62.5"
+    "koffi": "^3.3.2",
+    "monaco-editor": "^0.57.0",
+    "rollup": "^4.64.0"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.3",
     "autoprefixer": "^10.5.4",
     "esbuild": "^0.28.2",
-    "jsdom": "30.0.1",
-    "postcss": "^8.5.28",
+    "jsdom": "30.1.1",
+    "postcss": "^8.5.29",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.3",
     "vite-plugin-monaco-editor": "^1.1.0"
   },
   "optionalDependencies": {

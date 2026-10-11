@@ -364,6 +364,68 @@ where active = true
 
 This syntax allows you to define inline data tables that can be referenced in your queries, which is particularly useful for testing, small lookup tables, or providing sample data.
 
+### For Loops
+
+A `for` loop repeats a block of statements once per value. Use it when the same steps apply to
+several tables, dates, or tenants, instead of copying the block:
+
+```wvlet
+for d in ['2026_09_01', '2026_09_02', '2026_09_03'] {
+  from s`events_${d}`
+  where status = 'ok'
+  group by user_id
+  agg _.count as cnt
+  add d as dt
+  append to daily_summary
+}
+```
+
+The loop variable behaves like a `val` that is visible only inside the loop body. You can use it
+in expressions, in `s"..."` strings, and in backquote-interpolated table names, including
+`save to` and `append to` targets.
+
+The values can come from an array, a `val` holding an array, an array computed by the database
+engine such as `range(1, 4)` (integers from 1 up to, but not including, 4), or a parenthesized
+query. A computed array or a query is evaluated once before the loop starts. For a single-column
+query, the loop variable is bound to each value. For a query with several columns, it is bound to
+each row, and the body reads the columns as fields (`p.dt`):
+
+```wvlet
+val regions = ['us', 'eu', 'jp']
+
+for r in regions {
+  from sales
+  where region = r
+  save to s`sales_${r}`
+}
+
+-- Iterate over a range of integers: 1, 2, 3
+for i in range(1, 4) {
+  from s`shard_${i}`
+  append to all_shards
+}
+
+-- Iterate over values discovered at run time
+for t in (from tenants where active select tenant_id order by tenant_id) {
+  from s`tenant_${t}`.orders
+  agg _.count as orders
+  add t as tenant_id
+  append to order_counts
+}
+
+-- Iterate over rows: each column is a field of the loop variable
+for p in (from partitions select dt, region) {
+  from events
+  where dt = p.dt and region = p.region
+  save to s`events_${p.dt}_${p.region}`
+}
+```
+
+Iterations run one after another in order, and an error stops the loop. The body can contain any
+statements, including `test` assertions (checked on every iteration; expected values must be
+constants, not the loop variable) and nested `for` loops. To transform the rows of a table, use
+relational operators such as `select` and `add` instead — a `for` loop repeats statements, not rows.
+
 ### Conditional Expressions
 
 | Operator                             | Description                                                                      |

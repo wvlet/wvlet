@@ -34,6 +34,6 @@ addDependencyTreePlugin
 addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
 
 // For packaging Scala project into a executable folder
-addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "1.0.0")
+addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "1.0.1")
 
 scalacOptions ++= Seq("-deprecation", "-feature")

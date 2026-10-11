@@ -47,6 +47,8 @@ sealed trait ExecutionPlan extends TreeNode with Product:
             s"- ${header} to ${s.save.targetName}:\n${indent(s.queryPlan.pp, level + 1)}"
           case t: ExecuteTest =>
             s"- ${header} ${t.test.testExpr.pp}"
+          case f: ExecuteFor =>
+            s"- ${header} ${f.loop.variable} in ${f.loop.iterable.pp}:\n${iter(f.body, level + 1)}"
           case t: ExecuteDebug =>
             s"- ${header}:\n${indent(t.debugExecutionPlan.pp, level + 1)}"
           case other =>
@@ -132,6 +134,12 @@ case class ExecuteTest(test: TestRelation)    extends ExecutionPlan
 
 case class ExecuteDebug(debug: Debug, debugExecutionPlan: ExecutionPlan) extends ExecutionPlan
 case class ExecuteValDef(v: ValDef)                                      extends ExecutionPlan
+
+/**
+  * Run the body plan once per element of the loop's iterable, binding the loop variable in a new
+  * child context for each iteration
+  */
+case class ExecuteFor(loop: ForLoop, body: ExecutionPlan) extends ExecutionPlan
 
 /**
   * Execute a flow definition by running its stages with the stage execution model (state machine

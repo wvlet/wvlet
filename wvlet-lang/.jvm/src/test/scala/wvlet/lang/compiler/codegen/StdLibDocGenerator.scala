@@ -95,6 +95,8 @@ object StdLibDocGenerator extends LogSupport:
       val seen = mutable.LinkedHashMap.empty[String, mutable.ListBuffer[StdLibFunctionDoc]]
       entries.foreach(e => seen.getOrElseUpdate(e.signature, mutable.ListBuffer.empty) += e)
       def cell(s: String): String = s.replace("|", "\\|")
+      // Outside code spans, MDX reads `<` as a JSX tag and `{` as an expression (e.g., `stop <= start`)
+      def proseCell(s: String): String = cell(s).replace("<", "\\<").replace("{", "\\{")
       seen.foreach { case (signature, defs) =>
         val returns = defs.map(_.returnType).find(_.nonEmpty).getOrElse("")
         val engines =
@@ -111,7 +113,8 @@ object StdLibDocGenerator extends LogSupport:
           else
             defs
         val desc = descPool.map(_.description).find(_.nonEmpty).getOrElse("")
-        sb ++= s"| `${cell(signature)}` | ${cell(returns)} | ${engines} | ${cell(desc)} |\n"
+        sb ++=
+          s"| `${cell(signature)}` | ${proseCell(returns)} | ${engines} | ${proseCell(desc)} |\n"
       }
 
     typeSections.foreach { case (typeName, title, intro) =>

@@ -1,0 +1,4 @@
+-- A for-loop iterable must be an array value or a (query)
+for x in 1 {
+  select x
+}

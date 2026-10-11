@@ -141,6 +141,25 @@ object CompletionProvider:
   end definitionItems
 
   /**
+    * Extract completion items for the names bound by the for-loops enclosing the offset: each loop
+    * variable and the definitions declared in its body. Unlike [[definitionItems]], these are
+    * visible only inside the loop, so they are collected for the current document only
+    */
+  def loopScopeItems(plan: LogicalPlan, offset: Int): List[CompletionItem] =
+    val buf                        = List.newBuilder[CompletionItem]
+    def loop(p: LogicalPlan): Unit =
+      p match
+        case pkg: PackageDef =>
+          pkg.statements.foreach(loop)
+        case f: ForLoop if f.span.containsInclusive(offset) =>
+          buf += CompletionItem(f.variable.name, CompletionItemKind.Variable, "loop variable")
+          f.body.foreach(stmt => buf ++= definitionItems(stmt))
+          f.body.foreach(loop)
+        case _ =>
+    loop(plan)
+    buf.result()
+
+  /**
     * The completion detail of a function definition, rendered as its signature `(args): ret` (e.g.
     * `(a1: string, a2: string): string`) so the suggestion shows how to call the function. Falls
     * back to the plain `function` label when the def declares neither arguments nor a return type
@@ -246,6 +265,7 @@ object CompletionProvider:
     try
       parseUnit.unresolvedPlan = ParserPhase.parseOnly(parseUnit)
       items ++= definitionItems(parseUnit.unresolvedPlan)
+      items ++= loopScopeItems(parseUnit.unresolvedPlan, offset)
     catch
       case _: Throwable =>
       // Ignore parse errors — offer whatever we could extract
