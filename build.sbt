@@ -14,7 +14,7 @@ val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.6.0"
 val SNOWFLAKE_JDBC_VERSION = "4.4.0"
-val CAFFEINE_VERSION       = "3.3.0"
+val CAFFEINE_VERSION       = "3.3.1"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
