@@ -93,9 +93,6 @@ object SourceTableStaging extends LogSupport:
             "use a DuckDB engine as the staging target"
         )
     val file = Files.createTempFile(s"wv_staging_", ".jsonl")
-    // DuckDB accepts forward slashes on every platform; backslashes would need escaping in
-    // the SQL literal
-    val filePath = file.toAbsolutePath.toString.replace('\\', '/')
     try
       var rowCount = 0L
       scala
@@ -108,20 +105,68 @@ object SourceTableStaging extends LogSupport:
             rowCount += 1
           }
         }
-      if rowCount > 0 then
-        engine.execute(
-          s"""create or replace table "${stagingTable}" as select * from read_json_auto('${filePath}')"""
-        )
-      else
-        val columns = schemaFields
-          .map(f => s""""${f.name.name}" ${duckdbTypeOf(f.dataType)}""")
-          .mkString(", ")
-        engine.execute(s"""create or replace table "${stagingTable}" (${columns})""")
+      loadJsonFile(engine, stagingTable, file, rowCount, schemaFields)
       rowCount
     finally
       Files.deleteIfExists(file)
 
   end loadJsonRows
+
+  /**
+    * Load an already-spooled JSON-lines file into a DuckDB staging table. An empty file has no rows
+    * to infer a schema from, so the table is built from the declared fields instead
+    */
+  def loadJsonFile(
+      engine: DBConnector,
+      stagingTable: String,
+      file: java.nio.file.Path,
+      rowCount: Long,
+      schemaFields: Seq[NamedType]
+  ): Unit =
+    // DuckDB accepts forward slashes on every platform; backslashes would need escaping in
+    // the SQL literal
+    val filePath = file.toAbsolutePath.toString.replace('\\', '/').replace("'", "''")
+    if rowCount > 0 then
+      engine.execute(
+        s"""create or replace table "${stagingTable}" as select * from read_json_auto('${filePath}')"""
+      )
+    else
+      val columns = schemaFields
+        .map(f => s""""${f.name.name}" ${duckdbTypeOf(f.dataType)}""")
+        .mkString(", ")
+      engine.execute(s"""create or replace table "${stagingTable}" (${columns})""")
+
+  /**
+    * Load a JSON-lines file into a table whose columns and types are the declared fields, instead
+    * of inferring them: JSON rows carry decimals and timestamps as strings, and a declared column
+    * missing from a row must still exist (as null)
+    */
+  def loadDeclaredJsonFile(
+      engine: DBConnector,
+      table: String,
+      file: java.nio.file.Path,
+      fields: Seq[NamedType]
+  ): Unit =
+    val filePath = file.toAbsolutePath.toString.replace('\\', '/').replace("'", "''")
+    val columns  = fields
+      .map { f =>
+        val tpe =
+          f.dataType match
+            case DataType.StringType =>
+              "VARCHAR"
+            case other =>
+              duckdbTypeOf(other) match
+                // Not a primitive: keep the value as JSON rather than flattening it to text
+                case "VARCHAR" =>
+                  "JSON"
+                case primitive =>
+                  primitive
+        s""""${f.name.name}": '${tpe}'"""
+      }
+      .mkString(", ")
+    engine.execute(
+      s"""create or replace table "${table}" as select * from read_json('${filePath}', format = 'newline_delimited', columns = {${columns}})"""
+    )
 
   // Best-effort mapping of resolved wvlet types to DuckDB column types for empty staging
   // tables; anything uncommon degrades to VARCHAR (the staging table is empty anyway)

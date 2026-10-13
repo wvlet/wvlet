@@ -1,0 +1,36 @@
+-- Code-backed functions in flow stages: the stage hands its rows to the function and
+-- continues the pipeline with the rows that come back
+
+type scored_order = {
+  id: int
+  amount: int
+}
+
+-- Keeps the rows with a three-digit amount; any command reading JSON lines on stdin works
+def large_orders: scored_order = sh"""grep -E '"amount":[0-9]{3}'"""
+
+flow ScoreOrders = {
+  stage orders = from [[1, 50], [2, 250], [3, 900]] as t(id, amount)
+  stage large = from orders | large_orders
+  stage total = from large | agg _.count as cnt
+}
+
+run flow ScoreOrders
+| where state = 'success'
+test _.size should be 3
+;
+
+-- A failing function fails its stage like a failing query: the fallback runs, downstream is skipped
+def always_fails: scored_order = sh"echo 'scoring service is down' >&2; exit 1"
+
+flow ScoreWithFallback = {
+  stage orders = from [[1, 50]] as t(id, amount)
+  stage scored = from orders | always_fails
+  stage fallback if scored.failed = from orders
+  stage report = from scored | select id
+}
+
+run flow ScoreWithFallback
+| select stage, state
+| order by stage
+test _.rows should be [['fallback', 'success'], ['orders', 'success'], ['report', 'skipped'], ['scored', 'failed']]

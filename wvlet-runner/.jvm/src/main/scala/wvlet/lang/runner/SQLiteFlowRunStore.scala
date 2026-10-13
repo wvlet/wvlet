@@ -76,6 +76,7 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
         |  table_name    text,
         |  waiting_since integer,
         |  last_poll_at  integer,
+        |  metadata      text,
         |  primary key(run_id, ordinal)
         |)""".stripMargin)
     // Migrate stage tables created before the sensor-liveness columns were introduced
@@ -83,9 +84,10 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
       Using.resource(stmt.executeQuery("pragma table_info(stages)")) { rs =>
         Iterator.continually(rs).takeWhile(_.next()).map(_.getString("name").toLowerCase).toSet
       }
-    List("waiting_since" -> "integer", "last_poll_at" -> "integer").foreach { (column, sqlType) =>
-      if !existingStageColumns.contains(column) then
-        stmt.execute(s"alter table stages add column ${column} ${sqlType}")
+    List("waiting_since" -> "integer", "last_poll_at" -> "integer", "metadata" -> "text").foreach {
+      (column, sqlType) =>
+        if !existingStageColumns.contains(column) then
+          stmt.execute(s"alter table stages add column ${column} ${sqlType}")
     }
   }
 
@@ -151,7 +153,7 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     }
     Using.resource(
       conn.prepareStatement(
-        "insert into stages(run_id, ordinal, name, state, attempts, error, table_name, waiting_since, last_poll_at) values(?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "insert into stages(run_id, ordinal, name, state, attempts, error, table_name, waiting_since, last_poll_at, metadata) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
     ) { ps =>
       def setLongOpt(index: Int, value: Option[Long]): Unit =
@@ -173,6 +175,7 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
           ps.setString(7, s.table.orNull)
           setLongOpt(8, s.waitingSinceMillis)
           setLongOpt(9, s.lastPollAtMillis)
+          ps.setString(10, s.metadata.orNull)
           ps.addBatch()
         }
       ps.executeBatch()
@@ -316,7 +319,7 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
   private def stagesOf(runId: String): List[StageRunRecord] =
     Using.resource(
       conn.prepareStatement(
-        "select name, state, attempts, error, table_name, waiting_since, last_poll_at from stages where run_id = ? order by ordinal"
+        "select name, state, attempts, error, table_name, waiting_since, last_poll_at, metadata from stages where run_id = ? order by ordinal"
       )
     ) { ps =>
       ps.setString(1, runId.toLowerCase)
@@ -337,7 +340,8 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
               error = Option(rs.getString(4)),
               table = Option(rs.getString(5)),
               waitingSinceMillis = getLongOpt(6),
-              lastPollAtMillis = getLongOpt(7)
+              lastPollAtMillis = getLongOpt(7),
+              metadata = Option(rs.getString(8))
             )
         b.result()
       }

@@ -1,0 +1,8 @@
+-- Named arguments must match the parameters of the function
+type one_row = {
+  id: int
+}
+
+def make(id: int): one_row = sh"cat"
+
+from make(id = 1, scale = 2)
