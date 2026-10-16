@@ -146,8 +146,8 @@ importers:
         specifier: ^10.1.2
         version: 10.1.2
       vscode-languageserver-textdocument:
-        specifier: ^1.0.14
-        version: 1.0.14
+        specifier: ^1.0.15
+        version: 1.0.15
     devDependencies:
       '@types/vscode':
         specifier: ^1.125.0
@@ -8073,9 +8073,6 @@ packages:
 
   vscode-languageserver-protocol@3.18.4:
     resolution: {integrity: sha512-CCXbyr99dafRJzJH/0Ryk7ly5T8XPmSR0//OuF2w4m+9JiOin7zcAT5iET8GRE7Z9taFBejb3GbM0a0mbjdbrg==}
-
-  vscode-languageserver-textdocument@1.0.14:
-    resolution: {integrity: sha512-EQyqJMi552E4ZTf46izQ4Fj6XquqxCySR3J5ZSD1SisMf6RfpeOWHxGBE8Gr6V0/3GHIGdAzDn8F8+1nTGCnoQ==}
 
   vscode-languageserver-textdocument@1.0.15:
     resolution: {integrity: sha512-Gsfr9S8LU3S6885cS+NaleasJ0n3V5y/SOTqHCifQiXWFw3G9w9/YItDfwHrlCz+dSZWWZ8ilYVMcJe7Sz7Sxw==}
@@ -17874,8 +17871,6 @@ snapshots:
     dependencies:
       vscode-jsonrpc: 9.0.3
       vscode-languageserver-types: 3.18.4
-
-  vscode-languageserver-textdocument@1.0.14: {}
 
   vscode-languageserver-textdocument@1.0.15: {}
 
