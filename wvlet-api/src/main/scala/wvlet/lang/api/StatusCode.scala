@@ -45,6 +45,7 @@ enum StatusCode(statusType: StatusType):
   case CATALOG_NOT_FOUND                 extends StatusCode(StatusType.UserError)
   case COLUMN_NOT_FOUND                  extends StatusCode(StatusType.UserError)
   case PARTIAL_QUERY_NOT_FOUND           extends StatusCode(StatusType.UserError)
+  case FUNCTION_NOT_FOUND                extends StatusCode(StatusType.UserError)
   case STAGE_NOT_FOUND                   extends StatusCode(StatusType.UserError)
   case FLOW_NOT_FOUND                    extends StatusCode(StatusType.UserError)
   case OPERATION_TIMED_OUT               extends StatusCode(StatusType.UserError)
@@ -77,6 +78,9 @@ enum StatusCode(statusType: StatusType):
   // A flow activation sink failed to deliver the stage output (e.g. a webhook returned an
   // error status); the stage attempt is retried per its retry policy
   case ACTIVATION_FAILED extends StatusCode(StatusType.InternalError)
+  // An external (code-backed) function failed: a non-zero exit code, an exception thrown by the
+  // implementation, or a malformed result object. Retried per the stage's retry policy in flows
+  case EXTERNAL_FUNCTION_FAILED extends StatusCode(StatusType.InternalError)
 
   case RESOURCE_EXHAUSTED extends StatusCode(StatusType.ResourceExhausted)
 

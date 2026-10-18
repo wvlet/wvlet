@@ -13,6 +13,7 @@
  */
 package wvlet.lang.compiler.analyzer
 
+import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ContextLogSupport
@@ -28,6 +29,8 @@ import wvlet.lang.compiler.TypeSymbolInfo
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.DataType
+import wvlet.lang.model.RelationType
+import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.DataType.TypeParameter
 import wvlet.lang.model.DataType.UnknownType
 import wvlet.lang.model.DataType.VarArgType
@@ -643,6 +646,14 @@ object FunctionInliner extends ContextLogSupport:
                 resolvePartialQuery(np, sym :: activeQueries)
               }
               .asInstanceOf[Relation]
+          case m: MethodSymbolInfo if m.body.exists(ExternalApply.isExternalBody) =>
+            // A code-backed table function (`= native` / `= sh"..."`) applied to the input rows
+            resolveExternalApply(p.child, sym, m, p.args, p.span).getOrElse {
+              context.logWarn(
+                s"'${partialQueryName}' does not return a row type and cannot be applied to a relation"
+              )
+              p
+            }
           case _ =>
             // Not a partial query, keep as is (might be an error)
             context.logWarn(s"'${partialQueryName}' is not a partial query definition")
@@ -652,6 +663,128 @@ object FunctionInliner extends ContextLogSupport:
         p
     end match
   end resolvePartialQuery
+
+  /**
+    * Resolve the application of a code-backed function (`def f(...): rowtype = native` or
+    * `= sh"..."`) into an [[ExternalApply]] node. Returns None when the def does not declare a row
+    * (relation) return type, i.e. it is not a table function.
+    */
+  def resolveExternalApply(
+      child: Relation,
+      sym: Symbol,
+      m: MethodSymbolInfo,
+      args: List[Expression],
+      span: Span
+  )(using context: Context): Option[Relation] =
+    val fname = m.name.name
+    externalReturnType(m.ft.returnType) match
+      case None =>
+        if m.body.exists(ExternalApply.isShellBody) then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Shell function '${fname}' must declare a row type as its return type, e.g. `def ${fname}: my_row = sh\"...\"`",
+              context.sourceLocationAt(span)
+            )
+        None
+      case Some(schema) =>
+        val params: List[DefArg] =
+          sym.tree match
+            case t: TopLevelFunctionDef =>
+              t.functionDef.args
+            case f: FunctionDef =>
+              f.args
+            case _ =>
+              m.ft.args.map(a => DefArg(a.name, a.dataType, None, span)).toList
+        Some(
+          ExternalApply(
+            child,
+            Name.termName(fname),
+            bindExternalArgs(fname, params, args, span),
+            m.body.get,
+            schema,
+            span
+          )
+        )
+
+  end resolveExternalApply
+
+  /**
+    * Resolve the declared return type of an external function into a relation type. Named types
+    * (`type scored = {...}`) arrive from the parser as opaque generic types and are looked up here
+    */
+  def externalReturnType(retType: DataType)(using context: Context): Option[RelationType] =
+    retType match
+      case r: RelationType if r.isResolved =>
+        Some(r)
+      // Built-in value types (string, int, ...) also have stdlib type definitions carrying their
+      // methods; only user-declared named types describe rows
+      case other
+          if (other.isInstanceOf[DataType.GenericType] || !other.isResolved) &&
+            other.typeName != Name.NoTypeName =>
+        lookupType(other.typeName, context)
+          .map(_.symbolInfo.dataType)
+          .collect { case s: SchemaType =>
+            s
+          }
+      case _ =>
+        None
+
+  /**
+    * Bind call arguments (positional first, then `name = value`) to the def parameters, filling in
+    * default values, so the runner receives every argument by name in declaration order
+    */
+  private def bindExternalArgs(
+      fname: String,
+      params: List[DefArg],
+      args: List[Expression],
+      span: Span
+  )(using context: Context): List[FunctionArg] =
+    def fail(msg: String): Nothing =
+      throw StatusCode.INVALID_ARGUMENT.newException(msg, context.sourceLocationAt(span))
+
+    val (named, positional) = args.partition {
+      case f: FunctionArg =>
+        f.name.isDefined
+      case _ =>
+        false
+    }
+    if positional.size > params.size then
+      fail(s"Function '${fname}' expects ${params.size} arguments, but ${args.size} were provided")
+    val namedMap: Map[String, Expression] =
+      named
+        .collect { case f: FunctionArg =>
+          f.name.get.name -> f.value
+        }
+        .toMap
+    namedMap
+      .keys
+      .find(n => !params.exists(_.name.name == n))
+      .foreach { n =>
+        fail(
+          s"Function '${fname}' has no parameter '${n}' (parameters: ${params
+              .map(_.name.name)
+              .mkString(", ")})"
+        )
+      }
+    params
+      .zipWithIndex
+      .map { (param, i) =>
+        val value: Expression =
+          positional.lift(i) match
+            case Some(f: FunctionArg) =>
+              f.value
+            case Some(e) =>
+              e
+            case None =>
+              namedMap
+                .get(param.name.name)
+                .orElse(param.defaultValue)
+                .getOrElse(fail(s"Function '${fname}' is missing argument '${param.name.name}'"))
+        FunctionArg(Some(param.name), value, false, Nil, value.span)
+      }
+
+  end bindExternalArgs
 
   /**
     * Replace EmptyRelation nodes in the partial query body with the input relation.

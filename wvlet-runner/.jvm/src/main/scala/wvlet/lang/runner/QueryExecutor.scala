@@ -40,6 +40,9 @@ import wvlet.lang.connector.DBConnector
 import wvlet.lang.connector.Connector
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.connector.SourceTableStaging
+import wvlet.lang.runner.external.ExternalFunctionExecutor
+import wvlet.lang.runner.external.ExternalFunctionRegistry
+import wvlet.lang.runner.external.LiteralArgs
 import wvlet.uni.json.JSON
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
@@ -87,6 +90,12 @@ class QueryExecutor(
   private var activeEngine: ConnectorConfig = defaultProfile.defaultEngine
 
   private def activeDBConnector: DBConnector = dbConnectorProvider.getDBConnector(activeEngine)
+
+  // Executes code-backed functions declared with `= native` or `= sh"..."`
+  private lazy val externalFunctions = ExternalFunctionExecutor(
+    workEnv,
+    ExternalFunctionRegistry.forWorkEnv(workEnv)
+  )
 
   // Resolve a profile connector name to a live connector, for per-stage `on <connector>` in
   // flows and cross-connector staging
@@ -517,50 +526,6 @@ class QueryExecutor(
   private def runEmbeddedToolCalls(q: Relation)(using context: Context): Relation =
     def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
 
-    def jsonArgValue(toolName: String, e: Expression): JSON.JSONValue =
-      e match
-        case s: StringLiteral =>
-          JSON.JSONString(s.unquotedValue)
-        case l: LongLiteral =>
-          JSON.JSONLong(l.value)
-        case d: DoubleLiteral =>
-          JSON.JSONDouble(d.value)
-        case d: DecimalLiteral =>
-          JSON.JSONDouble(d.value.toDouble)
-        case _: TrueLiteral =>
-          JSON.JSONBoolean(true)
-        case _: FalseLiteral =>
-          JSON.JSONBoolean(false)
-        case _: NullLiteral =>
-          JSON.JSONNull()
-        // Negative (or explicitly signed) numbers parse as a unary expression over the literal
-        case a: ArithmeticUnaryExpr =>
-          jsonArgValue(toolName, a.child) match
-            case JSON.JSONLong(v) =>
-              JSON.JSONLong(
-                if a.sign == Sign.Negative then
-                  -v
-                else
-                  v
-              )
-            case JSON.JSONDouble(v) =>
-              JSON.JSONDouble(
-                if a.sign == Sign.Negative then
-                  -v
-                else
-                  v
-              )
-            case _ =>
-              throw StatusCode
-                .INVALID_ARGUMENT
-                .newException(s"Tool '${toolName}' arguments must be literal values, found: ${e}")
-        case l: Literal =>
-          JSON.JSONString(l.stringValue)
-        case other =>
-          throw StatusCode
-            .INVALID_ARGUMENT
-            .newException(s"Tool '${toolName}' arguments must be literal values, found: ${other}")
-
     q.transformUp { case ct: CallTool =>
         val connectorName = ct.connectorName.fullName
         val toolName      = ct.toolName.fullName
@@ -599,7 +564,7 @@ class QueryExecutor(
                     ct.sourceLocation(using context)
                   )
               )
-            name.name -> jsonArgValue(toolName, arg.value)
+            name.name -> LiteralArgs.toJson(s"Tool ${toolName}", arg.value)
           }
         val result = target.invoke(toolName, JSON.JSONObject(args))
         val status =
@@ -660,18 +625,40 @@ class QueryExecutor(
               .name}'. Cross-connector queries are not supported yet; run `use ${foreignEngines
               .head}` first to execute on that connector"
         )
-    val (plan, stagedTables) = stageSourceTables(plan0)
-    try executeQueryPlan(plan)
+    val (plan1, stagedTables) = stageSourceTables(plan0)
+    val scratchTables         = List.newBuilder[String] ++= stagedTables
+    try
+      val plan =
+        plan1 match
+          case r: Relation =>
+            // Run code-backed functions (`= native` / `= sh"..."`) at a materialization
+            // boundary, replacing them with scans of their results. Embedded flow runs and tool
+            // calls go first, as they may feed a function
+            val (q, functionTables) = externalFunctions.materialize(
+              runEmbeddedToolCalls(runEmbeddedFlows(r)),
+              activeDBConnector,
+              activeEngine.name,
+              onMetadata =
+                (name, meta) => workEnv.info(s"[function] ${name} metadata: ${meta.toJSON}")
+            )
+            scratchTables ++= functionTables
+            q
+          case other =>
+            other
+      executeQueryPlan(plan)
     finally
-      // Staged source tables are per-query scratch space; drop them so persistent engine
-      // databases do not accumulate them
-      stagedTables.foreach { staging =>
-        try
-          activeDBConnector.execute(s"""drop table if exists "${staging}"""")
-        catch
-          case scala.util.control.NonFatal(e) =>
-            debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
-      }
+      // Staged source tables and function results are per-query scratch space; drop them so
+      // persistent engine databases do not accumulate them
+      scratchTables
+        .result()
+        .foreach { staging =>
+          try
+            activeDBConnector.execute(s"""drop table if exists "${staging}"""")
+          catch
+            case scala.util.control.NonFatal(e) =>
+              debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
+        }
+    end try
   end executeQuery
 
   override protected def executeQueryAllRows(plan: LogicalPlan)(using

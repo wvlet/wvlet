@@ -72,8 +72,11 @@ class PostgresFlowRunStore(jdbcUrl: String, user: String, password: String)
         |  table_name    text,
         |  waiting_since bigint,
         |  last_poll_at  bigint,
+        |  metadata      text,
         |  primary key(run_id, ordinal)
         |)""".stripMargin)
+    // Migrate stage tables created before external-function metadata was recorded
+    stmt.execute("alter table stages add column if not exists metadata text")
   }
 
   override def save(record: FlowRunRecord): Unit = synchronized {
@@ -144,7 +147,7 @@ class PostgresFlowRunStore(jdbcUrl: String, user: String, password: String)
     }
     Using.resource(
       conn.prepareStatement(
-        "insert into stages(run_id, ordinal, name, state, attempts, error, table_name, waiting_since, last_poll_at) values(?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "insert into stages(run_id, ordinal, name, state, attempts, error, table_name, waiting_since, last_poll_at, metadata) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
     ) { ps =>
       def setLongOpt(index: Int, value: Option[Long]): Unit =
@@ -166,6 +169,7 @@ class PostgresFlowRunStore(jdbcUrl: String, user: String, password: String)
           ps.setString(7, s.table.orNull)
           setLongOpt(8, s.waitingSinceMillis)
           setLongOpt(9, s.lastPollAtMillis)
+          ps.setString(10, s.metadata.orNull)
           ps.addBatch()
         }
       ps.executeBatch()
@@ -316,7 +320,7 @@ class PostgresFlowRunStore(jdbcUrl: String, user: String, password: String)
   private def stagesOf(runId: String): List[StageRunRecord] =
     Using.resource(
       conn.prepareStatement(
-        "select name, state, attempts, error, table_name, waiting_since, last_poll_at from stages where run_id = ? order by ordinal"
+        "select name, state, attempts, error, table_name, waiting_since, last_poll_at, metadata from stages where run_id = ? order by ordinal"
       )
     ) { ps =>
       ps.setString(1, runId.toLowerCase)
@@ -337,7 +341,8 @@ class PostgresFlowRunStore(jdbcUrl: String, user: String, password: String)
               error = Option(rs.getString(4)),
               table = Option(rs.getString(5)),
               waitingSinceMillis = getLongOpt(6),
-              lastPollAtMillis = getLongOpt(7)
+              lastPollAtMillis = getLongOpt(7),
+              metadata = Option(rs.getString(8))
             )
         b.result()
       }

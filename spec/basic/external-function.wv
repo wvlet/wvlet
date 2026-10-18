@@ -1,0 +1,47 @@
+-- Code-backed table functions: the body of the def runs outside the SQL engine.
+-- An sh"..." body receives the input rows as JSON lines on stdin and writes either
+-- newline-delimited row objects or a single result object to stdout
+
+type scored = {
+  id: int
+  score: double
+}
+
+-- `cat` is the identity function: rows in, the same rows out
+def passthrough: scored = sh"cat"
+
+from [[1, 0.5], [2, 0.9]] as t(id, score)
+| passthrough
+test _.size should be 2
+test _.columns should be ['id', 'score']
+
+-- Any line-oriented filter works
+def without_second: scored = sh"""grep -v '"id":2'"""
+
+from [[1, 0.5], [2, 0.9], [3, 0.1]] as t(id, score)
+| without_second
+| where score > 0.2
+test _.rows should be [[1, 0.5]]
+
+-- A result object: `rows` becomes the relation, the other fields are metadata
+def fixed_rows: scored = sh"""printf '{"rows":[{"id":7,"score":0.25},{"id":8,"score":0.75}],"model":"v1"}'"""
+
+from fixed_rows()
+| where score > 0.5
+test _.rows should be [[8, 0.75]]
+
+-- A result object without `rows` is a one-row relation. Arguments reach the command as
+-- WVLET_ARG_<name> environment variables (and as JSON in WVLET_FUNCTION_ARGS)
+def make_row(id: int, score: double = 0.5): scored = sh"""printf '{"id":%s,"score":%s}' "$WVLET_ARG_id" "$WVLET_ARG_score""""
+
+from make_row(42)
+test _.rows should be [[42, 0.5]]
+
+from make_row(1, score = 0.9)
+test _.rows should be [[1, 0.9]]
+
+-- In a single-line body, ${param} splices the argument shell-quoted
+def make_id(id: int): scored = sh"printf '{\"id\":%s}' ${id}"
+
+from make_id(7)
+test _.rows should be [[7, null]]
