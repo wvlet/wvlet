@@ -7,7 +7,7 @@ import scala.scalanative.build.NativeConfig
 import scala.language.implicitConversions
 import WvletBuildKeys.*
 
-val UNI_VERSION = "2026.1.25"
+val UNI_VERSION = "2026.1.26"
 
 val TRINO_VERSION          = "483"
 val AWS_SDK_VERSION        = "2.20.146"
