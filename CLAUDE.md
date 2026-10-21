@@ -100,7 +100,7 @@ cd wvc-lib && make test
 ### UI Development
 
 The repository uses [pnpm](https://pnpm.io) workspaces. Install pnpm via
-`corepack enable` (Node.js 20+) or `npm install -g pnpm`. The exact pinned
+`corepack enable` (Node.js 22+) or `npm install -g pnpm`. The exact pinned
 version is in the root `package.json` `packageManager` field.
 
 ```bash

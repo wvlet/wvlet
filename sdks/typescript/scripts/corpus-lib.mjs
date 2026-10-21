@@ -21,7 +21,7 @@ export const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
  * (spec/cdp_*), and intentionally-failing inputs (spec/neg).
  *
  * Implemented with readdirSync rather than fs.globSync so the harness works on
- * every Node version allowed by this package's `engines` field (>=20.0.0);
+ * every Node version allowed by this package's `engines` field (>=22.0.0);
  * fs.globSync only exists in newer Node releases.
  */
 export function listCorpusFiles() {
