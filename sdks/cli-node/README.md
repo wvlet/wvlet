@@ -8,7 +8,7 @@ The wvlet command-line compiler for Node.js. Compile `.wv` flow-style queries to
 npm install -g @wvlet/cli
 ```
 
-Requires Node.js 20+.
+Requires Node.js 22+.
 
 ## Usage
 
