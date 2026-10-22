@@ -369,139 +369,143 @@ class BatchExecutor(
     try
       admitNext()
 
+      var cancellationHandled = false
       while runningItems.size() > 0 || (pending.nonEmpty && !cancelRequested) do
-        if cancelRequested then
+        if cancelRequested && !cancellationHandled then
           handleCancellation()
-        else
-          eventQueue.poll(1, TimeUnit.SECONDS) match
-            case null =>
-              ()
-            case ItemCompleted(itemId, attemptId, result) =>
-              val current = itemStates(itemId)
-              // Reject stale completions
-              if current.attemptId != attemptId then
-                debug(
-                  s"Rejecting stale completion for item ${current.itemKey}: " +
-                    s"expected attempt ${current.attemptId}, got ${attemptId}"
-                )
-              else if current.state == ItemState.Cancelling.stateName then
-                // Item was being cancelled; treat completion as the terminal state
-                val terminal =
-                  result match
-                    case ActivityResult.Cancelled =>
-                      current.copy(
-                        state = ItemState.Cancelled.stateName,
-                        finishedAtMillis = Some(System.currentTimeMillis()),
-                        leaseExpiresAtMillis = None
-                      )
-                    case ActivityResult.Completed(output) =>
-                      current.copy(
-                        state = ItemState.Succeeded.stateName,
-                        output = Some(serializeOutput(output)),
-                        finishedAtMillis = Some(System.currentTimeMillis()),
-                        leaseExpiresAtMillis = None
-                      )
-                    case ActivityResult.Failed(error, _) =>
-                      current.copy(
-                        state = ItemState.Failed.stateName,
-                        error = Some(error),
-                        finishedAtMillis = Some(System.currentTimeMillis()),
-                        leaseExpiresAtMillis = None
-                      )
-                val accepted = store.reportResult(
-                  itemId,
-                  attemptId,
-                  terminal.state,
-                  terminal.output,
-                  terminal.error,
-                  terminal.finishedAtMillis.get
-                )
-                if accepted then
-                  itemStates(itemId) = terminal
-                cleanupItem(itemId)
-              else
-                val finishedAt = System.currentTimeMillis()
-                val terminal   =
-                  result match
-                    case ActivityResult.Completed(output) =>
-                      current.copy(
-                        state = ItemState.Succeeded.stateName,
-                        output = Some(serializeOutput(output)),
-                        finishedAtMillis = Some(finishedAt),
-                        leaseExpiresAtMillis = None
-                      )
-                    case ActivityResult.Failed(error, _) =>
-                      current.copy(
-                        state = ItemState.Failed.stateName,
-                        error = Some(error),
-                        finishedAtMillis = Some(finishedAt),
-                        leaseExpiresAtMillis = None
-                      )
-                    case ActivityResult.Cancelled =>
-                      current.copy(
-                        state = ItemState.Cancelled.stateName,
-                        finishedAtMillis = Some(finishedAt),
-                        leaseExpiresAtMillis = None
-                      )
+          cancellationHandled = true
 
-                val accepted = store.reportResult(
-                  itemId,
-                  attemptId,
-                  terminal.state,
-                  terminal.output,
-                  terminal.error,
-                  finishedAt
-                )
-                if accepted then
-                  itemStates(itemId) = terminal
-                cleanupItem(itemId)
-                admitNext()
-              end if
+        eventQueue.poll(1, TimeUnit.SECONDS) match
+          case null =>
+            if runningItems.isEmpty && pending.nonEmpty && !cancelRequested then
+              admitNext()
+          case ItemCompleted(itemId, attemptId, result) =>
+            val current = itemStates(itemId)
+            // Reject stale completions
+            if current.attemptId != attemptId then
+              debug(
+                s"Rejecting stale completion for item ${current.itemKey}: " +
+                  s"expected attempt ${current.attemptId}, got ${attemptId}"
+              )
+            else if current.state == ItemState.Cancelling.stateName then
+              // Item was being cancelled; treat completion as the terminal state
+              val terminal =
+                result match
+                  case ActivityResult.Cancelled =>
+                    current.copy(
+                      state = ItemState.Cancelled.stateName,
+                      finishedAtMillis = Some(System.currentTimeMillis()),
+                      leaseExpiresAtMillis = None
+                    )
+                  case ActivityResult.Completed(output) =>
+                    current.copy(
+                      state = ItemState.Succeeded.stateName,
+                      output = Some(serializeOutput(output)),
+                      finishedAtMillis = Some(System.currentTimeMillis()),
+                      leaseExpiresAtMillis = None
+                    )
+                  case ActivityResult.Failed(error, _) =>
+                    current.copy(
+                      state = ItemState.Failed.stateName,
+                      error = Some(error),
+                      finishedAtMillis = Some(System.currentTimeMillis()),
+                      leaseExpiresAtMillis = None
+                    )
+              val accepted = store.reportResult(
+                itemId,
+                attemptId,
+                terminal.state,
+                terminal.output,
+                terminal.error,
+                terminal.finishedAtMillis.get
+              )
+              if accepted then
+                itemStates(itemId) = terminal
+              cleanupItem(itemId)
+            else
+              val finishedAt = System.currentTimeMillis()
+              val terminal   =
+                result match
+                  case ActivityResult.Completed(output) =>
+                    current.copy(
+                      state = ItemState.Succeeded.stateName,
+                      output = Some(serializeOutput(output)),
+                      finishedAtMillis = Some(finishedAt),
+                      leaseExpiresAtMillis = None
+                    )
+                  case ActivityResult.Failed(error, _) =>
+                    current.copy(
+                      state = ItemState.Failed.stateName,
+                      error = Some(error),
+                      finishedAtMillis = Some(finishedAt),
+                      leaseExpiresAtMillis = None
+                    )
+                  case ActivityResult.Cancelled =>
+                    current.copy(
+                      state = ItemState.Cancelled.stateName,
+                      finishedAtMillis = Some(finishedAt),
+                      leaseExpiresAtMillis = None
+                    )
 
-            case HeartbeatMissed(itemId, attemptId) =>
-              val current = itemStates(itemId)
-              if current.attemptId == attemptId && current.state == ItemState.Running.stateName then
-                val uncertain = current.copy(
-                  state = ItemState.Uncertain.stateName,
-                  error = Some("Heartbeat missed"),
-                  finishedAtMillis = Some(System.currentTimeMillis()),
-                  leaseExpiresAtMillis = None
-                )
-                store.reportResult(
-                  itemId,
-                  attemptId,
-                  uncertain.state,
-                  None,
-                  uncertain.error,
-                  uncertain.finishedAtMillis.get
-                )
-                itemStates(itemId) = uncertain
-                cleanupItem(itemId)
-                admitNext()
+              val accepted = store.reportResult(
+                itemId,
+                attemptId,
+                terminal.state,
+                terminal.output,
+                terminal.error,
+                finishedAt
+              )
+              if accepted then
+                itemStates(itemId) = terminal
+              cleanupItem(itemId)
+              admitNext()
+            end if
 
-            case ItemTimedOut(itemId, attemptId) =>
-              val current = itemStates(itemId)
-              if current.attemptId == attemptId && (
-                  current.state == ItemState.Running.stateName ||
-                    current.state == ItemState.Cancelling.stateName
-                )
-              then
-                val uncertain = current.copy(
-                  state = ItemState.Uncertain.stateName,
-                  error = Some("Activity timed out"),
-                  finishedAtMillis = Some(System.currentTimeMillis()),
-                  leaseExpiresAtMillis = None
-                )
-                store.reportResult(
-                  itemId,
-                  attemptId,
-                  uncertain.state,
-                  None,
-                  uncertain.error,
-                  uncertain.finishedAtMillis.get
-                )
-                itemStates(itemId) = uncertain
-                cleanupItem(itemId)
+          case HeartbeatMissed(itemId, attemptId) =>
+            val current = itemStates(itemId)
+            if current.attemptId == attemptId && current.state == ItemState.Running.stateName then
+              val uncertain = current.copy(
+                state = ItemState.Uncertain.stateName,
+                error = Some("Heartbeat missed"),
+                finishedAtMillis = Some(System.currentTimeMillis()),
+                leaseExpiresAtMillis = None
+              )
+              store.reportResult(
+                itemId,
+                attemptId,
+                uncertain.state,
+                None,
+                uncertain.error,
+                uncertain.finishedAtMillis.get
+              )
+              itemStates(itemId) = uncertain
+              cleanupItem(itemId)
+              admitNext()
+
+          case ItemTimedOut(itemId, attemptId) =>
+            val current = itemStates(itemId)
+            if current.attemptId == attemptId && (
+                current.state == ItemState.Running.stateName ||
+                  current.state == ItemState.Cancelling.stateName
+              )
+            then
+              val uncertain = current.copy(
+                state = ItemState.Uncertain.stateName,
+                error = Some("Activity timed out"),
+                finishedAtMillis = Some(System.currentTimeMillis()),
+                leaseExpiresAtMillis = None
+              )
+              store.reportResult(
+                itemId,
+                attemptId,
+                uncertain.state,
+                None,
+                uncertain.error,
+                uncertain.finishedAtMillis.get
+              )
+              itemStates(itemId) = uncertain
+              cleanupItem(itemId)
+        end match
       end while
     finally
       workerPool.shutdownNow()
@@ -517,9 +521,13 @@ class BatchExecutor(
   end execute
 
   private def serializeOutput(output: Map[String, Any]): String =
+    def escapeJson(s: String): String = s
+      .replace("\\", "\\\\")
+      .replace("\"", "\\\"")
+      .replace("\n", "\\n")
+      .replace("\r", "\\r")
     val entries = output.map { (k, v) =>
-      val escaped = v.toString.replace("\\", "\\\\").replace("\"", "\\\"")
-      s""""${k}":"${escaped}""""
+      s""""${escapeJson(k)}":"${escapeJson(v.toString)}""""
     }
     s"{${entries.mkString(",")}}"
 
