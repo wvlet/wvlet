@@ -486,8 +486,6 @@ class BatchExecutor(
                     current.state == ItemState.Cancelling.stateName
                 )
               then
-                // Timeout transitions to uncertain, not failed. The slot is NOT freed for a
-                // replacement — the original executor may still be acting
                 val uncertain = current.copy(
                   state = ItemState.Uncertain.stateName,
                   error = Some("Activity timed out"),
@@ -504,8 +502,6 @@ class BatchExecutor(
                 )
                 itemStates(itemId) = uncertain
                 cleanupItem(itemId)
-                // Admit next only after cleanup frees the slot
-                admitNext()
       end while
     finally
       workerPool.shutdownNow()
@@ -521,7 +517,6 @@ class BatchExecutor(
   end execute
 
   private def serializeOutput(output: Map[String, Any]): String =
-    // Simple JSON serialization for activity output
     val entries = output.map { (k, v) =>
       val escaped = v.toString.replace("\\", "\\\\").replace("\"", "\\\"")
       s""""${k}":"${escaped}""""

@@ -13,8 +13,6 @@
  */
 package wvlet.lang.runner.activity
 
-import wvlet.uni.util.ULID
-
 /**
   * A request to execute a single activity invocation. The executor receives this and produces an
   * [[ActivityResult]].
