@@ -620,6 +620,19 @@ object Typer extends Phase("typer") with LogSupport:
           }
         typeRelationNode(m)
         m
+      case a: FlowActivity =>
+        val typedChild = prepare(a.child, scope).asInstanceOf[Relation]
+        val result     = a.copy(child = typedChild)
+        result.tpe = typedChild.relationType
+        typeRelationNode(result)
+        result
+      case f: ForEachFanOut =>
+        val typedChild = prepare(f.child, scope).asInstanceOf[Relation]
+        val typedAct   = prepare(f.activity, scope).asInstanceOf[FlowActivity]
+        val result     = f.copy(child = typedChild, activity = typedAct)
+        result.tpe = typedChild.relationType
+        typeRelationNode(result)
+        result
       case other =>
         val withChildren = other.mapChildren(c => prepare(c, scope))
         val resolved     = structuralResolutionRule.applyOrElse(withChildren, identity[LogicalPlan])

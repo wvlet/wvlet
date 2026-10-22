@@ -1,0 +1,15 @@
+-- Test activity and for-each fan-out syntax parsing
+
+-- Flow with a bare activity stage
+flow SingleActivity = {
+  stage data = select 1
+  stage process = from data | activity 'data.process'
+}
+;
+
+-- Flow with for-each fan-out activity
+flow BatchInvestigation = {
+  stage targets = select 1
+  stage investigate = from targets | for each 1 activity 'agent.investigate'
+}
+;
