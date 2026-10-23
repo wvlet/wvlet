@@ -137,6 +137,18 @@ object FlowLowering:
   case class SensorSpec(input: Relation, condition: Expression)
 
   /**
+    * An activity invocation extracted from `activity '<type>'` or
+    * `for each <key> activity '<type>'`
+    *
+    * @param activityType
+    *   The activity type to invoke
+    * @param forEachKey
+    *   The fan-out key over the stage input (with `_.column` references resolved), or None for a
+    *   single invocation
+    */
+  case class ActivitySpec(activityType: String, forEachKey: Option[Expression])
+
+  /**
     * A stage with flow operators stripped from its body
     *
     * @param stage
@@ -151,6 +163,9 @@ object FlowLowering:
     *   External activation targets (with named parameters) to deliver the materialized output to
     * @param jumpTargets
     *   Flows to trigger as new runs when this stage succeeds (control-only transfer)
+    * @param activity
+    *   The activity this stage invokes on its input. The body then computes the activity input
+    *   rather than the stage output
     */
   case class LoweredStage(
       stage: StageDef,
@@ -158,7 +173,8 @@ object FlowLowering:
       waitMillis: Option[Long] = None,
       waitUntil: List[SensorSpec] = Nil,
       activateTargets: List[ActivationSpec] = Nil,
-      jumpTargets: List[String] = Nil
+      jumpTargets: List[String] = Nil,
+      activity: Option[ActivitySpec] = None
   ):
     def name: String = stage.name.name
 
@@ -198,14 +214,34 @@ object FlowLowering:
     val routeFilters = Map.newBuilder[(String, String), Expression]
 
     val lowered = flatStages.map { s =>
-      var waitMillis: Option[Long] = None
-      val sensors                  = List.newBuilder[SensorSpec]
-      val activations              = List.newBuilder[ActivationSpec]
-      val jumps                    = List.newBuilder[String]
-      val newBody                  = s
+      var waitMillis: Option[Long]              = None
+      val sensors                               = List.newBuilder[SensorSpec]
+      val activations                           = List.newBuilder[ActivationSpec]
+      val jumps                                 = List.newBuilder[String]
+      var activity: Option[ActivitySpec]        = None
+      def setActivity(spec: ActivitySpec): Unit =
+        if activity.nonEmpty then
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(s"Stage ${s.name.name} invokes more than one activity")
+        activity = Some(spec)
+      val newBody = s
         .body
-        .map {
-          _.transformUp {
+        .map { body =>
+          // Strip activity operators top-down first: a for-each fan-out holds its activity as a
+          // nested node, which a bottom-up rewrite would replace before seeing the fan-out
+          body
+            .transformOnce {
+              case f: ForEachFanOut =>
+                setActivity(
+                  ActivitySpec(activityTypeOf(f.activity), Some(resolveContextRefs(f.keyExpr)))
+                )
+                f.child
+              case a: FlowActivity =>
+                setActivity(ActivitySpec(activityTypeOf(a), None))
+                a.child
+            }
+            .transformUp {
               case r: FlowRoute =>
                 routePredicatesOf(r).foreach { (target, pred) =>
                   routeFilters += (target, s.name.name) -> pred
@@ -231,7 +267,15 @@ object FlowLowering:
             }
             .asInstanceOf[Relation]
         }
-      LoweredStage(s, newBody, waitMillis, sensors.result(), activations.result(), jumps.result())
+      LoweredStage(
+        s,
+        newBody,
+        waitMillis,
+        sensors.result(),
+        activations.result(),
+        jumps.result(),
+        activity
+      )
     }
     LoweredFlow(flow, lowered, routeFilters.result())
 
@@ -360,6 +404,15 @@ object FlowLowering:
             throw StatusCode.NOT_IMPLEMENTED.newException(s"Unknown duration unit: ${other}")
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Cannot parse wait duration: '${s}'")
+
+  private def activityTypeOf(a: FlowActivity): String =
+    a.activityType match
+      case s: StringLiteral =>
+        s.unquotedValue
+      case other =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"Activity type must be a string literal: ${other}")
 
   /** The activation target and its named parameters, e.g. activate('file', path: 'out.csv') */
   private def activationSpecOf(a: FlowActivate): ActivationSpec =

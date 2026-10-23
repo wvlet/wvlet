@@ -41,6 +41,20 @@ object TaskApiClient:
       Seq(request)
     )
 
+    def listItems(request: ItemListRequest): ItemListResponse = rpc.callSync(
+      client,
+      "listItems",
+      Seq(request)
+    )
+
+    def getItem(request: ItemRequest): ItemInfo = rpc.callSync(client, "getItem", Seq(request))
+
+    def listActiveAttempts(request: ActiveAttemptListRequest): List[AttemptInfo] = rpc.callSync(
+      client,
+      "listActiveAttempts",
+      Seq(request)
+    )
+
   class AsyncClient(client: HttpAsyncClient):
     def poll(request: PollRequest): Rx[PollResponse] = rpc.callAsync(client, "poll", Seq(request))
 
@@ -55,5 +69,16 @@ object TaskApiClient:
       "heartbeat",
       Seq(request)
     )
+
+    def listItems(request: ItemListRequest): Rx[ItemListResponse] = rpc.callAsync(
+      client,
+      "listItems",
+      Seq(request)
+    )
+
+    def getItem(request: ItemRequest): Rx[ItemInfo] = rpc.callAsync(client, "getItem", Seq(request))
+
+    def listActiveAttempts(request: ActiveAttemptListRequest): Rx[List[AttemptInfo]] = rpc
+      .callAsync(client, "listActiveAttempts", Seq(request))
 
 end TaskApiClient

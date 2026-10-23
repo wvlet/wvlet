@@ -15,6 +15,9 @@ package wvlet.lang.server
 
 import wvlet.lang.api.v1.task.TaskApi
 import wvlet.lang.api.v1.task.TaskApi.*
+import wvlet.lang.runner.activity.ActivityJson
+import wvlet.lang.runner.activity.ItemRecord
+import wvlet.lang.runner.activity.ItemState
 import wvlet.lang.runner.activity.TaskQueue
 import wvlet.uni.http.rpc.RPCStatus
 import wvlet.uni.log.LogSupport
@@ -63,7 +66,7 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
 
     val output =
       if request.output.nonEmpty then
-        Some(serializeOutput(request.output))
+        Some(ActivityJson.encode(request.output))
       else
         None
 
@@ -86,38 +89,73 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
       case "unknown" =>
         throw RPCStatus.NOT_FOUND_U5.newException(s"Attempt '${request.attemptId}' is not active")
 
-  private def serializeOutput(output: Map[String, String]): String =
-    def escapeJson(s: String): String =
-      val sb = StringBuilder()
-      var i  = 0
-      while i < s.length do
-        val ch = s.charAt(i)
-        ch match
-          case '\\' =>
-            sb.append("\\\\")
-          case '"' =>
-            sb.append("\\\"")
-          case '\n' =>
-            sb.append("\\n")
-          case '\r' =>
-            sb.append("\\r")
-          case '\t' =>
-            sb.append("\\t")
-          case '\b' =>
-            sb.append("\\b")
-          case '\f' =>
-            sb.append("\\f")
-          case c if c < ' ' =>
-            sb.append(f"\\u${c.toInt}%04x")
-          case c =>
-            sb.append(c)
-        i += 1
-      sb.toString()
-    val entries = output.map { (k, v) =>
-      s""""${escapeJson(k)}":"${escapeJson(v)}""""
-    }
-    s"{${entries.mkString(",")}}"
+  override def listItems(request: ItemListRequest): ItemListResponse =
+    if request.runId.isEmpty || request.stageName.isEmpty then
+      throw RPCStatus.INVALID_REQUEST_U1.newException("runId and stageName must not be empty")
+    if request.offset < 0 || request.limit <= 0 || request.limit > TaskApi.MaxPageSize then
+      throw RPCStatus
+        .INVALID_REQUEST_U1
+        .newException(s"offset must be >= 0 and limit must be within 1..${TaskApi.MaxPageSize}")
+    request
+      .state
+      .foreach { s =>
+        if ItemState.fromString(s).isEmpty then
+          throw RPCStatus.INVALID_REQUEST_U1.newException(s"Unknown item state: ${s}")
+      }
+    val store = taskQueue.store
+    val items = store.listItemsPage(
+      request.runId,
+      request.stageName,
+      request.state,
+      request.offset,
+      request.limit
+    )
+    ItemListResponse(
+      items = items.map(toItemInfo),
+      counts = store.countItemsByState(request.runId, request.stageName),
+      nextOffset =
+        if items.size == request.limit then
+          Some(request.offset + items.size)
+        else
+          None
+    )
 
-  end serializeOutput
+  end listItems
+
+  override def getItem(request: ItemRequest): ItemInfo = taskQueue
+    .store
+    .getItem(request.itemId)
+    .map(toItemInfo)
+    .getOrElse(throw RPCStatus.NOT_FOUND_U5.newException(s"Item '${request.itemId}' is not found"))
+
+  override def listActiveAttempts(request: ActiveAttemptListRequest): List[AttemptInfo] =
+    if request.limit <= 0 || request.limit > TaskApi.MaxPageSize then
+      throw RPCStatus
+        .INVALID_REQUEST_U1
+        .newException(s"limit must be within 1..${TaskApi.MaxPageSize}")
+    taskQueue
+      .activeAttempts
+      .sortBy(_.leaseExpiresAtMillis)
+      .take(request.limit)
+      .map(a =>
+        AttemptInfo(a.attemptId, a.itemId, a.workerId, a.leaseExpiresAtMillis, a.cancelRequested)
+      )
+
+  private def toItemInfo(r: ItemRecord): ItemInfo = ItemInfo(
+    itemId = r.itemId,
+    runId = r.runId,
+    stageName = r.stageName,
+    itemKey = r.itemKey,
+    state = r.state,
+    attemptId = r.attemptId,
+    attempts = r.attempts,
+    activityType = r.activityType,
+    workerId = r.workerId,
+    output = r.output,
+    error = r.error,
+    startedAtMillis = r.startedAtMillis,
+    finishedAtMillis = r.finishedAtMillis,
+    leaseExpiresAtMillis = r.leaseExpiresAtMillis
+  )
 
 end TaskApiImpl

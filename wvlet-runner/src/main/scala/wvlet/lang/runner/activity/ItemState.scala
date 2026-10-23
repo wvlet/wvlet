@@ -48,6 +48,17 @@ enum ItemState(val stateName: String):
       case _ =>
         false
 
+  /**
+    * A final state is never overwritten by a result report. An uncertain item is terminal for
+    * scheduling but not final: a late result of the same attempt may still resolve it
+    */
+  def isFinal: Boolean =
+    this match
+      case Succeeded | Failed | Cancelled =>
+        true
+      case _ =>
+        false
+
 end ItemState
 
 object ItemState:

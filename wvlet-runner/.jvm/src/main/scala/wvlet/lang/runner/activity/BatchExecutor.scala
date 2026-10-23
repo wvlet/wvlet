@@ -81,8 +81,13 @@ case class BatchResult(stageName: String, items: List[ItemRecord], cancelled: Bo
   *   - A timer thread enforces heartbeat and timeout deadlines
   *
   * On restart, the batch executor checks the item store for existing records: completed items are
-  * skipped, running items whose lease expired transition to uncertain, and queued items are
-  * re-admitted. This provides restart recovery without re-executing completed work.
+  * skipped and queued items are re-admitted. An item that was in flight is awaited again when the
+  * executor still tracks its attempt ([[ActivityExecutor.canResume]], e.g. a task-queue attempt
+  * held by a remote worker); otherwise it transitions to uncertain instead of being re-executed.
+  * This provides restart recovery without re-executing completed or possibly-running work.
+  *
+  * If the calling thread is interrupted (e.g. the flow is cancelled), queued items are cancelled
+  * and running items receive a cancellation request before the interruption propagates.
   */
 class BatchExecutor(
     executor: ActivityExecutor,
@@ -125,24 +130,40 @@ class BatchExecutor(
 
     // Recover existing items from the store (restart path)
     val existingItems = store.listItems(runId, stageName).map(r => r.itemKey -> r).toMap
+    // In-flight attempts the executor still tracks; they are awaited instead of re-executed
+    val resumable = mutable.Set.empty[String]
 
-    // Build the item list: reuse completed items, transition stale running to uncertain,
+    // Build the item list: reuse completed items, resume or mark uncertain in-flight items,
     // create new records for unseen keys
     val allItems = itemKeys.map { key =>
       val itemId = ItemRecord.itemId(runId, stageName, key)
       existingItems.get(key) match
-        case Some(r) if ItemState.fromString(r.state).exists(_.isTerminal) =>
+        case Some(r) if r.isTerminal =>
           r
-        case Some(r) if r.isStaleAt(now) =>
+        case Some(r) if executor.canResume(r.attemptId) =>
+          resumable += r.itemId
+          r
+        case Some(r) if r.state == ItemState.Queued.stateName =>
+          r
+        case Some(r) =>
+          // The attempt was in flight when the batch stopped and nobody tracks it anymore: its
+          // outcome is unknown, so it must not be re-executed blindly
+          val reason =
+            if r.isStaleAt(now) then
+              "Lease expired while the batch was not running"
+            else
+              "Attempt was in flight when the batch restarted"
           val uncertain = r.copy(
             state = ItemState.Uncertain.stateName,
+            error = Some(reason),
             finishedAtMillis = Some(now),
             leaseExpiresAtMillis = None
           )
-          store.saveItem(uncertain)
-          uncertain
-        case Some(r) =>
-          r
+          if store.reportResult(r.itemId, r.attemptId, uncertain.state, None, uncertain.error, now)
+          then
+            uncertain
+          else
+            store.getItem(r.itemId).getOrElse(uncertain)
         case None =>
           val record = ItemRecord(
             itemId = itemId,
@@ -155,6 +176,7 @@ class BatchExecutor(
           )
           store.saveItem(record)
           record
+      end match
     }
 
     // Split into already-terminal (skip) and pending (queue for execution)
@@ -210,18 +232,52 @@ class BatchExecutor(
 
     def beat(itemId: String): Unit = lastBeats.put(itemId, System.currentTimeMillis())
 
+    // Record a state transition of the current attempt. The store fences it; when rejected
+    // (e.g. a task queue already recorded the worker's outcome), the stored record wins
+    def settle(record: ItemRecord): Unit =
+      val accepted = store.reportResult(
+        record.itemId,
+        record.attemptId,
+        record.state,
+        record.output,
+        record.error,
+        record.finishedAtMillis.getOrElse(System.currentTimeMillis())
+      )
+      itemStates(record.itemId) =
+        if accepted then
+          record
+        else
+          store.getItem(record.itemId).getOrElse(record)
+
     def submitItem(record: ItemRecord): Unit =
-      val attemptId = ULID.newULIDString
+      // A resumed attempt keeps its identity: the executor awaits the attempt it still tracks
+      val resume    = resumable.remove(record.itemId)
+      val attemptId =
+        if resume then
+          record.attemptId
+        else
+          ULID.newULIDString
       val startedAt = System.currentTimeMillis()
       val running   = record.copy(
-        state = ItemState.Running.stateName,
+        state =
+          if resume && record.state == ItemState.Cancelling.stateName then
+            record.state
+          else
+            ItemState.Running.stateName
+        ,
         attemptId = attemptId,
-        attempts = record.attempts + 1,
-        startedAtMillis = Some(startedAt),
+        attempts =
+          if resume then
+            record.attempts
+          else
+            record.attempts + 1
+        ,
+        startedAtMillis = record.startedAtMillis.filter(_ => resume).orElse(Some(startedAt)),
         finishedAtMillis = None,
         leaseExpiresAtMillis = Some(startedAt + config.leaseTimeoutMillis)
       )
-      store.saveItem(running)
+      if !resume then
+        store.saveItem(running)
       itemStates(record.itemId) = running
       runningItems.put(record.itemId, running)
       beat(record.itemId)
@@ -306,32 +362,33 @@ class BatchExecutor(
     def handleCancellation(): Unit =
       // Cancel queued items
       while pending.nonEmpty do
-        val item      = pending.dequeue()
-        val cancelled = item.copy(
-          state = ItemState.Cancelled.stateName,
-          finishedAtMillis = Some(System.currentTimeMillis())
+        val item = pending.dequeue()
+        settle(
+          item.copy(
+            state = ItemState.Cancelled.stateName,
+            finishedAtMillis = Some(System.currentTimeMillis())
+          )
         )
-        store.saveItem(cancelled)
-        itemStates(item.itemId) = cancelled
 
-      // Cancel running items
+      // Cancel running items. Conditional store updates keep fields other writers (e.g. a task
+      // queue recording the claiming worker) intact
       runningItems
         .values()
         .asScala
         .foreach { item =>
           val cancelling = item.copy(state = ItemState.Cancelling.stateName)
-          store.saveItem(cancelling)
+          store.markCancelling(item.itemId, item.attemptId)
           itemStates(item.itemId) = cancelling
           try
             executor.cancel(item.attemptId) match
               case CancelAck.Acknowledged =>
-                val cancelled = cancelling.copy(
-                  state = ItemState.Cancelled.stateName,
-                  finishedAtMillis = Some(System.currentTimeMillis()),
-                  leaseExpiresAtMillis = None
+                settle(
+                  cancelling.copy(
+                    state = ItemState.Cancelled.stateName,
+                    finishedAtMillis = Some(System.currentTimeMillis()),
+                    leaseExpiresAtMillis = None
+                  )
                 )
-                store.saveItem(cancelled)
-                itemStates(item.itemId) = cancelled
                 cleanupItem(item.itemId)
               case CancelAck.Unknown =>
                 // Leave in cancelling state; the event loop will handle timeout/completion
@@ -387,98 +444,16 @@ class BatchExecutor(
                 s"Rejecting stale completion for item ${current.itemKey}: " +
                   s"expected attempt ${current.attemptId}, got ${attemptId}"
               )
-            else if current.state == ItemState.Cancelling.stateName then
-              // Item was being cancelled; treat completion as the terminal state
-              val terminal =
-                result match
-                  case ActivityResult.Cancelled =>
-                    current.copy(
-                      state = ItemState.Cancelled.stateName,
-                      finishedAtMillis = Some(System.currentTimeMillis()),
-                      leaseExpiresAtMillis = None
-                    )
-                  case ActivityResult.Completed(output) =>
-                    current.copy(
-                      state = ItemState.Succeeded.stateName,
-                      output = Some(serializeOutput(output)),
-                      finishedAtMillis = Some(System.currentTimeMillis()),
-                      leaseExpiresAtMillis = None
-                    )
-                  case ActivityResult.Failed(error, _) =>
-                    current.copy(
-                      state = ItemState.Failed.stateName,
-                      error = Some(error),
-                      finishedAtMillis = Some(System.currentTimeMillis()),
-                      leaseExpiresAtMillis = None
-                    )
-              val accepted = store.reportResult(
-                itemId,
-                attemptId,
-                terminal.state,
-                terminal.output,
-                terminal.error,
-                terminal.finishedAtMillis.get
-              )
-              if accepted then
-                itemStates(itemId) = terminal
-              cleanupItem(itemId)
             else
-              val finishedAt = System.currentTimeMillis()
-              val terminal   =
-                result match
-                  case ActivityResult.Completed(output) =>
-                    current.copy(
-                      state = ItemState.Succeeded.stateName,
-                      output = Some(serializeOutput(output)),
-                      finishedAtMillis = Some(finishedAt),
-                      leaseExpiresAtMillis = None
-                    )
-                  case ActivityResult.Failed(error, _) =>
-                    current.copy(
-                      state = ItemState.Failed.stateName,
-                      error = Some(error),
-                      finishedAtMillis = Some(finishedAt),
-                      leaseExpiresAtMillis = None
-                    )
-                  case ActivityResult.Cancelled =>
-                    current.copy(
-                      state = ItemState.Cancelled.stateName,
-                      finishedAtMillis = Some(finishedAt),
-                      leaseExpiresAtMillis = None
-                    )
-
-              val accepted = store.reportResult(
-                itemId,
-                attemptId,
-                terminal.state,
-                terminal.output,
-                terminal.error,
-                finishedAt
-              )
-              if accepted then
-                itemStates(itemId) = terminal
+              settle(terminalRecord(current, result))
               cleanupItem(itemId)
+              // No-op after a cancellation: admission has stopped
               admitNext()
-            end if
 
           case HeartbeatMissed(itemId, attemptId) =>
             val current = itemStates(itemId)
             if current.attemptId == attemptId && current.state == ItemState.Running.stateName then
-              val uncertain = current.copy(
-                state = ItemState.Uncertain.stateName,
-                error = Some("Heartbeat missed"),
-                finishedAtMillis = Some(System.currentTimeMillis()),
-                leaseExpiresAtMillis = None
-              )
-              store.reportResult(
-                itemId,
-                attemptId,
-                uncertain.state,
-                None,
-                uncertain.error,
-                uncertain.finishedAtMillis.get
-              )
-              itemStates(itemId) = uncertain
+              settle(terminalRecord(current, ActivityResult.Uncertain("Heartbeat missed")))
               cleanupItem(itemId)
               admitNext()
 
@@ -489,24 +464,17 @@ class BatchExecutor(
                   current.state == ItemState.Cancelling.stateName
               )
             then
-              val uncertain = current.copy(
-                state = ItemState.Uncertain.stateName,
-                error = Some("Activity timed out"),
-                finishedAtMillis = Some(System.currentTimeMillis()),
-                leaseExpiresAtMillis = None
-              )
-              store.reportResult(
-                itemId,
-                attemptId,
-                uncertain.state,
-                None,
-                uncertain.error,
-                uncertain.finishedAtMillis.get
-              )
-              itemStates(itemId) = uncertain
+              settle(terminalRecord(current, ActivityResult.Uncertain("Activity timed out")))
               cleanupItem(itemId)
         end match
       end while
+    catch
+      case e: InterruptedException =>
+        // The caller stopped waiting (e.g. flow cancellation): stop admission and request
+        // cancellation so no item keeps running unnoticed, then propagate the interruption
+        cancelRequested = true
+        handleCancellation()
+        throw e
     finally
       workerPool.shutdownNow()
       timer.shutdownNow()
@@ -520,15 +488,23 @@ class BatchExecutor(
 
   end execute
 
-  private def serializeOutput(output: Map[String, Any]): String =
-    def escapeJson(s: String): String = s
-      .replace("\\", "\\\\")
-      .replace("\"", "\\\"")
-      .replace("\n", "\\n")
-      .replace("\r", "\\r")
-    val entries = output.map { (k, v) =>
-      s""""${escapeJson(k)}":"${escapeJson(v.toString)}""""
-    }
-    s"{${entries.mkString(",")}}"
+  /** The record of an attempt that reached the given outcome */
+  private def terminalRecord(current: ItemRecord, result: ActivityResult): ItemRecord =
+    val finished = current.copy(
+      finishedAtMillis = Some(System.currentTimeMillis()),
+      leaseExpiresAtMillis = None
+    )
+    result match
+      case ActivityResult.Completed(output) =>
+        finished.copy(
+          state = ItemState.Succeeded.stateName,
+          output = Some(ActivityJson.encode(output))
+        )
+      case ActivityResult.Failed(error, _) =>
+        finished.copy(state = ItemState.Failed.stateName, error = Some(error))
+      case ActivityResult.Cancelled =>
+        finished.copy(state = ItemState.Cancelled.stateName)
+      case ActivityResult.Uncertain(reason) =>
+        finished.copy(state = ItemState.Uncertain.stateName, error = Some(reason))
 
 end BatchExecutor

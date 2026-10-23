@@ -13,6 +13,7 @@
  */
 package wvlet.lang.runner
 
+import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.CompilationUnit
@@ -68,7 +69,8 @@ object FlowRunLauncher extends LogSupport:
 
   /**
     * Execute (or resume) a compiled flow. Connectors are resolved through the profile, and run
-    * records land in the given store (owned by the caller)
+    * records land in the given store (owned by the caller). Activity stages dispatch to the workers
+    * of the given task queue
     */
   def execute(
       loaded: LoadedFlows,
@@ -77,7 +79,8 @@ object FlowRunLauncher extends LogSupport:
       workEnv: WorkEnv,
       store: FlowRunStore,
       resumeFrom: Option[FlowRunRecord] = None,
-      args: List[FunctionArg] = Nil
+      args: List[FunctionArg] = Nil,
+      taskQueue: Option[TaskQueue] = None
   ): FlowExecutionResult =
     val (unit, flow) = loaded.find(flowName)
     Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
@@ -109,7 +112,8 @@ object FlowRunLauncher extends LogSupport:
           FlowExecutor.defaultActivationSinks ++
             profile
               .connectors
-              .map(c => ConnectorActivationSink(c.name, () => dbConnectorProvider.getConnector(c)))
+              .map(c => ConnectorActivationSink(c.name, () => dbConnectorProvider.getConnector(c))),
+        taskQueue = taskQueue
       ).execute(flow, resumeFrom, args)
     }
 

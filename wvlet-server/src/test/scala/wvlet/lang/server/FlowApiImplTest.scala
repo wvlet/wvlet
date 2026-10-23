@@ -1,5 +1,7 @@
 package wvlet.lang.server
 
+import wvlet.lang.runner.activity.InMemoryItemStore
+import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.api.v1.flow.FlowApi
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
@@ -80,6 +82,7 @@ class FlowApiImplTest extends WvletDITest:
     _.bindImpl[FlowApi, FlowApiImpl]
       .bindInstance[WorkEnv](WorkEnv(workDir))
       .bindInstance[Profile](Profile.defaultDuckDBProfile)
+      .bindInstance[TaskQueue](TaskQueue(InMemoryItemStore()))
 
   test("list recorded runs most recent first") {
     val api  = dep[FlowApi]

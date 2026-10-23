@@ -7,7 +7,7 @@ import wvlet.lang.api.v1.task.TaskApi
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.activity.{InMemoryItemStore, TaskQueue}
+import wvlet.lang.runner.activity.{ItemStores, TaskQueue}
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.{ThreadManager, WvletScriptRunnerConfig}
 import wvlet.uni.cli.launcher.option
@@ -63,6 +63,9 @@ case class WvletServerConfig(
   def resolvedAuthToken: Option[String] = authToken.orElse(sys.env.get("WVLET_SERVER_TOKEN"))
 
 object WvletServer extends LogSupport:
+
+  /** How often the task queue resolves attempts whose worker stopped heartbeating */
+  val LeaseSweepIntervalMillis: Long = 5_000L
 
   /**
     * Multi-service RPC dispatcher. uni-netty's `RPCHandler` only takes a single `RPCRouter`, so
@@ -251,8 +254,15 @@ object WvletServer extends LogSupport:
       .bindImpl[FileApi, FileApiImpl]
       .bindImpl[FlowApi, FlowApiImpl]
       .bindImpl[TaskApi, TaskApiImpl]
+      // Durable by default: queued and in-flight attempts survive a server restart
       .bindProvider[WorkEnv, TaskQueue] { (workEnv: WorkEnv) =>
-        TaskQueue(InMemoryItemStore())
+        val queue = TaskQueue(ItemStores.forWorkEnv(workEnv))
+        queue.startLeaseSweeper(WvletServer.LeaseSweepIntervalMillis)
+        queue
+      }
+      .onShutdown { queue =>
+        queue.close()
+        queue.store.close()
       }
       .bindSingleton[StaticContentApi]
       .bindProvider[Session, NettyHttpServer] { (session: Session) =>

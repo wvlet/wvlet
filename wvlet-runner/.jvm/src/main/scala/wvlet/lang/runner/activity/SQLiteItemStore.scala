@@ -18,7 +18,7 @@ import wvlet.uni.log.LogSupport
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
-import java.sql.DriverManager
+import java.util.Properties
 import scala.util.Using
 import scala.util.control.NonFatal
 
@@ -32,7 +32,10 @@ import scala.util.control.NonFatal
 class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
   Option(dbPath.getParent).foreach(Files.createDirectories(_))
 
-  private val conn: Connection = DriverManager.getConnection(s"jdbc:sqlite:${dbPath}")
+  // Connect through the driver itself: DriverManager only returns drivers visible to the caller's
+  // class loader, which fails when the driver was registered by another loader (e.g. a server
+  // embedded in a test JVM)
+  private val conn: Connection = org.sqlite.JDBC().connect(s"jdbc:sqlite:${dbPath}", Properties())
 
   Using.resource(conn.createStatement()) { stmt =>
     stmt.execute("pragma journal_mode = WAL")
@@ -49,17 +52,38 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
         |  error            text,
         |  started_at       integer,
         |  finished_at      integer,
-        |  lease_expires_at integer
+        |  lease_expires_at integer,
+        |  activity_type    text,
+        |  input            text,
+        |  timeout_ms       integer,
+        |  heartbeat_ms     integer,
+        |  worker_id        text
         |)""".stripMargin)
+    // Databases created before task-queue dispatch lack the dispatch columns; add them in place
+    val existing =
+      Using.resource(stmt.executeQuery("pragma table_info(items)")) { rs =>
+        val b = Set.newBuilder[String]
+        while rs.next() do
+          b += rs.getString("name")
+        b.result()
+      }
+    SQLiteItemStore
+      .dispatchColumns
+      .foreach { (name, tpe) =>
+        if !existing.contains(name) then
+          stmt.execute(s"alter table items add column ${name} ${tpe}")
+      }
     stmt.execute("create index if not exists idx_items_run_stage on items(run_id, stage_name)")
+    stmt.execute("create index if not exists idx_items_state on items(state)")
   }
 
   override def saveItem(record: ItemRecord): Unit = synchronized {
     Using.resource(
       conn.prepareStatement(
         """insert into items(item_id, run_id, stage_name, item_key, state, attempt_id, attempts,
-          |  output, error, started_at, finished_at, lease_expires_at)
-          |values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          |  output, error, started_at, finished_at, lease_expires_at, activity_type, input,
+          |  timeout_ms, heartbeat_ms, worker_id)
+          |values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           |on conflict(item_id) do update set
           |  state = excluded.state,
           |  attempt_id = excluded.attempt_id,
@@ -68,7 +92,12 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
           |  error = excluded.error,
           |  started_at = excluded.started_at,
           |  finished_at = excluded.finished_at,
-          |  lease_expires_at = excluded.lease_expires_at""".stripMargin
+          |  lease_expires_at = excluded.lease_expires_at,
+          |  activity_type = excluded.activity_type,
+          |  input = excluded.input,
+          |  timeout_ms = excluded.timeout_ms,
+          |  heartbeat_ms = excluded.heartbeat_ms,
+          |  worker_id = excluded.worker_id""".stripMargin
       )
     ) { ps =>
       ps.setString(1, record.itemId)
@@ -83,6 +112,11 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
       setLongOpt(ps, 10, record.startedAtMillis)
       setLongOpt(ps, 11, record.finishedAtMillis)
       setLongOpt(ps, 12, record.leaseExpiresAtMillis)
+      ps.setString(13, record.activityType.orNull)
+      ps.setString(14, record.input.orNull)
+      setLongOpt(ps, 15, record.timeoutMillis)
+      setLongOpt(ps, 16, record.heartbeatMillis)
+      ps.setString(17, record.workerId.orNull)
       ps.executeUpdate()
     }
   }
@@ -107,12 +141,85 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
     ) { ps =>
       ps.setString(1, runId)
       ps.setString(2, stageName)
-      Using.resource(ps.executeQuery()) { rs =>
-        val b = List.newBuilder[ItemRecord]
-        while rs.next() do
-          b += readItem(rs)
-        b.result()
+      readItems(ps)
+    }
+  }
+
+  override def listItemsPage(
+      runId: String,
+      stageName: String,
+      state: Option[String],
+      offset: Int,
+      limit: Int
+  ): List[ItemRecord] = synchronized {
+    Using.resource(conn.prepareStatement("""select * from items
+          |where run_id = ? and stage_name = ? and (? is null or state = ?)
+          |order by rowid limit ? offset ?""".stripMargin)) { ps =>
+      ps.setString(1, runId)
+      ps.setString(2, stageName)
+      ps.setString(3, state.orNull)
+      ps.setString(4, state.orNull)
+      ps.setInt(5, limit)
+      ps.setInt(6, offset)
+      readItems(ps)
+    }
+  }
+
+  override def countItemsByState(runId: String, stageName: String): Map[String, Int] =
+    synchronized {
+      Using.resource(
+        conn.prepareStatement(
+          "select state, count(*) as cnt from items where run_id = ? and stage_name = ? group by state"
+        )
+      ) { ps =>
+        ps.setString(1, runId)
+        ps.setString(2, stageName)
+        Using.resource(ps.executeQuery()) { rs =>
+          val b = Map.newBuilder[String, Int]
+          while rs.next() do
+            b += rs.getString("state") -> rs.getInt("cnt")
+          b.result()
+        }
       }
+    }
+
+  override def listActiveItems(): List[ItemRecord] = synchronized {
+    Using.resource(
+      conn.prepareStatement(
+        s"select * from items where state in (${SQLiteItemStore.activeStates}) order by rowid"
+      )
+    )(readItems)
+  }
+
+  override def claimItem(
+      itemId: String,
+      attemptId: String,
+      workerId: String,
+      startedAtMillis: Long,
+      leaseExpiresAtMillis: Long
+  ): Boolean = synchronized {
+    Using.resource(
+      conn.prepareStatement("""update items set state = 'running', worker_id = ?, started_at = ?,
+          |  lease_expires_at = ?
+          |where item_id = ? and attempt_id = ? and state = 'queued'""".stripMargin)
+    ) { ps =>
+      ps.setString(1, workerId)
+      ps.setLong(2, startedAtMillis)
+      ps.setLong(3, leaseExpiresAtMillis)
+      ps.setString(4, itemId)
+      ps.setString(5, attemptId)
+      ps.executeUpdate() == 1
+    }
+  }
+
+  override def markCancelling(itemId: String, attemptId: String): Boolean = synchronized {
+    Using.resource(
+      conn.prepareStatement("""update items set state = 'cancelling'
+          |where item_id = ? and attempt_id = ? and state in ('queued', 'running')""".stripMargin)
+    ) { ps =>
+      ps.setString(1, itemId)
+      ps.setString(2, attemptId)
+      ps.executeUpdate() == 1
     }
   }
 
@@ -125,9 +232,10 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
       finishedAtMillis: Long
   ): Boolean = synchronized {
     Using.resource(
-      conn.prepareStatement("""update items set state = ?, output = ?, error = ?, finished_at = ?,
+      conn.prepareStatement(s"""update items set state = ?, output = ?, error = ?, finished_at = ?,
           |  lease_expires_at = null
-          |where item_id = ? and attempt_id = ?""".stripMargin)
+          |where item_id = ? and attempt_id = ?
+          |  and state not in (${SQLiteItemStore.finalStates})""".stripMargin)
     ) { ps =>
       ps.setString(1, state)
       ps.setString(2, output.orNull)
@@ -174,6 +282,14 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
       case None =>
         ps.setNull(index, java.sql.Types.BIGINT)
 
+  private def readItems(ps: java.sql.PreparedStatement): List[ItemRecord] =
+    Using.resource(ps.executeQuery()) { rs =>
+      val b = List.newBuilder[ItemRecord]
+      while rs.next() do
+        b += readItem(rs)
+      b.result()
+    }
+
   private def readItem(rs: java.sql.ResultSet): ItemRecord =
     def getLongOpt(column: String): Option[Long] =
       val v = rs.getLong(column)
@@ -193,7 +309,32 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
       error = Option(rs.getString("error")),
       startedAtMillis = getLongOpt("started_at"),
       finishedAtMillis = getLongOpt("finished_at"),
-      leaseExpiresAtMillis = getLongOpt("lease_expires_at")
+      leaseExpiresAtMillis = getLongOpt("lease_expires_at"),
+      activityType = Option(rs.getString("activity_type")),
+      input = Option(rs.getString("input")),
+      timeoutMillis = getLongOpt("timeout_ms"),
+      heartbeatMillis = getLongOpt("heartbeat_ms"),
+      workerId = Option(rs.getString("worker_id"))
     )
 
 end SQLiteItemStore
+
+object SQLiteItemStore:
+  private def sqlList(states: Iterable[ItemState]): String = states
+    .map(s => s"'${s.stateName}'")
+    .mkString(", ")
+
+  /** Non-terminal states, matching [[ItemState.isTerminal]] */
+  private val activeStates: String = sqlList(ItemState.values.filterNot(_.isTerminal))
+
+  /** States a result report must not overwrite, matching [[ItemState.isFinal]] */
+  private val finalStates: String = sqlList(ItemState.values.filter(_.isFinal))
+
+  /** Columns added for task-queue dispatch, migrated into databases created without them */
+  private val dispatchColumns: List[(String, String)] = List(
+    "activity_type" -> "text",
+    "input"         -> "text",
+    "timeout_ms"    -> "integer",
+    "heartbeat_ms"  -> "integer",
+    "worker_id"     -> "text"
+  )

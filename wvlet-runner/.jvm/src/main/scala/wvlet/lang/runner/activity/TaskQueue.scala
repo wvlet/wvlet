@@ -15,12 +15,15 @@ package wvlet.lang.runner.activity
 
 import wvlet.uni.log.LogSupport
 
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
-import java.util.concurrent.locks.Condition
+import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
+import scala.util.control.NonFatal
 
 /**
   * A pending task waiting to be dispatched to a worker
@@ -28,7 +31,7 @@ import scala.jdk.CollectionConverters.*
   * @param activityType
   *   The activity type this task requires
   * @param invocationId
-  *   Stable invocation identity (same across retries)
+  *   Stable invocation identity (same across retries); the item id in the store
   * @param attemptId
   *   Unique attempt identity for fencing
   * @param input
@@ -60,6 +63,8 @@ case class PendingTask(
   *   The worker that claimed this attempt
   * @param leaseExpiresAtMillis
   *   When the lease expires if no heartbeat is received
+  * @param leaseMillis
+  *   The lease duration granted by each heartbeat
   * @param cancelRequested
   *   Whether the orchestrator has requested cancellation
   */
@@ -69,33 +74,224 @@ case class ActiveAttempt(
     itemId: String,
     workerId: String,
     leaseExpiresAtMillis: Long,
+    leaseMillis: Long,
     cancelRequested: Boolean = false
 )
 
 /**
   * Server-side task queue that coordinates the dispatch of activity items to remote workers via the
-  * poll/result/heartbeat protocol. The queue holds pending tasks in memory and tracks active
-  * attempts. Persistent state is delegated to the [[ItemStore]].
+  * poll/result/heartbeat protocol. The [[ItemStore]] is the source of truth: enqueued tasks are
+  * persisted as queued items, a poll claims an item atomically (queued -> running, fenced by the
+  * attemptId), and results are fenced by the store.
   *
-  * Thread-safe: all methods may be called concurrently from HTTP request threads
+  * Recovery: constructing a queue reconciles the store. Queued items dispatched through a queue
+  * return to the pending queue, and running or cancelling attempts claimed by a worker are adopted
+  * with their persisted lease, so a live worker keeps heartbeating and reporting after a restart.
+  * Nothing is re-executed.
+  *
+  * Lease expiry: an attempt whose worker stops heartbeating becomes uncertain once its lease
+  * expires ([[expireLeases]]). Lost contact does not prove that the work stopped, so the attempt is
+  * never retried automatically.
+  *
+  * In-process callers (e.g. a flow stage) dispatch through [[dispatch]] and receive the outcome as
+  * a future. Thread-safe: all methods may be called concurrently from HTTP request threads
+  *
+  * @param store
+  *   The item store holding queued, running, and finished attempts
+  * @param defaultLeaseMillis
+  *   The lease of an attempt whose task declares no heartbeat interval
+  * @param clock
+  *   The current time in milliseconds (injectable for testing lease expiry)
   */
-class TaskQueue(store: ItemStore, defaultLeaseMillis: Long = 60_000L) extends LogSupport:
+class TaskQueue(
+    val store: ItemStore,
+    defaultLeaseMillis: Long = 60_000L,
+    clock: () => Long = () => System.currentTimeMillis()
+) extends AutoCloseable
+    with LogSupport:
 
-  private val pending = ConcurrentLinkedQueue[PendingTask]()
+  private val pending = mutable.Queue.empty[PendingTask]
   private val active  = ConcurrentHashMap[String, ActiveAttempt]()
 
+  // In-process callers awaiting the outcome of an attempt, keyed by attemptId
+  private case class Waiter(result: CompletableFuture[ActivityResult], onHeartbeat: () => Unit)
+  private val waiters = ConcurrentHashMap[String, Waiter]()
+  // Item ids of attempts whose lease expired, so a late result of the worker can still resolve
+  // the uncertain item (the store fences it by attemptId)
+  private val expired = ConcurrentHashMap[String, String]()
+
+  // Guards `pending` and orders claims against cancellation
   private val lock      = ReentrantLock()
   private val taskReady = lock.newCondition()
 
+  @volatile
+  private var sweeper: Option[ScheduledExecutorService] = None
+
+  recover()
+
   /**
-    * Enqueue a task for dispatch to a remote worker. The caller (e.g. a flow dispatcher) provides
-    * the task details; the queue makes it available to polling workers.
+    * The lease granted to an attempt: three heartbeat intervals when the task declares one, so a
+    * single delayed heartbeat does not expire it
     */
-  def enqueue(task: PendingTask): Unit =
-    pending.add(task)
+  private def leaseMillisFor(config: ActivityConfig): Long = config
+    .heartbeatMillis
+    .map(_ * 3)
+    .getOrElse(defaultLeaseMillis)
+
+  private def withLock[A](body: => A): A =
     lock.lock()
-    try taskReady.signalAll()
+    try body
     finally lock.unlock()
+
+  /** Reconcile in-memory dispatch state with the store after a restart */
+  private def recover(): Unit =
+    val now       = clock()
+    var requeued  = 0
+    var adopted   = 0
+    var cancelled = 0
+    store
+      .listActiveItems()
+      .foreach { r =>
+        (ItemState.fromString(r.state), r.activityType, r.workerId) match
+          case (Some(ItemState.Queued), Some(activityType), _) =>
+            pending.enqueue(
+              PendingTask(
+                activityType = activityType,
+                invocationId = r.itemId,
+                attemptId = r.attemptId,
+                input = r.input.map(ActivityJson.decode).getOrElse(Map.empty),
+                config = ActivityConfig(r.timeoutMillis, r.heartbeatMillis),
+                enqueuedAtMillis = now
+              )
+            )
+            requeued += 1
+          case (Some(ItemState.Running | ItemState.Cancelling), Some(_), Some(workerId)) =>
+            active.put(
+              r.attemptId,
+              ActiveAttempt(
+                attemptId = r.attemptId,
+                invocationId = r.itemId,
+                itemId = r.itemId,
+                workerId = workerId,
+                leaseExpiresAtMillis = r.leaseExpiresAtMillis.getOrElse(now),
+                leaseMillis = leaseMillisFor(ActivityConfig(r.timeoutMillis, r.heartbeatMillis)),
+                cancelRequested = r.state == ItemState.Cancelling.stateName
+              )
+            )
+            adopted += 1
+          case (Some(ItemState.Cancelling), Some(_), None) =>
+            // Cancellation was requested before any worker claimed the task: it never ran
+            store.reportResult(
+              r.itemId,
+              r.attemptId,
+              ItemState.Cancelled.stateName,
+              None,
+              None,
+              now
+            )
+            cancelled += 1
+          case _ =>
+          // Not dispatched through a task queue (e.g. a batch running a local executor)
+      }
+    if requeued + adopted + cancelled > 0 then
+      info(
+        s"Recovered task queue: ${requeued} queued, ${adopted} in-flight, ${cancelled} cancelled"
+      )
+
+  end recover
+
+  /**
+    * Enqueue a task for dispatch to a remote worker. The task is persisted as a queued item; an
+    * existing record of the item (e.g. created by a batch) keeps its run, stage, and key.
+    */
+  def enqueue(task: PendingTask): Unit = withLock {
+    val input  = Some(ActivityJson.encode(task.input))
+    val record =
+      store.getItem(task.invocationId) match
+        case Some(r) =>
+          r.copy(
+            state = ItemState.Queued.stateName,
+            attemptId = task.attemptId,
+            attempts = r.attempts.max(1),
+            output = None,
+            error = None,
+            startedAtMillis = None,
+            finishedAtMillis = None,
+            leaseExpiresAtMillis = None,
+            activityType = Some(task.activityType),
+            input = input,
+            timeoutMillis = task.config.timeoutMillis,
+            heartbeatMillis = task.config.heartbeatMillis,
+            workerId = None
+          )
+        case None =>
+          ItemRecord(
+            itemId = task.invocationId,
+            runId = "",
+            stageName = "",
+            itemKey = task.invocationId,
+            state = ItemState.Queued.stateName,
+            attemptId = task.attemptId,
+            attempts = 1,
+            activityType = Some(task.activityType),
+            input = input,
+            timeoutMillis = task.config.timeoutMillis,
+            heartbeatMillis = task.config.heartbeatMillis
+          )
+    store.saveItem(record)
+    pending.enqueue(task)
+    taskReady.signalAll()
+  }
+
+  /**
+    * Enqueue a task and return a future completed with its outcome: the worker's result, an
+    * uncertain result when the lease expires, or cancelled when it is cancelled before dispatch. If
+    * the attempt is already known (e.g. recovered after a restart), the future awaits it without
+    * enqueueing the task again.
+    *
+    * @param onHeartbeat
+    *   Called on every worker heartbeat of the attempt, to propagate liveness to the caller
+    */
+  def dispatch(task: PendingTask, onHeartbeat: () => Unit): CompletableFuture[ActivityResult] =
+    val waiter = Waiter(CompletableFuture[ActivityResult](), onHeartbeat)
+    waiters.put(task.attemptId, waiter)
+    withLock {
+      if !isKnown(task.attemptId) then
+        // A resumed attempt may have finished while the caller was not waiting yet: report the
+        // stored outcome instead of enqueueing (and executing) the attempt again
+        store
+          .getItem(task.invocationId)
+          .filter(r => r.attemptId == task.attemptId && r.isTerminal) match
+          case Some(r) =>
+            complete(task.attemptId, resultOf(r))
+          case None =>
+            enqueue(task)
+    }
+    waiter.result
+
+  /** The activity result an item record in a terminal state represents */
+  private def resultOf(r: ItemRecord): ActivityResult =
+    ItemState.fromString(r.state) match
+      case Some(ItemState.Succeeded) =>
+        ActivityResult.Completed(r.output.map(ActivityJson.decode).getOrElse(Map.empty))
+      case Some(ItemState.Cancelled) =>
+        ActivityResult.Cancelled
+      case Some(ItemState.Uncertain) =>
+        ActivityResult.Uncertain(r.error.getOrElse("Outcome unknown"))
+      case _ =>
+        ActivityResult.Failed(r.error.getOrElse("Activity failed"))
+
+  /** Whether the attempt is waiting for a worker or being executed by one */
+  def isKnown(attemptId: String): Boolean = isPending(attemptId) || active.containsKey(attemptId)
+
+  /** Whether the attempt is still waiting for a worker */
+  def isPending(attemptId: String): Boolean = withLock {
+    pending.exists(_.attemptId == attemptId)
+  }
+
+  private def complete(attemptId: String, result: ActivityResult): Unit = Option(
+    waiters.remove(attemptId)
+  ).foreach(_.result.complete(result))
 
   /**
     * Poll for a task matching any of the given activity types. Blocks up to `timeoutMillis` if no
@@ -110,67 +306,51 @@ class TaskQueue(store: ItemStore, defaultLeaseMillis: Long = 60_000L) extends Lo
     val typeSet  = activityTypes.toSet
     val deadline = System.currentTimeMillis() + timeoutMillis
 
+    // Take the first matching task the store lets this worker claim. A task whose item was
+    // cancelled or reassigned since it was enqueued fails the claim and is dropped
     def tryTake(): Option[PendingTask] =
-      val it = pending.iterator()
-      while it.hasNext do
-        val task = it.next()
-        if typeSet.contains(task.activityType) then
-          it.remove()
-          val now     = System.currentTimeMillis()
-          val attempt = ActiveAttempt(
-            attemptId = task.attemptId,
-            invocationId = task.invocationId,
-            itemId = task.invocationId,
-            workerId = workerId,
-            leaseExpiresAtMillis = now + defaultLeaseMillis
-          )
-          active.put(task.attemptId, attempt)
-          store.saveItem(
-            ItemRecord(
-              itemId = task.invocationId,
-              runId = "",
-              stageName = "",
-              itemKey = task.invocationId,
-              state = ItemState.Running.stateName,
+      var claimed: Option[PendingTask] = None
+      while claimed.isEmpty && pending.exists(t => typeSet.contains(t.activityType)) do
+        val task        = pending.dequeueFirst(t => typeSet.contains(t.activityType)).get
+        val now         = clock()
+        val leaseMillis = leaseMillisFor(task.config)
+        if store.claimItem(task.invocationId, task.attemptId, workerId, now, now + leaseMillis) then
+          active.put(
+            task.attemptId,
+            ActiveAttempt(
               attemptId = task.attemptId,
-              attempts = 1,
-              startedAtMillis = Some(now),
-              leaseExpiresAtMillis = Some(now + defaultLeaseMillis)
+              invocationId = task.invocationId,
+              itemId = task.invocationId,
+              workerId = workerId,
+              leaseExpiresAtMillis = now + leaseMillis,
+              leaseMillis = leaseMillis
             )
           )
-          return Some(task)
-      None
-    end tryTake
+          // The claim proves liveness until the worker's first heartbeat
+          notifyHeartbeat(task.attemptId)
+          claimed = Some(task)
+        else
+          debug(s"Dropping task ${task.attemptId}: its item is no longer queued for this attempt")
+      claimed
 
-    lock.lock()
-    try
-      tryTake() match
-        case some @ Some(_) =>
-          return some
-        case None =>
-          if timeoutMillis <= 0 then
-            return None
-
+    withLock {
+      var result    = tryTake()
       var remaining = deadline - System.currentTimeMillis()
-      while remaining > 0 do
+      while result.isEmpty && remaining > 0 do
         taskReady.await(remaining, TimeUnit.MILLISECONDS)
-        tryTake() match
-          case some @ Some(_) =>
-            return some
-          case None =>
-            remaining = deadline - System.currentTimeMillis()
-      None
-    finally
-      lock.unlock()
+        result = tryTake()
+        remaining = deadline - System.currentTimeMillis()
+      result
+    }
 
   end poll
 
   /**
-    * Report the result of a task attempt. Validates the attemptId against the active attempts for
-    * fencing.
+    * Report the result of a task attempt. The store fences the result: it is rejected when the
+    * attempt is stale or unknown, or the item already has a final outcome.
     *
     * @return
-    *   true if the result was accepted, false if the attempt was stale or unknown
+    *   true if the result was accepted
     */
   def reportResult(
       attemptId: String,
@@ -178,33 +358,33 @@ class TaskQueue(store: ItemStore, defaultLeaseMillis: Long = 60_000L) extends Lo
       output: Option[String],
       error: Option[String]
   ): Boolean =
-    active.remove(attemptId) match
-      case null =>
+    Option(active.remove(attemptId)).map(_.itemId).orElse(Option(expired.remove(attemptId))) match
+      case None =>
         debug(s"Rejecting result for unknown attempt: ${attemptId}")
         false
-      case attempt =>
-        val state =
+      case Some(itemId) =>
+        val (state, result) =
           status match
             case "completed" =>
-              ItemState.Succeeded.stateName
+              ItemState.Succeeded.stateName ->
+                ActivityResult.Completed(output.map(ActivityJson.decode).getOrElse(Map.empty))
             case "failed" =>
-              ItemState.Failed.stateName
+              ItemState.Failed.stateName ->
+                ActivityResult.Failed(error.getOrElse("Activity failed"))
             case "cancelled" =>
-              ItemState.Cancelled.stateName
+              ItemState.Cancelled.stateName -> ActivityResult.Cancelled
             case other =>
               warn(s"Unknown result status '${other}' for attempt ${attemptId}, treating as failed")
-              ItemState.Failed.stateName
-        val accepted = store.reportResult(
-          attempt.itemId,
-          attemptId,
-          state,
-          output,
-          error,
-          System.currentTimeMillis()
-        )
+              ItemState.Failed.stateName ->
+                ActivityResult.Failed(error.getOrElse(s"Unknown result status: ${other}"))
+        val accepted = store.reportResult(itemId, attemptId, state, output, error, clock())
         if !accepted then
           debug(s"Store rejected result for attempt ${attemptId} (fenced)")
+        // The waiter fences on its own side; it needs the worker's outcome either way
+        complete(attemptId, result)
         accepted
+
+  end reportResult
 
   /**
     * Renew the liveness lease of a running attempt.
@@ -216,29 +396,121 @@ class TaskQueue(store: ItemStore, defaultLeaseMillis: Long = 60_000L) extends Lo
   def heartbeat(attemptId: String): String =
     active.computeIfPresent(
       attemptId,
-      (_, current) =>
-        current.copy(leaseExpiresAtMillis = System.currentTimeMillis() + defaultLeaseMillis)
+      (_, current) => current.copy(leaseExpiresAtMillis = clock() + current.leaseMillis)
     ) match
       case null =>
         "unknown"
       case attempt =>
         store.refreshItemLease(attempt.itemId, attemptId, attempt.leaseExpiresAtMillis)
+        notifyHeartbeat(attemptId)
         if attempt.cancelRequested then
           "cancel"
         else
           "continue"
 
+  private def notifyHeartbeat(attemptId: String): Unit = Option(waiters.get(attemptId)).foreach {
+    w =>
+      try
+        w.onHeartbeat()
+      catch
+        case NonFatal(e) =>
+          debug(s"Heartbeat listener of attempt ${attemptId} failed: ${e.getMessage}")
+  }
+
   /**
-    * Request cancellation of an active attempt. The next heartbeat response will signal the worker
-    * to stop.
+    * Request cancellation of an attempt. A task still waiting for a worker is removed and recorded
+    * as cancelled right away. A claimed attempt is marked cancelling; the next heartbeat response
+    * signals the worker to stop, and the worker's report decides the final state.
+    *
+    * @return
+    *   true if the cancellation is confirmed (the task never reached a worker)
     */
-  def requestCancel(attemptId: String): Unit = active.computeIfPresent(
-    attemptId,
-    (_, current) => current.copy(cancelRequested = true)
-  )
+  def requestCancel(attemptId: String): Boolean = withLock {
+    pending.dequeueFirst(_.attemptId == attemptId) match
+      case Some(task) =>
+        store.reportResult(
+          task.invocationId,
+          attemptId,
+          ItemState.Cancelled.stateName,
+          None,
+          None,
+          clock()
+        )
+        complete(attemptId, ActivityResult.Cancelled)
+        true
+      case None =>
+        active.computeIfPresent(
+          attemptId,
+          (_, current) => current.copy(cancelRequested = true)
+        ) match
+          case null =>
+            false
+          case attempt =>
+            store.markCancelling(attempt.itemId, attemptId)
+            false
+  }
+
+  /**
+    * Resolve attempts whose lease expired: each becomes uncertain, since the worker stopped
+    * heartbeating but its work may still have taken effect.
+    *
+    * @return
+    *   The attemptIds that expired
+    */
+  def expireLeases(): List[String] =
+    val now = clock()
+    active
+      .values()
+      .asScala
+      .toList
+      .filter(_.leaseExpiresAtMillis < now)
+      .filter(a => active.remove(a.attemptId, a))
+      .map { a =>
+        expired.put(a.attemptId, a.itemId)
+        val reason = s"Lease expired: worker ${a.workerId} stopped heartbeating"
+        warn(s"Attempt ${a.attemptId} of item ${a.itemId} is uncertain. ${reason}")
+        store.reportResult(
+          a.itemId,
+          a.attemptId,
+          ItemState.Uncertain.stateName,
+          None,
+          Some(reason),
+          now
+        )
+        complete(a.attemptId, ActivityResult.Uncertain(reason))
+        a.attemptId
+      }
+
+  /** Run [[expireLeases]] periodically on a daemon thread until the queue is closed */
+  def startLeaseSweeper(intervalMillis: Long): Unit = synchronized {
+    if sweeper.isEmpty then
+      val executor = Executors.newSingleThreadScheduledExecutor { r =>
+        val t = Thread(r, "wvlet-task-queue-lease-sweeper")
+        t.setDaemon(true)
+        t
+      }
+      executor.scheduleWithFixedDelay(
+        () =>
+          try
+            expireLeases()
+          catch
+            case NonFatal(e) =>
+              warn(s"Lease sweep failed: ${e.getMessage}")
+        ,
+        intervalMillis,
+        intervalMillis,
+        TimeUnit.MILLISECONDS
+      )
+      sweeper = Some(executor)
+  }
+
+  override def close(): Unit = synchronized {
+    sweeper.foreach(_.shutdownNow())
+    sweeper = None
+  }
 
   /** The number of tasks waiting to be dispatched */
-  def pendingCount: Int = pending.size()
+  def pendingCount: Int = withLock(pending.size)
 
   /** The number of attempts currently being executed by workers */
   def activeCount: Int = active.size()
