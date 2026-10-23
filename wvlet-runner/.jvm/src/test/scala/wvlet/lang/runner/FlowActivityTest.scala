@@ -266,6 +266,10 @@ class FlowActivityTest extends UniTest:
     // The retry re-ran the failed item only; the cancelled item needs a resume to run again
     executor.callsOf("2") shouldBe 2
     executor.callsOf("1") shouldBe 1
+    // A cancelled item does not fail the stage; it stays cancelled until a resume
+    result.stageResult("work").get.state shouldBe StageState.Success
+    stageRows(result, "work").map(r => r("item_key") -> r("state")) shouldBe
+      List("1" -> "cancelled", "2" -> "succeeded")
   }
 
   test("end a cancelled activity stage once its batch drains its items") {
