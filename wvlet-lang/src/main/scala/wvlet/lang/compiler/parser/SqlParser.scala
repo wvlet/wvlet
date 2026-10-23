@@ -2769,6 +2769,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           intervalOrIdentifier()
         case SqlToken.EXTRACT =>
           extractExpression()
+        case id if id.isIdentifier && t.str.equalsIgnoreCase("lambda") =>
+          lambdaOrIdentifier()
         case id if id.isIdentifier =>
           identifier()
         case SqlToken.DOUBLE_QUOTE_STRING =>
@@ -2783,6 +2785,26 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     primaryExpressionRest(expr)
 
   end primaryExpression
+
+  /**
+    * Parse DuckDB's lambda syntax `lambda x, y: body`, or a plain identifier named `lambda` if no
+    * parameter follows it
+    */
+  private def lambdaOrIdentifier(): Expression =
+    val t      = scanner.lookAhead()
+    val lambda = identifier()
+    scanner.lookAhead().token match
+      case id if id.isIdentifier || id == SqlToken.UNDERSCORE =>
+        val args = List.newBuilder[Identifier]
+        args += identifier()
+        while scanner.lookAhead().token == SqlToken.COMMA do
+          consume(SqlToken.COMMA)
+          args += identifier()
+        consume(SqlToken.COLON)
+        val body = expression()
+        LambdaExpr(args.result(), body, spanFrom(t))
+      case _ =>
+        lambda
 
   def queryParameter(): Parameter =
     val t = scanner.lookAhead()
