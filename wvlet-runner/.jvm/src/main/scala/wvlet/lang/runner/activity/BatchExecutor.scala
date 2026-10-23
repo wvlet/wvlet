@@ -44,7 +44,10 @@ import scala.util.control.NonFatal
   *   Whether to automatically retry items in the uncertain state on restart. Defaults to false for
   *   non-idempotent activities
   * @param retryFailed
-  *   Whether a batch start re-runs items that failed. Cancelled items are always re-run
+  *   Whether a batch start re-runs items that failed
+  * @param rerunCancelled
+  *   Whether a batch start re-runs items that were cancelled. Set when the batch starts as part of
+  *   a resumed run, which is the explicit opt-in; a stage retry within the same run keeps them
   * @param cancelGraceMillis
   *   How long a cancelled batch waits for its cancelling items to confirm before it returns. Items
   *   still cancelling then stay cancelling in the store
@@ -56,6 +59,7 @@ case class BatchConfig(
     leaseTimeoutMillis: Long = 60_000L,
     retryUncertain: Boolean = false,
     retryFailed: Boolean = false,
+    rerunCancelled: Boolean = false,
     cancelGraceMillis: Long = 60_000L
 ):
   def withConcurrency(n: Int): BatchConfig              = copy(concurrency = n)
@@ -64,6 +68,7 @@ case class BatchConfig(
   def withLeaseTimeoutMillis(millis: Long): BatchConfig = copy(leaseTimeoutMillis = millis)
   def withRetryUncertain(retry: Boolean): BatchConfig   = copy(retryUncertain = retry)
   def withRetryFailed(retry: Boolean): BatchConfig      = copy(retryFailed = retry)
+  def withRerunCancelled(rerun: Boolean): BatchConfig   = copy(rerunCancelled = rerun)
   def withCancelGraceMillis(millis: Long): BatchConfig  = copy(cancelGraceMillis = millis)
   def noTimeout(): BatchConfig                          = copy(timeoutMillis = None)
   def noHeartbeat(): BatchConfig                        = copy(heartbeatMillis = None)
@@ -189,12 +194,12 @@ class BatchExecutor(
       end match
     }
 
-    // Items that a batch start runs again under a new attempt: cancelled items always, failed and
-    // uncertain items when their policy opts in
+    // Items that a batch start runs again under a new attempt when their policy opts in:
+    // cancelled items on a resume, failed and uncertain items per their retry setting
     def rerunnable(r: ItemRecord): Boolean =
       ItemState.fromString(r.state) match
         case Some(ItemState.Cancelled) =>
-          true
+          config.rerunCancelled
         case Some(ItemState.Failed) =>
           config.retryFailed
         case Some(ItemState.Uncertain) =>
