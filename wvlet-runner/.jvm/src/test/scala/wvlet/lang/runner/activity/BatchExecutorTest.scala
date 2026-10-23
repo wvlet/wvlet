@@ -404,6 +404,15 @@ class BatchExecutorTest extends UniTest:
       result.cancelled shouldBe true
       result.items.map(_.state) shouldBe List("cancelling")
       store.listItems(runId, "grace_ends").map(_.state) shouldBe List("cancelling")
+
+      // The worker keeps running after the batch returns, and its late result still lands
+      executor.gate.countDown()
+      val deadline = System.currentTimeMillis() + 5000
+      while store.listItems(runId, "grace_ends").head.state == "cancelling" &&
+        System.currentTimeMillis() < deadline
+      do
+        Thread.sleep(20)
+      store.listItems(runId, "grace_ends").map(_.state) shouldBe List("succeeded")
     finally
       executor.gate.countDown()
       pool.shutdownNow()

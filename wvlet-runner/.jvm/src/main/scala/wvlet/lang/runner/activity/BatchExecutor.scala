@@ -234,6 +234,10 @@ class BatchExecutor(
     case class ItemTimedOut(itemId: String, attemptId: String)    extends BatchEvent
 
     val eventQueue = LinkedBlockingQueue[BatchEvent]()
+    // Hands a completion either to the event loop or, once the batch has returned (e.g. an item
+    // still cancelling after the grace period), straight to the store, so a late result lands
+    val completionLock = Object()
+    var batchReturned  = false
 
     // Track running items
     val runningItems  = ConcurrentHashMap[String, ItemRecord]()
@@ -334,7 +338,12 @@ class BatchExecutor(
               catch
                 case NonFatal(e) =>
                   ActivityResult.Failed(e.getMessage, retryable = false)
-            eventQueue.put(ItemCompleted(record.itemId, attemptId, result))
+            completionLock.synchronized {
+              if batchReturned then
+                reportLate(terminalRecord(running, result))
+              else
+                eventQueue.put(ItemCompleted(record.itemId, attemptId, result))
+            }
       )
 
       // Schedule heartbeat checks
@@ -426,6 +435,18 @@ class BatchExecutor(
         }
     end handleCancellation
 
+    def complete(itemId: String, attemptId: String, result: ActivityResult): Unit =
+      val current = itemStates(itemId)
+      // Reject stale completions
+      if current.attemptId != attemptId then
+        debug(
+          s"Rejecting stale completion for item ${current.itemKey}: " +
+            s"expected attempt ${current.attemptId}, got ${attemptId}"
+        )
+      else
+        settle(terminalRecord(current, result))
+        cleanupItem(itemId)
+
     def handleCancelRequest(): Unit =
       if cancelRequested && !cancellationHandled then
         cancellationHandled = true
@@ -459,6 +480,7 @@ class BatchExecutor(
       TimeUnit.MILLISECONDS
     )
 
+    var interrupted = false
     try
       admitNext()
 
@@ -470,18 +492,9 @@ class BatchExecutor(
             if runningItems.isEmpty && pending.nonEmpty && !cancelRequested then
               admitNext()
           case ItemCompleted(itemId, attemptId, result) =>
-            val current = itemStates(itemId)
-            // Reject stale completions
-            if current.attemptId != attemptId then
-              debug(
-                s"Rejecting stale completion for item ${current.itemKey}: " +
-                  s"expected attempt ${current.attemptId}, got ${attemptId}"
-              )
-            else
-              settle(terminalRecord(current, result))
-              cleanupItem(itemId)
-              // No-op after a cancellation: admission has stopped
-              admitNext()
+            complete(itemId, attemptId, result)
+            // No-op after a cancellation: admission has stopped
+            admitNext()
 
           case HeartbeatMissed(itemId, attemptId) =>
             val current = itemStates(itemId)
@@ -506,11 +519,29 @@ class BatchExecutor(
       case e: InterruptedException =>
         // The caller stopped waiting (e.g. flow cancellation): stop admission and request
         // cancellation so no item keeps running unnoticed, then propagate the interruption
+        interrupted = true
         cancelRequested = true
         handleCancellation()
         throw e
     finally
-      workerPool.shutdownNow()
+      completionLock.synchronized {
+        batchReturned = true
+      }
+      // Settle completions queued after the loop's last poll
+      Iterator
+        .continually(eventQueue.poll())
+        .takeWhile(_ != null)
+        .foreach {
+          case ItemCompleted(itemId, attemptId, result) =>
+            complete(itemId, attemptId, result)
+          case _ =>
+        }
+      // Items still cancelling after the grace period keep running so their result can land.
+      // Otherwise interrupt the workers (a caller interruption, or timed-out items)
+      if cancelDeadline.isDefined && !interrupted then
+        workerPool.shutdown()
+      else
+        workerPool.shutdownNow()
       timer.shutdownNow()
     end try
 
@@ -521,6 +552,21 @@ class BatchExecutor(
     )
 
   end execute
+
+  /** Writes the result of an attempt that finished after its batch returned */
+  private def reportLate(record: ItemRecord): Unit =
+    try
+      store.reportResult(
+        record.itemId,
+        record.attemptId,
+        record.state,
+        record.output,
+        record.error,
+        record.finishedAtMillis.getOrElse(System.currentTimeMillis())
+      )
+    catch
+      case NonFatal(e) =>
+        debug(s"Failed to record the late result of item ${record.itemKey}: ${e.getMessage}")
 
   /** The record of an attempt that reached the given outcome */
   private def terminalRecord(current: ItemRecord, result: ActivityResult): ItemRecord =

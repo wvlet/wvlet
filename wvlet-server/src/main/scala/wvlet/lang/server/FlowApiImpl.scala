@@ -168,7 +168,8 @@ class FlowApiImpl(
     startedAtMillis = r.startedAtMillis,
     finishedAtMillis = r.finishedAtMillis,
     runTimeMillis = r.runTimeMillis,
-    cancelRequested = !r.isTerminal && store.cancelRequested(r.runId)
+    // A stale run is reported as failed, so its leftover cancel marker is no longer pending
+    cancelRequested = !r.isTerminal && !r.isStaleAt(nowMillis) && store.cancelRequested(r.runId)
   )
 
 end FlowApiImpl
