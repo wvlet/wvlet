@@ -87,14 +87,37 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
         throw RPCStatus.NOT_FOUND_U5.newException(s"Attempt '${request.attemptId}' is not active")
 
   private def serializeOutput(output: Map[String, String]): String =
-    def escapeJson(s: String): String = s
-      .replace("\\", "\\\\")
-      .replace("\"", "\\\"")
-      .replace("\n", "\\n")
-      .replace("\r", "\\r")
+    def escapeJson(s: String): String =
+      val sb = StringBuilder()
+      var i  = 0
+      while i < s.length do
+        val ch = s.charAt(i)
+        ch match
+          case '\\' =>
+            sb.append("\\\\")
+          case '"' =>
+            sb.append("\\\"")
+          case '\n' =>
+            sb.append("\\n")
+          case '\r' =>
+            sb.append("\\r")
+          case '\t' =>
+            sb.append("\\t")
+          case '\b' =>
+            sb.append("\\b")
+          case '\f' =>
+            sb.append("\\f")
+          case c if c < ' ' =>
+            sb.append(f"\\u${c.toInt}%04x")
+          case c =>
+            sb.append(c)
+        i += 1
+      sb.toString()
     val entries = output.map { (k, v) =>
       s""""${escapeJson(k)}":"${escapeJson(v)}""""
     }
     s"{${entries.mkString(",")}}"
+
+  end serializeOutput
 
 end TaskApiImpl

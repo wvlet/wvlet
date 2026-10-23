@@ -142,25 +142,26 @@ class TaskQueue(store: ItemStore, defaultLeaseMillis: Long = 60_000L) extends Lo
       None
     end tryTake
 
-    tryTake() match
-      case some @ Some(_) =>
-        some
-      case None =>
-        if timeoutMillis <= 0 then
-          return None
-        lock.lock()
-        try
-          var remaining = deadline - System.currentTimeMillis()
-          while remaining > 0 do
-            taskReady.await(remaining, TimeUnit.MILLISECONDS)
-            tryTake() match
-              case some @ Some(_) =>
-                return some
-              case None =>
-                remaining = deadline - System.currentTimeMillis()
-          None
-        finally
-          lock.unlock()
+    lock.lock()
+    try
+      tryTake() match
+        case some @ Some(_) =>
+          return some
+        case None =>
+          if timeoutMillis <= 0 then
+            return None
+
+      var remaining = deadline - System.currentTimeMillis()
+      while remaining > 0 do
+        taskReady.await(remaining, TimeUnit.MILLISECONDS)
+        tryTake() match
+          case some @ Some(_) =>
+            return some
+          case None =>
+            remaining = deadline - System.currentTimeMillis()
+      None
+    finally
+      lock.unlock()
 
   end poll
 
