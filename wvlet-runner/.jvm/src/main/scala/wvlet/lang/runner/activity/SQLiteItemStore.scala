@@ -18,7 +18,7 @@ import wvlet.uni.log.LogSupport
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
-import java.sql.DriverManager
+import java.util.Properties
 import scala.util.Using
 import scala.util.control.NonFatal
 
@@ -32,7 +32,10 @@ import scala.util.control.NonFatal
 class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
   Option(dbPath.getParent).foreach(Files.createDirectories(_))
 
-  private val conn: Connection = DriverManager.getConnection(s"jdbc:sqlite:${dbPath}")
+  // Connect through the driver itself: DriverManager only returns drivers visible to the caller's
+  // class loader, which fails when the driver was registered by another loader (e.g. a server
+  // embedded in a test JVM)
+  private val conn: Connection = org.sqlite.JDBC().connect(s"jdbc:sqlite:${dbPath}", Properties())
 
   Using.resource(conn.createStatement()) { stmt =>
     stmt.execute("pragma journal_mode = WAL")
