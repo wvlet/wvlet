@@ -387,3 +387,49 @@ case class DependsOnFlow(flowName: NameExpr, span: Span) extends FlowDependency
   */
 case class FlowStatePredicate(flowName: NameExpr, stateName: String, span: Span)
     extends FlowDependency
+
+/**
+  * FlowActivity declares a non-SQL activity invocation within a stage body. The activity type is
+  * resolved at runtime from registered [[wvlet.lang.runner.activity.ActivityExecutor]] instances.
+  *
+  * Example:
+  * {{{
+  * stage investigate = from customers
+  *   | for each _.customer_id
+  *   activity 'agent.investigate'
+  *   with { concurrency: 5, timeout: 30m }
+  * }}}
+  *
+  * Without `for each`, a bare `activity` stage runs once with the stage's input as a single
+  * invocation.
+  *
+  * @param child
+  *   The input relation (upstream data)
+  * @param activityType
+  *   The registered activity type name (string literal)
+  * @param span
+  *   Source location
+  */
+case class FlowActivity(child: Relation, activityType: Expression, span: Span) extends UnaryFlowOp
+
+/**
+  * ForEachFanOut declares a fan-out: one activity invocation per distinct value of the key
+  * expression. Items queue until a concurrency slot is available. Completed items admit the next
+  * without waiting for all siblings.
+  *
+  * Example:
+  * {{{
+  * from customers | for each _.customer_id activity 'agent.investigate'
+  * }}}
+  *
+  * @param child
+  *   The input relation
+  * @param keyExpr
+  *   The expression producing the fan-out key for each input row
+  * @param activity
+  *   The activity to invoke for each item
+  * @param span
+  *   Source location
+  */
+case class ForEachFanOut(child: Relation, keyExpr: Expression, activity: FlowActivity, span: Span)
+    extends UnaryFlowOp
