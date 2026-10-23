@@ -703,6 +703,19 @@ class FlowExecutorTest extends UniTest:
     config.maxRetryDelayMillis shouldBe Some(30000L)
   }
 
+  test("parse the activity rerun options") {
+    val (flow, _) = compileFlow("""flow RerunOptions = {
+        |  stage s with {
+        |    retry_uncertain: true
+        |    retry_failed: true
+        |  } = from [[1]] as t(id)
+        |}""".stripMargin)
+    val config = StageExecutionConfig.fromConfigItems(flow.stages.head.config)
+    config.retryUncertain shouldBe true
+    config.retryFailed shouldBe true
+    StageExecutionConfig().retryFailed shouldBe false
+  }
+
   test("execute a flow via the ExecuteFlow execution plan") {
     val (unit, flow, ctx) = compileFlowUnit("""flow WiredFlow = {
         |  stage src = from [[1], [2]] as t(id)

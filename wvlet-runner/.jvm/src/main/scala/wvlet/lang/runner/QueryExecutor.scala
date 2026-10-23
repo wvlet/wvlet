@@ -38,6 +38,8 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.compiler.connector.QueryResult as XPQueryResult
 import wvlet.lang.connector.DBConnector
 import wvlet.lang.connector.Connector
+import wvlet.lang.runner.activity.ItemStore
+import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.uni.json.JSON
@@ -50,7 +52,15 @@ import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.Try
 
-case class QueryExecutorConfig(rowLimit: Int = 40)
+case class QueryExecutorConfig(
+    rowLimit: Int = 40,
+    taskQueue: Option[TaskQueue] = None,
+    itemStore: Option[ItemStore] = None
+):
+  def withTaskQueue(queue: TaskQueue): QueryExecutorConfig = copy(taskQueue = Some(queue))
+  def noTaskQueue(): QueryExecutorConfig                   = copy(taskQueue = None)
+  def withItemStore(store: ItemStore): QueryExecutorConfig = copy(itemStore = Some(store))
+  def noItemStore(): QueryExecutorConfig                   = copy(itemStore = None)
 
 class QueryExecutor(
     dbConnectorProvider: ConnectorProvider,
@@ -272,7 +282,9 @@ class QueryExecutor(
           registry = Some(store),
           engineResolver = Some(profileEngineResolver),
           defaultEngineName = activeEngine.name,
-          activationSinks = profileActivationSinks
+          activationSinks = profileActivationSinks,
+          taskQueue = config.taskQueue,
+          itemStore = config.itemStore
         )
         flowExecutor.execute(flow)
       }
@@ -483,7 +495,9 @@ class QueryExecutor(
                 registry = Some(store),
                 engineResolver = Some(profileEngineResolver),
                 defaultEngineName = activeEngine.name,
-                activationSinks = profileActivationSinks
+                activationSinks = profileActivationSinks,
+                taskQueue = config.taskQueue,
+                itemStore = config.itemStore
               ).execute(flow, args = rf.args)
             }
 

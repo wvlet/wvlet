@@ -41,6 +41,8 @@ import wvlet.lang.runner.FlowRunRetention
 import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.FlowScheduleConfig
 import wvlet.lang.runner.FlowScheduler
+import wvlet.lang.runner.activity.ItemStore
+import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.ScheduledFlow
 import wvlet.lang.runner.ConnectorActivationSink
 import wvlet.lang.runner.connector.ConnectorProvider
@@ -114,8 +116,17 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
     val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
     // System.exit is deferred until the resource block releases the run store
     var failed = false
-    Control.withResource(newRunStore(flowOption, workEnv)) { store =>
-      val result = FlowRunLauncher.execute(loaded, name, profile, workEnv, store, resumeFrom, args)
+    withRunStores(flowOption, workEnv) { (store, itemStore) =>
+      val result = FlowRunLauncher.execute(
+        loaded,
+        name,
+        profile,
+        workEnv,
+        store,
+        resumeFrom,
+        args,
+        itemStore = Some(itemStore)
+      )
       println(result.toPrettyBox())
       failed = result.hasError
     }
@@ -127,6 +138,16 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
     .runStore
     .map(FlowRunStore.ofType(_, workEnv))
     .getOrElse(FlowRunStore.forWorkEnv(workEnv))
+
+  /** Open the run store and the item store of a flow run, closed when the block returns */
+  private def withRunStores[A](flowOption: WvletFlowOption, workEnv: WorkEnv)(
+      block: (FlowRunStore, ItemStore) => A
+  ): A =
+    Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+      Control.withResource(ItemStores.forWorkEnv(workEnv)) { itemStore =>
+        block(store, itemStore)
+      }
+    }
 
   @command(description =
     "Run a scheduled flow once per schedule window between --from and --to (sequentially)"
@@ -203,7 +224,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
             .withCompilationUnit(unit)
             .newContext(Symbol.NoSymbol)
 
-          Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+          withRunStores(flowOption, workEnv) { (store, itemStore) =>
             val executor = FlowExecutor(
               connector,
               workEnv,
@@ -226,7 +247,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
                     .connectors
                     .map(c =>
                       ConnectorActivationSink(c.name, () => dbConnectorProvider.getConnector(c))
-                    )
+                    ),
+              itemStore = Some(itemStore)
             )
             val it = runTimes.iterator
             while !failed && it.hasNext do
@@ -480,7 +502,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
       Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
         val connector = dbConnectorProvider.getConnector(profile)
-        Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+        withRunStores(flowOption, workEnv) { (store, itemStore) =>
           // The compile result and defining unit of each scheduled flow, replaced on reload
           val compiled = java
             .util
@@ -539,7 +561,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
                                   c.name,
                                   () => dbConnectorProvider.getConnector(c)
                                 )
-                              )
+                              ),
+                        itemStore = Some(itemStore)
                       ).execute(flow, runTime = Some(fireTime))
                       println(runResult.toPrettyBox())
                     end run

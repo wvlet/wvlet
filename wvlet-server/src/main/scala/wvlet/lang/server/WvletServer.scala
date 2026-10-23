@@ -240,13 +240,15 @@ object WvletServer extends LogSupport:
             workEnv: WorkEnv,
             config: WvletScriptRunnerConfig,
             connectorProvider: ConnectorProvider,
-            threadManager: ThreadManager
+            threadManager: ThreadManager,
+            taskQueue: TaskQueue
         ) =>
           ScriptRunnerSessions(
             workEnv,
             config,
             connectorProvider,
             threadManager,
+            taskQueue,
             ScriptRunnerSessions.DefaultIdleTimeout
           )
       }

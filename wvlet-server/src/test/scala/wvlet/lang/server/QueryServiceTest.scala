@@ -24,6 +24,8 @@ import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.ThreadManager
 import wvlet.lang.runner.WvletScriptRunnerConfig
+import wvlet.lang.runner.activity.InMemoryItemStore
+import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.test.UniTest
 import wvlet.uni.util.ULID
@@ -60,6 +62,7 @@ class QueryServiceTest extends UniTest:
     ),
     provider,
     threadManager,
+    TaskQueue(InMemoryItemStore()),
     ScriptRunnerSessions.DefaultIdleTimeout
   )
 

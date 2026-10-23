@@ -8,6 +8,7 @@ import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.runner.activity.ActivityExecutor
 import wvlet.lang.runner.activity.ActivityJson
@@ -15,12 +16,19 @@ import wvlet.lang.runner.activity.ActivityRequest
 import wvlet.lang.runner.activity.ActivityResult
 import wvlet.lang.runner.activity.CancelAck
 import wvlet.lang.runner.activity.InMemoryItemStore
+import wvlet.lang.runner.activity.SQLiteItemStore
 import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.test.UniTest
 
+import java.nio.file.Files
+import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import scala.jdk.CollectionConverters.*
 
 /**
@@ -144,15 +152,107 @@ class FlowActivityTest extends UniTest:
       "No executor"
   }
 
-  test("dispatch activity items to remote workers through the task queue") {
-    val queue   = TaskQueue(InMemoryItemStore())
+  /** Fails the first attempt of each item, then completes it */
+  class FlakyExecutor extends ActivityExecutor:
+    val attempts              = ConcurrentHashMap[String, AtomicInteger]()
+    val calls                 = AtomicInteger(0)
+    override def name: String = "test.flaky"
+
+    override def execute(request: ActivityRequest, heartbeat: () => Unit): ActivityResult =
+      val item = request.input("item").toString
+      calls.incrementAndGet()
+      if attempts.computeIfAbsent(item, _ => AtomicInteger(0)).incrementAndGet() == 1 then
+        ActivityResult.Failed(s"first try of ${item} failed")
+      else
+        ActivityResult.Completed(Map("echo" -> item))
+
+    override def cancel(attemptId: String): CancelAck = CancelAck.Acknowledged
+
+  /** Holds its item until the test releases it, and does not confirm the cancellation */
+  class GateExecutor extends ActivityExecutor:
+    val started               = CountDownLatch(1)
+    val cancelled             = CountDownLatch(1)
+    val gate                  = CountDownLatch(1)
+    override def name: String = "test.gate"
+
+    override def execute(request: ActivityRequest, heartbeat: () => Unit): ActivityResult =
+      started.countDown()
+      gate.await(10, TimeUnit.SECONDS)
+      ActivityResult.Completed(Map("echo" -> request.input("item").toString))
+
+    override def cancel(attemptId: String): CancelAck =
+      cancelled.countDown()
+      CancelAck.Unknown
+
+  test("re-run failed items of an activity stage when retry_failed is set") {
+    val executor = FlakyExecutor()
+    val result   = runFlow(
+      """flow RetryFailed = {
+        |  stage targets = from [[1], [2]] as t(id)
+        |  stage work with { retries: 1, retry_delay: 1ms, retry_failed: true } = from targets | for each _.id activity 'test.flaky'
+        |  stage after = from work
+        |}""".stripMargin,
+      activityExecutors = List(executor)
+    )
+    result.isSuccess shouldBe true
+    executor.calls.get() shouldBe 4
+    result.stageResult("work").get.attempts shouldBe 2
+  }
+
+  test("keep failed items of an activity stage when retry_failed is not set") {
+    val executor = FlakyExecutor()
+    val result   = runFlow(
+      """flow KeepFailed = {
+        |  stage targets = from [[1], [2]] as t(id)
+        |  stage work with { retries: 1, retry_delay: 1ms } = from targets | for each _.id activity 'test.flaky'
+        |}""".stripMargin,
+      activityExecutors = List(executor)
+    )
+    result.isSuccess shouldBe false
+    executor.calls.get() shouldBe 2
+    result.stageResult("work").get.attempts shouldBe 2
+  }
+
+  test("end a cancelled activity stage once its batch drains its items") {
+    val executor    = GateExecutor()
+    val (flow, ctx) = compileFlow("""flow CancelDrain = {
+        |  stage targets = from [[1]] as t(id)
+        |  stage work = from targets | for each _.id activity 'test.gate'
+        |}""".stripMargin)
+    val flowExecutor = FlowExecutor(connector, workEnv, activityExecutors = List(executor))
+    val pool         = Executors.newSingleThreadExecutor()
+    try
+      val future = pool.submit(
+        new Callable[FlowExecutionResult]:
+          override def call(): FlowExecutionResult =
+            flowExecutor.execute(flow, resumeFrom = None)(using ctx)
+      )
+      executor.started.await(5, TimeUnit.SECONDS) shouldBe true
+
+      flowExecutor.cancel()
+      executor.cancelled.await(5, TimeUnit.SECONDS) shouldBe true
+      executor.gate.countDown()
+
+      val result = future.get(10, TimeUnit.SECONDS)
+      result.stageResult("work").get.state shouldBe StageState.Cancelled
+    finally
+      executor.gate.countDown()
+      pool.shutdownNow()
+  }
+
+  /**
+    * Runs `body` while a worker polls the queue for `activityType` like a remote process would
+    * through TaskApi, completing each task. Returns the item keys the worker received
+    */
+  private def withQueueWorker[A](queue: TaskQueue, activityType: String)(
+      body: => A
+  ): (A, Set[String]) =
     val stop    = AtomicBoolean(false)
     val workers = ConcurrentHashMap.newKeySet[String]()
-    // A worker polling the queue like a remote process would through TaskApi
-    val worker = Thread { () =>
+    val worker  = Thread { () =>
       while !stop.get() do
         queue
-          .poll(List("agent.investigate"), "worker-1", 100)
+          .poll(List(activityType), "worker-1", 100)
           .foreach { task =>
             workers.add(task.input("item").toString)
             queue.heartbeat(task.attemptId)
@@ -167,26 +267,99 @@ class FlowActivityTest extends UniTest:
     worker.setDaemon(true)
     worker.start()
     try
-      val result = runFlow(
-        """flow RemoteBatch = {
+      val result = body
+      (result, workers.asScala.toSet)
+    finally
+      stop.set(true)
+      worker.join(5000)
+
+  test("dispatch activity items to remote workers through the task queue") {
+    val queue             = TaskQueue(InMemoryItemStore())
+    val (result, workers) =
+      withQueueWorker(queue, "agent.investigate") {
+        runFlow(
+          """flow RemoteBatch = {
           |  stage customers = from [[10], [20], [30]] as t(customer_id)
           |  stage investigate with { concurrency: 2 } =
           |    from customers | for each _.customer_id activity 'agent.investigate'
           |}""".stripMargin,
-        taskQueue = Some(queue)
-      )
-      result.isSuccess shouldBe true
-      workers.asScala.toSet shouldBe Set("10", "20", "30")
-      val rows = stageRows(result, "investigate")
-      rows.map(_("state")).distinct shouldBe List("succeeded")
-      rows.map(r => ActivityJson.decode(r("output"))("session")) shouldBe
-        List("session-10", "session-20", "session-30")
-      // The queue's store records the claiming worker for inspection
-      queue.store.listItems(result.runId, "investigate").flatMap(_.workerId).distinct shouldBe
-        List("worker-1")
-    finally
-      stop.set(true)
-      worker.join(5000)
+          taskQueue = Some(queue)
+        )
+      }
+    result.isSuccess shouldBe true
+    workers shouldBe Set("10", "20", "30")
+    val rows = stageRows(result, "investigate")
+    rows.map(_("state")).distinct shouldBe List("succeeded")
+    rows.map(r => ActivityJson.decode(r("output"))("session")) shouldBe
+      List("session-10", "session-20", "session-30")
+    // The queue's store records the claiming worker for inspection
+    queue.store.listItems(result.runId, "investigate").flatMap(_.workerId).distinct shouldBe
+      List("worker-1")
+  }
+
+  test("dispatch activity items of a run flow statement through the query executor's queue") {
+    val queue = TaskQueue(InMemoryItemStore())
+    val unit  = CompilationUnit.fromWvletString("""flow StmtRemote = {
+        |  stage customers = from [[1], [2]] as t(customer_id)
+        |  stage investigate = from customers | for each _.customer_id activity 'agent.stmt'
+        |}
+        |
+        |run flow StmtRemote
+        |""".stripMargin)
+    val compiled      = Compiler(CompilerOptions(workEnv = workEnv)).compileSingleUnit(unit)
+    val ctx           = compiled.context.withCompilationUnit(unit).newContext(Symbol.NoSymbol)
+    val queryExecutor = QueryExecutor(
+      dbConnectorProvider,
+      Profile.defaultDuckDBProfile,
+      workEnv,
+      QueryExecutorConfig().withTaskQueue(queue)
+    )
+    val (result, workers) =
+      withQueueWorker(queue, "agent.stmt") {
+        queryExecutor.execute(ExecutionPlanner.plan(unit, ctx), ctx)
+      }
+    result match
+      case t: TableRows =>
+        t.rows.map(_("stage")) shouldBe Seq("customers", "investigate")
+        t.rows.map(_("state")) shouldBe Seq("success", "success")
+      case other =>
+        fail(s"Expected TableRows summary, but got: ${other}")
+    workers shouldBe Set("1", "2")
+  }
+
+  test("reuse succeeded items from a durable item store when a run is resumed") {
+    val dir         = Files.createTempDirectory("wv-activity-resume")
+    val registry    = FlowRunRegistry(dir.resolve("runs"))
+    val itemsDb     = dir.resolve("items.db")
+    val (flow, ctx) = compileFlow("""flow DurableResume = {
+        |  stage targets = from [[1], [2]] as t(id)
+        |  stage work with { retry_failed: true } = from targets | for each _.id activity 'test.echo'
+        |}""".stripMargin)
+
+    // Each run opens its own store on the same file, as separate CLI processes do
+    def runWith(executor: EchoExecutor, resumeFrom: Option[FlowRunRecord]): FlowExecutionResult =
+      val store = SQLiteItemStore(itemsDb)
+      try
+        FlowExecutor(
+          connector,
+          workEnv,
+          registry = Some(registry),
+          activityExecutors = List(executor),
+          itemStore = Some(store)
+        ).execute(flow, resumeFrom = resumeFrom)(using ctx)
+      finally store.close()
+
+    val first = runWith(EchoExecutor(failKeys = Set("2")), None)
+    first.isSuccess shouldBe false
+
+    val resumedExecutor = EchoExecutor()
+    val resumed         = runWith(resumedExecutor, registry.get(first.runId))
+    resumed.runId shouldBe first.runId
+    resumed.isSuccess shouldBe true
+    // Item 1 succeeded in the first run and was read back from the store, not executed again
+    resumedExecutor.requests.asScala.toSet shouldBe Set("2")
+    stageRows(resumed, "work").map(r => r("item_key") -> r("attempts")) shouldBe
+      List("1" -> "1", "2" -> "2")
   }
 
 end FlowActivityTest

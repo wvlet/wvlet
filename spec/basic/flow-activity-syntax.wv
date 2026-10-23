@@ -13,3 +13,10 @@ flow BatchInvestigation = {
   stage investigate = from targets | for each 1 activity 'agent.investigate'
 }
 ;
+
+-- Flow whose stage retries re-run failed items
+flow RetryFailedInvestigation = {
+  stage targets = select 1
+  stage investigate with { retries: 2, retry_failed: true } = from targets | for each 1 activity 'agent.investigate'
+}
+;

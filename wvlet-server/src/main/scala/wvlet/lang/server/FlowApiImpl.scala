@@ -167,7 +167,8 @@ class FlowApiImpl(
     state = r.effectiveStateAt(nowMillis),
     startedAtMillis = r.startedAtMillis,
     finishedAtMillis = r.finishedAtMillis,
-    runTimeMillis = r.runTimeMillis
+    runTimeMillis = r.runTimeMillis,
+    cancelRequested = !r.isTerminal && store.cancelRequested(r.runId)
   )
 
 end FlowApiImpl

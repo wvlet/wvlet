@@ -168,6 +168,7 @@ flow data_pipeline = {
 | `heartbeat` | Duration | none | Heartbeat interval for long-running stages |
 | `concurrency` | Int | 4 | Activity stages: items running at once |
 | `retry_uncertain` | Boolean | false | Activity stages: run items with an unknown outcome again on a rerun |
+| `retry_failed` | Boolean | false | Activity stages: run items that failed again on a rerun or stage retry |
 
 ### Flow Configuration
 
@@ -438,6 +439,13 @@ flow investigate_customers = {
 - Items are durable per run: a resumed run reuses finished items and awaits attempts that
   workers still hold. An item whose worker stopped heartbeating becomes `uncertain`, and
   is never retried automatically unless `retry_uncertain: true` is set
+- A rerun reuses failed items, so a stage retry (`retries:`) repeats their failure. Set
+  `retry_failed: true` to run them again under a new attempt. Cancelled items run again
+  when the run is resumed
+- Cancelling a run stops admitting items and asks running ones to stop. An item stays
+  `cancelling` until its worker confirms, then becomes `cancelled`; a late result still
+  lands. The run waits up to 60s for confirmation, then ends with unconfirmed items still
+  `cancelling`. Effects that already happened are not undone
 
 ### Continuing in Another Flow with ->
 

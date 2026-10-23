@@ -67,10 +67,11 @@ case class StageExecutionConfig(
     timeoutMillis: Option[Long] = None,
     heartbeatMillis: Option[Long] = None,
     pollIntervalMillis: Long = StageExecutionConfig.DEFAULT_POLL_INTERVAL_MILLIS,
-    // Activity stages only: the number of items running at once, and whether items with an
-    // unknown outcome are executed again on a rerun
+    // Activity stages only: the number of items running at once, and which items a rerun executes
+    // again: those with an unknown outcome (retryUncertain) or a failure (retryFailed)
     concurrency: Option[Int] = None,
-    retryUncertain: Boolean = false
+    retryUncertain: Boolean = false,
+    retryFailed: Boolean = false
 ):
   def withHeartbeatMillis(millis: Long): StageExecutionConfig = copy(heartbeatMillis = Some(millis))
 
@@ -93,6 +94,7 @@ case class StageExecutionConfig(
   def withConcurrency(n: Int): StageExecutionConfig            = copy(concurrency = Some(n))
   def noConcurrency(): StageExecutionConfig                    = copy(concurrency = None)
   def withRetryUncertain(retry: Boolean): StageExecutionConfig = copy(retryUncertain = retry)
+  def withRetryFailed(retry: Boolean): StageExecutionConfig    = copy(retryFailed = retry)
 
   /**
     * Compute the delay before the next retry attempt. attempt is 1-origin (the number of attempts
@@ -161,6 +163,12 @@ object StageExecutionConfig:
           item.value match
             case b: BooleanLiteral =>
               config.withRetryUncertain(b.booleanValue)
+            case _ =>
+              config
+        case "retry_failed" =>
+          item.value match
+            case b: BooleanLiteral =>
+              config.withRetryFailed(b.booleanValue)
             case _ =>
               config
         case _ =>
@@ -307,8 +315,8 @@ class FlowExecutor(
       throw StatusCode
         .NOT_IMPLEMENTED
         .newException(
-          s"No executor for activity '${activityType}': register an ActivityExecutor or run " +
-            "the flow with a task queue"
+          s"No executor for activity '${activityType}': register an ActivityExecutor, or run " +
+            "the flow on a wvlet server, whose workers execute activities"
         )
     )
 
@@ -359,10 +367,23 @@ class FlowExecutor(
 
   private val eventQueue = LinkedBlockingQueue[FlowEvent]()
 
+  // The batch of each running activity attempt, so a cancellation can drain it
+  private val activeBatches = ConcurrentHashMap[(String, Int), BatchExecutor]()
+
+  /** Ask the batch of an activity attempt to drain; false when the attempt has no batch */
+  private def requestBatchCancel(key: (String, Int)): Boolean =
+    Option(activeBatches.get(key)) match
+      case Some(batch) =>
+        batch.cancel()
+        true
+      case None =>
+        false
+
   /**
     * Request cancellation. Stages that have not started yet will end in the cancelled state, and
     * in-flight attempts are stopped: their SQL statements are cancelled server-side (best-effort)
-    * and their worker threads are interrupted
+    * and their worker threads are interrupted. An activity attempt drains its batch instead, so its
+    * items can confirm their cancellation
     */
   def cancel(): Unit =
     cancelled = true
@@ -648,7 +669,15 @@ class FlowExecutor(
             )
             ls.activity match
               case Some(spec) =>
-                runActivityStage(ls, spec, runId, table, stageConfigs(ls.name), materialize)
+                runActivityStage(
+                  ls,
+                  spec,
+                  runId,
+                  table,
+                  stageConfigs(ls.name),
+                  materialize,
+                  attemptKey
+                )
               case None =>
                 materialize(ls)
             // Deliver the materialized output to activation sinks. A missing sink logs the
@@ -998,12 +1027,14 @@ class FlowExecutor(
     def handleCancellation(): Unit =
       if !cancellationDone then
         cancellationDone = true
-        // Stop all in-flight attempts before marking the remaining stages cancelled
-        (activeStatements.keySet().asScala ++ activeFutures.keySet().asScala)
-          .toSet
-          .foreach(cancelAttempt)
+        // Stop in-flight attempts before marking the remaining stages cancelled. An activity
+        // attempt drains its batch instead, so its stage stays running until the attempt returns
+        val inFlight = (activeStatements.keySet().asScala ++ activeFutures.keySet().asScala).toSet
+        val draining = inFlight.filter(requestBatchCancel)
+        (inFlight -- draining).foreach(cancelAttempt)
         flowStages.foreach { ls =>
-          if !states(ls.name).isTerminal then
+          val drainingStage = draining.exists(_._1 == ls.name)
+          if !states(ls.name).isTerminal && !drainingStage then
             states(ls.name) = StageState.Cancelled
         }
 
@@ -1133,8 +1164,11 @@ class FlowExecutor(
                             we.statusCode == StatusCode.NOT_IMPLEMENTED
                           case _ =>
                             false
+                      // A cancelled run does not retry: the stage ends as cancelled
+                      if cancelled then
+                        states(name) = StageState.Cancelled
                       // attempt_failed: decide between retrying and failed
-                      if nonRetryable || attempt >= maxAttempts then
+                      else if nonRetryable || attempt >= maxAttempts then
                         workEnv.error(
                           s"Stage ${name} failed after ${attempt} attempts: ${e.getMessage}"
                         )
@@ -1147,6 +1181,7 @@ class FlowExecutor(
                         states(name) = StageState.Retrying
                         scheduledRetries += 1
                         scheduleRetry(delay, () => eventQueue.put(RetryDue(s, attempt + 1)))
+                end if
               end if
         end if
         persistSnapshot()
@@ -1328,7 +1363,8 @@ class FlowExecutor(
       runId: String,
       table: String,
       stageConfig: StageExecutionConfig,
-      materialize: FlowLowering.LoweredStage => Unit
+      materialize: FlowLowering.LoweredStage => Unit,
+      attemptKey: (String, Int)
   )(using ctx: Context): Unit =
     val itemColumn             = "__wv_item"
     val itemKeys: List[String] =
@@ -1373,23 +1409,28 @@ class FlowExecutor(
       concurrency = stageConfig.concurrency.getOrElse(BatchConfig().concurrency),
       timeoutMillis = stageConfig.timeoutMillis,
       heartbeatMillis = stageConfig.heartbeatMillis,
-      retryUncertain = stageConfig.retryUncertain
+      retryUncertain = stageConfig.retryUncertain,
+      retryFailed = stageConfig.retryFailed
     )
     workEnv.info(
       s"Stage ${ls.name} invokes activity '${spec.activityType}' for ${itemKeys
           .size} item(s) (concurrency: ${batchConfig.concurrency})"
     )
-    val result = BatchExecutor(
+    val batch = BatchExecutor(
       activityExecutorFor(spec.activityType),
       activityItemStore,
       batchConfig
-    ).execute(
-      runId = runId,
-      stageName = ls.name,
-      activityType = spec.activityType,
-      itemKeys = itemKeys,
-      baseInput = Map("run_id" -> runId, "stage" -> ls.name)
     )
+    activeBatches.put(attemptKey, batch)
+    val result =
+      try batch.execute(
+          runId = runId,
+          stageName = ls.name,
+          activityType = spec.activityType,
+          itemKeys = itemKeys,
+          baseInput = Map("run_id" -> runId, "stage" -> ls.name)
+        )
+      finally activeBatches.remove(attemptKey)
     materializeActivityResult(connectorFor(ls), table, result)
 
     if result.hasErrors || result.cancelled then

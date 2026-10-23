@@ -20,7 +20,9 @@ import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
+import wvlet.lang.runner.QueryExecutorConfig
 import wvlet.lang.connector.DBConnector
+import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.log.LogSupport
@@ -208,20 +210,28 @@ class WvletCompiler(
 
   def run(): Unit =
     val compiler = createCompiler()
-    Control.withResource(
-      QueryExecutor(dbConnectorProvider, currentProfile, compiler.compilerOptions.workEnv)
-    ) { executor =>
-      val inputUnit     = getInputUnit(forSQL = false)
-      val compileResult = compile(inputUnit)
-      given Context     = compileResult.context
+    val workEnv  = compiler.compilerOptions.workEnv
+    Control.withResource(ItemStores.forWorkEnv(workEnv)) { itemStore =>
+      Control.withResource(
+        QueryExecutor(
+          dbConnectorProvider,
+          currentProfile,
+          workEnv,
+          QueryExecutorConfig().withItemStore(itemStore)
+        )
+      ) { executor =>
+        val inputUnit     = getInputUnit(forSQL = false)
+        val compileResult = compile(inputUnit)
+        given Context     = compileResult.context
 
-      val queryResult = executor.executeSelectedStatement(
-        inputUnit,
-        QuerySelection.All,
-        linePosition = inputUnit.resolvedPlan.sourceLocation.position,
-        compileResult.context
-      )
-      println(queryResult.toPrettyBox())
+        val queryResult = executor.executeSelectedStatement(
+          inputUnit,
+          QuerySelection.All,
+          linePosition = inputUnit.resolvedPlan.sourceLocation.position,
+          compileResult.context
+        )
+        println(queryResult.toPrettyBox())
+      }
     }
 
 end WvletCompiler

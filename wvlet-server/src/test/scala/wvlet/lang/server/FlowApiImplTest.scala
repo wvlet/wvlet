@@ -146,6 +146,21 @@ class FlowApiImplTest extends WvletDITest:
     registry.clearCancelRequest("run3")
   }
 
+  test("surface a pending cancel request only on non-terminal runs") {
+    val api      = dep[FlowApi]
+    val registry = FlowRunRegistry.forWorkEnv(WorkEnv(workDir))
+    def flags    = api.listRuns(FlowApi.FlowRunListRequest()).map(r => r.runId -> r.cancelRequested)
+    try
+      flags.filter(_._2) shouldBe Nil
+      api.cancelRun(FlowApi.FlowRunRequest("run3")).accepted shouldBe true
+      // A stale request on a terminal run is not reported as pending
+      registry.requestCancel("run1")
+      flags.toMap shouldBe Map("run1" -> false, "run2" -> false, "run3" -> true, "run4" -> false)
+    finally
+      registry.clearCancelRequest("run3")
+      registry.clearCancelRequest("run1")
+  }
+
   test("report cancelling a terminal run as a no-op") {
     val api    = dep[FlowApi]
     val result = api.cancelRun(FlowApi.FlowRunRequest("run1"))
