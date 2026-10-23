@@ -145,7 +145,9 @@ trait ActivityExecutor:
   /**
     * Whether an attempt started before an orchestrator restart is still tracked by this executor,
     * so that calling [[execute]] with the same attemptId awaits it instead of starting new work.
-    * Executors whose work does not outlive the orchestrator process return false (the default);
-    * the orchestrator then marks such an in-flight attempt uncertain rather than re-executing it
+    * Executors whose work does not outlive the orchestrator process return false (the default); the
+    * orchestrator then marks such an in-flight attempt uncertain rather than re-executing it
     */
   def canResume(attemptId: String): Boolean = false
+
+end ActivityExecutor

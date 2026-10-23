@@ -176,6 +176,7 @@ class BatchExecutor(
           )
           store.saveItem(record)
           record
+      end match
     }
 
     // Split into already-terminal (skip) and pending (queue for execution)
@@ -495,7 +496,10 @@ class BatchExecutor(
     )
     result match
       case ActivityResult.Completed(output) =>
-        finished.copy(state = ItemState.Succeeded.stateName, output = Some(ActivityJson.encode(output)))
+        finished.copy(
+          state = ItemState.Succeeded.stateName,
+          output = Some(ActivityJson.encode(output))
+        )
       case ActivityResult.Failed(error, _) =>
         finished.copy(state = ItemState.Failed.stateName, error = Some(error))
       case ActivityResult.Cancelled =>

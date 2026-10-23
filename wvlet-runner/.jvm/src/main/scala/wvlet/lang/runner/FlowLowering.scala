@@ -137,7 +137,8 @@ object FlowLowering:
   case class SensorSpec(input: Relation, condition: Expression)
 
   /**
-    * An activity invocation extracted from `activity '<type>'` or `for each <key> activity '<type>'`
+    * An activity invocation extracted from `activity '<type>'` or
+    * `for each <key> activity '<type>'`
     *
     * @param activityType
     *   The activity type to invoke
@@ -213,11 +214,11 @@ object FlowLowering:
     val routeFilters = Map.newBuilder[(String, String), Expression]
 
     val lowered = flatStages.map { s =>
-      var waitMillis: Option[Long] = None
-      val sensors                  = List.newBuilder[SensorSpec]
-      val activations              = List.newBuilder[ActivationSpec]
-      val jumps                    = List.newBuilder[String]
-      var activity: Option[ActivitySpec] = None
+      var waitMillis: Option[Long]              = None
+      val sensors                               = List.newBuilder[SensorSpec]
+      val activations                           = List.newBuilder[ActivationSpec]
+      val jumps                                 = List.newBuilder[String]
+      var activity: Option[ActivitySpec]        = None
       def setActivity(spec: ActivitySpec): Unit =
         if activity.nonEmpty then
           throw StatusCode
@@ -233,10 +234,7 @@ object FlowLowering:
             .transformOnce {
               case f: ForEachFanOut =>
                 setActivity(
-                  ActivitySpec(
-                    activityTypeOf(f.activity),
-                    Some(resolveContextRefs(f.keyExpr))
-                  )
+                  ActivitySpec(activityTypeOf(f.activity), Some(resolveContextRefs(f.keyExpr)))
                 )
                 f.child
               case a: FlowActivity =>

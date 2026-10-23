@@ -95,9 +95,7 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
     if request.offset < 0 || request.limit <= 0 || request.limit > TaskApi.MaxPageSize then
       throw RPCStatus
         .INVALID_REQUEST_U1
-        .newException(
-          s"offset must be >= 0 and limit must be within 1..${TaskApi.MaxPageSize}"
-        )
+        .newException(s"offset must be >= 0 and limit must be within 1..${TaskApi.MaxPageSize}")
     request
       .state
       .foreach { s =>
@@ -122,6 +120,8 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
           None
     )
 
+  end listItems
+
   override def getItem(request: ItemRequest): ItemInfo = taskQueue
     .store
     .getItem(request.itemId)
@@ -137,7 +137,9 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
       .activeAttempts
       .sortBy(_.leaseExpiresAtMillis)
       .take(request.limit)
-      .map(a => AttemptInfo(a.attemptId, a.itemId, a.workerId, a.leaseExpiresAtMillis, a.cancelRequested))
+      .map(a =>
+        AttemptInfo(a.attemptId, a.itemId, a.workerId, a.leaseExpiresAtMillis, a.cancelRequested)
+      )
 
   private def toItemInfo(r: ItemRecord): ItemInfo = ItemInfo(
     itemId = r.itemId,

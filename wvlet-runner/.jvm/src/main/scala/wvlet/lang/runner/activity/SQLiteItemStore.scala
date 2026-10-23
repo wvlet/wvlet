@@ -57,12 +57,13 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
         |  worker_id        text
         |)""".stripMargin)
     // Databases created before task-queue dispatch lack the dispatch columns; add them in place
-    val existing = Using.resource(stmt.executeQuery("pragma table_info(items)")) { rs =>
-      val b = Set.newBuilder[String]
-      while rs.next() do
-        b += rs.getString("name")
-      b.result()
-    }
+    val existing =
+      Using.resource(stmt.executeQuery("pragma table_info(items)")) { rs =>
+        val b = Set.newBuilder[String]
+        while rs.next() do
+          b += rs.getString("name")
+        b.result()
+      }
     SQLiteItemStore
       .dispatchColumns
       .foreach { (name, tpe) =>
@@ -148,11 +149,9 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
       offset: Int,
       limit: Int
   ): List[ItemRecord] = synchronized {
-    Using.resource(
-      conn.prepareStatement("""select * from items
+    Using.resource(conn.prepareStatement("""select * from items
           |where run_id = ? and stage_name = ? and (? is null or state = ?)
-          |order by rowid limit ? offset ?""".stripMargin)
-    ) { ps =>
+          |order by rowid limit ? offset ?""".stripMargin)) { ps =>
       ps.setString(1, runId)
       ps.setString(2, stageName)
       ps.setString(3, state.orNull)

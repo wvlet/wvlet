@@ -50,9 +50,12 @@ class TaskQueueActivityExecutor(
       enqueuedAtMillis = System.currentTimeMillis()
     )
     val future   = queue.dispatch(task, heartbeat)
-    val interval = request.config.heartbeatMillis.map(h => (h / 2).max(1L)).getOrElse(
-      pollIntervalMillis
-    ).min(pollIntervalMillis)
+    val interval = request
+      .config
+      .heartbeatMillis
+      .map(h => (h / 2).max(1L))
+      .getOrElse(pollIntervalMillis)
+      .min(pollIntervalMillis)
     var result: Option[ActivityResult] = None
     while result.isEmpty do
       try

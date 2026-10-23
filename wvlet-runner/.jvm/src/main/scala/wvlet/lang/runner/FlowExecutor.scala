@@ -87,11 +87,11 @@ case class StageExecutionConfig(
     Some(delayMillis)
   )
 
-  def noMaxRetryDelay(): StageExecutionConfig               = copy(maxRetryDelayMillis = None)
-  def withTimeoutMillis(millis: Long): StageExecutionConfig = copy(timeoutMillis = Some(millis))
-  def noTimeout(): StageExecutionConfig                     = copy(timeoutMillis = None)
-  def withConcurrency(n: Int): StageExecutionConfig         = copy(concurrency = Some(n))
-  def noConcurrency(): StageExecutionConfig                 = copy(concurrency = None)
+  def noMaxRetryDelay(): StageExecutionConfig                  = copy(maxRetryDelayMillis = None)
+  def withTimeoutMillis(millis: Long): StageExecutionConfig    = copy(timeoutMillis = Some(millis))
+  def noTimeout(): StageExecutionConfig                        = copy(timeoutMillis = None)
+  def withConcurrency(n: Int): StageExecutionConfig            = copy(concurrency = Some(n))
+  def noConcurrency(): StageExecutionConfig                    = copy(concurrency = None)
   def withRetryUncertain(retry: Boolean): StageExecutionConfig = copy(retryUncertain = retry)
 
   /**
@@ -166,6 +166,7 @@ object StageExecutionConfig:
         case _ =>
           // Unknown or not-yet-supported properties are ignored by this executor
           config
+      end match
     }
 
 end StageExecutionConfig
@@ -1329,7 +1330,7 @@ class FlowExecutor(
       stageConfig: StageExecutionConfig,
       materialize: FlowLowering.LoweredStage => Unit
   )(using ctx: Context): Unit =
-    val itemColumn = "__wv_item"
+    val itemColumn             = "__wv_item"
     val itemKeys: List[String] =
       spec.forEachKey match
         case Some(key) =>
@@ -1378,14 +1379,17 @@ class FlowExecutor(
       s"Stage ${ls.name} invokes activity '${spec.activityType}' for ${itemKeys
           .size} item(s) (concurrency: ${batchConfig.concurrency})"
     )
-    val result = BatchExecutor(activityExecutorFor(spec.activityType), activityItemStore, batchConfig)
-      .execute(
-        runId = runId,
-        stageName = ls.name,
-        activityType = spec.activityType,
-        itemKeys = itemKeys,
-        baseInput = Map("run_id" -> runId, "stage" -> ls.name)
-      )
+    val result = BatchExecutor(
+      activityExecutorFor(spec.activityType),
+      activityItemStore,
+      batchConfig
+    ).execute(
+      runId = runId,
+      stageName = ls.name,
+      activityType = spec.activityType,
+      itemKeys = itemKeys,
+      baseInput = Map("run_id" -> runId, "stage" -> ls.name)
+    )
     materializeActivityResult(connectorFor(ls), table, result)
 
     if result.hasErrors || result.cancelled then
@@ -1417,8 +1421,13 @@ class FlowExecutor(
         result
           .items
           .map { r =>
-            List(lit(Some(r.itemKey)), lit(Some(r.state)), r.attempts.toString, lit(r.output), lit(r.error))
-              .mkString("(", ", ", ")")
+            List(
+              lit(Some(r.itemKey)),
+              lit(Some(r.state)),
+              r.attempts.toString,
+              lit(r.output),
+              lit(r.error)
+            ).mkString("(", ", ", ")")
           }
     val emptyFilter =
       if result.items.isEmpty then
@@ -1430,7 +1439,9 @@ class FlowExecutor(
       "select cast(item_key as varchar) as item_key, cast(state as varchar) as state,",
       "  cast(attempts as integer) as attempts, cast(output as varchar) as output,",
       "  cast(error as varchar) as error",
-      s"from (values\n  ${rows.mkString(",\n  ")}\n) as t(item_key, state, attempts, output, error)${emptyFilter}"
+      s"from (values\n  ${rows.mkString(
+          ",\n  "
+        )}\n) as t(item_key, state, attempts, output, error)${emptyFilter}"
     ).mkString("\n")
     val target = s""""${table}""""
     val ddl    =

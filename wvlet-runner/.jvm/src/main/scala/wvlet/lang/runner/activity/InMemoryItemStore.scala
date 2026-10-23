@@ -38,9 +38,9 @@ class InMemoryItemStore extends ItemStore:
   }
 
   /** Apply `f` to the item when `cond` holds; returns whether it was applied */
-  private def updateIf(itemId: String)(cond: ItemRecord => Boolean)(
-      f: ItemRecord => ItemRecord
-  ): Boolean = synchronized {
+  private def updateIf(
+      itemId: String
+  )(cond: ItemRecord => Boolean)(f: ItemRecord => ItemRecord): Boolean = synchronized {
     items.get(itemId) match
       case Some(current) if cond(current) =>
         items.update(itemId, f(current))

@@ -166,6 +166,8 @@ flow data_pipeline = {
 | `backoff` | String | `'exponential'` | Backoff strategy (`'constant'`, `'linear'`, `'exponential'`) |
 | `max_retry_delay` | Duration | none | Cap on backoff delay |
 | `heartbeat` | Duration | none | Heartbeat interval for long-running stages |
+| `concurrency` | Int | 4 | Activity stages: items running at once |
+| `retry_uncertain` | Boolean | false | Activity stages: run items with an unknown outcome again on a rerun |
 
 ### Flow Configuration
 
@@ -407,6 +409,35 @@ external target. Two sinks are built in:
 A sink failure fails the stage attempt and follows the stage's retry policy; targets with no
 registered sink log the delivery instead of failing. Custom sinks can be plugged in from
 external modules via the Java ServiceLoader (`wvlet.lang.runner.ActivationSink`).
+
+### Invoking Activities with for each
+
+`activity '<type>'` invokes non-SQL work, such as an agent session, from a stage.
+`for each <key> activity '<type>'` invokes it once per distinct key of the stage input:
+
+```wvlet
+flow investigate_customers = {
+  stage customers = from customer_list | where priority = 'high'
+  stage investigate with { concurrency: 5, timeout: 30m, heartbeat: 1m } =
+    from customers | for each _.customer_id activity 'agent.investigate'
+  stage report = from investigate | where state = 'succeeded'
+}
+```
+
+- Items queue and run up to `concurrency` at a time; a finished item admits the next
+  one without waiting for its siblings. `timeout` and `heartbeat` bound each item
+- Each item receives its key as the `item` input, plus `run_id` and `stage`. A bare
+  `activity` without `for each` runs once; its input is evaluated but not shipped
+- The stage output has one row per item: `item_key`, `state`, `attempts`, `output` (the
+  activity's JSON result), and `error`. The stage fails if any item failed or has an
+  unknown outcome
+- An activity type runs on a registered `ActivityExecutor`, or on remote workers that
+  poll the server's `TaskApi` when the flow runs with a task queue (runs resumed by the
+  server do). Workers report results and heartbeats; `TaskApi.listItems` and `getItem`
+  page through item states and results
+- Items are durable per run: a resumed run reuses finished items and awaits attempts that
+  workers still hold. An item whose worker stopped heartbeating becomes `uncertain`, and
+  is never retried automatically unless `retry_uncertain: true` is set
 
 ### Continuing in Another Flow with ->
 

@@ -93,8 +93,8 @@ case class ActiveAttempt(
   * expires ([[expireLeases]]). Lost contact does not prove that the work stopped, so the attempt is
   * never retried automatically.
   *
-  * In-process callers (e.g. a flow stage) dispatch through [[dispatch]] and receive the outcome as a
-  * future. Thread-safe: all methods may be called concurrently from HTTP request threads
+  * In-process callers (e.g. a flow stage) dispatch through [[dispatch]] and receive the outcome as
+  * a future. Thread-safe: all methods may be called concurrently from HTTP request threads
   *
   * @param store
   *   The item store holding queued, running, and finished attempts
@@ -288,8 +288,8 @@ class TaskQueue(
     def tryTake(): Option[PendingTask] =
       var claimed: Option[PendingTask] = None
       while claimed.isEmpty && pending.exists(t => typeSet.contains(t.activityType)) do
-        val task       = pending.dequeueFirst(t => typeSet.contains(t.activityType)).get
-        val now        = clock()
+        val task        = pending.dequeueFirst(t => typeSet.contains(t.activityType)).get
+        val now         = clock()
         val leaseMillis = leaseMillisFor(task.config)
         if store.claimItem(task.invocationId, task.attemptId, workerId, now, now + leaseMillis) then
           active.put(
@@ -352,14 +352,7 @@ class TaskQueue(
               warn(s"Unknown result status '${other}' for attempt ${attemptId}, treating as failed")
               ItemState.Failed.stateName ->
                 ActivityResult.Failed(error.getOrElse(s"Unknown result status: ${other}"))
-        val accepted = store.reportResult(
-          attempt.itemId,
-          attemptId,
-          state,
-          output,
-          error,
-          clock()
-        )
+        val accepted = store.reportResult(attempt.itemId, attemptId, state, output, error, clock())
         if !accepted then
           debug(s"Store rejected result for attempt ${attemptId} (fenced)")
         // The waiter fences on its own side; it needs the worker's outcome either way
@@ -418,13 +411,15 @@ class TaskQueue(
         complete(attemptId, ActivityResult.Cancelled)
         true
       case None =>
-        active.computeIfPresent(attemptId, (_, current) => current.copy(cancelRequested = true))
-          match
-            case null =>
-              false
-            case attempt =>
-              store.markCancelling(attempt.itemId, attemptId)
-              false
+        active.computeIfPresent(
+          attemptId,
+          (_, current) => current.copy(cancelRequested = true)
+        ) match
+          case null =>
+            false
+          case attempt =>
+            store.markCancelling(attempt.itemId, attemptId)
+            false
   }
 
   /**
@@ -445,7 +440,14 @@ class TaskQueue(
       .map { a =>
         val reason = s"Lease expired: worker ${a.workerId} stopped heartbeating"
         warn(s"Attempt ${a.attemptId} of item ${a.itemId} is uncertain. ${reason}")
-        store.reportResult(a.itemId, a.attemptId, ItemState.Uncertain.stateName, None, Some(reason), now)
+        store.reportResult(
+          a.itemId,
+          a.attemptId,
+          ItemState.Uncertain.stateName,
+          None,
+          Some(reason),
+          now
+        )
         complete(a.attemptId, ActivityResult.Uncertain(reason))
         a.attemptId
       }
@@ -460,7 +462,8 @@ class TaskQueue(
       }
       executor.scheduleWithFixedDelay(
         () =>
-          try expireLeases()
+          try
+            expireLeases()
           catch
             case NonFatal(e) =>
               warn(s"Lease sweep failed: ${e.getMessage}")

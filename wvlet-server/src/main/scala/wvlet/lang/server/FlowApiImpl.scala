@@ -19,6 +19,7 @@ import wvlet.lang.api.v1.flow.FlowApi.*
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.FlowRunLauncher
+import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.FlowRunRecord
 import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.ThreadManager
@@ -33,8 +34,12 @@ import wvlet.uni.log.LogSupport
   * Cancel and resume mutations follow the same store/launcher paths as `wvlet flow session`, so the
   * web UI and the CLI observe identical semantics
   */
-class FlowApiImpl(workEnv: WorkEnv, profile: Profile, threadManager: ThreadManager)
-    extends FlowApi
+class FlowApiImpl(
+    workEnv: WorkEnv,
+    profile: Profile,
+    threadManager: ThreadManager,
+    taskQueue: TaskQueue
+) extends FlowApi
     with AutoCloseable
     with LogSupport:
 
@@ -133,7 +138,9 @@ class FlowApiImpl(workEnv: WorkEnv, profile: Profile, threadManager: ThreadManag
                 profile,
                 workEnv,
                 runStore,
-                resumeFrom = Some(r)
+                resumeFrom = Some(r),
+                // Activity stages dispatch to the workers polling this server
+                taskQueue = Some(taskQueue)
               )
             }
           catch
