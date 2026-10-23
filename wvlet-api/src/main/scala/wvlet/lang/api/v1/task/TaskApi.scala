@@ -25,6 +25,11 @@ import wvlet.uni.http.router.RxRouterProvider
   *   - `poll` — long-poll for a task matching the worker's declared activity types
   *   - `reportResult` — report completion, failure, or cancellation of an attempt
   *   - `heartbeat` — renew the liveness lease of a running attempt
+  *
+  * Inspection endpoints for operators:
+  *   - `listItems` — a page of a stage's items with per-state counts
+  *   - `getItem` — a single item by its stable id
+  *   - `listActiveAttempts` — attempts currently held by workers
   */
 trait TaskApi:
   import TaskApi.*
@@ -46,6 +51,15 @@ trait TaskApi:
     * continue or cancel (the orchestrator requested cancellation)
     */
   def heartbeat(request: HeartbeatRequest): HeartbeatResponse
+
+  /** List a page of the items of a flow stage, in insertion order, with per-state counts */
+  def listItems(request: ItemListRequest): ItemListResponse
+
+  /** Get a single item by its stable id */
+  def getItem(request: ItemRequest): ItemInfo
+
+  /** List the attempts currently claimed by workers */
+  def listActiveAttempts(request: ActiveAttemptListRequest): List[AttemptInfo]
 
 object TaskApi extends RxRouterProvider:
   override def router: RxRouter = RxRouter.of[TaskApi]
@@ -145,5 +159,79 @@ object TaskApi extends RxRouterProvider:
   object HeartbeatResponse:
     val Continue: HeartbeatResponse = HeartbeatResponse("continue")
     val Cancel: HeartbeatResponse   = HeartbeatResponse("cancel")
+
+  /** The maximum page size of inspection listings */
+  val MaxPageSize: Int = 1000
+
+  /**
+    * @param runId
+    *   The flow run id
+    * @param stageName
+    *   The activity stage name
+    * @param state
+    *   Only items in this state (queued, running, cancelling, succeeded, failed, cancelled,
+    *   uncertain), when given
+    * @param offset
+    *   The number of items to skip
+    * @param limit
+    *   The page size (at most [[MaxPageSize]])
+    */
+  case class ItemListRequest(
+      runId: String,
+      stageName: String,
+      state: Option[String] = None,
+      offset: Int = 0,
+      limit: Int = 100
+  )
+
+  /**
+    * @param items
+    *   The items of the page
+    * @param counts
+    *   The number of the stage's items per state, over all pages
+    * @param nextOffset
+    *   The offset of the next page, if more items may follow
+    */
+  case class ItemListResponse(
+      items: List[ItemInfo],
+      counts: Map[String, Int],
+      nextOffset: Option[Int] = None
+  )
+
+  /** @param itemId The stable item id */
+  case class ItemRequest(itemId: String)
+
+  /**
+    * An activity item and its current (or most recent) attempt. The output is the activity's
+    * structured result (e.g. a session reference), not a narrative of the work
+    */
+  case class ItemInfo(
+      itemId: String,
+      runId: String,
+      stageName: String,
+      itemKey: String,
+      state: String,
+      attemptId: String,
+      attempts: Int,
+      activityType: Option[String] = None,
+      workerId: Option[String] = None,
+      output: Option[String] = None,
+      error: Option[String] = None,
+      startedAtMillis: Option[Long] = None,
+      finishedAtMillis: Option[Long] = None,
+      leaseExpiresAtMillis: Option[Long] = None
+  )
+
+  /** @param limit The maximum number of attempts to return (at most [[MaxPageSize]]) */
+  case class ActiveAttemptListRequest(limit: Int = 100)
+
+  /** An attempt currently claimed by a worker */
+  case class AttemptInfo(
+      attemptId: String,
+      itemId: String,
+      workerId: String,
+      leaseExpiresAtMillis: Long,
+      cancelRequested: Boolean
+  )
 
 end TaskApi

@@ -45,6 +45,17 @@ import scala.util.hashing.MurmurHash3
   * @param leaseExpiresAtMillis
   *   Liveness lease of the current attempt. A running item whose lease expired transitions to
   *   uncertain on recovery
+  * @param activityType
+  *   The activity type of a task dispatched through the [[TaskQueue]]. Set when the item is
+  *   enqueued, so that a restarted queue can dispatch it again
+  * @param input
+  *   JSON object of the task input (string values), for re-dispatch after a restart
+  * @param timeoutMillis
+  *   Per-attempt timeout of a dispatched task
+  * @param heartbeatMillis
+  *   Heartbeat interval of a dispatched task
+  * @param workerId
+  *   The worker that claimed the current attempt
   */
 case class ItemRecord(
     itemId: String,
@@ -58,9 +69,20 @@ case class ItemRecord(
     error: Option[String] = None,
     startedAtMillis: Option[Long] = None,
     finishedAtMillis: Option[Long] = None,
-    leaseExpiresAtMillis: Option[Long] = None
+    leaseExpiresAtMillis: Option[Long] = None,
+    activityType: Option[String] = None,
+    input: Option[String] = None,
+    timeoutMillis: Option[Long] = None,
+    heartbeatMillis: Option[Long] = None,
+    workerId: Option[String] = None
 ):
   def isTerminal: Boolean = ItemState.fromString(state).exists(_.isTerminal)
+
+  /**
+    * Whether the item reached an outcome that a result report must not overwrite. Unlike
+    * [[isTerminal]], `uncertain` is not final: a late result of the same attempt resolves it
+    */
+  def isFinal: Boolean = ItemState.fromString(state).exists(_.isFinal)
 
   def isStaleAt(nowMillis: Long): Boolean =
     state == ItemState.Running.stateName && leaseExpiresAtMillis.exists(_ < nowMillis)

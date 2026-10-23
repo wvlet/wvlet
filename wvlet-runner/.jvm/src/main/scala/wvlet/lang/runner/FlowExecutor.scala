@@ -30,7 +30,19 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.connector.CancellableStatement
 import wvlet.lang.connector.Connector
 import wvlet.lang.connector.DBConnector
+import wvlet.lang.runner.activity.ActivityExecutor
+import wvlet.lang.runner.activity.BatchConfig
+import wvlet.lang.runner.activity.BatchExecutor
+import wvlet.lang.runner.activity.BatchResult
+import wvlet.lang.runner.activity.InMemoryItemStore
+import wvlet.lang.runner.activity.ItemStore
+import wvlet.lang.runner.activity.TaskQueue
+import wvlet.lang.runner.activity.TaskQueueActivityExecutor
 import wvlet.lang.runner.connector.SourceTableStaging
+import wvlet.uni.json.JSON
+import wvlet.uni.json.JSON.JSONNull
+import wvlet.uni.json.JSON.JSONObject
+import wvlet.uni.json.JSON.JSONString
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
 
@@ -54,7 +66,11 @@ case class StageExecutionConfig(
     maxRetryDelayMillis: Option[Long] = None,
     timeoutMillis: Option[Long] = None,
     heartbeatMillis: Option[Long] = None,
-    pollIntervalMillis: Long = StageExecutionConfig.DEFAULT_POLL_INTERVAL_MILLIS
+    pollIntervalMillis: Long = StageExecutionConfig.DEFAULT_POLL_INTERVAL_MILLIS,
+    // Activity stages only: the number of items running at once, and whether items with an
+    // unknown outcome are executed again on a rerun
+    concurrency: Option[Int] = None,
+    retryUncertain: Boolean = false
 ):
   def withHeartbeatMillis(millis: Long): StageExecutionConfig = copy(heartbeatMillis = Some(millis))
 
@@ -74,6 +90,9 @@ case class StageExecutionConfig(
   def noMaxRetryDelay(): StageExecutionConfig               = copy(maxRetryDelayMillis = None)
   def withTimeoutMillis(millis: Long): StageExecutionConfig = copy(timeoutMillis = Some(millis))
   def noTimeout(): StageExecutionConfig                     = copy(timeoutMillis = None)
+  def withConcurrency(n: Int): StageExecutionConfig         = copy(concurrency = Some(n))
+  def noConcurrency(): StageExecutionConfig                 = copy(concurrency = None)
+  def withRetryUncertain(retry: Boolean): StageExecutionConfig = copy(retryUncertain = retry)
 
   /**
     * Compute the delay before the next retry attempt. attempt is 1-origin (the number of attempts
@@ -132,6 +151,18 @@ object StageExecutionConfig:
           durationMillis.fold(config)(config.withHeartbeatMillis)
         case "poll_interval" =>
           durationMillis.fold(config)(config.withPollIntervalMillis)
+        case "concurrency" =>
+          item.value match
+            case l: LongLiteral =>
+              config.withConcurrency(l.value.toInt)
+            case _ =>
+              config
+        case "retry_uncertain" =>
+          item.value match
+            case b: BooleanLiteral =>
+              config.withRetryUncertain(b.booleanValue)
+            case _ =>
+              config
         case _ =>
           // Unknown or not-yet-supported properties are ignored by this executor
           config
@@ -235,6 +266,12 @@ trait FlowStageRunner:
   *   Optional stage body runner override (for testing the scheduler)
   * @param retryScheduler
   *   Optional (delayMillis, action) scheduler override (for testing retry backoff)
+  * @param activityExecutors
+  *   Executors of `activity '<type>'` stages, matched by [[ActivityExecutor.name]]
+  * @param taskQueue
+  *   Task queue dispatching activity types without a local executor to remote workers
+  * @param itemStore
+  *   Store of activity items; defaults to the task queue's store, else an in-memory store
   */
 class FlowExecutor(
     connector: DBConnector,
@@ -249,8 +286,30 @@ class FlowExecutor(
     engineResolver: Option[String => Connector] = None,
     // The profile connector name of `connector`, used to decide which table references are
     // foreign and need staging
-    defaultEngineName: String = "default"
+    defaultEngineName: String = "default",
+    activityExecutors: List[ActivityExecutor] = Nil,
+    taskQueue: Option[TaskQueue] = None,
+    itemStore: Option[ItemStore] = None
 ) extends LogSupport:
+
+  // Activity items share the task queue's store, so queue dispatch and batch admission see the
+  // same records
+  private lazy val activityItemStore: ItemStore = itemStore
+    .orElse(taskQueue.map(_.store))
+    .getOrElse(InMemoryItemStore())
+
+  /** The executor of an activity type: a registered executor, else remote workers via the queue */
+  private def activityExecutorFor(activityType: String): ActivityExecutor = activityExecutors
+    .find(_.name == activityType)
+    .orElse(taskQueue.map(q => TaskQueueActivityExecutor(activityType, q)))
+    .getOrElse(
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"No executor for activity '${activityType}': register an ActivityExecutor or run " +
+            "the flow with a task queue"
+        )
+    )
 
   private def resolveConnector(name: String): Connector =
     if name == defaultEngineName then
@@ -571,8 +630,8 @@ class FlowExecutor(
                 }
               // All sensors passed: the stage now does real work, no longer waiting
               eventQueue.put(SensorCleared(ls.name))
-            materializeStage(
-              ls,
+            def materialize(stage: FlowLowering.LoweredStage): Unit = materializeStage(
+              stage,
               stageNames,
               tableFor,
               routeFilters,
@@ -586,6 +645,11 @@ class FlowExecutor(
                   activeStatements.remove(attemptKey)
                   beat(attemptKey)
             )
+            ls.activity match
+              case Some(spec) =>
+                runActivityStage(ls, spec, runId, table, stageConfigs(ls.name), materialize)
+              case None =>
+                materialize(ls)
             // Deliver the materialized output to activation sinks. A missing sink logs the
             // delivery instead of failing (local stub); a sink exception fails the attempt
             // and follows the stage's retry policy
@@ -829,8 +893,14 @@ class FlowExecutor(
           upstreamStagesOf(ls).forall(up => states(up) == StageState.Success)
 
     def submitAttempt(ls: FlowLowering.LoweredStage, attempt: Int): Unit =
-      val name        = ls.name
-      val stageConfig = stageConfigs(name)
+      val name = ls.name
+      // An activity stage's timeout and heartbeat bound each item (enforced by its batch), not
+      // the attempt: stopping the attempt would not stop the items' external work
+      val stageConfig =
+        if ls.activity.isEmpty then
+          stageConfigs(name)
+        else
+          stageConfigs(name).noTimeout().noHeartbeat()
       states(name) = StageState.Running
       runningCount += 1
       workEnv.info(s"Running stage ${name} (attempt ${attempt}/${stageConfig.retries + 1})")
@@ -1244,6 +1314,135 @@ class FlowExecutor(
     * predicates applied when this stage is a route target). Materialization runs on a dedicated
     * session so that parallel stages do not contend on a single connection
     */
+  /**
+    * Run an activity stage: evaluate the stage input, invoke the activity once per distinct `for
+    * each` key (or once for a bare `activity`) through a [[BatchExecutor]], and materialize one row
+    * per item (`item_key, state, attempts, output, error`) as the stage output. Items are keyed by
+    * the run id, so a resumed run reuses finished items. The stage fails when any item failed or
+    * has an unknown outcome
+    */
+  private def runActivityStage(
+      ls: FlowLowering.LoweredStage,
+      spec: FlowLowering.ActivitySpec,
+      runId: String,
+      table: String,
+      stageConfig: StageExecutionConfig,
+      materialize: FlowLowering.LoweredStage => Unit
+  )(using ctx: Context): Unit =
+    val itemColumn = "__wv_item"
+    val itemKeys: List[String] =
+      spec.forEachKey match
+        case Some(key) =>
+          // Materialize the distinct fan-out keys of the input as the stage table first, reusing
+          // the regular stage-reference rewriting and cross-engine staging
+          val keys = ls
+            .body
+            .map { body =>
+              Distinct(
+                Project(
+                  BracedRelation(body, Span.NoSpan),
+                  List(SingleColumn(UnquotedIdentifier(itemColumn, Span.NoSpan), key, Span.NoSpan)),
+                  Span.NoSpan
+                ),
+                Span.NoSpan
+              )
+            }
+          materialize(ls.copy(body = keys))
+          connectorFor(ls)
+            .queryJsonRows(s"""select "${itemColumn}" from "${table}"""")
+            .flatMap { row =>
+              JSON.parse(row) match
+                case o: JSONObject =>
+                  o.get(itemColumn) match
+                    case Some(JSONString(s)) =>
+                      Some(s)
+                    case Some(JSONNull) | None =>
+                      None
+                    case Some(other) =>
+                      Some(other.toJSON)
+                case _ =>
+                  None
+            }
+        case None =>
+          // A single invocation: the input is evaluated (and must succeed), not shipped
+          materialize(ls)
+          List(ls.name)
+
+    val batchConfig = BatchConfig(
+      concurrency = stageConfig.concurrency.getOrElse(BatchConfig().concurrency),
+      timeoutMillis = stageConfig.timeoutMillis,
+      heartbeatMillis = stageConfig.heartbeatMillis,
+      retryUncertain = stageConfig.retryUncertain
+    )
+    workEnv.info(
+      s"Stage ${ls.name} invokes activity '${spec.activityType}' for ${itemKeys
+          .size} item(s) (concurrency: ${batchConfig.concurrency})"
+    )
+    val result = BatchExecutor(activityExecutorFor(spec.activityType), activityItemStore, batchConfig)
+      .execute(
+        runId = runId,
+        stageName = ls.name,
+        activityType = spec.activityType,
+        itemKeys = itemKeys,
+        baseInput = Map("run_id" -> runId, "stage" -> ls.name)
+      )
+    materializeActivityResult(connectorFor(ls), table, result)
+
+    if result.hasErrors || result.cancelled then
+      val summary = result
+        .items
+        .groupMapReduce(_.state)(_ => 1)(_ + _)
+        .toList
+        .sorted
+        .map((state, n) => s"${n} ${state}")
+        .mkString(", ")
+      throw StatusCode
+        .ACTIVATION_FAILED
+        .newException(s"Activity '${spec.activityType}' of stage ${ls.name}: ${summary}")
+
+  end runActivityStage
+
+  /** Replace the stage table with one row per activity item */
+  private def materializeActivityResult(
+      stageConnector: DBConnector,
+      table: String,
+      result: BatchResult
+  ): Unit =
+    def lit(v: Option[String]): String = v.map(s => s"'${s.replace("'", "''")}'").getOrElse("null")
+    // An empty batch still produces the result schema
+    val rows =
+      if result.items.isEmpty then
+        List("(null, null, null, null, null)")
+      else
+        result
+          .items
+          .map { r =>
+            List(lit(Some(r.itemKey)), lit(Some(r.state)), r.attempts.toString, lit(r.output), lit(r.error))
+              .mkString("(", ", ", ")")
+          }
+    val emptyFilter =
+      if result.items.isEmpty then
+        "\nwhere 1 = 0"
+      else
+        ""
+    // Built without stripMargin: item values may contain margin characters
+    val select = List(
+      "select cast(item_key as varchar) as item_key, cast(state as varchar) as state,",
+      "  cast(attempts as integer) as attempts, cast(output as varchar) as output,",
+      "  cast(error as varchar) as error",
+      s"from (values\n  ${rows.mkString(",\n  ")}\n) as t(item_key, state, attempts, output, error)${emptyFilter}"
+    ).mkString("\n")
+    val target = s""""${table}""""
+    val ddl    =
+      if stageConnector.dbType.supportCreateOrReplace then
+        s"create or replace table ${target} as\n${select}"
+      else
+        stageConnector.execute(s"drop table if exists ${target}")
+        s"create table ${target} as\n${select}"
+    stageConnector.execute(ddl)
+
+  end materializeActivityResult
+
   private def materializeStage(
       ls: FlowLowering.LoweredStage,
       stageNames: Set[String],
