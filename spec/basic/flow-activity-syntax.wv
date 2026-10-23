@@ -7,16 +7,9 @@ flow SingleActivity = {
 }
 ;
 
--- Flow with for-each fan-out activity
+-- Flow with for-each fan-out activity whose failed items re-run on a stage retry or resume
 flow BatchInvestigation = {
   stage targets = select 1
-  stage investigate = from targets | for each 1 activity 'agent.investigate'
-}
-;
-
--- Flow whose stage retries re-run failed items
-flow RetryFailedInvestigation = {
-  stage targets = select 1
-  stage investigate with { retries: 2, retry_failed: true } = from targets | for each 1 activity 'agent.investigate'
+  stage investigate with { retry_failed: true } = from targets | for each 1 activity 'agent.investigate'
 }
 ;
