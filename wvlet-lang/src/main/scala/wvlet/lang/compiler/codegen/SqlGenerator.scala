@@ -1814,7 +1814,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         )
       case l: LambdaExpr =>
         val args = cl(l.args.map(expr(_)))
-        if l.args.size == 1 then
+        if dbType == DBType.DuckDB then
+          // DuckDB 2.0 rejects the deprecated arrow syntax (x -> body) in favor of `lambda x: body`
+          text("lambda") + ws + args + ":" + wsOrNL + expr(l.body)
+        else if l.args.size == 1 then
           args + ws + "->" + wsOrNL + expr(l.body)
         else
           paren(args) + ws + "->" + wsOrNL + expr(l.body)
