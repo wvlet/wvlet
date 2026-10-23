@@ -3,9 +3,11 @@ package wvlet.lang.server
 import org.jline.nativ.OSInfo
 import wvlet.lang.api.v1.flow.FlowApi
 import wvlet.lang.api.v1.frontend.{FileApi, FrontendApi, FrontendRPC}
+import wvlet.lang.api.v1.task.TaskApi
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.activity.{InMemoryItemStore, TaskQueue}
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.{ThreadManager, WvletScriptRunnerConfig}
 import wvlet.uni.cli.launcher.option
@@ -248,17 +250,23 @@ object WvletServer extends LogSupport:
       .bindImpl[FrontendApi, FrontendApiImpl]
       .bindImpl[FileApi, FileApiImpl]
       .bindImpl[FlowApi, FlowApiImpl]
+      .bindImpl[TaskApi, TaskApiImpl]
+      .bindProvider[WorkEnv, TaskQueue] { (workEnv: WorkEnv) =>
+        TaskQueue(InMemoryItemStore())
+      }
       .bindSingleton[StaticContentApi]
       .bindProvider[Session, NettyHttpServer] { (session: Session) =>
         val frontendApi = session.build[FrontendApi]
         val fileApi     = session.build[FileApi]
         val flowApi     = session.build[FlowApi]
+        val taskApi     = session.build[TaskApi]
         val staticApi   = session.build[StaticContentApi]
         val rpc         = MultiRpcHandler(
           Seq(
             RPCRouter.of[FrontendApi](frontendApi),
             RPCRouter.of[FileApi](fileApi),
-            RPCRouter.of[FlowApi](flowApi)
+            RPCRouter.of[FlowApi](flowApi),
+            RPCRouter.of[TaskApi](taskApi)
           )
         )
         val guardedRpc = resolvedConf

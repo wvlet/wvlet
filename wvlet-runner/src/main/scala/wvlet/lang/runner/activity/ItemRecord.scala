@@ -13,45 +13,7 @@
  */
 package wvlet.lang.runner.activity
 
-/**
-  * The state of a single item within a fan-out batch. Items progress through:
-  * {{{
-  * queued -> running -> succeeded
-  * queued -> running -> failed
-  * queued -> running -> cancelled
-  * queued -> running -> uncertain   (worker died, cancellation unconfirmed)
-  * queued -> cancelled              (batch cancelled before admission)
-  * running -> cancelling -> cancelled
-  * running -> cancelling -> uncertain  (cancellation not confirmed within timeout)
-  * }}}
-  */
-enum ItemState(val stateName: String):
-  case Queued    extends ItemState("queued")
-  case Running   extends ItemState("running")
-  case Succeeded extends ItemState("succeeded")
-  case Failed    extends ItemState("failed")
-  case Cancelled extends ItemState("cancelled")
-
-  /** Cancellation requested, awaiting executor acknowledgement */
-  case Cancelling extends ItemState("cancelling")
-
-  /**
-    * The item's outcome is unknown: its worker died or became unreachable, and the external action
-    * may or may not have completed. Automatic retry requires explicit policy
-    */
-  case Uncertain extends ItemState("uncertain")
-
-  def isTerminal: Boolean =
-    this match
-      case Succeeded | Failed | Cancelled | Uncertain =>
-        true
-      case _ =>
-        false
-
-end ItemState
-
-object ItemState:
-  def fromString(name: String): Option[ItemState] = ItemState.values.find(_.stateName == name)
+import scala.util.hashing.MurmurHash3
 
 /**
   * The persisted record of a single item within a fan-out batch stage
@@ -106,14 +68,16 @@ case class ItemRecord(
 end ItemRecord
 
 object ItemRecord:
-  import java.security.MessageDigest
-  import java.nio.charset.StandardCharsets
 
   /**
     * Compute the stable item id from its coordinates. The id is deterministic so that a restarted
-    * flow finds the same item records
+    * flow finds the same item records. Uses MurmurHash3 for cross-platform compatibility (JVM,
+    * Scala.js, Scala Native)
     */
   def itemId(runId: String, stageName: String, itemKey: String): String =
-    val digest = MessageDigest.getInstance("SHA-256")
-    digest.update(s"${runId}:${stageName}:${itemKey}".getBytes(StandardCharsets.UTF_8))
-    digest.digest().take(16).map("%02x".format(_)).mkString
+    val input = s"${runId}:${stageName}:${itemKey}"
+    val h1    = MurmurHash3.stringHash(input, 0x12345678)
+    val h2    = MurmurHash3.stringHash(input, 0x9abcdef0.toInt)
+    val h3    = MurmurHash3.stringHash(input, h1)
+    val h4    = MurmurHash3.stringHash(input, h2)
+    f"${h1}%08x${h2}%08x${h3}%08x${h4}%08x"
