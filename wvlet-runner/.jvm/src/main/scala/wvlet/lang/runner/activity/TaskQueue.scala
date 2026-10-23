@@ -116,6 +116,9 @@ class TaskQueue(
   // In-process callers awaiting the outcome of an attempt, keyed by attemptId
   private case class Waiter(result: CompletableFuture[ActivityResult], onHeartbeat: () => Unit)
   private val waiters = ConcurrentHashMap[String, Waiter]()
+  // Item ids of attempts whose lease expired, so a late result of the worker can still resolve
+  // the uncertain item (the store fences it by attemptId)
+  private val expired = ConcurrentHashMap[String, String]()
 
   // Guards `pending` and orders claims against cancellation
   private val lock      = ReentrantLock()
@@ -254,9 +257,29 @@ class TaskQueue(
     waiters.put(task.attemptId, waiter)
     withLock {
       if !isKnown(task.attemptId) then
-        enqueue(task)
+        // A resumed attempt may have finished while the caller was not waiting yet: report the
+        // stored outcome instead of enqueueing (and executing) the attempt again
+        store
+          .getItem(task.invocationId)
+          .filter(r => r.attemptId == task.attemptId && r.isTerminal) match
+          case Some(r) =>
+            complete(task.attemptId, resultOf(r))
+          case None =>
+            enqueue(task)
     }
     waiter.result
+
+  /** The activity result an item record in a terminal state represents */
+  private def resultOf(r: ItemRecord): ActivityResult =
+    ItemState.fromString(r.state) match
+      case Some(ItemState.Succeeded) =>
+        ActivityResult.Completed(r.output.map(ActivityJson.decode).getOrElse(Map.empty))
+      case Some(ItemState.Cancelled) =>
+        ActivityResult.Cancelled
+      case Some(ItemState.Uncertain) =>
+        ActivityResult.Uncertain(r.error.getOrElse("Outcome unknown"))
+      case _ =>
+        ActivityResult.Failed(r.error.getOrElse("Activity failed"))
 
   /** Whether the attempt is waiting for a worker or being executed by one */
   def isKnown(attemptId: String): Boolean = isPending(attemptId) || active.containsKey(attemptId)
@@ -303,6 +326,8 @@ class TaskQueue(
               leaseMillis = leaseMillis
             )
           )
+          // The claim proves liveness until the worker's first heartbeat
+          notifyHeartbeat(task.attemptId)
           claimed = Some(task)
         else
           debug(s"Dropping task ${task.attemptId}: its item is no longer queued for this attempt")
@@ -333,11 +358,11 @@ class TaskQueue(
       output: Option[String],
       error: Option[String]
   ): Boolean =
-    active.remove(attemptId) match
-      case null =>
+    Option(active.remove(attemptId)).map(_.itemId).orElse(Option(expired.remove(attemptId))) match
+      case None =>
         debug(s"Rejecting result for unknown attempt: ${attemptId}")
         false
-      case attempt =>
+      case Some(itemId) =>
         val (state, result) =
           status match
             case "completed" =>
@@ -352,7 +377,7 @@ class TaskQueue(
               warn(s"Unknown result status '${other}' for attempt ${attemptId}, treating as failed")
               ItemState.Failed.stateName ->
                 ActivityResult.Failed(error.getOrElse(s"Unknown result status: ${other}"))
-        val accepted = store.reportResult(attempt.itemId, attemptId, state, output, error, clock())
+        val accepted = store.reportResult(itemId, attemptId, state, output, error, clock())
         if !accepted then
           debug(s"Store rejected result for attempt ${attemptId} (fenced)")
         // The waiter fences on its own side; it needs the worker's outcome either way
@@ -377,17 +402,20 @@ class TaskQueue(
         "unknown"
       case attempt =>
         store.refreshItemLease(attempt.itemId, attemptId, attempt.leaseExpiresAtMillis)
-        Option(waiters.get(attemptId)).foreach { w =>
-          try
-            w.onHeartbeat()
-          catch
-            case NonFatal(e) =>
-              debug(s"Heartbeat listener of attempt ${attemptId} failed: ${e.getMessage}")
-        }
+        notifyHeartbeat(attemptId)
         if attempt.cancelRequested then
           "cancel"
         else
           "continue"
+
+  private def notifyHeartbeat(attemptId: String): Unit = Option(waiters.get(attemptId)).foreach {
+    w =>
+      try
+        w.onHeartbeat()
+      catch
+        case NonFatal(e) =>
+          debug(s"Heartbeat listener of attempt ${attemptId} failed: ${e.getMessage}")
+  }
 
   /**
     * Request cancellation of an attempt. A task still waiting for a worker is removed and recorded
@@ -438,6 +466,7 @@ class TaskQueue(
       .filter(_.leaseExpiresAtMillis < now)
       .filter(a => active.remove(a.attemptId, a))
       .map { a =>
+        expired.put(a.attemptId, a.itemId)
         val reason = s"Lease expired: worker ${a.workerId} stopped heartbeating"
         warn(s"Attempt ${a.attemptId} of item ${a.itemId} is uncertain. ${reason}")
         store.reportResult(

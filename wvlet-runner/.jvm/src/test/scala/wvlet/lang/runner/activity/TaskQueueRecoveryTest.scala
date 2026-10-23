@@ -266,6 +266,38 @@ class TaskQueueRecoveryTest extends UniTest:
     }
   }
 
+  test("accept a late result of an expired attempt to resolve the uncertain item") {
+    Using.resource(SQLiteItemStore(newDbPath())) { store =>
+      val now   = AtomicLong(1_000_000L)
+      val queue = TaskQueue(store, defaultLeaseMillis = 1_000L, clock = () => now.get())
+      val task  = newTask()
+      queue.enqueue(task)
+      queue.poll(List("agent.investigate"), "worker-1", 0)
+      now.addAndGet(2_000L)
+      queue.expireLeases() shouldBe List(task.attemptId)
+      store.getItem(task.invocationId).get.state shouldBe ItemState.Uncertain.stateName
+
+      queue.reportResult(task.attemptId, "completed", Some("""{"ok":"1"}"""), None) shouldBe true
+      store.getItem(task.invocationId).get.state shouldBe ItemState.Succeeded.stateName
+    }
+  }
+
+  test("report the stored outcome of a resumed attempt that finished before dispatch") {
+    Using.resource(SQLiteItemStore(newDbPath())) { store =>
+      val queue = TaskQueue(store)
+      val task  = newTask()
+      queue.enqueue(task)
+      queue.poll(List("agent.investigate"), "worker-1", 0)
+      queue.reportResult(task.attemptId, "completed", Some("""{"session":"s1"}"""), None)
+
+      // The caller resumes the attempt only now: no second execution
+      val result = queue.dispatch(task, () => ()).get(1, TimeUnit.SECONDS)
+      result shouldBe ActivityResult.Completed(Map("session" -> "s1"))
+      queue.pendingCount shouldBe 0
+      store.getItem(task.invocationId).get.state shouldBe ItemState.Succeeded.stateName
+    }
+  }
+
   test("add dispatch columns to an item table created before them") {
     val db = newDbPath()
     Using.resource(DriverManager.getConnection(s"jdbc:sqlite:${db}")) { conn =>

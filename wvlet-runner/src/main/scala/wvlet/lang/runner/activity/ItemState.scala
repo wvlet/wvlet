@@ -63,6 +63,3 @@ end ItemState
 
 object ItemState:
   def fromString(name: String): Option[ItemState] = ItemState.values.find(_.stateName == name)
-
-  /** State names whose result reports are still accepted (see [[ItemState.isFinal]]) */
-  val openStateNames: List[String] = ItemState.values.filterNot(_.isFinal).map(_.stateName).toList

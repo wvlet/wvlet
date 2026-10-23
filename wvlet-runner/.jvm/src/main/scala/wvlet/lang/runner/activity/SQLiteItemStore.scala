@@ -183,7 +183,7 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
   override def listActiveItems(): List[ItemRecord] = synchronized {
     Using.resource(
       conn.prepareStatement(
-        "select * from items where state in ('queued', 'running', 'cancelling') order by rowid"
+        s"select * from items where state in (${SQLiteItemStore.activeStates}) order by rowid"
       )
     )(readItems)
   }
@@ -229,10 +229,10 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
       finishedAtMillis: Long
   ): Boolean = synchronized {
     Using.resource(
-      conn.prepareStatement("""update items set state = ?, output = ?, error = ?, finished_at = ?,
+      conn.prepareStatement(s"""update items set state = ?, output = ?, error = ?, finished_at = ?,
           |  lease_expires_at = null
           |where item_id = ? and attempt_id = ?
-          |  and state not in ('succeeded', 'failed', 'cancelled')""".stripMargin)
+          |  and state not in (${SQLiteItemStore.finalStates})""".stripMargin)
     ) { ps =>
       ps.setString(1, state)
       ps.setString(2, output.orNull)
@@ -317,6 +317,16 @@ class SQLiteItemStore(dbPath: Path) extends ItemStore with LogSupport:
 end SQLiteItemStore
 
 object SQLiteItemStore:
+  private def sqlList(states: Iterable[ItemState]): String = states
+    .map(s => s"'${s.stateName}'")
+    .mkString(", ")
+
+  /** Non-terminal states, matching [[ItemState.isTerminal]] */
+  private val activeStates: String = sqlList(ItemState.values.filterNot(_.isTerminal))
+
+  /** States a result report must not overwrite, matching [[ItemState.isFinal]] */
+  private val finalStates: String = sqlList(ItemState.values.filter(_.isFinal))
+
   /** Columns added for task-queue dispatch, migrated into databases created without them */
   private val dispatchColumns: List[(String, String)] = List(
     "activity_type" -> "text",
