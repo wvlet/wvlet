@@ -23,6 +23,8 @@ import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.ThreadManager
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
+import wvlet.lang.runner.activity.InMemoryItemStore
+import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.test.UniTest
 
@@ -71,6 +73,7 @@ class ScriptRunnerSessionsTest extends UniTest:
     config,
     provider,
     threadManager,
+    TaskQueue(InMemoryItemStore()),
     ScriptRunnerSessions.DefaultIdleTimeout
   )
 
@@ -138,7 +141,14 @@ class ScriptRunnerSessionsTest extends UniTest:
   }
 
   test("should evict idle sessions but keep the default session") {
-    val shortLived = ScriptRunnerSessions(workEnv, config, provider, threadManager, Duration.Zero)
+    val shortLived = ScriptRunnerSessions(
+      workEnv,
+      config,
+      provider,
+      threadManager,
+      TaskQueue(InMemoryItemStore()),
+      Duration.Zero
+    )
     try
       val defaultRunner = shortLived.runnerFor(None)
       val r1            = shortLived.runnerFor(Some("ephemeral"))

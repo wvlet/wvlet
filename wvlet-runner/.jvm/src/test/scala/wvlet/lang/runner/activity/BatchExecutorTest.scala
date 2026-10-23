@@ -85,6 +85,24 @@ class BatchExecutorTest extends UniTest:
   end BlockingExecutor
 
   /**
+    * An executor whose item waits until the test releases it. Cancellation is never confirmed, so
+    * the item stays cancelling until it completes
+    */
+  class UnconfirmedCancelExecutor extends ActivityExecutor:
+    val started               = CountDownLatch(1)
+    val gate                  = CountDownLatch(1)
+    override def name: String = "gate"
+
+    override def execute(request: ActivityRequest, heartbeat: () => Unit): ActivityResult =
+      started.countDown()
+      gate.await(10, TimeUnit.SECONDS)
+      ActivityResult.Completed(Map("result" -> "late"))
+
+    override def cancel(attemptId: String): CancelAck = CancelAck.Unknown
+
+  end UnconfirmedCancelExecutor
+
+  /**
     * An executor that reports heartbeats only when asked, for testing heartbeat loss
     */
   class HeartbeatControlledExecutor(reportHeartbeat: Boolean = true, executionDelayMs: Long = 50L)
@@ -272,6 +290,162 @@ class BatchExecutorTest extends UniTest:
     // Running items should have been cancelled
     val cancelled = result.items.filter(_.state == ItemState.Cancelled.stateName)
     cancelled.nonEmpty shouldBe true
+    store.close()
+  }
+
+  test("should cancel queued items when cancelled before admission") {
+    val store    = newStore()
+    val executor = ControlledExecutor()
+    val batch    = BatchExecutor(executor, store, BatchConfig(concurrency = 2))
+    batch.cancel()
+
+    val result = batch.execute(ULID.newULIDString, "pre_cancel", "test", List("a", "b"))
+    result.cancelled shouldBe true
+    result.items.map(_.state) shouldBe List("cancelled", "cancelled")
+    executor.startedItems.isEmpty shouldBe true
+    store.close()
+  }
+
+  test("should re-run failed items only when retryFailed is set") {
+    val store = newStore()
+    val runId = ULID.newULIDString
+    val first = BatchExecutor(ControlledExecutor(failItems = Set("b")), store, BatchConfig())
+    first.execute(runId, "retry_failed", "test", List("a", "b")).failed.map(_.itemKey) shouldBe
+      List("b")
+
+    val kept   = ControlledExecutor()
+    val reused = BatchExecutor(kept, store, BatchConfig()).execute(
+      runId,
+      "retry_failed",
+      "test",
+      List("a", "b")
+    )
+    kept.startedItems.isEmpty shouldBe true
+    reused.failed.map(_.itemKey) shouldBe List("b")
+
+    val retried = ControlledExecutor()
+    val rerun   = BatchExecutor(retried, store, BatchConfig().withRetryFailed(true)).execute(
+      runId,
+      "retry_failed",
+      "test",
+      List("a", "b")
+    )
+    retried.startedItems.asScala.toSet shouldBe Set("b")
+    rerun.items.map(_.state) shouldBe List("succeeded", "succeeded")
+    rerun.items.map(_.attempts) shouldBe List(1, 2)
+    store.close()
+  }
+
+  test("should re-run cancelled items when a batch starts again") {
+    val store = newStore()
+    val runId = ULID.newULIDString
+    val batch = BatchExecutor(ControlledExecutor(), store, BatchConfig())
+    batch.cancel()
+    batch.execute(runId, "rerun_cancelled", "test", List("a", "b")).items.map(_.state) shouldBe
+      List("cancelled", "cancelled")
+
+    val resumed = ControlledExecutor()
+    val result  = BatchExecutor(resumed, store, BatchConfig()).execute(
+      runId,
+      "rerun_cancelled",
+      "test",
+      List("a", "b")
+    )
+    resumed.startedItems.asScala.toSet shouldBe Set("a", "b")
+    result.items.map(_.state) shouldBe List("succeeded", "succeeded")
+    store.close()
+  }
+
+  test("should wait for a cancelling item to confirm within the grace period") {
+    val store    = newStore()
+    val executor = UnconfirmedCancelExecutor()
+    val batch    = BatchExecutor(executor, store, BatchConfig(cancelGraceMillis = 10_000L))
+    val pool     = java.util.concurrent.Executors.newSingleThreadExecutor()
+    try
+      val future = pool.submit(
+        new java.util.concurrent.Callable[BatchResult]:
+          override def call(): BatchResult = batch.execute(
+            ULID.newULIDString,
+            "grace",
+            "gate",
+            List("a")
+          )
+      )
+      executor.started.await(5, TimeUnit.SECONDS) shouldBe true
+
+      batch.cancel()
+      Thread.sleep(200)
+      future.isDone shouldBe false
+
+      executor.gate.countDown()
+      val result = future.get(10, TimeUnit.SECONDS)
+      result.cancelled shouldBe true
+      result.items.map(_.state) shouldBe List("succeeded")
+    finally
+      pool.shutdownNow()
+      store.close()
+  }
+
+  test("should leave a cancelling item cancelling once the grace period ends") {
+    val store    = newStore()
+    val executor = UnconfirmedCancelExecutor()
+    val batch    = BatchExecutor(executor, store, BatchConfig(cancelGraceMillis = 300L))
+    val runId    = ULID.newULIDString
+    val pool     = java.util.concurrent.Executors.newSingleThreadExecutor()
+    try
+      val future = pool.submit(
+        new java.util.concurrent.Callable[BatchResult]:
+          override def call(): BatchResult = batch.execute(runId, "grace_ends", "gate", List("a"))
+      )
+      executor.started.await(5, TimeUnit.SECONDS) shouldBe true
+
+      batch.cancel()
+      val result = future.get(10, TimeUnit.SECONDS)
+      result.cancelled shouldBe true
+      result.items.map(_.state) shouldBe List("cancelling")
+      store.listItems(runId, "grace_ends").map(_.state) shouldBe List("cancelling")
+
+      // The worker keeps running after the batch returns, and its late result still lands
+      executor.gate.countDown()
+      val deadline = System.currentTimeMillis() + 5000
+      while store.listItems(runId, "grace_ends").head.state == "cancelling" &&
+        System.currentTimeMillis() < deadline
+      do
+        Thread.sleep(20)
+      store.listItems(runId, "grace_ends").map(_.state) shouldBe List("succeeded")
+    finally
+      executor.gate.countDown()
+      pool.shutdownNow()
+      store.close()
+  }
+
+  test("should not re-run a cancelling item whose cancellation was never confirmed") {
+    val store = newStore()
+    val runId = ULID.newULIDString
+    store.saveItem(
+      ItemRecord(
+        itemId = ItemRecord.itemId(runId, "unconfirmed", "a"),
+        runId = runId,
+        stageName = "unconfirmed",
+        itemKey = "a",
+        state = ItemState.Cancelling.stateName,
+        attemptId = ULID.newULIDString,
+        attempts = 1,
+        startedAtMillis = Some(System.currentTimeMillis()),
+        leaseExpiresAtMillis = Some(System.currentTimeMillis() + 60_000)
+      )
+    )
+
+    val executor = ControlledExecutor()
+    val result   = BatchExecutor(executor, store, BatchConfig().withRetryFailed(true)).execute(
+      runId,
+      "unconfirmed",
+      "test",
+      List("a")
+    )
+    executor.startedItems.isEmpty shouldBe true
+    result.items.map(_.state) shouldBe List("uncertain")
+    store.listItems(runId, "unconfirmed").map(_.state) shouldBe List("uncertain")
     store.close()
   }
 

@@ -17,9 +17,11 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
+import wvlet.lang.runner.QueryExecutorConfig
 import wvlet.lang.runner.ThreadManager
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
+import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.log.LogSupport
 
@@ -43,6 +45,7 @@ class ScriptRunnerSessions(
     config: WvletScriptRunnerConfig,
     connectorProvider: ConnectorProvider,
     threadManager: ThreadManager,
+    taskQueue: TaskQueue,
     idleTimeout: Duration
 ) extends AutoCloseable
     with LogSupport:
@@ -113,7 +116,12 @@ class ScriptRunnerSessions(
     WvletScriptRunner(
       workEnv,
       sessionConfig,
-      QueryExecutor(connectorProvider, profile, workEnv),
+      QueryExecutor(
+        connectorProvider,
+        profile,
+        workEnv,
+        QueryExecutorConfig().withTaskQueue(taskQueue)
+      ),
       threadManager
     )
 
