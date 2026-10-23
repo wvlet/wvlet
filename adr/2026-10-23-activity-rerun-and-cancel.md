@@ -1,6 +1,6 @@
 # ADR: Activity reruns are per-policy and cancellation waits for confirmation
 
-Date: 2026-10-23 · PR: not opened yet
+Date: 2026-10-23 · PR #2134
 
 ## Context
 
