@@ -936,6 +936,32 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     FlowJump(input, target, spanFrom(t))
   }
 
+  /**
+    * Parse a flow activity expression: `activity '<type>'`
+    *
+    * An activity stage declares a non-SQL executor invocation. The type string is resolved at
+    * runtime from registered ActivityExecutor instances.
+    */
+  def flowActivityExpr(input: Relation): FlowActivity = node {
+    val t            = consume(WvletToken.ACTIVITY)
+    val activityType = expression()
+    FlowActivity(input, activityType, spanFrom(t))
+  }
+
+  /**
+    * Parse a for-each fan-out with activity: `for each <key_expr> activity '<type>'`
+    *
+    * The key expression produces the fan-out value for each input row. One activity invocation runs
+    * per distinct key value, with bounded concurrency and queued admission.
+    */
+  def forEachFanOutExpr(input: Relation): ForEachFanOut = node {
+    val t = consume(WvletToken.FOR)
+    consume(WvletToken.EACH)
+    val keyExpr = expression()
+    val act     = flowActivityExpr(input)
+    ForEachFanOut(input, keyExpr, act, spanFrom(t))
+  }
+
   def statement(): LogicalPlan = node {
     val t = scanner.lookAhead()
     t.token match
@@ -2421,6 +2447,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         flowWaitExpr(input)
       case WvletToken.ACTIVATE =>
         flowActivateExpr(input)
+      case WvletToken.ACTIVITY =>
+        flowActivityExpr(input)
+      case WvletToken.FOR if scanner.peekAhead(2).lift(1).exists(_.token == WvletToken.EACH) =>
+        forEachFanOutExpr(input)
       case WvletToken.END =>
         flowEndExpr(input)
       case WvletToken.R_ARROW =>

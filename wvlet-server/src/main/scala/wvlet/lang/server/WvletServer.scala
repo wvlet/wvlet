@@ -3,9 +3,11 @@ package wvlet.lang.server
 import org.jline.nativ.OSInfo
 import wvlet.lang.api.v1.flow.FlowApi
 import wvlet.lang.api.v1.frontend.{FileApi, FrontendApi, FrontendRPC}
+import wvlet.lang.api.v1.task.TaskApi
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.activity.{ItemStores, TaskQueue}
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.{ThreadManager, WvletScriptRunnerConfig}
 import wvlet.uni.cli.launcher.option
@@ -61,6 +63,9 @@ case class WvletServerConfig(
   def resolvedAuthToken: Option[String] = authToken.orElse(sys.env.get("WVLET_SERVER_TOKEN"))
 
 object WvletServer extends LogSupport:
+
+  /** How often the task queue resolves attempts whose worker stopped heartbeating */
+  val LeaseSweepIntervalMillis: Long = 5_000L
 
   /**
     * Multi-service RPC dispatcher. uni-netty's `RPCHandler` only takes a single `RPCRouter`, so
@@ -235,30 +240,45 @@ object WvletServer extends LogSupport:
             workEnv: WorkEnv,
             config: WvletScriptRunnerConfig,
             connectorProvider: ConnectorProvider,
-            threadManager: ThreadManager
+            threadManager: ThreadManager,
+            taskQueue: TaskQueue
         ) =>
           ScriptRunnerSessions(
             workEnv,
             config,
             connectorProvider,
             threadManager,
+            taskQueue,
             ScriptRunnerSessions.DefaultIdleTimeout
           )
       }
       .bindImpl[FrontendApi, FrontendApiImpl]
       .bindImpl[FileApi, FileApiImpl]
       .bindImpl[FlowApi, FlowApiImpl]
+      .bindImpl[TaskApi, TaskApiImpl]
+      // Durable by default: queued and in-flight attempts survive a server restart
+      .bindProvider[WorkEnv, TaskQueue] { (workEnv: WorkEnv) =>
+        val queue = TaskQueue(ItemStores.forWorkEnv(workEnv))
+        queue.startLeaseSweeper(WvletServer.LeaseSweepIntervalMillis)
+        queue
+      }
+      .onShutdown { queue =>
+        queue.close()
+        queue.store.close()
+      }
       .bindSingleton[StaticContentApi]
       .bindProvider[Session, NettyHttpServer] { (session: Session) =>
         val frontendApi = session.build[FrontendApi]
         val fileApi     = session.build[FileApi]
         val flowApi     = session.build[FlowApi]
+        val taskApi     = session.build[TaskApi]
         val staticApi   = session.build[StaticContentApi]
         val rpc         = MultiRpcHandler(
           Seq(
             RPCRouter.of[FrontendApi](frontendApi),
             RPCRouter.of[FileApi](fileApi),
-            RPCRouter.of[FlowApi](flowApi)
+            RPCRouter.of[FlowApi](flowApi),
+            RPCRouter.of[TaskApi](taskApi)
           )
         )
         val guardedRpc = resolvedConf

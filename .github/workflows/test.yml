@@ -82,7 +82,8 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
+          check-latest: true
           cache: pnpm
           cache-dependency-path: ./pnpm-lock.yaml
       - name: Install pnpm dependencies
@@ -126,7 +127,8 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
+          check-latest: true
           cache: pnpm
           cache-dependency-path: 'pnpm-lock.yaml'
       - name: Install pnpm dependencies

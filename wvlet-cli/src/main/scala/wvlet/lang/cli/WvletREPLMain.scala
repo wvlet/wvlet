@@ -13,8 +13,12 @@ import wvlet.lang.cli.terminal.HeadlessTerminal
 import wvlet.lang.cli.terminal.JLine3Terminal
 import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.QueryExecutor
+import wvlet.lang.runner.QueryExecutorConfig
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
+import wvlet.lang.runner.activity.ItemStore
+import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.io.IO
 import wvlet.uni.log.LogSupport
@@ -107,6 +111,20 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
       // shouldn't try to resolve
       .bindProvider[WorkEnv, ConnectorProvider] { (workEnv: WorkEnv) =>
         ConnectorProvider(workEnv)
+      }
+      // Activity items of `run flow` survive the REPL, so a later resume reuses finished items
+      .bindProvider[WorkEnv, ItemStore] { (workEnv: WorkEnv) =>
+        ItemStores.forWorkEnv(workEnv)
+      }
+      .onShutdown(_.close())
+      .bindProvider[ConnectorProvider, WorkEnv, ItemStore, QueryExecutor] {
+        (connectorProvider: ConnectorProvider, workEnv: WorkEnv, itemStore: ItemStore) =>
+          QueryExecutor(
+            connectorProvider,
+            currentProfile,
+            workEnv,
+            QueryExecutorConfig().withItemStore(itemStore)
+          )
       }
       .bindInstance[WvletScriptRunnerConfig](
         WvletScriptRunnerConfig(

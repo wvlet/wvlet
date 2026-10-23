@@ -281,6 +281,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case DEPENDS  extends WvletToken(Keyword, "depends")
   case WAIT     extends WvletToken(Keyword, "wait")
   case ACTIVATE extends WvletToken(Keyword, "activate")
+  case ACTIVITY extends WvletToken(Keyword, "activity")
+  case EACH     extends WvletToken(Keyword, "each")
   case END      extends WvletToken(Keyword, "end")
 
   // Connector tool invocation
@@ -307,6 +309,8 @@ object WvletToken:
     WvletToken.END,
     WvletToken.WAIT,
     WvletToken.ACTIVATE,
+    WvletToken.ACTIVITY,
+    WvletToken.EACH,
     WvletToken.ROUTE,
     WvletToken.FORK,
     WvletToken.MERGE,

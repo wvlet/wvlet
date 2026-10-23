@@ -70,6 +70,8 @@ object FlowApi extends RxRouterProvider:
     *   Epoch millis when the run reached a terminal state
     * @param runTimeMillis
     *   The logical run time of the run (schedule fire time for scheduled/backfill runs)
+    * @param cancelRequested
+    *   Set while a cancellation of a running run is still winding down its in-flight work
     */
   case class FlowRunSummary(
       runId: String,
@@ -78,7 +80,8 @@ object FlowApi extends RxRouterProvider:
       state: String,
       startedAtMillis: Long,
       finishedAtMillis: Option[Long] = None,
-      runTimeMillis: Option[Long] = None
+      runTimeMillis: Option[Long] = None,
+      cancelRequested: Boolean = false
   )
 
   /**

@@ -732,6 +732,18 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           code(e) {
             text("end()")
           }
+      case a: FlowActivity =>
+        val prev = relation(a.child)
+        prev /
+          code(a) {
+            group(wl("activity", expr(a.activityType)))
+          }
+      case f: ForEachFanOut =>
+        val prev = relation(f.child)
+        prev /
+          code(f) {
+            group(wl("for each", expr(f.keyExpr), "activity", expr(f.activity.activityType)))
+          }
       case other =>
         unsupportedNode(s"relation ${other.nodeName}", other.span)
 

@@ -13,7 +13,12 @@
  */
 package wvlet.lang.api.v1.frontend
 
-import wvlet.lang.api.v1.frontend.client.{FileApiClient, FlowApiClient, FrontendApiClient}
+import wvlet.lang.api.v1.frontend.client.{
+  FileApiClient,
+  FlowApiClient,
+  FrontendApiClient,
+  TaskApiClient
+}
 import wvlet.uni.http.{HttpAsyncClient, HttpSyncClient}
 
 /**
@@ -33,6 +38,7 @@ object FrontendRPC:
     val FrontendApi: FrontendApiClient.SyncClient = new FrontendApiClient.SyncClient(http)
     val FileApi: FileApiClient.SyncClient         = new FileApiClient.SyncClient(http)
     val FlowApi: FlowApiClient.SyncClient         = new FlowApiClient.SyncClient(http)
+    val TaskApi: TaskApiClient.SyncClient         = new TaskApiClient.SyncClient(http)
     override def close(): Unit                    = http.close()
   end RPCSyncClient
 
@@ -40,6 +46,7 @@ object FrontendRPC:
     val FrontendApi: FrontendApiClient.AsyncClient = new FrontendApiClient.AsyncClient(http)
     val FileApi: FileApiClient.AsyncClient         = new FileApiClient.AsyncClient(http)
     val FlowApi: FlowApiClient.AsyncClient         = new FlowApiClient.AsyncClient(http)
+    val TaskApi: TaskApiClient.AsyncClient         = new TaskApiClient.AsyncClient(http)
     override def close(): Unit                     = http.close()
   end RPCAsyncClient
 

@@ -1,5 +1,7 @@
 package wvlet.lang.server
 
+import wvlet.lang.runner.activity.InMemoryItemStore
+import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.api.v1.flow.FlowApi
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
@@ -80,6 +82,7 @@ class FlowApiImplTest extends WvletDITest:
     _.bindImpl[FlowApi, FlowApiImpl]
       .bindInstance[WorkEnv](WorkEnv(workDir))
       .bindInstance[Profile](Profile.defaultDuckDBProfile)
+      .bindInstance[TaskQueue](TaskQueue(InMemoryItemStore()))
 
   test("list recorded runs most recent first") {
     val api  = dep[FlowApi]
@@ -141,6 +144,21 @@ class FlowApiImplTest extends WvletDITest:
     val registry = FlowRunRegistry.forWorkEnv(WorkEnv(workDir))
     registry.cancelRequested("run3") shouldBe true
     registry.clearCancelRequest("run3")
+  }
+
+  test("surface a pending cancel request only on non-terminal runs") {
+    val api      = dep[FlowApi]
+    val registry = FlowRunRegistry.forWorkEnv(WorkEnv(workDir))
+    def flags    = api.listRuns(FlowApi.FlowRunListRequest()).map(r => r.runId -> r.cancelRequested)
+    try
+      flags.filter(_._2) shouldBe Nil
+      api.cancelRun(FlowApi.FlowRunRequest("run3")).accepted shouldBe true
+      // A stale request on a terminal run is not reported as pending
+      registry.requestCancel("run1")
+      flags.toMap shouldBe Map("run1" -> false, "run2" -> false, "run3" -> true, "run4" -> false)
+    finally
+      registry.clearCancelRequest("run3")
+      registry.clearCancelRequest("run1")
   }
 
   test("report cancelling a terminal run as a no-op") {
