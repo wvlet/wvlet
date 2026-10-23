@@ -441,7 +441,7 @@ flow investigate_customers = {
   is never retried automatically unless `retry_uncertain: true` is set
 - A rerun reuses failed items, so a stage retry (`retries:`) repeats their failure. Set
   `retry_failed: true` to run them again under a new attempt. Cancelled items run again
-  when the run is resumed
+  only when the run is resumed, not on a stage retry
 - Cancelling a run stops admitting items and asks running ones to stop. An item stays
   `cancelling` until its worker confirms, then becomes `cancelled`; a late result still
   lands. The run waits up to 60s for confirmation, then ends with unconfirmed items still

@@ -336,7 +336,7 @@ class BatchExecutorTest extends UniTest:
     store.close()
   }
 
-  test("should re-run cancelled items when a batch starts again") {
+  test("should re-run cancelled items when a resumed batch starts again") {
     val store = newStore()
     val runId = ULID.newULIDString
     val batch = BatchExecutor(ControlledExecutor(), store, BatchConfig())
@@ -345,7 +345,7 @@ class BatchExecutorTest extends UniTest:
       List("cancelled", "cancelled")
 
     val resumed = ControlledExecutor()
-    val result  = BatchExecutor(resumed, store, BatchConfig()).execute(
+    val result  = BatchExecutor(resumed, store, BatchConfig().withRerunCancelled(true)).execute(
       runId,
       "rerun_cancelled",
       "test",
@@ -353,6 +353,48 @@ class BatchExecutorTest extends UniTest:
     )
     resumed.startedItems.asScala.toSet shouldBe Set("a", "b")
     result.items.map(_.state) shouldBe List("succeeded", "succeeded")
+    store.close()
+  }
+
+  test("should keep executor-cancelled items unless the batch starts as a resume") {
+    val store = newStore()
+    val runId = ULID.newULIDString
+    // Cancels item a on its own, without a batch cancel
+    class SelfCancellingExecutor extends ActivityExecutor:
+      val startedItems          = ConcurrentHashMap.newKeySet[String]()
+      override def name: String = "test"
+      override def execute(request: ActivityRequest, heartbeat: () => Unit): ActivityResult =
+        val itemKey = request.input("item").toString
+        startedItems.add(itemKey)
+        if itemKey == "a" then
+          ActivityResult.Cancelled
+        else
+          ActivityResult.Completed(Map("result" -> s"done-${itemKey}"))
+      override def cancel(attemptId: String): CancelAck = CancelAck.Acknowledged
+
+    def start(config: BatchConfig): (SelfCancellingExecutor, BatchResult) =
+      val executor = SelfCancellingExecutor()
+      val result   = BatchExecutor(executor, store, config).execute(
+        runId,
+        "self_cancelled",
+        "test",
+        List("a", "b")
+      )
+      (executor, result)
+
+    val (first, firstResult) = start(BatchConfig())
+    first.startedItems.asScala.toSet shouldBe Set("a", "b")
+    firstResult.items.map(_.state) shouldBe List("cancelled", "succeeded")
+
+    // A start within the same run (e.g. a stage retry) keeps the cancelled item
+    val (retried, retriedResult) = start(BatchConfig().withRetryFailed(true))
+    retried.startedItems.asScala.toSet shouldBe Set.empty
+    retriedResult.items.map(_.state) shouldBe List("cancelled", "succeeded")
+
+    // A resume re-runs it under a new attempt
+    val (resumed, resumedResult) = start(BatchConfig().withRerunCancelled(true))
+    resumed.startedItems.asScala.toSet shouldBe Set("a")
+    resumedResult.items.map(_.attempts) shouldBe List(2, 1)
     store.close()
   }
 

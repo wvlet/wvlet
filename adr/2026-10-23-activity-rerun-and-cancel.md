@@ -12,6 +12,7 @@ Flow runs also dispatched activity items only when the flow ran on a server. CLI
 
 - Failed items are re-run only when the stage sets `retry_failed: true`. It mirrors `retry_uncertain`, because a failed agent action may already have had side effects, and the two policies stay independent.
 - Cancelled items are re-run whenever a cancelled run resumes. `cancelled` is confirmed (no attempt is still running), and a cancelled run is never retried on its own, so the resume is the explicit opt-in.
+  - Amended 2026-10-23: only the first stage attempt of a resumed run re-runs them (`BatchConfig.rerunCancelled`). An executor can return `cancelled` on its own, and a stage retry in the same run must not re-run such an item without the resume.
 - A cancel stops admission and cancels queued items. Running items get a cancel request and stay `cancelling` until their worker confirms, reports a result, or times out. The batch waits for them for at most the cancel grace period (60s), then returns and leaves the rest `cancelling`. A late result still lands, because `cancelling` is not a final state.
 - An activity stage's attempt drains its batch on a flow cancel instead of being interrupted. SQL stages keep the interrupt path. A flow timeout still interrupts, because it is an error, not an operator cancel.
 - Every entry point (server `run flow`, CLI `flow run|resume|backfill|scheduler`, and the REPL) records activity items in one item store. The CLI and REPL open `<target>/flow-runs/items.db`, and `WVLET_ITEM_STORE=memory` opts out.

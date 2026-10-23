@@ -676,7 +676,10 @@ class FlowExecutor(
                   table,
                   stageConfigs(ls.name),
                   materialize,
-                  attemptKey
+                  attemptKey,
+                  // Re-executed stages restart their attempt count on resume, so attempt 1 is
+                  // the resume itself and later attempts are stage retries within this run
+                  resumeStart = resumeFrom.isDefined && attemptKey._2 == 1
                 )
               case None =>
                 materialize(ls)
@@ -1354,8 +1357,9 @@ class FlowExecutor(
     * Run an activity stage: evaluate the stage input, invoke the activity once per distinct `for
     * each` key (or once for a bare `activity`) through a [[BatchExecutor]], and materialize one row
     * per item (`item_key, state, attempts, output, error`) as the stage output. Items are keyed by
-    * the run id, so a resumed run reuses finished items. The stage fails when any item failed or
-    * has an unknown outcome
+    * the run id, so a resumed run reuses finished items; cancelled items run again only when
+    * `resumeStart` marks the first attempt of a resumed run. The stage fails when any item failed
+    * or has an unknown outcome
     */
   private def runActivityStage(
       ls: FlowLowering.LoweredStage,
@@ -1364,7 +1368,8 @@ class FlowExecutor(
       table: String,
       stageConfig: StageExecutionConfig,
       materialize: FlowLowering.LoweredStage => Unit,
-      attemptKey: (String, Int)
+      attemptKey: (String, Int),
+      resumeStart: Boolean
   )(using ctx: Context): Unit =
     val itemColumn             = "__wv_item"
     val itemKeys: List[String] =
@@ -1410,7 +1415,8 @@ class FlowExecutor(
       timeoutMillis = stageConfig.timeoutMillis,
       heartbeatMillis = stageConfig.heartbeatMillis,
       retryUncertain = stageConfig.retryUncertain,
-      retryFailed = stageConfig.retryFailed
+      retryFailed = stageConfig.retryFailed,
+      rerunCancelled = resumeStart
     )
     workEnv.info(
       s"Stage ${ls.name} invokes activity '${spec.activityType}' for ${itemKeys

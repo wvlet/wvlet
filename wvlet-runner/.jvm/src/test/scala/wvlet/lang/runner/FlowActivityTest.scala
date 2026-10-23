@@ -168,6 +168,46 @@ class FlowActivityTest extends UniTest:
 
     override def cancel(attemptId: String): CancelAck = CancelAck.Acknowledged
 
+  /**
+    * Cancels the items in `cancelKeys` on its own (without a run cancel), fails the first
+    * `failures(item)` attempts of an item, and completes the rest
+    */
+  class SelfCancellingExecutor(
+      cancelKeys: Set[String] = Set.empty,
+      failures: Map[String, Int] = Map.empty
+  ) extends ActivityExecutor:
+    val calls                 = ConcurrentHashMap[String, AtomicInteger]()
+    override def name: String = "test.self_cancel"
+
+    def callsOf(item: String): Int = Option(calls.get(item)).map(_.get()).getOrElse(0)
+
+    override def execute(request: ActivityRequest, heartbeat: () => Unit): ActivityResult =
+      val item = request.input("item").toString
+      val n    = calls.computeIfAbsent(item, _ => AtomicInteger(0)).incrementAndGet()
+      if cancelKeys.contains(item) then
+        ActivityResult.Cancelled
+      else if n <= failures.getOrElse(item, 0) then
+        ActivityResult.Failed(s"first try of ${item} failed")
+      else
+        ActivityResult.Completed(Map("echo" -> item))
+
+    override def cancel(attemptId: String): CancelAck = CancelAck.Acknowledged
+
+  /** Holds its item until the run cancels it, and confirms the cancellation */
+  class ConfirmingGateExecutor extends ActivityExecutor:
+    val started               = CountDownLatch(1)
+    val gate                  = CountDownLatch(1)
+    override def name: String = "test.self_cancel"
+
+    override def execute(request: ActivityRequest, heartbeat: () => Unit): ActivityResult =
+      started.countDown()
+      gate.await(10, TimeUnit.SECONDS)
+      ActivityResult.Cancelled
+
+    override def cancel(attemptId: String): CancelAck =
+      gate.countDown()
+      CancelAck.Acknowledged
+
   /** Holds its item until the test releases it, and does not confirm the cancellation */
   class GateExecutor extends ActivityExecutor:
     val started               = CountDownLatch(1)
@@ -211,6 +251,25 @@ class FlowActivityTest extends UniTest:
     result.isSuccess shouldBe false
     executor.calls.get() shouldBe 2
     result.stageResult("work").get.attempts shouldBe 2
+  }
+
+  test("keep executor-cancelled items of an activity stage on a stage retry") {
+    val executor = SelfCancellingExecutor(cancelKeys = Set("1"), failures = Map("2" -> 1))
+    val result   = runFlow(
+      """flow KeepCancelled = {
+        |  stage targets = from [[1], [2]] as t(id)
+        |  stage work with { retries: 1, retry_delay: 1ms, retry_failed: true } = from targets | for each _.id activity 'test.self_cancel'
+        |}""".stripMargin,
+      activityExecutors = List(executor)
+    )
+    result.stageResult("work").get.attempts shouldBe 2
+    // The retry re-ran the failed item only; the cancelled item needs a resume to run again
+    executor.callsOf("2") shouldBe 2
+    executor.callsOf("1") shouldBe 1
+    // A cancelled item does not fail the stage; it stays cancelled until a resume
+    result.stageResult("work").get.state shouldBe StageState.Success
+    stageRows(result, "work").map(r => r("item_key") -> r("state")) shouldBe
+      List("1" -> "cancelled", "2" -> "succeeded")
   }
 
   test("end a cancelled activity stage once its batch drains its items") {
@@ -360,6 +419,95 @@ class FlowActivityTest extends UniTest:
     resumedExecutor.requests.asScala.toSet shouldBe Set("2")
     stageRows(resumed, "work").map(r => r("item_key") -> r("attempts")) shouldBe
       List("1" -> "1", "2" -> "2")
+  }
+
+  test("re-run cancelled items of an activity stage when a run is resumed") {
+    val dir         = Files.createTempDirectory("wv-activity-resume-cancelled")
+    val registry    = FlowRunRegistry(dir.resolve("runs"))
+    val itemsDb     = dir.resolve("items.db")
+    val (flow, ctx) = compileFlow("""flow ResumeCancelled = {
+        |  stage targets = from [[1], [2]] as t(id)
+        |  stage work with { retries: 1, retry_delay: 1ms } = from targets | for each _.id activity 'test.self_cancel'
+        |}""".stripMargin)
+
+    def runWith(
+        executor: SelfCancellingExecutor,
+        resumeFrom: Option[FlowRunRecord]
+    ): FlowExecutionResult =
+      val store = SQLiteItemStore(itemsDb)
+      try
+        FlowExecutor(
+          connector,
+          workEnv,
+          registry = Some(registry),
+          activityExecutors = List(executor),
+          itemStore = Some(store)
+        ).execute(flow, resumeFrom = resumeFrom)(using ctx)
+      finally store.close()
+
+    // Item 1 cancels itself and item 2 keeps failing, so the run fails after its stage retry
+    val first = SelfCancellingExecutor(cancelKeys = Set("1"), failures = Map("2" -> Int.MaxValue))
+    val firstRun = runWith(first, None)
+    firstRun.isSuccess shouldBe false
+    first.callsOf("1") shouldBe 1
+
+    // The resume re-admits the cancelled item; the failed item stays failed without retry_failed
+    val resumedExecutor = SelfCancellingExecutor()
+    val resumed         = runWith(resumedExecutor, registry.get(firstRun.runId))
+    resumedExecutor.callsOf("1") shouldBe 1
+    resumedExecutor.callsOf("2") shouldBe 0
+    resumed.isSuccess shouldBe false
+  }
+
+  test("re-run items of a cancelled run when it is resumed") {
+    val dir         = Files.createTempDirectory("wv-activity-resume-cancelled-run")
+    val registry    = FlowRunRegistry(dir.resolve("runs"))
+    val itemsDb     = dir.resolve("items.db")
+    val (flow, ctx) = compileFlow("""flow ResumeCancelledRun = {
+        |  stage targets = from [[1]] as t(id)
+        |  stage work = from targets | for each _.id activity 'test.self_cancel'
+        |}""".stripMargin)
+
+    def flowExecutorWith(executor: ActivityExecutor, store: SQLiteItemStore): FlowExecutor =
+      FlowExecutor(
+        connector,
+        workEnv,
+        registry = Some(registry),
+        activityExecutors = List(executor),
+        itemStore = Some(store)
+      )
+
+    val gate         = ConfirmingGateExecutor()
+    val store        = SQLiteItemStore(itemsDb)
+    val pool         = Executors.newSingleThreadExecutor()
+    val cancelledRun =
+      try
+        val flowExecutor = flowExecutorWith(gate, store)
+        val future       = pool.submit(
+          new Callable[FlowExecutionResult]:
+            override def call(): FlowExecutionResult =
+              flowExecutor.execute(flow, resumeFrom = None)(using ctx)
+        )
+        gate.started.await(5, TimeUnit.SECONDS) shouldBe true
+        flowExecutor.cancel()
+        future.get(10, TimeUnit.SECONDS)
+      finally
+        gate.gate.countDown()
+        pool.shutdownNow()
+        store.close()
+    cancelledRun.stageResult("work").get.state shouldBe StageState.Cancelled
+
+    val resumedExecutor = SelfCancellingExecutor()
+    val resumedStore    = SQLiteItemStore(itemsDb)
+    val resumed         =
+      try
+        flowExecutorWith(resumedExecutor, resumedStore).execute(
+          flow,
+          resumeFrom = registry.get(cancelledRun.runId)
+        )(using ctx)
+      finally resumedStore.close()
+    resumedExecutor.callsOf("1") shouldBe 1
+    resumed.isSuccess shouldBe true
   }
 
 end FlowActivityTest
