@@ -1,5 +1,5 @@
 {
-  // This file is not used in compilation. It is here just for a nice editor experience.
+  // Not used by the Docusaurus build; used by the editor and `pnpm run typecheck` (checked in CI).
   "extends": "@docusaurus/tsconfig",
   "compilerOptions": {
     // TypeScript 7 removed baseUrl; unset the one inherited from @docusaurus/tsconfig and
