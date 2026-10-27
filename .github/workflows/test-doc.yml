@@ -22,6 +22,8 @@ jobs:
               - 'website/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
+              # docusaurus.config.ts imports the release version from this file
+              - 'vscode-wvlet/package.json'
   build-doc:
     name: Build doc
     needs: changes
@@ -40,5 +42,7 @@ jobs:
           cache-dependency-path: ./pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Typecheck website
+        run: pnpm --filter website run typecheck
       - name: Build website
         run: pnpm --filter website run build

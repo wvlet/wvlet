@@ -213,9 +213,15 @@ importers:
       '@docusaurus/types':
         specifier: ^3.10.2
         version: 3.10.2(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.30))(esbuild@0.28.2)(html-minifier-terser@7.2.0)(postcss@8.5.30)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@types/prismjs':
+        specifier: ^1.26.6
+        version: 1.26.6
       typescript:
         specifier: ~7.0.2
         version: 7.0.2
+      utility-types:
+        specifier: ^3.11.0
+        version: 3.11.0
 
   wvlet-ui-main: {}
 

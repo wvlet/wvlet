@@ -33,7 +33,9 @@
     "@docusaurus/module-type-aliases": "^3.10.2",
     "@docusaurus/tsconfig": "^3.10.2",
     "@docusaurus/types": "^3.10.2",
-    "typescript": "~7.0.2"
+    "@types/prismjs": "^1.26.6",
+    "typescript": "~7.0.2",
+    "utility-types": "^3.11.0"
   },
   "browserslist": {
     "production": [
