@@ -10,7 +10,7 @@ keywords: [wvlet, ai agents, llm, sql, flow-style query, cheat sheet, duckdb, tr
 
 Wvlet is a flow-style query language that compiles to SQL for DuckDB, Trino, Snowflake, and Hive. A query starts with `from` and lists one operator per line in the order the data is processed. That makes Wvlet **the query language agents edit well**: adding a filter, a column, or an aggregation is a one-line append, not a rewrite of nested SQL.
 
-This page is written for AI coding agents and the people who prompt them. The whole documentation is also available as plain text at [llms.txt](https://wvlet.org/wvlet/llms.txt) (index) and [llms-full.txt](https://wvlet.org/wvlet/llms-full.txt) (all pages). Every doc page has a Markdown copy at the same URL with a `.md` suffix.
+This page is written for AI coding agents and the people who prompt them. The whole documentation is also available as plain text at [llms.txt](https://wvlet.org/wvlet/llms.txt) (index) and [llms-full.txt](https://wvlet.org/wvlet/llms-full.txt) (all pages). Every user-facing doc page has a Markdown copy at the same URL with a `.md` suffix.
 
 ## When should I choose Wvlet?
 
