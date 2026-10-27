@@ -807,12 +807,7 @@ object Typer extends Phase("typer") with LogSupport:
     case p: PartialQueryApply =>
       // The inlined body is spliced above the already-resolved child and is not revisited by
       // the enclosing bottom-up traversal, so resolve and type the body recursively
-      val inlined = FunctionInliner.resolvePartialQuery(p)
-      inlined match
-        case rel: Relation if !(inlined eq p) =>
-          prepareRelation(rel)
-        case _ =>
-          p
+      prepareRelation(FunctionInliner.resolvePartialQuery(p))
     case u: UnaryRelation if hasUnresolvedUnderscore(u) =>
       val contextType = u.inputRelation.relationType
       u.transformChildExpressions { case expr: Expression =>

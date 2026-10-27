@@ -138,7 +138,7 @@ Engines:
 | `CASE ... END` | `case` has no `end`: `case when c then a else b as col`. Or use `if c then a else b`. |
 | `// comment` | `//` is integer division. Use `-- comment`. |
 | Double quotes for column names, as in SQL | `"x"` is a string literal. Use back quotes: `` `x` ``. |
-| `_.count_distinct(col)` | Use `col.count_distinct` (or `count(distinct col)`). |
+| `_.count_distinct(col)`, `_.max_by(a, b)` | Call the function on the column: `col.count_distinct`, `a.max_by(b)` (or SQL `count(distinct col)`, `max_by(a, b)`). |
 | Upper-case keywords (`FROM`, `WHERE`) | Keywords are lower-case: `from`, `where`. |
 | Rewriting the whole query to add a step | Append a line: another `where`, `add`, or `agg` after the existing ones. |
 

@@ -1,0 +1,31 @@
+-- Column aggregation methods documented in website/docs/syntax/index.md.
+-- The column is the receiver (product.count_distinct), not an argument of _ (_.count_distinct(product))
+val sales(store_id, amount, product) = [
+  [1, 10, "A"],
+  [2, 20, "B"],
+  [1, 30, "C"],
+  [2, 40, "D"],
+  [1, 50, "E"],
+  [1, 60, "A"]
+]
+
+from sales
+group by store_id
+agg
+  _.count as transaction_count,
+  product.count_distinct as unique_products,
+  product.max_by(amount) as best_product,
+  product.min_by(amount) as worst_product
+order by store_id
+
+test _.output should be """
+┌──────────┬───────────────────┬─────────────────┬──────────────┬───────────────┐
+│ store_id │ transaction_count │ unique_products │ best_product │ worst_product │
+│   int    │       long        │      long       │    string    │    string     │
+├──────────┼───────────────────┼─────────────────┼──────────────┼───────────────┤
+│        1 │                 4 │               3 │ A            │ A             │
+│        2 │                 2 │               2 │ D            │ B             │
+├──────────┴───────────────────┴─────────────────┴──────────────┴───────────────┤
+│ 2 rows                                                                        │
+└───────────────────────────────────────────────────────────────────────────────┘
+"""
