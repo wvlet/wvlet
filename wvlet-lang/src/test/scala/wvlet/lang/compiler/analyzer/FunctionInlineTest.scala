@@ -110,4 +110,23 @@ class FunctionInlineTest extends UniTest:
     e.getMessage shouldContain "-> pq_a"
   }
 
+  test("report a user error for an undefined partial query") {
+    val e = intercept[WvletLangException] {
+      generateSQL("from [[10], [25]] as person(age) | no_such_pq")
+    }
+    e.statusCode shouldBe StatusCode.PARTIAL_QUERY_NOT_FOUND
+    e.getMessage shouldContain "no_such_pq"
+  }
+
+  test("suggest concat when union is used as a set operator") {
+    val e = intercept[WvletLangException] {
+      generateSQL("""val a(x) = [[1]]
+          |val b(x) = [[2]]
+          |from a union { from b }
+          |""".stripMargin)
+    }
+    e.statusCode shouldBe StatusCode.PARTIAL_QUERY_NOT_FOUND
+    e.getMessage shouldContain "concat"
+  }
+
 end FunctionInlineTest

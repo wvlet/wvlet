@@ -1220,6 +1220,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // executing the SQL then reports a clear missing-table error
         warn(s"Unexpanded model reference in SQL generation: ${m.name.fullName}")
         selectAll(text(m.name.fullName), block)
+      case p: PartialQueryApply =>
+        // The Typer inlines every partial query or reports it as missing, so reaching here is a
+        // compiler bug. Fail instead of re-dispatching the same leaf node forever below
+        throw StatusCode
+          .UNEXPECTED_STATE
+          .newException(
+            s"Unresolved partial query: ${p.partialQueryRef.leafName}",
+            ctx.sourceLocationAt(p.span)
+          )
       case r: Relation =>
         selectExpr(
           // Start a new nested SQLBlock

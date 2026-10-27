@@ -12,6 +12,11 @@ import wvlet.uni.log.LogSupport
 object SourceIO extends SourceIOCompat with LogSupport:
   val ignoredFolders: Set[String] = Set("spec", "target")
 
+  private val windowsDrivePath = "[A-Za-z]:[\\\\/].*".r
+
+  /** True for absolute local paths: `/...` or a Windows drive path such as `C:\...` */
+  def isAbsolutePath(path: String): Boolean = path.startsWith("/") || windowsDrivePath.matches(path)
+
   def listSourceFiles(path: String): Seq[VirtualFile] = listSourceFiles(LocalFile(path))
 
   def listSourceFiles(path: VirtualFile, level: Int = 0): Seq[VirtualFile] =

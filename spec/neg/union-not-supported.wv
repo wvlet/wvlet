@@ -1,0 +1,6 @@
+-- Wvlet has no union keyword, so `union` is parsed as a partial query application.
+-- It must be reported as a user error suggesting concat, not crash the SQL generator
+val a(x) = [[1]]
+val b(x) = [[2]]
+
+from a union { from b }

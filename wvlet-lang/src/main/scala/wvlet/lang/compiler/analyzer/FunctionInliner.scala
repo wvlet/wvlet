@@ -644,12 +644,25 @@ object FunctionInliner extends ContextLogSupport:
               }
               .asInstanceOf[Relation]
           case _ =>
-            // Not a partial query, keep as is (might be an error)
-            context.logWarn(s"'${partialQueryName}' is not a partial query definition")
-            p
+            throw StatusCode
+              .PARTIAL_QUERY_NOT_FOUND
+              .newException(
+                s"'${partialQueryName}' is not a partial query definition",
+                context.sourceLocationAt(p.span)
+              )
       case None =>
-        context.logWarn(s"Partial query '${partialQueryName}' not found")
-        p
+        val hint =
+          // Wvlet has no union keyword, so `q1 union { q2 }` is parsed as a partial query
+          if partialQueryName.name.equalsIgnoreCase("union") then
+            ". Wvlet has no union operator: use concat { ... } (UNION ALL), and add dedup for UNION"
+          else
+            ""
+        throw StatusCode
+          .PARTIAL_QUERY_NOT_FOUND
+          .newException(
+            s"Partial query '${partialQueryName}' is not found${hint}",
+            context.sourceLocationAt(p.span)
+          )
     end match
   end resolvePartialQuery
 

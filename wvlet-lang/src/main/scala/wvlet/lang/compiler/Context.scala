@@ -18,6 +18,7 @@ import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.InMemoryCatalog
+import wvlet.lang.compiler.analyzer.DataFilePath
 import wvlet.lang.compiler.analyzer.FileSchemaCache
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.compiler.typer.TyperError
@@ -357,8 +358,12 @@ case class Context(
     .getAllCompilationUnits
     .find(_.sourceFile.fileName == path)
 
+  /**
+    * Resolve a data file path against the work environment folder. Remote URLs (`s3://...`) and
+    * absolute paths (`/...`, `C:\...`) are returned as is.
+    */
   def dataFilePath(relativePath: String): String =
-    if relativePath.startsWith("s3://") || relativePath.startsWith("https://") then
+    if DataFilePath.isRemote(relativePath) || SourceIO.isAbsolutePath(relativePath) then
       relativePath
     else
       s"${global.compilerOptions.workEnv.path}/${relativePath}"

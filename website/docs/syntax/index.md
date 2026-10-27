@@ -73,7 +73,7 @@ where ...        -- Apply filtering conditions
 where ...        -- [optional] Apply more filtering conditions
 add   ... as ... -- Add new columns
 group by ...     -- Group rows by the given columns
-agg ...          -- Add group aggregation expressions, e.g., _.count, _.sum 
+agg ...          -- Add group aggregation expressions, e.g., _.count, amount.sum
 where ...        -- Apply filtering conditions for groups (HAVING clause in SQL)
 exclude ...      -- Remove columns from the output
 shift ...        -- Shift the column position to the left
@@ -163,8 +163,9 @@ When using `agg` after `group by`, you can use these aggregation functions:
 - `column.sum` - Sum of column values
 - `column.avg` - Average of column values
 - `column.min` / `column.max` - Min/max values
-- `_.count_distinct(column)` - Count distinct values
-- `_.array_agg(column)` - Collect values into array
+- `column.count_distinct` - Count distinct values
+- `column.to_array` - Collect values into an array
+- `column.max_by(other)` / `column.min_by(other)` - Value of `column` at the max/min of `other`
 
 ## Joining & Combining Data
 
@@ -1012,9 +1013,9 @@ agg
   amount.avg as avg_sale,
   amount.min as min_sale,
   amount.max as max_sale,
-  _.count_distinct(product) as unique_products,
-  _.max_by(product, amount) as best_product,
-  _.min_by(product, amount) as worst_product;
+  product.count_distinct as unique_products,
+  product.max_by(amount) as best_product,
+  product.min_by(amount) as worst_product;
 
 ┌──────────┬───────────────────┬─────────────┬───────────────┬──────────┬──────────┬─────────────────┬──────────────┬───────────────┐
 │ store_id │ transaction_count │ total_sales │   avg_sale    │ min_sale │ max_sale │ unique_products │ best_product │ worst_product │
@@ -1075,8 +1076,8 @@ group by date, store
 agg 
   _.count as transactions,
   amount.sum as daily_total,
-  _.array_agg(category) as categories_sold,
-  _.array_agg(amount) as amounts;
+  category.to_array as categories_sold,
+  amount.to_array as amounts;
 
 ┌────────────┬───────┬──────────────┬─────────────┬───────────────────────┬───────────────┐
 │    date    │ store │ transactions │ daily_total │   categories_sold     │    amounts    │
@@ -1142,7 +1143,7 @@ agg
   _.count as num_orders,
   quantity.sum as total_units_sold,
   (quantity * unit_price).sum as total_revenue,
-  _.count_distinct(product) as unique_products
+  product.count_distinct as unique_products
 where total_revenue > 10000
 order by month, total_revenue desc;
 
@@ -1159,7 +1160,7 @@ order by month, total_revenue desc;
 ```
 
 :::tip
-The `_` underscore in aggregations represents the group of rows. You can use it with various aggregation functions like `_.count`, `_.sum`, `_.avg`, `_.max`, `_.min`, `_.count_distinct()`, `_.array_agg()`, `_.max_by()`, `_.min_by()`, etc.
+The `_` underscore in aggregations represents the group of rows, as in `_.count`. To aggregate a column, call the function on the column itself: `amount.sum`, `amount.avg`, `amount.max`, `amount.min`, `product.count_distinct`, `product.to_array`, `product.max_by(amount)`, `product.min_by(amount)`, etc. SQL aggregate functions such as `count(distinct product)` also work.
 :::
 
 :::note
