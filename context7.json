@@ -1,9 +1,15 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/wvlet/wvlet",
+  "public_key": "pk_b9MI8CAZgFMw3r3c8Acgc",
   "projectTitle": "Wvlet",
   "description": "Wvlet is a flow-style query language that compiles to SQL for DuckDB, Trino, Hive, and other engines.",
-  "folders": ["website/docs"],
-  "excludeFolders": ["website/docs/development"],
+  "folders": [
+    "website/docs"
+  ],
+  "excludeFolders": [
+    "website/docs/development"
+  ],
   "rules": [
     "Write Wvlet queries in flow style: start with `from <table>` and add one operator per line, such as `where`, `select`, `group by`, `agg`, `order by`, and `limit`.",
     "Wvlet is not SQL. Do not write `SELECT ... FROM ...` in a .wv file."
