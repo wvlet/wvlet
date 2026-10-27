@@ -1,3 +1,7 @@
+---
+description: "Run Wvlet queries on DuckDB, the default in-memory engine: query Parquet files directly by path or URL and generate TPC-H sample data."
+---
+
 # Connector - DuckDB
 
 By default, wvlet uses in-memory database of DuckDB (catalog: memory, schema: main).

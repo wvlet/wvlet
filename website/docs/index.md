@@ -1,4 +1,5 @@
 ---
+description: "Wvlet is a flow-style query language that compiles to SQL for DuckDB, Trino, Snowflake, and Hive. Start here for installation, query syntax, and usage guides."
 sidebar_label: Introduction
 sidebar_position: 1
 title: Introduction
@@ -62,7 +63,7 @@ SQL was not designed for today's complex data analytics needs. Wvlet modernizes 
 For more on Wvlet's motivation and design, see the presentation slides at Trino Summit 2024:
 
 <center>
-<iframe class="speakerdeck-iframe" frameborder="0" src="https://speakerdeck.com/player/4148a46ee4f24fb0816d1207439cbd33" title="Wvlet: A New Flow-Style Query Language For Functional Data Modeling and Interactive Data Analysis - Trino Summit 2024" allowfullscreen="true" style={{width: '98%', margin: '4px', height: 'auto', aspectRatio: 1.777}} ></iframe>
+<iframe class="speakerdeck-iframe" frameborder="0" src="https://speakerdeck.com/player/4148a46ee4f24fb0816d1207439cbd33" title="Wvlet: A New Flow-Style Query Language For Functional Data Modeling and Interactive Data Analysis - Trino Summit 2024" allowfullscreen="true" ></iframe>
 </center>
 
 ## Architecture

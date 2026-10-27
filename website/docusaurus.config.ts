@@ -1,6 +1,34 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import vscodePackage from '../vscode-wvlet/package.json';
+
+// The VS Code extension version is bumped in every release commit (see CLAUDE.md), so it
+// doubles as the current Wvlet release version for structured data.
+const wvletVersion: string = vscodePackage.version;
+const siteDescription =
+  'Wvlet is a flow-style query language that compiles to SQL for DuckDB, Trino, Snowflake, and Hive. ' +
+  'Queries read top-to-bottom in data-processing order, so humans and AI agents can add a step without rewriting nested SQL.';
+
+// Site-wide structured data for search engines and AI search.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': ['SoftwareApplication', 'SoftwareSourceCode'],
+  name: 'Wvlet',
+  alternateName: 'wvlet',
+  description: siteDescription,
+  url: 'https://wvlet.org/wvlet/',
+  codeRepository: 'https://github.com/wvlet/wvlet',
+  license: 'https://www.apache.org/licenses/LICENSE-2.0',
+  softwareVersion: wvletVersion,
+  version: wvletVersion,
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'macOS, Linux, Windows',
+  programmingLanguage: ['Wvlet', 'SQL', 'Scala'],
+  keywords: 'query language, SQL, flow-style, DuckDB, Trino, Snowflake, data modeling, AI agents',
+  offers: {'@type': 'Offer', price: '0', priceCurrency: 'USD'},
+  author: {'@type': 'Organization', name: 'wvlet.org', url: 'https://wvlet.org/'},
+};
 
 const config: Config = {
   title: 'Wvlet',
@@ -16,6 +44,11 @@ const config: Config = {
         type: 'image/svg+xml',
         href: '/wvlet/img/logos/wvlet-icon.svg',
       },
+    },
+    {
+      tagName: 'script',
+      attributes: {type: 'application/ld+json'},
+      innerHTML: JSON.stringify(jsonLd),
     },
   ],
 
@@ -46,12 +79,37 @@ const config: Config = {
   },
   themes: ['@docusaurus/theme-mermaid'],
 
+  plugins: [
+    [
+      'docusaurus-plugin-llms',
+      {
+        title: 'Wvlet',
+        description: siteDescription,
+        version: wvletVersion,
+        // Also write a .md copy of every doc page and link to those from llms.txt.
+        generateMarkdownFiles: true,
+        // MDX imports (e.g., Tabs) are build-time only and mean nothing to a reader.
+        excludeImports: true,
+        removeDuplicateHeadings: true,
+        // Contributor docs stay on the site but are kept out of the agent-facing files.
+        ignoreFiles: ['development/**'],
+        includeOrder: ['for-ai-agents.md', 'index.md', 'syntax/**', 'usage/**', 'bindings/**'],
+        rootContent:
+          'Start with the [Wvlet for AI Agents](https://wvlet.org/wvlet/docs/for-ai-agents.md) page: ' +
+          'it has a syntax cheat sheet, a SQL-to-Wvlet mapping table, and common mistakes to avoid.',
+      },
+    ],
+  ],
+
   presets: [
     [
       'classic',
       {
         docs: {
           sidebarPath: './sidebars.ts',
+          // Read last-update dates from git; the sitemap uses them for <lastmod>.
+          // CI checks out full history (fetch-depth: 0) so these are accurate.
+          showLastUpdateTime: true,
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
@@ -74,6 +132,11 @@ const config: Config = {
         },
         theme: {
           customCss: './src/css/custom.css',
+        },
+        sitemap: {
+          lastmod: 'date',
+          changefreq: null,
+          priority: null,
         },
         gtag: {
           trackingID: 'G-55G099WF5N',
@@ -103,6 +166,11 @@ const config: Config = {
           href: '/docs/syntax/',
           position: 'left',
           label: 'Query Syntax',
+        },
+        {
+          to: '/docs/for-ai-agents',
+          position: 'left',
+          label: 'For AI Agents',
         },
         {
           href: 'pathname:///playground/',
