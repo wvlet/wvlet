@@ -1,4 +1,5 @@
 ---
+description: "A hands-on Wvlet tutorial: install the wv shell, generate TPC-H sample data in DuckDB, and build flow-style queries step by step."
 sidebar_position: 1
 ---
 

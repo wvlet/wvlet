@@ -42,3 +42,11 @@ html.plugin-blog h2,
 html.plugin-blog.blog-post-page h1 {
   font-size: 2.2rem;
 }
+
+/* Slide embeds; kept in CSS so the doc source stays plain HTML in the generated llms files. */
+.speakerdeck-iframe {
+  width: 98%;
+  margin: 4px;
+  height: auto;
+  aspect-ratio: 1.777;
+}

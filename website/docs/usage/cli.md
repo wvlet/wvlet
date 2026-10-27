@@ -1,4 +1,5 @@
 ---
+description: "Use wvlet compile to generate SQL from Wvlet queries or .wv files, and pipe the SQL to DuckDB or other engines."
 sidebar_label: CLI (wvlet compile)
 ---
 

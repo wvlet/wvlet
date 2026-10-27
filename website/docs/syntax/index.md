@@ -1,3 +1,7 @@
+---
+description: "Reference for every Wvlet operator and expression: from, where, select, add, group by, agg, join, concat, order by, limit, and how each maps to SQL."
+---
+
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 

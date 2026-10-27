@@ -5,8 +5,11 @@
 Wvlet, pronounced as weave-let, is a new cross-SQL flow-style query language for functional data modeling and interactive data exploration. Wvlet works with various types of SQL-based database engines, including [DuckDB](https://duckdb.org/), [Trino](https://trino.io/), [Hive](https://hive.apache.org/), etc.
 
 - [Documentation](https://wvlet.org/wvlet/)
+- [Wvlet for AI Agents](https://wvlet.org/wvlet/docs/for-ai-agents): syntax cheat sheet, SQL-to-Wvlet mapping, and common mistakes
 - [Milestones](https://github.com/wvlet/wvlet/milestones)
 - [Project Roadmap](https://github.com/orgs/wvlet/projects/2)
+
+AI coding agents: the docs are available as plain text at [llms.txt](https://wvlet.org/wvlet/llms.txt) (index) and [llms-full.txt](https://wvlet.org/wvlet/llms-full.txt) (all pages).
 
 ![wvlet-architecture](website/docs/img/wvlet-architecture.svg)
 

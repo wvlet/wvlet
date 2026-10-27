@@ -1,4 +1,5 @@
 ---
+description: "Use wv, the interactive Wvlet shell, to explore data and run flow-style queries against DuckDB, Trino, and other engines."
 sidebar_label: Interactive Shell (wv)
 sidebar_position: 2
 ---

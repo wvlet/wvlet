@@ -1,4 +1,5 @@
 ---
+description: "Install the Wvlet command-line tools (wv and wvlet) with Homebrew on macOS or from a release package on Linux and other platforms."
 sidebar_label: Installation
 sidebar_position: 1
 ---

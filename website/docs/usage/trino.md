@@ -1,3 +1,7 @@
+---
+description: "Connect Wvlet to Trino with a profile in ~/.wvlet/profiles.json, using password or bearer-token authentication."
+---
+
 # Connector - Trino
 
 ## Connecting to Trino
