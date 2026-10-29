@@ -482,7 +482,7 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.jline"        % "jline"        % "4.4.8",
         "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
-        "org.xerial" % "sqlite-jdbc" % "3.53.4.0",
+        "org.xerial" % "sqlite-jdbc" % "3.54.1.0",
         // Postgres-backed flow run store (shared across machines: concurrency claims,
         // scheduler catch-up, and the web UI observe runs from any process)
         "org.postgresql" % "postgresql" % "42.7.14",
