@@ -17,7 +17,7 @@
     "apache-arrow": "^21.2.0",
     "koffi": "^3.3.4",
     "monaco-editor": "^0.57.0",
-    "rollup": "^4.64.0"
+    "rollup": "^4.65.1"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.3",
