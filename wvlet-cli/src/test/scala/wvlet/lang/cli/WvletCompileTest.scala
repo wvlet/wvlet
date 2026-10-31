@@ -2,21 +2,10 @@ package wvlet.lang.cli
 
 import wvlet.uni.test.UniTest
 
-import java.io.ByteArrayOutputStream
-
 class WvletCompileTest extends UniTest:
   test("help") {
     WvletMain.main("compile --help")
   }
-
-  private def captureStdout(body: => Unit): String =
-    val out = new ByteArrayOutputStream()
-    Console.withOut(out) {
-      body
-    }
-    val s = out.toString
-    debug(s)
-    s
 
   test("compile") {
     val out = captureStdout {

@@ -10,7 +10,8 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
 import wvlet.lang.cli.terminal.HeadlessTerminal
-import wvlet.lang.cli.terminal.JLine3Terminal
+import wvlet.lang.cli.terminal.UniTerminal
+import wvlet.uni.cli.TerminalIO
 import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
@@ -67,16 +68,6 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
 
   @command(description = "Start REPL shell", isDefault = true)
   def repl(): Unit =
-    val currentProfile: Profile = Profile.getProfile(
-      replOpts.profile,
-      replOpts.catalog,
-      replOpts.schema,
-      Profile.defaultDuckDBProfile
-    )
-
-    val selectedCatalog = currentProfile.defaultEngine.catalog
-    val selectedSchema  = currentProfile.defaultEngine.schema
-
     val commandInputs = List.newBuilder[String]
     commandInputs ++= replOpts.commands
     replOpts
@@ -90,17 +81,42 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
           throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
       }
 
-    val inputScripts  = commandInputs.result()
-    val isInteractive = inputScripts.isEmpty
+    val inputScripts = commandInputs.result()
+    replDesign(isInteractive = inputScripts.isEmpty).build[WvletREPL] { repl =>
+      repl.start(inputScripts)
+    }
 
-    val design = Design
-      .newSilentDesign
-      .bindProvider[WorkEnv, REPLTerminal] { (workEnv: WorkEnv) =>
-        if isInteractive then
-          JLine3Terminal(workEnv)
-        else
-          HeadlessTerminal()
-      }
+  end repl
+
+  /**
+    * The REPL components. Interactive sessions read from `TerminalIO`, which tests can override
+    * with `TerminalIO.inMemory(...)`.
+    */
+  private[cli] def replDesign(isInteractive: Boolean): Design =
+    val currentProfile: Profile = Profile.getProfile(
+      replOpts.profile,
+      replOpts.catalog,
+      replOpts.schema,
+      Profile.defaultDuckDBProfile
+    )
+
+    val selectedCatalog = currentProfile.defaultEngine.catalog
+    val selectedSchema  = currentProfile.defaultEngine.schema
+
+    // Only interactive sessions touch the native terminal, so that `-c` runs print no JVM
+    // native-access warnings
+    val terminalDesign =
+      if isInteractive then
+        Design
+          .newSilentDesign
+          .bindInstance[TerminalIO](TerminalIO.default)
+          .bindProvider[WorkEnv, TerminalIO, REPLTerminal] { (workEnv: WorkEnv, io: TerminalIO) =>
+            UniTerminal(workEnv, io)
+          }
+      else
+        Design.newSilentDesign.bindInstance[REPLTerminal](HeadlessTerminal())
+
+    terminalDesign
       .bindProvider[WvletScriptRunner, REPLTerminal, WvletREPL] {
         (runner: WvletScriptRunner, terminal: REPLTerminal) =>
           WvletREPL(runner, terminal)
@@ -135,10 +151,6 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
         )
       )
 
-    design.build[WvletREPL] { repl =>
-      repl.start(inputScripts)
-    }
-
-  end repl
+  end replDesign
 
 end WvletREPLMain

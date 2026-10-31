@@ -13,7 +13,6 @@
  */
 package wvlet.lang.runner
 
-import org.jline.terminal.Terminal
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection
@@ -200,21 +199,27 @@ class WvletScriptRunner(
 
   end runStatement
 
-  def displayOutput(query: String, queryResult: QueryResult, terminal: Terminal): LastOutput =
+  /**
+    * Print the query result to stdout, using `less` for results wider than the terminal in
+    * interactive mode
+    *
+    * @param terminalWidth
+    *   the number of terminal columns
+    */
+  def displayOutput(query: String, queryResult: QueryResult, terminalWidth: Int): LastOutput =
     def print: LastOutput =
       val str            = queryResult.toPrettyBox(maxColWidth = resultMaxColWidth)
       val resultMaxWidth = str.split("\n").map(_.size).max
-      if !config.interactive || resultMaxWidth <= terminal.getSize.getColumns then
+      if !config.interactive || resultMaxWidth <= terminalWidth then
         // The result fits in the terminal width
         val output = queryResult.toPrettyBox(
-          maxWidth = Some(terminal.getSize.getColumns),
+          maxWidth = Some(terminalWidth),
           maxColWidth = resultMaxColWidth
         )
         if output.trim.nonEmpty then
           println(output)
       else
         // Launch less command to enable scrolling of query results in the terminal
-        // TODO Use jline3's internal less
         val proc = ProcessUtil.launchInteractiveProcess("less", "-FXRSn")
         val out  =
           new BufferedWriter(
@@ -240,5 +245,21 @@ class WvletScriptRunner(
         LastOutput(query, e.getMessage, QueryResult.empty, error = Some(e))
 
   end displayOutput
+
+  /**
+    * Render the query result as a box cut to `maxWidth` columns without printing it, e.g., to show
+    * it above the input being edited
+    */
+  def renderOutput(query: String, queryResult: QueryResult, maxWidth: Int): LastOutput =
+    queryResult.getError match
+      case None =>
+        val str = queryResult.toPrettyBox(
+          maxWidth = Some(maxWidth),
+          maxColWidth = resultMaxColWidth
+        )
+        LastOutput(query, str, queryResult)
+      case Some(e) =>
+        workEnv.logError(e)
+        LastOutput(query, e.getMessage, QueryResult.empty, error = Some(e))
 
 end WvletScriptRunner

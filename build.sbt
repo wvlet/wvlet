@@ -7,7 +7,7 @@ import scala.scalanative.build.NativeConfig
 import scala.language.implicitConversions
 import WvletBuildKeys.*
 
-val UNI_VERSION = "2026.1.37"
+val UNI_VERSION = "2026.1.39"
 
 val TRINO_VERSION          = "483"
 val AWS_SDK_VERSION        = "2.20.146"
@@ -452,7 +452,7 @@ lazy val connector = project
 // Cross-platform query runner. Shared sources (wvlet-runner/src) hold the engine-agnostic
 // runtime built on SqlConnector — usable from JVM, Node.js, and Native CLIs. The JVM-only
 // runtime (QueryExecutor, flows, scheduler, run stores, JDBC connectors via wvlet-connector,
-// jline, arrow) lives in wvlet-runner/.jvm/src.
+// arrow) lives in wvlet-runner/.jvm/src.
 lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-runner"))
@@ -479,7 +479,6 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ),
     libraryDependencies ++=
       Seq(
-        "org.jline"        % "jline"        % "4.4.8",
         "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
         "org.xerial" % "sqlite-jdbc" % "3.54.1.0",

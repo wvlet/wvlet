@@ -13,13 +13,9 @@
  */
 package wvlet.lang.cli
 
-import org.jline.reader.*
-import org.jline.reader.Parser.ParseContext
-import org.jline.reader.impl.DefaultParser
-import org.jline.terminal.Terminal
-import org.jline.utils.AttributedString
-import org.jline.utils.AttributedStringBuilder
-import org.jline.utils.AttributedStyle
+import wvlet.uni.cli.LineAction
+import wvlet.uni.cli.LineEditor
+import wvlet.uni.cli.LineResult
 import wvlet.uni.io.IO
 import wvlet.uni.log.AnsiColorPalette
 import wvlet.uni.util.Count
@@ -31,7 +27,6 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.All
 import wvlet.lang.api.v1.query.QuerySelection.Describe
-import wvlet.lang.cli.terminal.JLine3Terminal
 import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.CompilationUnit
@@ -45,8 +40,10 @@ import wvlet.lang.runner.WvletScriptRunner
 import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.Executors
+import java.util.concurrent.CancellationException
+import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import java.util.regex.Pattern
 import scala.io.AnsiColor
 
 /**
@@ -55,7 +52,7 @@ import scala.io.AnsiColor
   * @param runner
   *   Script runner for executing queries
   * @param terminal
-  *   Terminal implementation (JLine3 for interactive, Headless for non-interactive)
+  *   Terminal implementation (UniTerminal for interactive, HeadlessTerminal for non-interactive)
   */
 class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
     extends AutoCloseable
@@ -116,230 +113,259 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
     executorThreadManager.shutdown()
 
   private var lastOutput: Option[LastOutput] = None
-  // Handle ctrl-c (int) or ctrl-d (quit) to interrupt the current thread
-  private val currentThread = new AtomicReference[Thread](Thread.currentThread())
 
-  private def withNewThread[Result](body: => Result): Result =
-    val lastThread = Thread.currentThread()
-    try executorThreadManager
-        .submit { () =>
-          currentThread.set(Thread.currentThread())
-          body
-        }
-        .get()
-    finally currentThread.set(lastThread)
+  /**
+    * Run the body in a new thread, so that Ctrl-C can cancel the running query. Returns None when
+    * cancelled.
+    */
+  private def withNewThread[Result](body: => Result): Option[Result] =
+    // Register the handler before submitting, so that an early Ctrl-C is not lost
+    val cancelled = AtomicBoolean(false)
+    val task      = AtomicReference[Future[Result]]()
+    val onCtrlC   = terminal.onInterrupt { () =>
+      cancelled.set(true)
+      Option(task.get()).foreach(_.cancel(true))
+    }
+    try
+      task.set(executorThreadManager.submit(() => body))
+      if cancelled.get() then
+        task.get().cancel(true)
+      Some(task.get().get())
+    catch
+      case e: CancellationException =>
+        logger.error("Cancelled the query")
+        None
+    finally
+      onCtrlC.cancel
+
+  /**
+    * Run a query from a key binding. The input is edited in raw mode, where Ctrl-C is a key, so
+    * leave raw mode while the query runs to let Ctrl-C cancel it.
+    */
+  private def runFromKeyBinding[Result](body: => Result): Option[Result] = terminal
+    .withInterruptSignal {
+      withNewThread(body)
+    }
 
   private def runStmt(trimmedLine: String): Unit =
     if trimmedLine.nonEmpty then
       withNewThread {
-        try
-          val result = runner.runStatement(
-            QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
-          )
-          // Display output and save for clip commands
-          // Note: Pattern matching is necessary here because WvletScriptRunner.displayOutput()
-          // requires the underlying JLine3 Terminal for advanced formatting (e.g., launching
-          // less for wide output). This is a controlled use of downcasting that's safe because
-          // we know JLine3Terminal is only used in interactive mode.
-          val output =
-            if terminal.isRealTerminal then
-              terminal match
-                case jline3: JLine3Terminal =>
-                  runner.displayOutput(trimmedLine, result, jline3.getJLineTerminal)
-                case _ =>
-                  // Fallback: simple formatting without terminal features
-                  LastOutput(trimmedLine, result.toPrettyBox(), result)
-            else
-              // In headless mode, print to stdout
-              val outputStr = result.toPrettyBox()
-              if outputStr.trim.nonEmpty then
-                println(outputStr)
-              LastOutput(trimmedLine, outputStr, result)
-
-          lastOutput = Some(output)
-        catch
-          case e: InterruptedException =>
-            logger.error("Cancelled the query")
+        val result = runner.runStatement(
+          QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
+        )
+        // Display output and save for clip commands
+        val output =
+          if terminal.isRealTerminal then
+            runner.displayOutput(trimmedLine, result, terminal.width)
+          else
+            // In headless mode, print to stdout
+            val outputStr = result.toPrettyBox()
+            if outputStr.trim.nonEmpty then
+              println(outputStr)
+            LastOutput(trimmedLine, outputStr, result)
+        lastOutput = Some(output)
       }
 
   private def trimLine(line: String): String = line.trim.stripSuffix(";")
 
-  private def newWidget(body: () => Boolean): Widget =
-    new Widget:
-      override def apply(): Boolean = body()
+  private def moveToTop = LineAction.Custom("move-to-top", _.moveCursor(0))
 
-  private def moveToTop = newWidget: () =>
-    terminal.moveCursor(0)
-    true
+  private def moveToEnd = LineAction.Custom(
+    "move-to-end",
+    editor => editor.moveCursor(editor.buffer.length)
+  )
 
-  private def moveToEnd = newWidget: () =>
-    terminal.moveCursor(terminal.getBufferLength)
-    true
+  private def enterStmt = LineAction.Custom(
+    "enter-statement",
+    editor =>
+      editor.moveCursor(editor.buffer.length)
+      if !editor.buffer.trim.endsWith(";") then
+        editor.insert(";")
+      editor.accept()
+  )
 
-  private def enterStmt = newWidget: () =>
-    terminal.moveCursor(terminal.getBufferLength)
-    val line = terminal.getBuffer
-    if !line.trim.endsWith(";") then
-      terminal.writeToBuffer(";")
-      terminal.moveCursor(terminal.getBufferLength)
-    terminal.callWidget(LineReader.ACCEPT_LINE)
-    true
-
-  private def extractQueryFragment: String =
-    val lastCursor = terminal.getCursorPosition
-    if terminal.getCurrentChar != '\n' then
-      terminal.callWidget(LineReader.END_OF_LINE)
-    val queryFragment = trimLine(terminal.getBufferUpToCursor)
+  /**
+    * The input up to the end of the cursor line, which is a query fragment to describe or run
+    */
+  private def extractQueryFragment(editor: LineEditor): String =
+    val lastCursor = editor.cursor
+    editor.run(LineAction.EndOfLine)
+    val queryFragment = trimLine(editor.buffer.substring(0, editor.cursor))
     // Move back cursor
-    terminal.moveCursor(lastCursor)
+    editor.moveCursor(lastCursor)
     queryFragment
 
-  private def describeLine = newWidget: () =>
-    // Run (query fragment) describe to show the schema
-    val queryFragment = extractQueryFragment
-    val lines         = queryFragment.split("\n")
-    val lastLine      = lines.lastOption.getOrElse("")
-    val lineNum       = lines.size
-    val result        =
-      runner.runStatement(
-        QueryRequest(
-          query = queryFragment,
-          querySelection = Describe,
-          linePosition = LinePosition(lineNum, 1),
-          isDebugRun = true
+  private def describeLine = LineAction.Custom(
+    "describe-line",
+    editor =>
+      // Run (query fragment) describe to show the schema
+      val queryFragment = extractQueryFragment(editor)
+      val lines         = queryFragment.split("\n")
+      val lastLine      = lines.lastOption.getOrElse("")
+      val lineNum       = lines.size
+      runFromKeyBinding {
+        runner.runStatement(
+          QueryRequest(
+            query = queryFragment,
+            querySelection = Describe,
+            linePosition = LinePosition(lineNum, 1),
+            isDebugRun = true
+          )
+        )(using QueryProgressMonitor.noOp) // Hide progress for describe query
+      }.foreach { result =>
+        val str = result.toPrettyBox()
+        editor.printAbove(
+          s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color
+              .RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
         )
-      )(using QueryProgressMonitor.noOp) // Hide progress for describe query
-    val str = result.toPrettyBox()
-    terminal.printAbove(
-      s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color
-          .BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
-    )
-    true
+      }
+  )
 
-  private def subqueryRun = newWidget: () =>
-    val originalQuery = terminal.getBuffer
-    val queryFragment = extractQueryFragment
-    terminal.getHistory.add(queryFragment)
-    val lines         = queryFragment.split("\n")
-    val lastLine      = lines.lastOption.getOrElse("")
-    val lineNum       = lines.size
-    val samplingQuery = s"${queryFragment}\nlimit ${runner.getResultRowLimit}"
-    val totalLines    = originalQuery.split("\n").size
-    // Need to add newlines to display the debug output in a proper position in the terminal
-    println(
-      s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color
-          .BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
-    )
-    val result = runner.runStatement(
-      QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true)
-    )
+  private def subqueryRun = LineAction.Custom(
+    "subquery-run",
+    editor =>
+      val queryFragment = extractQueryFragment(editor)
+      terminal.addHistory(queryFragment)
+      val lines         = queryFragment.split("\n")
+      val lastLine      = lines.lastOption.getOrElse("")
+      val lineNum       = lines.size
+      val samplingQuery = s"${queryFragment}\nlimit ${runner.getResultRowLimit}"
+      runFromKeyBinding {
+        runner.runStatement(
+          QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true)
+        )(using QueryProgressMonitor.noOp) // Progress lines would break the input being edited
+      }.foreach { result =>
+        // The input is being edited, so print the result above it instead of paging it
+        val output = runner.renderOutput(samplingQuery, result, terminal.width)
+        lastOutput = Some(output)
+        editor.printAbove(
+          s"${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color
+              .BRIGHT_RED}${lastLine}${AnsiColor.RESET}\n${output.output}"
+        )
+      }
+  )
 
-    // Display output with terminal-specific formatting (see runStmt for explanation of pattern matching)
-    val output =
-      terminal match
-        case jline3: JLine3Terminal =>
-          runner.displayOutput(samplingQuery, result, jline3.getJLineTerminal)
-        case _ =>
-          val outputStr = result.toPrettyBox()
-          if outputStr.trim.nonEmpty then
-            println(outputStr)
-          LastOutput(samplingQuery, outputStr, result)
-
-    lastOutput = Some(output)
-
-    // Add enough blank lines to redisplay the user query
-    terminal.writeNewlines(lineNum - 1)
-
-    // Redisplay the original query
-    terminal.redrawLine()
-    true
-
+  /**
+    * Run the given commands, or read and run inputs until the user exits
+    */
   def start(commands: List[String] = Nil): Unit =
-    // Setup interactive mode for JLine3 terminals
-    terminal match
-      case jline3: JLine3Terminal =>
-        jline3.setupInteractiveMode(moveToTop, moveToEnd, enterStmt, describeLine, subqueryRun)
-        terminal.handleInterrupt(currentThread.get().interrupt())
-      case _ =>
-      // Headless mode doesn't need setup
+    if commands.nonEmpty then
+      // If commands are given, run them in order, stopping at an exit command
+      commands
+        .iterator
+        .map { line =>
+          println(s"wv> ${line}")
+          eval(line)
+        }
+        .takeWhile(identity)
+        .foreach(_ => ())
+    else
+      terminal.bindKeys(
+        Seq(
+          "^J^A" -> moveToTop,
+          "^J^E" -> moveToEnd,
+          "^J^R" -> enterStmt,
+          "^J^D" -> describeLine,
+          "^J^T" -> subqueryRun
+        )
+      )
+      readLoop()
 
+  /**
+    * Read and evaluate inputs until exit, Ctrl-C, or Ctrl-D on an empty line.
+    *
+    * Each read blocks with `await` instead of chaining reads with `Rx.flatMap`: on the JVM, the
+    * reads complete synchronously, so a flatMap chain grows the stack with every input and
+    * overflows in a long session.
+    */
+  private def readLoop(): Unit =
     var toContinue = true
     while toContinue do
-      def eval(line: String): Unit =
-        val trimmedLine = trimLine(line)
-        val cmd         = trimmedLine.split("\\s+").headOption.getOrElse("")
-        cmd match
-          case "exit" | "quit" =>
-            toContinue = false
-          case "clear" =>
-            terminal.clearScreen()
-          case "help" =>
-            println(helpMessage)
-          case "git" | "gh" =>
-            IO.run(trimmedLine)
-          case "clip" =>
-            lastOutput match
-              case Some(output) =>
-                Clipboard.saveToClipboard(s"""[wv:query]\n${output.line}\n\n${output.output}""")
-              case None =>
-                warn("No output to clip")
-          case "clip-query" =>
-            lastOutput match
-              case Some(output) =>
-                Clipboard.saveToClipboard(output.line)
-              case None =>
-                warn("No output to clip")
-          case "clip-result" =>
-            lastOutput match
-              case Some(output) =>
-                Clipboard.saveToClipboard(output.result.toTSV)
-              case None =>
-                warn("No output to clip")
-          case "rows" =>
-            val limit = trimmedLine.split("\\s+").lastOption.getOrElse("40").toInt
-            if limit <= 0 then
-              error("The limit must be a positive number")
-            else
-              runner.setResultRowLimit(limit)
-              info(s"Set the result row limit to: ${limit}")
-          case "col-width" =>
-            val width = trimmedLine.split("\\s+").lastOption.getOrElse("150").toInt
-            if width <= 0 then
-              error("The column width must be a positive number")
-            else
-              info(s"Set the column width to: ${width}")
-              runner.setMaxColWidth(width)
-          case "context" =>
-            val catalog = runner.getCurrentCatalog
-            val schema  = runner.getCurrentSchema
-            info(s"Current context: catalog=${catalog}, schema=${schema}")
-          case stmt =>
-            runStmt(trimmedLine)
-        end match
-      end eval
-
       try
-        if commands.nonEmpty then
-          // If a command is given, run it and exit
-          for line <- commands do
-            println(s"wv> ${line}")
-            eval(line)
-          toContinue = false
-        else
-          // Or read from the user input
-          val line = terminal.readLine("wv> ")
-          eval(line)
+        terminal.readLine("wv> ").await match
+          case LineResult.Line(line) =>
+            toContinue = eval(line)
+          case LineResult.Interrupted(_) | LineResult.EndOfInput =>
+            toContinue = false
       catch
-        case e: UserInterruptException =>
-          toContinue = false
-        case e: EndOfFileException =>
-          toContinue = false
-        case e: InterruptedException =>
-          toContinue = false
         case e: Exception =>
+          // e.g., an error in a key binding. Keep the REPL running
           error(e)
-    end while
-  end start
+
+  /**
+    * Evaluate one input. Returns false when the REPL should exit
+    */
+  private def eval(line: String): Boolean =
+    val trimmedLine = trimLine(line)
+    val cmd         = trimmedLine.split("\\s+").headOption.getOrElse("")
+    try
+      cmd match
+        case "exit" | "quit" =>
+          false
+        case "clear" =>
+          terminal.clearScreen()
+          true
+        case "help" =>
+          println(helpMessage)
+          true
+        case "git" | "gh" =>
+          IO.run(trimmedLine)
+          true
+        case "clip" =>
+          lastOutput match
+            case Some(output) =>
+              Clipboard.saveToClipboard(s"""[wv:query]\n${output.line}\n\n${output.output}""")
+            case None =>
+              warn("No output to clip")
+          true
+        case "clip-query" =>
+          lastOutput match
+            case Some(output) =>
+              Clipboard.saveToClipboard(output.line)
+            case None =>
+              warn("No output to clip")
+          true
+        case "clip-result" =>
+          lastOutput match
+            case Some(output) =>
+              Clipboard.saveToClipboard(output.result.toTSV)
+            case None =>
+              warn("No output to clip")
+          true
+        case "rows" =>
+          val limit = trimmedLine.split("\\s+").lastOption.getOrElse("40").toInt
+          if limit <= 0 then
+            error("The limit must be a positive number")
+          else
+            runner.setResultRowLimit(limit)
+            info(s"Set the result row limit to: ${limit}")
+          true
+        case "col-width" =>
+          val width = trimmedLine.split("\\s+").lastOption.getOrElse("150").toInt
+          if width <= 0 then
+            error("The column width must be a positive number")
+          else
+            info(s"Set the column width to: ${width}")
+            runner.setMaxColWidth(width)
+          true
+        case "context" =>
+          val catalog = runner.getCurrentCatalog
+          val schema  = runner.getCurrentSchema
+          info(s"Current context: catalog=${catalog}, schema=${schema}")
+          true
+        case stmt =>
+          runStmt(trimmedLine)
+          true
+      end match
+    catch
+      case e: InterruptedException =>
+        false
+      case e: Exception =>
+        error(e)
+        true
+    end try
+
+  end eval
 
 end WvletREPL
 
@@ -388,132 +414,95 @@ object WvletREPL extends LogSupport:
 
   object Color extends AnsiColorPalette
 
-  /**
-    * A custom parser to enable receiving multiline inputs in REPL
-    *
-    * Note: Visibility is `private[cli]` (not `private`) because `JLine3Terminal` needs access to
-    * this class for initialization. The terminal package is a subpackage of `cli`, so
-    * `private[cli]` grants access while keeping the class hidden from outside the CLI module.
-    */
-  private[cli] class ReplParser extends org.jline.reader.Parser with LogSupport:
-    private val parser = new DefaultParser()
-    parser.setEofOnUnclosedBracket(DefaultParser.Bracket.CURLY)
-
-    // Disable escape char removal at the jline3 parser level
-    override def isEscapeChar(ch: Char): Boolean = false
-
-    override def parse(line: String, cursor: Int, context: ParseContext): ParsedLine =
-      def incomplete = throw EOFError(-1, -1, null)
-      def accept     = parser.parse(line, cursor, context)
-
-      def countTripleQuotes(s: String): Int =
-        s.indexOf("\"\"\"") match
-          case -1 =>
-            0
-          case i =>
-            1 + countTripleQuotes(s.substring(i + 3))
-
-      val cmd         = line.trim
-      val openBraces  = cmd.count(_ == '{')
-      val closeBraces = cmd.count(_ == '}')
-      // Count the number of triple quote `"""` characters to accept incomplete multiline strings
-      val tripleQuotes    = countTripleQuotes(cmd)
-      val needsMoreString = tripleQuotes % 2 == 1
-      val needsMoreInput  = openBraces > closeBraces
-      val cmdName         = cmd.split("\\s").headOption.getOrElse("")
-      if needsMoreString then
-        incomplete
-      else if cmdName.isEmpty || knownCommands.contains(cmdName) || context == ParseContext.COMPLETE
-      then
-        accept
-      else if cmd.endsWith(";") && cursor >= line.length then
-        accept
-      else if needsMoreInput then
-        // Trigger indentation
-        throw new EOFError(-1, -1, "missing '}'", "}", openBraces - closeBraces, "}")
-      else
-        val unit        = CompilationUnit.fromWvletString(line)
-        val wvletParser = WvletParser(unit)
-        try
-          // Test whether the statement is a complete statement
-          val stmt = wvletParser.statement()
-          stmt match
-            case q: QueryStatement =>
-              // QueryStatement might have additional operators, so it needs to end with ";"
-              incomplete
-            case _ =>
-              if cursor >= line.length then
-                // Accept model only when the cursor is at the end of the input
-                accept
-              else
-                incomplete
-        catch
-          case e: WvletLangException =>
-            // Move to the secondary prompt until seeing a semicolon
-            incomplete
-      end if
-
-    end parse
-
-  end ReplParser
+  private def countTripleQuotes(s: String): Int =
+    s.indexOf("\"\"\"") match
+      case -1 =>
+        0
+      case i =>
+        1 + countTripleQuotes(s.substring(i + 3))
 
   /**
-    * Parse incomplete strings and highlight keywords
-    *
-    * Note: Visibility is `private[cli]` for the same reason as `ReplParser` - needed by
-    * `JLine3Terminal` for syntax highlighting initialization.
+    * Whether the REPL input is a complete statement to run on Enter. Otherwise, Enter starts a new
+    * line, e.g., for unclosed braces or triple-quoted strings, and queries not ending with `;`.
     */
-  private[cli] class ReplHighlighter extends org.jline.reader.Highlighter with LogSupport:
-    override def highlight(reader: LineReader, buffer: String): AttributedString =
-      val builder = AttributedStringBuilder()
-      val src     = SourceFile.fromWvletString(buffer)
-      val scanner = WvletScanner(
-        src,
-        ScannerConfig(skipComments = false, skipWhiteSpace = false, reportErrorToken = true)
-      )
+  private[cli] def isInputComplete(line: String): Boolean =
+    val cmd     = line.trim
+    val cmdName = cmd.split("\\s").headOption.getOrElse("")
+    // Count the number of triple quote `"""` characters to accept incomplete multiline strings
+    val needsMoreString = countTripleQuotes(cmd) % 2 == 1
+    val needsMoreInput  = cmd.count(_ == '{') > cmd.count(_ == '}')
+    if needsMoreString then
+      false
+    else if cmdName.isEmpty || knownCommands.contains(cmdName) || cmd.endsWith(";") then
+      true
+    else if needsMoreInput then
+      false
+    else
+      val unit = CompilationUnit.fromWvletString(line)
+      try
+        // Test whether the statement is a complete statement
+        WvletParser(unit).statement() match
+          case q: QueryStatement =>
+            // QueryStatement might have additional operators, so it needs to end with ";"
+            false
+          case _ =>
+            true
+      catch
+        case e: WvletLangException =>
+          // Move to the secondary prompt until seeing a semicolon
+          false
 
-      var toContinue = true
-      var lastOffset = 0
-      while toContinue do
-        try
-          val t = scanner.nextToken()
+  end isInputComplete
 
-          // Extract the raw string between the last offset and the current token
-          val rawString: String = src.getContent.slice(lastOffset, t.offset + t.length).mkString
-          lastOffset = t.offset + t.length
+  /**
+    * Color keywords, literals, and comments of the REPL input with ANSI escape sequences
+    */
+  private[cli] def highlight(buffer: String): String =
+    val builder = StringBuilder()
+    val src     = SourceFile.fromWvletString(buffer)
+    val scanner = WvletScanner(
+      src,
+      ScannerConfig(skipComments = false, skipWhiteSpace = false, reportErrorToken = true)
+    )
 
-          t.token match
-            case WvletToken.EOF =>
-              toContinue = false
-            case WvletToken.ERROR =>
-              builder.append(rawString)
-            case WvletToken.COMMENT =>
-              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
-            case WvletToken.DOC_COMMENT =>
-              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.BLUE))
-            case token if token.isLiteral =>
-              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN))
-            case token if token.isReservedKeyword =>
-              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
-            case WvletToken.IDENTIFIER =>
-              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
-            case _ =>
-              builder.append(rawString)
-        catch
-          case e: WvletLangException if e.statusCode == StatusCode.UNCLOSED_MULTILINE_LITERAL =>
-            // Skip the rest of the line
-            builder.append(src.getContent.slice(lastOffset, src.getContent.length).mkString)
+    def colored(s: String, color: String): Unit = builder.append(s"${color}${s}${AnsiColor.RESET}")
+
+    var toContinue = true
+    var lastOffset = 0
+    while toContinue do
+      try
+        val t = scanner.nextToken()
+
+        // Extract the raw string between the last offset and the current token
+        val rawString: String = src.getContent.slice(lastOffset, t.offset + t.length).mkString
+        lastOffset = t.offset + t.length
+
+        t.token match
+          case WvletToken.EOF =>
             toContinue = false
-      end while
+          case WvletToken.ERROR =>
+            builder.append(rawString)
+          case WvletToken.COMMENT =>
+            colored(rawString, AnsiColor.YELLOW)
+          case WvletToken.DOC_COMMENT =>
+            colored(rawString, AnsiColor.BLUE)
+          case token if token.isLiteral =>
+            colored(rawString, AnsiColor.GREEN)
+          case token if token.isReservedKeyword =>
+            colored(rawString, AnsiColor.CYAN)
+          case WvletToken.IDENTIFIER =>
+            colored(rawString, AnsiColor.WHITE)
+          case _ =>
+            builder.append(rawString)
+      catch
+        case e: WvletLangException if e.statusCode == StatusCode.UNCLOSED_MULTILINE_LITERAL =>
+          // Skip the rest of the line
+          builder.append(src.getContent.slice(lastOffset, src.getContent.length).mkString)
+          toContinue = false
+    end while
 
-      builder.toAttributedString
+    builder.toString
 
-    end highlight
-
-    override def setErrorPattern(errorPattern: Pattern): Unit = {}
-
-    override def setErrorIndex(errorIndex: Int): Unit = {}
-
-  end ReplHighlighter
+  end highlight
 
 end WvletREPL
