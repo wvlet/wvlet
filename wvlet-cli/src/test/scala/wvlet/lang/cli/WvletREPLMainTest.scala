@@ -14,16 +14,8 @@
 package wvlet.lang.cli
 
 import wvlet.uni.test.UniTest
-import java.io.ByteArrayOutputStream
 
 class WvletREPLMainTest extends UniTest:
-
-  private def captureStdout(body: => Unit): String =
-    val out = new ByteArrayOutputStream()
-    Console.withOut(out) {
-      body
-    }
-    out.toString
 
   test("detect sbt") {
     WvletMain.isInSbt shouldBe true

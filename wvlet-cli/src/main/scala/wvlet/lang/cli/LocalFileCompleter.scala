@@ -1,13 +1,11 @@
 package wvlet.lang.cli
 
-import org.jline.reader.Candidate
-import org.jline.reader.Completer
-import org.jline.reader.LineReader
-import org.jline.reader.ParsedLine
 import wvlet.lang.compiler.WorkEnv
+import wvlet.uni.cli.Candidate
+import wvlet.uni.cli.Completer
+import wvlet.uni.cli.Completion
 
 import java.io.File
-import scala.jdk.CollectionConverters.*
 
 /**
   * A simple completer that offers local filesystem paths when the cursor is inside a single-quoted
@@ -16,14 +14,8 @@ import scala.jdk.CollectionConverters.*
   */
 case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
 
-  override def complete(
-      reader: LineReader,
-      line: ParsedLine,
-      candidates: java.util.List[Candidate]
-  ): Unit =
-    val buf    = reader.getBuffer
-    val input  = buf.toString
-    val cursor = buf.cursor()
+  override def complete(input: String, cursor: Int): Completion =
+    val noCompletion = Completion(cursor, Seq.empty)
 
     // Find the most recent quote (either single or double) before cursor
     val singleQuoteStart =
@@ -63,7 +55,9 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
             cursor <= end
       )
 
-    if insideQuotes then
+    if !insideQuotes then
+      noCompletion
+    else
       // Extract the in-quote prefix up to the cursor
       val afterQuote   = quoteStart + 1
       val prefixInWord = input.substring(afterQuote, cursor)
@@ -77,7 +71,9 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
         else
           (new File(workEnv.path), prefixInWord)
 
-      if baseDir.exists() && baseDir.isDirectory then
+      if !baseDir.exists() || !baseDir.isDirectory then
+        noCompletion
+      else
         def escapeQuotes(s: String, quoteChar: Char): String =
           quoteChar match
             case '\'' =>
@@ -112,7 +108,7 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
           (wb, bc)
 
         // Build candidates for each entry
-        entries.foreach { f =>
+        val candidates = entries.map { f =>
           val relPath =
             try
               val full =
@@ -145,20 +141,12 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
               else
                 ""
             )
-          // Do NOT wrap with quotes; the user is already inside a quoted string
-          val replacement = valuePath
-          candidates.add(
-            new Candidate(
-              replacement, // value to insert (replaces the current word)
-              display,     // shown label
-              "files",     // group
-              null,        // description
-              null,        // suffix
-              null,        // key
-              !f.isDirectory // directories should not be treated as complete to allow further completion
-            )
-          )
+          // Do NOT wrap with quotes; the user is already inside a quoted string.
+          // Directories are not complete, so that the user can keep typing into them
+          Candidate(valuePath, display, complete = !f.isDirectory)
         }
+        // Replace the in-quote text before the cursor with the candidate path
+        Completion(afterQuote, candidates.toSeq)
       end if
     end if
 

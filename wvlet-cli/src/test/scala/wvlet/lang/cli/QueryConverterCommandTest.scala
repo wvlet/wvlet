@@ -5,8 +5,6 @@ import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.VirtualFile
 import wvlet.uni.io.IO
 
-import java.io.ByteArrayOutputStream
-
 class QueryConverterCommandTest extends UniTest:
   // TPC-H query paths
   private val tpchWvletQueryPath = "spec/tpch"
@@ -154,12 +152,5 @@ class QueryConverterCommandTest extends UniTest:
       }
     }
   }
-
-  private def captureStdout(body: => Unit): String =
-    val out = new ByteArrayOutputStream()
-    Console.withOut(out) {
-      body
-    }
-    out.toString
 
 end QueryConverterCommandTest

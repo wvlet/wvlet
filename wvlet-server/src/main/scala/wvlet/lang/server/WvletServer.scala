@@ -1,6 +1,5 @@
 package wvlet.lang.server
 
-import org.jline.nativ.OSInfo
 import wvlet.lang.api.v1.flow.FlowApi
 import wvlet.lang.api.v1.frontend.{FileApi, FrontendApi, FrontendRPC}
 import wvlet.lang.api.v1.task.TaskApi

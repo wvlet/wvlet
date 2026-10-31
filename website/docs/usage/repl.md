@@ -10,6 +10,10 @@ Wvlet Shell (`wv` command) launches an interactive query editor for the console.
 
 ![wvlet shell](/img/demo.gif)
 
+:::note
+Line editing, history, and completion need Java 22 or later. On older JVMs, or when the input is not a terminal, `wv` reads input line by line without editing.
+:::
+
 ## Commands
 
 By typing `help` in the shell, you can see the list of available commands:
@@ -40,23 +44,25 @@ Wvlet shell basically uses [GNU readline](https://readline.kablamo.org/emacs.htm
 |---|----------------------------------------------------------------------------------|
 | ctrl-a | Home: Move to the beginning of the line                                          |
 | ctrl-e | End: Move to the end of the line                                                 |
-| ctrl-j a | Move to the beginning of the query                                               |
-| ctrl-j e | Move to the end of the query                                                     |
+| ctrl-j ctrl-a | Move to the beginning of the query                                          |
+| ctrl-j ctrl-e | Move to the end of the query                                                |
 | ctrl-p | Up                                                                               | 
 | ctrl-n | Down                                                                             |
 | ctrl-f | Right                                                                            |
 | ctrl-b | Left                                                                             |
 | ctrl-r | Search the history. Type ctrl+r again to continue to search the previous history | 
 | ctrl-k | Delete until the end of line from the cursor position                            | 
+| tab | Complete a file path inside a quoted string, e.g., `from 'data/<tab>`            |
 
 ### Running Queries
 
 | Keys | Description |
 |---|---|
 | ctrl-j ctrl-r | Run the whole query | 
-| ctrl-j ctrl-t | Test run the query fragment up to the line with debug mode |
+| ctrl-j ctrl-t | Test run the query fragment up to the line with debug mode, showing the result above the query |
 | ctrl-j ctrl-d | Describe the schema of the current line of the query fragment |
 | ctrl-c | Cancel the current query, or exit the shell |
+| ctrl-d | Exit the shell (on an empty line) |
 
 ## Switching Database Context
 
