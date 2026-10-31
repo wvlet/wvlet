@@ -83,6 +83,14 @@ class UniTerminal(workEnv: WorkEnv, io: TerminalIO) extends REPLTerminal:
 
   override def onInterrupt(handler: () => Unit): Cancelable = io.onInterrupt(handler)
 
+  override def withInterruptSignal[A](body: => A): A =
+    if io.isTTY then
+      io.exitRawMode()
+      try body
+      finally io.enterRawMode()
+    else
+      body
+
   override def addHistory(line: String): Unit = reader.history.add(line)
 
   // LineReader saves each history entry to the file when it is added

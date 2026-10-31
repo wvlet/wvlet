@@ -18,23 +18,9 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
     val noCompletion = Completion(cursor, Seq.empty)
 
     // Find the most recent quote (either single or double) before cursor
-    val singleQuoteStart =
-      input.lastIndexOf('\'') match
-        case -1 =>
-          -1
-        case i if i <= cursor =>
-          i
-        case _ =>
-          -1
-
-    val doubleQuoteStart =
-      input.lastIndexOf('"') match
-        case -1 =>
-          -1
-        case i if i <= cursor =>
-          i
-        case _ =>
-          -1
+    // (a closing quote at or after the cursor is not a start)
+    val singleQuoteStart = input.lastIndexOf('\'', cursor - 1)
+    val doubleQuoteStart = input.lastIndexOf('"', cursor - 1)
 
     // Determine which type of quote we're in (if any)
     val (quoteStart, quoteChar) =
@@ -46,14 +32,12 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
         (-1, ' ')
 
     // Check if cursor is inside the quoted string
-    val insideQuotes =
-      quoteStart >= 0 && (
-        input.indexOf(quoteChar, quoteStart + 1) match
-          case -1 =>
-            true
-          case end =>
-            cursor <= end
-      )
+    val closingQuote =
+      if quoteStart >= 0 then
+        input.indexOf(quoteChar, quoteStart + 1)
+      else
+        -1
+    val insideQuotes = quoteStart >= 0 && (closingQuote == -1 || cursor <= closingQuote)
 
     if !insideQuotes then
       noCompletion
@@ -141,9 +125,12 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
               else
                 ""
             )
-          // Do NOT wrap with quotes; the user is already inside a quoted string.
-          // Directories are not complete, so that the user can keep typing into them
-          Candidate(valuePath, display, complete = !f.isDirectory)
+          if f.isDirectory || closingQuote >= 0 then
+            // Keep typing into a directory, or before the closing quote that is already there
+            Candidate(valuePath, display, complete = false)
+          else
+            // Close the quote. A complete candidate is followed by a space
+            Candidate(s"${valuePath}${quoteChar}", display, complete = true)
         }
         // Replace the in-quote text before the cursor with the candidate path
         Completion(afterQuote, candidates.toSeq)

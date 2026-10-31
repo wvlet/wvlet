@@ -40,6 +40,9 @@ import wvlet.lang.runner.WvletScriptRunner
 import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.Executors
+import java.util.concurrent.CancellationException
+import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import scala.io.AnsiColor
 
@@ -111,38 +114,56 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
 
   private var lastOutput: Option[LastOutput] = None
 
-  // Run the body in a new thread, so that Ctrl-C can interrupt the running query
-  private def withNewThread[Result](body: => Result): Result =
-    val worker      = AtomicReference[Thread]()
-    val onCtrlC     = terminal.onInterrupt(() => Option(worker.get()).foreach(_.interrupt()))
-    val queryResult = executorThreadManager.submit { () =>
-      worker.set(Thread.currentThread())
-      body
+  /**
+    * Run the body in a new thread, so that Ctrl-C can cancel the running query. Returns None when
+    * cancelled.
+    */
+  private def withNewThread[Result](body: => Result): Option[Result] =
+    // Register the handler before submitting, so that an early Ctrl-C is not lost
+    val cancelled = AtomicBoolean(false)
+    val task      = AtomicReference[Future[Result]]()
+    val onCtrlC   = terminal.onInterrupt { () =>
+      cancelled.set(true)
+      Option(task.get()).foreach(_.cancel(true))
     }
-    try queryResult.get()
-    finally onCtrlC.cancel
+    try
+      task.set(executorThreadManager.submit(() => body))
+      if cancelled.get() then
+        task.get().cancel(true)
+      Some(task.get().get())
+    catch
+      case e: CancellationException =>
+        logger.error("Cancelled the query")
+        None
+    finally
+      onCtrlC.cancel
+
+  /**
+    * Run a query from a key binding. The input is edited in raw mode, where Ctrl-C is a key, so
+    * leave raw mode while the query runs to let Ctrl-C cancel it.
+    */
+  private def runFromKeyBinding[Result](body: => Result): Option[Result] = terminal
+    .withInterruptSignal {
+      withNewThread(body)
+    }
 
   private def runStmt(trimmedLine: String): Unit =
     if trimmedLine.nonEmpty then
       withNewThread {
-        try
-          val result = runner.runStatement(
-            QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
-          )
-          // Display output and save for clip commands
-          val output =
-            if terminal.isRealTerminal then
-              runner.displayOutput(trimmedLine, result, terminal.width)
-            else
-              // In headless mode, print to stdout
-              val outputStr = result.toPrettyBox()
-              if outputStr.trim.nonEmpty then
-                println(outputStr)
-              LastOutput(trimmedLine, outputStr, result)
-          lastOutput = Some(output)
-        catch
-          case e: InterruptedException =>
-            logger.error("Cancelled the query")
+        val result = runner.runStatement(
+          QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
+        )
+        // Display output and save for clip commands
+        val output =
+          if terminal.isRealTerminal then
+            runner.displayOutput(trimmedLine, result, terminal.width)
+          else
+            // In headless mode, print to stdout
+            val outputStr = result.toPrettyBox()
+            if outputStr.trim.nonEmpty then
+              println(outputStr)
+            LastOutput(trimmedLine, outputStr, result)
+        lastOutput = Some(output)
       }
 
   private def trimLine(line: String): String = line.trim.stripSuffix(";")
@@ -182,7 +203,7 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
       val lines         = queryFragment.split("\n")
       val lastLine      = lines.lastOption.getOrElse("")
       val lineNum       = lines.size
-      val result        =
+      runFromKeyBinding {
         runner.runStatement(
           QueryRequest(
             query = queryFragment,
@@ -191,11 +212,13 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
             isDebugRun = true
           )
         )(using QueryProgressMonitor.noOp) // Hide progress for describe query
-      val str = result.toPrettyBox()
-      editor.printAbove(
-        s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color
-            .BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
-      )
+      }.foreach { result =>
+        val str = result.toPrettyBox()
+        editor.printAbove(
+          s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color
+              .RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
+        )
+      }
   )
 
   private def subqueryRun = LineAction.Custom(
@@ -207,17 +230,19 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
       val lastLine      = lines.lastOption.getOrElse("")
       val lineNum       = lines.size
       val samplingQuery = s"${queryFragment}\nlimit ${runner.getResultRowLimit}"
-      val result        =
+      runFromKeyBinding {
         runner.runStatement(
           QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true)
         )(using QueryProgressMonitor.noOp) // Progress lines would break the input being edited
-      // The editor is in raw mode here, so print the result above the input instead of paging it
-      val output = runner.renderOutput(samplingQuery, result, terminal.width)
-      lastOutput = Some(output)
-      editor.printAbove(
-        s"${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color
-            .BRIGHT_RED}${lastLine}${AnsiColor.RESET}\n${output.output}"
-      )
+      }.foreach { result =>
+        // The input is being edited, so print the result above it instead of paging it
+        val output = runner.renderOutput(samplingQuery, result, terminal.width)
+        lastOutput = Some(output)
+        editor.printAbove(
+          s"${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color
+              .BRIGHT_RED}${lastLine}${AnsiColor.RESET}\n${output.output}"
+        )
+      }
   )
 
   /**
@@ -256,11 +281,16 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
   private def readLoop(): Unit =
     var toContinue = true
     while toContinue do
-      terminal.readLine("wv> ").await match
-        case LineResult.Line(line) =>
-          toContinue = eval(line)
-        case LineResult.Interrupted(_) | LineResult.EndOfInput =>
-          toContinue = false
+      try
+        terminal.readLine("wv> ").await match
+          case LineResult.Line(line) =>
+            toContinue = eval(line)
+          case LineResult.Interrupted(_) | LineResult.EndOfInput =>
+            toContinue = false
+      catch
+        case e: Exception =>
+          // e.g., an error in a key binding. Keep the REPL running
+          error(e)
 
   /**
     * Evaluate one input. Returns false when the REPL should exit

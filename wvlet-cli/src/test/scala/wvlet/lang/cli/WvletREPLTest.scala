@@ -38,9 +38,10 @@ class WvletREPLTest extends UniTest:
   private case class ReplRun(io: InMemoryTerminalIO, stdout: String, workFolder: File):
     def screen: String = DisplayWidth.stripAnsi(io.output)
 
-  private def runRepl(inputs: String*): ReplRun =
-    val workFolder = newWorkFolder()
-    val io         = TerminalIO.inMemory(inputs.map(_.getBytes("UTF-8")))
+  private def runRepl(inputs: String*): ReplRun = runReplIn(newWorkFolder(), inputs*)
+
+  private def runReplIn(workFolder: File, inputs: String*): ReplRun =
+    val io   = TerminalIO.inMemory(inputs.map(_.getBytes("UTF-8")))
     val main = WvletREPLMain(WvletGlobalOption(), WvletREPLOption(workFolder = workFolder.getPath))
     val stdout = captureStdout {
       (main.replDesign(isInteractive = true) + Design.newDesign.bindInstance[TerminalIO](io)).build[
@@ -114,10 +115,23 @@ class WvletREPLTest extends UniTest:
     dir.candidates.map(c => (c.value, c.complete)) shouldBe Seq(("data/", false))
 
     val file = completer.complete("from 'data/s", 12)
-    file.candidates.map(_.value) shouldBe Seq("data/sales.json")
+    // A single file closes the quote
+    file.candidates.map(c => (c.value, c.complete)) shouldBe Seq(("data/sales.json'", true))
+
+    // Keep an existing closing quote
+    val quoted = completer.complete("from 'data/s'", 12)
+    quoted.candidates.map(c => (c.value, c.complete)) shouldBe Seq(("data/sales.json", false))
 
     // No completion outside quotes
     completer.complete("from da", 7).candidates shouldBe Seq.empty
+  }
+
+  test("complete a file path with Tab and close the quote") {
+    val workFolder = newWorkFolder()
+    Files.writeString(File(workFolder, "sales.json").toPath, "[]")
+    // Tab completes the path, then Ctrl-C ends the REPL without running it
+    val r = runReplIn(workFolder, "from 'sal\t", "\u0003")
+    r.screen shouldContain "from 'sales.json' "
   }
 
 end WvletREPLTest

@@ -62,6 +62,12 @@ trait REPLTerminal extends AutoCloseable:
   def onInterrupt(handler: () => Unit): Cancelable
 
   /**
+    * Run the body with Ctrl-C delivered as an interrupt signal to [[onInterrupt]] handlers, e.g., a
+    * query run from a key binding while the input is edited in raw mode, where Ctrl-C is a key
+    */
+  def withInterruptSignal[A](body: => A): A = body
+
+  /**
     * Add a line to the command history
     */
   def addHistory(line: String): Unit

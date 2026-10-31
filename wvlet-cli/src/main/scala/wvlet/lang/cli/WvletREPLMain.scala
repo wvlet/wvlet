@@ -103,15 +103,20 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
     val selectedCatalog = currentProfile.defaultEngine.catalog
     val selectedSchema  = currentProfile.defaultEngine.schema
 
-    Design
-      .newSilentDesign
-      .bindInstance[TerminalIO](TerminalIO.default)
-      .bindProvider[WorkEnv, TerminalIO, REPLTerminal] { (workEnv: WorkEnv, io: TerminalIO) =>
-        if isInteractive then
-          UniTerminal(workEnv, io)
-        else
-          HeadlessTerminal()
-      }
+    // Only interactive sessions touch the native terminal, so that `-c` runs print no JVM
+    // native-access warnings
+    val terminalDesign =
+      if isInteractive then
+        Design
+          .newSilentDesign
+          .bindInstance[TerminalIO](TerminalIO.default)
+          .bindProvider[WorkEnv, TerminalIO, REPLTerminal] { (workEnv: WorkEnv, io: TerminalIO) =>
+            UniTerminal(workEnv, io)
+          }
+      else
+        Design.newSilentDesign.bindInstance[REPLTerminal](HeadlessTerminal())
+
+    terminalDesign
       .bindProvider[WvletScriptRunner, REPLTerminal, WvletREPL] {
         (runner: WvletScriptRunner, terminal: REPLTerminal) =>
           WvletREPL(runner, terminal)
