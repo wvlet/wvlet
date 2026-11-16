@@ -134,6 +134,7 @@ def json_extract(a1: any, a2: any) in trino: json = native
 def json_extract_scalar(a1: any, a2: any) in trino: any = native
 def json_format(a1: json) in trino: string = native
 def json_parse(a1: any) in trino: json = native
+def json_scalar(a1: any) in trino: json = native
 def json_size(a1: any, a2: any) in trino: long = native
 def kurtosis(a1: any) in trino: double = native
 def last_day_of_month(a1: any) in trino: date = native
