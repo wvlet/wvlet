@@ -2,6 +2,7 @@ package wvlet.lang.cli
 
 import wvlet.uni.cli.launcher.Launcher
 import wvlet.uni.cli.launcher.command
+import wvlet.uni.cli.launcher.option
 import wvlet.uni.design.Design
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.WvletLangException
@@ -95,6 +96,21 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
     withCompiler(compilerOption) { compiler =>
       compiler.run()
     }
+  }
+
+  @command(description = "Build materialized models in dependency order")
+  def build(
+      flowOption: WvletFlowOption,
+      @option(
+        prefix = "-s,--select",
+        description =
+          "Models to build (comma-separated): m, m+ (with downstream), +m (with upstream)"
+      )
+      select: Option[String] = None,
+      @option(prefix = "--dry-run", description = "Print the build order and SQL without running")
+      dryRun: Boolean = false
+  ): Unit = handleError {
+    WvletFlowCommand(opts).build(flowOption, select, dryRun)
   }
 
   @command(description = "Convert SQL to Wvlet query")

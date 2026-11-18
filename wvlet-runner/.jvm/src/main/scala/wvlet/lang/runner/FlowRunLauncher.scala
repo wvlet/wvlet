@@ -86,11 +86,41 @@ object FlowRunLauncher extends LogSupport:
       itemStore: Option[ItemStore] = None
   ): FlowExecutionResult =
     val (unit, flow) = loaded.find(flowName)
+    executeFlowDef(
+      flow,
+      unit,
+      loaded.compileResult,
+      profile,
+      workEnv,
+      store,
+      resumeFrom,
+      args,
+      taskQueue,
+      itemStore
+    )
+
+  end execute
+
+  /**
+    * Execute (or resume) the given flow definition, compiled in the given unit. Also runs flows
+    * planned by the compiler rather than written by the user, such as `wvlet build`
+    */
+  def executeFlowDef(
+      flow: FlowDef,
+      unit: CompilationUnit,
+      compileResult: CompileResult,
+      profile: Profile,
+      workEnv: WorkEnv,
+      store: FlowRunStore,
+      resumeFrom: Option[FlowRunRecord] = None,
+      args: List[FunctionArg] = Nil,
+      taskQueue: Option[TaskQueue] = None,
+      itemStore: Option[ItemStore] = None
+  ): FlowExecutionResult =
     Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
       val connector = dbConnectorProvider.getConnector(profile)
 
-      given ctx: Context = loaded
-        .compileResult
+      given ctx: Context = compileResult
         .context
         .withCompilationUnit(unit)
         .newContext(Symbol.NoSymbol)
@@ -121,6 +151,6 @@ object FlowRunLauncher extends LogSupport:
       ).execute(flow, resumeFrom, args)
     }
 
-  end execute
+  end executeFlowDef
 
 end FlowRunLauncher

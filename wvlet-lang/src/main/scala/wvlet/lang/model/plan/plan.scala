@@ -150,13 +150,20 @@ case class ModelDef(
     params: List[DefArg],
     givenRelationType: Option[RelationType],
     child: Query,
-    span: Span
+    span: Span,
+    // `model m with { materialized: 'table' } = { ... }`: how `wvlet build` persists the model
+    config: List[ConfigItem] = Nil
 ) extends LogicalPlan
     with HasTableName
     with LanguageStatement:
   override def children: List[LogicalPlan] = Nil
 
   override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
+
+  /** The value of the given `with { }` config key, if present */
+  def configValue(key: String): Option[Expression] = config
+    .find(_.key.unquotedValue == key)
+    .map(_.value)
 
 case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Span)
     extends LanguageStatement

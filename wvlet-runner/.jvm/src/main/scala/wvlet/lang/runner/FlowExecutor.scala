@@ -1536,6 +1536,51 @@ class FlowExecutor(
       ls.name
     )
 
+    staged match
+      case save: Save =>
+        // A stage whose body persists its result (`save to t`, `save as view v`, as in the
+        // stages `wvlet build` plans for materialized models) writes to its own target instead
+        // of a run-scoped stage table
+        try GenSQL
+            .generateSaveSQL(save, ctx)
+            .foreach { stmt =>
+              debug(s"Saving stage ${ls.name}:\n${stmt}")
+              stageConnector.executeCancellable(stmt, registerStatement, deregisterStatement)
+            }
+        finally dropStagingTables(stageConnector, stagingTables)
+      case _ =>
+        createStageTable(
+          ls,
+          staged,
+          stageConnector,
+          tableFor,
+          stagingTables,
+          registerStatement,
+          deregisterStatement
+        )
+
+  end materializeStage
+
+  private def dropStagingTables(stageConnector: DBConnector, stagingTables: List[String]): Unit =
+    // Staging tables only feed the stage statement; drop them immediately (a retried attempt
+    // re-stages from the source)
+    stagingTables.foreach { staging =>
+      try
+        stageConnector.execute(s"""drop table if exists "${staging}"""")
+      catch
+        case NonFatal(e) =>
+          debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
+    }
+
+  private def createStageTable(
+      ls: FlowLowering.LoweredStage,
+      staged: Relation,
+      stageConnector: DBConnector,
+      tableFor: String => String,
+      stagingTables: List[String],
+      registerStatement: CancellableStatement => Unit,
+      deregisterStatement: () => Unit
+  )(using ctx: Context): Unit =
     val sql = GenSQL.generateSQLFromRelation(staged, addHeader = false).sql
 
     // Quote the table name: it contains a ULID and stage names may collide with SQL keywords.
@@ -1554,18 +1599,9 @@ class FlowExecutor(
     // The registered handle lets the scheduler stop the statement server-side on a timeout
     // or cancellation while it is executing
     try stageConnector.executeCancellable(ddl, registerStatement, deregisterStatement)
-    finally
-      // Staging tables only feed the CTAS above; drop them immediately (a retried attempt
-      // re-stages from the source)
-      stagingTables.foreach { staging =>
-        try
-          stageConnector.execute(s"""drop table if exists "${staging}"""")
-        catch
-          case NonFatal(e) =>
-            debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
-      }
+    finally dropStagingTables(stageConnector, stagingTables)
 
-  end materializeStage
+  end createStageTable
 
   /**
     * Replace TableScans that were resolved through a different connector with run-scoped staging
