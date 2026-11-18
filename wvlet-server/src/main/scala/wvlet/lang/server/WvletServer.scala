@@ -14,7 +14,7 @@ import wvlet.uni.control.Control.withResource
 import wvlet.uni.io.IO
 import wvlet.uni.design.{Design, Session}
 import wvlet.uni.http.netty.{NettyHttpServer, NettyServerConfig}
-import wvlet.uni.http.rpc.{RPCRoute, RPCRouter, RPCStatus}
+import wvlet.uni.http.rpc.{RPCRoute, RPCRouter}
 import wvlet.uni.http.{
   Http,
   HttpHeader,
@@ -23,7 +23,9 @@ import wvlet.uni.http.{
   JVMHttpChannelFactory,
   Request,
   Response,
-  RxHttpHandler
+  RxHttpHandler,
+  ServiceException,
+  ServiceStatus
 }
 import wvlet.uni.log.LogSupport
 import wvlet.uni.rx.Rx
@@ -70,7 +72,7 @@ object WvletServer extends LogSupport:
     * Multi-service RPC dispatcher. uni-netty's `RPCHandler` only takes a single `RPCRouter`, so
     * this wraps multiple routers into one `RxHttpHandler` by building a path-keyed lookup. Mirrors
     * uni-netty `RPCHandler`'s wire format exactly: POST request, JSON `{"request": {...}}` body,
-    * Weaver-encoded JSON response with `RPCStatus` header.
+    * Weaver-encoded JSON response with `ServiceStatus` header.
     */
   private class MultiRpcHandler(routers: Seq[RPCRouter]) extends RxHttpHandler with LogSupport:
     private val routeMap: Map[String, (RPCRoute, Any)] =
@@ -79,7 +81,7 @@ object WvletServer extends LogSupport:
     override def handle(request: Request): Rx[Response] =
       if request.method != HttpMethod.POST then
         Rx.single(
-          RPCStatus
+          ServiceStatus
             .INVALID_REQUEST_U1
             .newException(s"RPC requires POST method, got: ${request.method}")
             .toResponse
@@ -111,15 +113,15 @@ object WvletServer extends LogSupport:
 
     private def successResponse(value: Any, route: RPCRoute): Response = Response
       .ok
-      .addHeader(HttpHeader.XRPCStatus, RPCStatus.SUCCESS_S0.code.toString)
+      .addHeader(HttpHeader.XRPCStatus, ServiceStatus.SUCCESS_S0.code.toString)
       .withJsonContent(route.codec.encodeResult(value))
 
     private def errorResponse(e: Throwable): Response =
       e match
-        case rpc: wvlet.uni.http.rpc.RPCException =>
+        case rpc: ServiceException =>
           rpc.toResponse
         case _ =>
-          RPCStatus.INTERNAL_ERROR_I0.newException(e.getMessage, e).toResponse
+          ServiceStatus.INTERNAL_ERROR_I0.newException(e.getMessage, e).toResponse
 
   end MultiRpcHandler
 
@@ -150,7 +152,10 @@ object WvletServer extends LogSupport:
           rpc.handle(request)
         else
           Rx.single(
-            RPCStatus.UNAUTHENTICATED_U13.newException("Missing or invalid bearer token").toResponse
+            ServiceStatus
+              .UNAUTHENTICATED_U13
+              .newException("Missing or invalid bearer token")
+              .toResponse
           )
 
   // Wrap an RPC handler with a static-content fallback. uni's path matcher doesn't support

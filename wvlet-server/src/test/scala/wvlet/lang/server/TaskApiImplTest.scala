@@ -11,7 +11,7 @@ import wvlet.lang.runner.activity.{
   TaskQueue
 }
 import wvlet.lang.test.WvletDITest
-import wvlet.uni.http.rpc.RPCException
+import wvlet.uni.http.ServiceException
 
 class TaskApiImplTest extends WvletDITest:
 
@@ -30,7 +30,7 @@ class TaskApiImplTest extends WvletDITest:
 
   test("poll rejects empty activity types") {
     val api = dep[TaskApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.poll(PollRequest(List.empty, "worker-1"))
     }
     e.getMessage shouldContain "activityTypes"
@@ -85,7 +85,7 @@ class TaskApiImplTest extends WvletDITest:
 
   test("reportResult rejects invalid status") {
     val api = dep[TaskApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.reportResult(TaskResultRequest(attemptId = "attempt-x", status = "bogus"))
     }
     e.getMessage shouldContain "Invalid status"
@@ -93,7 +93,7 @@ class TaskApiImplTest extends WvletDITest:
 
   test("reportResult rejects empty attemptId") {
     val api = dep[TaskApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.reportResult(TaskResultRequest(attemptId = "", status = "completed"))
     }
     e.getMessage shouldContain "attemptId"
@@ -140,7 +140,7 @@ class TaskApiImplTest extends WvletDITest:
 
   test("heartbeat rejects unknown attempt") {
     val api = dep[TaskApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.heartbeat(HeartbeatRequest("nonexistent"))
     }
     e.getMessage shouldContain "not active"
@@ -148,7 +148,7 @@ class TaskApiImplTest extends WvletDITest:
 
   test("heartbeat rejects empty attemptId") {
     val api = dep[TaskApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.heartbeat(HeartbeatRequest(""))
     }
     e.getMessage shouldContain "attemptId"
@@ -195,10 +195,10 @@ class TaskApiImplTest extends WvletDITest:
 
   test("reject invalid item listing requests") {
     val api = dep[TaskApi]
-    intercept[RPCException] {
+    intercept[ServiceException] {
       api.listItems(ItemListRequest("run-list", "investigate", limit = 0))
     }.getMessage shouldContain "limit"
-    intercept[RPCException] {
+    intercept[ServiceException] {
       api.listItems(ItemListRequest("run-list", "investigate", state = Some("bogus")))
     }.getMessage shouldContain "bogus"
   }
@@ -220,7 +220,7 @@ class TaskApiImplTest extends WvletDITest:
     val item = api.getItem(ItemRequest("get-1"))
     item.state shouldBe "failed"
     item.error shouldBe Some("boom")
-    intercept[RPCException] {
+    intercept[ServiceException] {
       api.getItem(ItemRequest("missing"))
     }.getMessage shouldContain "missing"
   }
