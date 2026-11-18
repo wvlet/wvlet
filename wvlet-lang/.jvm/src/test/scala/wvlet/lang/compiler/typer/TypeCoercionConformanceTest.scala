@@ -13,7 +13,6 @@
  */
 package wvlet.lang.compiler.typer
 
-import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.ErrorType

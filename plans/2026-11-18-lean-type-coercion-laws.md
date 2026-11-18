@@ -32,7 +32,7 @@ What each candidate looks like in `wvlet-lang` today:
 Lane: Standard. It adds a new formal model and extends the `Formal` CI workflow, and the user asked to approve the direction first.
 
 - **Target (c): the common-type laws of `TypeInference`.** It is the only candidate that exists as real, pure, self-contained code, and it feeds `CASE` typing today.
-- **Model domain:** Null, NoType, Int, Long, Float, Double, Boolean, String, Short (standing in for the unhandled numeric types), one "other" type (e.g. Date), two Decimals with different precisions, plus a single `error` value.
+- **Model domain:** Null, NoType, Int, Long, Float, Double, Boolean, String, Short (standing in for the unhandled numeric types), one "other" type (e.g. Date), two Decimals with different precisions, varchar(10), plus a single `error` value.
   - Error messages are abstracted away. The replay maps the model's `error` to one fixed `ErrorType` instance and compares results by error-ness only.
   - The laws are claimed for this domain only. The other DataTypes fall into the same catch-all branches as Short and Date. `TypeVar` stays out of this first model, because it is a placeholder that the laws don't fit (see follow-ups).
 - **Lean mirrors the Scala `match` order**, as the activity model does, so each case can be checked against the code by eye.
