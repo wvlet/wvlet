@@ -31,7 +31,7 @@ class ModelBuildTest extends UniTest:
 
   private def build(dir: String, selectors: List[String] = Nil): FlowExecutionResult =
     val plan = ModelBuildLauncher.plan(dir, workEnv, selectors)
-    ModelBuildLauncher.checkUpstreamsBuilt(plan, connector)
+    ModelBuildLauncher.checkUpstreamsBuilt(plan, _ => connector)
     FlowExecutor(connector, workEnv).execute(plan.flow)(using plan.context)
 
   private def rows(sql: String): List[List[String]] =
@@ -80,6 +80,33 @@ class ModelBuildTest extends UniTest:
     rows(
       "select table_type from information_schema.tables where table_name = 'mb_stg_orders'"
     ) shouldBe List(List("VIEW"))
+  }
+
+  test("build models without an alias into tables named after the model") {
+    val dir = project(
+      "m.wv" -> """model mb_plain_src with { materialized: 'table' } = { from [[1], [2]] as t(x) }
+          |model mb_plain_sum with { materialized: 'table' } = {
+          |  from mb_plain_src
+          |  agg x.sum as total
+          |}
+          |""".stripMargin
+    )
+    build(dir).hasError shouldBe false
+    rows("select total from mb_plain_sum") shouldBe List(List("3"))
+  }
+
+  test("persist to the location a table declaration binds") {
+    // A binding on the current search path governs the bare model name
+    val dir = project("m.wv" -> """table mb_bound_src in memory.main = { x: int }
+          |model mb_bound_src with { materialized: 'table' } = { from [[1]] as t(x) }
+          |model mb_bound_down with { materialized: 'table' } = { from mb_bound_src }
+          |""".stripMargin)
+    val plan = ModelBuildLauncher.plan(dir, workEnv, Nil)
+    plan.graph.get("mb_bound_src").map(_.targetName) shouldBe Some("memory.main.mb_bound_src")
+    plan.sqlStatements.find(_._1.name == "mb_bound_down").get._2.mkString shouldContain
+      "memory.main.mb_bound_src"
+    build(dir).hasError shouldBe false
+    rows("select x from memory.main.mb_bound_down") shouldBe List(List("1"))
   }
 
   test("derive the graph through ephemeral models") {

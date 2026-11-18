@@ -143,9 +143,15 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       select: Option[String],
       dryRun: Boolean
   ): Unit =
-    val workEnv   = WorkEnv(flowOption.workFolder, opts.logLevel)
-    val selectors = select.toList.flatMap(_.split(",").map(_.trim).filter(_.nonEmpty))
-    val plan      = ModelBuildLauncher.plan(flowOption.workFolder, workEnv, selectors)
+    val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
+    val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+    // Selectors are comma-split by ModelGraph.select
+    val plan = ModelBuildLauncher.plan(
+      flowOption.workFolder,
+      workEnv,
+      select.toList,
+      profile.defaultEngine.dbType
+    )
     if dryRun then
       plan
         .sqlStatements
@@ -155,8 +161,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           println()
         }
     else
-      val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
-      var failed  = false
+      var failed = false
       Control.withResource(newRunStore(flowOption, workEnv)) { store =>
         val result = ModelBuildLauncher.execute(plan, profile, workEnv, store)
         println(result.toPrettyBox())
@@ -164,6 +169,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       }
       if failed && !WvletMain.isInSbt then
         System.exit(1)
+
+  end build
 
   /** Create the run store selected with --run-store (or the WVLET_FLOW_STORE environment) */
   private def newRunStore(flowOption: WvletFlowOption, workEnv: WorkEnv): FlowRunStore = flowOption

@@ -51,7 +51,7 @@ A model reference keeps the model's static type wherever it appears. Wvlet never
 persisted relation up in the live database to type-check it.
 
 - During `wvlet build`, a model that reads a materialized model reads its persisted table or view,
-  as dbt's `ref()` does. This also applies when the read goes through ephemeral models.
+  as dbt's `ref()` does. This also applies when the read goes through ephemeral models without parameters.
 - Everywhere else (`wvlet run`, the REPL, spec tests), models are inlined as before. Queries
   therefore never fail on a table that has not been built yet, and never read stale results.
 

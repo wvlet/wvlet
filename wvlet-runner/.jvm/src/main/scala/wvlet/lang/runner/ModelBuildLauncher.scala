@@ -20,6 +20,7 @@ import wvlet.lang.compiler.CompileResult
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.pipeline.BuildModel
@@ -84,8 +85,16 @@ object ModelBuildLauncher extends LogSupport:
   end BuildPlan
 
   /** Compile the work folder and plan a build of the selected models */
-  def plan(workFolder: String, workEnv: WorkEnv, selectors: List[String]): BuildPlan =
-    val compiler = Compiler(CompilerOptions(sourceFolders = List(workFolder), workEnv = workEnv))
+  def plan(
+      workFolder: String,
+      workEnv: WorkEnv,
+      selectors: List[String],
+      dbType: DBType = DBType.DuckDB
+  ): BuildPlan =
+    // Compile for the profile's engine, so the generated DDL (e.g. create or replace) fits it
+    val compiler = Compiler(
+      CompilerOptions(sourceFolders = List(workFolder), workEnv = workEnv, dbType = dbType)
+    )
     val compileResult = compiler.compile()
     // Surface compile errors (e.g. an invalid model config) with their own status code
     compileResult.failureReport.toList match
@@ -125,12 +134,12 @@ object ModelBuildLauncher extends LogSupport:
     * Fail when the selection reads a materialized model that is neither selected nor readable on
     * the connector (i.e., not built yet)
     */
-  def checkUpstreamsBuilt(plan: BuildPlan, connector: DBConnector): Unit =
+  def checkUpstreamsBuilt(plan: BuildPlan, connectorFor: BuildModel => DBConnector): Unit =
     val missing = plan
       .unselectedUpstreams
       .filterNot { m =>
         try
-          connector.execute(s"select 1 from ${m.targetName} limit 0")
+          connectorFor(m).execute(s"select 1 from ${m.targetName} limit 0")
           true
         catch
           case NonFatal(e) =>
@@ -154,7 +163,19 @@ object ModelBuildLauncher extends LogSupport:
       store: FlowRunStore
   ): FlowExecutionResult =
     Control.withResource(ConnectorProvider(workEnv)) { provider =>
-      checkUpstreamsBuilt(plan, provider.getConnector(profile))
+      // Probe each upstream on the engine it is built on
+      checkUpstreamsBuilt(
+        plan,
+        m =>
+          m.spec
+            .engine
+            .flatMap(e => profile.connectors.find(_.name == e))
+            .map(provider.getConnector)
+            .collect { case db: DBConnector =>
+              db
+            }
+            .getOrElse(provider.getConnector(profile))
+      )
     }
     FlowRunLauncher.executeFlowDef(
       plan.flow,

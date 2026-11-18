@@ -154,10 +154,15 @@ object ModelBuildSpec:
 
 end ModelBuildSpec
 
-/** A model together with its validated build config */
-case class BuildModel(model: ModelDef, spec: ModelBuildSpec):
-  def name: String       = model.name.name
-  def targetName: String = spec.targetName(name)
+/**
+  * A model together with its validated build config
+  *
+  * @param targetName
+  *   The relation the model is persisted to, after `table ... in <catalog>.<schema>` bindings, so
+  *   writes, downstream reads, and build checks all use the same relation
+  */
+case class BuildModel(model: ModelDef, spec: ModelBuildSpec, targetName: String):
+  def name: String = model.name.name
 
 /**
   * The dependency graph of the materialized models in a project. An edge points from a model to the
@@ -267,7 +272,7 @@ object ModelBuildPlanner:
     val withSpec     = allModels.map(m => m -> ModelBuildSpec.of(m))
     val materialized = withSpec.collect {
       case (m, spec) if spec.isMaterialized =>
-        BuildModel(m, spec)
+        BuildModel(m, spec, boundTarget(m, spec))
     }
     materialized
       .groupBy(_.name)
@@ -338,22 +343,29 @@ object ModelBuildPlanner:
       case Nil =>
         throw StatusCode.INVALID_ARGUMENT.newException("empty target name")
 
-  /** The statement persisting a model: `save to <target>` or `save as view <target>` */
-  def saveStatement(m: BuildModel, graph: ModelGraph)(using ctx: Context): Save =
-    // A `table` declaration bound to a location already pins where writes land, so a
-    // conflicting schema/alias would read from one place and write to another
-    if m.spec.schema.nonEmpty || m.spec.alias.nonEmpty then
+  /**
+    * The relation a model is persisted to. A `table` declaration bound to a location already pins
+    * where writes land, so the model follows it, and a conflicting schema/alias is an error
+    */
+  private def boundTarget(m: ModelDef, spec: ModelBuildSpec)(using ctx: Context): String =
+    if spec.schema.nonEmpty || spec.alias.nonEmpty then
       TableBindings
-        .declaredBindingOf(m.name)
+        .declaredBindingOf(m.name.name)
         .foreach { case (c, s) =>
           throw StatusCode
             .INVALID_MODEL_CONFIG
             .newException(
               s"model ${m
+                  .name
                   .name}: schema/alias conflict with the table declaration bound to ${c}.${s}. Remove one of them",
-              ctx.sourceLocationAt(m.model.span)
+              ctx.sourceLocationAt(m.span)
             )
         }
+    val name = spec.targetName(m.name.name)
+    TableBindings.declarationFor(name).flatMap(_.boundName).map(_.fullName).getOrElse(name)
+
+  /** The statement persisting a model: `save to <target>` or `save as view <target>` */
+  def saveStatement(m: BuildModel, graph: ModelGraph): Save =
     val body   = readPersisted(m.model.child, graph)
     val target = targetExpr(m.targetName)
     m.spec.materialization match

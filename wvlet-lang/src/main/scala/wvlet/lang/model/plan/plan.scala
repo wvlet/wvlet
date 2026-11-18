@@ -160,11 +160,6 @@ case class ModelDef(
 
   override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
 
-  /** The value of the given `with { }` config key, if present */
-  def configValue(key: String): Option[Expression] = config
-    .find(_.key.unquotedValue == key)
-    .map(_.value)
-
 case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Span)
     extends LanguageStatement
 
