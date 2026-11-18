@@ -1,53 +1,87 @@
 ---
-description: "Install the Wvlet command-line tools (wv and wvlet) with Homebrew on macOS or from a release package on Linux and other platforms."
+description: "Install the Wvlet command-line tool with npm (no JDK needed), or the full JVM CLI (wv REPL, build, flow, ui) with Homebrew or a release package."
 sidebar_label: Installation
 sidebar_position: 1
 ---
 
 # Installation
 
-Wvlet is available as a command-line tool. You can install Wvlet using Homebrew on macOS or download a binary package for other platforms.
+Wvlet is available as a command-line tool in two distributions:
 
-## Command Line Tools
+| | npm (`@wvlet/cli`) | JVM CLI (Homebrew or release package) |
+|---|---|---|
+| Requires | Node.js 22+ | JDK 17+ (Homebrew installs OpenJDK) |
+| `wvlet version`, `compile`, `to_wvlet`, `run` | ✓ | ✓ |
+| DuckDB for `wvlet run` | Included | Included |
+| `wv` REPL, `wvlet build`, `flow`, `catalog`, `ui` | — | ✓ |
+| Updates | Update notice + `wvlet upgrade` | `brew upgrade wvlet` |
 
-- [wv (Interactive Shell (REPL))](repl.md)
-- [wvlet (Command-line tool)](cli.md)
-- [Web UI](ui.md)
+Start with npm unless you need a JVM-only command.
 
-:::info
-Language SDKs are also available for [Python and TypeScript](../bindings) to compile Wvlet queries programmatically.
-:::
+## npm (macOS, Linux, Windows)
 
-## Mac OS X
+```bash
+npm install -g @wvlet/cli
+wvlet version
+```
 
-For macOS, you can install Wvlet using [Homebrew](https://brew.sh/):
+The package bundles DuckDB through DuckDB's official prebuilt `@duckdb/node-bindings-<os>-<arch>` package, so `wvlet run` works with no other installs. Supported platforms are macOS, Linux (glibc and musl), and Windows on x64 and arm64. `pnpm add -g @wvlet/cli` and `bun add -g @wvlet/cli` also work.
+
+### Updating
+
+Once a day, the CLI checks the npm registry in the background. When a new release is out, it prints one line after a command finishes:
+
+```
+wvlet 2026.12.0 is available (current 2026.11.0). Run 'wvlet upgrade' to update.
+```
+
+`wvlet upgrade` reinstalls the latest release with the package manager you installed it with (npm, pnpm, or bun). If it fails, for example due to permissions, it prints the command to run yourself.
+
+The check never delays a command: it reads the cached result in `~/.wvlet/update-check.json` and refreshes it in a background process. It is skipped in CI and when stderr is not a terminal. To turn it off, set `WVLET_NO_UPDATE_CHECK=1`.
+
+### Moving from Homebrew
+
+If you installed Wvlet with Homebrew and only need the npm commands, uninstall the formula first so that only one `wvlet` is on your `PATH`:
+
+```bash
+brew uninstall wvlet
+npm install -g @wvlet/cli
+which wvlet   # should point to the npm global bin directory
+```
+
+### Troubleshooting
+
+- npm may warn that it skipped the install script of `koffi`. The warning is harmless: koffi ships prebuilt binaries that work without the script.
+- `libduckdb is not available`: the DuckDB platform package was not installed, usually because of `--omit=optional` or an unsupported platform. Reinstall without `--omit=optional`, or set `WVLET_LIBDUCKDB` to the absolute path of a `libduckdb` shared library.
+
+## JVM CLI
+
+The JVM CLI includes the [wv REPL](repl.md), [Web UI](ui.md), model builds, and flows, in addition to the [wvlet command](cli.md).
+
+### macOS (Homebrew)
 
 ```bash
 brew install wvlet/wvlet/wvlet
 ```
 
-This will install `wv (wvlet)` command to your system.
-
-To upgrade Wvlet, run:
-```bash
-brew upgrade wvlet
-```
-
-If the latest version is not installed, try `brew update` to update the formula, then run `brew upgrade wvlet` again.
-
+This installs the `wv` and `wvlet` commands, along with OpenJDK as a dependency. To upgrade, run `brew upgrade wvlet` (run `brew update` first if the latest version is not picked up).
 
 :::info
-The formula for homebrew can be found at 
+The formula for homebrew can be found at
 https://github.com/wvlet/homebrew-wvlet
 :::
 
-## Linux, Windows, and Other Platforms
+### Linux, Windows, and Other Platforms
 
-For other platforms (e.g., Linux, Windows, etc.), download a binary package wvlet-cli-(version).tar.gz from the release page https://github.com/wvlet/wvlet/releases
+Download a binary package wvlet-cli-(version).tar.gz from the release page https://github.com/wvlet/wvlet/releases
 
-You can find wv command in the bin directory of the package. Add the bin directory to your PATH environment variable.
+You can find the `wv` and `wvlet` commands in the bin directory of the package. Add the bin directory to your PATH environment variable.
 
-JDK17 or later is required to run Wvlet. Set JAVA_HOME environment variable to the JDK path.
+JDK 17 or later is required. Set the JAVA_HOME environment variable to the JDK path.
+
+:::info
+Language SDKs are also available for [Python and TypeScript](../bindings) to compile Wvlet queries programmatically.
+:::
 
 ## Quick Start
 

@@ -1,0 +1,106 @@
+name: CLI (npm)
+
+# Builds the @wvlet/cli npm package and smoke-tests the packed tarball as users install it
+# (`npm install -g`, no JDK, no system DuckDB) on Linux, macOS, and Windows. Also called by
+# npm-publish.yml so a broken package is never published.
+on:
+  pull_request:
+    paths:
+      - 'sdks/cli-node/**'
+      - 'wvlet-cli-core/**'
+      - 'wvlet-lang/.js/**'
+      - 'build.sbt'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/cli-node.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'sdks/cli-node/**'
+      - 'wvlet-cli-core/**'
+      - 'wvlet-lang/.js/**'
+      - 'build.sbt'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/cli-node.yml'
+  workflow_call:
+
+jobs:
+  pack:
+    name: Build and pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+          cache: sbt
+
+      - uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          check-latest: true
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Build wvlet-cli-core JS bundle
+        run: ./sbt "cliCoreJS/fullLinkJS"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm --filter @wvlet/cli test
+
+      - name: Pack
+        working-directory: sdks/cli-node
+        run: |
+          npm pack
+          mv wvlet-cli-*.tgz wvlet-cli.tgz
+          tar tzf wvlet-cli.tgz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wvlet-cli-npm
+          path: sdks/cli-node/wvlet-cli.tgz
+          retention-days: 3
+
+  smoke:
+    name: Install and run (${{ matrix.os }})
+    needs: pack
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: wvlet-cli-npm
+
+      - name: Install the packed tarball globally
+        run: npm install -g ./wvlet-cli.tgz
+
+      - name: wvlet version
+        run: wvlet version
+
+      - name: wvlet compile
+        run: wvlet compile "from x select a, b" | tee out.sql && grep -i "select" out.sql
+
+      - name: wvlet run on the bundled DuckDB
+        env:
+          WVLET_NO_UPDATE_CHECK: '1'
+        run: wvlet run "select 40 + 2 as answer" | tee out.txt && grep -q "42" out.txt

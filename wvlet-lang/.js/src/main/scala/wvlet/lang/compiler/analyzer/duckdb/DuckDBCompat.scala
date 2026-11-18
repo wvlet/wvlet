@@ -32,7 +32,7 @@ trait DuckDBCompat:
       DuckDBApi.instance match
         case None =>
           throw new UnsupportedOperationException(
-            s"libduckdb is not available; set WVLET_LIBDUCKDB to its absolute path or install it via your platform package manager (path: ${path})"
+            s"${DuckDBApi.notAvailableMessage} (path: ${path})"
           )
         case Some(api) =>
           schemaOfWith(api, path)
@@ -60,9 +60,7 @@ trait DuckDBCompat:
   def execute(sql: String): QueryResult =
     DuckDBApi.instance match
       case None =>
-        throw new UnsupportedOperationException(
-          "libduckdb is not available; set WVLET_LIBDUCKDB to its absolute path or install it via your platform package manager"
-        )
+        throw new UnsupportedOperationException(DuckDBApi.notAvailableMessage)
       case Some(api) =>
         executeWith(api, sql)
 
@@ -79,9 +77,7 @@ trait DuckDBCompat:
   def newSession(path: Option[String] = None): DuckDBSession =
     DuckDBApi.instance match
       case None =>
-        throw new UnsupportedOperationException(
-          "libduckdb is not available; set WVLET_LIBDUCKDB to its absolute path or install it via your platform package manager"
-        )
+        throw new UnsupportedOperationException(DuckDBApi.notAvailableMessage)
       case Some(api) =>
         openSession(api, path)
 

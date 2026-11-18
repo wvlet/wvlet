@@ -114,14 +114,14 @@ select status, count(*) as n
 
 ## How do I run Wvlet?
 
-Install the CLI with Homebrew (`brew install wvlet/wvlet/wvlet`) or download a release package; see [Installation](./usage/install.md). The CLI has two commands:
+Install the CLI with npm (`npm install -g @wvlet/cli`, Node.js 22+). It provides `wvlet version`, `compile`, `to_wvlet`, and `run` (DuckDB included, no JDK needed). The full JVM CLI, which adds the `wv` REPL, `wvlet build`, `flow`, `catalog`, and `ui`, is installed with Homebrew (`brew install wvlet/wvlet/wvlet`) or a release package; see [Installation](./usage/install.md). The commands:
 
-- `wv`: an interactive shell (REPL). `wv -c "from 'data.csv' count"` runs one query and exits.
+- `wv` (JVM CLI only): an interactive shell (REPL). `wv -c "from 'data.csv' count"` runs one query and exits.
 - `wvlet`: batch commands.
   - `wvlet run "from 'data.parquet' limit 10"` runs a query; `wvlet run -f query.wv` runs a file.
   - `wvlet compile -f query.wv` prints the generated SQL; add `--target trino` (or another engine) to choose the SQL dialect.
   - `wvlet to_wvlet "<sql>"` converts SQL to Wvlet.
-  - `wvlet build` builds materialized models in dependency order; `wvlet build -s m+` builds `m` and its downstream models, and `--dry-run` prints the SQL. See [Model Pipelines](./syntax/model-pipelines.md).
+  - `wvlet build` (JVM CLI only) builds materialized models in dependency order; `wvlet build -s m+` builds `m` and its downstream models, and `--dry-run` prints the SQL. See [Model Pipelines](./syntax/model-pipelines.md).
 
 Engines:
 

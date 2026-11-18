@@ -87,8 +87,17 @@ jobs:
         working-directory: sdks/typescript
         run: npm publish --provenance --access public
 
+  # Install the packed @wvlet/cli on Linux, macOS, and Windows and run it before publishing
+  smoke-cli-node:
+    name: Smoke-test @wvlet/cli
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.package == 'cli-node')
+    uses: ./.github/workflows/cli-node.yml
+
   publish-cli-node:
     name: Publish @wvlet/cli (Node.js) to NPM
+    needs: smoke-cli-node
     if: |
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && inputs.package == 'cli-node')
