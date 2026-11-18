@@ -1,0 +1,49 @@
+name: Formal
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/formal.yml'
+      - 'formal/**'
+      - 'wvlet-runner/src/main/scala/wvlet/lang/runner/activity/**'
+      - 'wvlet-runner/.jvm/src/main/scala/wvlet/lang/runner/activity/**'
+      - 'wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/formal.yml'
+      - 'formal/**'
+      - 'wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/**'
+  workflow_dispatch:
+
+jobs:
+  lean:
+    name: Lean proofs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: formal
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.elan
+            formal/.lake
+          key: lean-${{ runner.os }}-${{ hashFiles('formal/lean-toolchain', 'formal/lakefile.toml') }}
+      - name: Install elan
+        run: |
+          if [ ! -x "$HOME/.elan/bin/lake" ]; then
+            curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+              | sh -s -- -y --default-toolchain none --no-modify-path
+          fi
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      # --wfail turns every warning, including "declaration uses 'sorry'", into an error
+      - name: Check proofs
+        run: lake build --wfail
+      - name: Check conformance fixture freshness
+        run: |
+          lake exe activity-traces
+          git diff --exit-code -- ../wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/ \
+            || (echo "::error::The activity conformance fixture is stale. Run 'cd formal && lake exe activity-traces' and commit the result." && exit 1)
