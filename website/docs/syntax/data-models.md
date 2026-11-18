@@ -25,6 +25,8 @@ limit 10
 
 Data models are often the units to __materialize query results into the target database tables__. If your data model needs to be accessed by multiple queries, materializing (or persisting) data models will reduce the cost of data processing and often accelerates the query processing.   
 
+To persist models as tables or views and build them in dependency order, add a `with { materialized: 'table' }` config and run `wvlet build`. See [Model Pipelines](model-pipelines.md).
+
 ### Declaring Table Schemas
 
 A `table` declaration describes a stored relation — its column names and types — so queries

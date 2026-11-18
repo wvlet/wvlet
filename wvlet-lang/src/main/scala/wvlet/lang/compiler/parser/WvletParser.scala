@@ -1518,6 +1518,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           Some(identifier())
         case _ =>
           None
+    // Optional materialization config: model m with { materialized: 'table' } = { ... }
+    val config = parseConfigBlock()
     consume(WvletToken.EQ)
     consume(WvletToken.L_BRACE)
     val q: Query =
@@ -1538,7 +1540,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       // resolve the model type from the query if no type is given
       tpe.map(x => UnresolvedRelationType(x.fullName, Name.typeName(x.leafName))),
       q,
-      spanFrom(t)
+      spanFrom(t),
+      config
     )
   }
 

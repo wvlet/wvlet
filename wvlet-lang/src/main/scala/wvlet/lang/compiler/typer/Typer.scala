@@ -15,6 +15,7 @@ package wvlet.lang.compiler.typer
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.compiler.pipeline.ModelBuildSpec
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ModelSymbolInfo
@@ -389,6 +390,8 @@ object Typer extends Phase("typer") with LogSupport:
     * references the model before its unit has been typed
     */
   def typeModelDef(m: ModelDef)(using ctx: Context): ModelDef =
+    // Reject invalid `with { materialized: ... }` configs at compile time
+    ModelBuildSpec.of(m)
     val modelCtx = ctx.newContext(m.symbol)
     // Register parameters in input type
     val paramTypes = m.params.map(p => NamedType(p.name, p.dataType))

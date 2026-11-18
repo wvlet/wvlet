@@ -65,6 +65,7 @@ Keywords are lower-case. Each operator takes the output of the previous line as 
 | `concat` | Union all rows of another query | `concat { from archived_orders }` |
 | `with` | Name a subquery | `with paid as { from orders where status = 'paid' }` |
 | `model` | Define a reusable query | `model paid_orders = { from orders where status = 'paid' }` |
+| `model ... with { materialized: ... }` | Persist a model as a `table` or `view` with `wvlet build` | `model daily with { materialized: 'table' } = { from orders ... }` |
 | `val` | Define a constant or an inline table | `val t(id, name) = [[1, 'a'], [2, 'b']]` |
 | `test` | Assert on the result | `test _.size should be 10` |
 
@@ -120,6 +121,7 @@ Install the CLI with Homebrew (`brew install wvlet/wvlet/wvlet`) or download a r
   - `wvlet run "from 'data.parquet' limit 10"` runs a query; `wvlet run -f query.wv` runs a file.
   - `wvlet compile -f query.wv` prints the generated SQL; add `--target trino` (or another engine) to choose the SQL dialect.
   - `wvlet to_wvlet "<sql>"` converts SQL to Wvlet.
+  - `wvlet build` builds materialized models in dependency order; `wvlet build -s m+` builds `m` and its downstream models, and `--dry-run` prints the SQL. See [Model Pipelines](./syntax/model-pipelines.md).
 
 Engines:
 

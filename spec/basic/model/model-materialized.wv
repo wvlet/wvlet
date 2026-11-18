@@ -1,0 +1,23 @@
+-- A materialization config tells `wvlet build` how to persist the model
+model mat_orders with {
+  materialized: 'table'
+  retries: 2
+} = {
+  from [[1, 'a'], [2, 'b']] as t(id, name)
+}
+
+model mat_order_names with { materialized: 'view', alias: 'order_names' } = {
+  from mat_orders
+  select name
+}
+
+-- Outside `wvlet build`, materialized models are inlined like any other model,
+-- so queries never read a table that is not built yet
+from mat_orders
+where id = 1
+test _.size should be 1
+;
+
+from mat_order_names
+test _.columns should be ['name']
+test _.size should be 2

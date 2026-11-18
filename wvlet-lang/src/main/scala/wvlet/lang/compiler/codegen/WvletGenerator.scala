@@ -803,8 +803,19 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             .givenRelationType
             .map(t => modelName + ": " + t.typeName.name)
             .getOrElse(modelName)
-          group(wl("model", nameAndType, "= {")) + nest(linebreak + relation(m.child)) + linebreak +
-            "}" + linebreak
+          val config =
+            if m.config.isEmpty then
+              empty
+            else
+              // One line, comma-separated: the enclosing group may flatten line breaks
+              wl(
+                "with",
+                "{",
+                cl(m.config.map(item => wl(text(item.key.unquotedValue) + ":", expr(item.value)))),
+                "}"
+              )
+          group(wl("model", nameAndType, config, "= {")) + nest(linebreak + relation(m.child)) +
+            linebreak + "}" + linebreak
         case t: TypeDef =>
           val typeParams =
             if t.params.isEmpty then
@@ -1237,7 +1248,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     * Generate code for a list of config items.
     */
   private def configItems(items: List[ConfigItem])(using sc: SyntaxContext): Doc = lines(
-    items.map(item => group(wl(expr(item.key) + ":", expr(item.value))))
+    // Config keys parse as plain words (keywords included), so print them unquoted
+    items.map(item => group(wl(text(item.key.unquotedValue) + ":", expr(item.value))))
   )
 
   /**

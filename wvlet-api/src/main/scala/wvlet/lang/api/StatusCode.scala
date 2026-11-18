@@ -47,6 +47,8 @@ enum StatusCode(statusType: StatusType):
   case PARTIAL_QUERY_NOT_FOUND           extends StatusCode(StatusType.UserError)
   case STAGE_NOT_FOUND                   extends StatusCode(StatusType.UserError)
   case FLOW_NOT_FOUND                    extends StatusCode(StatusType.UserError)
+  case MODEL_NOT_FOUND                   extends StatusCode(StatusType.UserError)
+  case INVALID_MODEL_CONFIG              extends StatusCode(StatusType.UserError)
   case OPERATION_TIMED_OUT               extends StatusCode(StatusType.UserError)
   case PARTIAL_QUERY_COLUMN_MISSING      extends StatusCode(StatusType.UserError)
   case PARTIAL_QUERY_INVALID_BODY        extends StatusCode(StatusType.UserError)

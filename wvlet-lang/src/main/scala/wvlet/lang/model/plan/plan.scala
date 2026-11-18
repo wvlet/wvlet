@@ -150,7 +150,9 @@ case class ModelDef(
     params: List[DefArg],
     givenRelationType: Option[RelationType],
     child: Query,
-    span: Span
+    span: Span,
+    // `model m with { materialized: 'table' } = { ... }`: how `wvlet build` persists the model
+    config: List[ConfigItem] = Nil
 ) extends LogicalPlan
     with HasTableName
     with LanguageStatement:

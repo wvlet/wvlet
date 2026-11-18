@@ -129,6 +129,34 @@ wvlet run -f query.wv --format json
 wvlet run "from large_table select *" --limit 1000
 ```
 
+### `wvlet build`
+
+Build materialized models in dependency order. See [Model Pipelines](../syntax/model-pipelines.md).
+
+```bash
+wvlet build [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-w <folder>` | Project folder with .wv files (default: current folder) |
+| `-s, --select <selectors>` | Models to build, comma-separated: `m`, `m+` (with downstream), `+m` (with upstream) |
+| `--dry-run` | Print the build order and SQL without running anything |
+| `--profile <name>` | Profile to use |
+| `--catalog <name>`, `--schema <name>` | Context catalog and schema |
+
+**Examples:**
+
+```bash
+# Build every materialized model
+wvlet build
+
+# Build a model and everything downstream of it
+wvlet build -s stg_orders+
+```
+
 ### `wvlet ui`
 
 Start the Wvlet Web UI server.

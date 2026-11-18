@@ -41,6 +41,7 @@ import wvlet.lang.runner.FlowRunRetention
 import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.FlowScheduleConfig
 import wvlet.lang.runner.FlowScheduler
+import wvlet.lang.runner.ModelBuildLauncher
 import wvlet.lang.runner.activity.ItemStore
 import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.ScheduledFlow
@@ -132,6 +133,44 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
     }
     if failed && !WvletMain.isInSbt then
       System.exit(1)
+
+  /**
+    * `wvlet build`: build the materialized models of the working folder in dependency order. The
+    * build runs as a flow named `build`, so its runs appear in `wvlet flow session list`
+    */
+  private[cli] def build(
+      flowOption: WvletFlowOption,
+      select: Option[String],
+      dryRun: Boolean
+  ): Unit =
+    val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
+    val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+    // Selectors are comma-split by ModelGraph.select
+    val plan = ModelBuildLauncher.plan(
+      flowOption.workFolder,
+      workEnv,
+      select.toList,
+      profile.defaultEngine.dbType
+    )
+    if dryRun then
+      plan
+        .sqlStatements
+        .foreach { (m, statements) =>
+          println(s"-- ${m.name} (${m.spec.materialization.configName} -> ${m.targetName})")
+          statements.foreach(stmt => println(s"${stmt};"))
+          println()
+        }
+    else
+      var failed = false
+      Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+        val result = ModelBuildLauncher.execute(plan, profile, workEnv, store)
+        println(result.toPrettyBox())
+        failed = result.hasError
+      }
+      if failed && !WvletMain.isInSbt then
+        System.exit(1)
+
+  end build
 
   /** Create the run store selected with --run-store (or the WVLET_FLOW_STORE environment) */
   private def newRunStore(flowOption: WvletFlowOption, workEnv: WorkEnv): FlowRunStore = flowOption
