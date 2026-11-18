@@ -29,6 +29,10 @@ import wvlet.lang.model.Type.TypeVar
   *   - Type coercion rules (implicit type conversions)
   *   - Type unification (for generic type instantiation)
   *   - NULL type handling
+  *
+  * `unify`, `findCommonType`, `canCoerce`, and `widen` are modelled in Lean
+  * (formal/WvletFormal/Typer/Coercion.lean), which proves their laws; `TypeCoercionConformanceTest`
+  * replays the model's traces against this object. Update the model first when changing them.
   */
 object TypeInference:
 

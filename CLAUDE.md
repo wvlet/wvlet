@@ -129,7 +129,7 @@ pnpm --filter website run build
 
 ### Formal Verification (Lean)
 
-`formal/` is a standalone Lean 4 project (not part of sbt) that models the activity item state machine and proves its fencing and restart properties. Install the toolchain with [elan](https://github.com/leanprover/elan); `formal/lean-toolchain` pins the version. See `formal/README.md`.
+`formal/` is a standalone Lean 4 project (not part of sbt) that models the activity item state machine (fencing and restart properties) and the typer's common-type and coercion rules (`TypeInference`: least-upper-bound laws). Install the toolchain with [elan](https://github.com/leanprover/elan); `formal/lean-toolchain` pins the version. See `formal/README.md`.
 
 ```bash
 # Check all proofs (warnings, including `sorry`, fail the build)
@@ -137,9 +137,13 @@ cd formal && lake build --wfail
 
 # Regenerate the conformance fixture replayed by ActivityModelConformanceTest
 cd formal && lake exe activity-traces
+
+# Regenerate the conformance fixture replayed by TypeCoercionConformanceTest
+cd formal && lake exe typer-traces
 ```
 
 - When changing activity state transitions (`ItemStore`, `TaskQueue`, `BatchExecutor.recoverItems`), update the Lean model first, regenerate the fixture, and run `./sbt "runnerJVM/testOnly *ActivityModelConformanceTest"`. The `Formal` workflow fails on a stale fixture
+- When changing `unify`, `findCommonType`, `canCoerce`, or `widen` in `TypeInference`, update `formal/WvletFormal/Typer/Coercion.lean` first, run `lake exe typer-traces`, and run `./sbt "langJVM/testOnly *TypeCoercionConformanceTest"`
 
 ## Architecture Overview
 
