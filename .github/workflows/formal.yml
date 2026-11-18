@@ -32,10 +32,13 @@ jobs:
             ~/.elan
             formal/.lake
           key: lean-${{ runner.os }}-${{ hashFiles('formal/lean-toolchain', 'formal/lakefile.toml') }}
+      # elan-init.sh is pinned to a release tag; lean-toolchain selects the Lean version
       - name: Install elan
+        env:
+          ELAN_VERSION: v4.2.4
         run: |
           if [ ! -x "$HOME/.elan/bin/lake" ]; then
-            curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            curl -sSfL "https://raw.githubusercontent.com/leanprover/elan/${ELAN_VERSION}/elan-init.sh" \
               | sh -s -- -y --default-toolchain none --no-modify-path
           fi
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"

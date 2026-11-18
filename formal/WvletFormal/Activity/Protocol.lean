@@ -46,6 +46,9 @@ def batchRecover (canResume : Bool) (i : Item) : Item :=
   else if i.state = .queued then i
   else (StoreOp.report i.attempt .uncertain).step i
 
+/-- Whether a batch start awaits the item's in-flight attempt instead of starting a new one. -/
+def batchResumes (canResume : Bool) (i : Item) : Bool := !i.state.isTerminal && canResume
+
 /-- A batch start: reconcile, then rerun the item under the `fresh` attempt when policy opts in. -/
 def batchStart (p : BatchPolicy) (canResume : Bool) (fresh : Nat) (i : Item) : Item :=
   if p.rerunnable (batchRecover canResume i).state then { state := .queued, attempt := fresh }
@@ -149,6 +152,12 @@ theorem batchStart_inflight_untracked (p : BatchPolicy) (f : Nat) (i : Item)
     simp_all [ItemState.isInFlight, batchStart, batchRecover, BatchPolicy.rerunnable,
       ItemState.isTerminal, StoreOp.step, StoreOp.apply, ItemState.isFinal, Outcome.toState] <;>
     split <;> simp_all
+
+/-- A resumed item keeps its state and attempt: the executor awaits the attempt it tracks. -/
+theorem batchResumes_unchanged (p : BatchPolicy) (f : Nat) (i : Item)
+    (h : batchResumes true i = true) : batchStart p true f i = i := by
+  cases hs : i.state <;> simp_all [batchResumes, batchStart, batchRecover, BatchPolicy.rerunnable,
+    ItemState.isTerminal]
 
 /-- A succeeded item is never run again. -/
 theorem batchStart_succeeded (p : BatchPolicy) (r : Bool) (f : Nat) (i : Item)

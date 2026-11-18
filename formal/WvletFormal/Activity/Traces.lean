@@ -61,7 +61,8 @@ def batchCases : List String :=
     jobj [("init", jstr s.name), ("canResume", jbool r),
       ("retryUncertain", jbool p.retryUncertain), ("retryFailed", jbool p.retryFailed),
       ("rerunCancelled", jbool p.rerunCancelled),
-      ("state", jstr out.state.name), ("newAttempt", jbool (out.attempt != 0))]
+      ("state", jstr out.state.name), ("newAttempt", jbool (out.attempt != 0)),
+      ("resumed", jbool (batchResumes r ⟨s, 0⟩))]
 
 /-! ## Queue restart cases -/
 

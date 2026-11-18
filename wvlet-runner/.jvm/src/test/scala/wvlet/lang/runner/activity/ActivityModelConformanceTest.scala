@@ -150,7 +150,7 @@ class ActivityModelConformanceTest extends UniTest:
             .withRetryUncertain(c.bool("retryUncertain"))
             .withRetryFailed(c.bool("retryFailed"))
             .withRerunCancelled(c.bool("rerunCancelled"))
-          val (items, _) = BatchExecutor(executor, store, config).recoverItems(
+          val (items, resumed) = BatchExecutor(executor, store, config).recoverItems(
             runId,
             "stage",
             List("k"),
@@ -161,6 +161,7 @@ class ActivityModelConformanceTest extends UniTest:
           (clue, items.map(_.state)) shouldBe (clue, List(c.str("state")))
           (clue, stored.state) shouldBe (clue, c.str("state"))
           (clue, stored.attemptId != "a0") shouldBe (clue, c.bool("newAttempt"))
+          (clue, resumed.contains(itemId)) shouldBe (clue, c.bool("resumed"))
         }
     }
   }

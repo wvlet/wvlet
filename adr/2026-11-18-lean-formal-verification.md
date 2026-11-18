@@ -1,6 +1,6 @@
 # ADR: Lean 4 models with trace conformance, starting with activity items
 
-Date: 2026-11-18 · PR #TBD
+Date: 2026-11-18 · PR #2176
 
 ## Context
 
