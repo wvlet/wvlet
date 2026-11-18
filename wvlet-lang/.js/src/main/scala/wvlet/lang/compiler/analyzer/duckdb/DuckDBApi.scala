@@ -107,6 +107,16 @@ private[duckdb] object DuckDBApi:
   /** Real [[DuckDBApi]] if libduckdb is loadable on this Node runtime, otherwise `None`. */
   def instance: Option[DuckDBApi] = cached
 
+  /**
+    * Error message for when no libduckdb could be loaded. Names the npm platform package that the
+    * `@wvlet/cli` install is expected to bring in, since a missing optional dependency (e.g.
+    * `npm install --omit=optional`) is the most likely cause for npm users.
+    */
+  def notAvailableMessage: String =
+    val process = js.Dynamic.global.process
+    val pkg     = s"@duckdb/node-bindings-${process.platform}-${process.arch}"
+    s"libduckdb is not available. If wvlet was installed with npm, reinstall it without --omit=optional so that ${pkg} is installed, or set WVLET_LIBDUCKDB to the absolute path of libduckdb"
+
   private def tryLoad(): Option[DuckDBApi] = candidatePaths
     .iterator
     .flatMap { p =>
@@ -117,13 +127,14 @@ private[duckdb] object DuckDBApi:
   /**
     * Resolution order:
     *   1. `WVLET_LIBDUCKDB` env var (explicit override)
-    *   2. Well-known absolute paths for the current platform/arch
-    *   3. Bare `libduckdb` so the OS loader falls back to its own search path
+    *   2. `WVLET_BUNDLED_LIBDUCKDB`, set by the `@wvlet/cli` npm entry script to the libduckdb
+    *      shipped in the host's `@duckdb/node-bindings-<os>-<arch>` package
+    *   3. Well-known absolute paths for the current platform/arch
+    *   4. Bare `libduckdb` so the OS loader falls back to its own search path
     */
   private def candidatePaths: List[String] =
     val process     = js.Dynamic.global.process
-    val env         = process.env
-    val envPath     = Option(env.WVLET_LIBDUCKDB).filterNot(js.isUndefined).map(_.toString)
+    val envPaths    = envVar("WVLET_LIBDUCKDB").toList ++ envVar("WVLET_BUNDLED_LIBDUCKDB").toList
     val platform    = process.platform.toString
     val arch        = process.arch.toString
     val systemPaths =
@@ -142,10 +153,20 @@ private[duckdb] object DuckDBApi:
             "/usr/lib/aarch64-linux-gnu/libduckdb.so"
           )
         case "win32" =>
-          List("C\\:Program Files\\duckdb\\duckdb.dll")
+          List("C:\\Program Files\\duckdb\\duckdb.dll")
         case _ =>
           Nil
-    envPath.toList ++ systemPaths ++ List("libduckdb")
+    envPaths ++ systemPaths ++ List("libduckdb")
+
+  end candidatePaths
+
+  /** A non-empty environment variable value. */
+  private def envVar(name: String): Option[String] =
+    val v = js.Dynamic.global.process.env.selectDynamic(name)
+    if js.isUndefined(v) || v == null then
+      None
+    else
+      Some(v.toString).filter(_.nonEmpty)
 
 end DuckDBApi
 

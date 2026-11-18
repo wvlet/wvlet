@@ -10,15 +10,27 @@
     "build:scalajs": "cd ../.. && ./sbt cliCoreJS/fullLinkJS",
     "build:scalajs:dev": "cd ../.. && ./sbt cliCoreJS/fastLinkJS",
     "build": "pnpm run build:scalajs",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build",
+    "test": "node --test test/*.test.js"
   },
   "files": [
     "bin",
-    "lib",
+    "lib/main.js",
+    "src",
     "README.md"
   ],
   "dependencies": {
     "koffi": "^3.3.4"
+  },
+  "optionalDependencies": {
+    "@duckdb/node-bindings-darwin-arm64": "2.0.0-r.1",
+    "@duckdb/node-bindings-darwin-x64": "2.0.0-r.1",
+    "@duckdb/node-bindings-linux-arm64": "2.0.0-r.1",
+    "@duckdb/node-bindings-linux-arm64-musl": "2.0.0-r.1",
+    "@duckdb/node-bindings-linux-x64": "2.0.0-r.1",
+    "@duckdb/node-bindings-linux-x64-musl": "2.0.0-r.1",
+    "@duckdb/node-bindings-win32-arm64": "2.0.0-r.1",
+    "@duckdb/node-bindings-win32-x64": "2.0.0-r.1"
   },
   "keywords": [
     "wvlet",
