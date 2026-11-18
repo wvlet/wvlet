@@ -1,6 +1,6 @@
 name = "wvlet-formal"
 version = "0.1.0"
-defaultTargets = ["WvletFormal", "activity-traces"]
+defaultTargets = ["WvletFormal", "activity-traces", "typer-traces"]
 
 [leanOptions]
 autoImplicit = false
@@ -11,3 +11,7 @@ name = "WvletFormal"
 [[lean_exe]]
 name = "activity-traces"
 root = "Main"
+
+[[lean_exe]]
+name = "typer-traces"
+root = "TyperTraces"

@@ -8,6 +8,8 @@ on:
       - 'wvlet-runner/src/main/scala/wvlet/lang/runner/activity/**'
       - 'wvlet-runner/.jvm/src/main/scala/wvlet/lang/runner/activity/**'
       - 'wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/**'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/typer/TypeInference.scala'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/**'
   push:
     branches:
       - main
@@ -15,6 +17,7 @@ on:
       - '.github/workflows/formal.yml'
       - 'formal/**'
       - 'wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/**'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/**'
   workflow_dispatch:
 
 jobs:
@@ -45,8 +48,13 @@ jobs:
       # --wfail turns every warning, including "declaration uses 'sorry'", into an error
       - name: Check proofs
         run: lake build --wfail
-      - name: Check conformance fixture freshness
+      - name: Check activity conformance fixture freshness
         run: |
           lake exe activity-traces
           git diff --exit-code -- ../wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/ \
             || (echo "::error::The activity conformance fixture is stale. Run 'cd formal && lake exe activity-traces' and commit the result." && exit 1)
+      - name: Check typer conformance fixture freshness
+        run: |
+          lake exe typer-traces
+          git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/ \
+            || (echo "::error::The typer conformance fixture is stale. Run 'cd formal && lake exe typer-traces' and commit the result." && exit 1)
