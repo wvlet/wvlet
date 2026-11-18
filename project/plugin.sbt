@@ -13,7 +13,7 @@ addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.4")
 addSbtPlugin("org.wvlet.uni" % "sbt-uni" % UNI_VERSION)
 
 // For Scala.js
-val SCALAJS_VERSION = sys.env.getOrElse("SCALAJS_VERSION", "1.22.0")
+val SCALAJS_VERSION = sys.env.getOrElse("SCALAJS_VERSION", "1.23.0")
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % SCALAJS_VERSION)
 
 // For Scala Native
