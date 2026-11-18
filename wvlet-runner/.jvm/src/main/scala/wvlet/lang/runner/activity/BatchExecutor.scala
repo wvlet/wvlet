@@ -117,36 +117,24 @@ class BatchExecutor(
   def cancel(): Unit = cancelRequested = true
 
   /**
-    * Execute the batch: one activity invocation per item key, returning when all items reach a
-    * terminal state.
+    * Reconcile the batch's items with the store when the batch starts (the restart path): reuse
+    * terminal items, keep queued items, await in-flight attempts the executor still tracks, mark
+    * other in-flight attempts uncertain, and create records for unseen keys. Items whose rerun
+    * policy opts in are then reset to queued under a new attempt.
     *
-    * @param runId
-    *   The flow run id
-    * @param stageName
-    *   The stage name within the flow
-    * @param activityType
-    *   The activity type to invoke for each item
-    * @param itemKeys
-    *   The fan-out values (one per item)
-    * @param baseInput
-    *   Input parameters shared by all items (the stage's input data); each item additionally gets
-    *   `item` bound to its key
+    * The formal model of this step is `batchStart` in formal/WvletFormal/Activity/Protocol.lean.
+    *
     * @return
-    *   The batch result with all item records
+    *   The item records in key order, and the ids of the in-flight items to resume
     */
-  def execute(
+  private[activity] def recoverItems(
       runId: String,
       stageName: String,
-      activityType: String,
       itemKeys: List[String],
-      baseInput: Map[String, Any] = Map.empty
-  ): BatchResult =
-    val now = System.currentTimeMillis()
-
-    // Recover existing items from the store (restart path)
+      now: Long
+  ): (List[ItemRecord], Set[String]) =
     val existingItems = store.listItems(runId, stageName).map(r => r.itemKey -> r).toMap
-    // In-flight attempts the executor still tracks; they are awaited instead of re-executed
-    val resumable = mutable.Set.empty[String]
+    val resumable     = mutable.Set.empty[String]
 
     // Build the item list: reuse completed items, resume or mark uncertain in-flight items,
     // create new records for unseen keys
@@ -222,6 +210,44 @@ class BatchExecutor(
       else
         r
     }
+
+    (allItems, resumable.toSet)
+
+  end recoverItems
+
+  /**
+    * Execute the batch: one activity invocation per item key, returning when all items reach a
+    * terminal state.
+    *
+    * @param runId
+    *   The flow run id
+    * @param stageName
+    *   The stage name within the flow
+    * @param activityType
+    *   The activity type to invoke for each item
+    * @param itemKeys
+    *   The fan-out values (one per item)
+    * @param baseInput
+    *   Input parameters shared by all items (the stage's input data); each item additionally gets
+    *   `item` bound to its key
+    * @return
+    *   The batch result with all item records
+    */
+  def execute(
+      runId: String,
+      stageName: String,
+      activityType: String,
+      itemKeys: List[String],
+      baseInput: Map[String, Any] = Map.empty
+  ): BatchResult =
+    val (allItems, recoveredResumable) = recoverItems(
+      runId,
+      stageName,
+      itemKeys,
+      System.currentTimeMillis()
+    )
+    // In-flight attempts the executor still tracks; they are awaited instead of re-executed
+    val resumable = mutable.Set.from(recoveredResumable)
 
     // Split into already-terminal (skip) and pending (queue for execution)
     val pending = mutable

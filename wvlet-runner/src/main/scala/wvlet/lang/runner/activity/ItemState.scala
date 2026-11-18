@@ -21,9 +21,15 @@ package wvlet.lang.runner.activity
   * queued -> running -> cancelled
   * queued -> running -> uncertain   (worker died, cancellation unconfirmed)
   * queued -> cancelled              (batch cancelled before admission)
+  * queued -> cancelling             (cancel requested for a task no worker claimed yet)
   * running -> cancelling -> cancelled
   * running -> cancelling -> uncertain  (cancellation not confirmed within timeout)
+  * cancelling | uncertain -> succeeded | failed | cancelled  (late result of the same attempt)
   * }}}
+  *
+  * Result reports never change a final state ([[isFinal]]); a new attempt (enqueue or a rerun
+  * policy) resets the item to queued. These rules are proved in the Lean model under `formal/`
+  * (`WvletFormal.Activity`) and checked against the stores by `ActivityModelConformanceTest`.
   */
 enum ItemState(val stateName: String):
   case Queued    extends ItemState("queued")

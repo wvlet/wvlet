@@ -1,0 +1,13 @@
+name = "wvlet-formal"
+version = "0.1.0"
+defaultTargets = ["WvletFormal", "activity-traces"]
+
+[leanOptions]
+autoImplicit = false
+
+[[lean_lib]]
+name = "WvletFormal"
+
+[[lean_exe]]
+name = "activity-traces"
+root = "Main"
