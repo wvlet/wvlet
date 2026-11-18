@@ -6,8 +6,10 @@ import { describe, it } from "node:test";
 import {
   CHECK_INTERVAL_MS,
   compareVersions,
+  installKind,
   isStale,
   isUpdateCheckDisabled,
+  quoteArg,
   readCache,
   updateNotice,
   upgradeCommand,
@@ -75,7 +77,7 @@ describe("isUpdateCheckDisabled", () => {
     assert.equal(isUpdateCheckDisabled({ ...enabled, isTTY: false }), true);
   });
 
-  it("skips dev builds and npx runs", () => {
+  it("skips dev builds, npx runs, and project dependencies", () => {
     assert.equal(isUpdateCheckDisabled({ ...enabled, version: "0.0.0" }), true);
     const npx = path.join(path.sep, "home", "u", ".npm", "_npx", "abc", "node_modules", "@wvlet", "cli");
     assert.equal(isUpdateCheckDisabled({ ...enabled, packagePath: npx }), true);
@@ -115,5 +117,33 @@ describe("upgradeCommand", () => {
       "pnpm",
     );
     assert.equal(upgradeCommand("/Users/u/.bun/install/global/node_modules/@wvlet/cli").cmd, "bun");
+  });
+});
+
+describe("installKind", () => {
+  const none = () => false;
+  it("recognizes npm, pnpm, and bun global installs", () => {
+    assert.equal(installKind("/usr/local/lib/node_modules/@wvlet/cli", none), "global");
+    const withPkgJson = () => true;
+    // pnpm and bun global directories have their own package.json
+    assert.equal(
+      installKind("/Users/u/Library/pnpm/global/5/.pnpm/@wvlet+cli@2026.3.0/node_modules/@wvlet/cli", withPkgJson),
+      "global",
+    );
+    assert.equal(installKind("/Users/u/.bun/install/global/node_modules/@wvlet/cli", withPkgJson), "global");
+  });
+
+  it("recognizes npx and project dependencies", () => {
+    assert.equal(installKind("/Users/u/.npm/_npx/abc/node_modules/@wvlet/cli", none), "npx");
+    const repo = (p) => p === path.join("/repo", "package.json");
+    assert.equal(installKind("/repo/node_modules/@wvlet/cli", repo), "project");
+    assert.equal(installKind("/repo/node_modules/.pnpm/@wvlet+cli@2026.3.0/node_modules/@wvlet/cli", repo), "project");
+  });
+});
+
+describe("quoteArg", () => {
+  it("quotes only arguments with whitespace", () => {
+    assert.equal(quoteArg("@wvlet/cli@latest"), "@wvlet/cli@latest");
+    assert.equal(quoteArg("C:\\Users\\John Smith\\npm"), '"C:\\Users\\John Smith\\npm"');
   });
 });

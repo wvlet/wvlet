@@ -60,10 +60,29 @@ export function isUpdateCheckDisabled({
   if (env.WVLET_NO_UPDATE_CHECK) return true;
   if (env.CI) return true;
   if (!isTTY) return true;
-  // Unbuilt or source checkouts carry the 0.0.0 placeholder; npx runs are already up to date
+  // Unbuilt or source checkouts carry the 0.0.0 placeholder. npx runs are already up to date,
+  // and a project dependency is updated through the project, not `wvlet upgrade`.
   if (!version || version === "0.0.0") return true;
-  if (packagePath.includes(`${path.sep}_npx${path.sep}`)) return true;
-  return false;
+  return installKind(packagePath) !== "global";
+}
+
+/**
+ * How this copy was installed: "npx" (npx cache), "project" (a dependency in some project's
+ * node_modules), or "global" (npm/pnpm/bun global install; the default).
+ */
+export function installKind(packagePath, exists = fs.existsSync) {
+  const parts = packagePath.split(/[\\/]/);
+  if (parts.includes("_npx")) return "npx";
+  // pnpm and bun keep their global packages in a directory with its own package.json
+  const isPnpmGlobal = parts.some((p, i) => (p === "pnpm" || p === ".pnpm") && parts[i + 1] === "global");
+  const isBunGlobal = parts.some((p, i) => p === ".bun" && parts[i + 1] === "install" && parts[i + 2] === "global");
+  if (isPnpmGlobal || isBunGlobal) return "global";
+  const nm = parts.indexOf("node_modules");
+  if (nm > 0) {
+    const owner = parts.slice(0, nm).join(path.sep) || path.sep;
+    if (exists(path.join(owner, "package.json"))) return "project";
+  }
+  return "global";
 }
 
 export function readCache(cachePath = defaultCachePath()) {
@@ -170,8 +189,13 @@ function realPackageRoot() {
 export function runUpgrade({ cachePath = defaultCachePath() } = {}) {
   const before = installedVersion();
   const root = realPackageRoot();
-  if (root.includes(`${path.sep}_npx${path.sep}`)) {
+  const kind = installKind(root);
+  if (kind === "npx") {
     console.error(`This wvlet runs through npx. Run 'npx ${PACKAGE_NAME}@latest' to use the latest release.`);
+    return 1;
+  }
+  if (kind === "project") {
+    console.error(`This wvlet is a project dependency. Update ${PACKAGE_NAME} in that project's package.json instead.`);
     return 1;
   }
   if (!before || before === "0.0.0") {
@@ -179,18 +203,18 @@ export function runUpgrade({ cachePath = defaultCachePath() } = {}) {
     return 1;
   }
   const { cmd, args } = upgradeCommand(root);
-  const manual = `${cmd} ${args.join(" ")}`;
+  const quoted = args.map(quoteArg);
+  const manual = `${cmd} ${quoted.join(" ")}`;
   console.error(`Running: ${manual}`);
-  const result = spawnSync(cmd, args, {
-    stdio: "inherit",
-    // npm, pnpm, and bun are .cmd shims on Windows, which spawn can only start through a shell
-    shell: process.platform === "win32",
-  });
+  // npm, pnpm, and bun are .cmd shims on Windows, which spawn can only start through a shell.
+  // The shell joins arguments with spaces, so paths with spaces must be quoted.
+  const useShell = process.platform === "win32";
+  const result = spawnSync(cmd, useShell ? quoted : args, { stdio: "inherit", shell: useShell });
   if (result.error || result.status !== 0) {
     console.error(`Upgrade failed. Run it manually: ${manual}`);
     return result.status || 1;
   }
-  const after = installedVersion();
+  const after = installedVersionAfterUpgrade(cmd, root);
   writeCache({ checkedAt: Date.now(), latest: after }, cachePath);
   if (after && compareVersions(after, before) > 0) {
     console.log(`wvlet upgraded: ${before} -> ${after}`);
@@ -198,4 +222,25 @@ export function runUpgrade({ cachePath = defaultCachePath() } = {}) {
     console.log(`wvlet ${after ?? before} is up to date`);
   }
   return 0;
+}
+
+/** Double-quote an argument containing whitespace, for display and for Windows shells. */
+export function quoteArg(arg) {
+  return /\s/.test(arg) ? `"${arg}"` : arg;
+}
+
+/**
+ * The version installed by the upgrade. pnpm installs each version into its own folder, so
+ * the folder this process runs from still holds the old version; look up pnpm's global root.
+ */
+function installedVersionAfterUpgrade(cmd, root) {
+  if (cmd === "pnpm") {
+    const r = spawnSync("pnpm", ["root", "-g"], { encoding: "utf8", shell: process.platform === "win32" });
+    const globalRoot = r.status === 0 ? r.stdout.trim() : "";
+    if (globalRoot) {
+      const v = installedVersion(path.join(globalRoot, "@wvlet", "cli"));
+      if (v) return v;
+    }
+  }
+  return installedVersion(root);
 }

@@ -114,7 +114,12 @@ private[duckdb] object DuckDBApi:
     */
   def notAvailableMessage: String =
     val process = js.Dynamic.global.process
-    val pkg     = s"@duckdb/node-bindings-${process.platform}-${process.arch}"
+    val base    = s"@duckdb/node-bindings-${process.platform}-${process.arch}"
+    val pkg     =
+      if process.platform.toString == "linux" then
+        s"${base} (or ${base}-musl on musl-based Linux)"
+      else
+        base
     s"libduckdb is not available. If wvlet was installed with npm, reinstall it without --omit=optional so that ${pkg} is installed, or set WVLET_LIBDUCKDB to the absolute path of libduckdb"
 
   private def tryLoad(): Option[DuckDBApi] = candidatePaths

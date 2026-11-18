@@ -13,6 +13,10 @@ import { checkForUpdate, runUpgrade } from "../src/update.js";
 const args = process.argv.slice(2);
 
 if (args[0] === "upgrade") {
+  if (args.includes("-h") || args.includes("--help")) {
+    console.log("usage: wvlet upgrade\n\nUpgrade wvlet to the latest npm release with the package manager that installed it");
+    process.exit(0);
+  }
   process.exit(runUpgrade());
 }
 

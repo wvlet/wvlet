@@ -1,6 +1,6 @@
 # ADR: npm is the primary distribution channel for the wvlet CLI
 
-Date: 2026-11-18 · PR #TBD
+Date: 2026-11-18 · PR #2180
 
 ## Context
 
@@ -14,7 +14,7 @@ Date: 2026-11-18 · PR #TBD
 - **Bundled DuckDB through optional dependencies.** `@wvlet/cli` lists every `@duckdb/node-bindings-*` platform package as an optional dependency, so npm installs only the host's. The entry script passes that library to the Scala.js bundle in `WVLET_BUNDLED_LIBDUCKDB`; `WVLET_LIBDUCKDB` still takes precedence, and system paths are the fallback. No postinstall download: install scripts are often disabled, and optional platform packages are the npm-native way to ship native code.
 - **Version lock.** The libduckdb C API is used directly, and its struct layouts change across DuckDB releases. A test fails when the npm bindings and `DUCKDB_JDBC_VERSION` are on different DuckDB releases.
 - **Update notice, not self-replacement.** The CLI prints a one-line notice from a cached registry lookup (`~/.wvlet/update-check.json`, refreshed at most daily by a detached process, so no command waits on the network). `wvlet upgrade` delegates to the owning package manager (`npm install -g --prefix <this prefix>`, `pnpm add -g`, or `bun add -g`). Replacing files in place would fight the package manager's ownership of the install. Only the `latest` dist-tag is compared, so pre-releases never trigger the notice.
-- **On by default, quiet where it matters.** The check is skipped in CI, when stderr is not a terminal, for npx runs and dev builds, and when `WVLET_NO_UPDATE_CHECK` is set.
+- **On by default, quiet where it matters.** The check is skipped in CI, when stderr is not a terminal, for npx runs, project-local dependencies (updated through the project's package.json), and dev builds, and when `WVLET_NO_UPDATE_CHECK` is set.
 - **Release gate.** The packed tarball is installed globally and run (`compile` and a DuckDB `run`) on Linux, macOS, and Windows on every relevant PR and before every npm publish.
 
 ## Consequences

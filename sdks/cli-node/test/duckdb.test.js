@@ -3,31 +3,33 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { duckdbPackageName, resolveBundledLibDuckDB } from "../src/duckdb.js";
+import { duckdbPackageNames, resolveBundledLibDuckDB } from "../src/duckdb.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(path.join(here, "..", "package.json"), "utf8"));
 
-describe("duckdbPackageName", () => {
-  it("adds the musl suffix only on musl Linux", () => {
-    assert.equal(duckdbPackageName("darwin", "arm64", false), "@duckdb/node-bindings-darwin-arm64");
-    assert.equal(duckdbPackageName("linux", "x64", false), "@duckdb/node-bindings-linux-x64");
-    assert.equal(duckdbPackageName("linux", "arm64", true), "@duckdb/node-bindings-linux-arm64-musl");
-    assert.equal(duckdbPackageName("win32", "x64", true), "@duckdb/node-bindings-win32-x64");
+describe("duckdbPackageNames", () => {
+  it("tries the musl package before the glibc one on Linux only", () => {
+    assert.deepEqual(duckdbPackageNames("darwin", "arm64"), ["@duckdb/node-bindings-darwin-arm64"]);
+    assert.deepEqual(duckdbPackageNames("linux", "x64"), [
+      "@duckdb/node-bindings-linux-x64-musl",
+      "@duckdb/node-bindings-linux-x64",
+    ]);
+    assert.deepEqual(duckdbPackageNames("win32", "x64"), ["@duckdb/node-bindings-win32-x64"]);
   });
 
-  it("names a package declared as an optional dependency", () => {
-    for (const [platform, arch, musl] of [
-      ["darwin", "arm64", false],
-      ["darwin", "x64", false],
-      ["linux", "x64", false],
-      ["linux", "arm64", false],
-      ["linux", "x64", true],
-      ["linux", "arm64", true],
-      ["win32", "x64", false],
-      ["win32", "arm64", false],
+  it("names only packages declared as optional dependencies", () => {
+    for (const [platform, arch] of [
+      ["darwin", "arm64"],
+      ["darwin", "x64"],
+      ["linux", "x64"],
+      ["linux", "arm64"],
+      ["win32", "x64"],
+      ["win32", "arm64"],
     ]) {
-      assert.ok(pkg.optionalDependencies[duckdbPackageName(platform, arch, musl)], `${platform}-${arch}`);
+      for (const name of duckdbPackageNames(platform, arch)) {
+        assert.ok(pkg.optionalDependencies[name], name);
+      }
     }
   });
 });
@@ -44,14 +46,22 @@ describe("resolveBundledLibDuckDB", () => {
     const lib = resolveBundledLibDuckDB({
       platform: "linux",
       arch: "x64",
-      musl: false,
       require: fakeRequire("@duckdb/node-bindings-linux-x64"),
     });
     assert.equal(lib, path.join("/nm/@duckdb/node-bindings-linux-x64", "libduckdb.so"));
   });
 
+  it("finds the musl package on musl Linux", () => {
+    const lib = resolveBundledLibDuckDB({
+      platform: "linux",
+      arch: "arm64",
+      require: fakeRequire("@duckdb/node-bindings-linux-arm64-musl"),
+    });
+    assert.equal(lib, path.join("/nm/@duckdb/node-bindings-linux-arm64-musl", "libduckdb.so"));
+  });
+
   it("returns undefined when the optional package is not installed", () => {
-    const lib = resolveBundledLibDuckDB({ platform: "linux", arch: "x64", musl: false, require: fakeRequire("other") });
+    const lib = resolveBundledLibDuckDB({ platform: "linux", arch: "x64", require: fakeRequire("other") });
     assert.equal(lib, undefined);
   });
 
