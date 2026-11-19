@@ -4,3 +4,7 @@ import WvletFormal.Activity.Protocol
 import WvletFormal.Activity.Traces
 import WvletFormal.Typer.Coercion
 import WvletFormal.Typer.Traces
+import WvletFormal.ModelBuild.Explore
+import WvletFormal.ModelBuild.Graph
+import WvletFormal.ModelBuild.Order
+import WvletFormal.ModelBuild.Traces

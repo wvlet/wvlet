@@ -166,7 +166,8 @@ case class BuildModel(model: ModelDef, spec: ModelBuildSpec, targetName: String)
 
 /**
   * The dependency graph of the materialized models in a project. An edge points from a model to the
-  * materialized models it reads, directly or through ephemeral models
+  * materialized models it reads, directly or through ephemeral models. The graph algorithms live in
+  * [[ModelOrder]]
   *
   * @param models
   *   Materialized models by name, in definition order
@@ -184,72 +185,25 @@ case class ModelGraph(
 
   def get(name: String): Option[BuildModel] = byName.get(name)
 
-  lazy val downstreams: Map[String, List[String]] =
-    models
-      .map(m => m.name -> models.filter(d => upstreams(d.name).contains(m.name)).map(_.name))
-      .toMap
+  private def names: List[String] = models.map(_.name)
 
-  private def closure(start: String, next: String => List[String]): Set[String] =
-    var visited = Set.empty[String]
-    var queue   = List(start)
-    while queue.nonEmpty do
-      val n = queue.head
-      queue = queue.tail
-      if !visited.contains(n) then
-        visited += n
-        queue = next(n) ++ queue
-    visited
+  lazy val downstreams: Map[String, List[String]] = ModelOrder.downstreams(names, upstreams)
 
   /**
     * Resolve dbt-style selectors: `m` selects the model, `m+` adds its downstream models, `+m` adds
     * its upstream models, and `+m+` adds both. No selector selects every model
     */
-  def select(selectors: List[String]): List[BuildModel] =
-    if selectors.isEmpty then
-      models
-    else
-      val selected =
-        selectors
-          .flatMap(_.split(",").map(_.trim).filter(_.nonEmpty))
-          .foldLeft(Set.empty[String]) { (acc, sel) =>
-            val withUp   = sel.startsWith("+")
-            val withDown = sel.endsWith("+") && sel.length > 1
-            val name     = sel.stripPrefix("+").stripSuffix("+")
-            if !byName.contains(name) then
-              throw StatusCode
-                .MODEL_NOT_FOUND
-                .newException(
-                  s"Model '${name}' is not a materialized model. Available models: ${models
-                      .map(_.name)
-                      .mkString(", ")}"
-                )
-            var s = Set(name)
-            if withUp then
-              s ++= closure(name, upstreams)
-            if withDown then
-              s ++= closure(name, downstreams)
-            acc ++ s
-          }
-      models.filter(m => selected.contains(m.name))
+  def select(selectors: List[String]): List[BuildModel] = ModelOrder
+    .select(names, upstreams, selectors)
+    .flatMap(byName.get)
 
   /** The models in build order: every model follows the models it reads */
   def buildOrder(selected: List[BuildModel]): List[BuildModel] =
-    val names   = selected.map(_.name).toSet
-    var done    = Set.empty[String]
-    val ordered = List.newBuilder[BuildModel]
-    var rest    = selected
-    while rest.nonEmpty do
-      val (ready, blocked) = rest.partition(m =>
-        upstreams(m.name).filter(names.contains).forall(done.contains)
-      )
-      if ready.isEmpty then
-        throw StatusCode
-          .RECURSIVE_MODEL_REFERENCE
-          .newException(s"Cyclic model dependency among: ${blocked.map(_.name).mkString(", ")}")
-      ordered ++= ready
-      done ++= ready.map(_.name)
-      rest = blocked
-    ordered.result()
+    val selectedByName = selected.map(m => m.name -> m).toMap
+    ModelOrder.buildOrder(selected.map(_.name), upstreams).map(selectedByName)
+
+  /** A dependency cycle among the materialized models, if any, with its first model repeated */
+  def findCycle: Option[List[String]] = ModelOrder.findCycle(names, upstreams)
 
 end ModelGraph
 
@@ -265,7 +219,8 @@ object ModelBuildPlanner:
   /**
     * Build the dependency graph of the given model definitions (typically all models of a project).
     * Ephemeral models are traversed, so a model reading an ephemeral model that reads a
-    * materialized model depends on the materialized one
+    * materialized model depends on the materialized one. A dependency cycle among materialized
+    * models, including a model reading itself, is an error
     */
   def graph(allModels: List[ModelDef])(using ctx: Context): ModelGraph =
     val defs         = allModels.map(m => m.name.name -> m).toMap
@@ -291,26 +246,24 @@ object ModelBuildPlanner:
       }
       refs.result().distinct
 
-    def upstreamsOf(m: ModelDef): List[String] =
-      var visited = Set(m.name.name)
-      val found   = List.newBuilder[String]
-      var queue   = referencedModels(m.child)
-      while queue.nonEmpty do
-        val n = queue.head
-        queue = queue.tail
-        if !visited.contains(n) then
-          visited += n
-          if materializedNames.contains(n) then
-            found += n
-          else
-            defs.get(n).foreach(d => queue = queue ++ referencedModels(d.child))
-      found.result()
+    def upstreamsOf(m: ModelDef): List[String] = ModelOrder.upstreamsOf(
+      referencedModels(m.child),
+      materializedNames.contains,
+      n => defs.get(n).map(d => referencedModels(d.child))
+    )
 
-    ModelGraph(
+    val g = ModelGraph(
       materialized,
       materialized.map(m => m.name -> upstreamsOf(m.model)).toMap,
       defs.filterNot((name, _) => materializedNames.contains(name))
     )
+    // Reject every cycle, whatever the selection: a model on a cycle cannot be built from scratch,
+    // and building part of a cycle would read a stale relation of the rest
+    g.findCycle
+      .foreach { cycle =>
+        throw StatusCode.RECURSIVE_MODEL_REFERENCE.newException(ModelOrder.cycleMessage(cycle))
+      }
+    g
 
   end graph
 

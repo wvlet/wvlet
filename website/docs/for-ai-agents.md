@@ -121,7 +121,7 @@ Install the CLI with npm (`npm install -g @wvlet/cli`, Node.js 22+). It provides
   - `wvlet run "from 'data.parquet' limit 10"` runs a query; `wvlet run -f query.wv` runs a file.
   - `wvlet compile -f query.wv` prints the generated SQL; add `--target trino` (or another engine) to choose the SQL dialect.
   - `wvlet to_wvlet "<sql>"` converts SQL to Wvlet.
-  - `wvlet build` (JVM CLI only) builds materialized models in dependency order; `wvlet build -s m+` builds `m` and its downstream models, and `--dry-run` prints the SQL. See [Model Pipelines](./syntax/model-pipelines.md).
+  - `wvlet build` (JVM CLI only) builds materialized models in dependency order; `wvlet build -s m+` builds `m` and its downstream models, and `--dry-run` prints the SQL. A dependency cycle among materialized models (including a model reading itself) is an error. See [Model Pipelines](./syntax/model-pipelines.md).
 
 Engines:
 
