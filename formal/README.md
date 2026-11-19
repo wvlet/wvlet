@@ -6,6 +6,8 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
   lease expiry, and `BatchExecutor` restart reconciliation.
 - The compiler's common-type and coercion rules (`TypeInference` in wvlet-lang): `unify`,
   `findCommonType`, `canCoerce`, and `widen`.
+- The typer's operator result types (`TyperRules` in wvlet-lang): sign prefixes, arithmetic,
+  `=` / `!=`, ordering comparisons, and `and` / `or`.
 - `wvlet build` ordering (`ModelOrder` in wvlet-lang): edges through ephemeral models, selector
   closures, the build order, and cycle detection.
 - SQL generation's SELECT-block folding (`SQLBlock.accepts` in `SqlGenerator`): when a pipeline
@@ -32,6 +34,7 @@ cd formal
 lake build --wfail          # check every proof; warnings (including `sorry`) are errors
 lake exe activity-traces    # regenerate the activity conformance fixture
 lake exe typer-traces       # regenerate the typer conformance fixture
+lake exe operator-traces    # regenerate the operator typing conformance fixture
 lake exe model-build-traces # regenerate the model build conformance fixture
 lake exe sql-fold-traces    # regenerate the SQL block folding conformance fixture
 lake exe rewrite-expr-traces # regenerate the expression rewrite conformance fixture
@@ -48,6 +51,8 @@ lake exe name-lookup-traces # regenerate the name lookup conformance fixture
 | `WvletFormal/Activity/Traces.lean`, `Main.lean` | — | exports the activity conformance fixture |
 | `WvletFormal/Typer/Coercion.lean` | `unify`, `findCommonType`, `canCoerce`, `widen` over a type domain where `other n` stands for every type no rule mentions | `unify` is the least upper bound of a widening order (`unify_isLub`), hence commutative, associative, and idempotent, with NoType as identity and `error` absorbing; `findCommonType_eq_foldl`: on NoType-free lists, `findCommonType` is a fold of `unify`, so `CASE` typing ignores branch order; `unify_upper_canCoerce` / `unify_least_canCoerce`: the result relates to `canCoerce` as an upper bound, and as the least one once the string-concatenation rule is excluded |
 | `WvletFormal/Typer/Traces.lean`, `TyperTraces.lean` | — | exports the typer conformance fixture |
+| `WvletFormal/Typer/Operators.lean` | `arithmeticType`, `equalityType`, `comparisonType`, `logicalType` over the coercion model's `Ty` plus known and unresolved decimals, unresolved types, and function references | every operator ignores operand order (`arith_comm`, `compare_comm`, `logical_comm`); `arith_numeric`: on numeric and NULL operands arithmetic is `unify`, hence their least upper bound (`arith_numeric_isLub`); an error operand yields an error (`arith_error_left`, `compare_error_left`, `logical_error_left`, and their right-hand versions); `arith_noType_iff`: arithmetic is untyped exactly while an operand is untyped and none is an error (likewise `logical_deferred`), and a comparison is boolean or an error, never untyped (`compare_cases`); `arith_decimal`: a decimal result keeps the larger scale and, below 38 digits, the larger integer part |
+| `WvletFormal/Typer/OperatorTraces.lean`, `OperatorTraces.lean` | — | exports the operator typing conformance fixture |
 | `WvletFormal/ModelBuild/Explore.lean` | the work-list search shared by `closure` and `upstreamsOf` | `mem_explore_iff`: the search visits exactly the nodes reachable from its work list, once each (`explore_nodup`); termination is the `termination_by` measure (new nodes visited, then work-list length) |
 | `WvletFormal/ModelBuild/Graph.lean` | `upstreamsOf`, `closure`, `parseSelectors`, `select` | `mem_upstreamsOf`: edges are the materialized models reachable through ephemeral models only, self-edges included; `mem_closure_ups` / `mem_closure_downs`: closures are transitive upstream / downstream reachability; `selectParsed_spec`: `select` returns exactly the models the selectors select, in definition order, without duplicates |
 | `WvletFormal/ModelBuild/Order.lean` | `buildOrder` rounds, `findCycle` | `buildOrder_spec`: the order is a permutation of the selection in which every model follows the selected models it reads, and it fails exactly when the selection has a cycle, reporting a real one; `rounds_level`: every model after the first round reads a selected model of the round just before it (so no model waits longer than its upstream models require), and `rounds_sublist`: each round keeps input order; `findCycle_spec`: a cycle is reported exactly when one exists; `buildOrder_ok_of_acyclic`: after `findCycle` passes, every selection orders |
@@ -83,6 +88,12 @@ behavior as traces:
   `findCommonType`. `TypeCoercionConformanceTest` (langJVM) replays it against `TypeInference`,
   binding each `other n` to a concrete type (short, date, two decimals, varchar) and comparing errors
   by error-ness, since the model abstracts error messages.
+- `lake exe operator-traces` writes
+  `wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/operator-traces.json`: every
+  arithmetic operator, `=`, the ordering comparisons, and `and` / `or` over every pair of an
+  operand sample (each `Ty` constructor, short and date as `other` types, four decimals including
+  one past the precision cap, an unresolved decimal, an unresolved type, and a function
+  reference). `OperatorTypingConformanceTest` (langJVM) replays it against `TyperRules`.
 - `lake exe model-build-traces` writes
   `wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/model-build-traces.json`: every
   graph on three models (512, self-loops included) with its cycle, the build order of every
@@ -114,7 +125,8 @@ behavior as traces:
   the symbol's completer.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
-When you change an activity state transition, a coercion rule in `TypeInference`, the build
+When you change an activity state transition, a coercion rule in `TypeInference`, an operator
+typing rule in `TyperRules`, the build
 ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, or a name-lookup rule, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
 conformance test passes.
 
@@ -126,7 +138,12 @@ The model proves today's behavior. These are left for follow-ups:
   commutative on type variables.
 - Decimals have no common type with other numerics or across precisions, unlike arithmetic typing
   (`decimal + int` is a decimal). Short, byte, real, varchar, and char have no rule either.
-- The arithmetic result table in `TyperRules` is not yet tied to `unify`.
+- `=` and `!=` are boolean for any operands, errors included: an error operand does not
+  propagate through them.
+- Ordering comparisons and `and` / `or` reject NULL operands (`x < null` and `null and true` are
+  type errors), unlike arithmetic, where NULL takes the other operand's type.
+- Decimal results follow the "holds both operands" rule, not each engine's SQL precision rules
+  (for example `p1 + p2` digits for multiplication).
 
 ## Known gaps of the SQL block folding model
 
