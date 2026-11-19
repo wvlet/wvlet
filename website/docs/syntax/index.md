@@ -431,6 +431,20 @@ statements, including `test` assertions (checked on every iteration; expected va
 constants, not the loop variable) and nested `for` loops. To transform the rows of a table, use
 relational operators such as `select` and `add` instead — a `for` loop repeats statements, not rows.
 
+### String Concatenation
+
+`+` concatenates when either side is a string, and `s"..."` concatenates its parts. Non-string
+values are cast to strings, and NULL counts as an empty string, unlike SQL's `||`, so every engine
+returns the same result:
+
+```wvlet
+select 'order-' + 2024           -- 'order-2024'
+select 'hello' + null            -- 'hello'
+select s"id: ${null}!"           -- 'id: !'
+```
+
+To get NULL when an operand is NULL, test it first: `if x is null then null else 'id: ' + x`.
+
 ### Conditional Expressions
 
 | Operator                             | Description                                                                      |

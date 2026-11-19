@@ -15,6 +15,8 @@ on:
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/**'
       - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/codegen/SqlGenerator.scala'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/transform/RewriteExpr.scala'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/transform/**'
   push:
     branches:
       - main
@@ -25,6 +27,7 @@ on:
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/**'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/**'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/transform/**'
   workflow_dispatch:
 
 jobs:
@@ -75,3 +78,8 @@ jobs:
           lake exe sql-fold-traces
           git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json \
             || (echo "::error::The SQL block folding conformance fixture is stale. Run 'cd formal && lake exe sql-fold-traces' and commit the result." && exit 1)
+      - name: Check expression rewrite conformance fixture freshness
+        run: |
+          lake exe rewrite-expr-traces
+          git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/transform/ \
+            || (echo "::error::The expression rewrite conformance fixture is stale. Run 'cd formal && lake exe rewrite-expr-traces' and commit the result." && exit 1)

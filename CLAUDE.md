@@ -129,7 +129,7 @@ pnpm --filter website run build
 
 ### Formal Verification (Lean)
 
-`formal/` is a standalone Lean 4 project (not part of sbt) that models the activity item state machine (fencing and restart properties), the typer's common-type and coercion rules (`TypeInference`: least-upper-bound laws), `wvlet build` ordering (`ModelOrder`: selector closures, topological build order, cycle detection), and SQL SELECT-block folding (`SQLBlock.accepts`: when an operator joins a SELECT block or opens a subquery). Install the toolchain with [elan](https://github.com/leanprover/elan); `formal/lean-toolchain` pins the version. See `formal/README.md`.
+`formal/` is a standalone Lean 4 project (not part of sbt) that models the activity item state machine (fencing and restart properties), the typer's common-type and coercion rules (`TypeInference`: least-upper-bound laws), `wvlet build` ordering (`ModelOrder`: selector closures, topological build order, cycle detection), SQL SELECT-block folding (`SQLBlock.accepts`: when an operator joins a SELECT block or opens a subquery), and the expression rewrite rules (`RewriteExpr`: string `+`, `s"..."`, and `if(...)` keep their values on every engine, NULL included). Install the toolchain with [elan](https://github.com/leanprover/elan); `formal/lean-toolchain` pins the version. See `formal/README.md`.
 
 ```bash
 # Check all proofs (warnings, including `sorry`, fail the build)
@@ -146,12 +146,16 @@ cd formal && lake exe model-build-traces
 
 # Regenerate the conformance fixture replayed by SqlFoldConformanceTest
 cd formal && lake exe sql-fold-traces
+
+# Regenerate the conformance fixture replayed by RewriteExprConformanceTest
+cd formal && lake exe rewrite-expr-traces
 ```
 
 - When changing activity state transitions (`ItemStore`, `TaskQueue`, `BatchExecutor.recoverItems`), update the Lean model first, regenerate the fixture, and run `./sbt "runnerJVM/testOnly *ActivityModelConformanceTest"`. The `Formal` workflow fails on a stale fixture
 - When changing `unify`, `findCommonType`, `canCoerce`, or `widen` in `TypeInference`, update `formal/WvletFormal/Typer/Coercion.lean` first, run `lake exe typer-traces`, and run `./sbt "langJVM/testOnly *TypeCoercionConformanceTest"`
 - When changing `ModelOrder` (edges through ephemeral models, selectors, `buildOrder`, `findCycle`), update `formal/WvletFormal/ModelBuild/` first, run `lake exe model-build-traces`, and run `./sbt "langJVM/testOnly *ModelBuildConformanceTest"`
 - When changing `SQLBlock.accepts` or which plan node maps to which `FoldOp` in `SqlGenerator.relation`, update `formal/WvletFormal/SqlFold/` first, run `lake exe sql-fold-traces`, and run `./sbt "langJVM/testOnly *SqlFoldConformanceTest"`
+- When changing a rule in `RewriteExpr`, update `formal/WvletFormal/Rewrite/` first, run `lake exe rewrite-expr-traces`, and run `./sbt "langJVM/testOnly *RewriteExprConformanceTest"`
 
 ## Architecture Overview
 

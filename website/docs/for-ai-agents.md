@@ -76,7 +76,7 @@ Expressions:
 - Aggregations: `_.count` counts rows in a group; `column.sum`, `.avg`, `.min`, `.max`, `.count_distinct` aggregate a column. SQL functions such as `count(*)` and `sum(x)` also work.
 - Casts: `amount::int`, `'2026-01-01'::date`.
 - Conditionals: `if x > 0 then 'pos' else 'neg'`, or `case when x > 0 then 'pos' else 'neg'` (no `end`).
-- String interpolation: `s"order-${id}"`.
+- String interpolation: `s"order-${id}"`. `'a' + x` concatenates when either side is a string. In both, non-strings are cast and NULL counts as `''` (unlike SQL `||`).
 - Window functions: `row_number() over (partition by customer_id order by amount desc)`.
 - Comments: `-- line comment`. `---` starts a Markdown doc comment block.
 
