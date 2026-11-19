@@ -141,6 +141,54 @@ class ModelBuildTest extends UniTest:
     e.statusCode shouldBe StatusCode.MODEL_NOT_FOUND
   }
 
+  test("reject selectors that name no model") {
+    val dir = project(shop*)
+    List(List(""), List(","), List(" , ")).foreach { selectors =>
+      val e = intercept[WvletLangException] {
+        ModelBuildLauncher.plan(dir, workEnv, selectors)
+      }
+      e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    }
+  }
+
+  private def cycleError(selectors: List[String], files: (String, String)*): WvletLangException =
+    val dir = project(files*)
+    intercept[WvletLangException] {
+      ModelBuildLauncher.plan(dir, workEnv, selectors)
+    }
+
+  test("report a model that reads itself") {
+    val e = cycleError(
+      Nil,
+      "m.wv" -> "model mb_self with { materialized: 'table' } = { from mb_self }"
+    )
+    e.statusCode shouldBe StatusCode.RECURSIVE_MODEL_REFERENCE
+    e.getMessage shouldContain "mb_self -> mb_self"
+  }
+
+  test("report a model that reads itself through an ephemeral model") {
+    val e = cycleError(
+      Nil,
+      "m.wv" -> """model mb_eph = { from mb_loop }
+          |model mb_loop with { materialized: 'table' } = { from mb_eph }
+          |""".stripMargin
+    )
+    e.statusCode shouldBe StatusCode.RECURSIVE_MODEL_REFERENCE
+    e.getMessage shouldContain "mb_loop -> mb_loop"
+  }
+
+  test("report a cycle even when the selection covers only part of it") {
+    val files = Seq("m.wv" -> """model mb_ca with { materialized: 'table' } = { from mb_cb }
+          |model mb_cb with { materialized: 'table' } = { from mb_ca }
+          |model mb_free with { materialized: 'table' } = { from [[1]] as t(x) }
+          |""".stripMargin)
+    List(Nil, List("mb_ca"), List("mb_free")).foreach { selectors =>
+      val e = cycleError(selectors, files*)
+      e.statusCode shouldBe StatusCode.RECURSIVE_MODEL_REFERENCE
+      e.getMessage shouldContain "mb_ca -> mb_cb -> mb_ca"
+    }
+  }
+
   test("fail when an unselected upstream model is not built") {
     val dir = project(
       "m.wv" -> """model mb_up_unbuilt with { materialized: 'table' } = { from [[1]] as t(x) }

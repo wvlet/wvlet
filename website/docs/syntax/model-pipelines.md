@@ -80,6 +80,15 @@ wvlet build -s stg_orders,customer_totals
 | `+m` | `m` and every model upstream of it |
 | `+m+` | Both directions |
 
+A model builds only after every selected model it reads. The build order lists models by
+dependency level, in definition order within a level. A selector that names no model (for example
+`-s ""`) is an error.
+
+Materialized models must not form a dependency cycle. That includes a model that reads itself,
+directly or through ephemeral models. `wvlet build` reports such a cycle as a path (for example
+`Cyclic model dependency: a -> b -> a`) and builds nothing, even when the selection avoids the
+cycle.
+
 `wvlet build` uses the same options as [`wvlet flow`](flow.md#wvlet-flow-cli): `-w <folder>`,
 `--profile`, `--catalog`, `--schema`, and `--run-store`.
 

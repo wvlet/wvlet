@@ -10,6 +10,9 @@ on:
       - 'wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/**'
       - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/typer/TypeInference.scala'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/**'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/pipeline/ModelOrder.scala'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/pipeline/ModelBuild.scala'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/**'
   push:
     branches:
       - main
@@ -18,6 +21,7 @@ on:
       - 'formal/**'
       - 'wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/**'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/**'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/**'
   workflow_dispatch:
 
 jobs:
@@ -58,3 +62,8 @@ jobs:
           lake exe typer-traces
           git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/ \
             || (echo "::error::The typer conformance fixture is stale. Run 'cd formal && lake exe typer-traces' and commit the result." && exit 1)
+      - name: Check model build conformance fixture freshness
+        run: |
+          lake exe model-build-traces
+          git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/ \
+            || (echo "::error::The model build conformance fixture is stale. Run 'cd formal && lake exe model-build-traces' and commit the result." && exit 1)
