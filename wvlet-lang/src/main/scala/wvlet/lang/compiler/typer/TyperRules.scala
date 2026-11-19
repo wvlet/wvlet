@@ -171,278 +171,168 @@ object TyperRules:
   }
 
   /**
-    * Rules for typing binary operations
+    * Rules for typing unary and binary operators. The result types come from the pure functions
+    * below, which the Lean model in formal/WvletFormal/Typer/Operators.lean mirrors
     */
   def binaryOpRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     // A sign prefix (e.g. -5) keeps the numeric type of its operand
     case op: ArithmeticUnaryExpr =>
       op.tpe = op.child.tpe
       op
-
-    // Arithmetic binary expressions
     case op: ArithmeticBinaryExpr =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-
-      op.tpe =
-        (op.exprType, leftTpe, rightTpe) match
-          // Integer arithmetic
-          case (_, IntType, IntType) =>
-            IntType
-          case (_, LongType, LongType) =>
-            LongType
-          case (_, FloatType, FloatType) =>
-            FloatType
-          case (_, DoubleType, DoubleType) =>
-            DoubleType
-
-          // Mixed numeric types - promote to larger type
-          case (_, IntType, LongType) | (_, LongType, IntType) =>
-            LongType
-          case (_, IntType | LongType, DoubleType) | (_, DoubleType, IntType | LongType) =>
-            DoubleType
-          case (_, IntType | LongType, FloatType) | (_, FloatType, IntType | LongType) =>
-            FloatType
-          case (_, FloatType, DoubleType) | (_, DoubleType, FloatType) =>
-            DoubleType
-
-          // Decimal arithmetic keeps the decimal type
-          case (_, d: DecimalType, _: DecimalType | IntType | LongType | FloatType | DoubleType) =>
-            d
-          case (_, IntType | LongType | FloatType | DoubleType, d: DecimalType) =>
-            d
-
-          // String concatenation for Add: a string operand absorbs the other side, which is
-          // coerced to string (see RewriteExpr.RewriteStringConcat)
-          case (BinaryExprType.Add, StringType, _) | (BinaryExprType.Add, _, StringType) =>
-            StringType
-
-          // Operands not typed yet - defer
-          case (_, NoType, _) | (_, _, NoType) =>
-            NoType
-          // Defer when either operand type is not fully resolved yet
-          case (_, l: DataType, _) if !l.isResolved =>
-            NoType
-          case (_, _, r: DataType) if !r.isResolved =>
-            NoType
-
-          // Propagate operand errors
-          case (_, e: ErrorType, _) =>
-            e
-          case (_, _, e: ErrorType) =>
-            e
-
-          // A function reference operand (a def symbol, not a value type) - defer, keeping
-          // the passthrough behavior of unresolved function references
-          case (_, _: Type.FunctionType, _) | (_, _, _: Type.FunctionType) =>
-            NoType
-
-          // Type error between two resolved, incompatible operand types
-          case _ =>
-            ErrorType(s"Type error in ${op.exprType}: $leftTpe ${op.exprType} $rightTpe")
-
+      op.tpe = arithmeticType(op.exprType, op.left.tpe, op.right.tpe)
       op
-
-    // Comparison operators - require comparable types
     case op: Eq =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-      // Equality is allowed for any types (including null checks)
-      op.tpe = BooleanType
+      op.tpe = equalityType(op.left.tpe, op.right.tpe)
       op
-
     case op: NotEq =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-      // Inequality is allowed for any types (including null checks)
-      op.tpe = BooleanType
+      op.tpe = equalityType(op.left.tpe, op.right.tpe)
       op
-
     case op: LessThan =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-      op.tpe =
-        (leftTpe, rightTpe) match
-          // Numeric comparisons
-          case (
-                IntType | LongType | FloatType | DoubleType | _: DecimalType,
-                IntType | LongType | FloatType | DoubleType | _: DecimalType
-              ) =>
-            BooleanType
-          // String comparisons
-          case (StringType, StringType) =>
-            BooleanType
-          // Same types (for custom types that support ordering)
-          case (l, r) if l == r && l != BooleanType =>
-            BooleanType
-          // NoType means untyped yet - allow it
-          case (NoType, _) | (_, NoType) =>
-            BooleanType
-          // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
-          // unbound generic type parameters, or pre-inlining aggregation shorthands)
-          case (l, r) if !l.isResolved || !r.isResolved =>
-            BooleanType
-          // Propagate errors
-          case (e: ErrorType, _) =>
-            e
-          case (_, e: ErrorType) =>
-            e
-          // Type mismatch
-          // A function reference operand (a def symbol, not a value type) - defer
-          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
-            BooleanType
-          case _ =>
-            ErrorType(s"Cannot compare $leftTpe < $rightTpe: incompatible types")
+      op.tpe = comparisonType("<", op.left.tpe, op.right.tpe)
       op
-
     case op: LessThanOrEq =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-      op.tpe =
-        (leftTpe, rightTpe) match
-          case (
-                IntType | LongType | FloatType | DoubleType | _: DecimalType,
-                IntType | LongType | FloatType | DoubleType | _: DecimalType
-              ) =>
-            BooleanType
-          case (StringType, StringType) =>
-            BooleanType
-          case (l, r) if l == r && l != BooleanType =>
-            BooleanType
-          case (NoType, _) | (_, NoType) =>
-            BooleanType
-          // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
-          // unbound generic type parameters, or pre-inlining aggregation shorthands)
-          case (l, r) if !l.isResolved || !r.isResolved =>
-            BooleanType
-          case (e: ErrorType, _) =>
-            e
-          case (_, e: ErrorType) =>
-            e
-          // A function reference operand (a def symbol, not a value type) - defer
-          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
-            BooleanType
-          case _ =>
-            ErrorType(s"Cannot compare $leftTpe <= $rightTpe: incompatible types")
+      op.tpe = comparisonType("<=", op.left.tpe, op.right.tpe)
       op
-
     case op: GreaterThan =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-      op.tpe =
-        (leftTpe, rightTpe) match
-          case (
-                IntType | LongType | FloatType | DoubleType | _: DecimalType,
-                IntType | LongType | FloatType | DoubleType | _: DecimalType
-              ) =>
-            BooleanType
-          case (StringType, StringType) =>
-            BooleanType
-          case (l, r) if l == r && l != BooleanType =>
-            BooleanType
-          case (NoType, _) | (_, NoType) =>
-            BooleanType
-          // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
-          // unbound generic type parameters, or pre-inlining aggregation shorthands)
-          case (l, r) if !l.isResolved || !r.isResolved =>
-            BooleanType
-          case (e: ErrorType, _) =>
-            e
-          case (_, e: ErrorType) =>
-            e
-          // A function reference operand (a def symbol, not a value type) - defer
-          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
-            BooleanType
-          case _ =>
-            ErrorType(s"Cannot compare $leftTpe > $rightTpe: incompatible types")
+      op.tpe = comparisonType(">", op.left.tpe, op.right.tpe)
       op
-
     case op: GreaterThanOrEq =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-      op.tpe =
-        (leftTpe, rightTpe) match
-          case (
-                IntType | LongType | FloatType | DoubleType | _: DecimalType,
-                IntType | LongType | FloatType | DoubleType | _: DecimalType
-              ) =>
-            BooleanType
-          case (StringType, StringType) =>
-            BooleanType
-          case (l, r) if l == r && l != BooleanType =>
-            BooleanType
-          case (NoType, _) | (_, NoType) =>
-            BooleanType
-          // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
-          // unbound generic type parameters, or pre-inlining aggregation shorthands)
-          case (l, r) if !l.isResolved || !r.isResolved =>
-            BooleanType
-          case (e: ErrorType, _) =>
-            e
-          case (_, e: ErrorType) =>
-            e
-          // A function reference operand (a def symbol, not a value type) - defer
-          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
-            BooleanType
-          case _ =>
-            ErrorType(s"Cannot compare $leftTpe >= $rightTpe: incompatible types")
+      op.tpe = comparisonType(">=", op.left.tpe, op.right.tpe)
       op
-
-    // Logical operators
     case op: And =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-
-      op.tpe =
-        (leftTpe, rightTpe) match
-          case (BooleanType, BooleanType) =>
-            BooleanType
-          case (NoType, _) | (_, NoType) =>
-            // Operands not typed yet - defer
-            NoType
-          case (l: DataType, _) if !l.isResolved =>
-            NoType
-          case (_, r: DataType) if !r.isResolved =>
-            NoType
-          case (e: ErrorType, _) =>
-            e
-          case (_, e: ErrorType) =>
-            e
-          // A function reference operand (a def symbol, not a value type) - defer
-          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
-            NoType
-          case _ =>
-            ErrorType(s"Type error in AND: expected boolean operands, got $leftTpe AND $rightTpe")
-
+      op.tpe = logicalType("AND", op.left.tpe, op.right.tpe)
       op
-
     case op: Or =>
-      val leftTpe  = op.left.tpe
-      val rightTpe = op.right.tpe
-
-      op.tpe =
-        (leftTpe, rightTpe) match
-          case (BooleanType, BooleanType) =>
-            BooleanType
-          case (NoType, _) | (_, NoType) =>
-            // Operands not typed yet - defer
-            NoType
-          case (l: DataType, _) if !l.isResolved =>
-            NoType
-          case (_, r: DataType) if !r.isResolved =>
-            NoType
-          case (e: ErrorType, _) =>
-            e
-          case (_, e: ErrorType) =>
-            e
-          // A function reference operand (a def symbol, not a value type) - defer
-          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
-            NoType
-          case _ =>
-            ErrorType(s"Type error in OR: expected boolean operands, got $leftTpe OR $rightTpe")
-
+      op.tpe = logicalType("OR", op.left.tpe, op.right.tpe)
       op
   }
+
+  /**
+    * The result type of an arithmetic binary expression `leftTpe op rightTpe`
+    */
+  def arithmeticType(op: BinaryExprType, leftTpe: Type, rightTpe: Type): Type =
+    (op, leftTpe, rightTpe) match
+      // Integer arithmetic
+      case (_, IntType, IntType) =>
+        IntType
+      case (_, LongType, LongType) =>
+        LongType
+      case (_, FloatType, FloatType) =>
+        FloatType
+      case (_, DoubleType, DoubleType) =>
+        DoubleType
+
+      // Mixed numeric types - promote to larger type
+      case (_, IntType, LongType) | (_, LongType, IntType) =>
+        LongType
+      case (_, IntType | LongType, DoubleType) | (_, DoubleType, IntType | LongType) =>
+        DoubleType
+      case (_, IntType | LongType, FloatType) | (_, FloatType, IntType | LongType) =>
+        FloatType
+      case (_, FloatType, DoubleType) | (_, DoubleType, FloatType) =>
+        DoubleType
+
+      // Decimal arithmetic keeps the decimal type
+      case (_, d: DecimalType, _: DecimalType | IntType | LongType | FloatType | DoubleType) =>
+        d
+      case (_, IntType | LongType | FloatType | DoubleType, d: DecimalType) =>
+        d
+
+      // String concatenation for Add: a string operand absorbs the other side, which is
+      // coerced to string (see RewriteExpr.RewriteStringConcat)
+      case (BinaryExprType.Add, StringType, _) | (BinaryExprType.Add, _, StringType) =>
+        StringType
+
+      // Operands not typed yet - defer
+      case (_, NoType, _) | (_, _, NoType) =>
+        NoType
+      // Defer when either operand type is not fully resolved yet
+      case (_, l: DataType, _) if !l.isResolved =>
+        NoType
+      case (_, _, r: DataType) if !r.isResolved =>
+        NoType
+
+      // Propagate operand errors
+      case (_, e: ErrorType, _) =>
+        e
+      case (_, _, e: ErrorType) =>
+        e
+
+      // A function reference operand (a def symbol, not a value type) - defer, keeping
+      // the passthrough behavior of unresolved function references
+      case (_, _: Type.FunctionType, _) | (_, _, _: Type.FunctionType) =>
+        NoType
+
+      // Type error between two resolved, incompatible operand types
+      case _ =>
+        ErrorType(s"Type error in ${op}: $leftTpe ${op} $rightTpe")
+
+  /**
+    * The result type of `=` and `!=`: equality is allowed for any types (including null checks)
+    */
+  def equalityType(leftTpe: Type, rightTpe: Type): Type = BooleanType
+
+  /**
+    * The result type of an ordering comparison (`<`, `<=`, `>`, `>=`, named by `opName`)
+    */
+  def comparisonType(opName: String, leftTpe: Type, rightTpe: Type): Type =
+    (leftTpe, rightTpe) match
+      // Numeric comparisons
+      case (
+            IntType | LongType | FloatType | DoubleType | _: DecimalType,
+            IntType | LongType | FloatType | DoubleType | _: DecimalType
+          ) =>
+        BooleanType
+      // String comparisons
+      case (StringType, StringType) =>
+        BooleanType
+      // Same types (for custom types that support ordering)
+      case (l, r) if l == r && l != BooleanType =>
+        BooleanType
+      // NoType means untyped yet - allow it
+      case (NoType, _) | (_, NoType) =>
+        BooleanType
+      // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
+      // unbound generic type parameters, or pre-inlining aggregation shorthands)
+      case (l, r) if !l.isResolved || !r.isResolved =>
+        BooleanType
+      // Propagate errors
+      case (e: ErrorType, _) =>
+        e
+      case (_, e: ErrorType) =>
+        e
+      // A function reference operand (a def symbol, not a value type) - defer
+      case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+        BooleanType
+      case _ =>
+        ErrorType(s"Cannot compare $leftTpe ${opName} $rightTpe: incompatible types")
+
+  /**
+    * The result type of a logical operator (`AND` or `OR`, named by `opName`)
+    */
+  def logicalType(opName: String, leftTpe: Type, rightTpe: Type): Type =
+    (leftTpe, rightTpe) match
+      case (BooleanType, BooleanType) =>
+        BooleanType
+      case (NoType, _) | (_, NoType) =>
+        // Operands not typed yet - defer
+        NoType
+      case (l: DataType, _) if !l.isResolved =>
+        NoType
+      case (_, r: DataType) if !r.isResolved =>
+        NoType
+      case (e: ErrorType, _) =>
+        e
+      case (_, e: ErrorType) =>
+        e
+      // A function reference operand (a def symbol, not a value type) - defer
+      case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+        NoType
+      case _ =>
+        ErrorType(
+          s"Type error in ${opName}: expected boolean operands, got $leftTpe ${opName} $rightTpe"
+        )
 
   /**
     * Rules for typing Cast expressions
