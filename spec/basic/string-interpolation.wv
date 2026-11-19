@@ -25,3 +25,13 @@ test _.rows should be [['Active: true']]
 select s"Price: $${99.99}"
 test _.rows should be [['Price: $99.99']]
 ;
+
+-- NULL parts are skipped, on every engine
+select s"id: ${null}!"
+test _.rows should be [['id: !']]
+;
+
+-- A single interpolated value is still a string
+select s"${2024}"
+test _.rows should be [['2024']]
+;

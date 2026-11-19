@@ -1,6 +1,6 @@
 name = "wvlet-formal"
 version = "0.1.0"
-defaultTargets = ["WvletFormal", "activity-traces", "typer-traces", "model-build-traces", "sql-fold-traces"]
+defaultTargets = ["WvletFormal", "activity-traces", "typer-traces", "model-build-traces", "sql-fold-traces", "rewrite-expr-traces"]
 
 [leanOptions]
 autoImplicit = false
@@ -23,3 +23,7 @@ root = "ModelBuildTraces"
 [[lean_exe]]
 name = "sql-fold-traces"
 root = "SqlFoldTraces"
+
+[[lean_exe]]
+name = "rewrite-expr-traces"
+root = "RewriteExprTraces"

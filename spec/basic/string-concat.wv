@@ -54,14 +54,27 @@ test _.output should be """
 
 select "hello " + 2024
 test _.output should be """
-┌────────────────────────┐
-│ concat('hello ', 2024) │
-│         string         │
-├────────────────────────┤
-│ hello 2024             │
-├────────────────────────┤
-│ 1 rows                 │
-└────────────────────────┘
+┌────────────────────────────────────────┐
+│ concat('hello ', CAST(2024 AS string)) │
+│                 string                 │
+├────────────────────────────────────────┤
+│ hello 2024                             │
+├────────────────────────────────────────┤
+│ 1 rows                                 │
+└────────────────────────────────────────┘
 """
 ;
 
+-- A string on the right side also concatenates
+select 2024 + ' items'
+test _.rows should be [['2024 items']]
+;
+
+-- NULL operands are skipped, on every engine
+select 'hello' + null
+test _.rows should be [['hello']]
+;
+
+select null + 'world'
+test _.rows should be [['world']]
+;
