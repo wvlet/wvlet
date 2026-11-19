@@ -680,6 +680,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         else
           // For other databases, ignore the hints and just process the child
           relation(h.child, block)
+      case d: Distinct if isAggregation(d.child) =>
+        // Both the DISTINCT and the aggregation must join the block
+        aggregation(
+          d.child,
+          block.copy(isDistinct = true),
+          d,
+          block,
+          accepted = block.accepts(FoldOp.Agg) && block.accepts(FoldOp.Dedup)
+        )
       case d: Distinct =>
         if block.accepts(FoldOp.Distinct(whereScopeSafe(block, d.child.selectItems))) then
           relation(d.child.child, block.copy(isDistinct = true, selectItems = d.child.selectItems))
@@ -735,27 +744,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         else
           nestedSelect(c, block)
       case s: Selection if isAggregation(s) =>
-        // An aggregation's select list must stay in the block of its GROUP BY
-        if block.accepts(FoldOp.Agg) then
-          s.child match
-            case g: GroupBy =>
-              relation(
-                g.child,
-                block.copy(selectItems = s.selectItems, groupingKeys = g.groupingKeys)
-              )
-            case h @ Filter(g: GroupBy, _, _) =>
-              relation(
-                g.child,
-                block.copy(
-                  selectItems = s.selectItems,
-                  groupingKeys = g.groupingKeys,
-                  having = h :: block.having
-                )
-              )
-            case child =>
-              relation(child, block.copy(selectItems = s.selectItems, aggregated = true))
-        else
-          nestedSelect(s, block)
+        aggregation(s, block, s, block, accepted = block.accepts(FoldOp.Agg))
       case s: Selection =>
         if block.accepts(FoldOp.Project(whereScopeSafe(block, s.selectItems))) then
           relation(s.child, block.copy(selectItems = s.selectItems))
@@ -1392,6 +1381,37 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     end match
 
   end relation
+
+  /**
+    * Fold an aggregation into `merged` (the block with any DISTINCT of `node` applied) when
+    * `accepted`, or render `node` as a nested SELECT of `block`. The select list must stay in the
+    * block of its GROUP BY, so the aggregation, its GroupBy, and a HAVING filter in between join a
+    * block together
+    */
+  private def aggregation(
+      s: Selection,
+      merged: SQLBlock,
+      node: Relation,
+      block: SQLBlock,
+      accepted: Boolean
+  )(using sc: SyntaxContext): Doc =
+    if accepted then
+      s.child match
+        case g: GroupBy =>
+          relation(g.child, merged.copy(selectItems = s.selectItems, groupingKeys = g.groupingKeys))
+        case h @ Filter(g: GroupBy, _, _) =>
+          relation(
+            g.child,
+            merged.copy(
+              selectItems = s.selectItems,
+              groupingKeys = g.groupingKeys,
+              having = h :: merged.having
+            )
+          )
+        case child =>
+          relation(child, merged.copy(selectItems = s.selectItems, aggregated = true))
+    else
+      nestedSelect(node, block)
 
   /**
     * Render `r` as a nested SELECT that becomes the FROM source of `block`

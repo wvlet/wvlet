@@ -92,6 +92,13 @@ class SqlBlockFoldingTest extends UniTest:
     selects(wvletToSQL("from t select a order by a")) shouldBe 1
   }
 
+  test("keep a distinct aggregation with its group by") {
+    val sql = wvletToSQL("from t group by k select distinct k, _.count as c where k > 0")
+    selects(sql) shouldBe 2
+    // The aggregation stays in the inner block with its GROUP BY
+    sql.indexOf("group by k") < sql.indexOf("where k > 0") shouldBe true
+  }
+
   test("render the select list of a nested group by") {
     val sql = wvletToSQL("from t group by k group by k")
     selects(sql) shouldBe 2
