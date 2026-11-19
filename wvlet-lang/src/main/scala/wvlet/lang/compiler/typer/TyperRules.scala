@@ -177,7 +177,7 @@ object TyperRules:
   def binaryOpRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     // A sign prefix (e.g. -5) keeps the numeric type of its operand
     case op: ArithmeticUnaryExpr =>
-      op.tpe = op.child.tpe
+      op.tpe = unaryType(op.child.tpe)
       op
     case op: ArithmeticBinaryExpr =>
       op.tpe = arithmeticType(op.exprType, op.left.tpe, op.right.tpe)
@@ -207,6 +207,11 @@ object TyperRules:
       op.tpe = logicalType("OR", op.left.tpe, op.right.tpe)
       op
   }
+
+  /**
+    * The result type of a sign prefix (e.g. -5): the type of its operand
+    */
+  def unaryType(childTpe: Type): Type = childTpe
 
   /**
     * The result type of an arithmetic binary expression `leftTpe op rightTpe`. The stages run in a
@@ -242,7 +247,7 @@ object TyperRules:
         StringType
       // Type error between two resolved, incompatible operand types
       case _ =>
-        ErrorType(s"Type error in ${op}: $leftTpe ${op} $rightTpe")
+        ErrorType(s"Type error in ${op}: ${leftTpe} ${op} ${rightTpe}")
 
   /**
     * The largest decimal precision of the supported engines
@@ -261,14 +266,11 @@ object TyperRules:
     */
   private def isDeferredOperand(t: Type): Boolean =
     t match
-      case NoType =>
-        true
       case _: Type.FunctionType =>
         true
-      case d: DataType =>
-        !d.isResolved
-      case _ =>
-        false
+      case other =>
+        // NoType, unresolved data types, and type variables
+        !other.isResolved
 
   /**
     * The smallest decimal holding both operands: the larger scale and the larger number of integer
@@ -312,18 +314,13 @@ object TyperRules:
       // Same types (for custom types that support ordering)
       case (l, r) if l == r && l != BooleanType =>
         BooleanType
-      // NoType means untyped yet - allow it
-      case (NoType, _) | (_, NoType) =>
-        BooleanType
-      // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
-      // unbound generic type parameters, or pre-inlining aggregation shorthands)
-      case (l, r) if !l.isResolved || !r.isResolved =>
-        BooleanType
-      // A function reference operand (a def symbol, not a value type) - defer
-      case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+      // Operands not typed yet (untyped, unresolved such as unknown columns, unbound generic
+      // type parameters, or pre-inlining aggregation shorthands, or a function reference): a
+      // comparison is boolean whatever they turn out to be
+      case _ if isDeferredOperand(leftTpe) || isDeferredOperand(rightTpe) =>
         BooleanType
       case _ =>
-        ErrorType(s"Cannot compare $leftTpe ${opName} $rightTpe: incompatible types")
+        ErrorType(s"Cannot compare ${leftTpe} ${opName} ${rightTpe}: incompatible types")
 
   /**
     * The result type of a logical operator (`AND` or `OR`, named by `opName`)
@@ -337,19 +334,12 @@ object TyperRules:
         e
       case (BooleanType, BooleanType) =>
         BooleanType
-      case (NoType, _) | (_, NoType) =>
-        // Operands not typed yet - defer
-        NoType
-      case (l: DataType, _) if !l.isResolved =>
-        NoType
-      case (_, r: DataType) if !r.isResolved =>
-        NoType
-      // A function reference operand (a def symbol, not a value type) - defer
-      case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+      // Operands not typed yet (untyped, unresolved, or a function reference) - defer
+      case _ if isDeferredOperand(leftTpe) || isDeferredOperand(rightTpe) =>
         NoType
       case _ =>
         ErrorType(
-          s"Type error in ${opName}: expected boolean operands, got $leftTpe ${opName} $rightTpe"
+          s"Type error in ${opName}: expected boolean operands, got ${leftTpe} ${opName} ${rightTpe}"
         )
 
   /**

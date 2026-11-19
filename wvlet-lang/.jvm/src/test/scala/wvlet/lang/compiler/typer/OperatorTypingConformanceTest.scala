@@ -135,8 +135,8 @@ class OperatorTypingConformanceTest extends UniTest:
 
   test("sign prefixes follow the model") {
     cases("unary").foreach { c =>
-      // ArithmeticUnaryExpr keeps its operand type
-      describe(tpe(c.str("operand"))) shouldBe c.str("result")
+      val clue = s"-${c.str("operand")}"
+      (clue, describe(TyperRules.unaryType(tpe(c.str("operand"))))) shouldBe (clue, c.str("result"))
     }
   }
 
