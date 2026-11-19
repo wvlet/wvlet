@@ -180,10 +180,21 @@ object SqlGenerator:
           if passesThrough(item) then
             None
           else
-            Option(item.nameExpr).filterNot(_.isEmpty).map(_.leafName.toLowerCase)
+            outputName(item).map(_.toLowerCase)
         }
         .toSet
     shadowed.isEmpty || referencedNames(e).forall(n => !shadowed.contains(n))
+
+  /**
+    * The column name a select item outputs: its alias, or the field of an unaliased reference such
+    * as `s.y`
+    */
+  private def outputName(item: Attribute): Option[String] =
+    item match
+      case SingleColumn(name, q: QualifiedName, _) if name.isEmpty =>
+        Some(q.leafName)
+      case _ =>
+        Option(item.nameExpr).filterNot(_.isEmpty).map(_.leafName)
 
   private def passesThrough(item: Attribute): Boolean =
     item match
@@ -699,23 +710,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           if block.accepts(FoldOp.Having) then
             relation(in, block.copy(having = f :: block.having))
           else
-            // Start a new SELECT block
-            val sql = relation(in, SQLBlock(having = List(f)))
-            selectAll(sql, block)
+            nestedSelect(f, block)
 
         f.child match
           case g: GroupBy =>
             // Filter(GroupBy(...)) => Having condition
             addHaving(g)
-          case a: Agg =>
-            // Cut the scope explicitly to apply the filter to the aggregated expressions
-            // {{{
-            //  wvlet: agg v.max as vmax where vmax > 10
-            //   sql: select * from (select max(v) as vmax) where vmax > 10
-            // }}}
-            val c = indentedParen(relation(a, SQLBlock()))
-            selectAll(c, block.copy(whereFilter = f :: block.whereFilter))
           case child =>
+            // A filter over an aggregation stays in WHERE, and the aggregation nests:
+            // `agg v.max as vmax where vmax > 10` -> select * from (select max(v) as vmax) where ...
             relation(child, block.copy(whereFilter = f :: block.whereFilter))
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination

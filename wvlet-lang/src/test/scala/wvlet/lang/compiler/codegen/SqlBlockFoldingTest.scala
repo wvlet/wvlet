@@ -80,6 +80,17 @@ class SqlBlockFoldingTest extends UniTest:
     selects(wvletToSQL("from t group by k select k, _.count as c where c > 1")) shouldBe 2
   }
 
+  test("nest a filter on the field of a projected struct") {
+    selects(wvletToSQL("from t select s.y where y > 0")) shouldBe 2
+  }
+
+  test("parenthesize a nested group by under a refused HAVING") {
+    val sql = wvletToSQL("from t group by a where a > 0 count")
+    selects(sql) shouldBe 2
+    sql shouldContain "from ("
+    SqlParser(CompilationUnit.fromSqlString(sql)).parse()
+  }
+
   test("keep a filter on a passed-through column in the same block") {
     selects(wvletToSQL("from t select a, x + 1 as c where a > 0")) shouldBe 1
     selects(wvletToSQL("from t where a > 0 select a")) shouldBe 1

@@ -18,6 +18,7 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.codegen.SqlGenerator.FoldOp
 import wvlet.lang.compiler.codegen.SqlGenerator.SQLBlock
+import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.parser.WvletParser
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.EmptyRelation
@@ -268,6 +269,8 @@ class SqlFoldConformanceTest extends UniTest:
         val actual   = selectKeyword.findAllIn(sql).size
         if actual != expected then
           fail(s"${wv}: expected ${expected} SELECT blocks, but got ${actual}:\n${sql}")
+        // The generated SQL must also be well formed, e.g., parenthesize every subquery
+        SqlParser(CompilationUnit.fromSqlString(sql)).parse()
         replayed += 1
     debug(s"Replayed ${replayed} pipelines")
     (replayed > 900) shouldBe true
