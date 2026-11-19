@@ -1,4 +1,4 @@
-# Prove model build ordering in Lean and replay it against ModelGraph
+# Prove model build ordering in Lean and replay it against ModelOrder
 
 ## Goals
 
@@ -27,9 +27,9 @@ Lane: Standard — it changes user-visible `wvlet build` behavior (a project tha
   - Selectors that split to no names are rejected as a usage error, instead of building nothing.
   - The rule is recorded in the model-build-semantics ADR and the model-pipelines docs page.
 - **Pure extraction (refactor, no behavior change):** move edge derivation, `closure`, selector resolution, `buildOrder`, and cycle search into functions over names, `List[String]` and `Map[String, List[String]]`. `ModelGraph` and `ModelBuildPlanner.graph` delegate to them. The replay test can then drive the code without building `ModelDef` ASTs.
-- **Lean model (`WvletFormal/ModelBuild/`):** models are `Nat`s in definition order, and `upstreams` is a function. The model mirrors `closure`, `select`, `buildOrder`, edge derivation through ephemerals, and cycle detection, each with explicit fuel bounded by the node count.
+- **Lean model (`WvletFormal/ModelBuild/`):** generic over model names with decidable equality, with `upstreams` as a function. It mirrors `closure`, `select`, `buildOrder`, edge derivation through ephemerals, and cycle detection. Termination is proved by `termination_by` measures, not fuel.
 - **Theorems to prove** (no `sorry`):
-  - `closure` (a stack-based DFS) returns exactly the nodes reachable from the start node. It terminates within 1 + edge-count pops: each pop either visits a new node or discards one, and only new visits push.
+  - `closure` (a stack-based DFS) returns exactly the nodes reachable from the start node. It terminates by the measure (unvisited nodes, work-list length): each pop either visits a new node or shortens the list.
   - `select` models the comma split and the `+` parsing (a bare `+` is an unknown model). It returns the union of each selector's closure (the model, plus ancestors for `+m`, plus descendants for `m+`), in definition order, without duplicates.
   - `buildOrder` succeeds exactly when the input has no cycle among its own edges. On success the output is a permutation of the input, and each model comes after every input model it reads.
   - Determinism: the order is level order. Each model sits in the round after its last upstream in the input, and models in the same round keep input order. Since `select` returns definition order, a build orders by level, then definition order. The fixture pins the exact order.
