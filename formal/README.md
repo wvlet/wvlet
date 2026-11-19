@@ -12,6 +12,10 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
   operator can join the current SELECT block, and when it must open a subquery.
 - The expression rewrite rules (`RewriteExpr` in wvlet-lang): string `+`, `s"..."`
   interpolation, and `if(...)`, over SQL values with NULL and three-valued conditions.
+- Name-lookup precedence in the Typer (`Scope`, `GlobalSymbolIndex`, `Context.findSymbolByName`,
+  `TyperRules.identifierRules`, `RelationRefResolver.resolveTableRef`): which binding a bare
+  identifier or a relation name resolves to. The spec itself is
+  [adr/2026-11-18-name-lookup-precedence.md](../adr/2026-11-18-name-lookup-precedence.md).
 
 See
 [adr/2026-11-18-lean-formal-verification.md](../adr/2026-11-18-lean-formal-verification.md) for
@@ -31,6 +35,7 @@ lake exe typer-traces       # regenerate the typer conformance fixture
 lake exe model-build-traces # regenerate the model build conformance fixture
 lake exe sql-fold-traces    # regenerate the SQL block folding conformance fixture
 lake exe rewrite-expr-traces # regenerate the expression rewrite conformance fixture
+lake exe name-lookup-traces # regenerate the name lookup conformance fixture
 ```
 
 ## Layout
@@ -58,6 +63,10 @@ lake exe rewrite-expr-traces # regenerate the expression rewrite conformance fix
 | `WvletFormal/Rewrite/Idem.lean` | — | `phase_clean`: no string `+`, `s"..."`, or `if(...)` call is left; `phase_idem`: the phase is idempotent, so rewriting a nested query once per enclosing query is harmless |
 | `WvletFormal/Rewrite/Findings.lean` | — | what the old rules got wrong: a NULL operand made `concat` NULL on Trino but not DuckDB (`f1_*`), no cast for a non-string operand (`f2_no_cast`), a string `+` with the string on the right was never rewritten (`f3_right_string`), and `s"${x}"` stayed `x` (`f4_single_part`) |
 | `WvletFormal/Rewrite/Traces.lean`, `RewriteExprTraces.lean` | — | exports the expression rewrite conformance fixture |
+| `WvletFormal/NameLookup/Scope.lean` | `Scope.add`, `enter`, `newChildScope`, `newFreshScope`, `lookupSymbol`; scope programs over handles | `lookup_add_self`: the newest `add` wins; `lookup_add_ne` / `lookup_add_comm`: a binding never changes another name, so entry order of different names is irrelevant; `enter_bound`: `enter` never shadows; `lookup_child_add`: an inner `add` shadows the outer binding; `step_frame`: an operation changes only its own handle, so a child never sees later parent bindings |
+| `WvletFormal/NameLookup/Global.lean` | `visibleEntries` (visible packages, buckets, stable sort by basename), `findFirstAnywhere` | `mem_visiblePackages` / `mem_entriesIn`: exactly presets, the default package, the own package, and every prefix of an import are visible; `visibleEntries_head`: the winner has the smallest basename; `visibleEntries_unique_min`: a strictly smallest basename wins whatever the registration order |
+| `WvletFormal/NameLookup/Resolve.lean` | `findSymbolByName` tiers, the identifier rule, relation-name resolution over symbol kinds | `findSymbol_local` / `findSymbol_global` / `findSymbol_anywhere`: scope, then visible globals, then the import-by-name fallback; `findSymbol_add` / `identify_after_add`: re-running lookup after a pass adds a local binding returns it (multi-pass typing); `identify_column_iff`: a column wins exactly over nothing or a function definition that is not completing; `resolveRelation_table_iff`: tables are the last tier |
+| `WvletFormal/NameLookup/Traces.lean`, `NameLookupTraces.lean` | — | exports the name lookup conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -94,10 +103,19 @@ behavior as traces:
   non-NULL columns. `RewriteExprConformanceTest` (langJVM) rewrites each input with the shipped
   rules and compares the result node by node, types included; checks that a second run changes
   nothing; and runs the rewritten SQL on DuckDB to compare values with the model.
+- `lake exe name-lookup-traces` writes
+  `wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/name-lookup-traces.json`: every
+  scope program of up to three operations over three handles and two names; global lookups over
+  one or two units (two basenames; preset, default, `p`, and `q.r` packages) from five package and
+  import contexts, with and without a local binding; and every symbol kind, completing or not,
+  with and without a same-named column (identifiers) or table (relation names).
+  `NameLookupConformanceTest` (langJVM) replays it against the real `Scope`, `GlobalSymbolIndex`,
+  `findSymbolByName`, `identifierRules`, and `resolveTableRef`, running the completing cases inside
+  the symbol's completer.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, the build
-ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, or a rule in `RewriteExpr`, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
+ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, or a name-lookup rule, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
 conformance test passes.
 
 ## Known gaps of the typer model
@@ -143,3 +161,14 @@ The model proves today's behavior. These are left for follow-ups:
   columns of some inline tables) is not rewritten and reaches SQL as `+`.
 - The stdlib's `s.concat(other)` prints SQL `||`, which is NULL-propagating; it is a function call,
   not a rewrite rule, so it is out of scope.
+## Known gaps of the name lookup model
+
+- Tie order is replayed but not proved: within one file, and between same-named files of
+  different folders, the newest registration wins; the proofs cover only strictly smaller
+  basenames. `findFirstAnywhere` breaks basename ties in hash-map order, so the fixture accepts any
+  tied candidate.
+- CTE and flow-stage names (`Typer.prepare`) precede `resolveTableRef`; the model proves that tier
+  (`resolveRelation_local`) but the fixture replays only `resolveTableRef`.
+- Out of scope: GenSQL's second resolution (val substitution that ignores columns, and a lookup
+  that falls back to any package), qualified expression names (`t.col`, type members, mixin
+  method order), and function-call resolution through `FunctionInliner`.

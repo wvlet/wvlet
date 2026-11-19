@@ -17,6 +17,12 @@ on:
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json'
       - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/transform/RewriteExpr.scala'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/transform/**'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/Scope.scala'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/Context.scala'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/GlobalSymbolIndex.scala'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/typer/TyperRules.scala'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/RelationRefResolver.scala'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/**'
   push:
     branches:
       - main
@@ -28,6 +34,7 @@ on:
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/**'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/transform/**'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/**'
   workflow_dispatch:
 
 jobs:
@@ -83,3 +90,8 @@ jobs:
           lake exe rewrite-expr-traces
           git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/transform/ \
             || (echo "::error::The expression rewrite conformance fixture is stale. Run 'cd formal && lake exe rewrite-expr-traces' and commit the result." && exit 1)
+      - name: Check name lookup conformance fixture freshness
+        run: |
+          lake exe name-lookup-traces
+          git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/ \
+            || (echo "::error::The name lookup conformance fixture is stale. Run 'cd formal && lake exe name-lookup-traces' and commit the result." && exit 1)
