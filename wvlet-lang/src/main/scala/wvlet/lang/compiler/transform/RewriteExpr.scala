@@ -7,6 +7,17 @@ import wvlet.lang.model.plan.Query
 import wvlet.lang.model.expr.*
 import wvlet.lang.api.Span
 
+/**
+  * Wvlet's string `+` and `s"..."` skip NULL operands: a NULL operand or part is the empty string,
+  * so `NULL + 'a'` is `'a'`. SQL engines disagree on `concat` with NULL arguments (DuckDB skips
+  * them, Trino, Snowflake, and Hive return NULL) and Trino's `concat` rejects non-string arguments,
+  * so the rules below only pass `concat` string arguments that are never NULL:
+  * `coalesce(cast(x as varchar), '')`, with the cast and the coalesce left out where they are not
+  * needed. On such arguments every engine computes the same value.
+  *
+  * The Lean model in formal/WvletFormal/Rewrite proves these rules keep the value of every
+  * expression on every engine; RewriteExprConformanceTest replays its traces.
+  */
 object RewriteExpr extends Phase("rewrite-expr"):
 
   def rewriteRules: List[ExpressionRewriteRule] =
@@ -24,17 +35,6 @@ object RewriteExpr extends Phase("rewrite-expr"):
     }
     newPlan
 
-  /**
-    * Wvlet's string `+` and `s"..."` skip NULL operands: a NULL operand or part is the empty
-    * string, so `NULL + 'a'` is `'a'`. SQL engines disagree on `concat` with NULL arguments (DuckDB
-    * skips them, Trino, Snowflake, and Hive return NULL) and Trino's `concat` rejects non-string
-    * arguments, so the rules below only pass `concat` string arguments that are never NULL:
-    * `coalesce(cast(x as varchar), '')`, with the cast and the coalesce left out where they are not
-    * needed. On such arguments every engine computes the same value.
-    *
-    * The Lean model in formal/WvletFormal/Rewrite proves these rules keep the value of every
-    * expression on every engine; RewriteExprConformanceTest replays its traces.
-    */
   private def functionName(f: FunctionApply): Option[String] =
     f.base match
       case i: Identifier =>
@@ -43,14 +43,12 @@ object RewriteExpr extends Phase("rewrite-expr"):
         None
 
   /**
-    * True for expressions that are never NULL on any engine: non-NULL literals, casts of them,
-    * `concat` of such arguments, and `coalesce` with such an argument
+    * True for expressions that are never NULL on any engine: string, integer, and boolean literals,
+    * casts of them, `concat` of such arguments, and `coalesce` with such an argument
     */
-  private[transform] def nonNull(e: Expression): Boolean =
+  private def nonNull(e: Expression): Boolean =
     e match
-      case _: NullLiteral =>
-        false
-      case _: Literal =>
+      case _: StringLiteral | _: LongLiteral | _: BooleanLiteral =>
         true
       case c: Cast if !c.tryCast =>
         nonNull(c.expr)
@@ -140,11 +138,11 @@ object RewriteExpr extends Phase("rewrite-expr"):
   object RewriteIfExpr extends ExpressionRewriteRule:
     override def apply(context: Context) =
       case f @ FunctionApply(base, args, window, filter, columnAliases, span) =>
-        base match
-          case i: Identifier if i.fullName.toLowerCase == "if" && args.length == 3 =>
+        functionName(f) match
+          case Some("if") if args.length == 3 =>
             // Convert if(a, b, c) to IfExpr(a, b, c) if the base is "if"
             typed(IfExpr(args(0).value, args(1).value, args(2).value, span), f)
-          case i: Identifier if i.fullName.toLowerCase == "if" && args.length == 2 =>
+          case Some("if") if args.length == 2 =>
             // Convert if(a,b) to IfExpr(a, b, Null) if the base is "if"
             typed(IfExpr(args(0).value, args(1).value, NullLiteral(span), span), f)
           case _ =>
