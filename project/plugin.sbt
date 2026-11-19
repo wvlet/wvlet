@@ -4,7 +4,7 @@ resolvers += "wvlet" at "https://repo.wvlet.org/maven2/"
 val UNI_VERSION = "2026.2.1"
 
 addSbtPlugin("org.scalameta" % "sbt-scalafmt"  % "2.6.2")
-addSbtPlugin("com.eed3si9n"  % "sbt-buildinfo" % "0.13.2")
+addSbtPlugin("com.eed3si9n"  % "sbt-buildinfo" % "0.14.0")
 
 // For IntelliJ IDEA
 addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.4")
