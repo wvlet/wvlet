@@ -52,7 +52,7 @@ Proofs and replay:
   - global entries across files, packages, and imports
   - every symbol kind × completing × column case
 - A new `NameLookupConformanceTest` (langJVM) builds real `Scope`s and `GlobalSymbolIndex` entries and replays the fixture.
-- No-behavior-change refactor: move the tier order of `findSymbolByName` and the column-vs-symbol decision into a small pure `NameLookup` helper. `Context` and `identifierRules` call it, and the duplicate warning stays in `Context`. The replay then drives the shipped decision rather than a copy.
+- No refactor turned out to be needed: the replay builds real `Scope`s, index entries, `Context`s, and symbols, and drives the shipped `findSymbolByName`, `identifierRules`, and `resolveTableRef` directly.
 - The `Formal` workflow and `formal/README.md` gain the new model, and the ADR's Consequences list records the spec. `lake build --wfail`, no `sorry`, no Mathlib.
 
 Questions for you (code stays as is unless you say otherwise):

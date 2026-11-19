@@ -90,7 +90,7 @@ def bindingStr : Binding → String
   | .local x => jstr s!"local {x}"
   | .global e => entryStr e
 
-/-- The symbol id of the local binding in the scope cases. -/
+/-- The symbol id of the local binding in the global cases that have one. -/
 def localSym : Sym := 99
 
 def globalCase (units : List Unit) (cur : Pkg) (imports : List Pkg) (isLocal : Bool) : String :=

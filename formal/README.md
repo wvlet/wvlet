@@ -161,12 +161,16 @@ The model proves today's behavior. These are left for follow-ups:
   columns of some inline tables) is not rewritten and reaches SQL as `+`.
 - The stdlib's `s.concat(other)` prints SQL `||`, which is NULL-propagating; it is a function call,
   not a rewrite rule, so it is out of scope.
+
 ## Known gaps of the name lookup model
 
 - Tie order is replayed but not proved: within one file, and between same-named files of
   different folders, the newest registration wins; the proofs cover only strictly smaller
   basenames. `findFirstAnywhere` breaks basename ties in hash-map order, so the fixture accepts any
   tied candidate.
+- Relation symbols are assumed well formed: `resolveTableRef` also leaves `from x` unresolved
+  for a model whose type is not a relation, a table value whose expression is not a row array, or
+  an alias whose tree is not a relation, which the model does not distinguish.
 - CTE and flow-stage names (`Typer.prepare`) precede `resolveTableRef`; the model proves that tier
   (`resolveRelation_local`) but the fixture replays only `resolveTableRef`.
 - Out of scope: GenSQL's second resolution (val substitution that ignores columns, and a lookup

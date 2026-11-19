@@ -1,6 +1,6 @@
 # ADR: Name-lookup precedence in the Typer
 
-Date: 2026-11-18 · PR #TBD
+Date: 2026-11-18 · PR #2186
 
 ## Context
 
@@ -26,7 +26,7 @@ The precedence below is today's behavior. It is now specified and proved in `for
   - Exception: a column shadows a function definition (`MethodSymbolInfo`) found by steps 1–3, unless the function's completion is still running. Any other definition shadows the column.
 - A relation name `from x` resolves to, highest precedence first:
   1. A CTE or flow-stage name of the enclosing query; a later CTE replaces an earlier one with the same name.
-  2. The symbol from steps 1–3 above. A model becomes its scan, a table value constant its rows, an `as` alias its query.
+  2. The symbol from steps 1–3 above. A model becomes its scan, a table value constant its rows, an `as` alias its query (each assuming a well-formed definition: a relation-typed model, a literal row array, an aliased relation; otherwise `x` stays unresolved).
   3. Table declarations or the catalog.
   - A plain val, or a symbol whose completion is running (a recursive reference), leaves `x` unresolved.
   - A qualified name `a.b` skips the symbol lookup.
