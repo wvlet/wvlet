@@ -107,6 +107,5 @@ class Scope(outer: Scope | Null, val nestingLevel: Int) extends LogSupport:
 
   def newChildScope: Scope = Scope(outer = this, nestingLevel + 1)
   def newFreshScope: Scope = Scope(outer = null, nestingLevel + 1)
-  def cloneScope: Scope    = Scope(outer = outer, nestingLevel)
 
 end Scope

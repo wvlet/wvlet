@@ -19,3 +19,7 @@ import WvletFormal.Rewrite.Sound
 import WvletFormal.Rewrite.Idem
 import WvletFormal.Rewrite.Findings
 import WvletFormal.Rewrite.Traces
+import WvletFormal.NameLookup.Scope
+import WvletFormal.NameLookup.Global
+import WvletFormal.NameLookup.Resolve
+import WvletFormal.NameLookup.Traces
