@@ -8,3 +8,7 @@ import WvletFormal.ModelBuild.Explore
 import WvletFormal.ModelBuild.Graph
 import WvletFormal.ModelBuild.Order
 import WvletFormal.ModelBuild.Traces
+import WvletFormal.SqlFold.Model
+import WvletFormal.SqlFold.Sound
+import WvletFormal.SqlFold.Necessity
+import WvletFormal.SqlFold.Traces
