@@ -32,7 +32,7 @@ addSbtPlugin("org.wvlet.uni" % "sbt-uni-playwright" % UNI_VERSION)
 addDependencyTreePlugin
 
 // For setting explicit versions for each commit
-addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
+addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.2.0")
 
 // For packaging Scala project into a executable folder
 addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "1.0.1")
