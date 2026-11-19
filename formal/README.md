@@ -8,6 +8,8 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
   `findCommonType`, `canCoerce`, and `widen`.
 - `wvlet build` ordering (`ModelOrder` in wvlet-lang): edges through ephemeral models, selector
   closures, the build order, and cycle detection.
+- SQL generation's SELECT-block folding (`SQLBlock.accepts` in `SqlGenerator`): when a pipeline
+  operator can join the current SELECT block, and when it must open a subquery.
 
 See
 [adr/2026-11-18-lean-formal-verification.md](../adr/2026-11-18-lean-formal-verification.md) for
@@ -25,6 +27,7 @@ lake build --wfail          # check every proof; warnings (including `sorry`) ar
 lake exe activity-traces    # regenerate the activity conformance fixture
 lake exe typer-traces       # regenerate the typer conformance fixture
 lake exe model-build-traces # regenerate the model build conformance fixture
+lake exe sql-fold-traces    # regenerate the SQL block folding conformance fixture
 ```
 
 ## Layout
@@ -41,6 +44,10 @@ lake exe model-build-traces # regenerate the model build conformance fixture
 | `WvletFormal/ModelBuild/Graph.lean` | `upstreamsOf`, `closure`, `parseSelectors`, `select` | `mem_upstreamsOf`: edges are the materialized models reachable through ephemeral models only, self-edges included; `mem_closure_ups` / `mem_closure_downs`: closures are transitive upstream / downstream reachability; `selectParsed_spec`: `select` returns exactly the models the selectors select, in definition order, without duplicates |
 | `WvletFormal/ModelBuild/Order.lean` | `buildOrder` rounds, `findCycle` | `buildOrder_spec`: the order is a permutation of the selection in which every model follows the selected models it reads, and it fails exactly when the selection has a cycle, reporting a real one; `rounds_level`: every model after the first round reads a selected model of the round just before it (so no model waits longer than its upstream models require), and `rounds_sublist`: each round keeps input order; `findCycle_spec`: a cycle is reported exactly when one exists; `buildOrder_ok_of_acyclic`: after `findCycle` passes, every selection orders |
 | `WvletFormal/ModelBuild/Traces.lean`, `ModelBuildTraces.lean` | — | exports the model build conformance fixture |
+| `WvletFormal/SqlFold/Model.lean` | pipeline operators over a list of rows (filter, projection, `select distinct`, `dedup`, group by, aggregation, sort, limit, offset); one SELECT block in SQL clause order; `accepts` and `fold`, which mirror `SQLBlock.accepts` and `SqlGenerator.relation` | — |
+| `WvletFormal/SqlFold/Sound.lean` | — | `fold_sound`: evaluating the nested blocks `fold` builds gives exactly the rows of running the pipeline, provided the scope flags it relies on are truthful (`Scoped`); `merge_sound`: each accepted operator's clause computes the operator; `fold_shapes`: the exported shape-level fold decides as `fold` does; filters commute with sorting (`filter_sortBy`) and duplicate elimination (`filter_dedup`) |
+| `WvletFormal/SqlFold/Necessity.lean` | — | for each refusal that guards rows (LIMIT or OFFSET under WHERE, GROUP BY, HAVING, DISTINCT, ORDER BY; LIMIT under OFFSET; ORDER BY under GROUP BY or a renaming projection; a projection under a filter it renames or a grouping; `dedup` under a projection; a grouping under WHERE), a block and rows where merging anyway changes the result |
+| `WvletFormal/SqlFold/Traces.lean`, `SqlFoldTraces.lean` | — | exports the SQL block folding conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -63,10 +70,16 @@ behavior as traces:
   selection, and every single selector; selector parsing edge cases; and edge derivation over
   every reference set of two materialized models and one ephemeral model, plus longer ephemeral
   chains. `ModelBuildConformanceTest` (langJVM) replays it against `ModelOrder`.
+- `lake exe sql-fold-traces` writes
+  `wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json`: every
+  block shape folding can reach (384) with the operators it accepts, and every pipeline of up to
+  three operators with its blocks. `SqlFoldConformanceTest` (langJVM) replays the decisions
+  against `SQLBlock.accepts`, and compiles each pipeline that Wvlet can write one node per operator
+  to check its number of SELECT blocks.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
-When you change an activity state transition, a coercion rule in `TypeInference`, or the build
-ordering in `ModelOrder`, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
+When you change an activity state transition, a coercion rule in `TypeInference`, the build
+ordering in `ModelOrder`, or a folding rule in `SQLBlock.accepts`, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
 conformance test passes.
 
 ## Known gaps of the typer model
@@ -78,6 +91,19 @@ The model proves today's behavior. These are left for follow-ups:
 - Decimals have no common type with other numerics or across precisions, unlike arithmetic typing
   (`decimal + int` is a decimal). Short, byte, real, varchar, and char have no rule either.
 - The arithmetic result table in `TyperRules` is not yet tied to `unify`.
+
+## Known gaps of the SQL block folding model
+
+- Subqueries are assumed to keep their row order. SQL may drop the ORDER BY of a subquery that has
+  no LIMIT or OFFSET (Trino does), so a pipeline whose sort ends up in a nested block can lose its
+  order: `order by x | select a | select b` sorts the inner block only. Hoisting such an ORDER BY
+  to the outer block is a follow-up.
+- Expressions are opaque. The scope flag stands for the name check in `SqlGenerator.scopeSafe`,
+  which the model trusts; NULLs and three-valued logic are out of scope.
+- A grouping is an opaque function of its input rows, and an aggregation includes its select
+  list. The model does not check that SQL accepts a select list over a GROUP BY.
+- Operators outside the model (joins, set operations, pivot, sampling, window functions) always
+  start a SELECT block of their own.
 
 ## Known gaps of the model build model
 

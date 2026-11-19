@@ -13,6 +13,8 @@ on:
       - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/pipeline/ModelOrder.scala'
       - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/pipeline/ModelBuild.scala'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/**'
+      - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/codegen/SqlGenerator.scala'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json'
   push:
     branches:
       - main
@@ -22,6 +24,7 @@ on:
       - 'wvlet-runner/.jvm/src/test/resources/wvlet/lang/runner/activity/**'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/typer/**'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/**'
+      - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json'
   workflow_dispatch:
 
 jobs:
@@ -67,3 +70,8 @@ jobs:
           lake exe model-build-traces
           git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/pipeline/ \
             || (echo "::error::The model build conformance fixture is stale. Run 'cd formal && lake exe model-build-traces' and commit the result." && exit 1)
+      - name: Check SQL block folding conformance fixture freshness
+        run: |
+          lake exe sql-fold-traces
+          git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json \
+            || (echo "::error::The SQL block folding conformance fixture is stale. Run 'cd formal && lake exe sql-fold-traces' and commit the result." && exit 1)

@@ -1444,8 +1444,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 //            case _ =>
 //              Project(r, items, spanFrom(t))
         r = orderBy(r)
-        r = limit(r)
-        r = offset(r)
+        r = limitAndOffset(r)
         r = hivePartitionClauses(r)
         r = queryRest(r)
         r
@@ -1785,15 +1784,19 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         input
 
-  def limit(input: Relation): Relation =
+  /**
+    * Parse `LIMIT l OFFSET o`. SQL skips the offset rows before applying the limit, so the plan is
+    * Limit(Offset(input)), which reads in pipeline order like every other plan node
+    */
+  def limitAndOffset(input: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.LIMIT =>
         consume(SqlToken.LIMIT)
         val limit = consume(SqlToken.INTEGER_LITERAL)
-        Limit(input, LongLiteral(limit.str.toLong, limit.str, limit.span), spanFrom(t))
+        Limit(offset(input), LongLiteral(limit.str.toLong, limit.str, limit.span), spanFrom(t))
       case _ =>
-        input
+        offset(input)
 
   def offset(input: Relation): Relation =
     val t = scanner.lookAhead()

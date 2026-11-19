@@ -1,0 +1,79 @@
+-- Operators that SqlGenerator must not fold into one SELECT block, since SQL would evaluate the
+-- later operator's clause first (formal/WvletFormal/SqlFold). Each query returns a different row
+-- count when folded.
+val t(x, g) = [
+  [1, "a"],
+  [2, "a"],
+  [3, "b"]
+]
+
+-- A filter after a limit must not become the WHERE of the limited rows
+from t
+order by x
+limit 2
+where x > 1
+test _.size should be 1
+
+-- A group by after a limit groups the limited rows only
+from t
+order by x
+limit 2
+group by g
+test _.size should be 1
+
+-- A select distinct after a limit
+from t
+order by x
+limit 2
+select distinct g
+test _.size should be 1
+
+-- A global aggregation after a limit
+from t
+order by x
+limit 2
+agg x.sum as s
+where s = 3
+test _.size should be 1
+
+-- A count is one row, so a later limit 0 leaves none
+from t
+count
+limit 0
+test _.size should be 0
+
+-- DISTINCT stays on the projection it belongs to
+from t
+select distinct x, g
+select g
+test _.size should be 3
+
+-- A later projection does not become select distinct
+from t
+dedup
+select g
+test _.size should be 3
+
+-- A filter on a projected alias must not read the input column of the same name
+from [[1, -1], [2, -2]] as s(a, b)
+select a as b
+where b > 0
+test _.size should be 2
+
+-- A filter on an aggregate after group by must not land in WHERE
+from t
+group by g
+select g, _.count as c
+where c > 1
+test _.size should be 1
+
+-- ORDER BY before a group by or select distinct stays valid SQL
+from t
+order by x
+group by g
+test _.size should be 2
+
+from t
+order by x
+select distinct g
+test _.size should be 2

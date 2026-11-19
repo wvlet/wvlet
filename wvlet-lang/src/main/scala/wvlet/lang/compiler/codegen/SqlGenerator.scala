@@ -53,10 +53,55 @@ object SqlGenerator:
       s""""${s.replace("\"", "\"\"")}""""
 
   /**
-    * A block corresponding to a single SQL SELECT statement
+    * What the SELECT-block folding decision observes of a plan node. Mirrors `Kind` in
+    * formal/WvletFormal/SqlFold/Model.lean, which proves the decision sound.
+    */
+  enum FoldOp:
+    /** A filter, rendered as WHERE */
+    case Filter
+
+    /** A filter directly over a bare GroupBy, rendered as HAVING */
+    case Having
+
+    /**
+      * A projection (`select` and other column-level operators)
+      * @param scopeSafe
+      *   No WHERE conjunct of the block names a column this projection computes or renames
+      */
+    case Project(scopeSafe: Boolean)
+
+    /** `select distinct`, with the same scope condition as [[Project]] */
+    case Distinct(scopeSafe: Boolean)
+
+    /** Duplicate elimination over whole rows */
+    case Dedup
+
+    /** A GroupBy without its own select list */
+    case Group
+
+    /** An aggregation with its select list: Agg, Count, or a selection over a GroupBy */
+    case Agg
+
+    /**
+      * ORDER BY
+      * @param scopeSafe
+      *   No sort key names a column the block's select list computes or renames
+      */
+    case Sort(scopeSafe: Boolean)
+    case Limit
+    case Offset
+
+  end FoldOp
+
+  /**
+    * A block corresponding to a single SQL SELECT statement. The relation walk visits plan nodes
+    * from the last operator down to the source, so the block holds clauses of operators applied
+    * after the node being visited.
     * @param selectItems
     * @param whereFilter
     * @param groupingKeys
+    * @param aggregated
+    *   The select list aggregates without grouping keys (a global Agg or Count)
     * @param having
     * @param orderBy
     * @param limit
@@ -69,22 +114,107 @@ object SqlGenerator:
       isDistinct: Boolean = false,
       whereFilter: List[Filter] = Nil,
       groupingKeys: List[GroupingKey] = Nil,
+      aggregated: Boolean = false,
       having: List[Filter] = Nil,
       orderBy: List[SortItem] = Nil,
       limit: Option[Expression] = None,
       offset: Option[Expression] = None,
       partitionOptions: List[PartitionWriteOption] = Nil
   ):
-    // def acceptSelectItems: Boolean = selectItems.isEmpty
-    def acceptOffset: Boolean       = offset.isEmpty && limit.isEmpty
-    def acceptLimit: Boolean        = limit.isEmpty && orderBy.isEmpty
-    def acceptOrderBy: Boolean      = orderBy.isEmpty
-    def acceptSelectItems: Boolean  = selectItems.isEmpty
-    def acceptGroupingKeys: Boolean = groupingKeys.isEmpty
+    private def hasWhere: Boolean   = whereFilter.nonEmpty
+    private def hasGroup: Boolean   = groupingKeys.nonEmpty || aggregated
+    private def hasHaving: Boolean  = having.nonEmpty
+    private def hasSelect: Boolean  = selectItems.nonEmpty
+    private def hasOrderBy: Boolean = orderBy.nonEmpty
+    private def hasOffset: Boolean  = offset.nonEmpty
+    private def hasLimit: Boolean   = limit.nonEmpty
+
+    /**
+      * Whether an operator applied before every clause of this block can join it. It can when no
+      * clause of the block sits in an earlier SQL slot (WHERE, GROUP BY, HAVING, SELECT, DISTINCT,
+      * ORDER BY, OFFSET, LIMIT), unless the two commute. Otherwise the operator opens a nested
+      * subquery.
+      *
+      * Must stay identical to `accepts` in formal/WvletFormal/SqlFold/Model.lean;
+      * SqlFoldConformanceTest replays the proven decisions against this method.
+      */
+    def accepts(op: FoldOp): Boolean =
+      op match
+        case FoldOp.Filter =>
+          true
+        case FoldOp.Having | FoldOp.Group =>
+          !hasWhere && !hasGroup
+        case FoldOp.Agg =>
+          !hasWhere && !hasGroup && !hasSelect
+        case FoldOp.Project(scopeSafe) =>
+          !hasSelect && !hasGroup && !hasHaving && scopeSafe
+        case FoldOp.Distinct(scopeSafe) =>
+          !hasSelect && !isDistinct && !hasGroup && !hasHaving && scopeSafe
+        case FoldOp.Dedup =>
+          !hasSelect && !isDistinct && !hasGroup && !hasHaving
+        case FoldOp.Sort(scopeSafe) =>
+          !hasOrderBy && !hasGroup && !isDistinct && (!hasSelect || scopeSafe)
+        case FoldOp.Limit =>
+          !hasWhere && !hasGroup && !hasHaving && !isDistinct && !hasOrderBy && !hasOffset &&
+          !hasLimit
+        case FoldOp.Offset =>
+          !hasWhere && !hasGroup && !hasHaving && !isDistinct && !hasOrderBy && !hasOffset
 
     def isEmpty: Boolean =
       child.isEmpty && !isDistinct && selectItems.isEmpty && whereFilter.isEmpty &&
-        groupingKeys.isEmpty && having.isEmpty && orderBy.isEmpty && limit.isEmpty && offset.isEmpty
+        groupingKeys.isEmpty && !aggregated && having.isEmpty && orderBy.isEmpty && limit.isEmpty &&
+        offset.isEmpty
+
+  end SQLBlock
+
+  /**
+    * Whether `e` can move across the select list `items` without changing what its names refer to:
+    * it names no column that `items` computes or renames. A name the select list does not output
+    * still resolves to the input column in SQL, so it is safe. Names compare case-insensitively,
+    * which can only make the check stricter.
+    */
+  private[codegen] def scopeSafe(e: Expression, items: List[Attribute]): Boolean =
+    val shadowed: Set[String] =
+      items
+        .flatMap { item =>
+          if passesThrough(item) then
+            None
+          else
+            outputName(item).map(_.toLowerCase)
+        }
+        .toSet
+    shadowed.isEmpty || referencedNames(e).forall(n => !shadowed.contains(n))
+
+  /**
+    * The column name a select item outputs: its alias, or the field of an unaliased reference such
+    * as `s.y`
+    */
+  private def outputName(item: Attribute): Option[String] =
+    item match
+      case SingleColumn(name, q: QualifiedName, _) if name.isEmpty =>
+        Some(q.leafName)
+      case _ =>
+        Option(item.nameExpr).filterNot(_.isEmpty).map(_.leafName)
+
+  private def passesThrough(item: Attribute): Boolean =
+    item match
+      case _: AllColumns | _: ResolvedAttribute | _: UnresolvedAttribute | _: AttributeRef =>
+        true
+      case SingleColumn(name, id: Identifier, _) =>
+        name.isEmpty || name.leafName.equalsIgnoreCase(id.leafName)
+      case _ =>
+        false
+
+  private def referencedNames(e: Expression): Set[String] =
+    val names = Set.newBuilder[String]
+    e.traverseExpressions {
+      case _: Wildcard | _: ContextInputRef =>
+      case id: Identifier                   =>
+        names += id.leafName.toLowerCase
+      case a: Attribute if !a.nameExpr.isEmpty =>
+        names += a.nameExpr.leafName.toLowerCase
+    }
+    names.result()
 
 end SqlGenerator
 
@@ -544,11 +674,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val body     = query(q.queryBody, SQLBlock())
         val withStmt = wl("with", concat(subQueries, text(",") + linebreak))
         selectExpr(withStmt + linebreak + body)
-      case o: Offset if block.acceptOffset =>
+      // A node whose clause cannot join the block falls through to the nested-relation case below
+      case o: Offset if block.accepts(FoldOp.Offset) =>
         relation(o.child, block.copy(offset = Some(o.rows)))
-      case l: Limit if block.acceptLimit =>
+      case l: Limit if block.accepts(FoldOp.Limit) =>
         relation(l.child, block.copy(limit = Some(l.limit)))
-      case s: Sort if block.acceptOrderBy =>
+      case s: Sort
+          if block.accepts(
+            FoldOp.Sort(s.orderBy.forall(k => scopeSafe(k.sortKey, block.selectItems)))
+          ) =>
         relation(s.child, block.copy(orderBy = s.orderBy))
       case h: PartitioningHint =>
         // Generate CLUSTER BY, DISTRIBUTE BY, SORT BY clauses only for Hive
@@ -557,30 +691,34 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         else
           // For other databases, ignore the hints and just process the child
           relation(h.child, block)
+      case d: Distinct if isAggregation(d.child) =>
+        // Both the DISTINCT and the aggregation must join the block
+        aggregation(
+          d.child,
+          block.copy(isDistinct = true),
+          d,
+          block,
+          accepted = block.accepts(FoldOp.Agg) && block.accepts(FoldOp.Dedup)
+        )
       case d: Distinct =>
-        relation(d.child, block.copy(isDistinct = true))
+        if block.accepts(FoldOp.Distinct(whereScopeSafe(block, d.child.selectItems))) then
+          relation(d.child.child, block.copy(isDistinct = true, selectItems = d.child.selectItems))
+        else
+          nestedSelect(d, block)
       case f: Filter =>
         def addHaving(in: Relation): Doc =
-          if block.acceptGroupingKeys then
+          if block.accepts(FoldOp.Having) then
             relation(in, block.copy(having = f :: block.having))
           else
-            // Start a new SELECT block
-            val sql = relation(in, SQLBlock(having = List(f)))
-            selectAll(sql, block)
+            nestedSelect(f, block)
 
         f.child match
           case g: GroupBy =>
             // Filter(GroupBy(...)) => Having condition
             addHaving(g)
-          case a: Agg =>
-            // Cut the scope explicitly to apply the filter to the aggregated expressions
-            // {{{
-            //  wvlet: agg v.max as vmax where vmax > 10
-            //   sql: select * from (select max(v) as vmax) where vmax > 10
-            // }}}
-            val c = indentedParen(relation(a, SQLBlock()))
-            selectAll(c, block.copy(whereFilter = f :: block.whereFilter))
           case child =>
+            // A filter over an aggregation stays in WHERE, and the aggregation nests:
+            // `agg v.max as vmax where vmax > 10` -> select * from (select max(v) as vmax) where ...
             relation(child, block.copy(whereFilter = f :: block.whereFilter))
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
@@ -603,10 +741,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case g: GroupBy =>
         groupBy(g, block)
       case c: Count =>
-        val d = relation(c.child, block)
-        selectAll(indentedParen(d), SQLBlock(selectItems = c.selectItems))
+        // A count over a GroupBy counts the groups, so the GroupBy stays nested
+        if block.accepts(FoldOp.Agg) then
+          relation(c.child, block.copy(selectItems = c.selectItems, aggregated = true))
+        else
+          nestedSelect(c, block)
+      case s: Selection if isAggregation(s) =>
+        aggregation(s, block, s, block, accepted = block.accepts(FoldOp.Agg))
       case s: Selection =>
-        if block.acceptSelectItems then
+        if block.accepts(FoldOp.Project(whereScopeSafe(block, s.selectItems))) then
           relation(s.child, block.copy(selectItems = s.selectItems))
         else
           // Start a new SQLBlock with the given select items
@@ -743,8 +886,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // Skip debug expression
         relation(d.inputRelation, block)
       case d: Dedup =>
-        val r = relation(d.child, SQLBlock())(using InSubQuery)
-        selectAll(r, block.copy(isDistinct = true))
+        if block.accepts(FoldOp.Dedup) then
+          relation(d.child, block.copy(isDistinct = true))
+        else
+          nestedSelect(d, block)
       case s: Sample =>
         val child          = relation(s.child, SQLBlock())(using InFromClause)
         val samplingMethod = s.method.getOrElse(reservoir)
@@ -1240,6 +1385,67 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
   end relation
 
+  /**
+    * Fold an aggregation into `merged` (the block with any DISTINCT of `node` applied) when
+    * `accepted`, or render `node` as a nested SELECT of `block`. The select list must stay in the
+    * block of its GROUP BY, so the aggregation, its GroupBy, and a HAVING filter in between join a
+    * block together
+    */
+  private def aggregation(
+      s: Selection,
+      merged: SQLBlock,
+      node: Relation,
+      block: SQLBlock,
+      accepted: Boolean
+  )(using sc: SyntaxContext): Doc =
+    if accepted then
+      s.child match
+        case g: GroupBy =>
+          relation(g.child, merged.copy(selectItems = s.selectItems, groupingKeys = g.groupingKeys))
+        case h @ Filter(g: GroupBy, _, _) =>
+          relation(
+            g.child,
+            merged.copy(
+              selectItems = s.selectItems,
+              groupingKeys = g.groupingKeys,
+              having = h :: merged.having
+            )
+          )
+        case child =>
+          relation(child, merged.copy(selectItems = s.selectItems, aggregated = true))
+    else
+      nestedSelect(node, block)
+
+  /**
+    * Render `r` as a nested SELECT that becomes the FROM source of `block`
+    */
+  private def nestedSelect(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc = selectAll(
+    relation(r, SQLBlock())(using InSubQuery),
+    block
+  )
+
+  /**
+    * A selection whose select list aggregates: Agg, or any selection directly over a GroupBy (with
+    * or without a HAVING filter in between)
+    */
+  private def isAggregation(s: Selection): Boolean =
+    s match
+      case _: Agg =>
+        true
+      case _ =>
+        s.child match
+          case _: GroupBy | Filter(_: GroupBy, _, _) =>
+            true
+          case _ =>
+            false
+
+  /**
+    * Whether every WHERE conjunct of `block` can move below a projection with `items`
+    */
+  private def whereScopeSafe(block: SQLBlock, items: List[Attribute]): Boolean = block
+    .whereFilter
+    .forall(f => scopeSafe(f.filterExpr, items))
+
   private def tableAliasOf(alias: NameExpr, columnNames: Option[List[NamedType]])(using
       sc: SyntaxContext
   ): Doc =
@@ -1378,14 +1584,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       else
         block.selectItems
 
-    if block.acceptGroupingKeys then
+    if block.accepts(FoldOp.Group) then
       val newBlock = block.copy(selectItems = selectItems, groupingKeys = g.groupingKeys)
       val d        = relation(g.child, newBlock)
       d
     else
-      // Start a new SELECT block
-      val d = relation(g.child, SQLBlock(groupingKeys = g.groupingKeys))(using InSubQuery)
-      selectAll(d, block)
+      // Start a new SELECT block, which fills in the default select items
+      nestedSelect(g, block)
 
   end groupBy
 
