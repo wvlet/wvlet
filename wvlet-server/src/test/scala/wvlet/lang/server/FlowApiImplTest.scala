@@ -9,7 +9,7 @@ import wvlet.lang.runner.FlowRunRecord
 import wvlet.lang.runner.FlowRunRegistry
 import wvlet.lang.runner.StageRunRecord
 import wvlet.lang.test.WvletDITest
-import wvlet.uni.http.rpc.RPCException
+import wvlet.uni.http.ServiceException
 
 import java.nio.file.Files
 
@@ -129,7 +129,7 @@ class FlowApiImplTest extends WvletDITest:
 
   test("report an unknown run id as not found") {
     val api = dep[FlowApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.getRun(FlowApi.FlowRunRequest("nosuchrun"))
     }
     e.getMessage shouldContain "nosuchrun"
@@ -170,7 +170,7 @@ class FlowApiImplTest extends WvletDITest:
 
   test("report cancelling an unknown run as not found") {
     val api = dep[FlowApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.cancelRun(FlowApi.FlowRunRequest("nosuchrun"))
     }
     e.getMessage shouldContain "nosuchrun"
@@ -178,7 +178,7 @@ class FlowApiImplTest extends WvletDITest:
 
   test("reject resuming a run still held by a live process") {
     val api = dep[FlowApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.resumeRun(FlowApi.FlowRunRequest("run3"))
     }
     e.getMessage shouldContain "still running"
@@ -193,7 +193,7 @@ class FlowApiImplTest extends WvletDITest:
 
   test("reject resuming a skipped run") {
     val api = dep[FlowApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.resumeRun(FlowApi.FlowRunRequest("run4"))
     }
     e.getMessage shouldContain "skipped"
@@ -203,7 +203,7 @@ class FlowApiImplTest extends WvletDITest:
     // run2's flow 'FlowB' is not defined in the workspace, so the synchronous compile step
     // reports the problem to the caller instead of failing silently in the background
     val api = dep[FlowApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.resumeRun(FlowApi.FlowRunRequest("run2"))
     }
     e.getMessage shouldContain "FlowB"
@@ -211,7 +211,7 @@ class FlowApiImplTest extends WvletDITest:
 
   test("report resuming an unknown run as not found") {
     val api = dep[FlowApi]
-    val e   = intercept[RPCException] {
+    val e   = intercept[ServiceException] {
       api.resumeRun(FlowApi.FlowRunRequest("nosuchrun"))
     }
     e.getMessage shouldContain "nosuchrun"

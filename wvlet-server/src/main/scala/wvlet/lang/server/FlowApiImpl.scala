@@ -24,7 +24,7 @@ import wvlet.lang.runner.FlowRunRecord
 import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.ThreadManager
 import wvlet.uni.control.Control
-import wvlet.uni.http.rpc.RPCStatus
+import wvlet.uni.http.ServiceStatus
 import wvlet.uni.log.LogSupport
 
 /**
@@ -76,7 +76,7 @@ class FlowApiImpl(
             )
         )
       case None =>
-        throw RPCStatus.NOT_FOUND_U5.newException(s"Flow run '${request.runId}' is not found")
+        throw ServiceStatus.NOT_FOUND_U5.newException(s"Flow run '${request.runId}' is not found")
 
   override def cancelRun(request: FlowRunRequest): FlowRunActionResult =
     val r = recordOf(request.runId)
@@ -100,7 +100,7 @@ class FlowApiImpl(
     r.state match
       // A stale running record belongs to a crashed process and can be resumed
       case FlowRunRecord.STATE_RUNNING if !r.isStaleAt(now) =>
-        throw RPCStatus
+        throw ServiceStatus
           .INVALID_REQUEST_U1
           .newException(s"Run ${r.runId} is still running and cannot be resumed")
       case FlowRunRecord.STATE_SUCCESS =>
@@ -110,7 +110,7 @@ class FlowApiImpl(
           message = s"Run ${r.runId} already succeeded; nothing to resume"
         )
       case FlowRunRecord.STATE_SKIPPED =>
-        throw RPCStatus
+        throw ServiceStatus
           .INVALID_REQUEST_U1
           .newException(
             s"Run ${r
@@ -126,7 +126,7 @@ class FlowApiImpl(
             l
           catch
             case e: WvletLangException =>
-              throw RPCStatus.INVALID_REQUEST_U1.newException(e.getMessage, e)
+              throw ServiceStatus.INVALID_REQUEST_U1.newException(e.getMessage, e)
         threadManager.runBackgroundTask { () =>
           try
             // A dedicated store instance: the background run outlives this RPC call and must
@@ -158,7 +158,7 @@ class FlowApiImpl(
 
   private def recordOf(runId: String): FlowRunRecord = store
     .get(runId)
-    .getOrElse(throw RPCStatus.NOT_FOUND_U5.newException(s"Flow run '${runId}' is not found"))
+    .getOrElse(throw ServiceStatus.NOT_FOUND_U5.newException(s"Flow run '${runId}' is not found"))
 
   private def toSummary(r: FlowRunRecord, nowMillis: Long): FlowRunSummary = FlowRunSummary(
     runId = r.runId,

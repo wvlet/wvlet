@@ -19,7 +19,7 @@ import wvlet.lang.runner.activity.ActivityJson
 import wvlet.lang.runner.activity.ItemRecord
 import wvlet.lang.runner.activity.ItemState
 import wvlet.lang.runner.activity.TaskQueue
-import wvlet.uni.http.rpc.RPCStatus
+import wvlet.uni.http.ServiceStatus
 import wvlet.uni.log.LogSupport
 
 /**
@@ -30,7 +30,7 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
 
   override def poll(request: PollRequest): PollResponse =
     if request.activityTypes.isEmpty then
-      throw RPCStatus.INVALID_REQUEST_U1.newException("activityTypes must not be empty")
+      throw ServiceStatus.INVALID_REQUEST_U1.newException("activityTypes must not be empty")
 
     val timeoutMillis = request.timeoutMillis.getOrElse(0L).max(0L)
     taskQueue.poll(request.activityTypes, request.workerId, timeoutMillis) match
@@ -54,11 +54,11 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
 
   override def reportResult(request: TaskResultRequest): TaskResultResponse =
     if request.attemptId.isEmpty then
-      throw RPCStatus.INVALID_REQUEST_U1.newException("attemptId must not be empty")
+      throw ServiceStatus.INVALID_REQUEST_U1.newException("attemptId must not be empty")
 
     val validStatuses = Set("completed", "failed", "cancelled")
     if !validStatuses.contains(request.status) then
-      throw RPCStatus
+      throw ServiceStatus
         .INVALID_REQUEST_U1
         .newException(
           s"Invalid status '${request.status}'; must be one of: ${validStatuses.mkString(", ")}"
@@ -79,7 +79,7 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
 
   override def heartbeat(request: HeartbeatRequest): HeartbeatResponse =
     if request.attemptId.isEmpty then
-      throw RPCStatus.INVALID_REQUEST_U1.newException("attemptId must not be empty")
+      throw ServiceStatus.INVALID_REQUEST_U1.newException("attemptId must not be empty")
 
     taskQueue.heartbeat(request.attemptId) match
       case "continue" =>
@@ -87,20 +87,22 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
       case "cancel" =>
         HeartbeatResponse.Cancel
       case "unknown" =>
-        throw RPCStatus.NOT_FOUND_U5.newException(s"Attempt '${request.attemptId}' is not active")
+        throw ServiceStatus
+          .NOT_FOUND_U5
+          .newException(s"Attempt '${request.attemptId}' is not active")
 
   override def listItems(request: ItemListRequest): ItemListResponse =
     if request.runId.isEmpty || request.stageName.isEmpty then
-      throw RPCStatus.INVALID_REQUEST_U1.newException("runId and stageName must not be empty")
+      throw ServiceStatus.INVALID_REQUEST_U1.newException("runId and stageName must not be empty")
     if request.offset < 0 || request.limit <= 0 || request.limit > TaskApi.MaxPageSize then
-      throw RPCStatus
+      throw ServiceStatus
         .INVALID_REQUEST_U1
         .newException(s"offset must be >= 0 and limit must be within 1..${TaskApi.MaxPageSize}")
     request
       .state
       .foreach { s =>
         if ItemState.fromString(s).isEmpty then
-          throw RPCStatus.INVALID_REQUEST_U1.newException(s"Unknown item state: ${s}")
+          throw ServiceStatus.INVALID_REQUEST_U1.newException(s"Unknown item state: ${s}")
       }
     val store = taskQueue.store
     val items = store.listItemsPage(
@@ -126,11 +128,13 @@ class TaskApiImpl(taskQueue: TaskQueue) extends TaskApi with LogSupport:
     .store
     .getItem(request.itemId)
     .map(toItemInfo)
-    .getOrElse(throw RPCStatus.NOT_FOUND_U5.newException(s"Item '${request.itemId}' is not found"))
+    .getOrElse(
+      throw ServiceStatus.NOT_FOUND_U5.newException(s"Item '${request.itemId}' is not found")
+    )
 
   override def listActiveAttempts(request: ActiveAttemptListRequest): List[AttemptInfo] =
     if request.limit <= 0 || request.limit > TaskApi.MaxPageSize then
-      throw RPCStatus
+      throw ServiceStatus
         .INVALID_REQUEST_U1
         .newException(s"limit must be within 1..${TaskApi.MaxPageSize}")
     taskQueue
