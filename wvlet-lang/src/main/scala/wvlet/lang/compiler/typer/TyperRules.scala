@@ -209,64 +209,80 @@ object TyperRules:
   }
 
   /**
-    * The result type of an arithmetic binary expression `leftTpe op rightTpe`
+    * The result type of an arithmetic binary expression `leftTpe op rightTpe`. The stages run in a
+    * fixed order so that no later rule can hide an earlier one: operand errors propagate, then an
+    * operand that is not typed yet defers the result, and only then do the value rules apply. The
+    * Lean model proves that the result does not depend on operand order and that numeric arithmetic
+    * types as [[TypeInference.unify]]
     */
   def arithmeticType(op: BinaryExprType, leftTpe: Type, rightTpe: Type): Type =
     (op, leftTpe, rightTpe) match
-      // Integer arithmetic
-      case (_, IntType, IntType) =>
-        IntType
-      case (_, LongType, LongType) =>
-        LongType
-      case (_, FloatType, FloatType) =>
-        FloatType
-      case (_, DoubleType, DoubleType) =>
-        DoubleType
-
-      // Mixed numeric types - promote to larger type
-      case (_, IntType, LongType) | (_, LongType, IntType) =>
-        LongType
-      case (_, IntType | LongType, DoubleType) | (_, DoubleType, IntType | LongType) =>
-        DoubleType
-      case (_, IntType | LongType, FloatType) | (_, FloatType, IntType | LongType) =>
-        FloatType
-      case (_, FloatType, DoubleType) | (_, DoubleType, FloatType) =>
-        DoubleType
-
-      // Decimal arithmetic keeps the decimal type
-      case (_, d: DecimalType, _: DecimalType | IntType | LongType | FloatType | DoubleType) =>
-        d
-      case (_, IntType | LongType | FloatType | DoubleType, d: DecimalType) =>
-        d
-
-      // String concatenation for Add: a string operand absorbs the other side, which is
-      // coerced to string (see RewriteExpr.RewriteStringConcat)
-      case (BinaryExprType.Add, StringType, _) | (BinaryExprType.Add, _, StringType) =>
-        StringType
-
-      // Operands not typed yet - defer
-      case (_, NoType, _) | (_, _, NoType) =>
-        NoType
-      // Defer when either operand type is not fully resolved yet
-      case (_, l: DataType, _) if !l.isResolved =>
-        NoType
-      case (_, _, r: DataType) if !r.isResolved =>
-        NoType
-
       // Propagate operand errors
       case (_, e: ErrorType, _) =>
         e
       case (_, _, e: ErrorType) =>
         e
-
-      // A function reference operand (a def symbol, not a value type) - defer, keeping
-      // the passthrough behavior of unresolved function references
-      case (_, _: Type.FunctionType, _) | (_, _, _: Type.FunctionType) =>
+      // Operands not typed yet (untyped, unresolved, or a function reference, which is a def
+      // symbol rather than a value type) - defer
+      case _ if isDeferredOperand(leftTpe) || isDeferredOperand(rightTpe) =>
         NoType
-
+      // Numeric arithmetic promotes to the wider type; NULL takes the other operand's type
+      case (_, l, r) if isNumericOrNull(l) && isNumericOrNull(r) =>
+        TypeInference.unify(l, r)
+      // Decimal arithmetic: the smallest decimal holding both operands
+      case (_, l: DecimalType, r: DecimalType) =>
+        decimalLub(l, r)
+      case (_, d: DecimalType, r) if isNumericOrNull(r) =>
+        d
+      case (_, l, d: DecimalType) if isNumericOrNull(l) =>
+        d
+      // String concatenation for Add: a string operand absorbs the other side, which is
+      // coerced to string (see RewriteExpr.RewriteStringConcat)
+      case (BinaryExprType.Add, StringType, _) | (BinaryExprType.Add, _, StringType) =>
+        StringType
       // Type error between two resolved, incompatible operand types
       case _ =>
         ErrorType(s"Type error in ${op}: $leftTpe ${op} $rightTpe")
+
+  /**
+    * The largest decimal precision of the supported engines
+    */
+  private inline val maxDecimalPrecision = 38
+
+  private def isNumericOrNull(t: Type): Boolean =
+    t match
+      case IntType | LongType | FloatType | DoubleType | NullType =>
+        true
+      case _ =>
+        false
+
+  /**
+    * An operand whose type is not known yet, so the operator result has to wait for it
+    */
+  private def isDeferredOperand(t: Type): Boolean =
+    t match
+      case NoType =>
+        true
+      case _: Type.FunctionType =>
+        true
+      case d: DataType =>
+        !d.isResolved
+      case _ =>
+        false
+
+  /**
+    * The smallest decimal holding both operands: the larger scale and the larger number of integer
+    * digits, capped at 38 digits (past the cap, integer digits are given up)
+    */
+  private def decimalLub(l: DecimalType, r: DecimalType): DecimalType =
+    (l.precision, l.scale, r.precision, r.scale) match
+      case (IntConstant(p1), IntConstant(s1), IntConstant(p2), IntConstant(s2)) =>
+        val scale         = s1.max(s2)
+        val integerDigits = (p1 - s1).max(p2 - s2).max(0)
+        DecimalType.of((integerDigits + scale).min(maxDecimalPrecision), scale)
+      case _ =>
+        // Unreachable: a resolved decimal has constant precision and scale
+        l
 
   /**
     * The result type of `=` and `!=`: equality is allowed for any types (including null checks)
@@ -278,6 +294,12 @@ object TyperRules:
     */
   def comparisonType(opName: String, leftTpe: Type, rightTpe: Type): Type =
     (leftTpe, rightTpe) match
+      // Propagate operand errors first: ErrorType is not resolved, so the deferral below would
+      // otherwise turn an error operand into a boolean
+      case (e: ErrorType, _) =>
+        e
+      case (_, e: ErrorType) =>
+        e
       // Numeric comparisons
       case (
             IntType | LongType | FloatType | DoubleType | _: DecimalType,
@@ -297,11 +319,6 @@ object TyperRules:
       // unbound generic type parameters, or pre-inlining aggregation shorthands)
       case (l, r) if !l.isResolved || !r.isResolved =>
         BooleanType
-      // Propagate errors
-      case (e: ErrorType, _) =>
-        e
-      case (_, e: ErrorType) =>
-        e
       // A function reference operand (a def symbol, not a value type) - defer
       case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
         BooleanType
@@ -313,6 +330,11 @@ object TyperRules:
     */
   def logicalType(opName: String, leftTpe: Type, rightTpe: Type): Type =
     (leftTpe, rightTpe) match
+      // Propagate operand errors first, so that an untyped operand cannot hide them
+      case (e: ErrorType, _) =>
+        e
+      case (_, e: ErrorType) =>
+        e
       case (BooleanType, BooleanType) =>
         BooleanType
       case (NoType, _) | (_, NoType) =>
@@ -322,10 +344,6 @@ object TyperRules:
         NoType
       case (_, r: DataType) if !r.isResolved =>
         NoType
-      case (e: ErrorType, _) =>
-        e
-      case (_, e: ErrorType) =>
-        e
       // A function reference operand (a def symbol, not a value type) - defer
       case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
         NoType
