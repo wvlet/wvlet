@@ -178,8 +178,8 @@ importers:
         specifier: ^1.125.0
         version: 1.125.0
       '@vscode/vsce':
-        specifier: ^4.1.0
-        version: 4.1.0
+        specifier: ^4.1.1
+        version: 4.1.1
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -368,16 +368,16 @@ packages:
     resolution: {integrity: sha512-IUZydyTUkDnYdstOW9pFOOUQlBjAepK5teihDE3x6yxsPJs/hsAaaYpeGxdxrgtOiJbBKSjKW7MDk7AEhb4LRg==}
     engines: {node: '>=22.0.0'}
 
-  '@azure/core-client@1.11.1':
-    resolution: {integrity: sha512-2QygG2F76ZpMP2eMztiJvAiFMu71M9rDeU7vO/QKg5Css7MgM4frUOslFjhVjRhbGaCNPtz/S8M6y46/fFKVuQ==}
+  '@azure/core-client@1.11.2':
+    resolution: {integrity: sha512-ajuIU1aMoTs/ERYrKnIqQrV5Vz3RL8mwDC5RdedIXUvR7pi6cWzeYmt0LfNz6+W91CuCO4WJG0zA6+PhU1X+hw==}
     engines: {node: '>=22.0.0'}
 
   '@azure/core-process@1.0.0':
     resolution: {integrity: sha512-/shnJ+ooO8WPxDhPEeI/2oRQuubn16gZ6CvlbpWbEswZfzwI9tI/sMAHmF3x1LuQ9yZYXfLW3TjzGMLEC5blKg==}
     engines: {node: '>=22.0.0'}
 
-  '@azure/core-rest-pipeline@1.25.0':
-    resolution: {integrity: sha512-bMs8ekJLjX8wPV+9IPBges1SLPyuDtE9g5gLDWOpxzKcoOFQnpLGkbcT1tdw3FaAmDS1gnPmMmJ6y/T5B96kIA==}
+  '@azure/core-rest-pipeline@1.25.1':
+    resolution: {integrity: sha512-fTIA3CAm/cdODqiXkO6jYOIkU2Ylld7vq65KGc70gTwl12sLQsC8v7I5t6tp2N2CfUONzZBXyeFw7KEu6Ks2zg==}
     engines: {node: '>=22.0.0'}
 
   '@azure/core-tracing@1.4.0':
@@ -396,16 +396,16 @@ packages:
     resolution: {integrity: sha512-rbAE25KUfjU/s3XHUdJgceoCP5dEOpMx85J04kF+QMdta73XkuG9JGHHinch+XIoKpBdqljin+KqURpJriSzLA==}
     engines: {node: '>=22.0.0'}
 
-  '@azure/msal-browser@5.28.0':
-    resolution: {integrity: sha512-f3yY518Z++x3ZogCbcLK6vnABgpxc8rAKGKtQibcUJKAVU9gamgh5mNAPJIRwduzXQvO2xtHx/gtmPz8iuZ8+w==}
+  '@azure/msal-browser@5.30.0':
+    resolution: {integrity: sha512-o/ADxWxEFcVrE65a7ssOGuxnivq8lcy+2hSGlOOwtn0gGd6iiwl3q8/BMVRorYE81UB/r4B+8WGEUxWnqP7ryA==}
     engines: {node: '>=0.8.0'}
 
-  '@azure/msal-common@16.16.0':
-    resolution: {integrity: sha512-EZgd8h5nczsdRAQAgXA0A0pC5L/zj43n1jePXvUMgdwXMbH2zhb7b7Hp+Oe7ZOODK/sch2x+soD6FOrtgUbx/w==}
+  '@azure/msal-common@16.17.0':
+    resolution: {integrity: sha512-rNvtEm7Axzj18neIk0C8kjr1ZXbJsHkWDqGedCfOiLVBjSCxWBcbJ26/I7g9owoeGKUoyrOgs73cIk7WxLd9qA==}
     engines: {node: '>=0.8.0'}
 
-  '@azure/msal-node@7.2.0':
-    resolution: {integrity: sha512-Y87VJsMWF4jiqLqq8XYLb1o+rGc/HacwS3Zydi3bDtaVm5Sa8FlB7YrKrBFKRIYj27RJXAaDkErImMAqtM10Pg==}
+  '@azure/msal-node@7.2.3':
+    resolution: {integrity: sha512-eRIo5XuQAJrubo4514gEnmREKI35045LItjucOEK/YNQYj3LhEpYEbBdqjlu/wmd9Rcqp2c3GJ4ynFoEqby3sg==}
     engines: {node: '>=20'}
 
   '@babel/code-frame@7.29.7':
@@ -3455,8 +3455,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@typespec/ts-http-runtime@0.3.9':
-    resolution: {integrity: sha512-edSdeAqkdxBVzA1yL1LrLCml1YjyCVvPMtMqJpbF+6K609tHe8V6sQUzFQSGcYNhcuhOceZtjvN32+mpIth30A==}
+  '@typespec/ts-http-runtime@0.3.11':
+    resolution: {integrity: sha512-KZlacW7zFdcIOAcpNiV5U9fy0Tfgw7xdEc4rVyuUtQS+UR1Sn32PXuAz+AJ70Y0yzTWh62/pEEpFmWUJl6YySw==}
     engines: {node: '>=22.0.0'}
 
   '@ungap/structured-clone@1.3.3':
@@ -3592,56 +3592,56 @@ packages:
   '@vitest/spy@5.0.5':
     resolution: {integrity: sha512-lwJRExuH417257Q5wv9QYugN9IMJkoxcrKrYxGPQkBzl7wlNpTUxD/5yNX4ESKVUIShKPgkGchYPFMWOOk0wzw==}
 
-  '@vscode/vsce-sign-alpine-arm64@2.0.6':
-    resolution: {integrity: sha512-wKkJBsvKF+f0GfsUuGT0tSW0kZL87QggEiqNqK6/8hvqsXvpx8OsTEc3mnE1kejkh5r+qUyQ7PtF8jZYN0mo8Q==}
+  '@vscode/vsce-sign-alpine-arm64@2.0.8':
+    resolution: {integrity: sha512-3HSEDf4R2zhI3/eckZPWBoeFUiLpnG9O0/NBW8xCM3j+Ri0uhmOPvCDuCYsUmIsFVUJETaMu+JMY2DF8v8hNPg==}
     cpu: [arm64]
     os: [alpine]
 
-  '@vscode/vsce-sign-alpine-x64@2.0.6':
-    resolution: {integrity: sha512-YoAGlmdK39vKi9jA18i4ufBbd95OqGJxRvF3n6ZbCyziwy3O+JgOpIUPxv5tjeO6gQfx29qBivQ8ZZTUF2Ba0w==}
+  '@vscode/vsce-sign-alpine-x64@2.0.8':
+    resolution: {integrity: sha512-rHbdV7+esCVn/t8KnbSN9CyMGImAmGnxFb1K9d2uSrt0WNPYfL12FGFekhz2yI8sFhIhyxD+vIKTSp9+kLx+5A==}
     cpu: [x64]
     os: [alpine]
 
-  '@vscode/vsce-sign-darwin-arm64@2.0.6':
-    resolution: {integrity: sha512-5HMHaJRIQuozm/XQIiJiA0W9uhdblwwl2ZNDSSAeXGO9YhB9MH5C4KIHOmvyjUnKy4UCuiP43VKpIxW1VWP4tQ==}
+  '@vscode/vsce-sign-darwin-arm64@2.0.8':
+    resolution: {integrity: sha512-/JSzSLCbXSlc+X7PfmHWnXczFHRmKURCwN1MGmJXjUJlWHgTDpaqjaJNMnBNqruyrbb6LRE/DMXTfRY9iwr4jA==}
     cpu: [arm64]
     os: [darwin]
 
-  '@vscode/vsce-sign-darwin-x64@2.0.6':
-    resolution: {integrity: sha512-25GsUbTAiNfHSuRItoQafXOIpxlYj+IXb4/qarrXu7kmbH94jlm5sdWSCKrrREs8+GsXF1b+l3OB7VJy5jsykw==}
+  '@vscode/vsce-sign-darwin-x64@2.0.8':
+    resolution: {integrity: sha512-iowH17iKIaAiC6TNGIksLmwtcKOHh/HT/pwKHwPZnuTLvdKWZ/8VOT+MphEt71EcWttohqUXx41SjdiCfUPBiA==}
     cpu: [x64]
     os: [darwin]
 
-  '@vscode/vsce-sign-linux-arm64@2.0.6':
-    resolution: {integrity: sha512-cfb1qK7lygtMa4NUl2582nP7aliLYuDEVpAbXJMkDq1qE+olIw/es+C8j1LJwvcRq1I2yWGtSn3EkDp9Dq5FdA==}
+  '@vscode/vsce-sign-linux-arm64@2.0.8':
+    resolution: {integrity: sha512-94aBLOVdO6eAOylUsyJ40/BdHtRrHuKAa/29KNOci2QtwUBAH9jTWJLpn1Yv+xjlUOaSjQC8UlAUtjqz/g6FPA==}
     cpu: [arm64]
     os: [linux]
 
-  '@vscode/vsce-sign-linux-arm@2.0.6':
-    resolution: {integrity: sha512-UndEc2Xlq4HsuMPnwu7420uqceXjs4yb5W8E2/UkaHBB9OWCwMd3/bRe/1eLe3D8kPpxzcaeTyXiK3RdzS/1CA==}
+  '@vscode/vsce-sign-linux-arm@2.0.8':
+    resolution: {integrity: sha512-SVzcxe2fx+1meLyO745eUiywrRDQIXwK/oZcwTrzYEkoVh4Val4/8CtDHIc5Z3EhHnwVBnqGqsbNwkR44k7rXA==}
     cpu: [arm]
     os: [linux]
 
-  '@vscode/vsce-sign-linux-x64@2.0.6':
-    resolution: {integrity: sha512-/olerl1A4sOqdP+hjvJ1sbQjKN07Y3DVnxO4gnbn/ahtQvFrdhUi0G1VsZXDNjfqmXw57DmPi5ASnj/8PGZhAA==}
+  '@vscode/vsce-sign-linux-x64@2.0.8':
+    resolution: {integrity: sha512-i55pKFRMF1nR94CMcFHbr3VQz7rQ8DFURvUd2Jymcbtv8qzhPX2otIHWzkcmAVr4dQApbYYCvRPjbP+i12ImQQ==}
     cpu: [x64]
     os: [linux]
 
-  '@vscode/vsce-sign-win32-arm64@2.0.6':
-    resolution: {integrity: sha512-ivM/MiGIY0PJNZBoGtlRBM/xDpwbdlCWomUWuLmIxbi1Cxe/1nooYrEQoaHD8ojVRgzdQEUzMsRbyF5cJJgYOg==}
+  '@vscode/vsce-sign-win32-arm64@2.0.8':
+    resolution: {integrity: sha512-2CoVlRNow2XkNboxlfx8hGdKLR2hvyBRg1O8gafx8I4F+scm1MLHdGcYV3+u3jXDsJaiSyDshTO5vPcLjQpVug==}
     cpu: [arm64]
     os: [win32]
 
-  '@vscode/vsce-sign-win32-x64@2.0.6':
-    resolution: {integrity: sha512-mgth9Kvze+u8CruYMmhHw6Zgy3GRX2S+Ed5oSokDEK5vPEwGGKnmuXua9tmFhomeAnhgJnL4DCna3TiNuGrBTQ==}
+  '@vscode/vsce-sign-win32-x64@2.0.8':
+    resolution: {integrity: sha512-93c+KXIvOsLlNLMEPtQBgJJgn2eaypv3G3+4O9RailUQTh9zL3ul/Fhnqf0O+NKOGKky9d/v+GYWhBwsAjZaww==}
     cpu: [x64]
     os: [win32]
 
-  '@vscode/vsce-sign@2.1.0':
-    resolution: {integrity: sha512-9AQrqazrBgTgRSuwleLVXUrIUphY02/SFCh2TKYoLV/xifJAdblhdmEmw5gUrYSPQ3sRwNs9iyCMD14sATEE6g==}
+  '@vscode/vsce-sign@2.1.1':
+    resolution: {integrity: sha512-Fm9SrvxonXpmzN0eKHKS/AHb/3Gc19c7SkGfSnhYOGPiLy2o8hJlIzx314IVSH//uEiKaAbE40P47wwFtyDByg==}
 
-  '@vscode/vsce@4.1.0':
-    resolution: {integrity: sha512-iWNykEfLWTAU7FC2iBiE0vJvnJDpGm3GlL89dsBtRs62F+8tkPtq80Imi0QSFHjNBWu4QIdYII+3F9v/ZQRExw==}
+  '@vscode/vsce@4.1.1':
+    resolution: {integrity: sha512-JYw4KtAmePIik4F+sGZo8GAfX6IApSQTBhXb28ivfmbzUoojfJHL9mupjV0E/cckzSdrxdu4jUCj8tKDddV5kQ==}
     engines: {node: '>= 22'}
     hasBin: true
 
@@ -6177,8 +6177,8 @@ packages:
     engines: {node: '>= 20'}
     hasBin: true
 
-  marked@18.1.3:
-    resolution: {integrity: sha512-9ChMH8EVVgjgID49nsL6IWxWk5c6GtAsq/xw7U1ggkjkU5AGuv68oLTVlFRtvcUYZtpbNyjyvGo3YDu0fGapiw==}
+  marked@18.2.1:
+    resolution: {integrity: sha512-ii4bxCTCqqwpT86XZWgJNs+ZnAIZksmLGYMViWA7PDIXYIeNo1x6cDdX3JOip9NM/cI6p8z57FxliACboTruMA==}
     engines: {node: '>= 20'}
     hasBin: true
 
@@ -6615,8 +6615,8 @@ packages:
     resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
     engines: {node: '>=0.10.0'}
 
-  object-inspect@1.13.4:
-    resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
+  object-inspect@1.14.0:
+    resolution: {integrity: sha512-IVgHNlp/jwQX271+Xzoq9LZNTWXxZK+cEOrGBOBxXNbn7fapnZ+Ts6TVMgNOuAezwG2wdtnMX97tTPK6VEnuOQ==}
     engines: {node: '>= 0.4'}
 
   object-keys@1.1.1:
@@ -6746,8 +6746,8 @@ packages:
   parse5@8.0.1:
     resolution: {integrity: sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==}
 
-  parse5@8.1.0:
-    resolution: {integrity: sha512-sq3qBFpee5jeocbFbO48VHlGr8sT7mbXS0vxlKN6sottBtJzrOG3998sr0llSZcQAGgfpdmEYAIZE0P9z0dE8w==}
+  parse5@8.1.1:
+    resolution: {integrity: sha512-EcR/6WDcU7b2N3vQSxKALCk9lXGtUMQxXio008OEMBE0kavu/7JLfBEeFPzi43nMqVDSbEn3QCK+BMCc9zO//w==}
 
   parseurl@1.3.3:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
@@ -8751,11 +8751,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@azure/core-client@1.11.1':
+  '@azure/core-client@1.11.2':
     dependencies:
       '@azure/abort-controller': 2.2.0
       '@azure/core-auth': 1.11.0
-      '@azure/core-rest-pipeline': 1.25.0
+      '@azure/core-rest-pipeline': 1.25.1
       '@azure/core-tracing': 1.4.0
       '@azure/core-util': 1.14.0
       '@azure/logger': 1.4.0
@@ -8765,14 +8765,14 @@ snapshots:
 
   '@azure/core-process@1.0.0': {}
 
-  '@azure/core-rest-pipeline@1.25.0':
+  '@azure/core-rest-pipeline@1.25.1':
     dependencies:
       '@azure/abort-controller': 2.2.0
       '@azure/core-auth': 1.11.0
       '@azure/core-tracing': 1.4.0
       '@azure/core-util': 1.14.0
       '@azure/logger': 1.4.0
-      '@typespec/ts-http-runtime': 0.3.9
+      '@typespec/ts-http-runtime': 0.3.11
       tslib: 2.9.1
     transitivePeerDependencies:
       - supports-color
@@ -8784,7 +8784,7 @@ snapshots:
   '@azure/core-util@1.14.0':
     dependencies:
       '@azure/abort-controller': 2.2.0
-      '@typespec/ts-http-runtime': 0.3.9
+      '@typespec/ts-http-runtime': 0.3.11
       tslib: 2.9.1
     transitivePeerDependencies:
       - supports-color
@@ -8793,14 +8793,14 @@ snapshots:
     dependencies:
       '@azure/abort-controller': 2.2.0
       '@azure/core-auth': 1.11.0
-      '@azure/core-client': 1.11.1
+      '@azure/core-client': 1.11.2
       '@azure/core-process': 1.0.0
-      '@azure/core-rest-pipeline': 1.25.0
+      '@azure/core-rest-pipeline': 1.25.1
       '@azure/core-tracing': 1.4.0
       '@azure/core-util': 1.14.0
       '@azure/logger': 1.4.0
-      '@azure/msal-browser': 5.28.0
-      '@azure/msal-node': 7.2.0
+      '@azure/msal-browser': 5.30.0
+      '@azure/msal-node': 7.2.3
       open: 11.0.4
       tslib: 2.9.1
     transitivePeerDependencies:
@@ -8808,20 +8808,20 @@ snapshots:
 
   '@azure/logger@1.4.0':
     dependencies:
-      '@typespec/ts-http-runtime': 0.3.9
+      '@typespec/ts-http-runtime': 0.3.11
       tslib: 2.9.1
     transitivePeerDependencies:
       - supports-color
 
-  '@azure/msal-browser@5.28.0':
+  '@azure/msal-browser@5.30.0':
     dependencies:
-      '@azure/msal-common': 16.16.0
+      '@azure/msal-common': 16.17.0
 
-  '@azure/msal-common@16.16.0': {}
+  '@azure/msal-common@16.17.0': {}
 
-  '@azure/msal-node@7.2.0':
+  '@azure/msal-node@7.2.3':
     dependencies:
-      '@azure/msal-common': 16.16.0
+      '@azure/msal-common': 16.17.0
       jsonwebtoken: 9.0.3
 
   '@babel/code-frame@7.29.7':
@@ -11288,7 +11288,7 @@ snapshots:
     dependencies:
       '@jest/types': 30.5.1
       chalk: 4.1.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       natural-compare: 1.4.0
 
   '@jest/source-map@30.5.2':
@@ -11296,7 +11296,7 @@ snapshots:
       '@jridgewell/trace-mapping': 0.3.31
       callsites: 3.1.0
       convert-source-map: 2.0.0
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
 
   '@jest/test-result@30.5.2':
     dependencies:
@@ -11308,7 +11308,7 @@ snapshots:
   '@jest/test-sequencer@30.5.2':
     dependencies:
       '@jest/test-result': 30.5.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-haste-map: 30.5.1
       slash: 3.0.0
 
@@ -12696,7 +12696,7 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@typespec/ts-http-runtime@0.3.9':
+  '@typespec/ts-http-runtime@0.3.11':
     dependencies:
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
@@ -12794,46 +12794,46 @@ snapshots:
 
   '@vitest/spy@5.0.5': {}
 
-  '@vscode/vsce-sign-alpine-arm64@2.0.6':
+  '@vscode/vsce-sign-alpine-arm64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-alpine-x64@2.0.6':
+  '@vscode/vsce-sign-alpine-x64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-darwin-arm64@2.0.6':
+  '@vscode/vsce-sign-darwin-arm64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-darwin-x64@2.0.6':
+  '@vscode/vsce-sign-darwin-x64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-linux-arm64@2.0.6':
+  '@vscode/vsce-sign-linux-arm64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-linux-arm@2.0.6':
+  '@vscode/vsce-sign-linux-arm@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-linux-x64@2.0.6':
+  '@vscode/vsce-sign-linux-x64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-win32-arm64@2.0.6':
+  '@vscode/vsce-sign-win32-arm64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-win32-x64@2.0.6':
+  '@vscode/vsce-sign-win32-x64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign@2.1.0':
+  '@vscode/vsce-sign@2.1.1':
     optionalDependencies:
-      '@vscode/vsce-sign-alpine-arm64': 2.0.6
-      '@vscode/vsce-sign-alpine-x64': 2.0.6
-      '@vscode/vsce-sign-darwin-arm64': 2.0.6
-      '@vscode/vsce-sign-darwin-x64': 2.0.6
-      '@vscode/vsce-sign-linux-arm': 2.0.6
-      '@vscode/vsce-sign-linux-arm64': 2.0.6
-      '@vscode/vsce-sign-linux-x64': 2.0.6
-      '@vscode/vsce-sign-win32-arm64': 2.0.6
-      '@vscode/vsce-sign-win32-x64': 2.0.6
+      '@vscode/vsce-sign-alpine-arm64': 2.0.8
+      '@vscode/vsce-sign-alpine-x64': 2.0.8
+      '@vscode/vsce-sign-darwin-arm64': 2.0.8
+      '@vscode/vsce-sign-darwin-x64': 2.0.8
+      '@vscode/vsce-sign-linux-arm': 2.0.8
+      '@vscode/vsce-sign-linux-arm64': 2.0.8
+      '@vscode/vsce-sign-linux-x64': 2.0.8
+      '@vscode/vsce-sign-win32-arm64': 2.0.8
+      '@vscode/vsce-sign-win32-x64': 2.0.8
 
-  '@vscode/vsce@4.1.0':
+  '@vscode/vsce@4.1.1':
     dependencies:
       '@azure/identity': 4.14.1
       '@napi-rs/keyring': 1.3.0
@@ -12842,16 +12842,16 @@ snapshots:
       '@secretlint/secretlint-rule-preset-recommend': 10.2.2
       '@secretlint/source-creator': 10.2.2
       '@secretlint/types': 10.2.2
-      '@vscode/vsce-sign': 2.1.0
+      '@vscode/vsce-sign': 2.1.1
       azure-devops-node-api: 12.5.0
       cockatiel: 3.2.1
       commander: 12.1.0
       hosted-git-info: 4.1.0
       jsonc-parser: 3.3.1
-      marked: 18.1.3
+      marked: 18.2.1
       mime: 1.6.0
       minimatch: 10.2.6
-      parse5: 8.1.0
+      parse5: 8.1.1
       proper-lockfile: 4.1.2
       read: 1.0.7
       semver: 7.8.6
@@ -13123,7 +13123,7 @@ snapshots:
       babel-plugin-istanbul: 8.0.0
       babel-preset-jest: 30.5.0(@babel/core@7.29.7)
       chalk: 4.1.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       slash: 3.0.0
     transitivePeerDependencies:
       - supports-color
@@ -13564,7 +13564,7 @@ snapshots:
   configstore@6.0.0:
     dependencies:
       dot-prop: 6.0.1
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       unique-string: 3.0.0
       write-file-atomic: 3.0.3
       xdg-basedir: 5.1.0
@@ -14163,12 +14163,12 @@ snapshots:
 
   enhanced-resolve@5.24.2:
     dependencies:
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       tapable: 2.3.3
 
   enhanced-resolve@5.24.5:
     dependencies:
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       tapable: 2.3.3
 
   enhanced-resolve@5.27.0:
@@ -15487,7 +15487,7 @@ snapshots:
     dependencies:
       universalify: 2.0.1
     optionalDependencies:
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
 
   jsonwebtoken@9.0.3:
     dependencies:
@@ -15757,7 +15757,7 @@ snapshots:
 
   marked@16.4.2: {}
 
-  marked@18.1.3: {}
+  marked@18.2.1: {}
 
   math-intrinsics@1.1.0: {}
 
@@ -16465,7 +16465,7 @@ snapshots:
 
   object-assign@4.1.1: {}
 
-  object-inspect@1.13.4: {}
+  object-inspect@1.14.0: {}
 
   object-keys@1.1.1: {}
 
@@ -16613,7 +16613,7 @@ snapshots:
     dependencies:
       entities: 8.1.0
 
-  parse5@8.1.0:
+  parse5@8.1.1:
     dependencies:
       entities: 9.0.0
 
@@ -17170,7 +17170,7 @@ snapshots:
 
   proper-lockfile@4.1.2:
     dependencies:
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       retry: 0.12.0
       signal-exit: 3.0.7
 
@@ -17736,27 +17736,27 @@ snapshots:
   side-channel-list@1.0.1:
     dependencies:
       es-errors: 1.3.0
-      object-inspect: 1.13.4
+      object-inspect: 1.14.0
 
   side-channel-map@1.0.1:
     dependencies:
       call-bound: 1.0.4
       es-errors: 1.3.0
       get-intrinsic: 1.3.0
-      object-inspect: 1.13.4
+      object-inspect: 1.14.0
 
   side-channel-weakmap@1.0.2:
     dependencies:
       call-bound: 1.0.4
       es-errors: 1.3.0
       get-intrinsic: 1.3.0
-      object-inspect: 1.13.4
+      object-inspect: 1.14.0
       side-channel-map: 1.0.1
 
   side-channel@1.1.1:
     dependencies:
       es-errors: 1.3.0
-      object-inspect: 1.13.4
+      object-inspect: 1.14.0
       side-channel-list: 1.0.1
       side-channel-map: 1.0.1
       side-channel-weakmap: 1.0.2
@@ -18355,7 +18355,7 @@ snapshots:
 
   watchpack@2.5.2:
     dependencies:
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
 
   wbuf@1.7.3:
     dependencies:
