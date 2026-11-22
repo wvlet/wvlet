@@ -142,36 +142,48 @@ class WindowOp(
         0
       else
         groups.max + 1
-    val buckets = Array.fill(numGroups)(scala.collection.mutable.ArrayBuilder.make[Int])
-    var i       = 0
+    // Counting sort of the rows by group, keeping the row order within a group
+    val start = new Array[Int](numGroups + 1)
+    var i     = 0
     while i < n do
-      buckets(groups(i)) += rows(i)
+      start(groups(i) + 1) += 1
       i += 1
-    buckets
-      .toSeq
-      .map { b =>
-        val part = b.result()
-        if c.orderBy.isEmpty then
-          part
-        else
-          val boxed = new Array[Integer](part.length)
-          var k     = 0
-          while k < part.length do
-            boxed(k) = Integer.valueOf(part(k))
-            k += 1
-          java.util.Arrays.sort(boxed, cmp)
-          k = 0
-          while k < part.length do
-            part(k) = boxed(k).intValue()
-            k += 1
-          part
-      }
+    var g = 0
+    while g < numGroups do
+      start(g + 1) += start(g)
+      g += 1
+    val pos     = java.util.Arrays.copyOf(start, numGroups)
+    val ordered = new Array[Int](n)
+    i = 0
+    while i < n do
+      val gi = groups(i)
+      ordered(pos(gi)) = rows(i)
+      pos(gi) += 1
+      i += 1
+    val out = new Array[Array[Int]](numGroups)
+    g = 0
+    while g < numGroups do
+      val part = java.util.Arrays.copyOfRange(ordered, start(g), start(g + 1))
+      if c.orderBy.nonEmpty && part.length > 1 then
+        val boxed = new Array[Integer](part.length)
+        var k     = 0
+        while k < part.length do
+          boxed(k) = Integer.valueOf(part(k))
+          k += 1
+        java.util.Arrays.sort(boxed, cmp)
+        k = 0
+        while k < part.length do
+          part(k) = boxed(k).intValue()
+          k += 1
+      out(g) = part
+      g += 1
+    out.toSeq
 
   end partitions
 
   private def evaluate(c: WindowCall, all: Batch): Vec =
     val n                              = all.size
-    val out                            = new Array[Any](n)
+    val out                            = WindowOp.OutColumn(c.ptype, n)
     val args                           = c.args.map(_.eval(all)).toArray
     val keyVecs                        = c.orderBy.map(_.expr.eval(all)).toArray
     val cmp                            = SortOp.comparator(keyVecs, c.orderBy)
@@ -187,7 +199,7 @@ class WindowOp(
         case "row_number" =>
           var k = 0
           while k < size do
-            out(rows(k)) = (k + 1).toLong
+            out.setLong(rows(k), k + 1)
             k += 1
         case "rank" | "dense_rank" | "percent_rank" =>
           var rank  = 1L
@@ -197,17 +209,19 @@ class WindowOp(
             if k > 0 && !peers(rows(k - 1), rows(k)) then
               rank = k + 1
               dense += 1
-            out(rows(k)) =
-              c.name match
-                case "rank" =>
-                  rank
-                case "dense_rank" =>
-                  dense
-                case _ =>
+            c.name match
+              case "rank" =>
+                out.setLong(rows(k), rank)
+              case "dense_rank" =>
+                out.setLong(rows(k), dense)
+              case _ =>
+                out.setDouble(
+                  rows(k),
                   if size <= 1 then
                     0.0
                   else
                     (rank - 1).toDouble / (size - 1)
+                )
             k += 1
         case "cume_dist" =>
           var k = 0
@@ -218,7 +232,7 @@ class WindowOp(
             val v = (e + 1).toDouble / size
             var x = k
             while x <= e do
-              out(rows(x)) = v
+              out.setDouble(rows(x), v)
               x += 1
             k = e + 1
         case "ntile" =>
@@ -233,7 +247,7 @@ class WindowOp(
                 k / (base + 1)
               else
                 extra + (k - extra * (base + 1)) / math.max(1, base)
-            out(rows(k)) = bucket + 1
+            out.setLong(rows(k), bucket + 1)
             k += 1
         case "lag" | "lead" =>
           val offset =
@@ -297,9 +311,14 @@ class WindowOp(
       evalPart(rows)
     else
       val hashes = GroupTable(c.partitionBy.map(_.ptype).toIndexedSeq).keyHashes(partKeys, n)
-      val parts = GroupTable.partitionRows(hashes, n, GroupTable.partitionCount(runner.parallelism))
+      val parts  = WindowOp.partitionRows(
+        hashes,
+        n,
+        GroupTable.partitionCount(runner.parallelism),
+        runner
+      )
       parts.filter(_.nonEmpty).map(rows => runner.submit(() => evalPart(rows))).foreach(_.get())
-    Vec.fromValues(c.ptype, out.toSeq)
+    out.result()
 
   end evaluate
 
@@ -351,7 +370,7 @@ class WindowOp(
       c: WindowCall,
       rows: Array[Int],
       args: Array[Vec],
-      out: Array[Any],
+      out: WindowOp.OutColumn,
       peers: (Int, Int) => Boolean
   ): Unit =
     val size = rows.length
@@ -380,6 +399,138 @@ end WindowOp
 
 object WindowOp:
   /**
+    * One window call's output column, written by row position. Int64 and Float64 results go to
+    * primitive arrays without boxing; others are kept as values. Tasks write distinct positions
+    */
+  final class OutColumn(ptype: PType, n: Int):
+    private val longs: Array[Long] =
+      if ptype == PType.Int64 then
+        new Array[Long](n)
+      else
+        null
+
+    private val doubles: Array[Double] =
+      if ptype == PType.Float64 then
+        new Array[Double](n)
+      else
+        null
+
+    private val values: Array[Any] =
+      if longs == null && doubles == null then
+        new Array[Any](n)
+      else
+        null
+
+    private val nulls: Array[Boolean] =
+      if values == null then
+        new Array[Boolean](n)
+      else
+        null
+
+    def setLong(i: Int, v: Long): Unit =
+      if longs != null then
+        longs(i) = v
+      else if doubles != null then
+        doubles(i) = v.toDouble
+      else
+        values(i) = v
+
+    def setDouble(i: Int, v: Double): Unit =
+      if doubles != null then
+        doubles(i) = v
+      else if longs != null then
+        longs(i) = v.toLong
+      else
+        values(i) = v
+
+    def update(i: Int, v: Any): Unit =
+      if values != null then
+        values(i) = v
+      else if v == null then
+        nulls(i) = true
+      else if longs != null then
+        longs(i) = ValueOps.toLong(v)
+      else
+        doubles(i) = ValueOps.toDouble(v)
+
+    def result(): Vec =
+      if values != null then
+        Vec.fromValues(ptype, values.toSeq)
+      else
+        var anyNull = false
+        var i       = 0
+        while !anyNull && i < n do
+          anyNull = nulls(i)
+          i += 1
+        val ns =
+          if anyNull then
+            nulls
+          else
+            null
+        if longs != null then
+          LongVec(ptype, longs, ns)
+        else
+          DoubleVec(doubles, ns)
+
+  end OutColumn
+
+  /**
+    * [[GroupTable.partitionRows]] in two parallel passes over chunks of the rows: count each
+    * chunk's rows per partition, then scatter each chunk at its offsets. Rows stay in ascending
+    * order within a partition. `parts` must be a power of two of at least 2
+    */
+  def partitionRows(h: Array[Int], n: Int, parts: Int, runner: TaskRunner): Array[Array[Int]] =
+    val shift           = 32 - Integer.numberOfTrailingZeros(parts)
+    val chunks          = math.max(1, math.min(runner.parallelism, n / 4096))
+    def lo(c: Int): Int = (n.toLong * c / chunks).toInt
+    val counts          = (0 until chunks)
+      .map { c =>
+        runner.submit { () =>
+          val cnt = new Array[Int](parts)
+          var i   = lo(c)
+          val hi  = lo(c + 1)
+          while i < hi do
+            cnt(h(i) >>> shift) += 1
+            i += 1
+          cnt
+        }
+      }
+      .map(_.get())
+    // offsets(c)(p): where chunk c's rows of partition p start
+    val offsets = Array.ofDim[Int](chunks, parts)
+    val sizes   = new Array[Int](parts)
+    var c       = 0
+    while c < chunks do
+      var p = 0
+      while p < parts do
+        offsets(c)(p) = sizes(p)
+        sizes(p) += counts(c)(p)
+        p += 1
+      c += 1
+    val out = new Array[Array[Int]](parts)
+    var p   = 0
+    while p < parts do
+      out(p) = new Array[Int](sizes(p))
+      p += 1
+    (0 until chunks)
+      .map { c =>
+        runner.submit { () =>
+          val pos = offsets(c)
+          var i   = lo(c)
+          val hi  = lo(c + 1)
+          while i < hi do
+            val q = h(i) >>> shift
+            out(q)(pos(q)) = i
+            pos(q) += 1
+            i += 1
+        }
+      }
+      .foreach(_.get())
+    out
+
+  end partitionRows
+
+  /**
     * Below this many input rows, window partitions are evaluated on the calling thread. The
     * wvlet.engine.parallelWindowMinRows system property overrides it (tests use it to exercise the
     * parallel path on small data)
@@ -389,3 +540,5 @@ object WindowOp:
     .get("wvlet.engine.parallelWindowMinRows")
     .flatMap(_.toIntOption)
     .getOrElse(65536)
+
+end WindowOp
