@@ -153,8 +153,8 @@ object JoinOrderOptimizer:
     options.isEnabled(Optimization.SwapBuildSide) && rows > SwapBuildRatio * otherRows
 
   /**
-    * A hash join of left and right that builds on left and probes with right, projected back to the
-    * column order of left ++ right
+    * A hash join of left and right that probes with right and builds on left (`kind` is from
+    * right's side), with the output columns in left ++ right order (`combined`)
     */
   def swappedHashJoin(
       left: Operator,

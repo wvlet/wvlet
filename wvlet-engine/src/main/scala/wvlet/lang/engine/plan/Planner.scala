@@ -2427,10 +2427,6 @@ class Planner(
 
   end outerHashJoin
 
-  /**
-    * A hash join of left and right that probes with right and builds on left (`kind` is from
-    * right's side), with the output columns in left ++ right order (`combined`)
-    */
   /** JOIN ... USING (cols): one output column per key (coalesced for outer joins) */
   private def usingJoin(
       left: Operator,
