@@ -176,16 +176,12 @@ class QueryExecutor(
       )
     // Resolve the connector and its catalog BEFORE committing any state, so a connection
     // failure leaves the previous engine fully active
-    val newCatalog =
-      if WvletEngineSession.isInProcess(config) then
-        ConnectorCatalogs.catalogOf(
-          dbConnectorProvider.getConnector(config),
-          config,
-          catalog,
-          schema
-        )
-      else
-        dbConnectorProvider.getDBConnector(config).getCatalog(catalog, schema)
+    val newCatalog = ConnectorCatalogs.catalogOf(
+      dbConnectorProvider.getConnector(config),
+      config,
+      catalog,
+      schema
+    )
     activeEngine = config
     context.global.defaultCatalog = newCatalog
     context.global.defaultSchema = schema
@@ -349,11 +345,11 @@ class QueryExecutor(
   override protected def executeSave(save: Save)(using context: Context): QueryResult =
     trace(s"Executing save:\n${save.pp}")
     workEnv.trace(s"Executing save: ${save.pp}")
-    save match
-      case _ if activeEngineSession.isDefined =>
-        activeEngineSession.get.save(save)
+    (save, activeEngineSession) match
+      case (_, Some(session)) =>
+        session.save(save)
         QueryResult.empty
-      case s: SaveTo if s.isForFile && !context.dbType.supportSaveAsFile =>
+      case (s: SaveTo, _) if s.isForFile && !context.dbType.supportSaveAsFile =>
         // Cross-engine handoff (e.g., Trino -> DuckDB) for local file output
         executeSaveToLocalFileViaDuckDB(s)
       case _ =>
@@ -729,11 +725,11 @@ class QueryExecutor(
   private def executeQueryPlan(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")
-    plan match
-      case q: Relation if activeEngineSession.isDefined =>
+    (plan, activeEngineSession) match
+      case (q: Relation, Some(session)) =>
         workEnv.info(s"Executing on the wvlet engine:\n${q.pp}")
-        activeEngineSession.get.execute(q, config.rowLimit)
-      case q0: Relation =>
+        session.execute(q, config.rowLimit)
+      case (q0: Relation, None) =>
         // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
         // summary tables
         val q = runEmbeddedToolCalls(runEmbeddedFlows(q0))

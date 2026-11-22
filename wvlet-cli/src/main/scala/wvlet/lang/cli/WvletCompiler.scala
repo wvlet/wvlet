@@ -21,7 +21,6 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.QueryExecutorConfig
-import wvlet.lang.connector.DBConnector
 import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.connector.ConnectorProvider
@@ -78,15 +77,7 @@ class WvletCompiler(
           default = Profile.defaultDuckDBProfile
         )
 
-  private var _dbConnector: DBConnector = null
-
-  private def getDBConnector: DBConnector = synchronized {
-    if _dbConnector == null then
-      _dbConnector = dbConnectorProvider.getConnector(currentProfile)
-    _dbConnector
-  }
-
-  // Closing the provider closes every cached connector, including _dbConnector and the
+  // Closing the provider closes every cached connector, including the default engine and the
   // scratch DuckDB connector QueryExecutor may have created for local file reads/exports
   override def close(): Unit = dbConnectorProvider.close()
 
@@ -116,18 +107,15 @@ class WvletCompiler(
     WvletEngineSession
       .defaultCatalogName(defaultEngine)
       .foreach { catalog =>
-        val schema        = defaultEngine.schema.getOrElse("main")
-        val engineCatalog =
-          if WvletEngineSession.isInProcess(defaultEngine) then
-            ConnectorCatalogs.catalogOf(
-              dbConnectorProvider.getConnector(defaultEngine),
-              defaultEngine,
-              catalog,
-              schema
-            )
-          else
-            getDBConnector.getCatalog(catalog, schema)
-        compiler.setDefaultCatalog(engineCatalog)
+        val schema = defaultEngine.schema.getOrElse("main")
+        compiler.setDefaultCatalog(
+          ConnectorCatalogs.catalogOf(
+            dbConnectorProvider.getConnector(defaultEngine),
+            defaultEngine,
+            catalog,
+            schema
+          )
+        )
       }
 
     currentProfile

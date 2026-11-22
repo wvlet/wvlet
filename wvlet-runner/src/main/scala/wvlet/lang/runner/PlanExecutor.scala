@@ -77,11 +77,11 @@ class PlanExecutor(
   ): QueryResult = executeQuery(plan, Int.MaxValue)
 
   private def executeQuery(plan: LogicalPlan, limit: Int)(using context: Context): QueryResult =
-    plan match
-      case q: Relation if WvletEngineSession.isInProcess(activeConfig) =>
+    (plan, engineSessionOf(activeConfig)) match
+      case (q: Relation, Some(session)) =>
         workEnv.info(s"Executing on the wvlet engine:\n${q.pp}")
-        engineSessionOf(activeConfig).get.execute(q, limit)
-      case q: Relation =>
+        session.execute(q, limit)
+      case (q: Relation, None) =>
         val generatedSQL = GenSQL.generateSQLFromRelation(q)
         workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
@@ -184,9 +184,13 @@ class PlanExecutor(
           catalogDBType = newDBType
         )
       )
-    schemaName.foreach { schema =>
-      context.global.defaultSchema = schema
-    }
+    // The engine's tables live in its own schema, so a stale schema of the previous connector
+    // must not stay the default
+    schemaName
+      .orElse(engineSession.map(_ => "main"))
+      .foreach { schema =>
+        context.global.defaultSchema = schema
+      }
     workEnv.info(s"Switched to connector: ${connectorName} (dialect: ${newDBType})")
     QueryResult.empty
 

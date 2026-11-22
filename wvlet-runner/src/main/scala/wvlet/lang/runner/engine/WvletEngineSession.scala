@@ -54,14 +54,7 @@ import scala.util.control.NonFatal
   * in-memory table of this session.
   */
 class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSupport:
-  private val engineBaseDir: String = config
-    .properties
-    .get("baseDir")
-    .map(_.toString)
-    .map(resolvePath)
-    .getOrElse(baseDir)
-
-  val engine: WvletEngine = WvletEngine(baseDir = engineBaseDir)
+  val engine: WvletEngine = WvletEngine(baseDir = baseDir)
 
   private val catalogName = config.catalog.getOrElse(WvletEngineSession.connectorType)
   private val schemaName  = config.schema.getOrElse("main")
@@ -134,11 +127,21 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
 
   end registerConfiguredTables
 
-  /** Register a table to the engine and its schema to the compile-time catalog */
+  /**
+    * Register a table to the engine, and its schema to the compile-time catalog when reading it is
+    * cheap: Parquet footers and in-memory tables. JSON / CSV schemas need a full parse, so those
+    * tables stay untyped at compile time and are read only when a query scans them
+    */
   def register(source: TableSource): Unit =
     engine.catalog.register(source)
-    // The schema is read lazily from file footers; a table whose schema can't be read stays
-    // queryable (the engine reports the error at scan time) but untyped at compile time
+    source match
+      case _: ParquetSource | _: MemTable =>
+        registerSchema(source)
+      case _ =>
+
+  // A table whose schema can't be read stays queryable (the engine reports the error at scan
+  // time) but untyped at compile time
+  private def registerSchema(source: TableSource): Unit =
     try
       val columns = source.schema.fields.map(f => Catalog.TableColumn(f.name, f.ptype.toDataType))
       if catalog.tableExists(schemaName, source.name) then
@@ -230,9 +233,11 @@ object WvletEngineSession:
     ".ndjson",
     ".json.gz",
     ".jsonl.gz",
+    ".ndjson.gz",
     ".csv",
     ".tsv",
-    ".csv.gz"
+    ".csv.gz",
+    ".tsv.gz"
   )
 
   /** The table name of a data file or folder: its name without the data file extension */
@@ -245,14 +250,13 @@ object WvletEngineSession:
     * folder (Iceberg table or a directory of Parquet files)
     */
   def sourceOf(name: String, path: String, isDirectory: Boolean): Option[TableSource] =
-    val lower = path.toLowerCase
-    if isDirectory || lower.endsWith(".parquet") || lower.endsWith(".metadata.json") then
+    val lower                                   = path.toLowerCase
+    def endsWithAny(suffixes: String*): Boolean = suffixes.exists(lower.endsWith)
+    if isDirectory || endsWithAny(".parquet", ".metadata.json") || lower.contains("*.parquet") then
       Some(ParquetSource(name, path))
-    else if lower.endsWith(".json") || lower.endsWith(".jsonl") || lower.endsWith(".ndjson") ||
-      lower.endsWith(".json.gz") || lower.endsWith(".jsonl.gz")
-    then
+    else if endsWithAny(".json", ".jsonl", ".ndjson", ".json.gz", ".jsonl.gz", ".ndjson.gz") then
       Some(JsonSource(name, path))
-    else if lower.endsWith(".csv") || lower.endsWith(".tsv") || lower.endsWith(".csv.gz") then
+    else if endsWithAny(".csv", ".tsv", ".csv.gz", ".tsv.gz") then
       Some(CsvSource(name, path))
     else
       None

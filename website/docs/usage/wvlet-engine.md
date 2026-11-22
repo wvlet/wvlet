@@ -72,8 +72,9 @@ tables:
 wvlet run -p local-engine "from orders join customer on o_custkey = c_custkey agg _.count"
 ```
 
-Paths relative to the working folder are resolved there. The schemas of registered tables are
-visible to the compiler, so column names are checked and completed as for other engines.
+Relative paths resolve against the working folder. The compiler sees the schemas of Parquet and
+Iceberg tables (read from file footers), so their column names are checked as for other engines.
+JSON and CSV tables are read only when a query scans them.
 
 ## Saving results
 
