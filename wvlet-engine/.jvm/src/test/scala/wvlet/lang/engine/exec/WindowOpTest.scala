@@ -114,7 +114,9 @@ class WindowOpTest extends UniTest:
     def show(v: Any) = s"${v} (${Option(v).map(_.getClass.getSimpleName).getOrElse("null")})"
     (0 until actual.size)
       .find(i => !java.util.Objects.equals(actual.get(i), expected.get(i)))
-      .foreach(i => s"row ${i}: ${show(actual.get(i))}" shouldBe s"row ${i}: ${show(expected.get(i))}")
+      .foreach(i =>
+        s"row ${i}: ${show(actual.get(i))}" shouldBe s"row ${i}: ${show(expected.get(i))}"
+      )
 
   test("should build typed output columns equal to Vec.fromValues") {
     val dec                           = PType.Decimal(38, 2)
@@ -476,22 +478,23 @@ class WindowOpTest extends UniTest:
     val n    = 4000
     val wide = PType.Decimal(38, 2)
     // NaN, -0.0, and 0.0 compare specially in MinMax's Float64 fold
-    val specials = Array(Double.NaN, -0.0, 0.0, 1.5, -2.0)
+    val specials      = Array(Double.NaN, -0.0, 0.0, 1.5, -2.0)
     def nulls(k: Int) = Array.fill(n)(rnd.nextInt(k) == 0)
     // BigDecimal values of different scales that compare equal, and values beyond a Long
-    val wideValues = Array.fill[AnyRef](n)(
-      rnd.nextInt(6) match
-        case 0 =>
-          null
-        case 1 =>
-          java.math.BigDecimal("1.5")
-        case 2 =>
-          java.math.BigDecimal("1.50")
-        case 3 =>
-          java.math.BigDecimal(s"${rnd.nextInt(10)}00000000000000000000000.25")
-        case _ =>
-          java.math.BigDecimal.valueOf(rnd.nextInt(400) - 200, 2)
-    )
+    val wideValues =
+      Array.fill[AnyRef](n)(
+        rnd.nextInt(6) match
+          case 0 =>
+            null
+          case 1 =>
+            java.math.BigDecimal("1.5")
+          case 2 =>
+            java.math.BigDecimal("1.50")
+          case 3 =>
+            java.math.BigDecimal(s"${rnd.nextInt(10)}00000000000000000000000.25")
+          case _ =>
+            java.math.BigDecimal.valueOf(rnd.nextInt(400) - 200, 2)
+      )
     val in = Schema(
       IndexedSeq(
         Field("p", PType.Int64),
@@ -536,9 +539,9 @@ class WindowOpTest extends UniTest:
       ObjVec(wide, wideValues, wideValues.map(_ == null)),
       BoolVec(Array.fill(n)(rnd.nextBoolean()), nulls(8))
     )
-    def col(i: Int) = ColRef(i, in.fields(i).ptype, in.fields(i).name)
-    val (pr, or)    = (col(0), col(1))
-    val values      = (2 until in.fields.size).map(col)
+    def col(i: Int)                     = ColRef(i, in.fields(i).ptype, in.fields(i).name)
+    val (pr, or)                        = (col(0), col(1))
+    val values                          = (2 until in.fields.size).map(col)
     val aggs: Seq[(String, Seq[VExpr])] =
       values.flatMap(c => Seq("min" -> Seq(c), "max" -> Seq(c))) ++
         Seq(

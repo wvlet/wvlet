@@ -604,14 +604,14 @@ class WindowOp(
     * the first non-NULL value (or key) and replaces it only on a strict improvement, so it ends on
     * the leftmost best row of the frame. A monotonic deque of row positions finds that row for
     * every frame in O(size): a row enters at the back after dropping the rows it strictly beats,
-    * and leaves at the front once it falls out of the frame, so the front is the leftmost best
-    * row. For Float64 min / max, the fold compares with primitive `<` / `>`: a NaN never replaces a
+    * and leaves at the front once it falls out of the frame, so the front is the leftmost best row.
+    * For Float64 min / max, the fold compares with primitive `<` / `>`: a NaN never replaces a
     * value and is never replaced, so the result is NaN when the frame's first non-NULL value is
     * NaN, and otherwise the deque's winner over the non-NaN values.
     *
     * The winning rows are then fed to one accumulator of the aggregate, one group per row, so each
-    * result is the per-frame accumulator's result over its winning row alone: the same value,
-    * NULLs included (a frame without a winner feeds nothing)
+    * result is the per-frame accumulator's result over its winning row alone: the same value, NULLs
+    * included (a frame without a winner feeds nothing)
     */
   private def aggregateSlidingExtreme(
       c: WindowCall,
@@ -639,10 +639,10 @@ class WindowOp(
     var doubles: Array[Double] = null
     var objs: Array[Any]       = null
     // Float64 min / max: the frame's first non-NULL value wins when it is NaN
-    var nanFirst              = false
-    var nonNull: Array[Boolean] = null
+    var nanFirst                 = false
+    var nonNull: Array[Boolean]  = null
     def notNull(k: Int): Boolean = v.nulls == null || !v.nulls(k)
-    def eligibleNonNull(): Unit =
+    def eligibleNonNull(): Unit  =
       var k = 0
       while k < size do
         eligible(k) = notNull(k)
@@ -855,7 +855,9 @@ object WindowOp:
     * and removes (or a monotonic deque for min / max). Float64 sums and avg stay per frame:
     * removing a double changes the result bits
     */
-  /** Aggregates whose frame result is one leftmost best row, which `aggregateSlidingExtreme` finds */
+  /**
+    * Aggregates whose frame result is one leftmost best row, which `aggregateSlidingExtreme` finds
+    */
   private[exec] val extremeAggregates: Set[String] = Set(
     "min",
     "max",

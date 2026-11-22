@@ -92,6 +92,7 @@ Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0
 | Typed window aggregate / value outputs, unboxed partition sort, reused partition hashes (no TPC-H windows) | unchanged | |
 | Incremental running-frame window aggregates (no TPC-H windows) | unchanged | |
 | Sliding-frame counts and exact sums with add/remove (no TPC-H windows) | unchanged | |
+| Sliding-frame min / max / max_by / min_by with a monotonic deque (no TPC-H windows) | unchanged | |
 
 Parallel sorts and windows (A/B with the parallel paths disabled, sf=1 lineitem, 6M rows):
 top-N (limit 10) 2.29 s → 0.15 s, full sort 2.3 s → 1.1–1.3 s (bounded by the merge on one
@@ -129,6 +130,13 @@ l_suppkey order by l_orderkey): `sum(l_quantity)` over `rows[-5,5]` 0.24–0.36 
 over `rows[-200,200]` 0.54–0.56 s → 0.08–0.09 s; `count(l_quantity)` over `rows[-50,50]`
 0.33–0.37 s → 0.09 s. Float64 sums, avg, and min / max over sliding frames still recompute each
 frame.
+min, max, max_by, and min_by over sliding ROWS frames now find each frame's winning row with a
+monotonic deque and feed only those rows to the accumulator (A/B against the add/remove branch,
+interleaved, 3 rounds, median of 3 runs after a warm-up, same result checksums, partition by
+l_suppkey order by l_orderkey): `max(l_extendedprice)` over `rows[-5,5]` 0.30–0.36 s →
+0.11–0.14 s, over `rows[-200,200]` 1.5–2.0 s → 0.11–0.15 s; `min(l_shipdate)` over `rows[-5,5]`
+0.21–0.26 s → 0.11–0.15 s, over `rows[-200,200]` 0.57–0.82 s → 0.11–0.15 s. Float64 sums and avg
+over sliding frames still recompute each frame.
 
 ## Milestones (one PR each)
 
