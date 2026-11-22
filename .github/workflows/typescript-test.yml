@@ -25,7 +25,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '25'
-          cache: sbt
+      - uses: ./.github/actions/sbt-cache
       
       - uses: pnpm/action-setup@v6
 

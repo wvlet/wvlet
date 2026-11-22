@@ -1,0 +1,58 @@
+name: sbt cache
+
+# Builds the one sbt dependency cache that every other sbt job restores
+# (.github/actions/sbt-cache). It runs on main only, so pull requests never save
+# sbt caches: their saves used to pile up one ~500 MB copy per build-file hash and
+# push the repository past its 10 GB Actions cache limit.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.sbt'
+      - 'project/**'
+      - 'SCALA_VERSION'
+      - '.github/actions/sbt-cache/**'
+      - '.github/workflows/sbt-cache.yml'
+  schedule:
+    # Weekly, so the cache is rebuilt if GitHub evicted it
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: sbt-cache
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    name: Warm sbt cache
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+      - name: Check for an existing cache
+        id: probe
+        uses: actions/cache/restore@v6
+        with:
+          # Must list the same paths as .github/actions/sbt-cache: the paths are part of the cache version
+          path: |
+            ~/.cache/coursier
+            ~/.ivy2/cache
+            ~/.sbt
+            !~/.sbt/*.lock
+          key: sbt-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.sbt', 'project/build.properties', 'project/**.scala', 'SCALA_VERSION') }}
+          lookup-only: true
+      - uses: ./.github/actions/sbt-cache
+        if: steps.probe.outputs.cache-hit != 'true'
+      - name: Resolve dependencies of all projects
+        if: steps.probe.outputs.cache-hit != 'true'
+        # Test/compile also fetches the compiler bridge and the Scala.js / Scala Native compiler
+        # plugins, and scalafmtCheckAll fetches scalafmt-core, which `update` alone does not.
+        run: JVM_OPTS=-Xmx4g ./sbt "scalafmtCheckAll; projectJVM/Test/compile; projectJS/Test/compile; projectNative/Test/compile"
+      - uses: ./.github/actions/sbt-cache
+        if: steps.probe.outputs.cache-hit != 'true'
+        with:
+          save: 'true'

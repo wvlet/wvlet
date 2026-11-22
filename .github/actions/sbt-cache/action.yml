@@ -1,0 +1,36 @@
+name: sbt dependency cache
+description: >-
+  Restore (or, from the sbt-cache workflow on main, save) the sbt/Coursier dependency cache.
+  Only the sbt-cache workflow saves, after resolving every project's dependencies, so each
+  restore gets a complete cache. When setup-java's `cache: sbt` was used instead, all jobs
+  shared one key that the first-finishing job saved with only its own dependencies, and the
+  other jobs re-downloaded theirs from Maven Central on every run.
+inputs:
+  save:
+    description: "'true' to save the cache instead of restoring it (sbt-cache workflow only)"
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Restore sbt cache
+      if: ${{ inputs.save != 'true' }}
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          ~/.cache/coursier
+          ~/.ivy2/cache
+          ~/.sbt
+          !~/.sbt/*.lock
+        key: sbt-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.sbt', 'project/build.properties', 'project/**.scala', 'SCALA_VERSION') }}
+        restore-keys: |
+          sbt-v1-${{ runner.os }}-${{ runner.arch }}-
+    - name: Save sbt cache
+      if: ${{ inputs.save == 'true' }}
+      uses: actions/cache/save@v6
+      with:
+        path: |
+          ~/.cache/coursier
+          ~/.ivy2/cache
+          ~/.sbt
+          !~/.sbt/*.lock
+        key: sbt-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.sbt', 'project/build.properties', 'project/**.scala', 'SCALA_VERSION') }}
