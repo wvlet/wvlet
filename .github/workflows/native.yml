@@ -152,9 +152,15 @@ jobs:
           Write-Host "Downloading LLVM $llvmVersion ($installer)..."
           Invoke-WebRequest -Uri $url -OutFile "llvm-installer.exe"
           Write-Host "Installing LLVM..."
-          Start-Process -FilePath ".\llvm-installer.exe" -ArgumentList "/S","/D=C:\Program Files\LLVM" -Wait
+          $proc = Start-Process -FilePath ".\llvm-installer.exe" -ArgumentList "/S","/D=C:\Program Files\LLVM" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "LLVM installer failed with exit code $($proc.ExitCode)" }
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-          & "C:\Program Files\LLVM\bin\clang.exe" --version
+          # windows-latest preinstalls an older LLVM in the same folder; fail here, not in sbt
+          $clangVersion = & "C:\Program Files\LLVM\bin\clang.exe" --version | Out-String
+          Write-Host $clangVersion
+          if ($clangVersion -notmatch "clang version $([regex]::Escape($llvmVersion))") {
+            throw "Expected clang $llvmVersion"
+          }
         shell: pwsh
       # Cache vcpkg compiled libraries to avoid rebuilding OpenSSL etc. every time
       - name: Cache vcpkg artifacts
