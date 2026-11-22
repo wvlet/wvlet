@@ -1,6 +1,6 @@
 # ADR: Morsel-driven parallelism in the columnar engine
 
-Date: 2026-11-22 · PR #TBD
+Date: 2026-11-22 · PR #2210
 
 ## Context
 
