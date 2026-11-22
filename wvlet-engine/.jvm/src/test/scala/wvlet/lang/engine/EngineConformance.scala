@@ -29,10 +29,14 @@ case class ConformanceResult(name: String, matched: Boolean, message: String)
 /**
   * Runs the queries of .wv files on both DuckDB (via generated SQL) and the engine, and compares
   * the results as multisets of rows (row order is compared only through the values: ties in ORDER
-  * BY keys may legitimately differ)
+  * BY keys may legitimately differ). `optimizer` selects the engine's planner optimizations
   */
-class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: WvletEngine => Unit)
-    extends LogSupport
+class EngineConformance(
+    specPath: String,
+    setupSQL: Seq[String],
+    setupEngine: WvletEngine => Unit,
+    optimizer: plan.OptimizerOptions = plan.OptimizerOptions()
+) extends LogSupport
     with AutoCloseable:
   Class.forName("org.duckdb.DuckDBDriver")
   private val conn: Connection = DriverManager.getConnection("jdbc:duckdb:")
@@ -42,7 +46,7 @@ class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: Wv
     finally st.close()
   }
 
-  val engine = WvletEngine(baseDir = specPath)
+  val engine = WvletEngine(baseDir = specPath, optimizer = optimizer)
   setupEngine(engine)
 
   private val compiler = Compiler(
@@ -53,16 +57,29 @@ class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: Wv
 
   override def close(): Unit = conn.close()
 
-  def run(unit: CompilationUnit): Seq[ConformanceResult] =
+  def run(unit: CompilationUnit): Seq[ConformanceResult] = queries(unit)((n, q) => compare(n, q))
+
+  /** The engine's physical plan of each query in the unit, or the planning error */
+  def explain(unit: CompilationUnit): Seq[String] =
+    queries(unit) { (_, q) =>
+      try
+        engine.explain(q)
+      catch
+        case e: Exception =>
+          s"error: ${e.getMessage}"
+    }
+
+  /** Apply f to each query of the unit, named `<file name>#<query number>` */
+  private def queries[A](unit: CompilationUnit)(f: Context ?=> (String, Relation) => A): Seq[A] =
     val r                            = compiler.compileSingleUnit(unit)
     given ctx: Context               = r.context
-    val results                      = Seq.newBuilder[ConformanceResult]
+    val results                      = Seq.newBuilder[A]
     var idx                          = 0
     def walk(e: ExecutionPlan): Unit =
       e match
         case ExecuteQuery(q: Relation) =>
           idx += 1
-          results += compare(s"${unit.sourceFile.fileName}#${idx}", q)
+          results += f(s"${unit.sourceFile.fileName}#${idx}", q)
         case ExecuteTasks(ts) =>
           ts.foreach(walk)
         case ExecuteSave(_, q) =>

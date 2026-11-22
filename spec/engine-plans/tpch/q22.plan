@@ -1,0 +1,13 @@
+-- q22#1
+Sort[parallelism=N](#0) -> [cntrycode:string, numcust:long, totacctbal:decimal(38,2)]
+  Project(#0, #1, #2) -> [cntrycode:string, numcust:long, totacctbal:decimal(38,2)]
+    Project(#0, #1, #2) -> [cntrycode:string, agg:count_star():long, agg:sum(#1):decimal(38,2)]
+      PartitionedAgg[parallelism=N](keys=[#0], aggs=[agg:sum(#1), agg:sum(#2)]) -> [cntrycode:string, __final_0:long, __final_1:decimal(38,2)]
+        Morsel[parallelism=N] -> [cntrycode:string, __partial_0:long, __partial_1:decimal(38,2)]
+          HashAgg(keys=[#0], aggs=[agg:count_star(), agg:sum(#1)]) -> [cntrycode:string, __partial_0:long, __partial_1:decimal(38,2)]
+            Project(substring(#0,cast(lit(1:int) as long),cast(lit(2:int) as long)), #1) -> [cntrycode:string, c_acctbal:decimal(15,2)]
+              Filter((in(substring(#1,cast(lit(1:int) as long),cast(lit(2:int) as long)),23,13,17,31,18,30,29,false) and (cast(#2 as double)>lit(5017.600775193799:double))), keep=1,2) -> [c_phone:string, c_acctbal:decimal(15,2)]
+                HashJoin[RightAnti](#0 = #0) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+                  Scan[orders](columns=o_custkey) -> [o_custkey:long]
+                  Morsel[parallelism=N] -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+                    Scan[customer](columns=c_custkey,c_phone,c_acctbal) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]

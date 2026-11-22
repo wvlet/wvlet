@@ -29,11 +29,24 @@ import scala.collection.mutable
   */
 object ColumnPruner:
 
-  /** Prune a whole plan. The output schema is unchanged */
-  def apply(op: Operator): Operator =
-    val all = (0 until op.schema.size).toArray
+  /**
+    * What the pass does: drop unused columns (`pruneColumns`), and attach the filters directly over
+    * Parquet scans for row-group skipping (`scanFilters`)
+    */
+  private case class Mode(pruneColumns: Boolean, scanFilters: Boolean)
+
+  /**
+    * Prune a whole plan. The output schema is unchanged. With `pruneColumns = false`, every column
+    * is kept and only the scan filters are attached
+    */
+  def apply(op: Operator, pruneColumns: Boolean = true, scanFilters: Boolean = true): Operator =
+    given Mode = Mode(pruneColumns, scanFilters)
+    val all    = (0 until op.schema.size).toArray
     try
-      prune(op, all)._1
+      if !pruneColumns && !scanFilters then
+        op
+      else
+        prune(op, all)._1
     catch
       // An expression this pass can't rewrite (VExprs.remap): run the plan unpruned
       case e: IllegalStateException =>
@@ -51,7 +64,12 @@ object ColumnPruner:
 
   private def sorted(cols: mutable.BitSet): Array[Int] = cols.toArray.sorted
 
-  private def prune(op: Operator, required: Array[Int]): (Operator, Array[Int]) =
+  private def prune(op: Operator, needed: Array[Int])(using mode: Mode): (Operator, Array[Int]) =
+    val required =
+      if mode.pruneColumns then
+        needed
+      else
+        all(op)
     op match
       case s: ScanOp =>
         if required.length == s.schema.size then
@@ -79,7 +97,7 @@ object ColumnPruner:
         VExprs.collectRefs(f.cond, need)
         val input =
           f.child match
-            case s: ScanOp if s.source.supportsFilter =>
+            case s: ScanOp if mode.scanFilters && s.source.supportsFilter =>
               ScanFilters
                 .toParquet(f.cond, i => Some(s.sourceColumnName(i)).filter(s.source.canFilterOn))
                 .map(s.withFilter)
@@ -201,6 +219,7 @@ object ColumnPruner:
 
       case other =>
         identity(other)
+    end match
 
   end prune
 
@@ -229,7 +248,9 @@ object ColumnPruner:
         left.schema.size + right.schema.size
     op.schema.size == expected
 
-  private def pruneHashJoin(j: HashJoinOp, required: Array[Int]): (Operator, Array[Int]) =
+  private def pruneHashJoin(j: HashJoinOp, required: Array[Int])(using
+      Mode
+  ): (Operator, Array[Int]) =
     if !outputWidthMatches(j, j.left, j.right, j.kind) then
       return identity(j)
     val lw        = j.left.schema.size
@@ -275,9 +296,8 @@ object ColumnPruner:
 
   end pruneHashJoin
 
-  private def pruneNestedLoopJoin(
-      j: NestedLoopJoinOp,
-      required: Array[Int]
+  private def pruneNestedLoopJoin(j: NestedLoopJoinOp, required: Array[Int])(using
+      Mode
   ): (Operator, Array[Int]) =
     if !outputWidthMatches(j, j.left, j.right, j.kind) then
       return identity(j)

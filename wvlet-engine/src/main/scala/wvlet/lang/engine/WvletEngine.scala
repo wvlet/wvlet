@@ -57,10 +57,14 @@ case class EngineResult(schema: Schema, batches: Seq[Batch]):
 /**
   * The in-process columnar query engine: executes typed wvlet relations on vectors, reading Parquet
   * / Iceberg through uni. Tables are registered in [[catalog]]; file paths in queries are resolved
-  * against `baseDir`.
+  * against `baseDir`. `optimizer` selects the planner optimizations to run (by default, all but
+  * those named in the `wvlet.engine.optimizer.disabled` system property).
   */
-class WvletEngine(val catalog: EngineCatalog = EngineCatalog(), baseDir: String = ".")
-    extends LogSupport:
+class WvletEngine(
+    val catalog: EngineCatalog = EngineCatalog(),
+    baseDir: String = ".",
+    val optimizer: OptimizerOptions = OptimizerOptions.fromSystem()
+) extends LogSupport:
 
   private class DefaultResolver(using ctx: Context) extends SourceResolver:
     def tableSource(name: String, fullName: String): Option[TableSource] = catalog
@@ -116,8 +120,11 @@ class WvletEngine(val catalog: EngineCatalog = EngineCatalog(), baseDir: String 
         path
 
   /** Build the physical plan of a relation (model references must already be expanded) */
-  def physicalPlan(r: Relation)(using ctx: Context): Operator = Planner(catalog, DefaultResolver())
-    .plan(lowerShow(r))
+  def physicalPlan(r: Relation)(using ctx: Context): Operator = Planner(
+    catalog,
+    DefaultResolver(),
+    optimizer
+  ).plan(lowerShow(r))
 
   /** SHOW statements become their SQL queries over information_schema (or a VALUES list) */
   private def lowerShow(r: Relation)(using ctx: Context): Relation = r
@@ -127,8 +134,11 @@ class WvletEngine(val catalog: EngineCatalog = EngineCatalog(), baseDir: String 
     }
     .asInstanceOf[Relation]
 
+  /** An engine running only the given planner optimizations, over the same catalog and folder */
+  def withOptimizer(o: OptimizerOptions): WvletEngine = WvletEngine(catalog, baseDir, o)
+
   /** An engine over another catalog, resolving files against the same folder */
-  def withCatalog(c: EngineCatalog): WvletEngine = WvletEngine(c, baseDir)
+  def withCatalog(c: EngineCatalog): WvletEngine = WvletEngine(c, baseDir, optimizer)
 
   /** Expand model references, plan, and run a query relation */
   def execute(r: Relation)(using ctx: Context): EngineResult =
