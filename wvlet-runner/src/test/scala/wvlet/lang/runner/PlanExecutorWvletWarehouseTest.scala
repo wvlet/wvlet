@@ -71,6 +71,8 @@ class PlanExecutorWvletWarehouseTest extends UniTest:
     finally
       provider.close()
 
+  end run
+
   test("keep saved tables across sessions") {
     val w = newWarehouse()
     run(
@@ -200,6 +202,20 @@ class PlanExecutorWvletWarehouseTest extends UniTest:
         |order by id
         |test _.rows should be [[1, null], [2, null], [3, 1.5]]""".stripMargin
     )
+  }
+
+  test("find reshaped columns ignoring case") {
+    val w = newWarehouse()
+    run(
+      w,
+      """from [[1, 2]] as t(a, b)
+        |save to cases
+        |reshape cases {
+        |  exclude A
+        |  cast B as long
+        |}""".stripMargin
+    )
+    run(w, "from cases\ntest _.columns should be ['b']\ntest _.rows should be [[2]]")
   }
 
   test("keep schemas as folders") {

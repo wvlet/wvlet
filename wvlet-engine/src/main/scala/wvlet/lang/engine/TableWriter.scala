@@ -105,15 +105,14 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
         throw StatusCode.TABLE_ALREADY_EXISTS.newException(s"Table ${name} already exists")
       case existing =>
         existing.foreach(t => writable(t, "replace"))
+        // The spec is kept only once the table exists, so a failed create leaves no stale spec
+        val created =
+          if persistent then
+            wh.create(name, spec.schema, specProperties(Some(spec)), replace = existing.isDefined)
+          else
+            MemTable(name, spec.schema, Nil)
         setSpec(name, Some(spec))
-        if persistent then
-          Some(
-            register(
-              wh.create(name, spec.schema, specProperties(Some(spec)), replace = existing.isDefined)
-            )
-          )
-        else
-          Some(register(MemTable(name, spec.schema, Nil)))
+        Some(register(created))
 
   /** `drop table <name>`: remove the table; returns false when it doesn't exist and `ifExists` */
   def dropTable(name: String, ifExists: Boolean = false): Boolean =
@@ -334,7 +333,9 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
         renameTable(name, table, to)
       case None =>
         val before = unqualified(table.schema)
-        val spec0  = specOf(name)
+        val cached = specOf(name)
+        // A spec that doesn't match the columns is ignored, as defaultsOf and checkConstraints do
+        val spec0 = cached.filter(_.columns.size == before.size)
         // The new schema, spec, and how to compute each new column from the old row
         var columns: IndexedSeq[AlteredColumn] = before
           .fields
@@ -385,8 +386,8 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
                 throw StatusCode
                   .INVALID_ARGUMENT
                   .newException(s"Cannot drop ${c}: it is in a primary key or unique constraint")
+              changes += IcebergTableChange.DropColumn(columns(i).name)
               columns = columns.patch(i, Nil, 1)
-              changes += IcebergTableChange.DropColumn(c)
           case AlterOp.RenameColumn(from, to, ifExists) =>
             val i = find(from)
             if i < 0 then
@@ -412,7 +413,14 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
             val i    = require(c)
             val from = columns(i).ptype
             if from != ptype then
-              columns = columns.updated(i, columns(i).copy(ptype = ptype))
+              // The default takes the new type too
+              columns = columns.updated(
+                i,
+                columns(i).copy(
+                  ptype = ptype,
+                  default = ValueOps.cast(columns(i).default, from, ptype)
+                )
+              )
               if canWiden(from, ptype) then
                 changes +=
                   IcebergTableChange.WidenColumn(
@@ -430,9 +438,12 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
           case AlterOp.DropNotNull(c) =>
             val i = require(c)
             columns = columns.updated(i, columns(i).copy(notNull = false))
-          case AlterOp.SetDefault(c, v) =>
+          case AlterOp.SetDefault(c, v, vtype) =>
             val i = require(c)
-            columns = columns.updated(i, columns(i).copy(default = v))
+            columns = columns.updated(
+              i,
+              columns(i).copy(default = ValueOps.cast(v, vtype, columns(i).ptype))
+            )
           case AlterOp.DropDefault(c) =>
             val i = require(c)
             columns = columns.updated(i, columns(i).copy(default = null))
@@ -472,33 +483,44 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
           }
           Batch(cols.toArray, b.size)
         }
+        // checkConstraints reads the new spec; a failed check or commit restores the old one
         setSpec(name, spec)
-        table match
-          case m: ManagedTable =>
-            if rewrite then
+        try
+          table match
+            case m: ManagedTable =>
+              if rewrite then
+                val batches = rows()
+                checkConstraints(name, schema, batches, notNullOf = batches)
+                register(wh.replace(name, schema, batches, specProperties(spec)))
+              else
+                if columns.exists(c =>
+                    c.notNull &&
+                      !spec0.exists(
+                        _.columns.exists(o => o.name.equalsIgnoreCase(c.name) && o.notNull)
+                      )
+                  )
+                then
+                  val batches = rows()
+                  checkConstraints(name, schema, batches, notNullOf = batches)
+                register(
+                  wh.alter(
+                    name,
+                    changes.result() :+
+                      IcebergTableChange.SetProperty(
+                        SpecProperty,
+                        spec.map(specToJson).getOrElse("")
+                      )
+                  )
+                )
+            case _ =>
               val batches = rows()
               checkConstraints(name, schema, batches, notNullOf = batches)
-              register(wh.replace(name, schema, batches, specProperties(spec)))
-            else
-              if columns.exists(c =>
-                  c.notNull &&
-                    !spec0.exists(
-                      _.columns.exists(o => o.name.equalsIgnoreCase(c.name) && o.notNull)
-                    )
-                )
-              then
-                checkConstraints(name, schema, rows(), notNullOf = rows())
-              register(
-                wh.alter(
-                  name,
-                  changes.result() :+
-                    IcebergTableChange.SetProperty(SpecProperty, spec.map(specToJson).getOrElse(""))
-                )
-              )
-          case _ =>
-            val batches = rows()
-            checkConstraints(name, schema, batches, notNullOf = batches)
-            register(MemTable(table.name, schema, batches))
+              register(MemTable(table.name, schema, batches))
+        catch
+          case e: Throwable =>
+            setSpec(name, cached)
+            throw e
+        end try
     end match
 
   end alterTable
@@ -626,7 +648,8 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
         }
         val inserted = m.incoming.filter(r => m.keyOf(r).forall(k => !matched.contains(k)))
         val written  =
-          touched.map(t => toBatch(schema, t._2.toIndexedSeq)) :+ toBatch(schema, inserted)
+          touched.map(t => toBatch(schema, t._2.toIndexedSeq)) ++
+            Option.when(inserted.nonEmpty)(toBatch(schema, inserted))
         val untouched =
           if specOf(name).exists(_.uniqueKeys.nonEmpty) then
             val replaced = touched.map(_._1).toSet
@@ -634,7 +657,9 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
           else
             Nil
         checkConstraints(name, schema, untouched ++ written, notNullOf = written)
-        if touched.isEmpty then
+        if touched.isEmpty && inserted.isEmpty then
+          table
+        else if touched.isEmpty then
           register(wh.append(name, schema, written))
         else
           register(wh.replaceFiles(name, schema, touched.map(_._1), written))
@@ -932,7 +957,9 @@ object TableWriter:
     case SetType(name: String, ptype: PType)
     case SetNotNull(name: String)
     case DropNotNull(name: String)
-    case SetDefault(name: String, value: Any)
+
+    /** A literal default of type `valueType`, cast to the column's type when the alter applies */
+    case SetDefault(name: String, value: Any, valueType: PType)
     case DropDefault(name: String)
     case RenameTable(to: String)
 

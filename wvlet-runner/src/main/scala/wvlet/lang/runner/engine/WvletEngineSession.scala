@@ -403,8 +403,8 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
           case None if a.ifExists =>
           case None               =>
             throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${key}")
-          case Some(t) =>
-            registerSchema(writer.alterTable(key, a.operations.map(alterOpOf(key, t, _))))
+          case Some(_) =>
+            registerSchema(writer.alterTable(key, a.operations.map(alterOpOf(key, _))))
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
@@ -419,9 +419,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     schemas.contains(name.toLowerCase) || warehouse.exists(_.hasSchema(name))
 
   // An `alter table` operation as the engine's
-  private def alterOpOf(key: String, table: TableSource, op: AlterTableOps)(using
-      Context
-  ): TableWriter.AlterOp =
+  private def alterOpOf(key: String, op: AlterTableOps)(using Context): TableWriter.AlterOp =
     import TableWriter.AlterOp
     def unsupported(): Nothing =
       throw StatusCode
@@ -443,26 +441,16 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
       case d: AlterColumnDropDefaultOp =>
         AlterOp.DropDefault(d.column.leafName)
       case d: AlterColumnSetDefaultOp =>
-        val column = d.column.leafName
-        val ptype  = table
-          .schema
-          .fields
-          .find(_.name.equalsIgnoreCase(column))
-          .map(_.ptype)
-          .getOrElse(
-            throw StatusCode
-              .COLUMN_NOT_FOUND
-              .newException(s"Column ${column} is not found in ${key}")
-          )
         val v = literalValueOf(ExpressionEvaluator.eval(d.defaultValue)).getOrElse(
           throw StatusCode
             .NOT_IMPLEMENTED
             .newException(
-              s"The default of column ${column} must be a literal on the wvlet engine",
+              s"The default of column ${d.column.leafName} must be a literal on the wvlet engine",
               d.defaultValue.sourceLocation
             )
         )
-        AlterOp.SetDefault(column, ValueOps.cast(v, ptypeOfLiteral(v), ptype))
+        // Cast to the column's type when the alter reaches this operation
+        AlterOp.SetDefault(d.column.leafName, v, ptypeOfLiteral(v))
       case r: RenameTableOp =>
         AlterOp.RenameTable(tableKey(r.newName.fullName))
       case _ =>
