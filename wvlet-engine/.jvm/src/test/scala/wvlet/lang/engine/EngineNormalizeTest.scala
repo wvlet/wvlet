@@ -20,6 +20,10 @@ import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.runtime.*
+import wvlet.lang.engine.plan.Planner
+import wvlet.lang.engine.plan.SourceResolver
+import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.model.plan.RawSQL
 import wvlet.lang.model.plan.Relation
 import wvlet.uni.test.UniTest
 
@@ -133,6 +137,61 @@ class EngineNormalizeTest extends UniTest:
     val p = withQuery(query)(engine.runtimePlan(_))
     conjuncts(filterOf(p).cond.expr).size shouldBe 2
     // The rewritten filter returns the same rows as the unfactored one
+    def count(e: WvletEngine): Long =
+      withQuery(query)(q => e.execute(q).batches.map(_.size.toLong).sum)
+    count(engine) shouldBe count(unoptimized)
+  }
+
+  private def innerJoinsOf(p: RuntimePlan): RuntimePlan.InnerJoins =
+    def find(p: RuntimePlan): Option[RuntimePlan.InnerJoins] =
+      p match
+        case j: RuntimePlan.InnerJoins =>
+          Some(j)
+        case other =>
+          other.children.iterator.flatMap(find).nextOption()
+    find(p).getOrElse(fail(s"No inner joins in\n${p.explain}"))
+
+  test("factor the conditions of an inner join tree, keeping their literal counts") {
+    val query =
+      """from lineitem
+        |join part on
+        |     (p_partkey = l_partkey and p_container = 'SM BOX' and l_quantity > 1)
+        |  or (p_partkey = l_partkey and p_container = 'SM BOX' and l_quantity > 10)
+        |where l_shipmode in ('AIR', 'REG AIR')
+        |select l_orderkey""".stripMargin
+    // Bound before any pass (ReorderJoins replaces InnerJoins), with FactorOr enabled: the
+    // binder leaves the factoring to the pass
+    val p =
+      withQuery(query) { r =>
+        val planner = Planner(
+          unoptimized.catalog,
+          new SourceResolver:
+            override def tableSource(name: String, fullName: String): Option[TableSource] = None
+            override def fileSource(path: String): Option[TableSource]                    = None
+            override def parseSql(r: RawSQL): Relation = fail("No SQL")
+          ,
+          options
+        )
+        RuntimeBinder(planner).bind(r)
+      }
+    innerJoinsOf(p).conds.map(_.cond.expr) shouldMatch { case Seq(_: OrExpr, _) =>
+    }
+    val o     = Optimizer.only(Normalize, options)
+    val conds = innerJoinsOf(o.run(p)).conds
+    debug(conds.mkString("\n"))
+    conds.size shouldBe 4
+    // The common equality between the inputs, then the common literal comparison, in place
+    val Seq(key, container, rest, shipmode) = conds: @unchecked
+    key.cond.refs.size shouldBe 2
+    key.literals shouldBe None
+    container.cond.expr.sig shouldContain "lit(SM BOX"
+    container.literals shouldBe Some(1)
+    rest.cond.expr shouldMatch { case _: OrExpr =>
+    }
+    rest.literals shouldBe None
+    shipmode.literals shouldBe Some(2)
+    o.firedRules shouldBe Map("factor_or" -> 1)
+    // The factored join returns the same rows as the unfactored one
     def count(e: WvletEngine): Long =
       withQuery(query)(q => e.execute(q).batches.map(_.size.toLong).sum)
     count(engine) shouldBe count(unoptimized)
