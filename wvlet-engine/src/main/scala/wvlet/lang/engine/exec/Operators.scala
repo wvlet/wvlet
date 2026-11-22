@@ -172,9 +172,9 @@ case class SortKey(expr: VExpr, ascending: Boolean, nullsFirst: Boolean)
 /**
   * Full sort; with a limit only the top rows are kept. Inputs of at least `minParallelRows` rows
   * are sorted in parallel on `runner`: each of `runner.parallelism` contiguous chunks of the input
-  * is sorted (and cut to the limit) as a task, then the sorted runs are merged on the calling
-  * thread. Ties in the merge go to the earlier chunk, so the output equals the sequential (stable)
-  * sort.
+  * is sorted (and cut to the limit) as a task. The merge of the sorted runs is split at evenly
+  * spaced output ranks ([[SortOp.splitRanks]]), and each range is merged and gathered as a task.
+  * Ties in the merge go to the earlier chunk, so the output equals the sequential (stable) sort.
   */
 class SortOp(
     val child: Operator,
@@ -230,21 +230,23 @@ class SortOp(
         val hi = (all.size.toLong * (c + 1) / chunks).toInt
         runner.submit(() => SortOp.sortRange(cmp, lo, hi, n))
       }
-      val sorted = SortOp.merge(runs.map(_.get()).toArray, cmp, n)
-      // Gather the output batches in parallel too: one task per run of consecutive batches
-      val numBatches = (n + Batch.DefaultSize - 1) / Batch.DefaultSize
-      val perTask    = math.max(1, (numBatches + chunks - 1) / chunks)
-      val gathers    = (0 until numBatches by perTask).map { first =>
+      val sortedRuns = runs.map(_.get()).toArray
+      // Split the merge into independent output ranges (one task each) that merge and gather
+      val ranges = SortOp.mergeRangeCount(n, chunks, minParallelRows)
+      val cuts   = SortOp.splitRanks(sortedRuns, cmp, n, ranges)
+      val tasks  = (0 until ranges).map { t =>
         runner.submit { () =>
-          val last = math.min(numBatches, first + perTask)
-          (first until last).map { b =>
-            val from = b * Batch.DefaultSize
-            val to   = math.min(n, from + Batch.DefaultSize)
-            all.gather(java.util.Arrays.copyOfRange(sorted, from, to), to - from)
-          }
+          val part = SortOp.mergeRange(sortedRuns, cmp, cuts(t), cuts(t + 1))
+          Iterator
+            .range(0, part.length, Batch.DefaultSize)
+            .map { from =>
+              val to = math.min(part.length, from + Batch.DefaultSize)
+              all.gather(java.util.Arrays.copyOfRange(part, from, to), to - from)
+            }
+            .toIndexedSeq
         }
       }
-      gathers.iterator.flatMap(_.get())
+      tasks.iterator.flatMap(_.get())
     end if
 
   end sortAll
@@ -263,29 +265,219 @@ object SortOp:
     .flatMap(_.toIntOption)
     .getOrElse(65536)
 
-  /** Row indexes lo until hi in (stable) sorted order, cut to the first `limit` */
+  /**
+    * Row indexes lo until hi in (stable) sorted order, cut to the first `limit`. A limit of at most
+    * 1/8 of the range keeps a bounded heap of the top rows instead of sorting the whole range
+    */
   def sortRange(cmp: SortOp.RowComparator, lo: Int, hi: Int, limit: Int): Array[Int] =
-    val idx = new Array[Integer](hi - lo)
-    var i   = 0
-    while i < idx.length do
-      idx(i) = Integer.valueOf(lo + i)
+    if limit <= 0 || hi <= lo then
+      Array.emptyIntArray
+    else if limit.toLong * 8 <= hi - lo then
+      topRange(cmp, lo, hi, limit)
+    else
+      val idx = new Array[Integer](hi - lo)
+      var i   = 0
+      while i < idx.length do
+        idx(i) = Integer.valueOf(lo + i)
+        i += 1
+      java.util.Arrays.sort(idx, cmp)
+      val out = new Array[Int](math.min(limit, idx.length))
+      i = 0
+      while i < out.length do
+        out(i) = idx(i).intValue()
+        i += 1
+      out
+
+  /**
+    * The first `limit` (< hi - lo) row indexes of lo until hi in stable sorted order, using a
+    * max-heap of the `limit` smallest rows by (key, row index). A later row replaces the heap top
+    * only when its key is strictly smaller, so ties keep the input order
+    */
+  private[exec] def topRange(cmp: SortOp.RowComparator, lo: Int, hi: Int, limit: Int): Array[Int] =
+    val heap = new Array[Int](limit)
+    var size = limit
+    // a ranks after b in the stable order
+    def after(a: Int, b: Int): Boolean =
+      val c = cmp.compareRows(a, b)
+      c > 0 || (c == 0 && a > b)
+    def siftDown(start: Int): Unit =
+      var i    = start
+      var done = false
+      while !done do
+        val l = 2 * i + 1
+        if l >= size then
+          done = true
+        else
+          val r = l + 1
+          val m =
+            if r < size && after(heap(r), heap(l)) then
+              r
+            else
+              l
+          if after(heap(m), heap(i)) then
+            val t = heap(i)
+            heap(i) = heap(m)
+            heap(m) = t
+            i = m
+          else
+            done = true
+    var i = 0
+    while i < limit do
+      heap(i) = lo + i
       i += 1
-    java.util.Arrays.sort(idx, cmp)
-    val out = new Array[Int](math.min(limit, idx.length))
-    i = 0
-    while i < out.length do
-      out(i) = idx(i).intValue()
-      i += 1
+    var k = size / 2 - 1
+    while k >= 0 do
+      siftDown(k)
+      k -= 1
+    var j = lo + limit
+    while j < hi do
+      if cmp.compareRows(j, heap(0)) < 0 then
+        heap(0) = j
+        siftDown(0)
+      j += 1
+    // Pop the largest remaining row into the back of the output
+    val out = new Array[Int](limit)
+    var o   = limit - 1
+    while o >= 0 do
+      out(o) = heap(0)
+      size -= 1
+      heap(0) = heap(size)
+      siftDown(0)
+      o -= 1
     out
+
+  end topRange
+
+  /**
+    * The number of independent output ranges to split the merge of `n` rows into: one (a merge on
+    * the calling thread's task) below `minParallelRows` rows, else one per chunk
+    */
+  def mergeRangeCount(n: Int, chunks: Int, minParallelRows: Int): Int =
+    if n < minParallelRows then
+      1
+    else
+      math.max(1, math.min(chunks, n))
+
+  /**
+    * Cuts of sorted runs at `ranges + 1` evenly spaced ranks 0 .. n of their merge: `cuts(t)(r)` is
+    * how many rows of run r come before rank `n * t / ranges`. Rows are ordered by (key, run,
+    * position), so ties go to the earlier run as in [[merge]]
+    */
+  def splitRanks(
+      runs: Array[Array[Int]],
+      cmp: SortOp.RowComparator,
+      n: Int,
+      ranges: Int
+  ): Array[Array[Int]] =
+    val cuts = new Array[Array[Int]](ranges + 1)
+    var t    = 0
+    while t <= ranges do
+      cuts(t) = cutAt(runs, cmp, (n.toLong * t / ranges).toInt)
+      t += 1
+    cuts
+
+  /** How many rows of each run come before rank `k` of the merge of sorted `runs` */
+  def cutAt(runs: Array[Array[Int]], cmp: SortOp.RowComparator, k: Int): Array[Int] =
+    val p   = runs.length
+    val lo  = new Array[Int](p)
+    val hi  = new Array[Int](p)
+    val cnt = new Array[Int](p)
+    var j   = 0
+    while j < p do
+      hi(j) = runs(j).length
+      j += 1
+    // Invariant: lo(j) <= cut(j) <= hi(j). Each step halves the widest range with a pivot
+    var done = false
+    while !done do
+      var r = 0
+      j = 1
+      while j < p do
+        if hi(j) - lo(j) > hi(r) - lo(r) then
+          r = j
+        j += 1
+      if hi(r) == lo(r) then
+        done = true
+      else
+        val m = (lo(r) + hi(r)) >>> 1
+        val x = runs(r)(m)
+        // Rank of the pivot: rows ordered before (x, r, m) in each run
+        var rank = 0L
+        j = 0
+        while j < p do
+          cnt(j) =
+            if j == r then
+              m
+            else
+              countBefore(runs(j), cmp, x, inclusive = j < r)
+          rank += cnt(j)
+          j += 1
+        if rank < k then
+          // The pivot is among the first k rows, so are all rows before it
+          j = 0
+          while j < p do
+            lo(j) = math.max(lo(j), cnt(j))
+            j += 1
+          lo(r) = m + 1
+        else
+          j = 0
+          while j < p do
+            hi(j) = math.min(hi(j), cnt(j))
+            j += 1
+        end if
+      end if
+    end while
+    lo
+
+  end cutAt
+
+  /** Rows of a sorted run with a key below `x` (or at most `x` when `inclusive`) */
+  private def countBefore(
+      run: Array[Int],
+      cmp: SortOp.RowComparator,
+      x: Int,
+      inclusive: Boolean
+  ): Int =
+    var lo = 0
+    var hi = run.length
+    while lo < hi do
+      val mid = (lo + hi) >>> 1
+      val c   = cmp.compareRows(run(mid), x)
+      if c < 0 || (inclusive && c == 0) then
+        lo = mid + 1
+      else
+        hi = mid
+    lo
 
   /**
     * The first `limit` rows of sorted runs, merged with a binary heap of the runs' heads. Ties go
     * to the earlier run, so merging stable sorts of consecutive chunks gives the stable sort of all
     */
   def merge(runs: Array[Array[Int]], cmp: SortOp.RowComparator, limit: Int): Array[Int] =
-    val total = runs.iterator.map(_.length.toLong).sum
-    val out   = new Array[Int](math.min(limit.toLong, total).toInt)
-    val pos   = new Array[Int](runs.length)
+    val to = new Array[Int](runs.length)
+    var r  = 0
+    while r < runs.length do
+      to(r) = runs(r).length
+      r += 1
+    mergeRange(runs, cmp, new Array[Int](runs.length), to, limit)
+
+  /**
+    * Merges the rows `from(r)` until `to(r)` of each sorted run r (up to `limit` rows), ties going
+    * to the earlier run
+    */
+  def mergeRange(
+      runs: Array[Array[Int]],
+      cmp: SortOp.RowComparator,
+      from: Array[Int],
+      to: Array[Int],
+      limit: Int = Int.MaxValue
+  ): Array[Int] =
+    var total = 0L
+    var r     = 0
+    while r < runs.length do
+      total += to(r) - from(r)
+      r += 1
+    val out = new Array[Int](math.min(limit.toLong, total).toInt)
+    val pos = from.clone()
     // Min-heap of run ids by their current head row
     val heap                          = new Array[Int](runs.length)
     var size                          = 0
@@ -313,9 +505,9 @@ object SortOp:
             i = m
           else
             done = true
-    var r = 0
+    r = 0
     while r < runs.length do
-      if runs(r).nonEmpty then
+      if pos(r) < to(r) then
         heap(size) = r
         size += 1
       r += 1
@@ -329,13 +521,13 @@ object SortOp:
       out(o) = runs(top)(pos(top))
       o += 1
       pos(top) += 1
-      if pos(top) == runs(top).length then
+      if pos(top) == to(top) then
         size -= 1
         heap(0) = heap(size)
       siftDown(0)
     out
 
-  end merge
+  end mergeRange
 
   /** Compares rows by index; `compareRows` avoids boxing the indexes */
   abstract class RowComparator extends java.util.Comparator[Integer]:
