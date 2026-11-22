@@ -328,6 +328,17 @@ class PlanExecutorWvletEngineTest extends UniTest:
     main.getMessage shouldContain "default schema"
   }
 
+  test("format integers as strings without a fraction") {
+    val result = run("""from [[1, 2.5]] as t(id, price)
+                       |select
+                       |  id.to_string as s,
+                       |  s"#${id}" as label,
+                       |  id + '' as joined,
+                       |  price.to_string as p
+                       |test _.rows should be [['1', '#1', '1', '2.5']]""".stripMargin)
+    result.getError shouldBe None
+  }
+
   test("reshape and rename in-memory tables") {
     val result = run("""table alt_t = {
                        |  id: int

@@ -149,6 +149,24 @@ object ValueOps:
       case other =>
         other.toString
 
+  /**
+    * Format a value of a known engine type as a string. Use this over [[toStr]] when the type is
+    * known: on Scala.js an integer is a JS number that also matches `Double`, so the untyped
+    * [[toStr]] would format integer 1 as "1.0".
+    */
+  def toStr(v: Any, ptype: PType): String =
+    ptype match
+      case PType.Int32 =>
+        v.asInstanceOf[Int].toString
+      case PType.Int64 =>
+        v.asInstanceOf[Long].toString
+      case PType.Date =>
+        formatDate(v.asInstanceOf[Int])
+      case PType.Timestamp =>
+        formatTimestamp(v.asInstanceOf[Long])
+      case _ =>
+        toStr(v)
+
   def formatDouble(d: Double): String =
     if d.isNaN then
       "nan"
@@ -185,13 +203,7 @@ object ValueOps:
         case d: PType.Decimal =>
           rescale(toBigDecimal(v), d.scale)
         case PType.Str =>
-          from match
-            case PType.Date =>
-              formatDate(v.asInstanceOf[Int])
-            case PType.Timestamp =>
-              formatTimestamp(v.asInstanceOf[Long])
-            case _ =>
-              toStr(v)
+          toStr(v, from)
         case PType.Date =>
           from match
             case PType.Str =>

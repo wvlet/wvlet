@@ -585,6 +585,22 @@ class Binder(
         case _ =>
           CastExpr(e, t)
 
+  /**
+    * Concatenate argument values as strings, with NULL as an empty string. Each value is formatted
+    * by its argument type, so integers stay integers on Scala.js.
+    */
+  private def concatStrings(args: Seq[VExpr]): Array[Any] => String =
+    val types = args.map(_.ptype).toArray
+    a =>
+      val sb = StringBuilder()
+      var i  = 0
+      while i < a.length do
+        val x = a(i)
+        if x != null then
+          sb.append(ValueOps.toStr(x, types(i)))
+        i += 1
+      sb.toString
+
   def bindExpr(e: Expression): VExpr =
     e match
       case i: Identifier if subst.contains(i.leafName) =>
@@ -748,21 +764,7 @@ class Binder(
       case s: InterpolatedString =>
         // A string interpolation s"...": concatenation with NULL as an empty string
         val parts = s.parts.map(bindExpr)
-        RowFn(
-          "string_interpolation",
-          parts,
-          PType.Str,
-          a =>
-            a.iterator
-              .map(x =>
-                if x == null then
-                  ""
-                else
-                  ValueOps.toStr(x)
-              )
-              .mkString,
-          nullSafe = true
-        )
+        RowFn("string_interpolation", parts, PType.Str, concatStrings(parts), nullSafe = true)
       case f: FunctionApply if f.window.isDefined =>
         planner.windowRef(this, f)
       case w: WindowApply =>
@@ -995,21 +997,7 @@ class Binder(
             )
           case (PType.Str, _) | (_, PType.Str) if aop == ArithOp.Add =>
             // Wvlet string concatenation: NULL is an empty string
-            RowFn(
-              "string_concat",
-              Seq(l, r),
-              PType.Str,
-              a =>
-                a.iterator
-                  .map(x =>
-                    if x == null then
-                      ""
-                    else
-                      ValueOps.toStr(x)
-                  )
-                  .mkString,
-              nullSafe = true
-            )
+            RowFn("string_concat", Seq(l, r), PType.Str, concatStrings(Seq(l, r)), nullSafe = true)
           case (PType.Date, t) if t.isIntegral && (aop == ArithOp.Add || aop == ArithOp.Sub) =>
             val sign =
               if aop == ArithOp.Add then
