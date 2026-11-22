@@ -107,7 +107,7 @@ wvlet run [options] [query]
 | Option | Description |
 |--------|-------------|
 | `-f, --file <path>` | Run queries from a file |
-| `-t, --target <type>` | Target database type |
+| `-t, --target <type>` | Target database type (duckdb, trino, or `wvlet` for the in-process [wvlet engine](wvlet-engine.md)) |
 | `--catalog <name>` | Use specific catalog |
 | `--schema <name>` | Use specific schema |
 | `--format <type>` | Output format (table, json, csv, tsv) |

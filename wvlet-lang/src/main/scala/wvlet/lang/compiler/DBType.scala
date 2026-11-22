@@ -42,11 +42,12 @@ enum DBType(
 
   /**
     * The db_context name of this engine in the standard library, used to select `def ... in
-    * <context>` function variants. The in-memory engine follows the DuckDB dialect
+    * <context>` function variants. The in-memory catalog and the wvlet columnar engine follow the
+    * DuckDB dialect
     */
   def dialectContextName: String =
     this match
-      case DBType.InMemory =>
+      case DBType.InMemory | DBType.Wvlet =>
         "duckdb"
       case other =>
         other.toString.toLowerCase
@@ -116,6 +117,11 @@ enum DBType(
         supportAsOfJoin = true,
         mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue
       )
+
+  // The in-process wvlet columnar engine (wvlet-engine), which executes typed plans directly.
+  // Its function semantics follow DuckDB, against which the engine is conformance-tested
+  case Wvlet
+      extends DBType(supportStructExpr = true, mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue)
 
   case Generic extends DBType
 

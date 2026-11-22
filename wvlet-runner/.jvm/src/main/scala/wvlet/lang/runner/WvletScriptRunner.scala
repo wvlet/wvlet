@@ -18,6 +18,7 @@ import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.catalog.LazyCatalog
 import wvlet.lang.runner.connector.ConnectorCatalogs
+import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.query.QueryProgressMonitor
@@ -85,14 +86,22 @@ class WvletScriptRunner(
       )
     )
 
-    // Set the default catalog given in the configuration
+    // Set the default catalog given in the configuration. The in-process wvlet engine needs no
+    // catalog setting: its registered tables form the `wvlet` catalog
+    val defaultEngine = config.profile.defaultEngine
     config
       .catalog
+      .orElse(
+        Option.when(WvletEngineSession.isInProcess(defaultEngine))(WvletEngineSession.connectorType)
+      )
       .foreach { catalog =>
         c.setDefaultCatalog(
-          queryExecutor
-            .getDBConnector(config.profile)
-            .getCatalog(catalog, config.schema.getOrElse("main"))
+          ConnectorCatalogs.catalogOf(
+            queryExecutor.getConnector(defaultEngine),
+            defaultEngine,
+            catalog,
+            config.schema.getOrElse("main")
+          )
         )
       }
     config

@@ -21,10 +21,10 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.QueryExecutorConfig
-import wvlet.lang.connector.DBConnector
 import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.log.LogSupport
 
 case class WvletCompilerOption(
@@ -77,15 +77,7 @@ class WvletCompiler(
           default = Profile.defaultDuckDBProfile
         )
 
-  private var _dbConnector: DBConnector = null
-
-  private def getDBConnector: DBConnector = synchronized {
-    if _dbConnector == null then
-      _dbConnector = dbConnectorProvider.getConnector(currentProfile)
-    _dbConnector
-  }
-
-  // Closing the provider closes every cached connector, including _dbConnector and the
+  // Closing the provider closes every cached connector, including the default engine and the
   // scratch DuckDB connector QueryExecutor may have created for local file reads/exports
   override def close(): Unit = dbConnectorProvider.close()
 
@@ -109,13 +101,21 @@ class WvletCompiler(
         Compiler.parseOnly(options)
       else
         Compiler(options)
-    // Set catalog from connector
-    currentProfile
-      .defaultEngine
-      .catalog
+    // Set catalog from connector. The in-process wvlet engine needs no catalog setting: its
+    // registered tables form the `wvlet` catalog
+    val defaultEngine = currentProfile.defaultEngine
+    WvletEngineSession
+      .defaultCatalogName(defaultEngine)
       .foreach { catalog =>
-        val schema = currentProfile.defaultEngine.schema.getOrElse("main")
-        compiler.setDefaultCatalog(getDBConnector.getCatalog(catalog, schema))
+        val schema = defaultEngine.schema.getOrElse("main")
+        compiler.setDefaultCatalog(
+          ConnectorCatalogs.catalogOf(
+            dbConnectorProvider.getConnector(defaultEngine),
+            defaultEngine,
+            catalog,
+            schema
+          )
+        )
       }
 
     currentProfile

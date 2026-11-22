@@ -20,7 +20,9 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.lang.connector.duckdb.DuckDBConnector
 
 import scala.util.control.NonFatal
@@ -30,13 +32,19 @@ trait RunnerSpec(
     ignoredSpec: Map[String, String] = Map.empty,
     parseOnly: Boolean = false,
     prepareTPCH: Boolean = false,
-    prepareTPCDS: Boolean = false
+    prepareTPCDS: Boolean = false,
+    // The profile to run specs on; DuckDB when unset
+    engineProfile: Option[Profile] = None
 ) extends UniTest:
   private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
-  private val profile = Profile
-    .defaultDuckDBProfile
-    .withProperty("prepareTPCH", prepareTPCH)
-    .withProperty("prepareTPCDS", prepareTPCDS)
+  private val profile = engineProfile.getOrElse(
+    Profile
+      .defaultDuckDBProfile
+      .withProperty("prepareTPCH", prepareTPCH)
+      .withProperty("prepareTPCDS", prepareTPCDS)
+  )
+
+  private val engine = profile.defaultEngine
 
   private val dbConnectorProvider = ConnectorProvider(workEnv)
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
@@ -45,13 +53,24 @@ trait RunnerSpec(
     dbConnectorProvider.close()
 
   private val compiler =
-    val options = CompilerOptions(sourceFolders = List(specPath), workEnv = workEnv)
+    val options = CompilerOptions(
+      sourceFolders = List(specPath),
+      workEnv = workEnv,
+      dbType = engine.dbType
+    )
     if parseOnly then
       Compiler.parseOnly(options)
     else
       Compiler(options) // Uses default allPhases
 
-  compiler.setDefaultCatalog(queryExecutor.getDBConnector(profile).getCatalog("memory", "main"))
+  compiler.setDefaultCatalog(
+    ConnectorCatalogs.catalogOf(
+      queryExecutor.getConnector(engine),
+      engine,
+      WvletEngineSession.defaultCatalogName(engine).getOrElse("memory"),
+      "main"
+    )
+  )
 
   // Compile all files in the source paths first
   for unit <- compiler.localCompilationUnits do

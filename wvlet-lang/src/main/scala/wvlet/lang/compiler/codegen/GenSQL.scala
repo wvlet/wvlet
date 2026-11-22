@@ -348,7 +348,11 @@ object GenSQL extends Phase("generate-sql"):
     * Evaluate a backquote-interpolated save target (e.g. save to s`tbl_${d}`) with the val and
     * loop-variable bindings of the current context
     */
-  private def bindSaveTarget(save: Save)(using ctx: Context): Save =
+  /**
+    * Resolve an interpolated save target (``save to s`t_${name}` ``) with the values bound in the
+    * context (e.g. for-loop variables)
+    */
+  def bindSaveTarget(save: Save)(using ctx: Context): Save =
     def bind(target: TableOrFileName): TableOrFileName =
       target match
         case b: BackquoteInterpolatedIdentifier =>

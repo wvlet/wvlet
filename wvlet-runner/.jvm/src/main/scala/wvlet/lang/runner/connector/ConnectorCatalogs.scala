@@ -19,6 +19,7 @@ import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.connector.Connector
 import wvlet.lang.connector.ConnectorCatalogAdapter
 import wvlet.lang.connector.DBConnector
+import wvlet.lang.runner.engine.WvletEngineConnector
 
 object ConnectorCatalogs:
 
@@ -36,6 +37,8 @@ object ConnectorCatalogs:
     connector match
       case db: DBConnector =>
         db.getCatalog(catalogName, schema)
+      case w: WvletEngineConnector =>
+        w.session.catalog
       case other =>
         other
           .catalog
