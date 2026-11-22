@@ -15,7 +15,10 @@ package wvlet.lang.engine.logical
 
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.engine.exec.AggCall
 import wvlet.lang.engine.exec.FilterOp
+import wvlet.lang.engine.exec.HashAggOp
+import wvlet.lang.engine.exec.ProjectOp
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.ScanOp
@@ -23,6 +26,7 @@ import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.BindScope
+import wvlet.lang.engine.plan.AggPlanBuilder
 import wvlet.lang.engine.plan.Binder
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.plan.JoinPlanBuilder
@@ -127,15 +131,30 @@ class LogicalBinder(planner: Planner):
             LogicalPlan.Limit(bind(child), limit.value, o.rows.value)
           case child =>
             LogicalPlan.Limit(bind(child), Long.MaxValue, o.rows.value)
+      case g: GroupBy =>
+        aggregation(g, None, defaultItems = true)
+      case Agg(_: Pivot, _, _, _) | (_: Pivot) | (_: Unpivot) =>
+        legacy(r)
+      case r if planner.unnestCall(r).isDefined =>
+        legacy(r)
+      case a: Agg =>
+        aggregation(a.child, Some(a.selectItems), defaultItems = false)
+      case c: Count if planner.isAggregationInput(c.child) =>
+        // Count the groups
+        legacy(c)
+      case c: Count =>
+        aggregation(c.child, Some(c.selectItems), defaultItems = false)
       case p: Project if isPlainProjection(p) =>
         project(p)
+      case p: Project if planner.isAggregation(p.child, p.selectItems) =>
+        aggregation(p.child, Some(p.selectItems), defaultItems = false)
       case s: SQLSelect =>
         bind(planner.desugarSQLSelect(s))
       case j: Join =>
         join(j, Nil)
       case other =>
-        // Distinct, aggregations, pivots, unnest, column edits, set operations, samples, a
-        // Project that aggregates or evaluates windows, ...
+        // Distinct, column edits, set operations, samples, a Project that evaluates windows or
+        // unnest, ...
         legacy(other)
 
   end bind
@@ -197,7 +216,7 @@ class LogicalBinder(planner: Planner):
     f.child match
       case _: GroupBy =>
         // HAVING without a selection
-        legacy(f)
+        aggregation(f, None, defaultItems = true)
       case j: Join if planner.isInnerJoin(j) =>
         // The join tree takes the conditions for its join order and pushdown
         join(j, planner.conjuncts(f.filterExpr))
@@ -211,10 +230,10 @@ class LogicalBinder(planner: Planner):
           !planner.hasSubquery(c) && planner.bindsIn(c, leftSchema)
         )
         if pushed.isEmpty then
-          joins.conjuncts(lowered(bind(j)), conds).plan
+          plans.conjuncts(lowered(bind(j)), conds).plan
         else
           val left = Filter(j.left, pushed.reduce((a, b) => And(a, b, NoSpan)), f.span)
-          joins.conjuncts(lowered(bind(j.copy(left = left))), rest).plan
+          plans.conjuncts(lowered(bind(j.copy(left = left))), rest).plan
       case child =>
         val conds = planner.conjuncts(f.filterExpr)
         if conds.exists(planner.hasSubquery) then
@@ -235,19 +254,30 @@ class LogicalBinder(planner: Planner):
     then
       legacyOp(planner.planJoinTree(j, filters))
     else if planner.isInnerJoin(j) then
-      planner.innerJoinTree(j, filters, r => lowered(bind(r)), joins).plan
+      planner.innerJoinTree(j, filters, r => lowered(bind(r)), plans).plan
     else
       val left  = lowered(bind(j.left))
       val right = lowered(bind(j.right))
-      joins.conjuncts(planner.joinOn(j, planner.joinKind(j), left, right, joins), filters).plan
+      plans.conjuncts(planner.joinOn(j, planner.joinKind(j), left, right, plans), filters).plan
+
+  /** An aggregation, planned as `Planner.planAggregation` plans it */
+  private def aggregation(
+      input: Relation,
+      items: Option[List[Attribute]],
+      defaultItems: Boolean
+  ): LogicalPlan =
+    planner.aggregation(input, items, defaultItems, r => lowered(bind(r)), plans).plan
 
   /** A logical plan with its operators, from which join planning reads schemas and estimates */
   private case class Lowered(plan: LogicalPlan, op: Operator)
 
   private def lowered(p: LogicalPlan): Lowered = Lowered(p, Lowering(p))
 
-  /** Builds logical joins, filters, and (for conditions with subqueries) legacy nodes */
-  private object joins extends JoinPlanBuilder[Lowered]:
+  /**
+    * Builds logical joins, aggregations, filters, and projections, and legacy nodes for what the
+    * planner builds as operators (subquery conditions, grouping sets, windows over aggregates)
+    */
+  private object plans extends JoinPlanBuilder[Lowered] with AggPlanBuilder[Lowered]:
     override def op(p: Lowered): Operator = p.op
 
     override def join(
@@ -285,6 +315,28 @@ class LogicalBinder(planner: Planner):
 
     end join
 
+    override def fromOp(op: Operator): Lowered = Lowered(legacyOp(op), op)
+
+    override def aggregate(
+        in: Lowered,
+        keys: IndexedSeq[VExpr],
+        calls: IndexedSeq[AggCall],
+        schema: Schema
+    ): Lowered = Lowered(
+      LogicalPlan.Aggregate(
+        in.plan,
+        keys.map(BExpr.of(_, in.plan.output)),
+        calls.map(AggregateCall.of(_, in.plan.output)),
+        columnsOf(schema)
+      ),
+      HashAggOp(in.op, keys, calls, schema)
+    )
+
+    override def project(p: Lowered, exprs: IndexedSeq[VExpr], schema: Schema): Lowered = Lowered(
+      LogicalPlan.Project(p.plan, exprs.map(BExpr.of(_, p.plan.output)), columnsOf(schema)),
+      ProjectOp(p.op, exprs, schema)
+    )
+
     override def filter(p: Lowered, cond: VExpr): Lowered = Lowered(
       LogicalPlan.Filter(p.plan, BExpr.of(cond, p.plan.output)),
       FilterOp(p.op, cond)
@@ -304,7 +356,7 @@ class LogicalBinder(planner: Planner):
             // Subqueries became joins over the lowered input
             Lowered(legacyOp(op), op)
 
-  end joins
+  end plans
 
   /** A projection without aggregates, windows, unnest, or subqueries */
   private def isPlainProjection(p: Project): Boolean =

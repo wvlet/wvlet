@@ -63,6 +63,11 @@ object PlanValidator:
           checkExprs(b, "Join", lk, left.output)
           checkExprs(b, "Join", rk, right.output)
           checkExprs(b, "Join", residual.toSeq, j.output)
+        case Aggregate(child, keys, calls, columns) =>
+          if columns.size != keys.size + calls.size then
+            b +=
+              s"Aggregate has ${columns.size} columns for ${keys.size} keys and ${calls.size} calls"
+          checkExprs(b, "Aggregate", keys ++ calls.flatMap(_.exprs), child.output)
         case Legacy(op, columns) =>
           if columns.map(_.ptype) != op.schema.types then
             b += s"Legacy[${op.name}] columns ${columns.mkString(", ")} differ from ${op.schema}"

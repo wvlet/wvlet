@@ -14,6 +14,7 @@
 package wvlet.lang.engine.logical
 
 import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.engine.exec.AggCall
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.expr.ColRef
@@ -75,6 +76,44 @@ object BExpr:
   /** A reference to a column */
   def ref(c: Column): BExpr = BExpr(ColRef(c.id.value, c.ptype, c.name))
 
+/** An aggregate call of a logical [[LogicalPlan.Aggregate]], over the ids of its input */
+case class AggregateCall(
+    name: String,
+    args: Seq[BExpr],
+    distinct: Boolean,
+    filter: Option[BExpr],
+    ptype: PType
+):
+  /** The expressions the call reads */
+  def exprs: Seq[BExpr] = args ++ filter
+
+  /** The executable call over an input whose column of id `i` is at `position(i)` */
+  def lower(position: Array[Int]): AggCall = AggCall(
+    name,
+    args.map(_.lower(position)),
+    distinct,
+    filter.map(_.lower(position)),
+    ptype
+  )
+
+  override def toString: String =
+    val d =
+      if distinct then
+        "distinct "
+      else
+        ""
+    s"${name}(${d}${args.mkString(", ")})${filter.map(f => s" filter ${f}").getOrElse("")}"
+
+object AggregateCall:
+  /** Bind an aggregate call over input positions to the ids of the columns at those positions */
+  def of(c: AggCall, input: IndexedSeq[Column]): AggregateCall = AggregateCall(
+    c.name,
+    c.args.map(BExpr.of(_, input)),
+    c.distinct,
+    c.filter.map(BExpr.of(_, input)),
+    c.ptype
+  )
+
 /** A sort key of a logical [[LogicalPlan.Sort]] */
 case class OrderKey(expr: BExpr, ascending: Boolean, nullsFirst: Boolean)
 
@@ -105,6 +144,17 @@ enum LogicalPlan:
 
   /** Skip `offset` rows, then return at most `limit` rows */
   case Limit(child: LogicalPlan, limit: Long, offset: Long)
+
+  /**
+    * Group by `keys` and compute `calls` per group (a global aggregation without keys): one output
+    * column per key, then one per call
+    */
+  case Aggregate(
+      child: LogicalPlan,
+      keys: IndexedSeq[BExpr],
+      calls: IndexedSeq[AggregateCall],
+      columns: IndexedSeq[Column]
+  )
 
   /**
     * A join whose output is the columns of `left`, then those of `right`. With keys it is a hash
@@ -142,6 +192,8 @@ enum LogicalPlan:
         child.output
       case Join(left, right, _, _, _, _, _) =>
         left.output ++ right.output
+      case Aggregate(_, _, _, columns) =>
+        columns
       case Legacy(_, columns) =>
         columns
 
@@ -159,6 +211,8 @@ enum LogicalPlan:
         Seq(child)
       case Join(left, right, _, _, _, _, _) =>
         Seq(left, right)
+      case Aggregate(child, _, _, _) =>
+        Seq(child)
 
   /** The output as an operator schema */
   def schema: Schema = Schema(output.map(_.toField))
@@ -211,6 +265,8 @@ enum LogicalPlan:
         val args =
           keys ++ residual.map(r => s"residual=${r}") ++ Option.when(buildLeft)("build=left")
         s"Join[${kind}](${args.mkString(", ")})"
+      case Aggregate(_, keys, calls, _) =>
+        s"Aggregate(keys=[${keys.mkString(", ")}], ${calls.mkString(", ")})"
       case Legacy(op, _) =>
         s"Legacy[${op.name}]"
 

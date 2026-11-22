@@ -896,8 +896,12 @@ class Planner(
 
   end bindItems
 
+  /** Whether a projection aggregates (its input is a grouping, or an item is an aggregate) */
+  private[engine] def isAggregation(child: Relation, items: List[Attribute]): Boolean =
+    isAggregationInput(child) || items.exists(i => Binder.containsAggregate(i))
+
   private def planProject(child: Relation, items: List[Attribute]): Operator =
-    if isAggregationInput(child) || items.exists(i => Binder.containsAggregate(i)) then
+    if isAggregation(child, items) then
       planAggregation(child, Some(items), defaultItems = false)
     else if items.exists(i => unnestArg(i).isDefined) then
       projectWithUnnest(planRelation(child), items)
@@ -1225,7 +1229,20 @@ class Planner(
       input: Relation,
       items: Option[List[Attribute]],
       defaultItems: Boolean
-  ): Operator =
+  ): Operator = aggregation(input, items, defaultItems, planRelation, operatorPlans)
+
+  /**
+    * Plan an aggregation of `input` (a GROUP BY, possibly with HAVING, or a global aggregation)
+    * selecting `items`, whose input is planned with `plan`. With grouping sets or window functions
+    * over the aggregated rows, the aggregation (or the windows) are operators (`builder.fromOp`)
+    */
+  private[engine] def aggregation[P](
+      input: Relation,
+      items: Option[List[Attribute]],
+      defaultItems: Boolean,
+      plan: Relation => P,
+      builder: AggPlanBuilder[P]
+  ): P =
     val (groupBy, having) =
       input match
         case g: GroupBy =>
@@ -1235,7 +1252,8 @@ class Planner(
         case _ =>
           (None, None)
     val source                  = groupBy.map(_.child).getOrElse(input)
-    val inOp                    = planRelation(source)
+    val in                      = plan(source)
+    val inOp                    = builder.op(in)
     val scope                   = BindScope(inOp.schema)
     val binder                  = Binder(this, scope)
     val (keyDefs, groupingSets) = expandGroupingSets(groupBy.map(_.groupingKeys).getOrElse(Nil))
@@ -1346,13 +1364,13 @@ class Planner(
             )
             extraItems += ((e, Field(s"arbitrary(${f.name})", f.ptype)))
         }
-    val havingExpr      = having.map(h => aggBinder.bind(h))
-    val aggOp: Operator =
+    val havingExpr = having.map(h => aggBinder.bind(h))
+    val aggOp: P   =
       val keys  = keyExprs.map(_._2)
       val calls = aggCtx.calls.toIndexedSeq
       groupingSets match
         case None =>
-          HashAggOp(inOp, keys, calls, aggCtx.outputSchema)
+          builder.aggregate(in, keys, calls, aggCtx.outputSchema)
         case Some(sets) =>
           // One aggregation per grouping set; keys outside the set are NULL, and the grouping id
           // has a bit set for each of them. The sets share one evaluation of the input, reduced
@@ -1372,7 +1390,7 @@ class Planner(
           val setCalls    = calls.map(c =>
             c.copy(args = c.args.map(VExprs.remap(_, m)), filter = c.filter.map(VExprs.remap(_, m)))
           )
-          UnionAllOp(
+          val union = UnionAllOp(
             sets.map { set =>
               val gid     = (0 until n).filterNot(set.contains).map(k => 1L << k).sum
               val setKeys = (0 until n).map(k =>
@@ -1394,22 +1412,24 @@ class Planner(
             },
             aggCtx.outputSchema
           )
+          builder.fromOp(union)
       end match
     end aggOp
-    val filtered = havingExpr.map(h => FilterOp(aggOp, h)).getOrElse(aggOp)
+    val filtered = havingExpr.map(h => builder.filter(aggOp, h)).getOrElse(aggOp)
     collector match
       case Some(c) =>
-        val winOp = c.rebase(filtered).build()
-        windowCollector = Some(c.rebase(filtered).frozen(winOp))
+        val filteredOp = builder.op(filtered)
+        val winOp      = c.rebase(filteredOp).build()
+        windowCollector = Some(c.rebase(filteredOp).frozen(winOp))
         val items2 =
           try bindSelectItems() ++ extraItems
           finally windowCollector = saved
-        ProjectOp(winOp, items2.map(_._1), Schema(items2.map(_._2)))
+        builder.fromOp(ProjectOp(winOp, items2.map(_._1), Schema(items2.map(_._2))))
       case None =>
         val items2 = firstPass ++ extraItems
-        ProjectOp(filtered, items2.map(_._1), Schema(items2.map(_._2)))
+        builder.project(filtered, items2.map(_._1), Schema(items2.map(_._2)))
 
-  end planAggregation
+  end aggregation
 
   /**
     * A hash aggregation that groups only by the keys that are not constants (a grouping set's NULL
@@ -2282,17 +2302,30 @@ class Planner(
     end match
     if !isInnerJoin(j) then
       return applyConjuncts(planOuterJoin(j), filters)
-    innerJoinTree(j, filters, planRelation, operatorJoins)
+    innerJoinTree(j, filters, planRelation, operatorPlans)
 
   end planJoinTree
 
   /** Builds the planner's own join trees: operators */
-  private val operatorJoins: JoinPlanBuilder[Operator] =
-    new JoinPlanBuilder[Operator] with OperatorTreeBuilder:
-      override def conjuncts(p: Operator, conds: List[Expression]): Operator = applyConjuncts(
-        p,
-        conds
-      )
+  private object operatorPlans
+      extends JoinPlanBuilder[Operator]
+      with AggPlanBuilder[Operator]
+      with OperatorTreeBuilder:
+    override def fromOp(op: Operator): Operator = op
+    override def aggregate(
+        in: Operator,
+        keys: IndexedSeq[VExpr],
+        calls: IndexedSeq[AggCall],
+        schema: Schema
+    ): Operator = HashAggOp(in, keys, calls, schema)
+
+    override def project(p: Operator, exprs: IndexedSeq[VExpr], schema: Schema): Operator =
+      ProjectOp(p, exprs, schema)
+
+    override def conjuncts(p: Operator, conds: List[Expression]): Operator = applyConjuncts(
+      p,
+      conds
+    )
 
   /**
     * Plan a tree of inner joins (without a lateral unnest on top) and filter conditions together:
@@ -2442,7 +2475,7 @@ class Planner(
         val names = left.schema.names.filter(n => right.schema.names.exists(_.equalsIgnoreCase(n)))
         usingJoin(left, right, names.toList, kind)
       case _ =>
-        joinOn(j, kind, left, right, operatorJoins)
+        joinOn(j, kind, left, right, operatorPlans)
 
   end planOuterJoin
 
@@ -2695,6 +2728,23 @@ end Planner
 private[engine] trait JoinPlanBuilder[P] extends JoinTreeBuilder[P]:
   /** Apply filter conjuncts as `Planner.applyConjuncts` does */
   def conjuncts(p: P, conds: List[Expression]): P
+
+/** Builds aggregations for the planner: operators, or logical nodes with their operators */
+private[engine] trait AggPlanBuilder[P]:
+  /** The operator form of a plan */
+  def op(p: P): Operator
+
+  /** A plan of an operator built by the planner */
+  def fromOp(op: Operator): P
+
+  /** Group `in` by `keys`, outputting the keys then the aggregates (`schema`) */
+  def aggregate(in: P, keys: IndexedSeq[VExpr], calls: IndexedSeq[AggCall], schema: Schema): P
+
+  /** Rows of `p` for which a condition over its columns is true */
+  def filter(p: P, cond: VExpr): P
+
+  /** One output column per expression over `p` */
+  def project(p: P, exprs: IndexedSeq[VExpr], schema: Schema): P
 
 object Planner:
   /** A planner for a subquery: shares the catalog, sources, and CTE definitions */

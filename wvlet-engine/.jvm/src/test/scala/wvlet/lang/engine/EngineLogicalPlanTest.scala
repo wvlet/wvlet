@@ -75,7 +75,7 @@ class EngineLogicalPlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    val p = logicalPlan("from lineitem group by l_returnflag select l_returnflag, count(*)")
+    val p = logicalPlan("from nation select distinct n_regionkey")
     p match
       case LogicalPlan.Legacy(op, cols) =>
         cols.map(_.name) shouldBe op.schema.names
@@ -127,29 +127,48 @@ class EngineLogicalPlanTest extends UniTest:
   }
 
   test("bind the joins under an aggregation") {
-    withQuery("""from lineitem, orders
+    val p = logicalPlan("""from lineitem, orders
         |where l_orderkey = o_orderkey and o_orderstatus = 'F'
         |group by o_orderpriority
-        |select o_orderpriority, count(*)""".stripMargin) { q =>
-      engine.logicalPlan(q) match
-        case LogicalPlan.Legacy(_, _) =>
-        case other                    =>
-          fail(s"Unexpected plan:\n${other.explain}")
-      // The aggregation's input binds through the IR
-      def groupInput(r: Relation): Option[Relation] =
-        r match
-          case g: wvlet.lang.model.plan.GroupBy =>
-            Some(g.child)
-          case other =>
-            other
-              .children
-              .collectFirst { case c: Relation =>
-                c
-              }
-              .flatMap(groupInput)
-      val input = groupInput(q).getOrElse(fail(s"No GROUP BY in ${q}"))
-      joins(engine.logicalPlan(input)).size shouldBe 1
-    }
+        |select o_orderpriority, count(*)""".stripMargin)
+    debug(p.explain)
+    p match
+      case LogicalPlan.Project(LogicalPlan.Aggregate(j: LogicalPlan.Join, keys, calls, _), _, _) =>
+        keys.size shouldBe 1
+        calls.map(_.name) shouldBe IndexedSeq("count_star")
+        // The key reads o_orderpriority of the join's output by id
+        keys.head.refs.subsetOf(j.output.map(_.id).toSet) shouldBe true
+      case other =>
+        fail(s"Unexpected plan:\n${other.explain}")
+    PlanValidator.violations(p) shouldBe Nil
+  }
+
+  test("bind a HAVING condition as a filter over the aggregation") {
+    val p = logicalPlan("""from lineitem
+        |group by l_returnflag
+        |where count(*) > 100
+        |select l_returnflag, sum(l_quantity)""".stripMargin)
+    debug(p.explain)
+    p match
+      case LogicalPlan.Project(LogicalPlan.Filter(a: LogicalPlan.Aggregate, cond), _, _) =>
+        // The condition reads an aggregate of the aggregation's output
+        cond.refs.subsetOf(a.output.map(_.id).toSet) shouldBe true
+        a.calls.map(_.name).toSet shouldBe Set("count_star", "sum")
+      case other =>
+        fail(s"Unexpected plan:\n${other.explain}")
+    PlanValidator.violations(p) shouldBe Nil
+  }
+
+  test("keep grouping sets as a legacy node over the bound input") {
+    val p = logicalPlan("""from lineitem
+        |group by rollup(l_returnflag, l_linestatus)
+        |select l_returnflag, l_linestatus, count(*)""".stripMargin)
+    debug(p.explain)
+    p match
+      case LogicalPlan.Project(LogicalPlan.Legacy(_, _), _, _) =>
+      case other                                               =>
+        fail(s"Unexpected plan:\n${other.explain}")
+    PlanValidator.violations(p) shouldBe Nil
   }
 
   test("keep a join with a subquery condition as a legacy node over the joined inputs") {

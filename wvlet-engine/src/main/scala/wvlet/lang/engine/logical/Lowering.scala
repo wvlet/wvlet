@@ -57,6 +57,9 @@ object Lowering:
           buildLeft,
           p.schema
         )
+      case Aggregate(child, keys, calls, _) =>
+        val pos = positions(child)
+        HashAggOp(apply(child), keys.map(_.lower(pos)), calls.map(_.lower(pos)), p.schema)
       case Legacy(op, _) =>
         op
 
