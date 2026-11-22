@@ -117,26 +117,40 @@ class WindowOp(
 
   /**
     * The window partitions among `rows` (ascending row indexes of the input), each sorted by the
-    * ORDER BY keys. `partKeys` are the PARTITION BY values of every input row
+    * ORDER BY keys. `partKeys` are the PARTITION BY values of every input row. `hashes` are their
+    * key hashes when `rows` is one part of the input, or null when `rows` is the whole input
     */
   private def partitions(
       c: WindowCall,
       partKeys: Array[Vec],
       rows: Array[Int],
-      all: Int,
-      cmp: SortOp.RowComparator
+      cmp: SortOp.RowComparator,
+      hashes: Array[Int]
   ): Seq[Array[Int]] =
     val n                  = rows.length
     val groups: Array[Int] =
       if c.partitionBy.isEmpty then
         new Array[Int](n)
       else
-        val keys =
-          if n == all then
-            partKeys
-          else
-            partKeys.map(_.gather(rows, n))
-        GroupTable(c.partitionBy.map(_.ptype).toIndexedSeq).groupIds(keys, n)
+        val table = GroupTable(c.partitionBy.map(_.ptype).toIndexedSeq)
+        if hashes == null then
+          table.groupIds(partKeys, n)
+        else if n == hashes.length then
+          // One part holds every row, in input order
+          table.groupIds(partKeys, n, hashes)
+        else
+          // A part of the rows: reuse the hashes that split the rows into parts
+          val keys = new Array[Vec](partKeys.length)
+          var k    = 0
+          while k < keys.length do
+            keys(k) = partKeys(k).gather(rows, n)
+            k += 1
+          val h = new Array[Int](n)
+          var i = 0
+          while i < n do
+            h(i) = hashes(rows(i))
+            i += 1
+          table.groupIds(keys, n, h)
     val numGroups =
       if n == 0 then
         0
@@ -164,17 +178,8 @@ class WindowOp(
     g = 0
     while g < numGroups do
       val part = java.util.Arrays.copyOfRange(ordered, start(g), start(g + 1))
-      if c.orderBy.nonEmpty && part.length > 1 then
-        val boxed = new Array[Integer](part.length)
-        var k     = 0
-        while k < part.length do
-          boxed(k) = Integer.valueOf(part(k))
-          k += 1
-        java.util.Arrays.sort(boxed, cmp)
-        k = 0
-        while k < part.length do
-          part(k) = boxed(k).intValue()
-          k += 1
+      if c.orderBy.nonEmpty then
+        IndexSort.sort(part, cmp)
       out(g) = part
       g += 1
     out.toSeq
@@ -191,7 +196,13 @@ class WindowOp(
     val partKeys                       = c.partitionBy.map(_.eval(all)).toArray
 
     // Rows of distinct partitions write distinct slots of `out`, so parts can run concurrently
-    def evalPart(rows: Array[Int]): Unit = partitions(c, partKeys, rows, n, cmp).foreach(evalRows)
+    def evalPart(rows: Array[Int], hashes: Array[Int]): Unit = partitions(
+      c,
+      partKeys,
+      rows,
+      cmp,
+      hashes
+    ).foreach(evalRows)
 
     def evalRows(rows: Array[Int]): Unit =
       val size = rows.length
@@ -267,13 +278,12 @@ class WindowOp(
                 k - offset
               else
                 k + offset
-            out(rows(k)) =
-              if j >= 0 && j < size then
-                args(0).get(rows(j))
-              else if default != null then
-                default.get(rows(k))
-              else
-                null
+            if j >= 0 && j < size then
+              out.copyFrom(rows(k), args(0), rows(j))
+            else if default != null then
+              out.copyFrom(rows(k), default, rows(k))
+            else
+              out.setNull(rows(k))
             k += 1
         case "first_value" | "last_value" | "nth_value" =>
           var k = 0
@@ -284,19 +294,30 @@ class WindowOp(
                 ValueOps.toLong(args(1).get(rows(k))).toInt
               else
                 1
-            val candidates = (s to e).filter(x => !c.ignoreNulls || !args(0).isNull(rows(x)))
-            out(rows(k)) =
-              if candidates.isEmpty then
-                null
-              else if c.name == "first_value" then
-                args(0).get(rows(candidates.head))
-              else if c.name == "last_value" then
-                args(0).get(rows(candidates.last))
-              else if nth >= 1 && nth <= candidates.size then
-                args(0).get(rows(candidates(nth - 1)))
-              else
-                null
+            val v = args(0)
+            // The position of the picked row in the frame [s, e], or -1 for none
+            var picked = -1
+            if c.name == "last_value" then
+              var x = e
+              while x >= s && picked < 0 do
+                if !c.ignoreNulls || !v.isNull(rows(x)) then
+                  picked = x
+                x -= 1
+            else if nth >= 1 then
+              var remaining = nth
+              var x         = s
+              while x <= e && picked < 0 do
+                if !c.ignoreNulls || !v.isNull(rows(x)) then
+                  remaining -= 1
+                  if remaining == 0 then
+                    picked = x
+                x += 1
+            if picked >= 0 then
+              out.copyFrom(rows(k), v, rows(picked))
+            else
+              out.setNull(rows(k))
             k += 1
+          end while
         case agg =>
           aggregateOverFrames(c, rows, args, out, peers)
       end match
@@ -308,7 +329,7 @@ class WindowOp(
       while i < n do
         rows(i) = i
         i += 1
-      evalPart(rows)
+      evalPart(rows, null)
     else
       val hashes = GroupTable(c.partitionBy.map(_.ptype).toIndexedSeq).keyHashes(partKeys, n)
       val parts  = WindowOp.partitionRows(
@@ -317,7 +338,10 @@ class WindowOp(
         GroupTable.partitionCount(runner.parallelism),
         runner
       )
-      parts.filter(_.nonEmpty).map(rows => runner.submit(() => evalPart(rows))).foreach(_.get())
+      parts
+        .filter(_.nonEmpty)
+        .map(rows => runner.submit(() => evalPart(rows, hashes)))
+        .foreach(_.get())
     out.result()
 
   end evaluate
@@ -378,101 +402,241 @@ class WindowOp(
     val wholePartition = c.frame.isEmpty && c.orderBy.isEmpty
     if wholePartition then
       val v = aggregate(c, rows, 0, size - 1, args)
-      rows.foreach(r => out(r) = v)
+      var k = 0
+      while k < size do
+        out.copyFrom(rows(k), v, 0)
+        k += 1
     else
       var k = 0
       while k < size do
         val (s, e) = frameRange(c, rows, k, peers)
         // Peers share the same value under the default frame
-        out(rows(k)) = aggregate(c, rows, s, e, args)
+        out.copyFrom(rows(k), aggregate(c, rows, s, e, args), 0)
         k += 1
 
-  private def aggregate(c: WindowCall, rows: Array[Int], s: Int, e: Int, args: Array[Vec]): Any =
+  /** The aggregate of the frame rows(s..e), as a one-row vector */
+  private def aggregate(c: WindowCall, rows: Array[Int], s: Int, e: Int, args: Array[Vec]): Vec =
     val acc = Aggregates.accumulator(c.name, c.args.map(_.ptype), c.ptype)
     acc.ensureGroups(1)
     if s <= e then
-      val idx = (s to e).map(rows).toArray
-      acc.update(new Array[Int](idx.length), idx.length, args.map(_.gather(idx, idx.length)))
-    acc.result(1).get(0)
+      val len = e - s + 1
+      val idx = java.util.Arrays.copyOfRange(rows, s, e + 1)
+      val in  = new Array[Vec](args.length)
+      var a   = 0
+      while a < in.length do
+        in(a) = args(a).gather(idx, len)
+        a += 1
+      acc.update(new Array[Int](len), len, in)
+    acc.result(1)
 
 end WindowOp
 
 object WindowOp:
   /**
-    * One window call's output column, written by row position. Int64 and Float64 results go to
-    * primitive arrays without boxing; others are kept as values. Tasks write distinct positions
+    * One window call's output column, written by row position. Results are kept in a primitive
+    * array of the result type's vector layout (Bool, Int32 / Date, Int64 / Timestamp, Decimal,
+    * Float64, Str) without boxing; other types are kept as values. `result()` equals
+    * `Vec.fromValues(ptype, values)` of the same values. Tasks write distinct positions, and every
+    * array is allocated up front, so concurrent writes never change the column's storage
     */
   final class OutColumn(ptype: PType, n: Int):
+    import OutColumn.*
+
+    private val layout: Int =
+      ptype match
+        case PType.Bool =>
+          BoolLayout
+        case PType.Int32 | PType.Date =>
+          IntLayout
+        case PType.Int64 | PType.Timestamp =>
+          LongLayout
+        case _: PType.Decimal =>
+          DecimalLayout
+        case PType.Float64 =>
+          DoubleLayout
+        case PType.Str =>
+          StrLayout
+        case _ =>
+          ValueLayout
+
+    private val decimalScale: Int =
+      ptype match
+        case d: PType.Decimal =>
+          d.scale
+        case _ =>
+          0
+
+    private val bools: Array[Boolean] =
+      if layout == BoolLayout then
+        new Array[Boolean](n)
+      else
+        null
+
+    private val ints: Array[Int] =
+      if layout == IntLayout then
+        new Array[Int](n)
+      else
+        null
+
+    // Int64 / Timestamp values, or unscaled Decimal values
     private val longs: Array[Long] =
-      if ptype == PType.Int64 then
+      if layout == LongLayout || layout == DecimalLayout then
         new Array[Long](n)
       else
         null
 
+    // Decimal values that don't fit in an unscaled Long, already rescaled
+    private val bigDecimals: Array[AnyRef] =
+      if layout == DecimalLayout then
+        new Array[AnyRef](n)
+      else
+        null
+
     private val doubles: Array[Double] =
-      if ptype == PType.Float64 then
+      if layout == DoubleLayout then
         new Array[Double](n)
       else
         null
 
+    private val strs: Array[String] =
+      if layout == StrLayout then
+        new Array[String](n)
+      else
+        null
+
     private val values: Array[Any] =
-      if longs == null && doubles == null then
+      if layout == ValueLayout then
         new Array[Any](n)
       else
         null
 
     private val nulls: Array[Boolean] =
-      if values == null then
+      if layout != ValueLayout then
         new Array[Boolean](n)
       else
         null
 
-    def setLong(i: Int, v: Long): Unit =
-      if longs != null then
-        longs(i) = v
-      else if doubles != null then
-        doubles(i) = v.toDouble
+    def setNull(i: Int): Unit =
+      if values != null then
+        values(i) = null
       else
-        values(i) = v
+        nulls(i) = true
+
+    def setLong(i: Int, v: Long): Unit =
+      if longs != null && layout == LongLayout then
+        longs(i) = v
+      else
+        update(i, v)
 
     def setDouble(i: Int, v: Double): Unit =
       if doubles != null then
         doubles(i) = v
-      else if longs != null then
-        longs(i) = v.toLong
       else
-        values(i) = v
+        update(i, v)
 
-    def update(i: Int, v: Any): Unit =
-      if values != null then
-        values(i) = v
-      else if v == null then
-        nulls(i) = true
-      else if longs != null then
-        longs(i) = ValueOps.toLong(v)
+    /** Row j of `src`, copied without boxing when `src` has this column's type */
+    def copyFrom(i: Int, src: Vec, j: Int): Unit =
+      if src.isNull(j) then
+        setNull(i)
       else
-        doubles(i) = ValueOps.toDouble(v)
+        src match
+          case v: LongVec if longs != null && v.ptype == ptype =>
+            longs(i) = v.values(j)
+          case v: IntVec if ints != null && v.ptype == ptype =>
+            ints(i) = v.values(j)
+          case v: DoubleVec if doubles != null =>
+            doubles(i) = v.values(j)
+          case v: StrVec if strs != null =>
+            strs(i) = v.values(j)
+          case v: BoolVec if bools != null =>
+            bools(i) = v.values(j)
+          case _ =>
+            update(i, src.get(j))
+
+    /** Sets one engine value, converted as [[VecBuilder]] of this type would */
+    def update(i: Int, v: Any): Unit =
+      if v == null then
+        setNull(i)
+      else
+        layout match
+          case BoolLayout =>
+            bools(i) = ValueOps.toBoolean(v)
+          case IntLayout =>
+            ints(i) = ValueOps.toInt(v)
+          case LongLayout =>
+            longs(i) = ValueOps.toLong(v)
+          case DecimalLayout =>
+            val d = ValueOps.rescale(ValueOps.toBigDecimal(v), decimalScale)
+            if d.unscaledValue().bitLength() < 64 then
+              longs(i) = d.unscaledValue().longValue()
+            else
+              bigDecimals(i) = d
+          case DoubleLayout =>
+            doubles(i) = ValueOps.toDouble(v)
+          case StrLayout =>
+            strs(i) = ValueOps.toStr(v)
+          case _ =>
+            values(i) = v
 
     def result(): Vec =
       if values != null then
-        Vec.fromValues(ptype, values.toSeq)
-      else
-        var anyNull = false
-        var i       = 0
-        while !anyNull && i < n do
-          anyNull = nulls(i)
-          i += 1
-        val ns =
-          if anyNull then
-            nulls
-          else
-            null
-        if longs != null then
-          LongVec(ptype, longs, ns)
+        return Vec.fromValues(ptype, values.toSeq)
+      var anyNull = false
+      var i       = 0
+      while !anyNull && i < n do
+        anyNull = nulls(i)
+        i += 1
+      val ns =
+        if anyNull then
+          nulls
         else
+          null
+      layout match
+        case BoolLayout =>
+          BoolVec(bools, ns)
+        case IntLayout =>
+          IntVec(ptype, ints, ns)
+        case LongLayout =>
+          LongVec(ptype, longs, ns)
+        case DecimalLayout =>
+          decimalResult(ns)
+        case DoubleLayout =>
           DoubleVec(doubles, ns)
+        case _ =>
+          StrVec(strs, ns)
+
+    private def decimalResult(ns: Array[Boolean]): Vec =
+      var anyBig = false
+      var i      = 0
+      while !anyBig && i < n do
+        anyBig = bigDecimals(i) != null
+        i += 1
+      if !anyBig then
+        LongVec(ptype, longs, ns)
+      else
+        // Replay the values into a builder, which switches to BigDecimal values as it does today
+        val b = VecBuilder.DecimalBuilder(ptype.asInstanceOf[PType.Decimal], n)
+        i = 0
+        while i < n do
+          if nulls(i) then
+            b.addNull()
+          else if bigDecimals(i) != null then
+            b.addBig(bigDecimals(i).asInstanceOf[java.math.BigDecimal])
+          else
+            b.addUnscaled(longs(i))
+          i += 1
+        b.result()
 
   end OutColumn
+
+  object OutColumn:
+    private final val BoolLayout    = 0
+    private final val IntLayout     = 1
+    private final val LongLayout    = 2
+    private final val DecimalLayout = 3
+    private final val DoubleLayout  = 4
+    private final val StrLayout     = 5
+    private final val ValueLayout   = 6
 
   /**
     * [[GroupTable.partitionRows]] in two parallel passes over chunks of the rows: count each

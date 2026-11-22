@@ -275,18 +275,16 @@ object SortOp:
     else if limit.toLong * 8 <= hi - lo then
       topRange(cmp, lo, hi, limit)
     else
-      val idx = new Array[Integer](hi - lo)
+      val idx = new Array[Int](hi - lo)
       var i   = 0
       while i < idx.length do
-        idx(i) = Integer.valueOf(lo + i)
+        idx(i) = lo + i
         i += 1
-      java.util.Arrays.sort(idx, cmp)
-      val out = new Array[Int](math.min(limit, idx.length))
-      i = 0
-      while i < out.length do
-        out(i) = idx(i).intValue()
-        i += 1
-      out
+      IndexSort.sort(idx, cmp)
+      if limit < idx.length then
+        java.util.Arrays.copyOf(idx, limit)
+      else
+        idx
 
   /**
     * The first `limit` (< hi - lo) row indexes of lo until hi in stable sorted order, using a
