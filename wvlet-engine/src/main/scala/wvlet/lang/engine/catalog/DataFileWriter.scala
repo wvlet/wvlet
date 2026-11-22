@@ -37,7 +37,8 @@ enum DataFileFormat:
   case Parquet,
     Csv,
     Tsv,
-    JsonLines
+    JsonLines,
+    Iceberg
 
 object DataFileFormat:
   /** The format of a path by its extension, or by an explicit `format` option */
@@ -51,6 +52,8 @@ object DataFileFormat:
         Tsv
       case Some("json" | "jsonl" | "ndjson") =>
         JsonLines
+      case Some("iceberg") =>
+        Iceberg
       case Some(other) =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported file format: ${other}")
       case None =>
@@ -68,7 +71,7 @@ object DataFileFormat:
           throw StatusCode
             .NOT_IMPLEMENTED
             .newException(
-              s"Unsupported file to write: ${path} (supported: .parquet, .csv, .tsv, .json, .jsonl)"
+              s"Unsupported file to write: ${path} (supported: .parquet, .csv, .tsv, .json, .jsonl, or an Iceberg table folder: save to '<dir>' with format: 'iceberg')"
             )
 
 end DataFileFormat
@@ -100,6 +103,8 @@ object DataFileWriter extends LogSupport:
     format match
       case DataFileFormat.Parquet =>
         writeParquet(path, schema, batches, opts)
+      case DataFileFormat.Iceberg =>
+        IcebergWriter.create(path, schema, batches, opts)
       case text =>
         IO.writeString(path, "")
         textChunks(text, schema, batches, opts, withHeader = true).foreach(IO.appendString(path, _))
@@ -111,7 +116,7 @@ object DataFileWriter extends LogSupport:
     */
   def appendText(path: String, schema: Schema, batches: Seq[Batch]): Unit =
     val format = DataFileFormat.of(path)
-    if format == DataFileFormat.Parquet then
+    if format == DataFileFormat.Parquet || format == DataFileFormat.Iceberg then
       throw StatusCode.INVALID_ARGUMENT.newException(s"Not a text file: ${path}")
     textChunks(format, schema, batches, Map.empty, withHeader = false).foreach(
       IO.appendString(path, _)
@@ -139,6 +144,8 @@ object DataFileWriter extends LogSupport:
         "tsv"
       case DataFileFormat.JsonLines =>
         "json"
+      case DataFileFormat.Iceberg =>
+        "iceberg"
 
   // Text output, one chunk per batch, so large results are never held as one string
   private def textChunks(
@@ -188,34 +195,12 @@ object DataFileWriter extends LogSupport:
       }
     if opts.contains("row_group_size") || opts.contains("row_group_size_bytes") then
       debug("row_group_size is not applied by the wvlet engine; using the default row group size")
-    val writeOptions =
-      opts.get("compression").map(_.toString.toLowerCase) match
-        case None =>
-          ParquetWriteOptions.default
-        case Some(c) =>
-          ParquetWriteOptions.default.withCompression(compressionOf(c))
-    val builder =
-      schema
-        .fields
-        .foldLeft(ParquetSchema.builder("schema")) { (b, f) =>
-          b.optional(f.name, parquetTypeOf(f))
-        }
-    val pschema = builder.build()
-    val writer  = Parquet.newBatchWriter(path, pschema, writeOptions)
+    val pschema = parquetSchemaOf(schema)
+    val writer  = Parquet.newBatchWriter(path, pschema, writeOptionsOf(opts))
     try
-      val fields = pschema.columns
       batches.foreach { b =>
         if b.size > 0 then
-          writer.write(
-            ColumnBatch(
-              b.size,
-              schema
-                .fields
-                .indices
-                .map(i => columnOf(fields(i), schema(i).ptype, b.column(i)))
-                .toIndexedSeq
-            )
-          )
+          writer.write(columnBatchOf(pschema, schema, b))
       }
       writer.close()
     catch
@@ -224,6 +209,34 @@ object DataFileWriter extends LogSupport:
         throw e
 
   end writeParquet
+
+  /** Parquet write options from the `compression` option */
+  private[catalog] def writeOptionsOf(opts: Map[String, Any]): ParquetWriteOptions =
+    opts.get("compression").map(_.toString.toLowerCase) match
+      case None =>
+        ParquetWriteOptions.default
+      case Some(c) =>
+        ParquetWriteOptions.default.withCompression(compressionOf(c))
+
+  /** The Parquet schema the engine writes for `schema`: every column optional */
+  private[catalog] def parquetSchemaOf(schema: Schema): ParquetSchema = schema
+    .fields
+    .foldLeft(ParquetSchema.builder("schema")) { (b, f) =>
+      b.optional(f.name, parquetTypeOf(f))
+    }
+    .build()
+
+  /** An engine batch as a uni column batch of `pschema` (from [[parquetSchemaOf]]) */
+  private[catalog] def columnBatchOf(
+      pschema: ParquetSchema,
+      schema: Schema,
+      b: Batch
+  ): ColumnBatch =
+    val fields = pschema.columns
+    ColumnBatch(
+      b.size,
+      schema.fields.indices.map(i => columnOf(fields(i), schema(i).ptype, b.column(i))).toIndexedSeq
+    )
 
   private def compressionOf(c: String): CompressionCodec =
     c match

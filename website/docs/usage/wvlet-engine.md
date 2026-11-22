@@ -13,7 +13,7 @@ through pure-Scala readers, so it also works where DuckDB is unavailable.
 The engine covers queries over files and registered tables (filters, projections, joins
 including ASOF joins, aggregations, window functions, subqueries, `pivot`, `unnest`, lambdas,
 `show` commands, and TPC-H), plus `save to`, `append to`, and `delete` on in-memory tables and
-`save to` / `append to` Parquet, CSV, and JSON files, and `create table`, `drop table`,
+`save to` / `append to` Parquet, CSV, and JSON files and Iceberg tables, and `create table`, `drop table`,
 `truncate`, and `create` / `drop schema`. Features it doesn't support yet report an error:
 `alter table`, views, `update`, `execute`, flows, table functions such as `read_csv(...)`, and some
 engine-specific functions. Map values run but can return results that
@@ -175,6 +175,40 @@ rows added at the end, leaving the existing text as is; Parquet files are rewrit
 rows cast to the file's column types, through a temporary file so a failed append keeps the
 original. Files are written to local paths only; writing to `s3://` or other remote paths isn't
 supported yet.
+
+## Iceberg tables
+
+The engine reads and writes [Apache Iceberg](https://iceberg.apache.org/) tables in local folders,
+on every platform, with no Spark or DuckDB. A folder is an Iceberg table when it has a `metadata/`
+folder holding `.metadata.json` files.
+
+```wvlet
+-- Create a table (snapshot 1), partitioned by country
+from 'data/events.parquet'
+save to 'warehouse/events' with format: 'iceberg', partition_by: 'country'
+
+-- Add a snapshot
+from 'data/events_today.parquet'
+append to 'warehouse/events'
+
+-- Read the current snapshot, or the one a metadata file records
+from 'warehouse/events'
+from 'warehouse/events/metadata/v1.metadata.json'
+```
+
+- `save to '<dir>' with format: 'iceberg'` creates a table in a new or empty folder. Options:
+  `partition_by` (comma-separated identity partition columns) and `compression`. `save to` on an
+  existing Iceberg table is an error: the engine doesn't replace Iceberg tables yet, so use
+  `append to` or write to a new folder
+- `append to '<dir>'` commits the rows as a new snapshot, mapped to the table's columns by position
+  and cast to their types. It works on tables committed as `metadata/vN.metadata.json` (as the
+  wvlet engine and Hadoop-catalog writers create them); a table that a catalog owns, such as one
+  written by pyiceberg or a REST catalog, is read-only. `append to` a folder that isn't an Iceberg
+  table is an error, since `append to` can't name the format
+- Reads cover partitioned tables, v1 and v2 tables, and schema evolution (promoted, added, and
+  dropped columns). Tables with delete files, renamed columns, ORC data files, or format version 3
+  aren't supported yet and report an error
+- The engine never deletes table files; a failed commit removes only the files it wrote
 
 ## Mixing with other connectors
 
