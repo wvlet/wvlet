@@ -2126,7 +2126,13 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       val combined = current.schema ++ right.schema
       if eqs.nonEmpty then
         val (_, _, lk, rk, out) = keyed.find(_._1 == next).get
-        current = HashJoinOp(current, right, lk, rk, JoinKind.Inner, None, combined)
+        current =
+          if pushed(next).rows > Planner.SwapBuildRatio * currentRows then
+            // Build on the joined rows, much fewer than the input to join (e.g., the returns
+            // joined so far vs. a sales table), and probe with that input
+            swappedHashJoin(current, right, lk, rk, JoinKind.Inner, None, combined)
+          else
+            HashJoinOp(current, right, lk, rk, JoinKind.Inner, None, combined)
         currentRows = out
       else
         current = NestedLoopJoinOp(current, right, None, JoinKind.Cross, combined)
@@ -2392,38 +2398,52 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           None
     swapped match
       case Some(k) if estimateRows(right) > Planner.SwapBuildRatio * estimateRows(left) =>
-        val lw = left.schema.size
-        val rw = right.schema.size
-        // Position of each left ++ right column in right ++ left
-        val toSwapped =
-          Array.tabulate(lw + rw)(i =>
-            if i < lw then
-              rw + i
-            else
-              i - lw
-          )
-        val join = HashJoinOp(
-          right,
-          left,
-          rk,
-          lk,
-          k,
-          residual.map(VExprs.remap(_, toSwapped)),
-          right.schema ++ left.schema
-        )
-        ProjectOp(
-          join,
-          combined
-            .fields
-            .indices
-            .map(i => ColRef(toSwapped(i), combined(i).ptype, combined(i).name)),
-          combined
-        )
+        swappedHashJoin(left, right, lk, rk, k, residual, combined)
       case _ =>
         HashJoinOp(left, right, lk, rk, kind, residual, combined)
     end match
 
   end outerHashJoin
+
+  /**
+    * A hash join of left and right that probes with right and builds on left (`kind` is from
+    * right's side), with the output columns in left ++ right order (`combined`)
+    */
+  private def swappedHashJoin(
+      left: Operator,
+      right: Operator,
+      lk: IndexedSeq[VExpr],
+      rk: IndexedSeq[VExpr],
+      kind: JoinKind,
+      residual: Option[VExpr],
+      combined: Schema
+  ): Operator =
+    val lw = left.schema.size
+    val rw = right.schema.size
+    // Position of each left ++ right column in right ++ left
+    val toSwapped =
+      Array.tabulate(lw + rw)(i =>
+        if i < lw then
+          rw + i
+        else
+          i - lw
+      )
+    val join = HashJoinOp(
+      right,
+      left,
+      rk,
+      lk,
+      kind,
+      residual.map(VExprs.remap(_, toSwapped)),
+      right.schema ++ left.schema
+    )
+    ProjectOp(
+      join,
+      combined.fields.indices.map(i => ColRef(toSwapped(i), combined(i).ptype, combined(i).name)),
+      combined
+    )
+
+  end swappedHashJoin
 
   /** JOIN ... USING (cols): one output column per key (coalesced for outer joins) */
   private def usingJoin(

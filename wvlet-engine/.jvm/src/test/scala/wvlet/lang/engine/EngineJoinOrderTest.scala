@@ -79,4 +79,16 @@ class EngineJoinOrderTest extends UniTest:
     scanOrder(plan) shouldBe Seq("store_sales", "date_dim", "store")
   }
 
+  test("probe with a large input instead of building on it") {
+    // customer_demographics is the largest input, but joining it to web_returns leaves few rows:
+    // web_sales probes those rows rather than becoming a hash table
+    val plan = explain("""from customer_demographics, web_returns, web_sales
+        |where cd_demo_sk = wr_refunded_cdemo_sk
+        |  and wr_item_sk = ws_item_sk
+        |  and wr_order_number = ws_order_number
+        |select cd_gender, ws_net_profit""".stripMargin)
+    debug(plan)
+    scanOrder(plan) shouldBe Seq("web_sales", "customer_demographics", "web_returns")
+  }
+
 end EngineJoinOrderTest
