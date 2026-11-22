@@ -1,0 +1,34 @@
+-- ROLLUP / CUBE subtotals with grouping()
+from [
+  ['A', 'X', 100],
+  ['A', 'Y', 200],
+  ['B', 'X', 150]
+] as t(region, product, amount)
+group by rollup(region, product)
+select region, product, sum(amount) as total, grouping(region, product) as gid
+order by gid, region, product
+
+from [
+  ['A', 'X', 100],
+  ['A', 'Y', 200],
+  ['B', 'X', 150]
+] as t(region, product, amount)
+group by cube(region, product)
+select region, product, sum(amount) as total, grouping(product) as g
+order by region, product
+
+-- The grand total row of a rollup exists even for empty input
+from [
+  ['A', 100]
+] as t(region, amount)
+where amount > 1000
+group by rollup(region)
+select region, count(*) as cnt
+
+-- A real NULL key and a subtotal NULL are told apart by grouping()
+from [
+  [null, 1],
+  ['A', 2]
+] as t(region, amount)
+group by rollup(region)
+select region, sum(amount) as total, grouping(region) as g
