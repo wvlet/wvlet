@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.plan
 
+import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.CompilationUnit
@@ -623,6 +624,14 @@ class Binder(
         bindIn(in.a, in.list, negate = false)
       case in: NotIn =>
         bindIn(in.a, in.list, negate = true)
+      case t: TupleIn =>
+        bindTupleIn(t.tuple, t.list, negate = false)
+      case t: TupleNotIn =>
+        bindTupleIn(t.tuple, t.list, negate = true)
+      case t: TupleInRelation =>
+        planner.bindTupleInSubquery(this, tupleElements(t.tuple), t.in, negate = false)
+      case t: TupleNotInRelation =>
+        planner.bindTupleInSubquery(this, tupleElements(t.tuple), t.in, negate = true)
       case in: InRelation =>
         planner.bindInSubquery(this, in.a, in.in, negate = false)
       case in: NotInRelation =>
@@ -1079,6 +1088,44 @@ class Binder(
       InList(tgt, values.filter(_ != null).toSet, hasNull, negate)
     else
       InExprs(tgt, bound.map(b => castTo(b, t)), negate)
+
+  private def tupleElements(e: Expression): List[Expression] =
+    unwrapArg(e) match
+      case r: RowConstructor =>
+        r.values
+      case p: ParenthesizedExpression =>
+        tupleElements(p.child)
+      case other =>
+        List(other)
+
+  /** (a, b) [NOT] IN ((1, 'x'), ...): a disjunction of conjunctions, keeping SQL NULL semantics */
+  private def bindTupleIn(tuple: Expression, list: List[Expression], negate: Boolean): VExpr =
+    val target = tupleElements(tuple)
+    list.map(unwrapArg) match
+      case List(s: SubQueryExpression) =>
+        planner.bindTupleInSubquery(this, target, s.query, negate)
+      case items =>
+        val disjuncts = items.map { item =>
+          val values = tupleElements(item)
+          if values.size != target.size then
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(s"Tuple size mismatch: ${target.size} vs ${values.size}")
+          target
+            .zip(values)
+            .map((t, v) => Eq(t, v, NoSpan): Expression)
+            .reduce((a, b) => And(a, b, NoSpan))
+        }
+        val cond =
+          disjuncts match
+            case Nil =>
+              Const(false, PType.Bool)
+            case _ =>
+              bind(disjuncts.reduce((a, b) => Or(a, b, NoSpan)))
+        if negate then
+          NotExpr(cond)
+        else
+          cond
 
   private def bindLike(
       left: Expression,

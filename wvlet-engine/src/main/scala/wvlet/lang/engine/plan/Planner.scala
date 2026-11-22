@@ -89,7 +89,13 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       case _: EmptyRelation =>
         SingleRowOp()
       case v: Values =>
-        planValues(v, None)
+        val op = planValues(v, None)
+        v.relationType match
+          // An inlined table value (val t(a, b) = [...]) is referenced by its name
+          case s: wvlet.lang.model.DataType.SchemaType if s.isFullyNamed =>
+            requalify(op, s.typeName.name)
+          case _ =>
+            op
       case a: AliasedRelation =>
         planAliased(a)
       case t: TableScan =>
@@ -1202,6 +1208,57 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val values = (0 until b.size).map(col.get)
     InList(castExpr(target, t), values.filter(_ != null).toSet, values.contains(null), negate)
 
+  /** (a, b) [NOT] IN (subquery) over an uncorrelated subquery, with SQL NULL semantics */
+  def bindTupleInSubquery(
+      binder: Binder,
+      tuple: List[Expression],
+      sub: Relation,
+      negate: Boolean
+  ): VExpr =
+    val op = Planner.nested(this).planRelation(sub)
+    if op.schema.size != tuple.size then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(s"Tuple size mismatch: ${tuple.size} vs ${op.schema.size} subquery columns")
+    val b       = Operator.materialize(op)
+    val targets = tuple.map(binder.bind)
+    val types   = targets.indices.map(i => PType.common(targets(i).ptype, op.schema(i).ptype))
+    val cols    = types.indices.map(i => Kernels.castTo(b.columns(i), types(i)))
+    val rows    = (0 until b.size).map(r => cols.map(_.get(r)))
+    val exact   = rows.filter(_.forall(_ != null)).toSet
+    RowFn(
+      if negate then
+        "tuple_not_in"
+      else
+        "tuple_in"
+      ,
+      targets.indices.map(i => castExpr(targets(i), types(i))),
+      PType.Bool,
+      a =>
+        val t       = a.toIndexedSeq
+        val in: Any =
+          if t.forall(_ != null) && exact.contains(t) then
+            true
+          else
+            // NULL when some row could match except for NULLs
+            val unknown = rows.exists(r =>
+              r.indices.forall(i => r(i) == null || t(i) == null || r(i) == t(i))
+            )
+            if unknown then
+              null
+            else
+              false
+        in match
+          case b: Boolean if negate =>
+            !b
+          case other =>
+            other
+      ,
+      nullSafe = true
+    )
+
+  end bindTupleInSubquery
+
   def bindExists(binder: Binder, e: Exists): VExpr =
     val op = Planner.nested(this).planRelation(subqueryRelation(e.child))
     Const(op.next() != null, PType.Bool)
@@ -1500,8 +1557,93 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   end usingJoin
 
+  /**
+    * ASOF join: equalities between the inputs become keys, and the single remaining comparison
+    * between the inputs selects the closest right row
+    */
   private def planAsOfJoin(j: Join, left: Operator, right: Operator, kind: JoinKind): Operator =
-    throw StatusCode.NOT_IMPLEMENTED.newException("ASOF joins are not supported by the engine yet")
+    val condExpr =
+      j.cond match
+        case JoinOn(e, _) =>
+          e
+        case JoinOnEq(keys, _) =>
+          Expression.concatWithEq(keys)
+        case other =>
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(s"Unsupported ASOF join condition: ${other}")
+    val conds       = conjuncts(condExpr)
+    val (eqs, rest) = conds.partition(c => isEquiBetween(c, left.schema, right.schema))
+    def sides(l: Expression, r: Expression): Option[Boolean] =
+      if bindsIn(l, left.schema) && !bindsIn(l, right.schema) && bindsIn(r, right.schema) then
+        Some(true)
+      else if bindsIn(r, left.schema) && !bindsIn(r, right.schema) && bindsIn(l, right.schema) then
+        Some(false)
+      else
+        None
+    // (left expression, op as `left op right`, right expression)
+    val inequality: (Expression, AsOfOp, Expression) =
+      rest match
+        case List(c) =>
+          val (l, r, op) =
+            c match
+              case x: GreaterThanOrEq =>
+                (x.left, x.right, AsOfOp.Ge)
+              case x: GreaterThan =>
+                (x.left, x.right, AsOfOp.Gt)
+              case x: LessThanOrEq =>
+                (x.left, x.right, AsOfOp.Le)
+              case x: LessThan =>
+                (x.left, x.right, AsOfOp.Lt)
+              case other =>
+                throw StatusCode
+                  .NOT_IMPLEMENTED
+                  .newException(s"Unsupported ASOF join inequality: ${other}")
+          def flip(o: AsOfOp): AsOfOp =
+            o match
+              case AsOfOp.Ge =>
+                AsOfOp.Le
+              case AsOfOp.Gt =>
+                AsOfOp.Lt
+              case AsOfOp.Le =>
+                AsOfOp.Ge
+              case AsOfOp.Lt =>
+                AsOfOp.Gt
+          sides(l, r) match
+            case Some(true) =>
+              (l, op, r)
+            case Some(false) =>
+              (r, flip(op), l)
+            case None =>
+              throw StatusCode
+                .NOT_IMPLEMENTED
+                .newException(s"ASOF join inequality must compare both inputs: ${c}")
+        case _ =>
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException("ASOF joins need exactly one inequality condition")
+    val lb       = Binder(this, BindScope(left.schema))
+    val rb       = Binder(this, BindScope(right.schema))
+    val (lk, rk) = joinKeys(lb, rb, eqs.map(c => equiSides(c, left.schema, right.schema)))
+    val (lv, rv) = joinKeys(lb, rb, Seq((inequality._1, inequality._3)))
+    val asofKind =
+      if kind == JoinKind.Left then
+        JoinKind.Left
+      else
+        JoinKind.Inner
+    AsOfJoinOp(
+      left,
+      right,
+      lk,
+      rk,
+      lv.head,
+      rv.head,
+      inequality._2,
+      asofKind,
+      left.schema ++ right.schema
+    )
+
+  end planAsOfJoin
 
 end Planner
 
