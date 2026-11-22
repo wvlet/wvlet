@@ -244,6 +244,112 @@ class PlanExecutorWvletWarehouseTest extends UniTest:
     run(w, "from cases\ntest _.columns should be ['b']\ntest _.rows should be [[2]]")
   }
 
+  private def dataFiles(w: String, table: String): Set[String] =
+    val dir = wvlet.uni.io.IOPath.parse(s"${w}/main/${table}/data")
+    wvlet
+      .uni
+      .io
+      .FileSystem
+      .list(dir, wvlet.uni.io.ListOptions(recursive = true))
+      .filterNot(wvlet.uni.io.FileSystem.isDirectory)
+      .map(_.path)
+      .toSet
+
+  test("rename warehouse tables") {
+    val w = newWarehouse()
+    run(
+      w,
+      """table ren = {
+        |  id: int
+        |  name: string not null
+        |}
+        |create table ren
+        |append to ren {
+        |  from [[1, 'a']] as t(id, name)
+        |}
+        |append to ren {
+        |  from [[2, 'b']] as t(id, name)
+        |}
+        |rename table ren to ren2""".stripMargin
+    )
+    SourceIO.existsFile(s"${w}/main/ren") shouldBe false
+    run(
+      w,
+      """from ren2
+        |order by id
+        |test _.rows should be [[1, 'a'], [2, 'b']]""".stripMargin
+    )
+    // The declared constraints move with the table
+    val nn = intercept[WvletLangException] {
+      run(w, "append to ren2 {\n  from [[3, null]] as t(id, name)\n}")
+    }
+    nn.getMessage shouldContain "NOT NULL"
+    val dup = intercept[WvletLangException] {
+      run(w, "from [[1]] as t(id)\nsave to other\nrename table ren2 to other")
+    }
+    dup.getMessage shouldContain "already exists"
+    // Across schemas
+    run(w, "create schema arch\nrename table ren2 to arch.ren3")
+    SourceIO.existsFile(s"${w}/main/ren2") shouldBe false
+    run(w, "from arch.ren3\ntest _.size should be 2")
+  }
+
+  test("keep only the newest snapshots with keepSnapshots") {
+    val w     = newWarehouse()
+    val props = Map[String, Any]("keepSnapshots" -> 1)
+    run(w, "from [[1]] as t(id)\nsave to snaps", props)
+    val first = dataFiles(w, "snaps")
+    run(w, "from [[2]] as t(id)\nsave to snaps", props)
+    run(w, "from [[3]] as t(id)\nsave to snaps", props)
+    // Only the current snapshot's file is left
+    val files = dataFiles(w, "snaps")
+    files.size shouldBe 1
+    files.intersect(first) shouldBe Set.empty
+    run(w, "from snaps\ntest _.rows should be [[3]]", props)
+    // Copy-on-write delete and keyed append expire too
+    run(w, "append to snaps {\n  from [[4]] as t(id)\n}", props)
+    run(w, "from snaps\nwhere id = 3\ndelete", props)
+    run(w, "append to snaps on id {\n  from [[4], [5]] as t(id)\n}", props)
+    run(w, "from snaps\norder by id\ntest _.rows should be [[4], [5]]", props)
+    // The keyed append wrote the updated and inserted rows in one file; the replaced ones expired
+    dataFiles(w, "snaps").size shouldBe 1
+    val bad = intercept[WvletLangException] {
+      run(w, "from snaps", Map("keepSnapshots" -> 0))
+    }
+    bad.getMessage shouldContain "keepSnapshots"
+  }
+
+  test("skip data files a delete can't touch") {
+    val w = newWarehouse()
+    run(w, "from [[1, 'a'], [2, 'b']] as t(id, name)\nsave to skip")
+    val first = dataFiles(w, "skip")
+    run(w, "append to skip {\n  from [[3, 'c'], [4, 'd']] as t(id, name)\n}")
+    val second = dataFiles(w, "skip") -- first
+    second.size shouldBe 1
+    // Zero the second file's data pages, keeping its footer: reading any of its rows would fail.
+    // Statistics show no row of it has id 1, so the delete never reads it
+    val path   = wvlet.uni.io.IOPath.parse(second.head)
+    val bytes  = wvlet.uni.io.FileSystem.readBytes(path)
+    val footer =
+      java
+        .nio
+        .ByteBuffer
+        .wrap(bytes, bytes.length - 8, 4)
+        .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        .getInt
+    java.util.Arrays.fill(bytes, 4, bytes.length - 8 - footer, 0.toByte)
+    wvlet.uni.io.FileSystem.writeBytes(path, bytes)
+    run(w, "from skip\nwhere id = 1\ndelete")
+    // Keyed appends skip it by the incoming keys too
+    run(w, "append to skip on id {\n  from [[2, 'B']] as t(id, name)\n}")
+    run(
+      w,
+      """from skip
+        |where id <= 2
+        |test _.rows should be [[2, 'B']]""".stripMargin
+    )
+  }
+
   test("keep schemas as folders") {
     val w = newWarehouse()
     run(

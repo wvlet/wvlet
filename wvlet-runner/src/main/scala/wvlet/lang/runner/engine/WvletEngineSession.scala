@@ -90,6 +90,26 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     Catalog.CreateMode.CREATE_IF_NOT_EXISTS
   )
 
+  /**
+    * `keepSnapshots`: how many snapshots each warehouse table keeps; every commit expires older
+    * ones and deletes the files only they reference. Unset keeps every snapshot
+    */
+  private def keepSnapshots: Option[Int] = config
+    .properties
+    .get("keepSnapshots")
+    .map { v =>
+      v.toString
+        .toIntOption
+        .filter(_ >= 1)
+        .getOrElse(
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"keepSnapshots of connector '${config.name}' must be a positive integer: ${v}"
+            )
+        )
+    }
+
   /** The folder of persistent tables, when the connector has a `warehouse` property */
   val warehouse: Option[Warehouse] = config
     .properties
@@ -101,7 +121,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
           .INVALID_ARGUMENT
           .newException(s"warehouse of connector '${config.name}' is not a folder: ${root}")
       wvlet.uni.io.FileSystem.createDirectoryIfNotExists(wvlet.uni.io.IOPath.parse(root))
-      Warehouse(root, schemaName)
+      Warehouse(root, schemaName, keepSnapshots)
     }
 
   registerConfiguredTables()

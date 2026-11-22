@@ -185,11 +185,23 @@ read back by the next session:
   `warehouse/s/` folder. DuckDB, Spark, Trino, and pyiceberg read the tables too
 - Every write is one atomic Iceberg commit: `save to t` and `truncate t` replace the rows in a new
   snapshot (`save to` may change the columns), `append to t` adds a snapshot, and `delete` and
-  `append to t on k` rewrite only the data files holding the rows they change (copy-on-write)
+  `append to t on k` rewrite only the data files holding the rows they change (copy-on-write).
+  Column statistics in the manifests let reads, deletes, and keyed appends skip data files that
+  can't hold a matching row
 - `reshape` / `alter table` change the table's metadata only when Iceberg allows it (adding a
   column without a default, dropping or renaming a column, widening `int` to `long` or a
   decimal's precision, defaults, dropping `not null`); other changes rewrite the table in one
-  snapshot. Renaming a warehouse table isn't supported yet
+  snapshot
+- `rename table t to u` moves the table's folder and rewrites its metadata for the new location,
+  so other engines read it there. It keeps only the current snapshot, so time travel to older
+  snapshots ends; a table with Iceberg branches or tags other than `main` can't be renamed
+- Every commit adds an Iceberg snapshot, and old snapshots keep their data files. Set
+  `keepSnapshots` to keep only the newest snapshots: after each commit, older ones are expired and
+  the files only they reference are deleted. Unset, every snapshot is kept
+
+  ```jsonc
+  "properties": { "warehouse": "warehouse", "keepSnapshots": 10 }
+  ```
 - Declared defaults and `not null` / `primary key` / `unique` constraints are kept in the table's
   properties and checked by later sessions too
 - `drop table` deletes the table's folder, and `drop schema s with cascade: true` the schema's

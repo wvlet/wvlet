@@ -26,6 +26,9 @@ import wvlet.uni.parquet.format.Repetition
 import wvlet.uni.parquet.ParquetDataset
 import wvlet.uni.parquet.ParquetException
 import wvlet.uni.parquet.ParquetWriteMode
+import wvlet.uni.log.LogSupport
+
+import scala.util.control.NonFatal
 
 /**
   * A table of a [[Warehouse]]: an Apache Iceberg table at `path` that the engine writes. Reads go
@@ -64,7 +67,12 @@ private[engine] class DataFilePart(
   * Table keys follow the engine session's naming: `t` for a table of the default schema, and `s.t`
   * for table t of schema s.
   */
-class Warehouse(val root: String, val defaultSchema: String = "main"):
+class Warehouse(
+    val root: String,
+    val defaultSchema: String = "main",
+    /** When set, every commit expires the table's snapshots but the newest `keepSnapshots` */
+    val keepSnapshots: Option[Int] = None
+) extends LogSupport:
   private def dir(path: String): IOPath = IOPath.parse(path)
 
   private def subFolders(path: String): Seq[String] =
@@ -166,7 +174,7 @@ class Warehouse(val root: String, val defaultSchema: String = "main"):
       else
         ParquetWriteMode.ErrorIfExists
     IcebergWriter.write(pathOf(key), schema, Nil, mode, properties = properties)
-    table(key)
+    committed(key)
 
   /** Replaces every row (creating the table when there is none) */
   def replace(
@@ -185,12 +193,12 @@ class Warehouse(val root: String, val defaultSchema: String = "main"):
       ParquetWriteMode.Overwrite,
       properties = properties
     )
-    table(key)
+    committed(key)
 
   /** Adds rows already cast to the table schema */
   def append(key: String, schema: Schema, batches: Seq[Batch]): ManagedTable =
     IcebergWriter.write(pathOf(key), schema, batches, ParquetWriteMode.Append)
-    table(key)
+    committed(key)
 
   /**
     * Replaces only `files` (from [[parts]]) with `batches`, already cast to the table schema, in
@@ -210,7 +218,9 @@ class Warehouse(val root: String, val defaultSchema: String = "main"):
         ParquetWriteMode.Overwrite,
         replacedFiles = files
       )
-    table(key)
+      committed(key)
+    else
+      table(key)
 
   /**
     * The table's data files as parts that read with the table's schema, and a function that closes
@@ -231,6 +241,39 @@ class Warehouse(val root: String, val defaultSchema: String = "main"):
             .INVALID_ARGUMENT
             .newException(s"Cannot alter table ${key}: ${e.getMessage}", e)
     table(key)
+
+  /**
+    * The table after a commit. With `keepSnapshots`, its older snapshots are expired first,
+    * deleting the files only they reference. The commit has landed either way, so a failed expiry
+    * is logged and retried by the next commit
+    */
+  private def committed(key: String): ManagedTable =
+    keepSnapshots.foreach { n =>
+      try
+        Parquet.expireIcebergSnapshots(pathOf(key), n)
+      catch
+        case NonFatal(e) =>
+          // Failing here would report a landed commit as failed, and a retry would apply it twice
+          warn(s"Failed to expire old snapshots of ${key}: ${e.getMessage}")
+    }
+    table(key)
+
+  /**
+    * Moves table `key` to `to` (both keys of this warehouse) and points its metadata at the new
+    * folder. Only the current snapshot is kept, so time travel to older snapshots ends
+    */
+  def rename(key: String, to: String): ManagedTable =
+    val (s, _) = split(to)
+    if !hasSchema(s) then
+      throw StatusCode.SCHEMA_NOT_FOUND.newException(s"Schema not found: ${s}")
+    try
+      Parquet.renameIcebergTable(pathOf(key), pathOf(to))
+    catch
+      case e: ParquetException =>
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"Cannot rename table ${key} to ${to}: ${e.getMessage}", e)
+    table(to)
 
   /** Deletes the table's folder */
   def drop(key: String): Unit =

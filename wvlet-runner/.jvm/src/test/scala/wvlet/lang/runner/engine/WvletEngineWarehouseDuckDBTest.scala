@@ -161,4 +161,15 @@ class WvletEngineWarehouseDuckDBTest extends UniTest:
     check("shop/goods", Seq(Seq(1L, "pen", null), Seq(2L, "book", null), Seq(3L, "cup", 1.5)))
   }
 
+  test("DuckDB reads renamed tables") {
+    run("""from [[1, 'a']] as t(id, name)
+          |save to before_rename
+          |
+          |from [[2, 'b']] as t(id, name)
+          |append to before_rename
+          |
+          |rename table before_rename to after_rename""".stripMargin)
+    check("main/after_rename", Seq(Seq(1L, "a"), Seq(2L, "b")))
+  }
+
 end WvletEngineWarehouseDuckDBTest
