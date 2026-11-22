@@ -169,13 +169,30 @@ class LimitOp(val child: Operator, val limit: Long, val offset: Long) extends Op
 
 case class SortKey(expr: VExpr, ascending: Boolean, nullsFirst: Boolean)
 
-/** Full sort; with a limit only the top rows are kept */
-class SortOp(val child: Operator, val keys: Seq[SortKey], val limit: Option[Long] = None)
-    extends Operator:
+/**
+  * Full sort; with a limit only the top rows are kept. Inputs of at least `minParallelRows` rows
+  * are sorted in parallel on `runner`: each of `runner.parallelism` contiguous chunks of the input
+  * is sorted (and cut to the limit) as a task, then the sorted runs are merged on the calling
+  * thread. Ties in the merge go to the earlier chunk, so the output equals the sequential (stable)
+  * sort.
+  */
+class SortOp(
+    val child: Operator,
+    val keys: Seq[SortKey],
+    val limit: Option[Long] = None,
+    runner: TaskRunner = TaskRunner.Sequential,
+    minParallelRows: Int = SortOp.MinParallelRows
+) extends Operator:
   private var result: Iterator[Batch]  = null
   def schema: Schema                   = child.schema
   override def children: Seq[Operator] = Seq(child)
-  override protected def details       =
+  override def name: String            =
+    if runner.parallelism > 1 then
+      s"Sort[parallelism=${runner.parallelism}]"
+    else
+      "Sort"
+
+  override protected def details =
     s"(${keys
         .map(k =>
           s"${k.expr.sig}${
@@ -201,62 +218,176 @@ class SortOp(val child: Operator, val keys: Seq[SortKey], val limit: Option[Long
       return Iterator.empty
     val keyVecs = keys.map(k => k.expr.eval(all)).toArray
     val cmp     = SortOp.comparator(keyVecs, keys)
-    val idx     = Array.tabulate(all.size)(i => Integer.valueOf(i))
-    java.util.Arrays.sort(idx, cmp)
-    val n      = limit.map(l => math.min(l, all.size.toLong).toInt).getOrElse(all.size)
-    val sorted = all.gather(idx.take(n).map(_.intValue()), n)
-    Iterator
-      .range(0, n, Batch.DefaultSize)
-      .map(from => sorted.slice(from, from + Batch.DefaultSize))
+    val n       = limit.map(l => math.min(l, all.size.toLong).toInt).getOrElse(all.size)
+    if all.size < minParallelRows || runner.parallelism <= 1 then
+      val sorted = SortOp.sortRange(cmp, 0, all.size, n)
+      val out    = all.gather(sorted, n)
+      Iterator.range(0, n, Batch.DefaultSize).map(from => out.slice(from, from + Batch.DefaultSize))
+    else
+      val chunks = math.min(runner.parallelism, all.size)
+      val runs   = (0 until chunks).map { c =>
+        val lo = (all.size.toLong * c / chunks).toInt
+        val hi = (all.size.toLong * (c + 1) / chunks).toInt
+        runner.submit(() => SortOp.sortRange(cmp, lo, hi, n))
+      }
+      val sorted = SortOp.merge(runs.map(_.get()).toArray, cmp, n)
+      // Gather the output batches in parallel too: one task per run of consecutive batches
+      val numBatches = (n + Batch.DefaultSize - 1) / Batch.DefaultSize
+      val perTask    = math.max(1, (numBatches + chunks - 1) / chunks)
+      val gathers    = (0 until numBatches by perTask).map { first =>
+        runner.submit { () =>
+          val last = math.min(numBatches, first + perTask)
+          (first until last).map { b =>
+            val from = b * Batch.DefaultSize
+            val to   = math.min(n, from + Batch.DefaultSize)
+            all.gather(java.util.Arrays.copyOfRange(sorted, from, to), to - from)
+          }
+        }
+      }
+      gathers.iterator.flatMap(_.get())
+    end if
+
+  end sortAll
 
 end SortOp
 
 object SortOp:
-  def comparator(keyVecs: Array[Vec], keys: Seq[SortKey]): java.util.Comparator[Integer] =
-    val asc        = keys.map(_.ascending).toArray
-    val nullsFirst = keys.map(_.nullsFirst).toArray
-    (a: Integer, b: Integer) =>
-      val i = a.intValue()
-      val j = b.intValue()
-      var c = 0
-      var k = 0
-      while c == 0 && k < keyVecs.length do
-        val v  = keyVecs(k)
-        val ni = v.isNull(i)
-        val nj = v.isNull(j)
-        c =
-          if ni && nj then
-            0
-          else if ni then
-            if nullsFirst(k) then
-              -1
-            else
-              1
-          else if nj then
-            if nullsFirst(k) then
-              1
-            else
-              -1
-          else
-            val r =
-              v match
-                case l: LongVec =>
-                  java.lang.Long.compare(l.values(i), l.values(j))
-                case x: IntVec =>
-                  Integer.compare(x.values(i), x.values(j))
-                case d: DoubleVec =>
-                  java.lang.Double.compare(d.values(i), d.values(j))
-                case s: StrVec =>
-                  s.values(i).compareTo(s.values(j))
-                case other =>
-                  ValueOps.compare(other.get(i), other.get(j))
-            if asc(k) then
+  /**
+    * Below this many input rows a sort runs on the calling thread. The
+    * wvlet.engine.parallelSortMinRows system property overrides it (tests use it to exercise the
+    * parallel path on small data)
+    */
+  def MinParallelRows: Int = sys
+    .props
+    .get("wvlet.engine.parallelSortMinRows")
+    .flatMap(_.toIntOption)
+    .getOrElse(65536)
+
+  /** Row indexes lo until hi in (stable) sorted order, cut to the first `limit` */
+  def sortRange(cmp: SortOp.RowComparator, lo: Int, hi: Int, limit: Int): Array[Int] =
+    val idx = new Array[Integer](hi - lo)
+    var i   = 0
+    while i < idx.length do
+      idx(i) = Integer.valueOf(lo + i)
+      i += 1
+    java.util.Arrays.sort(idx, cmp)
+    val out = new Array[Int](math.min(limit, idx.length))
+    i = 0
+    while i < out.length do
+      out(i) = idx(i).intValue()
+      i += 1
+    out
+
+  /**
+    * The first `limit` rows of sorted runs, merged with a binary heap of the runs' heads. Ties go
+    * to the earlier run, so merging stable sorts of consecutive chunks gives the stable sort of all
+    */
+  def merge(runs: Array[Array[Int]], cmp: SortOp.RowComparator, limit: Int): Array[Int] =
+    val total = runs.iterator.map(_.length.toLong).sum
+    val out   = new Array[Int](math.min(limit.toLong, total).toInt)
+    val pos   = new Array[Int](runs.length)
+    // Min-heap of run ids by their current head row
+    val heap                          = new Array[Int](runs.length)
+    var size                          = 0
+    def less(a: Int, b: Int): Boolean =
+      val c = cmp.compareRows(runs(a)(pos(a)), runs(b)(pos(b)))
+      c < 0 || (c == 0 && a < b)
+    def siftDown(start: Int): Unit =
+      var i    = start
+      var done = false
+      while !done do
+        val l = 2 * i + 1
+        if l >= size then
+          done = true
+        else
+          val r = l + 1
+          val m =
+            if r < size && less(heap(r), heap(l)) then
               r
             else
-              -r
-        k += 1
-      end while
-      c
+              l
+          if less(heap(m), heap(i)) then
+            val t = heap(i)
+            heap(i) = heap(m)
+            heap(m) = t
+            i = m
+          else
+            done = true
+    var r = 0
+    while r < runs.length do
+      if runs(r).nonEmpty then
+        heap(size) = r
+        size += 1
+      r += 1
+    var k = size / 2 - 1
+    while k >= 0 do
+      siftDown(k)
+      k -= 1
+    var o = 0
+    while o < out.length do
+      val top = heap(0)
+      out(o) = runs(top)(pos(top))
+      o += 1
+      pos(top) += 1
+      if pos(top) == runs(top).length then
+        size -= 1
+        heap(0) = heap(size)
+      siftDown(0)
+    out
+
+  end merge
+
+  /** Compares rows by index; `compareRows` avoids boxing the indexes */
+  abstract class RowComparator extends java.util.Comparator[Integer]:
+    def compareRows(i: Int, j: Int): Int
+    final def compare(a: Integer, b: Integer): Int = compareRows(a.intValue(), b.intValue())
+
+  def comparator(keyVecs: Array[Vec], keys: Seq[SortKey]): RowComparator =
+    val asc        = keys.map(_.ascending).toArray
+    val nullsFirst = keys.map(_.nullsFirst).toArray
+    new RowComparator:
+      def compareRows(i: Int, j: Int): Int =
+        var c = 0
+        var k = 0
+        while c == 0 && k < keyVecs.length do
+          val v  = keyVecs(k)
+          val ni = v.isNull(i)
+          val nj = v.isNull(j)
+          c =
+            if ni && nj then
+              0
+            else if ni then
+              if nullsFirst(k) then
+                -1
+              else
+                1
+            else if nj then
+              if nullsFirst(k) then
+                1
+              else
+                -1
+            else
+              val r =
+                v match
+                  case l: LongVec =>
+                    java.lang.Long.compare(l.values(i), l.values(j))
+                  case x: IntVec =>
+                    Integer.compare(x.values(i), x.values(j))
+                  case d: DoubleVec =>
+                    java.lang.Double.compare(d.values(i), d.values(j))
+                  case s: StrVec =>
+                    s.values(i).compareTo(s.values(j))
+                  case other =>
+                    ValueOps.compare(other.get(i), other.get(j))
+              if asc(k) then
+                r
+              else
+                -r
+          k += 1
+        end while
+        c
+      end compareRows
+    end new
 
   end comparator
 

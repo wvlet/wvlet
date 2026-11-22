@@ -74,12 +74,29 @@ object WindowCall:
       case other =>
         Aggregates.resultType(other, argTypes)
 
-/** Appends one column per window call to the input rows (input order is not preserved) */
-class WindowOp(val child: Operator, val calls: IndexedSeq[WindowCall], val schema: Schema)
-    extends Operator:
+/**
+  * Appends one column per window call to the input rows (input order is not preserved). For calls
+  * with PARTITION BY over inputs of at least `minParallelRows` rows, the rows are split by the hash
+  * of the partition key, so that every window partition falls in one part, and the parts are
+  * evaluated as tasks of `runner`. Each row's value doesn't depend on how partitions are grouped
+  * into parts, so the output equals the sequential one.
+  */
+class WindowOp(
+    val child: Operator,
+    val calls: IndexedSeq[WindowCall],
+    val schema: Schema,
+    runner: TaskRunner = TaskRunner.Sequential,
+    minParallelRows: Int = WindowOp.MinParallelRows
+) extends Operator:
   private var result: Iterator[Batch]  = null
   override def children: Seq[Operator] = Seq(child)
-  override protected def details       = s"(${calls.map(_.sig).mkString(", ")})"
+  override def name: String            =
+    if runner.parallelism > 1 then
+      s"Window[parallelism=${runner.parallelism}]"
+    else
+      "Window"
+
+  override protected def details = s"(${calls.map(_.sig).mkString(", ")})"
 
   def next(): Batch =
     if result == null then
@@ -98,15 +115,28 @@ class WindowOp(val child: Operator, val calls: IndexedSeq[WindowCall], val schem
     val out     = Batch(all.columns ++ outCols, n)
     Iterator.range(0, n, Batch.DefaultSize).map(from => out.slice(from, from + Batch.DefaultSize))
 
-  /** Rows of each partition, sorted by the ORDER BY keys */
-  private def partitions(c: WindowCall, all: Batch): Seq[Array[Int]] =
-    val n                  = all.size
+  /**
+    * The window partitions among `rows` (ascending row indexes of the input), each sorted by the
+    * ORDER BY keys. `partKeys` are the PARTITION BY values of every input row
+    */
+  private def partitions(
+      c: WindowCall,
+      partKeys: Array[Vec],
+      rows: Array[Int],
+      all: Int,
+      cmp: SortOp.RowComparator
+  ): Seq[Array[Int]] =
+    val n                  = rows.length
     val groups: Array[Int] =
       if c.partitionBy.isEmpty then
         new Array[Int](n)
       else
-        val table = GroupTable(c.partitionBy.map(_.ptype).toIndexedSeq)
-        table.groupIds(c.partitionBy.map(_.eval(all)).toArray, n)
+        val keys =
+          if n == all then
+            partKeys
+          else
+            partKeys.map(_.gather(rows, n))
+        GroupTable(c.partitionBy.map(_.ptype).toIndexedSeq).groupIds(keys, n)
     val numGroups =
       if n == 0 then
         0
@@ -115,18 +145,29 @@ class WindowOp(val child: Operator, val calls: IndexedSeq[WindowCall], val schem
     val buckets = Array.fill(numGroups)(scala.collection.mutable.ArrayBuilder.make[Int])
     var i       = 0
     while i < n do
-      buckets(groups(i)) += i
+      buckets(groups(i)) += rows(i)
       i += 1
-    val keyVecs = c.orderBy.map(_.expr.eval(all)).toArray
-    val cmp     = SortOp.comparator(keyVecs, c.orderBy)
     buckets
       .toSeq
       .map { b =>
-        val rows = b.result().map(Integer.valueOf)
-        if c.orderBy.nonEmpty then
-          java.util.Arrays.sort(rows, cmp)
-        rows.map(_.intValue())
+        val part = b.result()
+        if c.orderBy.isEmpty then
+          part
+        else
+          val boxed = new Array[Integer](part.length)
+          var k     = 0
+          while k < part.length do
+            boxed(k) = Integer.valueOf(part(k))
+            k += 1
+          java.util.Arrays.sort(boxed, cmp)
+          k = 0
+          while k < part.length do
+            part(k) = boxed(k).intValue()
+            k += 1
+          part
       }
+
+  end partitions
 
   private def evaluate(c: WindowCall, all: Batch): Vec =
     val n                              = all.size
@@ -134,9 +175,13 @@ class WindowOp(val child: Operator, val calls: IndexedSeq[WindowCall], val schem
     val args                           = c.args.map(_.eval(all)).toArray
     val keyVecs                        = c.orderBy.map(_.expr.eval(all)).toArray
     val cmp                            = SortOp.comparator(keyVecs, c.orderBy)
-    def peers(a: Int, b: Int): Boolean = c.orderBy.isEmpty || cmp.compare(a, b) == 0
+    def peers(a: Int, b: Int): Boolean = c.orderBy.isEmpty || cmp.compareRows(a, b) == 0
+    val partKeys                       = c.partitionBy.map(_.eval(all)).toArray
 
-    partitions(c, all).foreach { rows =>
+    // Rows of distinct partitions write distinct slots of `out`, so parts can run concurrently
+    def evalPart(rows: Array[Int]): Unit = partitions(c, partKeys, rows, n, cmp).foreach(evalRows)
+
+    def evalRows(rows: Array[Int]): Unit =
       val size = rows.length
       c.name match
         case "row_number" =>
@@ -241,7 +286,19 @@ class WindowOp(val child: Operator, val calls: IndexedSeq[WindowCall], val schem
         case agg =>
           aggregateOverFrames(c, rows, args, out, peers)
       end match
-    }
+    end evalRows
+
+    if c.partitionBy.isEmpty || n < minParallelRows || runner.parallelism <= 1 then
+      val rows = new Array[Int](n)
+      var i    = 0
+      while i < n do
+        rows(i) = i
+        i += 1
+      evalPart(rows)
+    else
+      val hashes = GroupTable(c.partitionBy.map(_.ptype).toIndexedSeq).keyHashes(partKeys, n)
+      val parts = GroupTable.partitionRows(hashes, n, GroupTable.partitionCount(runner.parallelism))
+      parts.filter(_.nonEmpty).map(rows => runner.submit(() => evalPart(rows))).foreach(_.get())
     Vec.fromValues(c.ptype, out.toSeq)
 
   end evaluate
@@ -320,3 +377,15 @@ class WindowOp(val child: Operator, val calls: IndexedSeq[WindowCall], val schem
     acc.result(1).get(0)
 
 end WindowOp
+
+object WindowOp:
+  /**
+    * Below this many input rows, window partitions are evaluated on the calling thread. The
+    * wvlet.engine.parallelWindowMinRows system property overrides it (tests use it to exercise the
+    * parallel path on small data)
+    */
+  def MinParallelRows: Int = sys
+    .props
+    .get("wvlet.engine.parallelWindowMinRows")
+    .flatMap(_.toIntOption)
+    .getOrElse(65536)
