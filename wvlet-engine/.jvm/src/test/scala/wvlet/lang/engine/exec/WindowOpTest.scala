@@ -318,6 +318,10 @@ class WindowOpTest extends UniTest:
       Some(FrameSpec(true, None, Some(0))),
       Some(FrameSpec(true, None, Some(3))),
       Some(FrameSpec(true, None, Some(-2))),
+      // Ends beyond either side of a 600-row partition
+      Some(FrameSpec(true, None, Some(5000))),
+      Some(FrameSpec(true, None, Some(-5000))),
+      Some(FrameSpec(false, None, Some(-2))),
       Some(FrameSpec(true, None, None)),
       Some(FrameSpec(false, None, Some(0))),
       Some(FrameSpec(false, None, Some(2))),
