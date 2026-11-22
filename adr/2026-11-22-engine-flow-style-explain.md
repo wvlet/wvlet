@@ -1,6 +1,6 @@
 # ADR: Flow-style EXPLAIN for engine physical plans
 
-Date: 2026-11-22 · PR #TBD
+Date: 2026-11-22 · PR #2258
 
 ## Context
 

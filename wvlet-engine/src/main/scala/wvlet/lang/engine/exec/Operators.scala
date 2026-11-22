@@ -37,8 +37,9 @@ trait Operator:
   def explain(indent: Int = 0): String =
     val self =
       s"${name}${details} -> [${schema.fields.map(f => s"${f.name}:${f.ptype}").mkString(", ")}]"
-    val flow   = children.headOption.map(_.explain(indent))
-    val nested = children.drop(1).map(_.explain(indent + 1)) ++ extraInputs(indent + 1)
+    val inputs = children
+    val flow   = inputs.headOption.map(_.explain(indent))
+    val nested = inputs.drop(1).map(_.explain(indent + 1)) ++ extraInputs(indent + 1)
     val marker =
       if nested.nonEmpty then
         "↙ "

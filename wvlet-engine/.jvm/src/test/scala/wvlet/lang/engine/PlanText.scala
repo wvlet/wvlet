@@ -21,9 +21,14 @@ object PlanText:
   private def opOf(line: String): String =
     line.trim.stripPrefix("↓ ").stripPrefix("↙ ").split(" -> \\[").head
 
+  private def hasMarker(line: String): Boolean =
+    val t = line.trim
+    t.startsWith("↓ ") || t.startsWith("↙ ")
+
   /**
-    * The operators the output of the first operator starting with `op` flows into, nearest first:
-    * the following lines at the same indentation, skipping the nested inputs between them
+    * The operators the output of the first operator starting with `op` flows into, nearest first,
+    * up to the root: the following marked lines at the same indentation (skipping the inputs nested
+    * between them), then the reader one level up when the flow is itself a nested input
     */
   def downstream(plan: String, op: String): Seq[String] =
     val lines = plan.linesIterator.toIndexedSeq
@@ -31,11 +36,25 @@ object PlanText:
       case -1 =>
         Nil
       case i =>
-        val indent = indentOf(lines(i))
+        val out      = Seq.newBuilder[String]
+        var indent   = indentOf(lines(i))
+        var skipping = false
         lines
           .drop(i + 1)
-          .filterNot(l => indentOf(l) > indent)
-          .takeWhile(indentOf(_) == indent)
-          .map(opOf)
+          .foreach { l =>
+            val d = indentOf(l)
+            if d < indent then
+              // The reader of this nested input
+              out += opOf(l)
+              indent = d
+              skipping = false
+            else if d == indent && !skipping then
+              if hasMarker(l) then
+                out += opOf(l)
+              else
+                // Another input of the same reader starts: skip it up to the reader
+                skipping = true
+          }
+        out.result()
 
 end PlanText
