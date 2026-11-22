@@ -90,6 +90,37 @@ object Parallelizer:
       case _ =>
         None
 
+  /** An aggregation grouping by every column of op, with no aggregates: its distinct rows */
+  private def distinctAgg(op: Operator): Operator = HashAggOp(
+    op,
+    op.schema.fields.indices.map(i => ColRef(i, op.schema(i).ptype, op.schema(i).name)),
+    IndexedSeq.empty,
+    op.schema
+  )
+
+  /**
+    * Whether DISTINCT over op can run as a two-phase aggregation: op is a scan pipeline, whose
+    * parts are reduced to their distinct rows. Otherwise the partitioned aggregation would buffer
+    * every input row, while DistinctOp keeps only the distinct ones
+    */
+  private def parallelDistinct(op: Operator, runner: TaskRunner): Boolean =
+    op.schema.size > 0 && pipeline(op, runner).isDefined
+
+  /** The distinct rows of a set operation input, unless they already are */
+  private def distinctInput(op: Operator, runner: TaskRunner): Operator =
+    op match
+      case _: DistinctOp =>
+        op
+      case s: SetOpOp if !s.all =>
+        op
+      // Unique on its keys, so on its whole rows
+      case a: HashAggOp if a.keys.nonEmpty =>
+        op
+      case _ if parallelDistinct(op, runner) =>
+        distinctAgg(op)
+      case _ =>
+        op
+
   private def rewrite(op: Operator, runner: TaskRunner): Operator =
     def r(x: Operator): Operator = rewrite(x, runner)
     pipeline(op, runner) match
@@ -118,6 +149,13 @@ object Parallelizer:
             SortOp(r(s.child), s.keys, s.limit, runner)
           case a: HashAggOp =>
             HashAggOp(r(a.child), a.keys, a.aggs, a.schema)
+          case l: LimitOp if l.child.isInstanceOf[DistinctOp] =>
+            // DistinctOp streams new rows, so the limit can stop the input early
+            LimitOp(DistinctOp(r(l.child.asInstanceOf[DistinctOp].child)), l.limit, l.offset)
+          case d: DistinctOp if parallelDistinct(d.child, runner) =>
+            // DISTINCT groups by every column: as an aggregation, it runs in two phases (partial
+            // per scan part, then partitioned by key), like DuckDB's distinct
+            r(distinctAgg(d.child))
           case d: DistinctOp =>
             DistinctOp(r(d.child))
           case u: UnionAllOp =>
@@ -135,6 +173,16 @@ object Parallelizer:
             )
           case j: NestedLoopJoinOp =>
             NestedLoopJoinOp(r(j.left), r(j.right), j.cond, j.kind, j.schema)
+          case s: SetOpOp if !s.all =>
+            // INTERSECT / EXCEPT (without ALL) need only the distinct rows of each side: reduce
+            // them in parallel first
+            SetOpOp(
+              r(distinctInput(s.left, runner)),
+              r(distinctInput(s.right, runner)),
+              s.isIntersect,
+              false,
+              s.schema
+            )
           case s: SetOpOp =>
             SetOpOp(r(s.left), r(s.right), s.isIntersect, s.all, s.schema)
           case w: WindowOp =>
