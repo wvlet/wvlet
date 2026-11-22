@@ -335,7 +335,11 @@ class PlanExecutorWvletEngineTest extends UniTest:
                        |  s"#${id}" as label,
                        |  id + '' as joined,
                        |  price.to_string as p
-                       |test _.rows should be [['1', '#1', '1', '2.5']]""".stripMargin)
+                       |test _.rows should be [['1', '#1', '1', '2.5']]
+                       |
+                       |from [[1], [2]] as t(id)
+                       |agg id.string_agg(',') as ids
+                       |test _.rows should be [['1,2']]""".stripMargin)
     result.getError shouldBe None
   }
 

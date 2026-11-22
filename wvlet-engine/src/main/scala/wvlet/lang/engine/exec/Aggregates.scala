@@ -733,7 +733,7 @@ object Aggregates:
           val g = groups(i)
           values(g) match
             case null =>
-              val sb = StringBuilder(ValueOps.toStr(x))
+              val sb = StringBuilder(ValueOps.toStr(x, v.ptype))
               values(g) = sb
             case sb: StringBuilder =>
               val s =
@@ -741,7 +741,7 @@ object Aggregates:
                   ","
                 else
                   Option(sep.get(i)).map(ValueOps.toStr).getOrElse(",")
-              sb.append(s).append(ValueOps.toStr(x))
+              sb.append(s).append(ValueOps.toStr(x, v.ptype))
             case _ =>
         i += 1
 
