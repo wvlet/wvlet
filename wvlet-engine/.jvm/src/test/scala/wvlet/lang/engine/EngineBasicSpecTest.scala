@@ -26,19 +26,10 @@ class EngineBasicSpecTest extends UniTest:
     "from_table_function.wv",
     "information_schema.wv",
     "lambda.wv",
-    "pivot-agg-in.wv",
-    "pivot-agg.wv",
-    "pivot-group-by.wv",
-    "pivot-order.wv",
-    "pivot.wv",
     "show-catalogs.wv",
     "show-modelsl.wv",
     "show-schemas.wv",
-    "show-tables.wv",
-    "stdlib_range.wv",
-    "unnest-cross-join.wv",
-    "unnest.wv",
-    "unpivot.wv"
+    "show-tables.wv"
   )
 
   private val conformance = EngineConformance("spec/basic", Nil, _ => ())
