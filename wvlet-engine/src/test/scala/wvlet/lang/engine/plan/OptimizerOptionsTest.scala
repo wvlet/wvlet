@@ -51,9 +51,9 @@ class OptimizerOptionsTest extends UniTest:
       )
   }
 
-  test("should plan with the recursive planner by default") {
-    OptimizerOptions().planner shouldBe PlannerMode.Legacy
-    OptimizerOptions().withPlanner(PlannerMode.Runtime).planner shouldBe PlannerMode.Runtime
+  test("should plan through the runtime plan by default") {
+    OptimizerOptions().planner shouldBe PlannerMode.Runtime
+    OptimizerOptions().withPlanner(PlannerMode.Legacy).planner shouldBe PlannerMode.Legacy
   }
 
   test("should parse planner names") {

@@ -69,7 +69,7 @@ object PlannerMode:
   */
 case class OptimizerOptions(
     disabled: Set[Optimization] = Set.empty,
-    planner: PlannerMode = PlannerMode.Legacy,
+    planner: PlannerMode = PlannerMode.Runtime,
     validatePlans: Boolean = false
 ):
   def isEnabled(o: Optimization): Boolean = !disabled.contains(o)
@@ -125,7 +125,7 @@ object OptimizerOptions:
   /**
     * The options set by the wvlet.engine.optimizer.disabled system property or the
     * WVLET_ENGINE_OPTIMIZER_DISABLED environment variable (every optimization runs when neither is
-    * set), and the planner set by wvlet.engine.planner or WVLET_ENGINE_PLANNER (legacy by default)
+    * set), and the planner set by wvlet.engine.planner or WVLET_ENGINE_PLANNER (runtime by default)
     */
   def fromSystem(): OptimizerOptions =
     val o = sys
