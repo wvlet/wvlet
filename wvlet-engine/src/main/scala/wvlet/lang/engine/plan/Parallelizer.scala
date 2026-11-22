@@ -123,6 +123,17 @@ object Parallelizer:
   private def parallelDistinct(op: Operator, runner: TaskRunner): Boolean =
     op.schema.size > 0 && pipeline(op, runner).isDefined
 
+  private def alreadyDistinct(op: Operator): Boolean =
+    op match
+      case _: DistinctOp =>
+        true
+      case s: SetOpOp =>
+        !s.all
+      case a: HashAggOp =>
+        a.keys.nonEmpty
+      case _ =>
+        false
+
   /** The distinct rows of a set operation input, unless they already are */
   private def distinctInput(op: Operator, runner: TaskRunner): Operator =
     op match
@@ -160,15 +171,37 @@ object Parallelizer:
             FilterOp(r(f.child), f.cond, f.keep)
           case p: ProjectOp =>
             ProjectOp(r(p.child), p.exprs, p.schema)
+          case l: LimitOp if l.child.isInstanceOf[DistinctOp] =>
+            // DistinctOp streams new rows, so the limit can stop the input early
+            LimitOp(DistinctOp(r(l.child.asInstanceOf[DistinctOp].child)), l.limit, l.offset)
           case l: LimitOp =>
             LimitOp(r(l.child), l.limit, l.offset)
           case s: SortOp =>
             SortOp(r(s.child), s.keys, s.limit, runner)
           case a: HashAggOp =>
             HashAggOp(r(a.child), a.keys, a.aggs, a.schema)
-          case l: LimitOp if l.child.isInstanceOf[DistinctOp] =>
-            // DistinctOp streams new rows, so the limit can stop the input early
-            LimitOp(DistinctOp(r(l.child.asInstanceOf[DistinctOp].child)), l.limit, l.offset)
+          case d: DistinctOp
+              if d.schema.size > 0 && (
+                d.child match
+                  case u: UnionAllOp =>
+                    u.inputs.exists(parallelDistinct(_, runner))
+                  case _ =>
+                    false
+              ) =>
+            // UNION (distinct): the distinct rows of each input (in parallel for scan pipelines,
+            // streaming through DistinctOp otherwise), then merged by key. The final aggregation
+            // holds only the inputs' distinct rows
+            val u      = d.child.asInstanceOf[UnionAllOp]
+            val inputs = u
+              .inputs
+              .map { i =>
+                distinctInput(i, runner) match
+                  case same if (same eq i) && !alreadyDistinct(i) && i.schema.size > 0 =>
+                    DistinctOp(i)
+                  case reduced =>
+                    reduced
+              }
+            r(distinctAgg(UnionAllOp(inputs, u.schema)))
           case d: DistinctOp if parallelDistinct(d.child, runner) =>
             // DISTINCT groups by every column: as an aggregation, it runs in two phases (partial
             // per scan part, then partitioned by key), like DuckDB's distinct
