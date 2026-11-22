@@ -147,6 +147,21 @@ class EngineScanPushdownTest extends UniTest:
         |order by l_orderkey""".stripMargin).map(_.head).distinct shouldBe Seq(1L, 3L)
   }
 
+  test("should read CTEs referenced more than once in parallel parts, with pruned columns") {
+    val plan = explain("""with t as { from 'spec/tpch/data/lineitem.parquet' where l_quantity > 10 }
+        |from t as a join t as b on a.l_orderkey = b.l_orderkey
+        |select a.l_orderkey, b.l_partkey""".stripMargin)
+    debug(plan)
+    // A reader of the shared result is a splittable scan: its pipeline runs as a Morsel
+    """Morsel[^\n]*\n(\s+[^\n]*\n)*?\s+Scan\[CTE\[t\]\]""".r.findFirstIn(plan).isDefined shouldBe
+      true
+    plan shouldContain "(shared)"
+    rows("""with t as { from 'spec/tpch/data/lineitem.parquet' where l_orderkey <= 3 }
+        |from t as a join t as b on a.l_orderkey = b.l_orderkey and a.l_linenumber = b.l_linenumber
+        |select a.l_orderkey""".stripMargin).size shouldBe
+      rows("from 'spec/tpch/data/lineitem.parquet' where l_orderkey <= 3 select l_orderkey").size
+  }
+
   test("should push comparisons into the Parquet scan") {
     val plan = explain(s"from '${rowGroupFile}' where id >= 950 select id")
     debug(plan)
