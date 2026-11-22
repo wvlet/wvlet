@@ -49,7 +49,9 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private val cteDefs = mutable.HashMap.empty[String, AliasedRelation]
   // CTEs referenced more than once are computed once and scanned from memory afterwards
   private val cteRefCounts = mutable.HashMap.empty[String, Int]
-  private val cteTables    = mutable.HashMap.empty[String, (AliasedRelation, MemTable)]
+  private val cteTables    = mutable.HashMap.empty[String, (AliasedRelation, SharedResult)]
+  // Uncorrelated scalar subqueries are evaluated once per query
+  private val scalarResults = java.util.IdentityHashMap[Relation, VExpr]()
 
   /** Window function calls collected while binding a projection */
   private var windowCollector: Option[WindowCollector] = None
@@ -326,7 +328,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   /** Count the references to each CTE of `w`, including those in subqueries */
   private def countCTERefs(w: WithQuery): Unit =
     val names = w.queryDefs.map(_.alias.leafName.toLowerCase).toSet
-    names.foreach(n => cteRefCounts(n) = 0)
+    // A nested WITH reusing a name adds to the outer counts: at worst, an extra materialization
+    names.foreach(n => cteRefCounts.getOrElseUpdate(n, 0))
     def count(n: String): Unit =
       if names.contains(n) then
         cteRefCounts(n) = cteRefCounts(n) + 1
@@ -341,17 +344,15 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val key = name.toLowerCase
     cteDefs.get(key) match
       case Some(d) if cteRefCounts.getOrElse(key, 0) > 1 =>
-        val table =
+        val shared =
           cteTables.get(key) match
-            case Some((defn, t)) if defn eq d =>
-              t
+            case Some((defn, r)) if defn eq d =>
+              r
             case _ =>
-              val op = Parallelizer(ColumnPruner(planAliased(d)), TaskRunner.default)
-              debug(s"Materializing CTE ${name}:\n${op.explain()}")
-              val t = MemTable(name, op.schema, op.drain())
-              cteTables(key) = (d, t)
-              t
-        ScanOp(table, table.schema, None, None)
+              val r = SharedResult(Parallelizer(ColumnPruner(planAliased(d)), TaskRunner.default))
+              cteTables(key) = (d, r)
+              r
+        shared.newReader(s"CTE[${name}]")
       case Some(d) =>
         planAliased(d)
       case None =>
@@ -959,6 +960,17 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   end expandGroupingSets
 
+  /**
+    * The rows of an operator, computed once on first read and shared by several readers (e.g., a
+    * CTE referenced more than once, or the input of grouping sets)
+    */
+  private class SharedResult(op: Operator):
+    private lazy val batches: Seq[Batch] =
+      debug(s"Materializing a shared result:\n${op.explain()}")
+      op.drain()
+
+    def newReader(label: String): Operator = IteratorOp(op.schema, () => batches.iterator, label)
+
   private def isAggregationInput(r: Relation): Boolean =
     r match
       case _: GroupBy =>
@@ -1140,46 +1152,57 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         case None =>
           HashAggOp(inOp, keys, calls, aggCtx.outputSchema)
         case Some(sets) =>
-          // One aggregation per grouping set over its own scan of the input; keys outside the
-          // set are NULL, and the grouping id has a bit set for each of them
-          val n = baseKeyExprs.size
+          // One aggregation per grouping set; keys outside the set are NULL, and the grouping id
+          // has a bit set for each of them. The sets share one evaluation of the input, reduced
+          // to the columns the keys and aggregates read and computed on first use
+          val n    = baseKeyExprs.size
+          val refs = mutable.BitSet.empty
+          keys.foreach(VExprs.collectRefs(_, refs))
+          calls.foreach { c =>
+            c.args.foreach(VExprs.collectRefs(_, refs))
+            c.filter.foreach(VExprs.collectRefs(_, refs))
+          }
+          val cols = refs.toIndexedSeq
+          val m    = Array.fill(inOp.schema.size)(-1)
+          cols.indices.foreach(i => m(cols(i)) = i)
+          val shared = SharedResult(
+            Parallelizer(ColumnPruner(projectIndexes(inOp, cols)), TaskRunner.default)
+          )
+          val setKeyExprs = keys.map(VExprs.remap(_, m))
+          val setCalls    = calls.map(c =>
+            c.copy(args = c.args.map(VExprs.remap(_, m)), filter = c.filter.map(VExprs.remap(_, m)))
+          )
           UnionAllOp(
-            sets
-              .zipWithIndex
-              .map { (set, i) =>
-                val gid     = (0 until n).filterNot(set.contains).map(k => 1L << k).sum
-                val setKeys = (0 until n).map(k =>
-                  if set.contains(k) then
-                    keys(k)
-                  else
-                    Const(null, keys(k).ptype)
-                ) :+ Const(gid, PType.Int64)
-                val in =
-                  if i == 0 then
-                    inOp
-                  else
-                    planRelation(source)
-                if set.isEmpty then
-                  // The grand total: a global aggregation, so empty input still yields one row
-                  val out       = aggCtx.outputSchema
-                  val callStart = setKeys.size
-                  val callAgg   = HashAggOp(
-                    in,
-                    IndexedSeq.empty,
-                    calls,
-                    Schema(out.fields.drop(callStart))
-                  )
-                  ProjectOp(
-                    callAgg,
-                    setKeys.toIndexedSeq ++
-                      (callStart until out.size).map(c =>
-                        ColRef(c - callStart, out(c).ptype, out(c).name)
-                      ),
-                    out
-                  )
+            sets.map { set =>
+              val gid     = (0 until n).filterNot(set.contains).map(k => 1L << k).sum
+              val setKeys = (0 until n).map(k =>
+                if set.contains(k) then
+                  setKeyExprs(k)
                 else
-                  HashAggOp(in, setKeys.toIndexedSeq, calls, aggCtx.outputSchema)
-              },
+                  Const(null, keys(k).ptype)
+              ) :+ Const(gid, PType.Int64)
+              val in = shared.newReader("GroupingSetInput")
+              if set.isEmpty then
+                // The grand total: a global aggregation, so empty input still yields one row
+                val out       = aggCtx.outputSchema
+                val callStart = setKeys.size
+                val callAgg   = HashAggOp(
+                  in,
+                  IndexedSeq.empty,
+                  setCalls,
+                  Schema(out.fields.drop(callStart))
+                )
+                ProjectOp(
+                  callAgg,
+                  setKeys.toIndexedSeq ++
+                    (callStart until out.size).map(c =>
+                      ColRef(c - callStart, out(c).ptype, out(c).name)
+                    ),
+                  out
+                )
+              else
+                HashAggOp(in, setKeys.toIndexedSeq, setCalls, aggCtx.outputSchema)
+            },
             aggCtx.outputSchema
           )
       end match
@@ -1857,6 +1880,15 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   /** Uncorrelated scalar subquery as a constant */
   def bindScalarSubquery(binder: Binder, sub: Relation): VExpr =
+    val cached = scalarResults.get(sub)
+    if cached != null then
+      cached
+    else
+      val v = evalScalarSubquery(sub)
+      scalarResults.put(sub, v)
+      v
+
+  private def evalScalarSubquery(sub: Relation): VExpr =
     val op = Planner.nested(this).plan(sub)
     val b  = Operator.materialize(op)
     if b.size > 1 then
@@ -2021,12 +2053,14 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val all                 = (joinConds ++ filters).filterNot(isTrueLiteral)
     // Conditions with subqueries are applied after joining, except for uncorrelated scalar
     // subqueries, which are constants (e.g., d_month_seq = (select ... from date_dim))
-    val (subqueryConds, conds) = all.partition(c => hasSubquery(withoutScalarSubqueries(c)))
+    val (withSubqueries, conds) = all
+      .map(c => c -> withoutScalarSubqueries(c))
+      .partition((_, e) => hasSubquery(e))
+    val subqueryConds = withSubqueries.map(_._1)
     // Which inputs a condition references
-    def refs(c: Expression): Set[Int] =
-      val e = withoutScalarSubqueries(c)
+    def refs(e: Expression): Set[Int] =
       inputs.indices.filter(i => referencesInput(e, inputs, i)).toSet
-    val condRefs = conds.map(c => (c, refs(c)))
+    val condRefs = conds.map((c, e) => (c, refs(e)))
     // Push single-input conditions down
     val pushed = inputs
       .indices
