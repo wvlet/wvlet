@@ -14,9 +14,7 @@
 package wvlet.lang.skill
 
 import wvlet.lang.api.StatusCode
-import wvlet.uni.io.FileSystem
-import wvlet.uni.io.IOPath
-import wvlet.uni.io.WriteMode
+import wvlet.uni.weaver.Weaver
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.option
 
@@ -73,63 +71,106 @@ object Skill:
       )
   }
 
-  /**
-    * Write the skill to `<dir>/wvlet/` and return the written paths. An existing `<dir>/wvlet/`
-    * folder is replaced, so files dropped from a newer version do not linger. A leading `~/` is
-    * expanded to the home directory. For Claude Code, install into `.claude/skills` of a project or
-    * `~/.claude/skills`.
-    */
-  def install(dir: String): Seq[String] =
-    val root = IOPath.parse(expandHome(dir)).resolve(name)
-    if FileSystem.isDirectory(root) then
-      FileSystem.deleteRecursively(root)
-    BundledSkill
-      .files
-      .map { (path, content) =>
-        val target = root.resolve(path)
-        target.parent.foreach(FileSystem.createDirectoryIfNotExists)
-        FileSystem.writeString(target, content, WriteMode.Create)
-        target.path
-      }
-      .toSeq
-
-  private def expandHome(dir: String): String =
-    if dir == "~" || dir.startsWith("~/") then
-      sys.env.get("HOME").map(home => s"${home}${dir.drop(1)}").getOrElse(dir)
-    else
-      dir
-
 end Skill
 
 /**
-  * Options of the `wvlet skill` command, shared by the JVM, Node.js, and Native CLIs
+  * Options of the `wvlet skill` command, shared by the JVM, Node.js, and Native CLIs.
+  *
+  * {{{
+  * wvlet skill [show] [file]   print SKILL.md or a reference (syntax, models, testing, cli)
+  * wvlet skill files           list the files of the skill
+  * wvlet skill install         install for coding agents (--agent claude,codex,pi; --global; --dir)
+  * wvlet skill list            show where the skill is installed and whether it is current
+  * wvlet skill remove --yes    remove the skill wvlet installed
+  * }}}
   */
 case class SkillOption(
-    @argument(description = "Skill file to print, e.g., syntax or references/testing.md")
-    file: Option[String] = None,
-    @option(prefix = "--list", description = "List the skill files")
-    list: Boolean = false,
+    @argument(description = "show [file] | files | install | list | remove")
+    args: Seq[String] = Nil,
     @option(
-      prefix = "--install",
-      description = "Write the skill to <dir>/wvlet, e.g., .claude/skills or ~/.claude/skills"
+      prefix = "-a,--agent",
+      description = "Agents to install for: claude, codex, pi (default: all)"
     )
-    install: Option[String] = None
+    agents: Seq[String] = Nil,
+    @option(prefix = "-g,--global", description = "Install under the home directory")
+    global: Boolean = false,
+    @option(prefix = "--dir", description = "Install into <dir>/wvlet instead of agent folders")
+    dir: Option[String] = None,
+    @option(
+      prefix = "--force",
+      description = "Replace folders wvlet did not write or that were edited"
+    )
+    force: Boolean = false,
+    @option(prefix = "--dry-run", description = "Show what remove would delete")
+    dryRun: Boolean = false,
+    @option(prefix = "-y,--yes", description = "Confirm remove")
+    yes: Boolean = false,
+    @option(prefix = "--json", description = "Print results as JSON")
+    json: Boolean = false
 ):
-  def withFile(file: String): SkillOption   = copy(file = Some(file))
-  def noFile(): SkillOption                 = copy(file = None)
-  def withList(list: Boolean): SkillOption  = copy(list = list)
-  def withInstall(dir: String): SkillOption = copy(install = Some(dir))
-  def noInstall(): SkillOption              = copy(install = None)
+  def withArgs(args: Seq[String]): SkillOption     = copy(args = args)
+  def withAgents(agents: Seq[String]): SkillOption = copy(agents = agents)
+  def withGlobal(global: Boolean): SkillOption     = copy(global = global)
+  def withDir(dir: String): SkillOption            = copy(dir = Some(dir))
+  def noDir(): SkillOption                         = copy(dir = None)
+  def withForce(force: Boolean): SkillOption       = copy(force = force)
+  def withDryRun(dryRun: Boolean): SkillOption     = copy(dryRun = dryRun)
+  def withYes(yes: Boolean): SkillOption           = copy(yes = yes)
+  def withJson(json: Boolean): SkillOption         = copy(json = json)
+
+end SkillOption
 
 object SkillOption:
   /**
-    * Print SKILL.md (or the named file), list the files, or install the skill
+    * Run a `wvlet skill` subcommand and return its output
     */
-  def execute(opt: SkillOption): Unit =
-    opt.install match
-      case Some(dir) =>
-        Skill.install(dir).foreach(p => println(s"wrote ${p}"))
-      case None if opt.list =>
-        Skill.fileNames.foreach(println)
-      case None =>
-        print(Skill.read(opt.file.getOrElse("SKILL.md")))
+  def run(opt: SkillOption, installer: SkillInstaller): String =
+    def report(results: Seq[SkillResult]): String =
+      if opt.json then
+        summon[Weaver[Seq[SkillResult]]].toJson(results) + "\n"
+      else if results.isEmpty then
+        "wvlet skill is not installed\n"
+      else
+        results
+          .map { r =>
+            val version = r.version.map(v => s" (${v})").getOrElse("")
+            val detail  = r.detail.map(d => s": ${d}").getOrElse("")
+            s"${r.status}\t${r.agents.mkString(",")}\t${r.path}${version}${detail}"
+          }
+          .mkString("", "\n", "\n")
+
+    val agents = SkillAgent.parse(opt.agents)
+    opt.args match
+      case Seq("install") =>
+        report(installer.install(agents, opt.global, opt.dir, opt.force))
+      case Seq("list") =>
+        report(installer.list())
+      case Seq("remove") =>
+        if !opt.yes && !opt.dryRun then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException("wvlet skill remove needs --yes (or --dry-run to preview)")
+        report(installer.remove(agents, opt.global, opt.dir, opt.force, opt.dryRun))
+      case Seq("files") =>
+        Skill.fileNames.mkString("", "\n", "\n")
+      case Seq() | Seq("show") =>
+        Skill.read("SKILL.md")
+      case Seq("show", file) =>
+        Skill.read(file)
+      case Seq(file) =>
+        Skill.read(file)
+      case other =>
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"Unexpected arguments: ${other.mkString(" ")}")
+
+  end run
+
+  /**
+    * Run a `wvlet skill` subcommand and print its output
+    */
+  def execute(opt: SkillOption): Unit = print(
+    run(opt, SkillInstaller(wvlet.lang.BuildInfo.version))
+  )
+
+end SkillOption

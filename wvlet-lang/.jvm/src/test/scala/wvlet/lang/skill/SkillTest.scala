@@ -53,16 +53,4 @@ class SkillTest extends UniTest:
     }
   }
 
-  test("install the skill into a folder") {
-    val dir     = Files.createTempDirectory(Path.of("target").toAbsolutePath, "skill-install")
-    val written = Skill.install(dir.toString)
-    written.size shouldBe Skill.fileNames.size
-    Files.readString(dir.resolve("wvlet/SKILL.md")) shouldBe Skill.read("SKILL.md")
-    // Installing again replaces the folder, dropping files that are no longer bundled
-    val stale = dir.resolve("wvlet/references/removed.md")
-    Files.writeString(stale, "old")
-    Skill.install(dir.toString).size shouldBe written.size
-    Files.exists(stale) shouldBe false
-  }
-
 end SkillTest

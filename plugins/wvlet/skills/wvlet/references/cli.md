@@ -19,7 +19,8 @@
 | `wvlet build [-s sel] [--dry-run]` | Build materialized models in dependency order |
 | `wvlet catalog import` | Generate `table` declarations from a live database |
 | `wvlet flow run <flow>` | Run a `flow` pipeline |
-| `wvlet skill [file]`, `wvlet skill --install <dir>` | Print this skill for the installed version, or write it to `<dir>/wvlet` |
+| `wvlet skill [file]`, `wvlet skill files` | Print this skill (or a reference) as shipped with the installed version |
+| `wvlet skill install [--agent claude,codex,pi] [--global]` | Install or update this skill for coding agents; `list` and `remove --yes` manage it |
 | `wv`, `wv -c "<query>"` | REPL, or run one query and exit |
 
 Global options: `--profile <name>`, `-w <folder>` (working folder), `--catalog`, `--schema`,
