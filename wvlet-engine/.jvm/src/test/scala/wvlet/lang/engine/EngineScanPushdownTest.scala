@@ -205,4 +205,28 @@ class EngineScanPushdownTest extends UniTest:
     requests.foreach(cols => cols.contains("c") shouldBe false)
   }
 
+  test("should read the input of scalar subqueries aggregating the same rows once") {
+    val before = wide.requests.result().size
+    rows("""from wide
+        |where a = 1
+        |select
+        |  { from wide where a >= 2 select b.max } as mx,
+        |  { from wide where a >= 2 select b.sum } as total,
+        |  { from wide where a >= 2 select _.count } as cnt""".stripMargin) shouldBe
+      Seq(IndexedSeq(30L, 50L, 2L))
+    // One scan for the outer query and one for the three subqueries
+    (wide.requests.result().size - before) shouldBe 2
+  }
+
+  test("should evaluate scalar subqueries over a CTE in the CTE's scope") {
+    // The CTE is only known once its WITH is planned: the subqueries over it must still read it
+    rows(
+      """with high as { from wide where a >= 2 }
+        |from wide
+        |where a = 2
+        |select { from high select b.sum } as total, { from high select _.count } as cnt"""
+        .stripMargin
+    ) shouldBe Seq(IndexedSeq(50L, 2L))
+  }
+
 end EngineScanPushdownTest
