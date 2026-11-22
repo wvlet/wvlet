@@ -76,6 +76,28 @@ object ScanFilters:
 
   end toParquet
 
+  /**
+    * A filter implied by `column` holding one of `values` (of type `t`, non-null): their [min, max]
+    * range for ordered types, or up to 64 equalities otherwise. None when it can't be expressed
+    */
+  def valuesFilter(column: String, t: PType, values: Iterable[Any]): Option[ParquetFilter] =
+    if values.isEmpty then
+      None
+    else
+      t match
+        case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
+          for
+            lo <- compare(column, t, CmpOp.Ge, Const(values.minBy(ValueOps.toLong), t))
+            hi <- compare(column, t, CmpOp.Le, Const(values.maxBy(ValueOps.toLong), t))
+          yield lo && hi
+        case _ =>
+          val distinct = values.toSeq.distinct
+          if distinct.size > 64 then
+            None
+          else
+            val eqs = distinct.map(v => compare(column, t, CmpOp.Eq, Const(v, t)))
+            Option.when(eqs.forall(_.isDefined))(eqs.flatten.reduce(_ || _))
+
   private def flip(op: CmpOp): CmpOp =
     op match
       case CmpOp.Lt =>

@@ -45,6 +45,9 @@ private[engine] class DataFilePart(
     dataset: ParquetDataset,
     val file: DatasetFile
 ) extends TableSource:
+  // Iceberg has no unsigned integers, so statistics order every column as the engine does
+  override def supportsFilter: Boolean = true
+
   def scan(spec: ScanSpec): Iterator[Batch] =
     val (cols, types, options) = ParquetSource.readOptions(schema, spec)
     val one                    = dataset.withFiles(Seq(file))

@@ -74,4 +74,19 @@ class ScanFiltersTest extends UniTest:
     ScanFilters.toParquet(e, i => Option.when(i != 0)(cols(i))) shouldBe Some(col("name") === "x")
   }
 
+  test("should build a key filter from the incoming key values") {
+    ScanFilters.valuesFilter("id", PType.Int64, Seq(5L, 2L, 9L)) shouldBe
+      Some(col("id") >= 2L && col("id") <= 9L)
+    ScanFilters.valuesFilter("n", PType.Int32, Seq(3, -1)) shouldBe
+      Some(col("n") >= -1L && col("n") <= 3L)
+    ScanFilters.valuesFilter("day", PType.Date, Seq(3, 1)) shouldBe
+      Some(col("day") >= LocalDate.ofEpochDay(1) && col("day") <= LocalDate.ofEpochDay(3))
+    // Strings only as equalities, since Parquet orders them by UTF-8 bytes
+    ScanFilters.valuesFilter("name", PType.Str, Seq("a", "b", "a")) shouldBe
+      Some(col("name") === "a" || col("name") === "b")
+    ScanFilters.valuesFilter("name", PType.Str, (0 until 65).map(_.toString)) shouldBe None
+    ScanFilters.valuesFilter("price", PType.Float64, Seq(1.0)) shouldBe None
+    ScanFilters.valuesFilter("id", PType.Int64, Nil) shouldBe None
+  }
+
 end ScanFiltersTest
