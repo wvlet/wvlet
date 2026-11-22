@@ -88,6 +88,7 @@ Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0
 | Partitioned join builds and grouped aggregation, swapped semi / anti joins (#2218) | 1.6 s | 4.4x |
 | Parallel sorts, top-N, and partitioned windows (#2219; no TPC-H sort reaches 64K rows) | unchanged | |
 | Column pruning through windows, unboxed window outputs, parallel row partitioning (no TPC-H windows) | unchanged | |
+| Split sort merges into parallel output ranges, bounded-heap top-N (no TPC-H sort reaches 64K rows) | unchanged | |
 
 Parallel sorts and windows (A/B with the parallel paths disabled, sf=1 lineitem, 6M rows):
 top-N (limit 10) 2.29 s → 0.15 s, full sort 2.3 s → 1.1–1.3 s (bounded by the merge on one
@@ -98,6 +99,10 @@ written to primitive arrays, a counting sort for partition rows, and parallel ro
 partitioning (A/B against main, interleaved): `rank() over (partition by l_orderkey order by
 l_extendedprice)` 0.62–0.98 s → 0.13–0.14 s; row_number and sum over two other PARTITION BYs
 0.65–0.97 s → 0.31–0.33 s.
+Splitting the merge into one output range per thread (splitter search over the sorted runs) and
+a bounded heap per chunk for small limits (A/B against main, interleaved, same output): full sort
+1.19–1.39 s → 0.25–0.41 s; top-N limit 10 0.15–0.23 s → 0.02–0.04 s, limit 1000 0.16–0.22 s →
+0.02–0.06 s.
 
 ## Milestones (one PR each)
 

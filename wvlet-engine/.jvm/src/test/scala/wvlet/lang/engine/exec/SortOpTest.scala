@@ -89,4 +89,51 @@ class SortOpTest extends UniTest:
     SortOp.merge(runs, cmp, 3).toSeq shouldBe Seq(0, 3, 1)
   }
 
+  /** 300 rows with many ties; runs of uneven sizes, one empty */
+  private val tieVec = LongVec(
+    PType.Int64,
+    Array.tabulate(300)(i => ((i * 7919) % 13).toLong),
+    null
+  )
+
+  private val tieCmp = SortOp.comparator(
+    Array(tieVec),
+    Seq(SortKey(ColRef(0, PType.Int64, "v"), true, false))
+  )
+
+  private val bounds  = Seq(0, 40, 40, 170, 171, 300)
+  private val tieRuns =
+    bounds.sliding(2).map(b => SortOp.sortRange(tieCmp, b(0), b(1), Int.MaxValue)).toArray
+
+  private val tieMerge = SortOp.merge(tieRuns, tieCmp, Int.MaxValue)
+
+  test("should cut sorted runs at every rank of their merge") {
+    val runOf = tieRuns.zipWithIndex.flatMap((run, r) => run.map(_ -> r)).toMap
+    for k <- 0 to tieMerge.length do
+      val expected = Array.fill(tieRuns.length)(0)
+      tieMerge.take(k).foreach(i => expected(runOf(i)) += 1)
+      SortOp.cutAt(tieRuns, tieCmp, k).toSeq shouldBe expected.toSeq
+  }
+
+  test("should merge split output ranges into the full merge") {
+    for
+      n      <- Seq(tieMerge.length, 100)
+      ranges <- Seq(1, 2, 3, 7, 100)
+    do
+      val cuts  = SortOp.splitRanks(tieRuns, tieCmp, n, ranges)
+      val parts = (0 until ranges).flatMap(t =>
+        SortOp.mergeRange(tieRuns, tieCmp, cuts(t), cuts(t + 1))
+      )
+      parts shouldBe tieMerge.take(n).toSeq
+  }
+
+  test("should keep stable top rows with a bounded heap") {
+    val full = SortOp.sortRange(tieCmp, 0, 300, 300).toSeq
+    tieMerge.toSeq shouldBe full
+    for l <- Seq(1, 2, 13, 14, 37) do
+      SortOp.topRange(tieCmp, 0, 300, l).toSeq shouldBe full.take(l)
+      SortOp.topRange(tieCmp, 40, 170, l).toSeq shouldBe
+        SortOp.sortRange(tieCmp, 40, 170, 130).take(l).toSeq
+  }
+
 end SortOpTest
