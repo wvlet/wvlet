@@ -25,7 +25,6 @@ class EngineBasicSpecTest extends UniTest:
     "execute.wv",
     "from_table_function.wv",
     "information_schema.wv",
-    "join-asof.wv",
     "lambda.wv",
     "pivot-agg-in.wv",
     "pivot-agg.wv",
@@ -37,16 +36,9 @@ class EngineBasicSpecTest extends UniTest:
     "show-schemas.wv",
     "show-tables.wv",
     "stdlib_range.wv",
-    "table_val_asof_join.wv",
-    "table_val_join.wv",
-    "tuple-in-subquery.wv",
-    "tuple-in.wv",
-    "tuple-not-in-subquery.wv",
-    "tuple-not-in.wv",
     "unnest-cross-join.wv",
     "unnest.wv",
-    "unpivot.wv",
-    "with-values.wv"
+    "unpivot.wv"
   )
 
   private val conformance = EngineConformance("spec/basic", Nil, _ => ())
