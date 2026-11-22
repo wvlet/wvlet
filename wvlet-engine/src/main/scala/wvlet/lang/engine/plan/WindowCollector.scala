@@ -53,14 +53,29 @@ class WindowCollector(
 
   private def inputBinder(binder: Binder): Binder = binder
 
+  /** The function call of a window base, expanding `sql"..."` templates (e.g., stdlib rank()) */
+  private def baseFunction(e: Expression): Option[FunctionApply] =
+    e match
+      case f: FunctionApply =>
+        Some(f)
+      case t: TypedExpression =>
+        baseFunction(t.child)
+      case p: ParenthesizedExpression =>
+        baseFunction(p.child)
+      case s: InterpolatedString if Binder.isSqlTemplate(s) =>
+        baseFunction(Binder.expandTemplates(s))
+      case _ =>
+        None
+
   private def toCall(binder: Binder, e: Expression): WindowCall =
     val (f, window, nullTreatment) =
       e match
         case w: WindowApply =>
-          w.base match
-            case f: FunctionApply =>
+          baseFunction(w.base) match
+            case Some(f) =>
               (f, w.window, w.nullTreatment)
-            case other =>
+            case None =>
+              val other = w.base
               throw StatusCode
                 .NOT_IMPLEMENTED
                 .newException(s"Unsupported window expression: ${other}")

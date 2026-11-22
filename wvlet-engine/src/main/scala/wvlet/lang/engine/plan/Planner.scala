@@ -139,8 +139,19 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         planAggregation(g, None, defaultItems = true)
       case a: Agg =>
         planAggregation(a.child, Some(a.selectItems), defaultItems = false)
+      case c: Count if isAggregationInput(c.child) =>
+        // Count the groups
+        val groups = planAggregation(c.child, None, defaultItems = false)
+        val t      = Aggregates.resultType("count_star", Nil)
+        val name   = c.selectItems.headOption.map(nameOf).getOrElse("count")
+        HashAggOp(
+          groups,
+          IndexedSeq.empty,
+          IndexedSeq(AggCall("count_star", Nil, distinct = false, filter = None, t)),
+          Schema(IndexedSeq(Field(name, t)))
+        )
       case c: Count =>
-        planAggregation(c.child, Some(c.selectItems), defaultItems = false, forceGlobal = true)
+        planAggregation(c.child, Some(c.selectItems), defaultItems = false)
       case p: Project =>
         planProject(p.child, p.selectItems)
       case s: SQLSelect =>
@@ -507,25 +518,33 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   /** Bind a projection, evaluating window functions first when there are any */
   private def projectWithWindows(op: Operator, items: List[Attribute]): Operator =
+    val (in, (exprs, fields)) = withWindows(op, items)((o, b) => bindItems(b, o, items))
+    ProjectOp(in, exprs, Schema(fields))
+
+  /**
+    * Bind expressions over `op`. When they contain window functions, a window operator is placed
+    * over `op` (input columns first, then the window results), and binding runs against it
+    *
+    * @return
+    *   the operator to evaluate the bound result over, and the result of `bindAll`
+    */
+  private def withWindows[A](op: Operator, items: List[Expression])(
+      bindAll: (Operator, Binder) => A
+  ): (Operator, A) =
     if items.exists(i => Binder.containsWindow(i)) then
       val collector = WindowCollector(op)
       val saved     = windowCollector
       windowCollector = Some(collector)
       try
         // First pass registers window calls; the window operator appends their results
-        val scope0 = BindScope(op.schema)
-        bindItems(Binder(this, scope0), op, items)
+        bindAll(op, Binder(this, BindScope(op.schema)))
         val winOp = collector.build()
         windowCollector = Some(collector.frozen(winOp))
-        val binder          = Binder(this, BindScope(winOp.schema))
-        val (exprs, fields) = bindItems(binder, winOp, items)
-        ProjectOp(winOp, exprs, Schema(fields))
+        (winOp, bindAll(winOp, Binder(this, BindScope(winOp.schema))))
       finally
         windowCollector = saved
     else
-      val binder          = Binder(this, BindScope(op.schema))
-      val (exprs, fields) = bindItems(binder, op, items)
-      ProjectOp(op, exprs, Schema(fields))
+      (op, bindAll(op, Binder(this, BindScope(op.schema))))
 
   private def isAggregationInput(r: Relation): Boolean =
     r match
@@ -541,17 +560,19 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       prepend: Boolean,
       newColumns: List[Attribute]
   ): Operator =
-    val op              = planRelation(child)
-    val binder          = Binder(this, BindScope(op.schema))
-    val (exprs, fields) = bindItems(binder, op, newColumns)
-    val newNames        = fields.map(_.name.toLowerCase).toSet
+    val input = planRelation(child)
+    // Window functions in new columns are evaluated first; their results follow the input columns
+    val (op, (exprs, fields)) =
+      withWindows(input, newColumns) { (op, binder) =>
+        bindItems(binder, op, newColumns)
+      }
     // A new column with an existing name replaces it in place
-    val existing = op
+    val existing = input
       .schema
       .fields
       .indices
       .map { i =>
-        val f = op.schema(i)
+        val f = input.schema(i)
         val k = fields.indexWhere(_.name.equalsIgnoreCase(f.name))
         if k >= 0 then
           (exprs(k), fields(k))
@@ -560,7 +581,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       }
     val added = fields
       .indices
-      .filterNot(k => op.schema.fields.exists(_.name.equalsIgnoreCase(fields(k).name)))
+      .filterNot(k => input.schema.fields.exists(_.name.equalsIgnoreCase(fields(k).name)))
       .map(k => (exprs(k), fields(k)))
     val all =
       if prepend then
@@ -576,8 +597,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private def planAggregation(
       input: Relation,
       items: Option[List[Attribute]],
-      defaultItems: Boolean,
-      forceGlobal: Boolean = false
+      defaultItems: Boolean
   ): Operator =
     val (groupBy, having) =
       input match

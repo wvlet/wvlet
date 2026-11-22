@@ -588,6 +588,11 @@ class Binder(
         AndExpr(bind(a.left), bind(a.right))
       case o: Or =>
         OrExpr(bind(o.left), bind(o.right))
+      // Wvlet's `x = null` and `x != null` are null checks
+      case Eq(l, _: NullLiteral, _) =>
+        IsNullExpr(bind(l), negate = false)
+      case NotEq(l, _: NullLiteral, _) =>
+        IsNullExpr(bind(l), negate = true)
       case c: Eq =>
         compare(CmpOp.Eq, c.left, c.right)
       case c: NotEq =>
@@ -804,6 +809,15 @@ class Binder(
             column(Some(q.leafName), name, d)
       case other =>
         structField(bind(other), name)
+
+  private def isNamePath(e: Expression): Boolean =
+    e match
+      case _: Identifier =>
+        true
+      case d: DotRef =>
+        isNamePath(d.qualifier)
+      case _ =>
+        false
 
   private def qualifiedName(e: Expression): List[String] =
     e match
@@ -1118,7 +1132,12 @@ class Binder(
     // Method-style call on a receiver: x.fn(args) when fn is not a qualified column
     val receiverArgs: List[Expression] =
       f.base match
-        case d: DotRef if !ScalarFunctions.isDefined(qualifiedName(d).mkString(".")) =>
+        case d: DotRef
+            if isNamePath(d.qualifier) &&
+              ScalarFunctions.isDefined(qualifiedName(d).mkString(".")) =>
+          // A function with a dotted name
+          Nil
+        case d: DotRef =>
           List(d.qualifier)
         case _ =>
           Nil
@@ -1126,7 +1145,8 @@ class Binder(
       case "cast" | "try_cast" =>
         error(s"Unexpected cast function call", f)
       case _ =>
-    val args = (receiverArgs ++ f.args.map(_.value)).map(bindExpr)
+    // bind (not bindExpr): arguments may be aggregates in aggregation mode, e.g., x.sum.round(1)
+    val args = (receiverArgs ++ f.args.map(_.value)).map(bind)
     name match
       case "count_star" =>
         error("count(*) is only allowed in aggregations", f)
