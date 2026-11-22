@@ -476,20 +476,55 @@ enum JoinKind:
     Full,
     Semi,
     Anti,
-    Cross
+    Cross,
+    /**
+      * Build (right) rows with a match in the probe input, each once: a semi join with swapped
+      * inputs
+      */
+    RightSemi,
+    /** Build (right) rows without a match in the probe input: an anti join with swapped inputs */
+    RightAnti
+
+  /** Whether the join tracks which build rows matched, and emits build rows at the end */
+  def tracksBuildMatches: Boolean =
+    this match
+      case Right | Full | RightSemi | RightAnti =>
+        true
+      case _ =>
+        false
+
+  /** Whether the output has only the build (right) columns */
+  def outputsBuildOnly: Boolean = this == RightSemi || this == RightAnti
+
+  /** Whether the output has only the probe (left) columns */
+  def outputsProbeOnly: Boolean = this == Semi || this == Anti
 
 /**
   * The hash table of a join's build (right) input: its rows, and for each distinct key the chain of
   * rows holding it. Built once on first use, then only read, so probes may share it across threads
   */
-final class JoinBuild(right: Operator, rightKeys: IndexedSeq[VExpr], trackMatches: Boolean = false):
+final class JoinBuild(
+    right: Operator,
+    rightKeys: IndexedSeq[VExpr],
+    trackMatches: Boolean = false,
+    runner: TaskRunner = TaskRunner.Sequential
+):
   @volatile
   private var built = false
 
-  var build: Batch      = null
-  var table: GroupTable = null
-  var head: Array[Int]  = null
-  var chain: Array[Int] = null
+  var build: Batch = null
+
+  // Rows are partitioned by the hash of their key, one hash table per partition; a single
+  // partition for small builds. `heads(p)(g)` is the first row of group g of partition p, and
+  // `chain(row)` the next row with the same key
+  private var parts: Int                = 1
+  private var hasher: GroupTable        = null
+  private var tables: Array[GroupTable] = null
+  private var heads: Array[Array[Int]]  = null
+  private var chain: Array[Int]         = null
+
+  /** The row with the same key after `row`, or -1 */
+  inline def nextMatch(row: Int): Int = chain(row)
 
   /**
     * Build rows some probe matched, shared by the probe copies of a right / full join. Copies only
@@ -508,7 +543,7 @@ final class JoinBuild(right: Operator, rightKeys: IndexedSeq[VExpr], trackMatche
   private def buildTable(): Unit =
     build = Operator.materialize(right)
     val keyVecs = rightKeys.map(_.eval(build)).toArray
-    table = GroupTable(rightKeys.map(_.ptype))
+    val types   = rightKeys.map(_.ptype)
     // Rows with NULL keys never match
     val valid = new Array[Int](build.size)
     var nv    = 0
@@ -518,22 +553,103 @@ final class JoinBuild(right: Operator, rightKeys: IndexedSeq[VExpr], trackMatche
         valid(nv) = i
         nv += 1
       i += 1
-    val validKeys = keyVecs.map(_.gather(valid, nv))
-    val ids       = table.groupIds(validKeys, nv)
-    head = Array.fill(table.numGroups)(-1)
     chain = Array.fill(build.size)(-1)
-    // Insert in reverse so chains enumerate rows in input order
-    var j = nv - 1
-    while j >= 0 do
-      val row = valid(j)
-      val g   = ids(j)
-      chain(row) = head(g)
-      head(g) = row
-      j -= 1
+    if runner.parallelism > 1 && nv >= JoinBuild.MinParallelRows then
+      parts = GroupTable.partitionCount(runner.parallelism)
+    // Rows of each partition, in input order
+    val rowsOf: Array[Array[Int]] =
+      if parts == 1 then
+        Array(java.util.Arrays.copyOf(valid, nv))
+      else
+        hasher = GroupTable(types)
+        val h     = hasher.keyHashes(keyVecs.map(_.gather(valid, nv)), nv)
+        val byPos = GroupTable.partitionRows(h, nv, parts)
+        // Positions among the valid rows -> build rows (a loop: Array.map would box every Int)
+        byPos.foreach { r =>
+          var j = 0
+          while j < r.length do
+            r(j) = valid(r(j))
+            j += 1
+        }
+        byPos
+    tables = new Array[GroupTable](parts)
+    heads = new Array[Array[Int]](parts)
+    def buildPart(p: Int): Unit =
+      val rows  = rowsOf(p)
+      val n     = rows.length
+      val table = GroupTable(types)
+      val ids   = table.groupIds(keyVecs.map(_.gather(rows, n)), n)
+      val head  = Array.fill(table.numGroups)(-1)
+      // Insert in reverse so chains enumerate rows in input order. Partitions hold disjoint rows,
+      // so they write disjoint chain entries
+      var j = n - 1
+      while j >= 0 do
+        val row = rows(j)
+        val g   = ids(j)
+        chain(row) = head(g)
+        head(g) = row
+        j -= 1
+      tables(p) = table
+      heads(p) = head
+    if parts == 1 then
+      buildPart(0)
+    else
+      (0 until parts).map(p => runner.submit(() => buildPart(p))).foreach(_.get())
     if trackMatches then
       matched = new Array[Boolean](build.size)
 
+  end buildTable
+
+  /**
+    * The first build row with the key of each probe row, or -1 when none has it (or the probe key
+    * has a NULL). Safe to call from several threads once built
+    */
+  def firstMatches(keys: Array[Vec], n: Int): Array[Int] =
+    val out = new Array[Int](n)
+    if parts == 1 then
+      val ids  = tables(0).lookup(keys, n)
+      val head = heads(0)
+      var i    = 0
+      while i < n do
+        val g = ids(i)
+        out(i) =
+          if g >= 0 then
+            head(g)
+          else
+            -1
+        i += 1
+    else
+      val rowsOf = GroupTable.partitionRows(hasher.keyHashes(keys, n), n, parts)
+      var p      = 0
+      while p < parts do
+        val rows = rowsOf(p)
+        if rows.nonEmpty then
+          val ids  = tables(p).lookup(keys.map(_.gather(rows, rows.length)), rows.length)
+          val head = heads(p)
+          var j    = 0
+          while j < rows.length do
+            val g = ids(j)
+            out(rows(j)) =
+              if g >= 0 then
+                head(g)
+              else
+                -1
+            j += 1
+        p += 1
+    end if
+    out
+
+  end firstMatches
+
 end JoinBuild
+
+object JoinBuild:
+  /** Builds with fewer rows use one hash table, built on the calling thread */
+  def MinParallelRows: Int = sys
+    .props
+    .get("wvlet.engine.partitionedJoinMinRows")
+    .flatMap(_.toIntOption)
+    .getOrElse(65536)
 
 /** How a right / full join tracks and emits build rows no probe row matched */
 enum OuterMode:
@@ -562,7 +678,8 @@ class HashJoinOp(
     val residual: Option[VExpr],
     val schema: Schema,
     shared: JoinBuild = null,
-    outerMode: OuterMode = OuterMode.Own
+    outerMode: OuterMode = OuterMode.Own,
+    buildRunner: TaskRunner = TaskRunner.Sequential
 ) extends Operator:
   override def children: Seq[Operator] = Seq(left, right)
   override def name: String            = s"HashJoin[${kind}]"
@@ -576,7 +693,7 @@ class HashJoinOp(
     if shared != null then
       shared
     else
-      JoinBuild(right, rightKeys, trackMatches = kind == JoinKind.Right || kind == JoinKind.Full)
+      JoinBuild(right, rightKeys, trackMatches = kind.tracksBuildMatches, runner = buildRunner)
 
   /** The same join over another left input, sharing this join's build */
   def withLeft(newLeft: Operator, mode: OuterMode = OuterMode.Own): HashJoinOp = HashJoinOp(
@@ -600,9 +717,6 @@ class HashJoinOp(
 
   private var built                        = false
   private var build: Batch                 = null
-  private var table: GroupTable            = null
-  private var head: Array[Int]             = null
-  private var chain: Array[Int]            = null
   private var buildMatched: Array[Boolean] = null
   private var emittedUnmatched             = false
   private val leftWidth                    = left.schema.size
@@ -610,10 +724,7 @@ class HashJoinOp(
   private def buildTable(): Unit =
     joinBuild.ensureBuilt()
     build = joinBuild.build
-    table = joinBuild.table
-    head = joinBuild.head
-    chain = joinBuild.chain
-    if kind == JoinKind.Right || kind == JoinKind.Full then
+    if kind.tracksBuildMatches then
       buildMatched =
         outerMode match
           case OuterMode.Own if shared == null =>
@@ -640,27 +751,30 @@ class HashJoinOp(
     if buildMatched == null || emittedUnmatched || outerMode == OuterMode.Part then
       return null
     emittedUnmatched = true
-    val idx = (0 until build.size).filter(i => !buildMatched(i)).toArray
+    // RIGHT SEMI emits the matched build rows; the other kinds the unmatched ones
+    val wanted = kind == JoinKind.RightSemi
+    val idx    = (0 until build.size).filter(i => buildMatched(i) == wanted).toArray
     if idx.isEmpty then
       return null
-    val n       = idx.length
-    val leftPad = left.schema.types.map(t => Vec.nullVec(t, n)).toArray
-    Batch(leftPad ++ build.gather(idx, n).columns, n)
+    val n = idx.length
+    if kind.outputsBuildOnly then
+      build.gather(idx, n)
+    else
+      val leftPad = left.schema.types.map(t => Vec.nullVec(t, n)).toArray
+      Batch(leftPad ++ build.gather(idx, n).columns, n)
 
   private def probeBatch(probe: Batch): Batch =
     val keyVecs = leftKeys.map(_.eval(probe)).toArray
-    val ids     = table.lookup(keyVecs, probe.size)
+    val first   = joinBuild.firstMatches(keyVecs, probe.size)
     val li      = mutable.ArrayBuilder.make[Int]
     val ri      = mutable.ArrayBuilder.make[Int]
     var i       = 0
     while i < probe.size do
-      val g = ids(i)
-      if g >= 0 then
-        var r = head(g)
-        while r >= 0 do
-          li += i
-          ri += r
-          r = chain(r)
+      var r = first(i)
+      while r >= 0 do
+        li += i
+        ri += r
+        r = joinBuild.nextMatch(r)
       i += 1
     var lIdx = li.result()
     var rIdx = ri.result()
@@ -728,6 +842,10 @@ class HashJoinOp(
           null
         else
           r
+      case JoinKind.RightSemi | JoinKind.RightAnti =>
+        // Only mark the matched build rows; they are emitted at the end of the input
+        rIdx.foreach(r => buildMatched(r) = true)
+        null
     end match
 
   end probeBatch
@@ -856,6 +974,9 @@ class NestedLoopJoinOp(
           null
         else
           r
+      case JoinKind.RightSemi | JoinKind.RightAnti =>
+        // Only hash joins swap semi / anti inputs
+        throw IllegalStateException(s"Unsupported nested-loop join kind: ${kind}")
     end match
 
   end probeBatch

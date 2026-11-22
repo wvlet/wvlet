@@ -427,16 +427,10 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private def planPivot(p: Pivot, aggItems: List[Attribute]): Operator =
     val childOp = planRelation(p.child)
     val schema  = childOp.schema
-    // The input is materialized only when pivot values must be read from the data
-    val needsValues = p.pivotKeys.exists(_.values.isEmpty)
-    lazy val batch  = Operator.materialize(childOp)
-    val input       =
-      if needsValues then
-        BatchesOp(schema, Seq(batch))
-      else
-        childOp
-    val scope  = BindScope(schema)
-    val binder = Binder(this, scope)
+    val batch   = Operator.materialize(childOp)
+    def input   = BatchesOp(schema, Seq(batch))
+    val scope   = BindScope(schema)
+    val binder  = Binder(this, scope)
     // Pivot columns and their values
     val pivots: List[(VExpr, Seq[Any])] = p
       .pivotKeys
@@ -554,6 +548,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   /** UNPIVOT: one row per (input row, target column) with a non-NULL value */
   private def planUnpivot(u: Unpivot): Operator =
     val child   = planRelation(u.child)
+    val batches = Operator.materialize(child)
     val schema  = child.schema
     val key     = u.unpivotKey
     val targets = key
@@ -573,45 +568,18 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           Field(key.getValueColumnName.leafName, valueType)
         )
     )
-    // Stream through UnnestOp over (target names, target values), keeping DuckDB's row order:
-    // all target columns of one input row before the next row
-    val w      = others.size
-    val names  = Const(targets.map(schema(_).name).toList, PType.AnyT)
-    val values = RowFn(
-      "unpivot_values",
-      targets.map(t => castExpr(ColRef(t, schema(t).ptype, schema(t).name), valueType)),
-      PType.AnyT,
-      a => a.toList,
-      nullSafe = true
-    )
-    val pre = ProjectOp(
-      child,
-      others.map(i => ColRef(i, schema(i).ptype, schema(i).name): VExpr) ++
-        IndexedSeq(names, values),
-      Schema(
-        others.map(schema(_)) ++
-          IndexedSeq(
-            Field(hiddenName("names"), PType.AnyT),
-            Field(hiddenName("values"), PType.AnyT)
-          )
+    val parts = targets.map { t =>
+      val in    = BatchesOp(schema, Seq(batches))
+      val value = castExpr(ColRef(t, schema(t).ptype, schema(t).name), valueType)
+      val proj  = ProjectOp(
+        FilterOp(in, IsNullExpr(ColRef(t, schema(t).ptype, schema(t).name), negate = true)),
+        others.map(i => ColRef(i, schema(i).ptype, schema(i).name): VExpr) ++
+          IndexedSeq(Const(schema(t).name, PType.Str), value),
+        outSchema
       )
-    )
-    val unnest = UnnestOp(
-      pre,
-      IndexedSeq(
-        ColRef(w, PType.AnyT, pre.schema(w).name),
-        ColRef(w + 1, PType.AnyT, pre.schema(w + 1).name)
-      ),
-      keepInput = true,
-      Schema(pre.schema.fields ++ outSchema.fields.takeRight(2))
-    )
-    val valueRef = ColRef(w + 3, valueType, key.getValueColumnName.leafName)
-    ProjectOp(
-      FilterOp(unnest, IsNullExpr(valueRef, negate = true)),
-      (0 until w).map(i => ColRef(i, schema(others(i)).ptype, schema(others(i)).name): VExpr) ++
-        IndexedSeq(ColRef(w + 2, PType.Str, key.unpivotColumnName.leafName), valueRef),
-      outSchema
-    )
+      proj: Operator
+    }
+    UnionAllOp(parts, outSchema)
 
   end planUnpivot
 
@@ -1393,10 +1361,46 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           Binder(this, BindScope(inner.schema)),
           pairs.map(p => (p._2, p._1))
         )
-        Some((HashJoinOp(op, inner, lk, rk, kind, residual, op.schema), None))
+        Some((semiJoin(op, inner, lk, rk, kind, residual), None))
     end if
 
   end existsJoin
+
+  /**
+    * A semi / anti hash join of `op` with a subquery's rows. When the subquery side is estimated to
+    * be much larger, its rows become the probe side instead (RIGHT SEMI / RIGHT ANTI): the hash
+    * table holds `op`'s rows, the large input is probed in parallel parts marking the matched rows,
+    * and `op`'s matched (or unmatched) rows are emitted once at the end
+    */
+  private def semiJoin(
+      op: Operator,
+      inner: Operator,
+      lk: IndexedSeq[VExpr],
+      rk: IndexedSeq[VExpr],
+      kind: JoinKind,
+      residual: Option[VExpr]
+  ): Operator =
+    if estimateRows(inner) > Planner.SwapBuildRatio * estimateRows(op) then
+      val lw = op.schema.size
+      val rw = inner.schema.size
+      // Position of each op ++ inner column in inner ++ op
+      val toSwapped =
+        Array.tabulate(lw + rw)(i =>
+          if i < lw then
+            rw + i
+          else
+            i - lw
+        )
+      val swapped =
+        if kind == JoinKind.Semi then
+          JoinKind.RightSemi
+        else
+          JoinKind.RightAnti
+      HashJoinOp(inner, op, rk, lk, swapped, residual.map(VExprs.remap(_, toSwapped)), op.schema)
+    else
+      HashJoinOp(op, inner, lk, rk, kind, residual, op.schema)
+
+  end semiJoin
 
   private def inJoin(
       op: Operator,
@@ -1444,7 +1448,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       .when(rest.nonEmpty)(rest.reduce((x, y) => And(x, y, NoSpan)))
       .map(r => residualBinder(op.schema, innerOp.schema).bind(r))
     if !negate then
-      Some((HashJoinOp(op, innerOp, lk, rk, JoinKind.Semi, residual, op.schema), None))
+      Some((semiJoin(op, innerOp, lk, rk, JoinKind.Semi, residual), None))
     else if !correlated then
       // NOT IN: no row passes when the subquery has a NULL; NULL targets never pass
       val values  = Operator.materialize(innerOp)
@@ -1457,7 +1461,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         val anti = HashJoinOp(op, src, lk, rk, JoinKind.Anti, residual, op.schema)
         Some((FilterOp(anti, IsNullExpr(target, negate = true)), None))
     else
-      Some((HashJoinOp(op, innerOp, lk, rk, JoinKind.Anti, residual, op.schema), None))
+      Some((semiJoin(op, innerOp, lk, rk, JoinKind.Anti, residual), None))
 
   end inJoin
 
@@ -1613,16 +1617,6 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           false
     )
 
-  /** The conjuncts of an ON condition (none for USING / NATURAL / no criteria) */
-  private def joinConjuncts(j: Join): List[Expression] =
-    j.cond match
-      case JoinOn(e, _) =>
-        conjuncts(e)
-      case JoinOnEq(keys, _) =>
-        conjuncts(Expression.concatWithEq(keys))
-      case _ =>
-        Nil
-
   /** Leaves and conditions of a tree of inner joins */
   private def flattenJoins(r: Relation): (List[Relation], List[Expression]) =
     r match
@@ -1630,7 +1624,15 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       case j: Join if isInnerJoin(j) && unnestCall(j.right).isEmpty =>
         val (l, lc)  = flattenJoins(j.left)
         val (rr, rc) = flattenJoins(j.right)
-        (l ++ rr, lc ++ rc ++ joinConjuncts(j))
+        val cond     =
+          j.cond match
+            case JoinOn(e, _) =>
+              conjuncts(e)
+            case JoinOnEq(keys, _) =>
+              conjuncts(Expression.concatWithEq(keys))
+            case _ =>
+              Nil
+        (l ++ rr, lc ++ rc ++ cond)
       case other =>
         (List(other), Nil)
 
@@ -1645,7 +1647,16 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     unnestCall(j.right) match
       case Some((call, alias)) =>
         // A lateral unnest over the left input: join ... unnest(left.column)
-        val conds = joinConjuncts(j).filterNot(isTrueLiteral)
+        val conds =
+          (
+            j.cond match
+              case JoinOn(e, _) =>
+                conjuncts(e)
+              case JoinOnEq(keys, _) =>
+                conjuncts(Expression.concatWithEq(keys))
+              case _ =>
+                Nil
+          ).filterNot(isTrueLiteral)
         val outer =
           j.joinType match
             case JoinType.LeftOuterJoin =>
@@ -1792,7 +1803,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       case j: HashJoinOp =>
         // About the rows of the side every output row comes from
         j.kind match
-          case JoinKind.Right =>
+          case JoinKind.Right | JoinKind.RightSemi | JoinKind.RightAnti =>
             estimateRows(j.right)
           case JoinKind.Full =>
             math.max(estimateRows(j.left), estimateRows(j.right))

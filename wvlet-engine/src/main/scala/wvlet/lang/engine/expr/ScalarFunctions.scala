@@ -390,48 +390,25 @@ object ScalarFunctions:
       pos += 8
     murmurHash64(h)
 
-  // DuckDB hashes NULL to this constant
-  private val NullHash = 0xbf58476d1ce4e5b9L
-
-  /** DuckDB's hash of a value: numbers by their physical (unscaled / day / micros) value */
-  private def duckdbHash(v: Any, t: PType): Long =
-    (v, t) match
-      case (null, _) =>
-        NullHash
-      case (s: String, _) =>
+  private def duckdbHash(v: Any): Long =
+    v match
+      case s: String =>
         hashBytes(s.getBytes("UTF-8"))
-      case (b: Boolean, _) =>
+      case i: Int =>
+        murmurHash64(i.toLong)
+      case l: Long =>
+        murmurHash64(l)
+      case b: Boolean =>
         murmurHash64(
           if b then
             1L
           else
             0L
         )
-      case (d: Double, _) =>
-        // -0.0 hashes as 0.0, and every NaN as the canonical NaN
-        val x =
-          if d == 0.0 then
-            0.0
-          else if d.isNaN then
-            Double.NaN
-          else
-            d
-        murmurHash64(java.lang.Double.doubleToLongBits(x))
-      case (b: JBigDecimal, d: PType.Decimal) =>
-        murmurHash64(b.setScale(d.scale, RoundingMode.HALF_UP).unscaledValue.longValue)
-      case (i: Int, _) =>
-        murmurHash64(i.toLong)
-      case (l: Long, _) =>
-        murmurHash64(l)
-      case (other, _) =>
+      case other =>
         hashBytes(other.toString.getBytes("UTF-8"))
 
-  /** DuckDB's CombineHashScalar: mix the running hash, then XOR the next one */
-  private def combineHash(acc: Long, next: Long): Long =
-    var a = acc
-    a ^= a >>> 32
-    a *= 0xd6e8feb86659fd93L
-    a ^ next
+  private def combineHash(a: Long, b: Long): Long = (a * 0xbf58476d1ce4e5b9L) ^ b
 
   private def regex(p: String): java.util.regex.Pattern = java.util.regex.Pattern.compile(p)
 
@@ -1107,7 +1084,6 @@ object ScalarFunctions:
       )
     }
     reg("list_slice", "array_slice") { args =>
-      arity("list_slice", args, 3, 4)
       fn("list_slice", args.head +: args.tail.map(toLong), PType.AnyT) { a =>
         val s                 = a(0).asInstanceOf[Seq[Any]]
         def pos(i: Long): Int =
@@ -1117,16 +1093,7 @@ object ScalarFunctions:
             i.toInt
         val begin = math.max(1, pos(a(1).asInstanceOf[Long]))
         val end   = math.min(s.size, pos(a(2).asInstanceOf[Long]))
-        val step  =
-          if a.length > 3 then
-            a(3).asInstanceOf[Long].toInt
-          else
-            1
-        if step <= 0 then
-          throw StatusCode
-            .INVALID_ARGUMENT
-            .newException(s"list_slice step must be positive: ${step}")
-        s.slice(begin - 1, end).grouped(step).map(_.head).toList
+        s.slice(begin - 1, end)
       }
     }
     def rangeFn(name: String, inclusive: Boolean): Unit =
@@ -1184,12 +1151,11 @@ object ScalarFunctions:
     def dblPredicate(names: String*)(f: Double => Boolean): Unit =
       reg(names*) { args =>
         args.head.ptype match
-          case PType.Int32 | PType.Int64 | _: PType.Decimal =>
+          case PType.Float64 =>
+            fn(names.head, args, PType.Bool)(a => f(a(0).asInstanceOf[Double]))
+          case _ =>
             // Integers and decimals are always finite
             fn(names.head, args, PType.Bool)(_ => f(0.0))
-          case _ =>
-            // Doubles, and strings such as 'NaN' or 'inf' cast to doubles
-            fn(names.head, Seq(toDouble(args.head)), PType.Bool)(a => f(a(0).asInstanceOf[Double]))
       }
     dblPredicate("isnan")(_.isNaN)
     dblPredicate("isinf")(_.isInfinite)
@@ -1205,12 +1171,8 @@ object ScalarFunctions:
     // ---- hashing ----
     reg("hash") { args =>
       // DuckDB's hash() returns a UBIGINT
-      val types = args.map(_.ptype)
-      nullSafeFn("hash", args, PType.Decimal(20, 0)) { a =>
-        val h = a
-          .indices
-          .map(i => duckdbHash(a(i), types(i)))
-          .reduceLeft((x, y) => combineHash(x, y))
+      fn("hash", args, PType.Decimal(20, 0)) { a =>
+        val h = a.iterator.map(duckdbHash).reduceLeft((x, y) => combineHash(x, y))
         JBigDecimal(java.lang.Long.toUnsignedString(h))
       }
     }
@@ -1231,30 +1193,25 @@ object ScalarFunctions:
     }
 
     // ---- JSON ----
-    /** A JSON function over (json, path), parsing a constant path only once */
-    def jsonFn(names: String*)(f: Option[wvlet.uni.json.JSON.JSONValue] => Any): Unit =
-      reg(names*) { args =>
-        arity(names.head, args, 2)
-        args(1) match
-          case Const(p: String, _) =>
-            val path = JsonPath.compile(p)
-            fn(names.head, Seq(str(args(0))), PType.Str)(a =>
-              f(path.extract(a(0).asInstanceOf[String]))
-            )
-          case _ =>
-            fn(names.head, args.map(str), PType.Str)(a =>
-              f(JsonPath.compile(a(1).asInstanceOf[String]).extract(a(0).asInstanceOf[String]))
-            )
+    reg("json_extract_string", "json_extract_path_text", "json_value") { args =>
+      fn("json_extract_string", args.map(str), PType.Str) { a =>
+        JsonPath.extract(a(0).asInstanceOf[String], a(1).asInstanceOf[String]) match
+          case Some(s: wvlet.uni.json.JSON.JSONString) =>
+            s.v
+          case Some(_: wvlet.uni.json.JSON.JSONNull) | None =>
+            null
+          case Some(other) =>
+            wvlet.uni.json.JSON.format(other)
       }
-    jsonFn("json_extract_string", "json_extract_path_text", "json_value") {
-      case Some(s: wvlet.uni.json.JSON.JSONString) =>
-        s.v
-      case Some(_: wvlet.uni.json.JSON.JSONNull) | None =>
-        null
-      case Some(other) =>
-        wvlet.uni.json.JSON.format(other)
     }
-    jsonFn("json_extract", "json_extract_path")(_.map(wvlet.uni.json.JSON.format).orNull)
+    reg("json_extract", "json_extract_path") { args =>
+      fn("json_extract", args.map(str), PType.Str) { a =>
+        JsonPath
+          .extract(a(0).asInstanceOf[String], a(1).asInstanceOf[String])
+          .map(wvlet.uni.json.JSON.format)
+          .orNull
+      }
+    }
 
     m.result()
 
@@ -1347,43 +1304,33 @@ object JsonPath:
   import wvlet.uni.json.JSON
   import wvlet.uni.json.JSON.*
 
-  /** A parsed path, reusable across rows */
-  class Compiled(steps: List[Either[String, Int]], pointer: Boolean):
-    def extract(json: String): Option[JSONValue] =
-      val doc =
-        try
-          JSON.parse(json)
-        catch
-          case _: Exception =>
-            throw StatusCode.INVALID_ARGUMENT.newException(s"Malformed JSON: ${json}")
-      walk(doc)
-
-    private def walk(doc: JSONValue): Option[JSONValue] =
-      steps.foldLeft(Option(doc)) { (cur, step) =>
-        cur.flatMap { v =>
-          (v, step) match
-            case (o: JSONObject, Left(key)) =>
-              o.v.find(_._1 == key).map(_._2)
-            case (a: JSONArray, Right(i)) =>
-              val idx =
-                if i < 0 then
-                  a.v.size + i
-                else
-                  i
-              a.v.lift(idx)
-            // A JSON pointer segment of digits indexes arrays: /items/0
-            case (a: JSONArray, Left(key)) if pointer && key.nonEmpty && key.forall(_.isDigit) =>
-              a.v.lift(key.toInt)
-            case _ =>
-              None
-        }
+  def extract(json: String, path: String): Option[JSONValue] =
+    val doc =
+      try
+        JSON.parse(json)
+      catch
+        case _: Exception =>
+          throw StatusCode.INVALID_ARGUMENT.newException(s"Malformed JSON: ${json}")
+    val pointer = path.startsWith("/")
+    steps(path).foldLeft(Option(doc)) { (cur, step) =>
+      cur.flatMap { v =>
+        (v, step) match
+          case (o: JSONObject, Left(key)) =>
+            o.v.find(_._1 == key).map(_._2)
+          case (a: JSONArray, Right(i)) =>
+            val idx =
+              if i < 0 then
+                a.v.size + i
+              else
+                i
+            a.v.lift(idx)
+          // A JSON pointer segment of digits indexes arrays: /items/0
+          case (a: JSONArray, Left(key)) if pointer && key.nonEmpty && key.forall(_.isDigit) =>
+            a.v.lift(key.toInt)
+          case _ =>
+            None
       }
-
-  end Compiled
-
-  def compile(path: String): Compiled = Compiled(steps(path), pointer = path.startsWith("/"))
-
-  def extract(json: String, path: String): Option[JSONValue] = compile(path).extract(json)
+    }
 
   private def steps(path: String): List[Either[String, Int]] =
     val p =
@@ -1397,8 +1344,7 @@ object JsonPath:
           .toList
           .map(s => Left(s.replace("~1", "/").replace("~0", "~")))
       else
-        // As in DuckDB, a path without `$` or `/` is one top-level key: 'a.b' is the key "a.b"
-        return List(Left(path))
+        "." + path
     val out = List.newBuilder[Either[String, Int]]
     var i   = 0
     while i < p.length do

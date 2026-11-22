@@ -223,36 +223,15 @@ class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: Wv
       case b: java.lang.Boolean =>
         b.booleanValue()
       case a: java.sql.Array =>
-        nested(a.getArray.asInstanceOf[Array[AnyRef]].toSeq.map(normalizeElement))
+        nested(a.getArray.asInstanceOf[Array[AnyRef]].toSeq.map(normalizeJdbc))
       case s: org.duckdb.DuckDBStruct =>
         import scala.jdk.CollectionConverters.*
-        nested(s.getMap.asScala.toSeq.map((k, v) => (k, normalizeElement(v))).toMap)
+        nested(s.getMap.asScala.toSeq.map((k, v) => (k, normalizeJdbc(v))).toMap)
       case m: java.util.Map[?, ?] =>
         import scala.jdk.CollectionConverters.*
-        nested(m.asScala.toSeq.map((k, v) => (normalizeElement(k), normalizeElement(v))).toMap)
+        nested(m.asScala.toSeq.map((k, v) => (normalizeJdbc(k), normalizeJdbc(v))).toMap)
       case other =>
         other.toString
-
-  /**
-    * A value nested in a list, map, or struct. The engine keeps such values untyped in their
-    * physical form, so dates become days since the epoch and timestamps microseconds (UTC)
-    */
-  private def normalizeElement(v: Any): Any =
-    v match
-      case d: java.sql.Date =>
-        d.toLocalDate.toEpochDay
-      case d: java.time.LocalDate =>
-        d.toEpochDay
-      case t: java.sql.Timestamp =>
-        micros(t.toLocalDateTime)
-      case t: java.time.LocalDateTime =>
-        micros(t)
-      case other =>
-        normalizeJdbc(other)
-
-  private def micros(t: java.time.LocalDateTime): Long =
-    val i = t.toInstant(java.time.ZoneOffset.UTC)
-    i.getEpochSecond * 1000000L + i.getNano / 1000
 
   /** A canonical string for lists, maps, and structs (as maps of field names) */
   private def nested(v: Any): String =

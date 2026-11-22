@@ -165,6 +165,12 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
       slots(idx) = g
       g += 1
 
+  /**
+    * The hash of each row's key, as this table computes it: equal keys (NULLs included) hash alike,
+    * so the hashes can partition rows by key
+    */
+  def keyHashes(keys: Array[Vec], n: Int): Array[Int] = hashes(normalize(keys), n)
+
   def groupIds(keys: Array[Vec], n: Int): Array[Int] =
     val norm = normalize(keys)
     val h    = hashes(norm, n)
@@ -210,6 +216,43 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
 end GroupTable
 
 object GroupTable:
+  /**
+    * Positions 0 until n split into `parts` (a power of two) partitions by key hash, each in input
+    * order. The partition comes from the top bits of the hash, which a partition's own GroupTable
+    * never uses as slot bits (tables index by the low bits), so every partition's table keeps all
+    * of its slots usable
+    */
+  def partitionRows(h: Array[Int], n: Int, parts: Int): Array[Array[Int]] =
+    if parts == 1 then
+      val all = new Array[Int](n)
+      var k   = 0
+      while k < n do
+        all(k) = k
+        k += 1
+      return Array(all)
+    val shift  = 32 - Integer.numberOfTrailingZeros(parts)
+    val counts = new Array[Int](parts)
+    var i      = 0
+    while i < n do
+      counts(h(i) >>> shift) += 1
+      i += 1
+    val out = Array.tabulate(parts)(p => new Array[Int](counts(p)))
+    val pos = new Array[Int](parts)
+    i = 0
+    while i < n do
+      val p = h(i) >>> shift
+      out(p)(pos(p)) = i
+      pos(p) += 1
+      i += 1
+    out
+
+  /** A power of two of at least twice the parallelism, so partitions balance across threads */
+  def partitionCount(parallelism: Int): Int =
+    var parts = 1
+    while parts < parallelism * 2 do
+      parts *= 2
+    parts
+
   /** Murmur3 finalizer */
   inline def fmix(x: Int): Int =
     var h = x

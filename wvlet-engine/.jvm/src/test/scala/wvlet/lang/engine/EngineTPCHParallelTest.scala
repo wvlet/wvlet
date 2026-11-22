@@ -21,9 +21,18 @@ import java.sql.DriverManager
 
 /**
   * TPC-H queries on the engine with the tables rewritten in small row groups, so that scans, join
-  * probes, and their filters run as parallel morsels, must return the same rows as DuckDB
+  * probes, and their filters run as parallel morsels, and with grouped aggregations and join builds
+  * partitioned at any size, must return the same rows as DuckDB
   */
 class EngineTPCHParallelTest extends UniTest:
+  // Partition grouped aggregations and join builds at any size
+  private val minRowsKeys = Seq(
+    "wvlet.engine.partitionedAggMinRows",
+    "wvlet.engine.partitionedJoinMinRows"
+  )
+
+  minRowsKeys.foreach(k => sys.props(k) = "1")
+
   private val tables = EngineTPCHBench.tables
 
   private val dataDir: String =
@@ -46,7 +55,9 @@ class EngineTPCHParallelTest extends UniTest:
     engine => tables.foreach(t => engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet"))
   )
 
-  override def afterAll: Unit = conformance.close()
+  override def afterAll: Unit =
+    minRowsKeys.foreach(sys.props.remove)
+    conformance.close()
 
   test("should split the scans into parts") {
     conformance
