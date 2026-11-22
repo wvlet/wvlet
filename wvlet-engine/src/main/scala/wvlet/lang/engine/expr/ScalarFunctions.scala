@@ -382,9 +382,6 @@ object ScalarFunctions:
 
   private def duckdbHash(v: Any): Long =
     v match
-      case null =>
-        // DuckDB hashes NULL as the hash of the largest 64-bit value
-        murmurHash64(Long.MaxValue)
       case s: String =>
         hashBytes(s.getBytes("UTF-8"))
       case i: Int =>
@@ -1069,7 +1066,7 @@ object ScalarFunctions:
       values.sortWith((x, y) => ValueOps.compare(x, y) > 0) ++ nulls
     }
     listFn("list_reverse", "array_reverse")((s, _) => s.reverse)
-    listFn("list_distinct", "array_distinct", "list_unique")((s, _) => s.filter(_ != null).distinct)
+    listFn("list_distinct", "array_distinct")((s, _) => s.filter(_ != null).distinct)
     reg("list_concat", "array_concat", "array_cat", "list_cat") { args =>
       // NULL lists are skipped
       nullSafeFn("list_concat", args, PType.AnyT)(a =>
