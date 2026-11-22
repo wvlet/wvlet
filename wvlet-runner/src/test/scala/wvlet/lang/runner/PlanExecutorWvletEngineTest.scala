@@ -328,6 +328,20 @@ class PlanExecutorWvletEngineTest extends UniTest:
     main.getMessage shouldContain "default schema"
   }
 
+  test("create an Iceberg table and append a snapshot") {
+    val path   = s"target/engine-xp-iceberg/${System.currentTimeMillis()}"
+    val result = run(s"""from [[1, 'JP'], [2, 'US']] as t(id, country)
+                        |save to '${path}' with format: 'iceberg', partition_by: 'country'
+                        |
+                        |from [[3, 'JP']] as t(id, country)
+                        |append to '${path}'
+                        |
+                        |from '${path}'
+                        |order by id
+                        |test _.rows should be [[1, 'JP'], [2, 'US'], [3, 'JP']]""".stripMargin)
+    result.getError shouldBe None
+  }
+
   test("reject SQL statements the engine can't run") {
     val e = intercept[WvletLangException] {
       run("execute sql\"select 1\"")

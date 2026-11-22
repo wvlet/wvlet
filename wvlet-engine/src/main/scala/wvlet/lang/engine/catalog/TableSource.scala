@@ -81,7 +81,7 @@ class ParquetSource(val name: String, path: String) extends TableSource:
       try f.schema
       finally f.close()
     else
-      val ds = Parquet.dataset(path)
+      val ds = ParquetSource.openDataset(path)
       try ds.schema
       finally ds.close()
 
@@ -158,13 +158,33 @@ class ParquetSource(val name: String, path: String) extends TableSource:
       val it = f.readBatches(options)
       ParquetSource.closing(it.map(b => ParquetSource.toBatch(b, cols, types)), () => f.close())
     else
-      val ds = Parquet.dataset(path)
+      val ds = ParquetSource.openDataset(path)
       val it = ds.readBatches(options)
       ParquetSource.closing(it.map(b => ParquetSource.toBatch(b, cols, types)), () => ds.close())
 
 end ParquetSource
 
 object ParquetSource:
+
+  /**
+    * A Parquet dataset (a folder of Parquet files, a Delta table, or an Iceberg table). What uni
+    * refuses to read of an Iceberg table (delete files, renamed columns, ORC data, format v3) is a
+    * NOT_IMPLEMENTED error naming the table
+    */
+  def openDataset(path: String): ParquetDataset =
+    try
+      Parquet.dataset(path)
+    catch
+      case e: ParquetException if isIcebergPath(path) =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(
+            s"The wvlet engine can't read the Iceberg table ${path}: ${e.getMessage}",
+            e
+          )
+
+  private def isIcebergPath(path: String): Boolean =
+    path.endsWith(".metadata.json") || IcebergWriter.isTable(path)
 
   def closing[A](it: Iterator[A], close: () => Unit): Iterator[A] =
     new Iterator[A]:

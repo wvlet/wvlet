@@ -20,6 +20,7 @@ import wvlet.lang.compiler.SourceIO
 import wvlet.lang.engine.catalog.CsvSource
 import wvlet.lang.engine.catalog.DataFileFormat
 import wvlet.lang.engine.catalog.DataFileWriter
+import wvlet.lang.engine.catalog.IcebergWriter
 import wvlet.lang.engine.catalog.JsonSource
 import wvlet.lang.engine.catalog.MemTable
 import wvlet.lang.engine.catalog.ParquetSource
@@ -109,11 +110,30 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
     * `append to '<path>'`: add the query rows to a data file, creating it when it doesn't exist.
     * Rows map to the file's columns by position. CSV / TSV / JSON lines files get the new rows
     * appended as text, leaving the existing rows untouched; Parquet files are rewritten with the
-    * new rows cast to the file's column types, through a temporary file
+    * new rows cast to the file's column types, through a temporary file. A folder holding an
+    * Iceberg table gets the rows, cast to the table's column types, as a new snapshot
     */
   def appendToFile(path: String, query: Relation)(using Context): Unit =
+    if path.toLowerCase.endsWith(".metadata.json") then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"Cannot append to the Iceberg metadata file ${path}: append to the table folder instead"
+        )
     val result = engine.execute(query)
-    if !SourceIO.existsFile(path) then
+    if IcebergWriter.isTable(path) then
+      val schema   = unqualified(ParquetSource(path, path).schema)
+      val sourceOf = positionalSources(path, schema, result.schema, Nil)
+      IcebergWriter.append(
+        path,
+        schema,
+        result
+          .batches
+          .map(b =>
+            castBatch(b, result.schema, schema, sourceOf, IndexedSeq.fill(schema.size)(null))
+          )
+      )
+    else if !SourceIO.existsFile(path) then
       DataFileWriter.write(path, unqualified(result.schema), result.batches)
     else
       DataFileFormat.of(path) match
