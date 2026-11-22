@@ -89,9 +89,12 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
   private val stores: Array[KeyStore] = keyTypes.map(KeyStore.apply).toArray
   private val width                   = stores.length
   private var count                   = 0
-  private var groupHash               = new Array[Int](64)
-  private var slots                   = Array.fill(1024)(-1)
-  private var mask                    = 1023
+  // Each slot packs (hash << 32 | group id), or is Empty: a probe compares the hash without
+  // loading anything of the group, as DuckDB's salted hash table entries
+  private var slots = emptySlots(1024)
+  private var mask  = 1023
+  // The hash of each group in id order, read sequentially when rehashing
+  private var groupHash = new Array[Int](64)
 
   def numGroups: Int = count
 
@@ -127,11 +130,27 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
   private def find(keys: Array[Vec], i: Int, h: Int): Int =
     var idx = h & mask
     while true do
-      val g = slots(idx)
-      if g < 0 then
+      val e = slots(idx)
+      if e == Empty then
         return -1
-      if groupHash(g) == h && sameKey(g, keys, i) then
-        return g
+      if (e >>> 32).toInt == h then
+        val g = e.toInt
+        if sameKey(g, keys, i) then
+          return g
+      idx = (idx + 1) & mask
+    -1
+
+  /** [[find]] for one Int64 key column without NULLs: no virtual key comparison */
+  private def findLong(store: LongStore, x: Array[Long], i: Int, h: Int): Int =
+    var idx = h & mask
+    while true do
+      val e = slots(idx)
+      if e == Empty then
+        return -1
+      if (e >>> 32).toInt == h then
+        val g = e.toInt
+        if store.valueAt(g) == x(i) && !store.isNullAt(g) then
+          return g
       idx = (idx + 1) & mask
     -1
 
@@ -149,21 +168,34 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
       rehash(slots.length * 2)
     else
       var idx = h & mask
-      while slots(idx) >= 0 do
+      while slots(idx) != Empty do
         idx = (idx + 1) & mask
-      slots(idx) = g
+      slots(idx) = entry(h, g)
     g
 
+  /** Re-insert every group (the newest included) into a table of `cap` slots */
   private def rehash(cap: Int): Unit =
-    slots = Array.fill(cap)(-1)
+    slots = emptySlots(cap)
     mask = cap - 1
     var g = 0
     while g < count do
-      var idx = groupHash(g) & mask
-      while slots(idx) >= 0 do
+      val h   = groupHash(g)
+      var idx = h & mask
+      while slots(idx) != Empty do
         idx = (idx + 1) & mask
-      slots(idx) = g
+      slots(idx) = entry(h, g)
       g += 1
+
+  /** A single Int64 key column without NULLs, whose rows can take the [[findLong]] path */
+  private def longKey(norm: Array[Vec]): Array[Long] =
+    if width == 1 && norm(0).nulls == null then
+      norm(0) match
+        case v: LongVec if stores(0).isInstanceOf[LongStore] =>
+          v.values
+        case _ =>
+          null
+    else
+      null
 
   /**
     * The hash of each row's key, as this table computes it: equal keys (NULLs included) hash alike,
@@ -187,15 +219,27 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
 
   private def assignIds(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
     val ids = new Array[Int](n)
+    val x   = longKey(norm)
     var i   = 0
-    while i < n do
-      val g = find(norm, i, h(i))
-      ids(i) =
-        if g >= 0 then
-          g
-        else
-          insert(norm, i, h(i))
-      i += 1
+    if x != null then
+      val ls = stores(0).asInstanceOf[LongStore]
+      while i < n do
+        val g = findLong(ls, x, i, h(i))
+        ids(i) =
+          if g >= 0 then
+            g
+          else
+            insert(norm, i, h(i))
+        i += 1
+    else
+      while i < n do
+        val g = find(norm, i, h(i))
+        ids(i) =
+          if g >= 0 then
+            g
+          else
+            insert(norm, i, h(i))
+        i += 1
     ids
 
   /**
@@ -206,10 +250,17 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
     val norm = normalize(keys)
     val h    = hashes(norm, n)
     val ids  = new Array[Int](n)
+    val x    = longKey(norm)
     var i    = 0
-    while i < n do
-      ids(i) = find(norm, i, h(i))
-      i += 1
+    if x != null then
+      val ls = stores(0).asInstanceOf[LongStore]
+      while i < n do
+        ids(i) = findLong(ls, x, i, h(i))
+        i += 1
+    else
+      while i < n do
+        ids(i) = find(norm, i, h(i))
+        i += 1
     var k = 0
     while k < width do
       val nulls = norm(k).nulls
@@ -228,6 +279,17 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
 end GroupTable
 
 object GroupTable:
+  /** An unused slot: no entry has a negative group id */
+  private inline val Empty = -1L
+
+  private inline def entry(h: Int, g: Int): Long = (h.toLong << 32) | (g.toLong & 0xffffffffL)
+
+  /** Array.fill would box every element */
+  private def emptySlots(n: Int): Array[Long] =
+    val a = new Array[Long](n)
+    java.util.Arrays.fill(a, Empty)
+    a
+
   /**
     * Positions 0 until n split into `parts` (a power of two) partitions by key hash, each in input
     * order. The partition comes from the top bits of the hash, which a partition's own GroupTable
@@ -407,10 +469,15 @@ object GroupTable:
     def equalsAt(g: Int, v: Vec, i: Int): Boolean =
       nullsEqual(g, v, i)(values(g) == v.asInstanceOf[LongVec].values(i))
 
+    inline def valueAt(g: Int): Long     = values(g)
+    inline def isNullAt(g: Int): Boolean = nulls != null && nulls(g)
+
     protected def addValue(g: Int, v: Vec, i: Int): Unit =
       values(g) = v.asInstanceOf[LongVec].values(i)
 
     def result(n: Int): Vec = LongVec(t, java.util.Arrays.copyOf(values, n), resultNulls(n))
+
+  end LongStore
 
   /** Doubles are equal when their bits are (as java.lang.Double.equals) */
   final class DoubleStore extends KeyStore:
