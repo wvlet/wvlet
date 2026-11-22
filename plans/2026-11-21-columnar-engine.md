@@ -89,6 +89,7 @@ Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0
 | Parallel sorts, top-N, and partitioned windows (#2219; no TPC-H sort reaches 64K rows) | unchanged | |
 | Column pruning through windows, unboxed window outputs, parallel row partitioning (no TPC-H windows) | unchanged | |
 | Split sort merges into parallel output ranges, bounded-heap top-N (no TPC-H sort reaches 64K rows) | unchanged | |
+| Typed window aggregate / value outputs, unboxed partition sort, reused partition hashes (no TPC-H windows) | unchanged | |
 
 Parallel sorts and windows (A/B with the parallel paths disabled, sf=1 lineitem, 6M rows):
 top-N (limit 10) 2.29 s → 0.15 s, full sort 2.3 s → 1.1–1.3 s (bounded by the merge on one
@@ -103,6 +104,14 @@ Splitting the merge into one output range per thread (splitter search over the s
 a bounded heap per chunk for small limits (A/B against main, interleaved, same output): full sort
 1.19–1.39 s → 0.25–0.41 s; top-N limit 10 0.15–0.23 s → 0.02–0.04 s, limit 1000 0.16–0.22 s →
 0.02–0.06 s.
+With aggregates and value functions also written to typed columns, partitions sorted without
+boxing, and first / last / nth_value scanning frames without building collections (A/B against
+main, interleaved, 3 rounds of 5 runs, medians): lag + first_value over two PARTITION BYs
+1.2–1.9 s → 0.29–0.36 s; row_number and sum 0.28–0.41 s → 0.22–0.30 s; count and sum over
+two PARTITION BYs 0.36–0.45 s → 0.21–0.27 s; rank unchanged (0.13–0.27 s both). Running frames
+still aggregate each frame from scratch: `sum(l_quantity) over (partition by l_suppkey order by
+l_orderkey)` (about 600 rows per partition) takes 0.7 s against 0.26 s with about 30 rows per
+partition, so incremental running aggregates are the next window step.
 
 ## Milestones (one PR each)
 
