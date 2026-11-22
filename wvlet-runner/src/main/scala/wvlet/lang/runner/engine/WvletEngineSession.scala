@@ -24,6 +24,7 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.EngineResult
+import wvlet.lang.engine.TableWriter
 import wvlet.lang.engine.WvletEngine
 import wvlet.lang.engine.plan.ColumnNotFound
 import wvlet.lang.engine.catalog.CsvSource
@@ -158,13 +159,17 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
       case NonFatal(e) =>
         warn(s"Failed to read the schema of table ${source.name}: ${e.getMessage}")
 
+  private val writer = TableWriter(engine)
+
   // Report engine-internal binding errors as user errors with a status code
-  private def run(r: Relation)(using ctx: Context): EngineResult =
+  private def guarded[A](body: => A): A =
     try
-      engine.execute(r)
+      body
     catch
       case e: ColumnNotFound =>
         throw StatusCode.COLUMN_NOT_FOUND.newException(e.getMessage, e)
+
+  private def run(r: Relation)(using ctx: Context): EngineResult = guarded(engine.execute(r))
 
   /** Names of the registered tables */
   def tableNames: Seq[String] = engine.catalog.tableNames
@@ -184,22 +189,33 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     TableRows(schema, result.toRowMaps(rowLimit), result.numRows)
 
   /**
-    * Run a save statement. Only `save to <table>` is supported: the result is kept as an in-memory
-    * table that later queries of this session can read
+    * Run a write statement on the session's in-memory tables: `save to <table>`, `append to
+    * <table>` (plain and keyed), and `delete`. Later queries of this session read the result
     */
   def save(save: Save)(using ctx: Context): Unit =
-    GenSQL.bindSaveTarget(save) match
-      case s: SaveTo if s.isForTable =>
-        val name   = s.targetName.split("\\.").last
-        val result = run(s.child)
-        register(MemTable(name, result.schema, result.batches))
-      case other =>
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(
-            s"${other
-                .nodeName} is not supported by the wvlet engine yet (supported: save to <table>)"
+    def tableName(s: Save): String = s.targetName.split("\\.").last
+    val written                    = guarded {
+      GenSQL.bindSaveTarget(save) match
+        case s: SaveTo if s.isForTable =>
+          writer.saveTo(tableName(s), s.child)
+        case a: AppendTo if a.isForTable =>
+          writer.appendTo(
+            tableName(a),
+            a.child,
+            columns = a.columns.map(_.leafName),
+            keys = a.keyColumns.map(_.leafName)
           )
+        case d: Delete if d.isForTable =>
+          writer.delete(tableName(d), d.child)
+        case other =>
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(
+              s"${other.nodeName} is not supported by the wvlet engine yet " +
+                "(supported: save to, append to, and delete on tables)"
+            )
+    }
+    registerSchema(written)
 
 end WvletEngineSession
 
