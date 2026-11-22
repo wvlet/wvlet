@@ -183,6 +183,23 @@ class EngineScanPushdownTest extends UniTest:
       rows(s"from ${li} where l_orderkey <= 3 select distinct l_returnflag").size
   }
 
+  test("should compute UNION (distinct) of scans in parallel aggregations") {
+    val li = "'spec/tpch/data/lineitem.parquet'"
+    val q  =
+      s"""from {
+        |  from ${li} where l_orderkey <= 3 select l_returnflag, l_linestatus
+        |  concat
+        |  { from ${li} where l_orderkey <= 5 select l_returnflag, l_linestatus }
+        |}
+        |dedup""".stripMargin
+    val plan = explain(q)
+    debug(plan)
+    plan.contains("Distinct") shouldBe false
+    plan shouldContain "PartitionedAgg"
+    rows(q).size shouldBe
+      rows(s"from ${li} where l_orderkey <= 5 select distinct l_returnflag, l_linestatus").size
+  }
+
   test("should cross join a scan with a one-row aggregate in parallel parts") {
     val li = "'spec/tpch/data/lineitem.parquet'"
     val q  =
