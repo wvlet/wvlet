@@ -48,7 +48,6 @@ object RunnerSpecWvletEngineBasic:
     * shrink
     */
   val knownGaps: Map[String, String] = Map(
-    "append-to-file.wv"             -> "append to <file>",
     "attach-database.wv"            -> "Database attachment",
     "create-table-sql-semantics.wv" -> "DDL / SQL statements",
     "ddl-basic.wv"                  -> "DDL / SQL statements",
@@ -60,8 +59,7 @@ object RunnerSpecWvletEngineBasic:
     "from_table_function.wv"        -> "TableFunctionCall",
     "map.wv"                        -> "Result differs from DuckDB",
     "reshape-and-views.wv"          -> "DDL / SQL statements",
-    "save-to-file.wv"               -> "save to <file>",
-    "save-with-options.wv"          -> "save to <file>",
+    "save-with-options.wv"          -> "parquet_metadata table function",
     "string-concat.wv"              -> "Result differs from DuckDB",
     "table-constraints.wv"          -> "DDL / SQL statements",
     "table-defaults.wv"             -> "DDL / SQL statements",
@@ -69,7 +67,6 @@ object RunnerSpecWvletEngineBasic:
     "table-like.wv"                 -> "DDL / SQL statements",
     // ddl/table-mixins.wv; ignoring by file name also skips the passing top-level table-mixins.wv
     "table-mixins.wv"         -> "DDL / SQL statements",
-    "unpivot.wv"              -> "Result differs from DuckDB",
     "update-and-upsert.wv"    -> "DDL / SQL statements",
     "use-schema.wv"           -> "Switches to the duckdb connector",
     "table-value-constant.wv" -> "Need to support table value constant"

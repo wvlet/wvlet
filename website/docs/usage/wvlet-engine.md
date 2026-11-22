@@ -12,11 +12,11 @@ through pure-Scala readers, so it also works where DuckDB is unavailable.
 :::warning Preview
 The engine covers queries over files and registered tables (filters, projections, joins
 including ASOF joins, aggregations, window functions, subqueries, `pivot`, `unnest`, lambdas,
-`show` commands, and TPC-H), plus `save to`, `append to`, and `delete` on in-memory tables.
-Features it doesn't support yet report an error: SQL DDL (`create table`, `drop`), `execute`,
-`update`, writes to files (`save to` / `append to` a file path), flows, table functions such as
-`read_csv(...)`, and some engine-specific functions. `unpivot` and map values run but can return
-results that differ from DuckDB.
+`show` commands, and TPC-H), plus `save to`, `append to`, and `delete` on in-memory tables and
+`save to` / `append to` Parquet, CSV, and JSON files. Features it doesn't support yet report an
+error: SQL DDL (`create table`, `drop`), `execute`, `update`, flows, table functions such as
+`read_csv(...)`, and some engine-specific functions. Map values run but can return results that
+differ from DuckDB.
 :::
 
 ## Usage
@@ -110,6 +110,36 @@ Appended rows map to the table's columns by position, or to the columns listed i
 of the query's columns, and rows with a NULL key always insert. Tables
 registered from files (`dataDir`, `tables`) are read-only: writing to them reports an error
 instead of changing the files.
+
+## Writing files
+
+`save to '<path>'` writes a query result to a file, and `append to '<path>'` adds rows to it
+(creating the file when it doesn't exist). The extension selects the format:
+
+| Extension | Format |
+|-----------|--------|
+| `.parquet` | Parquet |
+| `.csv`, `.tsv` | CSV / TSV with a header row |
+| `.json`, `.jsonl`, `.ndjson` | Newline-delimited JSON |
+
+```wvlet
+from 'data/orders.parquet'
+where o_orderstatus = 'F'
+save to 'out/finished_orders.parquet' with compression: 'zstd'
+
+from 'data/orders_today.parquet'
+where o_orderstatus = 'F'
+append to 'out/finished_orders.parquet'
+```
+
+Options for `save to ... with`:
+
+- `format`: `parquet`, `csv`, `tsv`, or `json`, overriding the extension
+- `compression` (Parquet): `snappy`, `zstd`, `gzip`, `brotli`, `lz4`, or `uncompressed`
+- `header` (CSV, default `true`) and `delimiter` (CSV)
+
+Appended rows map to the file's columns by position and are cast to their types. Files are
+written to local paths only; writing to `s3://` or other remote paths isn't supported yet.
 
 ## Mixing with other connectors
 

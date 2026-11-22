@@ -16,7 +16,13 @@ package wvlet.lang.engine
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.SourceIO
+import wvlet.lang.engine.catalog.CsvSource
+import wvlet.lang.engine.catalog.DataFileFormat
+import wvlet.lang.engine.catalog.DataFileWriter
+import wvlet.lang.engine.catalog.JsonSource
 import wvlet.lang.engine.catalog.MemTable
+import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.catalog.ScanSpec
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.vector.*
@@ -33,6 +39,40 @@ import scala.collection.mutable
   */
 class TableWriter(engine: WvletEngine) extends LogSupport:
   private def catalog = engine.catalog
+
+  /**
+    * `save to '<path>' [with options]`: write the query result to a Parquet, CSV, TSV, or JSON
+    * lines file chosen by the extension (or the `format` option), replacing the file
+    */
+  def saveToFile(path: String, query: Relation, options: Map[String, Any] = Map.empty)(using
+      Context
+  ): Unit =
+    val result = engine.execute(query)
+    DataFileWriter.write(path, unqualified(result.schema), result.batches, options)
+
+  /**
+    * `append to '<path>'`: add the query rows to a data file, creating it when it doesn't exist.
+    * Rows map to the file's columns by position and are cast to their types
+    */
+  def appendToFile(path: String, query: Relation)(using Context): Unit =
+    val result = engine.execute(query)
+    if !SourceIO.existsFile(path) then
+      DataFileWriter.write(path, unqualified(result.schema), result.batches)
+    else
+      val existing =
+        DataFileFormat.of(path) match
+          case DataFileFormat.Parquet =>
+            ParquetSource(path, path)
+          case DataFileFormat.JsonLines =>
+            JsonSource(path, path)
+          case DataFileFormat.Csv | DataFileFormat.Tsv =>
+            CsvSource(path, path)
+      val schema = unqualified(existing.schema)
+      // Read the whole file before overwriting it
+      val oldBatches = batchesOf(existing).toIndexedSeq
+      val sourceOf   = positionalSources(path, schema, result.schema, Nil)
+      val newBatches = result.batches.map(b => castBatch(b, result.schema, schema, sourceOf))
+      DataFileWriter.write(path, schema, oldBatches ++ newBatches)
 
   /** `save to <name>`: create or replace the table with the query result */
   def saveTo(name: String, query: Relation)(using Context): MemTable =
