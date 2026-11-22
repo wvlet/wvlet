@@ -1046,12 +1046,12 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val selectItems: List[Attribute] = items.getOrElse {
       // GroupBy without a selection: keys, then an arbitrary value of every input column
       val keyItems =
-        keyExprs
+        baseKeyExprs
           .indices
           .map(i =>
             SingleColumn(
-              NameExpr.fromString(keyExprs(i)._1),
-              UnquotedIdentifier(keyExprs(i)._1, NoSpan),
+              NameExpr.fromString(baseKeyExprs(i)._1),
+              UnquotedIdentifier(baseKeyExprs(i)._1, NoSpan),
               NoSpan
             )
           )
@@ -1064,10 +1064,11 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       selectItems.foreach {
         case a: AllColumns =>
           // `select *` over a grouping: every key
-          keyExprs
+          baseKeyExprs
             .indices
             .foreach(i =>
-              boundItems += ((aggCtx.keyRef(i), Field(keyExprs(i)._1, keyExprs(i)._2.ptype)))
+              boundItems +=
+                ((aggCtx.keyRef(i), Field(baseKeyExprs(i)._1, baseKeyExprs(i)._2.ptype)))
             )
         case attr =>
           val e = aggBinder.bind(attr)
@@ -1127,10 +1128,30 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
                     inOp
                   else
                     planRelation(source)
-                HashAggOp(in, setKeys.toIndexedSeq, calls, aggCtx.outputSchema)
+                if set.isEmpty then
+                  // The grand total: a global aggregation, so empty input still yields one row
+                  val out       = aggCtx.outputSchema
+                  val callStart = setKeys.size
+                  val callAgg   = HashAggOp(
+                    in,
+                    IndexedSeq.empty,
+                    calls,
+                    Schema(out.fields.drop(callStart))
+                  )
+                  ProjectOp(
+                    callAgg,
+                    setKeys.toIndexedSeq ++
+                      (callStart until out.size).map(c =>
+                        ColRef(c - callStart, out(c).ptype, out(c).name)
+                      ),
+                    out
+                  )
+                else
+                  HashAggOp(in, setKeys.toIndexedSeq, calls, aggCtx.outputSchema)
               },
             aggCtx.outputSchema
           )
+      end match
     end aggOp
     val filtered = havingExpr.map(h => FilterOp(aggOp, h)).getOrElse(aggOp)
     collector match
