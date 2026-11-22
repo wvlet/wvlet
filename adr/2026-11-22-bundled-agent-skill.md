@@ -1,6 +1,6 @@
 # ADR: The AI-agent skill ships with the compiler and is verified by it
 
-Date: 2026-11-22 · PR #2251, #2255
+Date: 2026-11-22 · PR #2251, #2255, and the `skill install` follow-up
 
 ## Context
 
@@ -11,7 +11,7 @@ AI coding agents are becoming the main authors of Wvlet queries. They learned Wv
 - The skill lives at `plugins/wvlet/skills/wvlet/` (`SKILL.md` plus `references/`). `.claude-plugin/marketplace.json` lists it as a Claude Code plugin. A PR that changes syntax, operators, or CLI commands updates the skill in the same PR.
 - The compiler checks the skill in CI. `SkillSnippetTest` parses every `wvlet` fence, and runs `wvlet run` fences on DuckDB, where their `test` assertions must pass. `SkillFreshnessTest` fails when a `WvletToken` keyword appears in no code example. The exceptions are listed in `notInSkill`, each with a reason. It also checks the reserved-keyword list, which `SkillKeywordGenerator` writes from the parser.
 - `plugin.json` has no `version`. Claude Code then tracks commits, so updating the skill needs no version bump. A bump that someone forgets would leave installed copies stale.
-- `skillGen` embeds the skill in `wvlet-lang`, and `wvlet skill` serves it on the JVM, npm, and native CLIs (print, `--list`, `--install <dir>`). An agent that has no plugin support, or is offline, reads the guide for the compiler it runs, not the latest docs on the website.
+- `skillGen` embeds the skill in `wvlet-lang`, and `wvlet skill` serves it on the JVM, npm, and native CLIs. `wvlet skill install --agent claude|codex|pi [--global]` uses the folder layout of `tdx skill`: `.agents/skills` is shared by Codex and Pi, and Claude Code reads `.claude/skills`. A `.wvlet-skill.json` marker records what was written, so re-running `install` updates only unedited skills that wvlet installed, and `remove` deletes only those. Each agent folder gets its own copy, not tdx's symlink: deleting through a link behaves differently on JVM, Node.js, and Native, and Windows needs privileges to create one. An agent that has no plugin support, or is offline, reads the guide for the compiler it runs, not the latest docs on the website.
 
 ## Consequences
 

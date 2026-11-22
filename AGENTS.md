@@ -49,7 +49,7 @@
 
 ## Bundled Skill
 - `plugins/wvlet/skills/wvlet/` is the Agent Skill that teaches AI agents Wvlet (listed by `.claude-plugin/marketplace.json`; install with `/plugin marketplace add wvlet/wvlet`). It ships with the compiler: **when a PR changes syntax, operators, CLI commands, or options, update the skill in the same PR**, together with `website/docs/for-ai-agents.md`.
-- The skill is also embedded in every CLI (`skillGen` in build.sbt generates `wvlet.lang.skill.BundledSkill`), served by `wvlet skill`.
+- The skill is also embedded in every CLI (`skillGen` in build.sbt generates `wvlet.lang.skill.BundledSkill`), served by `wvlet skill` (`install --agent claude|codex|pi`, `list`, `remove`, following the `tdx skill` layout).
 - `plugin.json` has no `version` on purpose: installed copies track commits, so there is nothing to bump.
 - `./sbt "runnerJVM/testOnly *SkillSnippetTest"` checks every `wvlet` fence in the skill and in `for-ai-agents.md`. Mark the fence info string to choose the check:
   - `` ```wvlet `` — parse only (snippets that read tables that don't exist)

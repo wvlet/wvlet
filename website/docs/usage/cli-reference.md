@@ -96,13 +96,17 @@ wvlet catalog import --profile production --schema sales
 
 ### `wvlet skill`
 
-Print the AI-agent skill embedded in this wvlet version, so coding agents read syntax that matches the installed compiler. See [Wvlet for AI Agents](../for-ai-agents.md).
+Print or install the AI-agent skill embedded in this wvlet version, so coding agents read syntax that matches the installed compiler. `install`, `list`, and `remove` accept `-a, --agent` (`claude`, `codex`, `pi`; default all), `-g, --global`, `--dir`, `--force`, and `--json`; `remove` also takes `--yes` and `--dry-run`. See [Wvlet for AI Agents](../for-ai-agents.md).
 
 ```bash
 wvlet skill                          # SKILL.md
 wvlet skill syntax                   # references/syntax.md (also models, testing, cli)
-wvlet skill --list                   # list the files
-wvlet skill --install .claude/skills # write the skill to .claude/skills/wvlet/
+wvlet skill files                    # list the files
+wvlet skill install                  # install for Claude Code, Codex, and Pi in this project
+wvlet skill install -a claude -g     # install for Claude Code in ~/.claude/skills
+wvlet skill install --dir tools      # install into tools/wvlet/
+wvlet skill list                     # show installs and whether they are current
+wvlet skill remove -a codex --yes    # remove what wvlet installed (--dry-run to preview)
 ```
 
 ### `wvlet run`
