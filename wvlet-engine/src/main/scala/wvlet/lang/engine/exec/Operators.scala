@@ -874,7 +874,7 @@ final class JoinBuild(
         valid(nv) = i
         nv += 1
       i += 1
-    chain = Array.fill(build.size)(-1)
+    chain = Vec.filledInts(build.size, -1)
     if runner.parallelism > 1 && nv >= JoinBuild.MinParallelRows then
       parts = GroupTable.partitionCount(runner.parallelism)
     // Rows of each partition, in input order
@@ -900,7 +900,7 @@ final class JoinBuild(
       val n     = rows.length
       val table = GroupTable(types)
       val ids   = table.groupIds(keyVecs.map(_.gather(rows, n)), n)
-      val head  = Array.fill(table.numGroups)(-1)
+      val head  = Vec.filledInts(table.numGroups, -1)
       // Insert in reverse so chains enumerate rows in input order. Partitions hold disjoint rows,
       // so they write disjoint chain entries
       var j = n - 1
@@ -1138,7 +1138,7 @@ class HashJoinOp(
           lIdx.foreach(l => matched(l) = true)
           val unmatched = (0 until probe.size).filter(!matched(_)).toArray
           val allL      = lIdx ++ unmatched
-          val allR      = rIdx ++ Array.fill(unmatched.length)(-1)
+          val allR      = rIdx ++ Vec.filledInts(unmatched.length, -1)
           if allL.isEmpty then
             null
           else
@@ -1271,7 +1271,7 @@ class NestedLoopJoinOp(
         lIdx.foreach(l => matched(l) = true)
         val unmatched = (0 until nl).filter(!matched(_)).toArray
         val allL      = lIdx ++ unmatched
-        val allR      = rIdx ++ Array.fill(unmatched.length)(-1)
+        val allR      = rIdx ++ Vec.filledInts(unmatched.length, -1)
         if allL.isEmpty then
           null
         else
@@ -1288,7 +1288,7 @@ class NestedLoopJoinOp(
         else
           r
       case JoinKind.Anti =>
-        val keep = Array.fill(nl)(true)
+        val keep = Vec.allTrue(nl)
         lIdx.foreach(l => keep(l) = false)
         val r = probe.filter(keep)
         if r.size == 0 then
