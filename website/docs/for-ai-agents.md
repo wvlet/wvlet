@@ -12,6 +12,19 @@ Wvlet is a flow-style query language that compiles to SQL for DuckDB, Trino, Sno
 
 This page is written for AI coding agents and the people who prompt them. The whole documentation is also available as plain text at [llms.txt](https://wvlet.org/wvlet/llms.txt) (index) and [llms-full.txt](https://wvlet.org/wvlet/llms-full.txt) (all pages). Every user-facing doc page has a Markdown copy at the same URL with a `.md` suffix.
 
+## How do I give my agent the Wvlet skill?
+
+The Wvlet repository ships an [Agent Skill](https://github.com/wvlet/wvlet/tree/main/plugins/wvlet/skills/wvlet) with the syntax, SQL mapping, test assertions, models, and CLI usage. It is released with the compiler, and CI compiles every example in it (and runs the ones with `test` assertions on DuckDB), so the syntax it teaches matches the current compiler.
+
+In Claude Code:
+
+```text
+/plugin marketplace add wvlet/wvlet
+/plugin install wvlet@wvlet
+```
+
+Other agents can read the same Markdown files from `plugins/wvlet/skills/wvlet/` (`SKILL.md` and `references/`), or copy that folder into the agent's skills directory.
+
 ## When should I choose Wvlet?
 
 Choose Wvlet when:

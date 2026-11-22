@@ -1,0 +1,21 @@
+{
+  "name": "wvlet",
+  "description": "Teaches AI agents to write, convert, test, and run Wvlet queries (.wv files): flow-style syntax, SQL-to-Wvlet mapping, test assertions, models and wvlet build pipelines, and DuckDB/Trino/Snowflake engines",
+  "author": {
+    "name": "wvlet",
+    "url": "https://github.com/wvlet"
+  },
+  "homepage": "https://wvlet.org/wvlet/docs/for-ai-agents",
+  "repository": "https://github.com/wvlet/wvlet",
+  "license": "Apache-2.0",
+  "keywords": [
+    "wvlet",
+    "sql",
+    "query",
+    "duckdb",
+    "trino",
+    "snowflake",
+    "dbt",
+    "data"
+  ]
+}

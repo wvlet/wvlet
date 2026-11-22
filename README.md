@@ -45,6 +45,17 @@ With this flow style, you can describe data processing pipelines in a natural or
 - **Type-safe queries**: Catch errors at compile time with schema validation
 - **Modular queries**: Organize and reuse queries as functions
 
+## For AI Agents
+
+Wvlet ships an Agent Skill that teaches coding agents its syntax, SQL mapping, tests, and CLI. CI compiles every example in it against the current compiler. In Claude Code:
+
+```text
+/plugin marketplace add wvlet/wvlet
+/plugin install wvlet@wvlet
+```
+
+See [Wvlet for AI Agents](https://wvlet.org/wvlet/docs/for-ai-agents) for other agents.
+
 ## Contributors
 
 Many thanks to everyone who has contributed to our progress:

@@ -36,6 +36,9 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - SCALA_VERSION
+              # The bundled AI-agent skill is compiled and run by SkillSnippetTest
+              - 'plugins/**'
+              - 'website/docs/for-ai-agents.md'
   code_format:
     name: Code format
     needs: changes

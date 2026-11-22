@@ -343,7 +343,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## Deployment and Documentation
 
 - For new features, update the documentation at website/docs folder
-- When syntax, operators, or CLI commands change, update `website/docs/for-ai-agents.md` in the same PR (see "Documentation for AI Agents" in AGENTS.md)
+- When syntax, operators, or CLI commands change, update `website/docs/for-ai-agents.md` and the bundled skill `plugins/wvlet/skills/wvlet/` in the same PR (see "Documentation for AI Agents" and "Bundled Skill" in AGENTS.md). `SkillSnippetTest` compiles and runs the skill's examples, and `SkillFreshnessTest` fails when a new keyword has no example
 
 ## Development Checklist
 - Before commiting changes, confirm compilation passes for src/main, src/test, and Scala.js
