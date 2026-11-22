@@ -1192,26 +1192,15 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
                   Const(null, keys(k).ptype)
               ) :+ Const(gid, PType.Int64)
               val in = shared.newReader("GroupingSetInput")
-              if set.isEmpty then
-                // The grand total: a global aggregation, so empty input still yields one row
-                val out       = aggCtx.outputSchema
-                val callStart = setKeys.size
-                val callAgg   = HashAggOp(
-                  in,
-                  IndexedSeq.empty,
-                  setCalls,
-                  Schema(out.fields.drop(callStart))
-                )
-                ProjectOp(
-                  callAgg,
-                  setKeys.toIndexedSeq ++
-                    (callStart until out.size).map(c =>
-                      ColRef(c - callStart, out(c).ptype, out(c).name)
-                    ),
-                  out
-                )
-              else
-                HashAggOp(in, setKeys.toIndexedSeq, setCalls, aggCtx.outputSchema)
+              // The grand total (no keys in the set) is a global aggregation, so empty input
+              // still yields one row
+              groupByVaryingKeys(
+                in,
+                setKeys.toIndexedSeq,
+                setCalls,
+                aggCtx.outputSchema,
+                allowGlobal = set.isEmpty
+              )
             },
             aggCtx.outputSchema
           )
@@ -1231,6 +1220,46 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         ProjectOp(filtered, items2.map(_._1), Schema(items2.map(_._2)))
 
   end planAggregation
+
+  /**
+    * A hash aggregation that groups only by the keys that are not constants (a grouping set's NULL
+    * keys and grouping id): constants are the same in every row, so they don't change the groups,
+    * and a projection puts them back. Output: the keys, then the aggregates, as in `out`. With
+    * `allowGlobal`, all-constant keys make a global aggregation (a grouping set's grand total)
+    */
+  private def groupByVaryingKeys(
+      input: Operator,
+      keys: IndexedSeq[VExpr],
+      calls: IndexedSeq[AggCall],
+      out: Schema,
+      allowGlobal: Boolean = false
+  ): Operator =
+    val varying = keys.indices.filterNot(k => keys(k).isInstanceOf[Const])
+    // Without varying keys, the aggregation becomes global (one row even for empty input), which
+    // only the caller can allow
+    if varying.size == keys.size || (varying.isEmpty && !allowGlobal) then
+      HashAggOp(input, keys, calls, out)
+    else
+      val nk  = keys.size
+      val agg = HashAggOp(
+        input,
+        varying.map(keys),
+        calls,
+        Schema(varying.map(out(_)) ++ out.fields.drop(nk))
+      )
+      val keyExprs = (0 until nk).map { k =>
+        val pos = varying.indexOf(k)
+        if pos >= 0 then
+          ColRef(pos, out(k).ptype, out(k).name)
+        else
+          keys(k)
+      }
+      val callExprs = (nk until out.size).map(c =>
+        ColRef(varying.size + c - nk, out(c).ptype, out(c).name)
+      )
+      ProjectOp(agg, keyExprs ++ callExprs, out)
+
+  end groupByVaryingKeys
 
   // --- sort -----------------------------------------------------------------------------
 
