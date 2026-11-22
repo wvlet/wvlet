@@ -14,6 +14,7 @@
 package wvlet.lang.engine.logical
 
 import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.VExpr
@@ -105,6 +106,22 @@ enum LogicalPlan:
   /** Skip `offset` rows, then return at most `limit` rows */
   case Limit(child: LogicalPlan, limit: Long, offset: Long)
 
+  /**
+    * A join whose output is the columns of `left`, then those of `right`. With keys it is a hash
+    * join on `leftKeys` (over `left`) = `rightKeys` (over `right`), building on `right`, or on
+    * `left` when `buildLeft` is set; without keys it is a nested loop join. The residual reads the
+    * columns of both inputs
+    */
+  case Join(
+      left: LogicalPlan,
+      right: LogicalPlan,
+      kind: JoinKind,
+      leftKeys: IndexedSeq[BExpr],
+      rightKeys: IndexedSeq[BExpr],
+      residual: Option[BExpr],
+      buildLeft: Boolean
+  )
+
   /** A relation planned by the recursive planner, whose operator schema gives the columns */
   case Legacy(op: Operator, columns: IndexedSeq[Column])
 
@@ -123,6 +140,8 @@ enum LogicalPlan:
         child.output
       case Limit(child, _, _) =>
         child.output
+      case Join(left, right, _, _, _, _, _) =>
+        left.output ++ right.output
       case Legacy(_, columns) =>
         columns
 
@@ -138,6 +157,8 @@ enum LogicalPlan:
         Seq(child)
       case Limit(child, _, _) =>
         Seq(child)
+      case Join(left, right, _, _, _, _, _) =>
+        Seq(left, right)
 
   /** The output as an operator schema */
   def schema: Schema = Schema(output.map(_.toField))
@@ -185,6 +206,11 @@ enum LogicalPlan:
         s"Sort(${k.mkString(", ")}${limit.map(n => s", limit=${n}").getOrElse("")})"
       case Limit(_, limit, offset) =>
         s"Limit(${limit}, offset=${offset})"
+      case Join(_, _, kind, lk, rk, residual, buildLeft) =>
+        val keys = lk.zip(rk).map((l, r) => s"${l} = ${r}")
+        val args =
+          keys ++ residual.map(r => s"residual=${r}") ++ Option.when(buildLeft)("build=left")
+        s"Join[${kind}](${args.mkString(", ")})"
       case Legacy(op, _) =>
         s"Legacy[${op.name}]"
 

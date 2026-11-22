@@ -47,16 +47,22 @@ object PlanValidator:
           if columns.size != rows.columns.length then
             b += s"Values has ${columns.size} columns for ${rows.columns.length}"
         case Filter(child, cond) =>
-          checkExprs(b, "Filter", Seq(cond), child)
+          checkExprs(b, "Filter", Seq(cond), child.output)
         case Project(child, exprs, columns) =>
           if exprs.size != columns.size then
             b += s"Project has ${exprs.size} expressions for ${columns.size} columns"
-          checkExprs(b, "Project", exprs, child)
+          checkExprs(b, "Project", exprs, child.output)
         case Sort(child, keys, _) =>
-          checkExprs(b, "Sort", keys.map(_.expr), child)
+          checkExprs(b, "Sort", keys.map(_.expr), child.output)
         case Limit(_, limit, offset) =>
           if limit < 0 || offset < 0 then
             b += s"Limit(${limit}, offset=${offset}) is negative"
+        case j @ Join(left, right, _, lk, rk, residual, _) =>
+          if lk.size != rk.size then
+            b += s"Join has ${lk.size} left keys for ${rk.size} right keys"
+          checkExprs(b, "Join", lk, left.output)
+          checkExprs(b, "Join", rk, right.output)
+          checkExprs(b, "Join", residual.toSeq, j.output)
         case Legacy(op, columns) =>
           if columns.map(_.ptype) != op.schema.types then
             b += s"Legacy[${op.name}] columns ${columns.mkString(", ")} differ from ${op.schema}"
@@ -71,9 +77,9 @@ object PlanValidator:
       b: collection.mutable.Builder[String, Seq[String]],
       node: String,
       exprs: Seq[BExpr],
-      input: LogicalPlan
+      input: IndexedSeq[Column]
   ): Unit =
-    val byId = input.output.map(c => c.id.value -> c).toMap
+    val byId = input.map(c => c.id.value -> c).toMap
     exprs
       .flatMap(_.colRefs)
       .foreach { r =>

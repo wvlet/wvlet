@@ -34,6 +34,58 @@ trait JoinBinding:
   def bind(schema: Schema, e: Expression): VExpr
 
 /**
+  * Builds join trees for [[JoinOrderOptimizer]]: operators for the recursive planner, or logical
+  * nodes paired with their operators for the logical binder. Schemas and estimates come from the
+  * operator form
+  */
+trait JoinTreeBuilder[P]:
+  /** The operator form of a plan */
+  def op(p: P): Operator
+
+  /**
+    * A join of `left` and `right`, with the output columns in left ++ right order: a hash join on
+    * the keys (building on `left` when `buildLeft` is set), or a nested loop join without keys
+    */
+  def join(
+      left: P,
+      right: P,
+      kind: JoinKind,
+      leftKeys: IndexedSeq[VExpr],
+      rightKeys: IndexedSeq[VExpr],
+      residual: Option[VExpr],
+      buildLeft: Boolean
+  ): P
+
+  /** Rows of `p` for which a condition over its columns is true */
+  def filter(p: P, cond: VExpr): P
+
+/** Builds operator trees */
+trait OperatorTreeBuilder extends JoinTreeBuilder[Operator]:
+  override def op(p: Operator): Operator = p
+  override def join(
+      left: Operator,
+      right: Operator,
+      kind: JoinKind,
+      leftKeys: IndexedSeq[VExpr],
+      rightKeys: IndexedSeq[VExpr],
+      residual: Option[VExpr],
+      buildLeft: Boolean
+  ): Operator = JoinOrderOptimizer.joinOp(
+    left,
+    right,
+    kind,
+    leftKeys,
+    rightKeys,
+    residual,
+    buildLeft,
+    left.schema ++ right.schema
+  )
+
+  override def filter(p: Operator, cond: VExpr): Operator = FilterOp(p, cond)
+
+object OperatorTreeBuilder extends OperatorTreeBuilder
+
+/**
   * Orders the inner joins of a [[JoinGraph]] and builds the join tree, choosing the build side of
   * each hash join
   */
@@ -47,13 +99,27 @@ class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
     * start (ties: the largest start, whose scan then drives the parallel pipeline). Returns the
     * tree and the conditions left to apply over it
     */
-  def plan(g: JoinGraph): (Operator, List[Expression]) =
+  def plan(g: JoinGraph): (Operator, List[Expression]) = plan(
+    g,
+    g.inputs.map(_.op),
+    OperatorTreeBuilder
+  )
+
+  /**
+    * [[plan]] building with `builder`, whose `inputs` are the graph's inputs in another plan form
+    * (`builder.op(inputs(i))` is `g.inputs(i).op`)
+    */
+  def plan[P](
+      g: JoinGraph,
+      inputs: IndexedSeq[P],
+      builder: JoinTreeBuilder[P]
+  ): (P, List[Expression]) =
     val bySize =
       if enabled(Optimization.ReorderJoins) then
         g.inputs.indices.sortBy(i => -g.inputs(i).rows)
       else
         g.inputs.indices.take(1)
-    val trees                = bySize.map(greedy(g, _))
+    val trees                = bySize.map(greedy(g, inputs, builder, _))
     val best                 = trees.indices.minBy(k => (trees(k)._3, k))
     val (tree, remaining, _) = trees(best)
     (tree, remaining)
@@ -64,15 +130,21 @@ class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
     * every intermediate result (C_out, which DuckDB's join order optimizer minimizes) plus the rows
     * of every hash table built
     */
-  private def greedy(g: JoinGraph, start: Int): (Operator, List[Expression], Double) =
-    val pushed            = g.inputs
-    var remaining         = g.edges
-    val joined            = mutable.Set.empty[Int]
-    var current: Operator = pushed(start).op
-    var currentRows       = pushed(start).rows
-    var cost              = 0.0
+  private def greedy[P](
+      g: JoinGraph,
+      inputs: IndexedSeq[P],
+      builder: JoinTreeBuilder[P],
+      start: Int
+  ): (P, List[Expression], Double) =
+    val pushed      = g.inputs
+    var remaining   = g.edges
+    val joined      = mutable.Set.empty[Int]
+    var current: P  = inputs(start)
+    var currentRows = pushed(start).rows
+    var cost        = 0.0
     joined += start
     while joined.size < pushed.size do
+      val currentOp = builder.op(current)
       // Candidates connected by an equality condition
       val candidates = pushed
         .indices
@@ -85,9 +157,9 @@ class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
       val keyed = connected.map { (i, eqs) =>
         val right    = pushed(i).op
         val pairs    = eqs.map(_.sidesOf(joined))
-        val (lk, rk) = binding.joinKeys(current.schema, right.schema, pairs)
+        val (lk, rk) = binding.joinKeys(currentOp.schema, right.schema, pairs)
         val out      = CardinalityEstimator.joinOutputRows(
-          current,
+          currentOp,
           currentRows,
           lk,
           right,
@@ -105,31 +177,42 @@ class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
           (i, e)
         else
           candidates.minBy(c => pushed(c._1).rows)
-      val right    = pushed(next).op
-      val combined = current.schema ++ right.schema
+      val right = inputs(next)
       if eqs.nonEmpty then
         val (_, _, lk, rk, out) = keyed.find(_._1 == next).get
-        current =
-          if swapBuild(options, pushed(next).rows, currentRows) then
-            // Build on the joined rows, much fewer than the input to join (e.g., the returns
-            // joined so far vs. a sales table), and probe with that input
-            cost += currentRows
-            swappedHashJoin(current, right, lk, rk, JoinKind.Inner, None, combined)
+        // Build on the joined rows when they are much fewer than the input to join (e.g., the
+        // returns joined so far vs. a sales table), and probe with that input
+        val buildLeft = swapBuild(options, pushed(next).rows, currentRows)
+        cost += (
+          if buildLeft then
+            currentRows
           else
-            cost += pushed(next).rows
-            HashJoinOp(current, right, lk, rk, JoinKind.Inner, None, combined)
+            pushed(next).rows
+        )
+        current = builder.join(current, right, JoinKind.Inner, lk, rk, None, buildLeft)
         currentRows = out
       else
-        current = NestedLoopJoinOp(current, right, None, JoinKind.Cross, combined)
+        current = builder.join(
+          current,
+          right,
+          JoinKind.Cross,
+          IndexedSeq.empty,
+          IndexedSeq.empty,
+          None,
+          buildLeft = false
+        )
         currentRows = currentRows * pushed(next).rows
       remaining = remaining.filterNot(eqs.contains)
       joined += next
       // Apply conditions whose inputs are now all joined (constant ones, reading no input, too)
       val ready = remaining.filter(_.refs.subsetOf(joined))
       if ready.nonEmpty then
-        current = FilterOp(
+        current = builder.filter(
           current,
-          binding.bind(current.schema, ready.map(_.cond).reduce((a, b) => And(a, b, NoSpan)))
+          binding.bind(
+            builder.op(current).schema,
+            ready.map(_.cond).reduce((a, b) => And(a, b, NoSpan))
+          )
         )
         currentRows = math.max(
           1.0,
@@ -151,6 +234,38 @@ object JoinOrderOptimizer:
   /** Whether a join builds on the other input, as this one has much more rows than that */
   def swapBuild(options: OptimizerOptions, rows: Double, otherRows: Double): Boolean =
     options.isEnabled(Optimization.SwapBuildSide) && rows > SwapBuildRatio * otherRows
+
+  /** The kind of a join whose inputs swap sides */
+  def swappedKind(kind: JoinKind): JoinKind =
+    kind match
+      case JoinKind.Left =>
+        JoinKind.Right
+      case JoinKind.Right =>
+        JoinKind.Left
+      case other =>
+        other
+
+  /**
+    * The join operator of left and right, with the output columns in left ++ right order
+    * (`combined`): a hash join on the keys, building on left when `buildLeft` is set, or a nested
+    * loop join without keys
+    */
+  def joinOp(
+      left: Operator,
+      right: Operator,
+      kind: JoinKind,
+      lk: IndexedSeq[VExpr],
+      rk: IndexedSeq[VExpr],
+      residual: Option[VExpr],
+      buildLeft: Boolean,
+      combined: Schema
+  ): Operator =
+    if lk.isEmpty then
+      NestedLoopJoinOp(left, right, residual, kind, combined)
+    else if buildLeft then
+      swappedHashJoin(left, right, lk, rk, swappedKind(kind), residual, combined)
+    else
+      HashJoinOp(left, right, lk, rk, kind, residual, combined)
 
   /**
     * A hash join of left and right that probes with right and builds on left (`kind` is from

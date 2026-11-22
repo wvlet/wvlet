@@ -15,12 +15,17 @@ package wvlet.lang.engine.logical
 
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.engine.exec.FilterOp
+import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.BindScope
 import wvlet.lang.engine.plan.Binder
+import wvlet.lang.engine.plan.JoinOrderOptimizer
+import wvlet.lang.engine.plan.JoinPlanBuilder
 import wvlet.lang.engine.plan.ColumnNotFound
 import wvlet.lang.engine.plan.Planner
 import wvlet.lang.engine.vector.Field
@@ -126,8 +131,10 @@ class LogicalBinder(planner: Planner):
         project(p)
       case s: SQLSelect =>
         bind(planner.desugarSQLSelect(s))
+      case j: Join =>
+        join(j, Nil)
       case other =>
-        // Distinct, aggregations, pivots, unnest, column edits, joins, set operations, samples, a
+        // Distinct, aggregations, pivots, unnest, column edits, set operations, samples, a
         // Project that aggregates or evaluates windows, ...
         legacy(other)
 
@@ -193,9 +200,21 @@ class LogicalBinder(planner: Planner):
         legacy(f)
       case j: Join if planner.isInnerJoin(j) =>
         // The join tree takes the conditions for its join order and pushdown
-        legacy(f)
+        join(j, planner.conjuncts(f.filterExpr))
       case j: Join if j.joinType == JoinType.LeftOuterJoin && !j.asof =>
-        legacy(f)
+        // Conditions on the preserved (left) side filter before the join, so that an inner join
+        // tree under left joins can use them for its join order and pushdown. As the planner
+        // does, the left input is bound once for its schema, then again under the filter
+        val conds          = planner.conjuncts(f.filterExpr)
+        val leftSchema     = bind(j.left).schema
+        val (pushed, rest) = conds.partition(c =>
+          !planner.hasSubquery(c) && planner.bindsIn(c, leftSchema)
+        )
+        if pushed.isEmpty then
+          joins.conjuncts(lowered(bind(j)), conds).plan
+        else
+          val left = Filter(j.left, pushed.reduce((a, b) => And(a, b, NoSpan)), f.span)
+          joins.conjuncts(lowered(bind(j.copy(left = left))), rest).plan
       case child =>
         val conds = planner.conjuncts(f.filterExpr)
         if conds.exists(planner.hasSubquery) then
@@ -206,6 +225,86 @@ class LogicalBinder(planner: Planner):
           val schema = in.schema
           val bound  = conds.map(c => Binder(planner, BindScope(schema)).bind(c))
           LogicalPlan.Filter(in, BExpr.of(bound.reduce((a, b) => AndExpr(a, b)), in.output))
+
+  /**
+    * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them. ASOF,
+    * USING, and NATURAL joins and joins with a lateral unnest stay legacy
+    */
+  private def join(j: Join, filters: List[Expression]): LogicalPlan =
+    if planner.unnestCall(j.right).isDefined || !(planner.isInnerJoin(j) || planner.isJoinOn(j))
+    then
+      legacyOp(planner.planJoinTree(j, filters))
+    else if planner.isInnerJoin(j) then
+      planner.innerJoinTree(j, filters, r => lowered(bind(r)), joins).plan
+    else
+      val left  = lowered(bind(j.left))
+      val right = lowered(bind(j.right))
+      joins.conjuncts(planner.joinOn(j, planner.joinKind(j), left, right, joins), filters).plan
+
+  /** A logical plan with its operators, from which join planning reads schemas and estimates */
+  private case class Lowered(plan: LogicalPlan, op: Operator)
+
+  private def lowered(p: LogicalPlan): Lowered = Lowered(p, Lowering(p))
+
+  /** Builds logical joins, filters, and (for conditions with subqueries) legacy nodes */
+  private object joins extends JoinPlanBuilder[Lowered]:
+    override def op(p: Lowered): Operator = p.op
+
+    override def join(
+        left: Lowered,
+        right: Lowered,
+        kind: JoinKind,
+        leftKeys: IndexedSeq[VExpr],
+        rightKeys: IndexedSeq[VExpr],
+        residual: Option[VExpr],
+        buildLeft: Boolean
+    ): Lowered =
+      val l = left.plan
+      val r = right.plan
+      Lowered(
+        LogicalPlan.Join(
+          l,
+          r,
+          kind,
+          leftKeys.map(BExpr.of(_, l.output)),
+          rightKeys.map(BExpr.of(_, r.output)),
+          residual.map(BExpr.of(_, l.output ++ r.output)),
+          buildLeft
+        ),
+        JoinOrderOptimizer.joinOp(
+          left.op,
+          right.op,
+          kind,
+          leftKeys,
+          rightKeys,
+          residual,
+          buildLeft,
+          left.op.schema ++ right.op.schema
+        )
+      )
+
+    end join
+
+    override def filter(p: Lowered, cond: VExpr): Lowered = Lowered(
+      LogicalPlan.Filter(p.plan, BExpr.of(cond, p.plan.output)),
+      FilterOp(p.op, cond)
+    )
+
+    override def conjuncts(p: Lowered, conds: List[Expression]): Lowered =
+      if conds.isEmpty then
+        p
+      else
+        planner.applyConjuncts(p.op, conds) match
+          case f: FilterOp if (f.child eq p.op) && f.keep == null =>
+            // Plain conditions (uncorrelated scalar subqueries are constants in them)
+            Lowered(LogicalPlan.Filter(p.plan, BExpr.of(f.cond, p.plan.output)), f)
+          case op if op eq p.op =>
+            p
+          case op =>
+            // Subqueries became joins over the lowered input
+            Lowered(legacyOp(op), op)
+
+  end joins
 
   /** A projection without aggregates, windows, unnest, or subqueries */
   private def isPlainProjection(p: Project): Boolean =
