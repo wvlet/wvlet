@@ -42,8 +42,11 @@ object IcebergWriter:
 
   /**
     * `save to '<dir>' with format: 'iceberg'`: create a new Iceberg table (snapshot 1) at `path`.
-    * Options: `partition_by` (comma-separated identity partition columns) and `compression`. An
-    * existing table or a non-empty folder is an error: the engine doesn't replace Iceberg tables
+    * Options: `partition_by` (comma-separated identity partition columns) and `compression`. On an
+    * existing table, it commits a snapshot that replaces every row, as `save to t` does for a
+    * warehouse table: the schema follows the result, and the table keeps its partition spec unless
+    * `partition_by` is given or the result drops a partition column. Older snapshots and their
+    * files stay. A non-empty folder that isn't an Iceberg table is an error
     */
   def create(path: String, schema: Schema, batches: Seq[Batch], opts: Map[String, Any]): Unit =
     opts
@@ -54,14 +57,8 @@ object IcebergWriter:
           .NOT_IMPLEMENTED
           .newException(s"Unsupported Iceberg write option for the wvlet engine: ${k}")
       }
-    if isTable(path) then
-      throw StatusCode
-        .INVALID_ARGUMENT
-        .newException(
-          s"${path} is already an Iceberg table. Use append to '${path}' to add a snapshot " +
-            "(the wvlet engine doesn't replace Iceberg tables yet)"
-        )
-    if SourceIO.existsFile(path) &&
+    val exists = isTable(path)
+    if !exists && SourceIO.existsFile(path) &&
       (!SourceIO.isDirectory(path) || SourceIO.listFiles(path).nonEmpty)
     then
       throw StatusCode
@@ -83,7 +80,11 @@ object IcebergWriter:
       path,
       schema,
       batches,
-      ParquetWriteMode.ErrorIfExists,
+      if exists then
+        ParquetWriteMode.Overwrite
+      else
+        ParquetWriteMode.ErrorIfExists
+      ,
       partitionBy,
       DataFileWriter.writeOptionsOf(opts)
     )

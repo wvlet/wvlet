@@ -408,6 +408,44 @@ class PlanExecutorWvletEngineTest extends UniTest:
     result.getError shouldBe None
   }
 
+  test("replace an Iceberg table snapshot with save to") {
+    val path   = s"target/engine-xp-iceberg-replace/${System.currentTimeMillis()}"
+    val result = run(s"""from [[1, 'JP'], [2, 'US']] as t(id, country)
+                        |save to '${path}' with format: 'iceberg', partition_by: 'country'
+                        |
+                        |-- Replaces every row, keeping the partition spec
+                        |from [[3, 'JP']] as t(id, country)
+                        |save to '${path}' with format: 'iceberg'
+                        |
+                        |from '${path}'
+                        |test _.rows should be [[3, 'JP']]
+                        |
+                        |-- The schema follows the new result
+                        |from [[4, 'pen', 1.5]] as t(id, item, price)
+                        |save to '${path}' with format: 'iceberg'
+                        |
+                        |from '${path}'
+                        |test _.columns should be ['id', 'item', 'price']
+                        |test _.rows should be [[4, 'pen', 1.5]]""".stripMargin)
+    result.getError shouldBe None
+    // Older snapshots stay readable
+    val first = run(s"""from '${path}/metadata/v1.metadata.json'
+                       |order by id
+                       |test _.rows should be [[1, 'JP'], [2, 'US']]""".stripMargin)
+    first.getError shouldBe None
+  }
+
+  test("reject saving an Iceberg table over a folder with other files") {
+    val path = s"target/engine-xp-iceberg-nonempty/${System.currentTimeMillis()}"
+    run(s"""from [[1]] as t(id)
+           |save to '${path}/data.parquet'""".stripMargin).getError shouldBe None
+    val e = intercept[WvletLangException] {
+      run(s"""from [[2]] as t(id)
+             |save to '${path}' with format: 'iceberg'""".stripMargin)
+    }
+    e.getMessage shouldContain "not an empty folder"
+  }
+
   test("reject SQL statements the engine can't run") {
     val e = intercept[WvletLangException] {
       run("execute sql\"select 1\"")
