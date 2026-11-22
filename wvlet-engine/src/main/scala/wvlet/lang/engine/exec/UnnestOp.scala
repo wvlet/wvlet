@@ -21,10 +21,16 @@ import wvlet.lang.engine.vector.*
   * once per element of the longest list; shorter lists are padded with NULLs, and NULL or empty
   * lists contribute no elements (a row whose lists are all empty produces nothing).
   *
-  * Output: the input columns (when `keepInput`), then one column per list holding its elements
+  * Output: the input columns (when `keepInput`), then one column per list holding its elements.
+  * With `outer` (LEFT JOIN unnest(...)), a row without elements is kept once with NULL elements
   */
-class UnnestOp(child: Operator, lists: IndexedSeq[VExpr], keepInput: Boolean, val schema: Schema)
-    extends Operator:
+class UnnestOp(
+    child: Operator,
+    lists: IndexedSeq[VExpr],
+    keepInput: Boolean,
+    val schema: Schema,
+    outer: Boolean = false
+) extends Operator:
   override def children: Seq[Operator] = Seq(child)
   override protected def details       = s"(${lists.map(_.sig).mkString(", ")})"
 
@@ -63,8 +69,13 @@ class UnnestOp(child: Operator, lists: IndexedSeq[VExpr], keepInput: Boolean, va
     var i        = 0
     while i < in.size do
       val ls = vecs.map(v => elements(v.get(i)))
-      val n  = ls.map(_.size).maxOption.getOrElse(0)
-      var j  = 0
+      val n0 = ls.map(_.size).maxOption.getOrElse(0)
+      val n  =
+        if n0 == 0 && outer then
+          1
+        else
+          n0
+      var j = 0
       while j < n do
         rowIdx += i
         var k = 0

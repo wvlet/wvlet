@@ -944,6 +944,8 @@ class Binder(
         addInterval(r, iv)
       case (_, RowFn("interval", _, _, _, _)) if aop == ArithOp.Add || aop == ArithOp.Sub =>
         addDynamicInterval(l, r, negate = aop == ArithOp.Sub)
+      case (RowFn("interval", _, _, _, _), _) if aop == ArithOp.Add =>
+        addDynamicInterval(r, l, negate = false)
       case _ =>
         (l.ptype, r.ptype) match
           case (PType.Null, _) | (_, PType.Null) =>
@@ -1151,7 +1153,20 @@ class Binder(
     list.map(unwrapArg) match
       case List(s: SubQueryExpression) =>
         planner.bindTupleInSubquery(this, target, s.query, negate)
-      case items =>
+      case items0 =>
+        // `${v}` placeholders bound to lists expand in place, as in bindIn
+        val items = items0.flatMap {
+          case i: Identifier if subst.contains(i.leafName) =>
+            subst(i.leafName) match
+              case l: ListExpr =>
+                l.exprs
+              case other =>
+                List(other)
+          case l: ListExpr =>
+            l.exprs
+          case other =>
+            List(other)
+        }
         val disjuncts = items.map { item =>
           val values = tupleElements(item)
           if values.size != target.size then
@@ -1168,11 +1183,21 @@ class Binder(
             case Nil =>
               Const(false, PType.Bool)
             case _ =>
-              bind(disjuncts.reduce((a, b) => Or(a, b, NoSpan)))
+              // A balanced OR tree keeps long tuple lists from building deep recursion
+              def balanced(xs: IndexedSeq[Expression]): Expression =
+                if xs.size == 1 then
+                  xs.head
+                else
+                  val (l, r) = xs.splitAt(xs.size / 2)
+                  Or(balanced(l), balanced(r), NoSpan)
+              bind(balanced(disjuncts.toIndexedSeq))
         if negate then
           NotExpr(cond)
         else
           cond
+    end match
+
+  end bindTupleIn
 
   /**
     * list_transform / list_filter / list_reduce with a lambda. The lambda body is bound over its
@@ -1347,9 +1372,11 @@ class Binder(
               v.toString
             case _ =>
               error("interval requires a constant unit", f)
+        // Validate the unit at bind time, also for per-row amounts
+        intervalOf(unit, 0)
         args(0) match
           case Const(null, _) =>
-            Const(null, PType.AnyT)
+            Const(null, PType.Null)
           case Const(v, t) =>
             Const(
               intervalOf(unit, ValueOps.toDouble(ValueOps.cast(v, t, PType.Float64))),

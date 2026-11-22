@@ -1311,6 +1311,7 @@ object JsonPath:
       catch
         case _: Exception =>
           throw StatusCode.INVALID_ARGUMENT.newException(s"Malformed JSON: ${json}")
+    val pointer = path.startsWith("/")
     steps(path).foldLeft(Option(doc)) { (cur, step) =>
       cur.flatMap { v =>
         (v, step) match
@@ -1323,6 +1324,9 @@ object JsonPath:
               else
                 i
             a.v.lift(idx)
+          // A JSON pointer segment of digits indexes arrays: /items/0
+          case (a: JSONArray, Left(key)) if pointer && key.nonEmpty && key.forall(_.isDigit) =>
+            a.v.lift(key.toInt)
           case _ =>
             None
       }
@@ -1333,8 +1337,12 @@ object JsonPath:
       if path.startsWith("$") then
         path.drop(1)
       else if path.startsWith("/") then
-        // JSON pointer
-        return path.drop(1).split("/").toList.map(Left(_))
+        // JSON pointer (RFC 6901): ~1 is '/', ~0 is '~'
+        return path
+          .drop(1)
+          .split("/", -1)
+          .toList
+          .map(s => Left(s.replace("~1", "/").replace("~0", "~")))
       else
         "." + path
     val out = List.newBuilder[Either[String, Int]]
@@ -1352,16 +1360,24 @@ object JsonPath:
           i = end
         case '[' =>
           val end = p.indexOf(']', i)
-          val tok = p.substring(i + 1, end).trim
+          if end < 0 then
+            throw StatusCode.INVALID_ARGUMENT.newException(s"Unsupported JSON path: ${path}")
+          val tok                   = p.substring(i + 1, end).trim
+          def index(s: String): Int = s
+            .toIntOption
+            .getOrElse(
+              throw StatusCode.INVALID_ARGUMENT.newException(s"Unsupported JSON path: ${path}")
+            )
           if tok.startsWith("\"") || tok.startsWith("'") then
             out += Left(tok.drop(1).dropRight(1))
           else if tok.startsWith("#-") then
-            out += Right(-tok.drop(2).toInt)
+            out += Right(-index(tok.drop(2)))
           else
-            out += Right(tok.toInt)
+            out += Right(index(tok))
           i = end + 1
         case _ =>
           throw StatusCode.INVALID_ARGUMENT.newException(s"Unsupported JSON path: ${path}")
+    end while
     out.result()
 
   end steps
