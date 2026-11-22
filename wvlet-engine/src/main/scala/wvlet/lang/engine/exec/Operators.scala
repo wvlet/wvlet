@@ -94,21 +94,44 @@ class SingleRowOp extends Operator:
       done = true
       Batch.ofRows(1)
 
-class FilterOp(val child: Operator, val cond: VExpr) extends Operator:
-  def schema: Schema                   = child.schema
+/**
+  * Rows of the input where `cond` is true. With `keep`, only those input columns are output (in
+  * that order), so columns only the condition reads aren't copied
+  */
+class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null) extends Operator:
+  val schema: Schema =
+    if keep == null then
+      child.schema
+    else
+      Schema(keep.toIndexedSeq.map(child.schema(_)))
+
   override def children: Seq[Operator] = Seq(child)
-  override protected def details       = s"(${cond.sig})"
-  def next(): Batch                    =
+  override protected def details       =
+    s"(${cond.sig}${
+        if keep == null then
+          ""
+        else
+          s", keep=${keep.mkString(",")}"
+      })"
+
+  def next(): Batch =
     var out: Batch = null
     while out == null do
       val b = child.next()
       if b == null then
         return null
       val mask = Kernels.trueMask(cond.eval(b))
-      val r    = b.filter(mask)
+      val in   =
+        if keep == null then
+          b
+        else
+          b.select(keep)
+      val r = in.filter(mask)
       if r.size > 0 then
         out = r
     out
+
+end FilterOp
 
 class ProjectOp(val child: Operator, val exprs: IndexedSeq[VExpr], val schema: Schema)
     extends Operator:
@@ -368,10 +391,10 @@ class DistinctOp(val child: Operator) extends Operator:
 
 /** INTERSECT / EXCEPT with set (distinct) or bag (ALL) semantics */
 class SetOpOp(
-    left: Operator,
-    right: Operator,
-    isIntersect: Boolean,
-    all: Boolean,
+    val left: Operator,
+    val right: Operator,
+    val isIntersect: Boolean,
+    val all: Boolean,
     val schema: Schema
 ) extends Operator:
   private var done                     = false
@@ -456,33 +479,25 @@ enum JoinKind:
     Cross
 
 /**
-  * Equi hash join building on the right input. Output: left columns then right columns (Semi /
-  * Anti: left columns only). `residual` is an extra condition over the joined row
+  * The hash table of a join's build (right) input: its rows, and for each distinct key the chain of
+  * rows holding it. Built once on first use, then only read, so probes may share it across threads
   */
-class HashJoinOp(
-    val left: Operator,
-    val right: Operator,
-    val leftKeys: IndexedSeq[VExpr],
-    val rightKeys: IndexedSeq[VExpr],
-    val kind: JoinKind,
-    val residual: Option[VExpr],
-    val schema: Schema
-) extends Operator:
-  override def children: Seq[Operator] = Seq(left, right)
-  override def name: String            = s"HashJoin[${kind}]"
-  override protected def details       =
-    s"(${leftKeys.map(_.sig).mkString(",")} = ${rightKeys.map(_.sig).mkString(",")}${residual
-        .map(r => s", residual=${r.sig}")
-        .getOrElse("")})"
+final class JoinBuild(right: Operator, rightKeys: IndexedSeq[VExpr]):
+  @volatile
+  private var built = false
 
-  private var built                        = false
-  private var build: Batch                 = null
-  private var table: GroupTable            = null
-  private var head: Array[Int]             = null
-  private var chain: Array[Int]            = null
-  private var buildMatched: Array[Boolean] = null
-  private var emittedUnmatched             = false
-  private val leftWidth                    = left.schema.size
+  var build: Batch      = null
+  var table: GroupTable = null
+  var head: Array[Int]  = null
+  var chain: Array[Int] = null
+
+  def ensureBuilt(): Unit =
+    if !built then
+      synchronized {
+        if !built then
+          buildTable()
+          built = true
+      }
 
   private def buildTable(): Unit =
     build = Operator.materialize(right)
@@ -509,6 +524,74 @@ class HashJoinOp(
       chain(row) = head(g)
       head(g) = row
       j -= 1
+
+end JoinBuild
+
+/**
+  * Equi hash join building on the right input. Output: left columns then right columns (Semi /
+  * Anti: left columns only). `residual` is an extra condition over the joined row.
+  *
+  * `shared` is a build already made for this join elsewhere: copies of the join that probe parts of
+  * the left input in parallel share one build
+  */
+class HashJoinOp(
+    val left: Operator,
+    val right: Operator,
+    val leftKeys: IndexedSeq[VExpr],
+    val rightKeys: IndexedSeq[VExpr],
+    val kind: JoinKind,
+    val residual: Option[VExpr],
+    val schema: Schema,
+    shared: JoinBuild = null
+) extends Operator:
+  override def children: Seq[Operator] = Seq(left, right)
+  override def name: String            = s"HashJoin[${kind}]"
+  override protected def details       =
+    s"(${leftKeys.map(_.sig).mkString(",")} = ${rightKeys.map(_.sig).mkString(",")}${residual
+        .map(r => s", residual=${r.sig}")
+        .getOrElse("")})"
+
+  /** The build this join probes */
+  val joinBuild: JoinBuild =
+    if shared != null then
+      shared
+    else
+      JoinBuild(right, rightKeys)
+
+  /** The same join over another left input, sharing this join's build */
+  def withLeft(newLeft: Operator): HashJoinOp = HashJoinOp(
+    newLeft,
+    right,
+    leftKeys,
+    rightKeys,
+    kind,
+    residual,
+    schema,
+    joinBuild
+  )
+
+  override def close(): Unit =
+    // A shared build's right input belongs to the join that made the build
+    if shared == null then
+      super.close()
+    else
+      left.close()
+
+  private var built                        = false
+  private var build: Batch                 = null
+  private var table: GroupTable            = null
+  private var head: Array[Int]             = null
+  private var chain: Array[Int]            = null
+  private var buildMatched: Array[Boolean] = null
+  private var emittedUnmatched             = false
+  private val leftWidth                    = left.schema.size
+
+  private def buildTable(): Unit =
+    joinBuild.ensureBuilt()
+    build = joinBuild.build
+    table = joinBuild.table
+    head = joinBuild.head
+    chain = joinBuild.chain
     if kind == JoinKind.Right || kind == JoinKind.Full then
       buildMatched = new Array[Boolean](build.size)
     built = true

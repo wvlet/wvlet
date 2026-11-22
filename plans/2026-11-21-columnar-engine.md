@@ -76,6 +76,15 @@ with its default thread count, sum of the per-query medians: DuckDB 0.36 s, engi
 4. Parallelism on JVM / Native: morsel-driven scans over row groups, partitioned hash
    aggregation and join build (Scala.js stays single-threaded)
 
+Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0.32 s):
+
+| Step | Engine | vs DuckDB |
+|---|---:|---:|
+| Baseline (#2200) | 42.3 s | 118x |
+| Column pruning, row-group pruning (#2204) | 10.8 s | 31x |
+| Kernels, typed hash tables (#2205) | 8.6 s | 26x |
+| Parallel scans, join probes, two-phase aggregation | 2.1 s | 6.4x |
+
 ## Milestones (one PR each)
 
 1. uni 2026.3.0 migration

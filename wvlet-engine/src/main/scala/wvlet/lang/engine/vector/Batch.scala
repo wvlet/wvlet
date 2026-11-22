@@ -93,15 +93,57 @@ object Batch:
     else
       val total = batches.map(_.size).sum
       val cols  =
-        Array.tabulate(schema.size) { c =>
-          val b = VecBuilder(schema(c).ptype, total)
-          batches.foreach { batch =>
-            val v = batch.columns(c)
-            var i = 0
-            while i < batch.size do
-              b.add(v.get(i))
-              i += 1
-          }
-          b.result()
-        }
+        Array.tabulate(schema.size)(c =>
+          concatVecs(schema(c).ptype, batches.map(_.columns(c)), total)
+        )
       Batch(cols, total)
+
+  /** Vectors of one column concatenated: typed arrays are copied as is, others go through boxing */
+  private def concatVecs(ptype: PType, vs: Seq[Vec], total: Int): Vec =
+    inline def nullsOf(): Array[Boolean] =
+      if vs.forall(_.nulls == null) then
+        null
+      else
+        val o   = new Array[Boolean](total)
+        var off = 0
+        vs.foreach { v =>
+          if v.nulls != null then
+            System.arraycopy(v.nulls, 0, o, off, v.size)
+          off += v.size
+        }
+        o
+    inline def copy[A: scala.reflect.ClassTag](values: Vec => Array[A]): Array[A] =
+      val o   = new Array[A](total)
+      var off = 0
+      vs.foreach { v =>
+        System.arraycopy(values(v), 0, o, off, v.size)
+        off += v.size
+      }
+      o
+    val first = vs.headOption.orNull
+    first match
+      case l: LongVec
+          if l.ptype == ptype && vs.forall(v => v.isInstanceOf[LongVec] && v.ptype == ptype) =>
+        LongVec(l.ptype, copy(_.asInstanceOf[LongVec].values), nullsOf())
+      case i: IntVec
+          if i.ptype == ptype && vs.forall(v => v.isInstanceOf[IntVec] && v.ptype == ptype) =>
+        IntVec(i.ptype, copy(_.asInstanceOf[IntVec].values), nullsOf())
+      case _: DoubleVec if ptype == PType.Float64 && vs.forall(_.isInstanceOf[DoubleVec]) =>
+        DoubleVec(copy(_.asInstanceOf[DoubleVec].values), nullsOf())
+      case _: StrVec if ptype == PType.Str && vs.forall(_.isInstanceOf[StrVec]) =>
+        StrVec(copy(_.asInstanceOf[StrVec].values), nullsOf())
+      case _: BoolVec if ptype == PType.Bool && vs.forall(_.isInstanceOf[BoolVec]) =>
+        BoolVec(copy(_.asInstanceOf[BoolVec].values), nullsOf())
+      case _ =>
+        val b = VecBuilder(ptype, total)
+        vs.foreach { v =>
+          var i = 0
+          while i < v.size do
+            b.add(v.get(i))
+            i += 1
+        }
+        b.result()
+
+  end concatVecs
+
+end Batch
