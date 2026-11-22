@@ -332,7 +332,6 @@ object ScalarFunctions:
 
   end strftime
 
-  /** Levenshtein distance over code points */
   // String.codePoints() returns a java.util.stream.IntStream, which Scala.js doesn't provide
   private def codePointArray(s: String): Array[Int] =
     val out = Array.newBuilder[Int]
@@ -343,6 +342,7 @@ object ScalarFunctions:
       i += Character.charCount(cp)
     out.result()
 
+  /** Levenshtein distance over code points */
   private def levenshtein(x: String, y: String): Int =
     val a    = codePointArray(x)
     val b    = codePointArray(y)
