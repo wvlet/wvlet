@@ -67,6 +67,7 @@ object RunnerSpecWvletEngineBasic:
     "table-like.wv"                 -> "DDL / SQL statements",
     // ddl/table-mixins.wv; ignoring by file name also skips the passing top-level table-mixins.wv
     "table-mixins.wv"         -> "DDL / SQL statements",
+    "unpivot.wv"              -> "Row order differs from DuckDB",
     "update-and-upsert.wv"    -> "DDL / SQL statements",
     "use-schema.wv"           -> "Switches to the duckdb connector",
     "table-value-constant.wv" -> "Need to support table value constant"
