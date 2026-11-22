@@ -504,27 +504,31 @@ class WindowOp(
       args: Array[Vec],
       out: WindowOp.OutColumn
   ): Boolean =
-    val size    = rows.length
-    val f       = c.frame.get
+    val size = rows.length
+    val f    = c.frame.get
     // Bounds clamped to the partition size, so that k + bound can't overflow
-    val lo      = math.max(-size.toLong, math.min(size.toLong, f.start.get))
-    val hi      = math.max(-size.toLong, math.min(size.toLong, f.end.get))
-    val isSum   = c.name.toLowerCase.startsWith("sum")
-    val counted = new Array[Boolean](size)
+    val lo    = math.max(-size.toLong, math.min(size.toLong, f.start.get))
+    val hi    = math.max(-size.toLong, math.min(size.toLong, f.end.get))
+    val name  = c.name.toLowerCase
+    val isSum = name.startsWith("sum")
+    // Whether each row is folded, or null when every row is (count_star, count())
+    var counted: Array[Boolean] = null
     // Values of the summed rows, or null for counts
     var values: Array[Long] = null
     val isDecimal           = c.ptype.isDecimal
-    c.name.toLowerCase match
+    name match
       case "count" if args.nonEmpty =>
         val v = args(0).gather(rows, size)
+        counted = new Array[Boolean](size)
         var k = 0
         while k < size do
           counted(k) = !v.isNull(k)
           k += 1
       case "count_if" | "countif" =>
-        System.arraycopy(Kernels.trueMask(args(0).gather(rows, size)), 0, counted, 0, size)
+        counted = Kernels.trueMask(args(0).gather(rows, size))
       case "sum" | "sum_if" =>
         val v = args(0).gather(rows, size)
+        counted = new Array[Boolean](size)
         if v.ptype != PType.Null then
           val m =
             if args.length > 1 then
@@ -550,8 +554,6 @@ class WindowOp(
               counted(k) = true
             k += 1
       case _ =>
-        // count_star, count()
-        java.util.Arrays.fill(counted, true)
     end match
 
     // rows(s until e) are in the frame
@@ -564,13 +566,13 @@ class WindowOp(
       val ts = math.max(0L, math.min(size, k + lo)).toInt
       val te = math.max(0L, math.min(size, k + hi + 1)).toInt
       while e < te do
-        if counted(e) then
+        if counted == null || counted(e) then
           cnt += 1
           if values != null then
             sum += values(e)
         e += 1
       while s < ts && s < e do
-        if counted(s) then
+        if counted == null || counted(s) then
           cnt -= 1
           if values != null then
             sum -= values(s)
@@ -671,10 +673,9 @@ object WindowOp:
     * avg stay per frame: removing a double changes the result bits
     */
   def isSlidingFrame(c: WindowCall): Boolean =
-    val bounded = c.frame.exists(f => f.rows && f.start.nonEmpty && f.end.nonEmpty)
+    val bounded  = c.frame.exists(f => f.rows && f.start.nonEmpty && f.end.nonEmpty)
     def exactSum = c.ptype == PType.Int64 || c.ptype.isDecimal
-    bounded &&
-    (
+    bounded && (
       c.name.toLowerCase match
         case "count_star" =>
           true
@@ -788,10 +789,8 @@ object WindowOp:
 
     /** Sets an unscaled value of this column's Decimal type */
     def setUnscaled(i: Int, v: Long): Unit =
-      if layout == DecimalLayout then
-        longs(i) = v
-      else
-        update(i, v)
+      assert(layout == DecimalLayout, s"Not a Decimal column: ${ptype}")
+      longs(i) = v
 
     def setDouble(i: Int, v: Double): Unit =
       if doubles != null then

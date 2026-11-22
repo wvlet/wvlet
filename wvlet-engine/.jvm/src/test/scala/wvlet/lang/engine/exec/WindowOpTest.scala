@@ -401,11 +401,7 @@ class WindowOpTest extends UniTest:
     val cols = Array[Vec](
       LongVec(PType.Int64, part, null),
       LongVec(PType.Int64, Array.fill(n)(rnd.nextInt(50).toLong), null),
-      LongVec(
-        PType.Int64,
-        Array.fill(n)(rnd.nextLong() >> 20),
-        Array.fill(n)(rnd.nextInt(5) == 0)
-      ),
+      LongVec(PType.Int64, Array.fill(n)(rnd.nextLong() >> 20), Array.fill(n)(rnd.nextInt(5) == 0)),
       IntVec(PType.Int32, Array.fill(n)(rnd.nextInt()), Array.fill(n)(rnd.nextInt(7) == 0)),
       Vec.fromValues(
         dec,
@@ -420,8 +416,8 @@ class WindowOpTest extends UniTest:
       ),
       BoolVec(Array.fill(n)(rnd.nextInt(3) != 0), Array.fill(n)(rnd.nextInt(8) == 0))
     )
-    def col(i: Int)               = ColRef(i, in.fields(i).ptype, in.fields(i).name)
-    val (pr, or, xr, ir, mr, br)  = (col(0), col(1), col(2), col(3), col(4), col(5))
+    def col(i: Int)                     = ColRef(i, in.fields(i).ptype, in.fields(i).name)
+    val (pr, or, xr, ir, mr, br)        = (col(0), col(1), col(2), col(3), col(4), col(5))
     val aggs: Seq[(String, Seq[VExpr])] = Seq(
       "count_star" -> Nil,
       "count"      -> Nil,
@@ -470,10 +466,10 @@ class WindowOpTest extends UniTest:
   }
 
   test("should overflow sliding integer sums only where the per-frame fold does") {
-    val big = 6000000000000000000L
-    val in  = Schema(IndexedSeq(Field("o", PType.Int64), Field("x", PType.Int64)))
-    val o   = ColRef(0, PType.Int64, "o")
-    val x   = ColRef(1, PType.Int64, "x")
+    val big                   = 6000000000000000000L
+    val in                    = Schema(IndexedSeq(Field("o", PType.Int64), Field("x", PType.Int64)))
+    val o                     = ColRef(0, PType.Int64, "o")
+    val x                     = ColRef(1, PType.Int64, "x")
     def sum(frame: FrameSpec) = WindowCall(
       "sum",
       Seq(x),

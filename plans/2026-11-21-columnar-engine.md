@@ -91,6 +91,7 @@ Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0
 | Split sort merges into parallel output ranges, bounded-heap top-N (no TPC-H sort reaches 64K rows) | unchanged | |
 | Typed window aggregate / value outputs, unboxed partition sort, reused partition hashes (no TPC-H windows) | unchanged | |
 | Incremental running-frame window aggregates (no TPC-H windows) | unchanged | |
+| Sliding-frame counts and exact sums with add/remove (no TPC-H windows) | unchanged | |
 
 Parallel sorts and windows (A/B with the parallel paths disabled, sf=1 lineitem, 6M rows):
 top-N (limit 10) 2.29 s → 0.15 s, full sort 2.3 s → 1.1–1.3 s (bounded by the merge on one
@@ -119,9 +120,15 @@ its frame (A/B against main, interleaved, 3 rounds of 5 runs, medians, same resu
 the same with `partition by l_partkey` 0.19–0.22 s → 0.13–0.15 s; a running sum without
 PARTITION BY over 20K rows 0.27–0.29 s → 7–8 ms, and over all 6M rows 0.17–0.18 s (main doesn't
 finish). A sliding `rows[-5,5]` frame still recomputes each frame and is unchanged (0.21–0.24 s
-both when measured first; it varies with JIT warm-up order). Exact add/remove for sliding count /
-integer / decimal sums, a sliding min/max structure, and suffix frames (`CURRENT ROW AND
-UNBOUNDED FOLLOWING`) are possible follow-ups.
+both when measured first; it varies with JIT warm-up order). A sliding min/max structure and suffix
+frames (`CURRENT ROW AND UNBOUNDED FOLLOWING`) are possible follow-ups.
+Sliding ROWS frames of counts and Int64 / Decimal sums now add the rows entering the frame and
+remove the rows leaving it, after a per-partition check that no frame's fold can overflow a Long
+(A/B against main, interleaved, 3 rounds of 5 runs, medians, same result checksums, partition by
+l_suppkey order by l_orderkey): `sum(l_quantity)` over `rows[-5,5]` 0.24–0.36 s → 0.11–0.12 s,
+over `rows[-200,200]` 0.54–0.56 s → 0.08–0.09 s; `count(l_quantity)` over `rows[-50,50]`
+0.33–0.37 s → 0.09 s. Float64 sums, avg, and min / max over sliding frames still recompute each
+frame.
 
 ## Milestones (one PR each)
 
