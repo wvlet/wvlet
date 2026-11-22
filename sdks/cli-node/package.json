@@ -23,14 +23,14 @@
     "koffi": "^3.3.4"
   },
   "optionalDependencies": {
-    "@duckdb/node-bindings-darwin-arm64": "2.0.0-r.1",
-    "@duckdb/node-bindings-darwin-x64": "2.0.0-r.1",
-    "@duckdb/node-bindings-linux-arm64": "2.0.0-r.1",
-    "@duckdb/node-bindings-linux-arm64-musl": "2.0.0-r.1",
-    "@duckdb/node-bindings-linux-x64": "2.0.0-r.1",
-    "@duckdb/node-bindings-linux-x64-musl": "2.0.0-r.1",
-    "@duckdb/node-bindings-win32-arm64": "2.0.0-r.1",
-    "@duckdb/node-bindings-win32-x64": "2.0.0-r.1"
+    "@duckdb/node-bindings-darwin-arm64": "2.0.1-r.1",
+    "@duckdb/node-bindings-darwin-x64": "2.0.1-r.1",
+    "@duckdb/node-bindings-linux-arm64": "2.0.1-r.1",
+    "@duckdb/node-bindings-linux-arm64-musl": "2.0.1-r.1",
+    "@duckdb/node-bindings-linux-x64": "2.0.1-r.1",
+    "@duckdb/node-bindings-linux-x64-musl": "2.0.1-r.1",
+    "@duckdb/node-bindings-win32-arm64": "2.0.1-r.1",
+    "@duckdb/node-bindings-win32-x64": "2.0.1-r.1"
   },
   "keywords": [
     "wvlet",
