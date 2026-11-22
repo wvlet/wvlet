@@ -28,14 +28,31 @@ trait Operator:
   def close(): Unit           = children.foreach(_.close())
   def name: String            = getClass.getSimpleName.stripSuffix("Op")
 
-  /** Indented physical plan for EXPLAIN-style debugging */
+  /**
+    * The physical plan for EXPLAIN, in flow style as the logical plan printer shows it: data flows
+    * down, from the scans to this operator. The first child continues the flow (`↓ op`); the other
+    * inputs (join build sides, shared CTE bodies) are nested above the operator that reads them (`↙
+    * op`). Adding an operator to a plan thus adds one line instead of re-indenting its inputs
+    */
   def explain(indent: Int = 0): String =
     val self =
-      s"${"  " * indent}${name}${details} -> [${schema
-          .fields
-          .map(f => s"${f.name}:${f.ptype}")
-          .mkString(", ")}]"
-    (self +: children.map(_.explain(indent + 1))).mkString("\n")
+      s"${name}${details} -> [${schema.fields.map(f => s"${f.name}:${f.ptype}").mkString(", ")}]"
+    val flow   = children.headOption.map(_.explain(indent))
+    val nested = children.drop(1).map(_.explain(indent + 1)) ++ extraInputs(indent + 1)
+    val marker =
+      if nested.nonEmpty then
+        "↙ "
+      else if flow.nonEmpty then
+        "↓ "
+      else
+        ""
+    (flow.toSeq ++ nested :+ s"${"  " * indent}${marker}${self}").mkString("\n")
+
+  /**
+    * The EXPLAIN text, at `indent`, of inputs that are not children (e.g. a shared CTE body that
+    * runs once for every reader)
+    */
+  protected def extraInputs(indent: Int): Seq[String] = Nil
 
   protected def details: String = ""
 

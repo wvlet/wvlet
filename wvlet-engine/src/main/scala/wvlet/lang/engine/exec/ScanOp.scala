@@ -34,8 +34,7 @@ class ScanOp(
         .map(c => s"columns=${c.map(source.schema(_).name).mkString(",")}")
         .getOrElse("")}${filter.map(f => s" filter=${f}").getOrElse("")})"
 
-  override def explain(indent: Int): String =
-    s"${super.explain(indent)}${source.explainDetail(indent + 1)}"
+  override protected def extraInputs(indent: Int): Seq[String] = source.explainDetail(indent).toSeq
 
   /** The scan request this operator sends to the source */
   def spec: ScanSpec = ScanSpec(columns.map(_.map(source.schema(_).name)), filter)

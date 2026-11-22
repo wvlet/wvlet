@@ -1,5 +1,5 @@
 -- q09#1
-Morsel[parallelism=N] -> [bucket1:double, bucket2:double, bucket3:double, bucket4:double, bucket5:double]
-  Project(case((lit(54755:long)>lit(74129:long))->lit(40.12213843303831:double);Some(lit(359.79825808140293:double))), case((lit(55003:long)>lit(122840:long))->lit(114.10289016158724:double);Some(lit(1031.9866225510243:double))), case((lit(55022:long)>lit(56580:long))->lit(193.27634624323673:double);Some(lit(1720.6776948837207:double))), case((lit(55236:long)>lit(10097:long))->lit(266.8218624652456:double);Some(lit(2386.767222840399:double))), case((lit(55391:long)>lit(165306:long))->lit(344.31501036192736:double);Some(lit(3086.285034568175:double)))) -> [bucket1:double, bucket2:double, bucket3:double, bucket4:double, bucket5:double]
-    Filter((#0=lit(1:long)), keep=) -> []
-      Scan[reason](columns=r_reason_sk filter=Compare(r_reason_sk,Eq,1)) -> [r_reason_sk:long]
+Scan[reason](columns=r_reason_sk filter=Compare(r_reason_sk,Eq,1)) -> [r_reason_sk:long]
+↓ Filter((#0=lit(1:long)), keep=) -> []
+↓ Project(case((lit(54755:long)>lit(74129:long))->lit(40.12213843303831:double);Some(lit(359.79825808140293:double))), case((lit(55003:long)>lit(122840:long))->lit(114.10289016158724:double);Some(lit(1031.9866225510243:double))), case((lit(55022:long)>lit(56580:long))->lit(193.27634624323673:double);Some(lit(1720.6776948837207:double))), case((lit(55236:long)>lit(10097:long))->lit(266.8218624652456:double);Some(lit(2386.767222840399:double))), case((lit(55391:long)>lit(165306:long))->lit(344.31501036192736:double);Some(lit(3086.285034568175:double)))) -> [bucket1:double, bucket2:double, bucket3:double, bucket4:double, bucket5:double]
+↓ Morsel[parallelism=N] -> [bucket1:double, bucket2:double, bucket3:double, bucket4:double, bucket5:double]

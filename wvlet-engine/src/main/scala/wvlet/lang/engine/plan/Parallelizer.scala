@@ -96,8 +96,9 @@ object Parallelizer:
           // Not a child: parts must not close the shared right input, released once below
           def shared: Operator =
             new IteratorOp(right.schema, () => Iterator.single(rows), "CrossInput"):
-              override def explain(indent: Int): String =
-                s"${super.explain(indent)}\n${right.explain(indent + 1)}"
+              override protected def extraInputs(indent: Int): Seq[String] = Seq(
+                right.explain(indent)
+              )
           p.copy(
               prepare = p.prepare :+ (() => rows = Operator.materialize(right)),
               close = p.close :+ (() => right.close())

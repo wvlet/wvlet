@@ -111,7 +111,10 @@ class EngineJoinOrderTest extends UniTest:
     debug(plan)
     scanOrder(plan).head shouldBe "inventory"
     // inventory probes a build of the catalog_sales joins: catalog_sales is no longer the probe
-    """HashJoin[^\n]*\n\s*Scan\[inventory\]""".r.findFirstIn(plan).isDefined shouldBe true
+    PlanText
+      .downstream(plan, "Scan[inventory]")
+      .headOption
+      .exists(_.startsWith("HashJoin")) shouldBe true
   }
 
 end EngineJoinOrderTest
