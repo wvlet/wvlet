@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine
 
+import wvlet.lang.compiler.*
 import wvlet.uni.test.UniTest
 
 /** ROLLUP / CUBE / grouping() queries on the engine must return the same rows as DuckDB */
@@ -35,5 +36,20 @@ class EngineGroupingSetsTest extends UniTest:
           fail(s"${r.name}: ${r.message}")
       }
     }
+
+  test("group each grouping set by its non-constant keys only") {
+    val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
+    val unit     = CompilationUnit.fromWvletString("""from 'spec/tpch/data/lineitem.parquet'
+        |group by rollup(l_returnflag, l_linestatus)
+        |select l_returnflag, l_linestatus, cnt = _.count""".stripMargin)
+    val r         = compiler.compileSingleUnit(unit)
+    given Context = r.context
+    val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail("No query"))
+    val plan      = WvletEngine().explain(q)
+    debug(plan)
+    // The NULL keys outside a set and the grouping id are added after aggregating
+    """Agg[^\n]*keys=\[[^\]]*lit\(""".r.findFirstIn(plan) shouldBe None
+    plan shouldContain "lit(null:string)"
+  }
 
 end EngineGroupingSetsTest
