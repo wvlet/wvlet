@@ -50,8 +50,8 @@ class EngineJoinOrderTest extends UniTest:
   }
 
   test("join a many-to-many key after the joins that reduce rows") {
-    // q24: s_zip = ca_zip matches many addresses per store, so customer_address must join after
-    // customer, which keys it by ca_address_sk
+    // q24: s_zip = ca_zip matches many addresses per store, so customer_address must not join the
+    // store_sales rows by zip before customer, which keys it by ca_address_sk
     val plan = explain("""from store_sales, store_returns, store, item, customer, customer_address
         |where ss_ticket_number = sr_ticket_number
         |  and ss_item_sk = sr_item_sk
@@ -64,8 +64,10 @@ class EngineJoinOrderTest extends UniTest:
         |select c_last_name, ss_net_paid""".stripMargin)
     val order = scanOrder(plan)
     debug(plan)
-    order.head shouldBe "store_sales"
-    order.last shouldBe "customer_address"
+    // Scans appear probe side first: the old plan read store_sales, ..., customer_address, customer
+    val (ss, ca, c) =
+      (order.indexOf("store_sales"), order.indexOf("customer_address"), order.indexOf("customer"))
+    (ss < ca && ca < c) shouldBe false
   }
 
   test("join the input with a selective equality filter first") {
@@ -89,6 +91,27 @@ class EngineJoinOrderTest extends UniTest:
         |select cd_gender, ws_net_profit""".stripMargin)
     debug(plan)
     scanOrder(plan) shouldBe Seq("web_sales", "customer_demographics", "web_returns")
+  }
+
+  test("start from the input whose joins keep the intermediate results smallest") {
+    // q72: inventory is the largest input, but joining it first to date_dim on d_week_seq (seven
+    // dates per week) multiplies rows. Starting from the filtered catalog_sales, inventory joins
+    // last, probing the few catalog_sales rows left
+    val plan = explain(
+      """from catalog_sales, inventory, household_demographics, date_dim as d1, date_dim as d2
+        |where cs_item_sk = inv_item_sk
+        |  and cs_bill_hdemo_sk = hd_demo_sk
+        |  and cs_sold_date_sk = d1.d_date_sk
+        |  and inv_date_sk = d2.d_date_sk
+        |  and d1.d_week_seq = d2.d_week_seq
+        |  and hd_buy_potential = '>10000'
+        |  and d1.d_year = 1999
+        |select inv_quantity_on_hand, cs_quantity""".stripMargin
+    )
+    debug(plan)
+    scanOrder(plan).head shouldBe "inventory"
+    // inventory probes a build of the catalog_sales joins: catalog_sales is no longer the probe
+    """HashJoin[^\n]*\n\s*Scan\[inventory\]""".r.findFirstIn(plan).isDefined shouldBe true
   }
 
 end EngineJoinOrderTest

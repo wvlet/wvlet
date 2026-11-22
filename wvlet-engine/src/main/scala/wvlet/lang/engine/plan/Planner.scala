@@ -2115,68 +2115,121 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
             applyConjuncts(inputs(i), local)
         JoinInput(op, estimateRows(op) * local.map(c => selectivity(inputs(i), c)).product)
       }
-    var remaining = condRefs.filter(_._2.size != 1).map(_._1)
-    // constant conditions (no references) apply at the end
-    val joined = mutable.Set.empty[Int]
-    // Start from the largest input as the probe side
-    val start             = pushed.indices.maxBy(i => pushed(i).rows)
-    var current: Operator = pushed(start).op
-    var currentRows       = pushed(start).rows
-    joined += start
-    while joined.size < pushed.size do
-      // Candidates connected by an equality condition
-      val candidates = pushed
-        .indices
-        .filterNot(joined.contains)
-        .map { i =>
-          val eqs = remaining.filter(c => isEquiBetween(c, current.schema, pushed(i).op.schema))
-          (i, eqs)
-        }
-      val connected = candidates.filter(_._2.nonEmpty)
-      // As DuckDB's greedy join ordering does, join next the input giving the fewest rows
-      val keyed = connected.map { (i, eqs) =>
-        val right    = pushed(i).op
-        val pairs    = eqs.map(c => equiSides(c, current.schema, right.schema))
-        val (lk, rk) = joinKeys(
-          Binder(this, BindScope(current.schema)),
-          Binder(this, BindScope(right.schema)),
-          pairs
-        )
-        val out = joinOutputRows(current, currentRows, lk, right, pushed(i).rows, rk)
-        (i, eqs, lk, rk, out)
+    // Conditions over several inputs, with the inputs each reads (and for an equality, the inputs
+    // each side reads), computed once: the greedy search below checks them at every step
+    case class CrossCond(c: Expression, refs: Set[Int], sides: Option[(Set[Int], Set[Int])])
+    val crossConds = conds
+      .zip(condRefs)
+      .collect {
+        case ((c, e), (_, r)) if r.size != 1 =>
+          val sides =
+            e match
+              case eq: Eq =>
+                Some((refs(eq.left), refs(eq.right)))
+              case _ =>
+                None
+          CrossCond(c, r, sides)
       }
-      val (next, eqs) =
-        if keyed.nonEmpty then
-          val (i, e, _, _, _) = keyed.minBy((i, _, _, _, out) => (out, pushed(i).rows))
-          (i, e)
-        else
-          candidates.minBy(c => pushed(c._1).rows)
-      val right    = pushed(next).op
-      val combined = current.schema ++ right.schema
-      if eqs.nonEmpty then
-        val (_, _, lk, rk, out) = keyed.find(_._1 == next).get
-        current =
-          if pushed(next).rows > Planner.SwapBuildRatio * currentRows then
-            // Build on the joined rows, much fewer than the input to join (e.g., the returns
-            // joined so far vs. a sales table), and probe with that input
-            swappedHashJoin(current, right, lk, rk, JoinKind.Inner, None, combined)
-          else
-            HashJoinOp(current, right, lk, rk, JoinKind.Inner, None, combined)
-        currentRows = out
+    // An equality between the joined inputs and input i: one side reads only joined inputs, the
+    // other only i
+    def isEquiTo(cc: CrossCond, joined: collection.Set[Int], i: Int): Boolean = cc
+      .sides
+      .exists { (l, r) =>
+        (l.nonEmpty && l.subsetOf(joined) && r == Set(i)) ||
+        (r.nonEmpty && r.subsetOf(joined) && l == Set(i))
+      }
+    def sidesOf(cc: CrossCond, joined: collection.Set[Int]): (Expression, Expression) =
+      val eq = cc.c.asInstanceOf[Eq]
+      if cc.sides.exists(_._1.subsetOf(joined)) then
+        (eq.left, eq.right)
       else
-        current = NestedLoopJoinOp(current, right, None, JoinKind.Cross, combined)
-        currentRows = currentRows * pushed(next).rows
-      remaining = remaining.filterNot(eqs.contains)
-      joined += next
-      // Apply conditions whose inputs are now all joined
-      val ready = remaining.filter(c => bindsIn(c, current.schema))
-      if ready.nonEmpty then
-        current = FilterOp(
-          current,
-          Binder(this, BindScope(current.schema)).bind(ready.reduce((a, b) => And(a, b, NoSpan)))
-        )
-        remaining = remaining.filterNot(ready.contains)
-    end while
+        (eq.right, eq.left)
+
+    /**
+      * A left-deep join tree from `start`, joining next the connected input that gives the fewest
+      * rows. Returns the tree, the conditions left to apply, and its cost: the estimated rows of
+      * every intermediate result (C_out, which DuckDB's join order optimizer minimizes) plus the
+      * rows of every hash table built
+      */
+    def greedy(start: Int): (Operator, List[Expression], Double) =
+      var remaining         = crossConds
+      val joined            = mutable.Set.empty[Int]
+      var current: Operator = pushed(start).op
+      var currentRows       = pushed(start).rows
+      var cost              = 0.0
+      joined += start
+      while joined.size < pushed.size do
+        // Candidates connected by an equality condition
+        val candidates = pushed
+          .indices
+          .filterNot(joined.contains)
+          .map { i =>
+            (i, remaining.filter(isEquiTo(_, joined, i)))
+          }
+        val connected = candidates.filter(_._2.nonEmpty)
+        // As DuckDB's greedy join ordering does, join next the input giving the fewest rows
+        val keyed = connected.map { (i, eqs) =>
+          val right    = pushed(i).op
+          val pairs    = eqs.map(sidesOf(_, joined))
+          val (lk, rk) = joinKeys(
+            Binder(this, BindScope(current.schema)),
+            Binder(this, BindScope(right.schema)),
+            pairs
+          )
+          val out = joinOutputRows(current, currentRows, lk, right, pushed(i).rows, rk)
+          (i, eqs, lk, rk, out)
+        }
+        val (next, eqs) =
+          if keyed.nonEmpty then
+            val (i, e, _, _, _) = keyed.minBy((i, _, _, _, out) => (out, pushed(i).rows))
+            (i, e)
+          else
+            candidates.minBy(c => pushed(c._1).rows)
+        val right    = pushed(next).op
+        val combined = current.schema ++ right.schema
+        if eqs.nonEmpty then
+          val (_, _, lk, rk, out) = keyed.find(_._1 == next).get
+          current =
+            if pushed(next).rows > Planner.SwapBuildRatio * currentRows then
+              // Build on the joined rows, much fewer than the input to join (e.g., the returns
+              // joined so far vs. a sales table), and probe with that input
+              cost += currentRows
+              swappedHashJoin(current, right, lk, rk, JoinKind.Inner, None, combined)
+            else
+              cost += pushed(next).rows
+              HashJoinOp(current, right, lk, rk, JoinKind.Inner, None, combined)
+          currentRows = out
+        else
+          current = NestedLoopJoinOp(current, right, None, JoinKind.Cross, combined)
+          currentRows = currentRows * pushed(next).rows
+        remaining = remaining.filterNot(eqs.contains)
+        joined += next
+        // Apply conditions whose inputs are now all joined (constant ones, reading no input, too)
+        val ready = remaining.filter(_.refs.subsetOf(joined))
+        if ready.nonEmpty then
+          current = FilterOp(
+            current,
+            Binder(this, BindScope(current.schema)).bind(
+              ready.map(_.c).reduce((a, b) => And(a, b, NoSpan))
+            )
+          )
+          currentRows = math.max(
+            1.0,
+            currentRows * math.pow(Planner.DefaultSelectivity, ready.size)
+          )
+          remaining = remaining.filterNot(ready.contains)
+        cost += currentRows
+      end while
+      (current, remaining.map(_.c), cost)
+
+    end greedy
+
+    // Try every input as the start and keep the cheapest tree (ties: the largest start, whose
+    // scan then drives the parallel pipeline)
+    val bySize                  = pushed.indices.sortBy(i => -pushed(i).rows)
+    val trees                   = bySize.map(greedy)
+    val best                    = trees.indices.minBy(k => (trees(k)._3, k))
+    var (current, remaining, _) = trees(best)
     if remaining.nonEmpty then
       current = applyConjuncts(current, remaining)
     if subqueryConds.nonEmpty then
@@ -2233,7 +2286,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   /**
     * Estimated rows of an inner equi-join, |L| * |R| / prod(max(ndv(l), ndv(r))) over the key
-    * pairs. A key of unknown distinct count is assumed unique on the build (right) side, i.e. a
+    * pairs. A key of unknown distinct count on one side has at most the other side's distinct
+    * values (containment); with neither known, the smaller side's key is assumed unique, i.e. a
     * foreign key to primary key join. The divisor is capped at max(|L|, |R|) since keys of one join
     * are usually correlated (e.g. ticket number and item of a sales line)
     */
@@ -2248,9 +2302,21 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val divisors = leftKeys
       .indices
       .map { k =>
-        val l = keyDistinct(left, leftKeys(k)).map(math.min(_, leftRows)).getOrElse(0.0)
-        val r = keyDistinct(right, rightKeys(k)).map(math.min(_, rightRows)).getOrElse(rightRows)
-        math.max(1.0, math.max(l, r))
+        val l = keyDistinct(left, leftKeys(k)).map(math.min(_, leftRows))
+        val r = keyDistinct(right, rightKeys(k)).map(math.min(_, rightRows))
+        val d =
+          (l, r) match
+            case (Some(a), Some(b)) =>
+              math.max(a, b)
+            // Containment: the side of unknown distinct count has at most the other's values
+            case (Some(a), None) =>
+              a
+            case (None, Some(b)) =>
+              b
+            // Neither known: the smaller side holds the unique (primary) key
+            case (None, None) =>
+              math.min(leftRows, rightRows)
+        math.max(1.0, d)
       }
     val divisor = math.min(divisors.product, math.max(math.max(leftRows, rightRows), 1.0))
     math.max(1.0, leftRows * rightRows / divisor)
