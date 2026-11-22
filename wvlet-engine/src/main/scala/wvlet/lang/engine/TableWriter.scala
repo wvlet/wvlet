@@ -16,7 +16,13 @@ package wvlet.lang.engine
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.SourceIO
+import wvlet.lang.engine.catalog.CsvSource
+import wvlet.lang.engine.catalog.DataFileFormat
+import wvlet.lang.engine.catalog.DataFileWriter
+import wvlet.lang.engine.catalog.JsonSource
 import wvlet.lang.engine.catalog.MemTable
+import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.catalog.ScanSpec
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.vector.*
@@ -33,6 +39,51 @@ import scala.collection.mutable
   */
 class TableWriter(engine: WvletEngine) extends LogSupport:
   private def catalog = engine.catalog
+
+  /**
+    * `save to '<path>' [with options]`: write the query result to a Parquet, CSV, TSV, or JSON
+    * lines file chosen by the extension (or the `format` option), replacing the file
+    */
+  def saveToFile(path: String, query: Relation, options: Map[String, Any] = Map.empty)(using
+      Context
+  ): Unit =
+    val result = engine.execute(query)
+    DataFileWriter.write(path, unqualified(result.schema), result.batches, options)
+
+  /**
+    * `append to '<path>'`: add the query rows to a data file, creating it when it doesn't exist.
+    * Rows map to the file's columns by position. CSV / TSV / JSON lines files get the new rows
+    * appended as text, leaving the existing rows untouched; Parquet files are rewritten with the
+    * new rows cast to the file's column types, through a temporary file
+    */
+  def appendToFile(path: String, query: Relation)(using Context): Unit =
+    val result = engine.execute(query)
+    if !SourceIO.existsFile(path) then
+      DataFileWriter.write(path, unqualified(result.schema), result.batches)
+    else
+      DataFileFormat.of(path) match
+        case DataFileFormat.Parquet =>
+          val existing = ParquetSource(path, path)
+          val schema   = unqualified(existing.schema)
+          val sourceOf = positionalSources(path, schema, result.schema, Nil)
+          // Read the whole file before replacing it
+          val oldBatches = batchesOf(existing).toIndexedSeq
+          val newBatches = result.batches.map(b => castBatch(b, result.schema, schema, sourceOf))
+          DataFileWriter.replace(path, schema, oldBatches ++ newBatches)
+        case format =>
+          // The file's column names (JSON keys, CSV header); values keep their query types
+          val fileSchema =
+            format match
+              case DataFileFormat.JsonLines =>
+                JsonSource(path, path).schema
+              case _ =>
+                CsvSource(path, path).schema
+          positionalSources(path, fileSchema, result.schema, Nil)
+          val names  = fileSchema.names
+          val schema = Schema(
+            result.schema.fields.zipWithIndex.map((f, i) => f.noQualifier.withName(names(i)))
+          )
+          DataFileWriter.appendText(path, schema, result.batches)
 
   /** `save to <name>`: create or replace the table with the query result */
   def saveTo(name: String, query: Relation)(using Context): MemTable =

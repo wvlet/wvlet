@@ -200,6 +200,20 @@ class PlanExecutorWvletEngineTest extends UniTest:
     result.getError shouldBe None
   }
 
+  test("save to and append to a Parquet file") {
+    val path   = s"target/engine-xp-write/${System.currentTimeMillis()}.parquet"
+    val result = run(s"""from [[1, 'a']] as t(id, name)
+                        |save to '${path}'
+                        |
+                        |from [[2, 'b']] as t(id, name)
+                        |append to '${path}'
+                        |
+                        |from '${path}'
+                        |order by id
+                        |test _.rows should be [[1, 'a'], [2, 'b']]""".stripMargin)
+    result.getError shouldBe None
+  }
+
   test("reject SQL statements the engine can't run") {
     val e = intercept[WvletLangException] {
       run("create schema engine_s if not exists")

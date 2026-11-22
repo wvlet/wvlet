@@ -33,6 +33,7 @@ import wvlet.lang.engine.catalog.MemTable
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.model.DataType
+import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.runner.TableRows
 import wvlet.uni.log.LogSupport
@@ -189,33 +190,63 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     TableRows(schema, result.toRowMaps(rowLimit), result.numRows)
 
   /**
-    * Run a write statement on the session's in-memory tables: `save to <table>`, `append to
-    * <table>` (plain and keyed), and `delete`. Later queries of this session read the result
+    * Run a write statement: `save to <table>`, `append to <table>` (plain and keyed), and `delete`
+    * on the session's in-memory tables, which later queries read, and `save to` / `append to` a
+    * data file path
     */
   def save(save: Save)(using ctx: Context): Unit =
     def tableName(s: Save): String = s.targetName.split("\\.").last
-    val written                    = guarded {
+    guarded {
       GenSQL.bindSaveTarget(save) match
+        case s: SaveTo if s.isForFile =>
+          writer.saveToFile(ctx.dataFilePath(s.targetName), s.child, saveOptionsOf(s))
+        case a: AppendTo if a.isForFile && a.columns.isEmpty && a.keyColumns.isEmpty =>
+          writer.appendToFile(ctx.dataFilePath(a.targetName), a.child)
         case s: SaveTo if s.isForTable =>
-          writer.saveTo(tableName(s), s.child)
+          registerSchema(writer.saveTo(tableName(s), s.child))
         case a: AppendTo if a.isForTable =>
-          writer.appendTo(
-            tableName(a),
-            a.child,
-            columns = a.columns.map(_.leafName),
-            keys = a.keyColumns.map(_.leafName)
+          registerSchema(
+            writer.appendTo(
+              tableName(a),
+              a.child,
+              columns = a.columns.map(_.leafName),
+              keys = a.keyColumns.map(_.leafName)
+            )
           )
         case d: Delete if d.isForTable =>
-          writer.delete(tableName(d), d.child)
+          registerSchema(writer.delete(tableName(d), d.child))
         case other =>
           throw StatusCode
             .NOT_IMPLEMENTED
             .newException(
               s"${other.nodeName} is not supported by the wvlet engine yet " +
-                "(supported: save to, append to, and delete on tables)"
+                "(supported: save to, append to, and delete on tables, and save to / append to a file)"
             )
     }
-    registerSchema(written)
+
+  // `save to ... with k: v, ...` option values: literals as Scala values
+  private def saveOptionsOf(s: SaveTo)(using Context): Map[String, Any] =
+    s.saveOptions
+      .map { o =>
+        val value: Any =
+          o.value match
+            case l: StringLiteral =>
+              l.unquotedValue
+            case l: LongLiteral =>
+              l.value
+            case l: DoubleLiteral =>
+              l.value
+            case _: TrueLiteral =>
+              true
+            case _: FalseLiteral =>
+              false
+            case other =>
+              throw StatusCode
+                .INVALID_ARGUMENT
+                .newException(s"Option ${o.key.fullName} must be a literal value", o.sourceLocation)
+        o.key.fullName -> value
+      }
+      .toMap
 
 end WvletEngineSession
 
