@@ -646,15 +646,28 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       case s: SingleColumn =>
         exprName(s.expr)
       case other =>
-        val sql =
-          try
-            SqlGenerator(
-              CodeFormatterConfig(sqlDBType = DBType.DuckDB, fitToLine = true, maxLineWidth = 10000)
-            ).print(other)
-          catch
-            case _: Exception =>
-              other.toString
-        sql.replace("count(*)", "count_star()").replaceAll("\\s+", " ")
+        printSql(other).replace("count(*)", "count_star()")
+
+  /** Single-line SQL text of an expression */
+  private def printSql(e: Expression): String =
+    val sql =
+      try
+        SqlGenerator(
+          CodeFormatterConfig(sqlDBType = DBType.DuckDB, fitToLine = true, maxLineWidth = 10000)
+        ).print(e)
+      catch
+        case _: Exception =>
+          e.toString
+    sql.replaceAll("\\s+", " ")
+
+  private def isStar(e: Expression): Boolean =
+    e match
+      case _: Wildcard =>
+        true
+      case i: Identifier =>
+        i.leafName == "*"
+      case _ =>
+        false
 
   /** Bind select items over an operator, expanding `*` */
   private def bindItems(
@@ -662,16 +675,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       op: Operator,
       items: List[Attribute]
   ): (IndexedSeq[VExpr], IndexedSeq[Field]) =
-    val exprs                          = IndexedSeq.newBuilder[VExpr]
-    val fields                         = IndexedSeq.newBuilder[Field]
-    def isStar(e: Expression): Boolean =
-      e match
-        case _: Wildcard =>
-          true
-        case i: Identifier =>
-          i.leafName == "*"
-        case _ =>
-          false
+    val exprs  = IndexedSeq.newBuilder[VExpr]
+    val fields = IndexedSeq.newBuilder[Field]
     // Every visible column, optionally only those of a qualifier (t.*)
     def expandStar(qualifier: Option[String]): Unit =
       val visibleFields = binder.scope.schema.fields
@@ -1033,18 +1038,13 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
             ColRef(binder.scope.offset + i, schema(i).ptype, schema(i).name)
           case other =>
             binder.bind(other)
-      val asc = !s.ordering.contains(SortOrdering.Descending)
-      // DuckDB's default: NULLS LAST for both directions
-      val nullsFirst =
-        s.nullOrdering match
-          case Some(NullOrdering.NullIsFirst) =>
-            true
-          case Some(NullOrdering.NullIsLast) =>
-            false
-          case _ =>
-            false
-      SortKey(e, asc, nullsFirst)
+      sortKey(s, e)
     }
+
+  private def sortKey(s: SortItem, e: VExpr): SortKey =
+    // DuckDB's default: NULLS LAST for both directions
+    val nullsFirst = s.nullOrdering.contains(NullOrdering.NullIsFirst)
+    SortKey(e, !s.ordering.contains(SortOrdering.Descending), nullsFirst)
 
   /** SQL text of an expression, used to match ORDER BY keys with select items */
   private def exprText(e: Expression): String =
@@ -1052,13 +1052,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       case p: ParenthesizedExpression =>
         exprText(p.child)
       case other =>
-        try
-          SqlGenerator(
-            CodeFormatterConfig(sqlDBType = DBType.DuckDB, fitToLine = true, maxLineWidth = 10000)
-          ).print(other).replaceAll("\\s+", " ").toLowerCase
-        catch
-          case _: Exception =>
-            other.toString
+        printSql(other)
 
   private def itemExpr(a: Attribute): Option[Expression] =
     a match
@@ -1085,7 +1079,12 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         case _ =>
           None
     selectItems(s.child) match
-      case Some(items) if !items.exists(i => itemExpr(i).exists(isStarExpr)) =>
+      case Some(items) if !items.exists {
+            case _: AllColumns =>
+              true
+            case i =>
+              itemExpr(i).exists(isStar)
+          } =>
         val outNames = items.map(i => nameOf(i).toLowerCase).toSet
         val texts    = items.map(i => itemExpr(i).map(exprText))
         s.orderBy
@@ -1132,15 +1131,6 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   end resolveSortItems
 
-  private def isStarExpr(e: Expression): Boolean =
-    e match
-      case _: Wildcard =>
-        true
-      case i: Identifier =>
-        i.leafName == "*"
-      case _ =>
-        false
-
   private def planSort(s: Sort, limit: Option[Long]): Operator =
     val op      = planRelation(s.child)
     val orderBy = resolveSortItems(s)
@@ -1166,25 +1156,21 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
                 case _: ColumnNotFound =>
                   None
             }
-            val hiddenExprs = orderBy
+            val hiddenKeys = orderBy
               .zip(outKeys)
               .collect { case (k, None) =>
-                binder.bind(k.sortKey)
+                k -> binder.bind(k.sortKey)
               }
-            val hidden = hiddenExprs.map(x => Field(hiddenName("sort"), x.ptype))
-            val proj   = ProjectOp(in, exprs ++ hiddenExprs, Schema(fields ++ hidden))
-            var h      = 0
-            val keys   = orderBy
-              .zip(outKeys)
-              .map {
-                case (_, Some(key)) =>
-                  key
-                case (k, None) =>
-                  val key = sortKeys(binder, List(k), in.schema).head
-                  val i   = h
-                  h += 1
-                  key.copy(expr = ColRef(exprs.size + i, hiddenExprs(i).ptype, hidden(i).name))
-              }
+            val hidden     = hiddenKeys.map((_, x) => Field(hiddenName("sort"), x.ptype))
+            val proj       = ProjectOp(in, exprs ++ hiddenKeys.map(_._2), Schema(fields ++ hidden))
+            val hiddenRefs =
+              hiddenKeys
+                .indices
+                .map(i =>
+                  sortKey(hiddenKeys(i)._1, ColRef(exprs.size + i, hidden(i).ptype, hidden(i).name))
+                )
+                .iterator
+            val keys = outKeys.map(_.getOrElse(hiddenRefs.next()))
             dropHidden(SortOp(proj, keys, limit))
           case _ =>
             throw e
