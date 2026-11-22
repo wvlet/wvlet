@@ -28,6 +28,7 @@ import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.catalog.ScanSpec
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.catalog.Warehouse
+import wvlet.lang.engine.plan.ScanFilters
 import wvlet.uni.json.JSON
 import wvlet.uni.json.JSON.*
 import wvlet.uni.parquet.IcebergTableChange
@@ -569,7 +570,10 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
     try
       val touched = parts.flatMap { part =>
         val onPart = engine.withCatalog(catalog.overlay(part))
-        if onPart.execute(Filter(scan, matching(cond), NoSpan)).numRows == 0 then
+        // A probe for one matching row: the condition goes down to the file scan, so statistics
+        // skip files and row groups without a match, and only touched files are read in full
+        val probe = Limit(Filter(scan, cond, NoSpan), LongLiteral(1, "1", NoSpan), NoSpan)
+        if onPart.execute(probe).numRows == 0 then
           None
         else
           Some(part.file.path -> onPart.execute(Filter(scan, keepRows(cond), NoSpan)).batches)
@@ -628,11 +632,19 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
         val incoming = m.incoming.flatMap(r => m.keyOf(r).map(_ -> r))
         val keySet   = incoming.map(_._1).toSet
         val matched  = mutable.HashSet.empty[Seq[Any]]
+        // Statistics skip the files whose key columns can't hold an incoming key
+        val keyFilter = keyNames
+          .indices
+          .flatMap { k =>
+            val f = schema(m.keyIdx(k))
+            ScanFilters.valuesFilter(f.name, f.ptype, keySet.iterator.map(_(k)).toSeq)
+          }
+          .reduceOption(_ && _)
         // Files with a matching key are read in full and rewritten with the updates
         val touched = parts.flatMap { part =>
           val partKeys =
             part
-              .scan(ScanSpec(columns = Some(keyNames)))
+              .scan(ScanSpec(columns = Some(keyNames), filter = keyFilter))
               .flatMap(b =>
                 Iterator.range(0, b.size).map(i => keyNames.indices.map(k => b.column(k).get(i)))
               )

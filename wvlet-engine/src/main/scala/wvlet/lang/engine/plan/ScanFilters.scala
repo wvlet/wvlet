@@ -62,19 +62,38 @@ object ScanFilters:
             else
               ParquetFilter.IsNull(name)
           }
-        case InList(c: ColRef, values, _, false) if values.nonEmpty && values.size <= 64 =>
-          val eqs = values
-            .toSeq
-            .map(v => columnName(c.index).flatMap(compare(_, c.ptype, CmpOp.Eq, Const(v, c.ptype))))
-          if eqs.forall(_.isDefined) then
-            Some(eqs.flatten.reduce(_ || _))
-          else
-            None
+        case InList(c: ColRef, values, _, false) =>
+          columnName(c.index).flatMap(equalities(_, c.ptype, values.toSeq))
         case _ =>
           None
     go(cond)
 
   end toParquet
+
+  /**
+    * A filter implied by `column` holding one of `values` (of type `t`, non-null): their [min, max]
+    * range for ordered types, or up to 64 equalities otherwise. None when it can't be expressed
+    */
+  def valuesFilter(column: String, t: PType, values: Iterable[Any]): Option[ParquetFilter] =
+    if values.isEmpty then
+      None
+    else
+      t match
+        case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
+          for
+            lo <- compare(column, t, CmpOp.Ge, Const(values.minBy(ValueOps.toLong), t))
+            hi <- compare(column, t, CmpOp.Le, Const(values.maxBy(ValueOps.toLong), t))
+          yield lo && hi
+        case _ =>
+          equalities(column, t, values.toSeq.distinct)
+
+  /** `column = v1 or column = v2 ...` for up to 64 non-null values, when every one translates */
+  private def equalities(column: String, t: PType, values: Seq[Any]): Option[ParquetFilter] =
+    if values.isEmpty || values.size > 64 then
+      None
+    else
+      val eqs = values.map(v => compare(column, t, CmpOp.Eq, Const(v, t)))
+      Option.when(eqs.forall(_.isDefined))(eqs.flatten.reduce(_ || _))
 
   private def flip(op: CmpOp): CmpOp =
     op match
