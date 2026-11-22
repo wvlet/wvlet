@@ -38,7 +38,7 @@ class EnginePlanGoldenTest extends UniTest:
       val dir       = suite.dir
       val existing  =
         if Files.isDirectory(dir) then
-          Files.list(dir).iterator().asScala.map(_.getFileName.toString).toSet
+          planFiles(dir).map(_.getFileName.toString).toSet
         else
           Set.empty[String]
       val drift = Seq.newBuilder[String]
@@ -112,6 +112,10 @@ object EnginePlanGolden:
     Suite("tpcds", "spec/tpcds", () => EngineTPCDSTest.prepareData(EngineTPCDSTest.scaleFactor))
   )
 
+  /** The golden files of a suite folder (other files there are neither checked nor deleted) */
+  def planFiles(dir: Path): Seq[Path] =
+    Files.list(dir).iterator().asScala.filter(_.getFileName.toString.endsWith(".plan")).toSeq
+
   /** Remove what depends on the machine: the data folder and the thread count */
   private def normalize(plan: String, dataDir: String): String = plan
     .replace(Paths.get(dataDir).toAbsolutePath.toString, "<data>")
@@ -121,10 +125,7 @@ object EnginePlanGolden:
   def main(args: Array[String]): Unit = suites.foreach { suite =>
     val generated = suite.generate()
     Files.createDirectories(suite.dir)
-    Files
-      .list(suite.dir)
-      .iterator()
-      .asScala
+    planFiles(suite.dir)
       .filterNot(p => generated.contains(p.getFileName.toString))
       .foreach(Files.delete)
     generated.foreach((file, plan) => Files.write(suite.dir.resolve(file), plan.getBytes))

@@ -38,6 +38,9 @@ class EngineOptimizerToggleTest extends UniTest:
     finally
       c.close()
 
+  // The plans with every optimization on, to compare with the plans without one
+  private lazy val baselinePlans = EnginePlanGolden.suites.map(_.generate())
+
   for o <- Optimization.values do
     val options = OptimizerOptions().withDisabled(o)
 
@@ -65,7 +68,10 @@ class EngineOptimizerToggleTest extends UniTest:
       if o == Optimization.PrefetchScalarSubqueries then
         // The subqueries become the same constants either way, one query per group or per subquery
         ignore("Changes how scalar subqueries are evaluated while planning, not the plan")
-      val changed = EnginePlanGolden.suites.exists(s => s.generate(options) != s.generate())
+      val changed = EnginePlanGolden
+        .suites
+        .zip(baselinePlans)
+        .exists((s, baseline) => s.generate(options) != baseline)
       if !changed then
         fail(s"Disabling ${o.name} changed no plan: is the flag wired to the optimization?")
     }
