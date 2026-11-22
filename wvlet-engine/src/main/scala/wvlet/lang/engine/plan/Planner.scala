@@ -2262,7 +2262,7 @@ class Planner(
     )
 
   /** Leaves and conditions of a tree of inner joins */
-  private def flattenJoins(r: Relation): (List[Relation], List[Expression]) =
+  private[engine] def flattenJoins(r: Relation): (List[Relation], List[Expression]) =
     r match
       // A lateral unnest needs its left input: plan it as one leaf
       case j: Join if isInnerJoin(j) && unnestCall(j.right).isEmpty =>
@@ -2319,7 +2319,7 @@ class Planner(
     end match
     if !isInnerJoin(j) then
       return applyConjuncts(planOuterJoin(j), filters)
-    innerJoinTree(j, filters, planRelation, operatorPlans)
+    innerJoinTree(j, filters)
 
   end planJoinTree
 
@@ -2346,35 +2346,34 @@ class Planner(
 
   /**
     * Plan a tree of inner joins (without a lateral unnest on top) and filter conditions together:
-    * the leaves are planned with `leaf`, single-input conditions are pushed to their inputs,
-    * equalities between inputs become hash join keys, and [[JoinOrderOptimizer]] orders the joins
+    * single-input conditions are pushed to their inputs, equalities between inputs become hash join
+    * keys, and [[JoinOrderOptimizer]] orders the joins. The runtime planner orders them in its
+    * `ReorderJoins` pass instead
     */
-  private[engine] def innerJoinTree[P](
-      j: Join,
-      filters: List[Expression],
-      leaf: Relation => P,
-      builder: JoinPlanBuilder[P]
-  ): P =
+  private def innerJoinTree(j: Join, filters: List[Expression]): Operator =
+    val builder             = operatorPlans
     val (leaves, joinConds) = flattenJoins(j)
-    val plans               = leaves.map(leaf)
-    val inputs              = plans.map(builder.op)
+    val inputs              = leaves.map(planRelation)
     val all                 = (joinConds ++ filters).filterNot(isTrueLiteral)
     // Conditions with subqueries are applied after joining, except for uncorrelated scalar
     // subqueries, which are constants (e.g., d_month_seq = (select ... from date_dim))
     val (withSubqueries, conds) = all
       .map(c => c -> withoutScalarSubqueries(c))
       .partition((_, e) => hasSubquery(e))
-    val subqueryConds   = withSubqueries.map(_._1)
-    val (graph, pushed) = JoinGraph.build(
-      plans,
+    val subqueryConds = withSubqueries.map(_._1)
+    val graph         = JoinGraph.build(
+      inputs,
       builder.op,
       conds,
       // Which inputs a condition references
-      refs = e => inputs.indices.filter(i => referencesInput(e, inputs, i)).toSet,
+      refs = e => inputs.indices.filter(i => referencesInput(e, inputs.map(_.schema), i)).toSet,
       push = builder.conjuncts,
       selectivity = selectivity
     )
-    var (current, remaining) = JoinOrderOptimizer(options, joinBinding).plan(graph, pushed, builder)
+    var (current, remaining) = JoinOrderOptimizer(options).plan(
+      graph,
+      JoinOrderOptimizer.expressionSearch(builder, joinBinding)
+    )
     if remaining.nonEmpty then
       current = builder.conjuncts(current, remaining)
     if subqueryConds.nonEmpty then
@@ -2401,13 +2400,13 @@ class Planner(
         BindScope(schema)
       ).bind(e)
 
-  private def isTrueLiteral(e: Expression): Boolean = e.isInstanceOf[TrueLiteral]
+  private[engine] def isTrueLiteral(e: Expression): Boolean = e.isInstanceOf[TrueLiteral]
 
   /**
     * Replace uncorrelated scalar subqueries with NULL, for deciding which inputs a condition reads
     * without evaluating the subqueries
     */
-  private def withoutScalarSubqueries(e: Expression): Expression = e.transformExpression {
+  private[engine] def withoutScalarSubqueries(e: Expression): Expression = e.transformExpression {
     case s: SubQueryExpression if !isCorrelated(s.query, Schema.empty) =>
       NullLiteral(s.span)
   }
@@ -2420,10 +2419,11 @@ class Planner(
     }
     found
 
-  private def referencesInput(c: Expression, inputs: List[Operator], i: Int): Boolean =
+  /** Whether a condition over the inputs of a join tree (by schema) references input i */
+  private[engine] def referencesInput(c: Expression, inputs: List[Schema], i: Int): Boolean =
     // A condition references input i when it does not bind without it
-    val others = inputs.indices.filter(_ != i).map(inputs(_).schema).foldLeft(Schema.empty)(_ ++ _)
-    !bindsIn(c, others) && bindsIn(c, inputs(i).schema ++ others)
+    val others = inputs.indices.filter(_ != i).map(inputs(_)).foldLeft(Schema.empty)(_ ++ _)
+    !bindsIn(c, others) && bindsIn(c, inputs(i) ++ others)
 
   private def isEquiBetween(c: Expression, left: Schema, right: Schema): Boolean =
     c match

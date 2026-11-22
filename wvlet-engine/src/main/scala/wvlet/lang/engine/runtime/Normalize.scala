@@ -24,8 +24,8 @@ import wvlet.lang.engine.plan.Optimization
   * Rewrites conditions into the shape the later passes key on. It runs first.
   *
   * The planner still factors the conditions that join planning reads (inner join trees, ON
-  * conditions, conditions pushed below a left join) on the compiler's expressions, before binding,
-  * because join order is chosen while binding. Those rules move here with join ordering.
+  * conditions, conditions pushed below a left join) on the compiler's expressions, before binding.
+  * Now that [[ReorderJoins]] orders joins after this pass, those rules can move here.
   */
 object Normalize extends RuleBatch("normalize", Seq(FactorOr))
 

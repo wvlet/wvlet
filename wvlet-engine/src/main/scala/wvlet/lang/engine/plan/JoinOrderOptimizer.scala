@@ -86,10 +86,30 @@ trait OperatorTreeBuilder extends JoinTreeBuilder[Operator]:
 object OperatorTreeBuilder extends OperatorTreeBuilder
 
 /**
+  * What the join order search needs from a plan form `P` with conditions of form `C`: equi-join
+  * keys of form `K`, their estimated output, and the join and filter nodes
+  */
+trait JoinSearch[P, C, K]:
+  /** The keys of an equi-join of `current` and `next` on pairs of (current side, next side) */
+  def keys(current: P, next: P, pairs: Seq[(C, C)]): K
+
+  /** Estimated rows of an inner equi-join of `current` and `next` on `keys` */
+  def outputRows(current: P, currentRows: Double, next: P, nextRows: Double, keys: K): Double
+
+  /** An inner hash join on `keys`, building on `current` when `buildLeft` is set */
+  def join(current: P, next: P, keys: K, buildLeft: Boolean): P
+
+  /** A cross join */
+  def cross(current: P, next: P): P
+
+  /** Rows of `p` for which every condition is true */
+  def filter(p: P, conds: List[C]): P
+
+/**
   * Orders the inner joins of a [[JoinGraph]] and builds the join tree, choosing the build side of
   * each hash join
   */
-class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
+class JoinOrderOptimizer(options: OptimizerOptions):
   import JoinOrderOptimizer.*
 
   private def enabled(o: Optimization): Boolean = options.isEnabled(o)
@@ -99,27 +119,13 @@ class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
     * start (ties: the largest start, whose scan then drives the parallel pipeline). Returns the
     * tree and the conditions left to apply over it
     */
-  def plan(g: JoinGraph): (Operator, List[Expression]) = plan(
-    g,
-    g.inputs.map(_.op),
-    OperatorTreeBuilder
-  )
-
-  /**
-    * [[plan]] building with `builder`, whose `inputs` are the graph's inputs in another plan form
-    * (`builder.op(inputs(i))` is `g.inputs(i).op`)
-    */
-  def plan[P](
-      g: JoinGraph,
-      inputs: IndexedSeq[P],
-      builder: JoinTreeBuilder[P]
-  ): (P, List[Expression]) =
+  def plan[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): (P, List[C]) =
     val bySize =
       if enabled(Optimization.ReorderJoins) then
-        g.inputs.indices.sortBy(i => -g.inputs(i).rows)
+        g.inputs.indices.sortBy(i => -g.rows(i))
       else
         g.inputs.indices.take(1)
-    val trees                = bySize.map(greedy(g, inputs, builder, _))
+    val trees                = bySize.map(greedy(g, search, _))
     val best                 = trees.indices.minBy(k => (trees(k)._3, k))
     val (tree, remaining, _) = trees(best)
     (tree, remaining)
@@ -130,23 +136,21 @@ class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
     * every intermediate result (C_out, which DuckDB's join order optimizer minimizes) plus the rows
     * of every hash table built
     */
-  private def greedy[P](
-      g: JoinGraph,
-      inputs: IndexedSeq[P],
-      builder: JoinTreeBuilder[P],
+  private def greedy[P, C, K](
+      g: JoinGraph[P, C],
+      search: JoinSearch[P, C, K],
       start: Int
-  ): (P, List[Expression], Double) =
-    val pushed      = g.inputs
+  ): (P, List[C], Double) =
+    val rows        = g.rows
     var remaining   = g.edges
     val joined      = mutable.Set.empty[Int]
-    var current: P  = inputs(start)
-    var currentRows = pushed(start).rows
+    var current: P  = g.inputs(start)
+    var currentRows = rows(start)
     var cost        = 0.0
     joined += start
-    while joined.size < pushed.size do
-      val currentOp = builder.op(current)
+    while joined.size < rows.size do
       // Candidates connected by an equality condition
-      val candidates = pushed
+      val candidates = rows
         .indices
         .filterNot(joined.contains)
         .map { i =>
@@ -155,65 +159,41 @@ class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
       val connected = candidates.filter(_._2.nonEmpty)
       // As DuckDB's greedy join ordering does, join next the input giving the fewest rows
       val keyed = connected.map { (i, eqs) =>
-        val right    = pushed(i).op
-        val pairs    = eqs.map(_.sidesOf(joined))
-        val (lk, rk) = binding.joinKeys(currentOp.schema, right.schema, pairs)
-        val out      = CardinalityEstimator.joinOutputRows(
-          currentOp,
-          currentRows,
-          lk,
-          right,
-          pushed(i).rows,
-          rk
-        )
-        (i, eqs, lk, rk, out)
+        val keys = search.keys(current, g.inputs(i), eqs.map(_.sidesOf(joined)))
+        (i, eqs, keys, search.outputRows(current, currentRows, g.inputs(i), rows(i), keys))
       }
       val (next, eqs) =
         if !enabled(Optimization.ReorderJoins) then
           // Written order: the first input connected by an equality, else the first one
           connected.headOption.getOrElse(candidates.head)
         else if keyed.nonEmpty then
-          val (i, e, _, _, _) = keyed.minBy((i, _, _, _, out) => (out, pushed(i).rows))
+          val (i, e, _, _) = keyed.minBy((i, _, _, out) => (out, rows(i)))
           (i, e)
         else
-          candidates.minBy(c => pushed(c._1).rows)
-      val right = inputs(next)
+          candidates.minBy(c => rows(c._1))
+      val right = g.inputs(next)
       if eqs.nonEmpty then
-        val (_, _, lk, rk, out) = keyed.find(_._1 == next).get
+        val (_, _, keys, out) = keyed.find(_._1 == next).get
         // Build on the joined rows when they are much fewer than the input to join (e.g., the
         // returns joined so far vs. a sales table), and probe with that input
-        val buildLeft = swapBuild(options, pushed(next).rows, currentRows)
+        val buildLeft = swapBuild(options, rows(next), currentRows)
         cost += (
           if buildLeft then
             currentRows
           else
-            pushed(next).rows
+            rows(next)
         )
-        current = builder.join(current, right, JoinKind.Inner, lk, rk, None, buildLeft)
+        current = search.join(current, right, keys, buildLeft)
         currentRows = out
       else
-        current = builder.join(
-          current,
-          right,
-          JoinKind.Cross,
-          IndexedSeq.empty,
-          IndexedSeq.empty,
-          None,
-          buildLeft = false
-        )
-        currentRows = currentRows * pushed(next).rows
+        current = search.cross(current, right)
+        currentRows = currentRows * rows(next)
       remaining = remaining.filterNot(eqs.contains)
       joined += next
       // Apply conditions whose inputs are now all joined (constant ones, reading no input, too)
       val ready = remaining.filter(_.refs.subsetOf(joined))
       if ready.nonEmpty then
-        current = builder.filter(
-          current,
-          binding.bind(
-            builder.op(current).schema,
-            ready.map(_.cond).reduce((a, b) => And(a, b, NoSpan))
-          )
-        )
+        current = search.filter(current, ready.map(_.cond))
         currentRows = math.max(
           1.0,
           currentRows * math.pow(CardinalityEstimator.DefaultSelectivity, ready.size)
@@ -228,6 +208,61 @@ class JoinOrderOptimizer(options: OptimizerOptions, binding: JoinBinding):
 end JoinOrderOptimizer
 
 object JoinOrderOptimizer:
+  /** Equi-join keys bound over each side */
+  type Keys = (IndexedSeq[VExpr], IndexedSeq[VExpr])
+
+  /**
+    * The search over a plan form with operators (`builder.op`) and compiler expressions, which
+    * `binding` binds over the operators' schemas
+    */
+  def expressionSearch[P](
+      builder: JoinTreeBuilder[P],
+      binding: JoinBinding
+  ): JoinSearch[P, Expression, Keys] =
+    new JoinSearch[P, Expression, Keys]:
+      override def keys(current: P, next: P, pairs: Seq[(Expression, Expression)]): Keys = binding
+        .joinKeys(builder.op(current).schema, builder.op(next).schema, pairs)
+
+      override def outputRows(
+          current: P,
+          currentRows: Double,
+          next: P,
+          nextRows: Double,
+          keys: Keys
+      ): Double = CardinalityEstimator.joinOutputRows(
+        builder.op(current),
+        currentRows,
+        keys._1,
+        builder.op(next),
+        nextRows,
+        keys._2
+      )
+
+      override def join(current: P, next: P, keys: Keys, buildLeft: Boolean): P = builder.join(
+        current,
+        next,
+        JoinKind.Inner,
+        keys._1,
+        keys._2,
+        None,
+        buildLeft
+      )
+
+      override def cross(current: P, next: P): P = builder.join(
+        current,
+        next,
+        JoinKind.Cross,
+        IndexedSeq.empty,
+        IndexedSeq.empty,
+        None,
+        buildLeft = false
+      )
+
+      override def filter(p: P, conds: List[Expression]): P = builder.filter(
+        p,
+        binding.bind(builder.op(p).schema, conds.reduce((a, b) => And(a, b, NoSpan)))
+      )
+
   /** How much larger the build input of a join must be before the inputs swap sides */
   val SwapBuildRatio: Double = 4.0
 

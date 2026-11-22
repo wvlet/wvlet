@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.runtime
 
+import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 
@@ -60,6 +61,12 @@ object Lowering:
       case Aggregate(child, keys, calls, _) =>
         val pos = positions(child)
         HashAggOp(apply(child), keys.map(_.lower(pos)), calls.map(_.lower(pos)), p.schema)
+      case _: InnerJoins =>
+        throw StatusCode
+          .UNEXPECTED_STATE
+          .newException(
+            s"InnerJoins must be ordered by ReorderJoins before lowering:\n${p.explain}"
+          )
       case Legacy(op, _) =>
         op
 
