@@ -107,10 +107,28 @@ object Binder:
 
   val ConcatFunction = "__wv_concat"
 
+  // Operands of a `||` chain: placeholders, string literals, and calls without nested parens
   private val ConcatOperand =
-    s"""(${PlaceholderPrefix}[0-9]+|'(?:[^']|'')*'|${ConcatFunction}\\([^()]*\\))"""
+    s"""(?:${PlaceholderPrefix}[0-9]+|'(?:[^']|'')*'|[A-Za-z_][A-Za-z_0-9]*\\([^()]*\\))"""
 
-  private val ConcatPattern = s"""${ConcatOperand}\\s*\\|\\|\\s*${ConcatOperand}""".r
+  private val ConcatOperandPattern = ConcatOperand.r
+  private val ConcatChainPattern   = s"""${ConcatOperand}(?:\\s*\\|\\|\\s*${ConcatOperand})+""".r
+
+  /**
+    * The SQL parser has no `||` operator: rewrite chains `a || b || f(x)` over simple operands into
+    * an engine-internal n-ary concat function with the same NULL semantics
+    */
+  def rewriteConcat(sql: String): String = ConcatChainPattern.replaceAllIn(
+    sql,
+    m =>
+      scala
+        .util
+        .matching
+        .Regex
+        .quoteReplacement(
+          ConcatOperandPattern.findAllIn(m.matched).mkString(s"${ConcatFunction}(", ", ", ")")
+        )
+  )
 
   private val ExtractPattern = """(?i)\bextract\s*\(\s*([a-z_]+)\s+from\s+""".r
 
@@ -156,14 +174,7 @@ object Binder:
       ExtractPattern.replaceAllIn(sb.toString, m => s"date_part('${m.group(1)}', "),
       m => s"${IntervalFunction}(${m.group(1)}, '${m.group(2)}')"
     )
-    // The SQL parser has no `||` operator: rewrite `a || b` over placeholders and literals
-    var prev = ""
-    while prev != sql do
-      prev = sql
-      sql = ConcatPattern.replaceFirstIn(
-        sql,
-        scala.util.matching.Regex.quoteReplacement(s"${ConcatFunction}(") + "$1, $2)"
-      )
+    sql = rewriteConcat(sql)
     val parsed = templateCache.synchronized {
       templateCache.getOrElseUpdate(
         sql, {
@@ -245,6 +256,42 @@ object Binder:
 
   def isSqlTemplate(e: InterpolatedString): Boolean =
     e.prefix.leafName == "sql" || e.prefix.leafName == "expr"
+
+  /** The element type of lists produced by a constant expression, or Any */
+  def listElementType(e: VExpr): PType =
+    if !e.isConstant && !e.isInstanceOf[Const] then
+      PType.AnyT
+    else
+      e.eval(Batch.ofRows(1)).get(0) match
+        case s: Seq[?] =>
+          val ts =
+            s.filter(_ != null)
+              .map {
+                case _: Int =>
+                  PType.Int32
+                case _: Long =>
+                  PType.Int64
+                case _: Double =>
+                  PType.Float64
+                case _: String =>
+                  PType.Str
+                case _: Boolean =>
+                  PType.Bool
+                case _ =>
+                  PType.AnyT
+              }
+              .distinct
+          ts match
+            case Seq() =>
+              PType.Int32
+            case Seq(t) =>
+              t
+            case many if many.forall(_.isNumeric) =>
+              many.reduce(PType.common)
+            case _ =>
+              PType.AnyT
+        case _ =>
+          PType.AnyT
 
   /** True when the expression has an aggregate call outside subqueries and window functions */
   def containsAggregate(e: Expression): Boolean =
@@ -1127,6 +1174,82 @@ class Binder(
         else
           cond
 
+  /**
+    * list_transform / list_filter / list_reduce with a lambda. The lambda body is bound over its
+    * parameters, typed by the elements of a constant list (Any otherwise), and evaluated over all
+    * elements of a list at once (sequentially for reduce)
+    */
+  private def bindLambdaCall(
+      name: String,
+      f: FunctionApply,
+      receiverArgs: List[Expression]
+  ): VExpr =
+    val (listArg, lambda) =
+      // The list may be the receiver of a method call: xs.list_transform(x -> x + 1)
+      (receiverArgs ++ f.args.map(_.value)) match
+        case List(l, lam: LambdaExpr) =>
+          (l, lam)
+        case _ =>
+          error(s"${name} expects a list and a lambda", f)
+    val list                               = bind(listArg)
+    val elemType                           = listElementType(list)
+    def bodyOver(types: Seq[PType]): VExpr =
+      if lambda.args.size != types.size then
+        error(s"${name} expects a lambda with ${types.size} parameter(s)", f)
+      val schema = Schema(lambda.args.zip(types).map((p, t) => Field(p.leafName, t)).toIndexedSeq)
+      Binder(planner, BindScope(schema)).bind(lambda.body)
+    def asList(v: Any): Seq[Any] = v.asInstanceOf[Seq[Any]]
+    name match
+      case "list_filter" | "array_filter" | "filter" =>
+        val body = bodyOver(Seq(elemType))
+        RowFn(
+          name,
+          Seq(list),
+          PType.AnyT,
+          a =>
+            val elems = asList(a(0))
+            val mask  = Kernels.trueMask(
+              body.eval(Batch(Array(Vec.fromValues(elemType, elems)), elems.size))
+            )
+            elems.indices.filter(mask(_)).map(elems).toList
+        )
+      case "list_reduce" | "array_reduce" | "reduce" =>
+        // The accumulator takes the common type of the elements and the body result
+        val accType = PType.common(elemType, bodyOver(Seq(elemType, elemType)).ptype)
+        val body    = bodyOver(Seq(accType, elemType))
+        RowFn(
+          name,
+          Seq(list),
+          accType,
+          a =>
+            val elems = asList(a(0))
+            if elems.isEmpty then
+              throw StatusCode.INVALID_ARGUMENT.newException(s"${name} of an empty list")
+            elems
+              .tail
+              .foldLeft(ValueOps.cast(elems.head, elemType, accType)) { (acc, x) =>
+                val row = Batch(
+                  Array(Vec.fromValues(accType, Seq(acc)), Vec.fromValues(elemType, Seq(x))),
+                  1
+                )
+                ValueOps.cast(body.eval(row).get(0), body.ptype, accType)
+              }
+        )
+      case _ =>
+        val body = bodyOver(Seq(elemType))
+        RowFn(
+          name,
+          Seq(list),
+          PType.AnyT,
+          a =>
+            val elems = asList(a(0))
+            val out   = body.eval(Batch(Array(Vec.fromValues(elemType, elems)), elems.size))
+            (0 until elems.size).map(out.get).toList
+        )
+    end match
+
+  end bindLambdaCall
+
   private def bindLike(
       left: Expression,
       right: Expression,
@@ -1193,7 +1316,7 @@ class Binder(
         error(s"Unexpected cast function call", f)
       case _ =>
     // bind (not bindExpr): arguments may be aggregates in aggregation mode, e.g., x.sum.round(1)
-    val args = (receiverArgs ++ f.args.map(_.value)).map(bind)
+    lazy val args = (receiverArgs ++ f.args.map(_.value)).map(bind)
     name match
       case "count_star" =>
         error("count(*) is only allowed in aggregations", f)
@@ -1239,6 +1362,10 @@ class Binder(
               PType.AnyT,
               a => intervalOf(unit, a(0).asInstanceOf[Double])
             )
+      case "list_transform" | "array_transform" | "list_apply" | "array_apply" | "apply" |
+          "list_filter" | "array_filter" | "filter" | "list_reduce" | "array_reduce" | "reduce"
+          if f.args.exists(_.value.isInstanceOf[LambdaExpr]) =>
+        bindLambdaCall(name, f, receiverArgs)
       case "date_add" if args.size == 2 =>
         args(1) match
           case Const(iv: Interval, _) =>
