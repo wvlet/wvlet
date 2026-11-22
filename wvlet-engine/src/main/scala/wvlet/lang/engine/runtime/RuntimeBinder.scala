@@ -278,20 +278,20 @@ class RuntimeBinder(planner: Planner):
   private def innerJoins(j: Join, filters: List[Expression]): RuntimePlan =
     val (leaves, joinConds) = planner.flattenJoins(j, planner.splitConjuncts)
     val inputs              = leaves.map(bind).toIndexedSeq
-    val all                 = (joinConds ++ filters)
+    // Each condition with the form it takes without its scalar subqueries
+    val all = (joinConds ++ filters)
       .flatMap { c =>
-        if planner.hasSubquery(planner.withoutScalarSubqueries(c)) then
+        val e = planner.withoutScalarSubqueries(c)
+        if planner.hasSubquery(e) then
           // Factored in place, so that its conjuncts without subqueries join the others
-          planner.factorOrs(List(c))
+          planner.factorOrs(List(c)).map(f => f -> planner.withoutScalarSubqueries(f))
         else
-          List(c)
+          List(c -> e)
       }
-      .filterNot(planner.isTrueLiteral)
-    val (withSubqueries, conds) = all
-      .map(c => c -> planner.withoutScalarSubqueries(c))
-      .partition((_, e) => planner.hasSubquery(e))
-    val output  = inputs.flatMap(_.output)
-    val schemas = inputs.map(_.schema).toList
+      .filterNot((c, _) => planner.isTrueLiteral(c))
+    val (withSubqueries, conds) = all.partition((_, e) => planner.hasSubquery(e))
+    val output                  = inputs.flatMap(_.output)
+    val schemas                 = inputs.map(_.schema).toList
     // The inputs each condition reads, without evaluating its scalar subqueries
     val refs  = conds.map((_, e) => schemas.indices.filter(planner.referencesInput(e, schemas, _)))
     val bound = Array.ofDim[BExpr](conds.size)
