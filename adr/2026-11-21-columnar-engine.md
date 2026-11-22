@@ -1,6 +1,6 @@
 # ADR: An in-process columnar engine that executes Wvlet plans
 
-Date: 2026-11-21 · PR #TBD
+Date: 2026-11-21 · PR #2200
 
 ## Context
 
