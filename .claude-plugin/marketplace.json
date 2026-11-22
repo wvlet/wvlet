@@ -1,0 +1,15 @@
+{
+  "name": "wvlet",
+  "description": "Claude Code plugins for Wvlet, the flow-style query language that compiles to SQL",
+  "owner": {
+    "name": "wvlet",
+    "url": "https://github.com/wvlet"
+  },
+  "plugins": [
+    {
+      "name": "wvlet",
+      "source": "./plugins/wvlet",
+      "description": "Teaches AI agents to write, convert, test, and run Wvlet queries (.wv files) on DuckDB, Trino, Snowflake, and Hive"
+    }
+  ]
+}
