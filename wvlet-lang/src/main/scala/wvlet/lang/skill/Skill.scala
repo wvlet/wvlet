@@ -144,7 +144,17 @@ object SkillOption:
       case Seq("install") =>
         report(installer.install(agents, opt.global, opt.dir, opt.force))
       case Seq("list") =>
-        report(installer.list())
+        report(
+          installer.list(
+            agents,
+            if opt.global then
+              Some(true)
+            else
+              None
+            ,
+            opt.dir
+          )
+        )
       case Seq("remove") =>
         if !opt.yes && !opt.dryRun then
           throw StatusCode
@@ -163,6 +173,7 @@ object SkillOption:
         throw StatusCode
           .INVALID_ARGUMENT
           .newException(s"Unexpected arguments: ${other.mkString(" ")}")
+    end match
 
   end run
 

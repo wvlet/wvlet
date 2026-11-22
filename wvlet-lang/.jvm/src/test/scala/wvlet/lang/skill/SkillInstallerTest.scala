@@ -115,7 +115,7 @@ class SkillInstallerTest extends UniTest:
   test("remove only what wvlet installed, and preview with dry run") {
     val (installer, project, _) = newInstaller()
     installer.install(Nil)
-    statuses(installer.remove(Seq(SkillAgent.Claude), dryRun = true)) shouldBe Seq("removed")
+    statuses(installer.remove(Seq(SkillAgent.Claude), dryRun = true)) shouldBe Seq("would-remove")
     Files.exists(project.resolve(".claude/skills/wvlet")) shouldBe true
     statuses(installer.remove(Seq(SkillAgent.Claude))) shouldBe Seq("removed")
     Files.exists(project.resolve(".claude/skills/wvlet")) shouldBe false
@@ -148,6 +148,49 @@ class SkillInstallerTest extends UniTest:
     intercept[WvletLangException] {
       SkillAgent.parse(Seq("cursor"))
     }
+  }
+
+  test("never delete paths outside the folder that a tampered marker lists") {
+    val (installer, project, _) = newInstaller()
+    installer.install(Seq(SkillAgent.Codex))
+    val outside = project.resolve("precious.txt")
+    Files.writeString(outside, "keep")
+    val root = project.resolve(".agents/skills/wvlet")
+    for bad <- Seq("../../../precious.txt", outside.toString) do
+      val marker = SkillMarker("0.9", "x", Skill.fileNames :+ bad)
+      Files.writeString(
+        root.resolve(SkillInstaller.markerFile),
+        wvlet.uni.weaver.Weaver.of[SkillMarker].toJson(marker)
+      )
+      val result = installer.install(Seq(SkillAgent.Codex))
+      statuses(result) shouldBe Seq("skipped")
+      result.head.detail.get shouldContain "outside the skill folder"
+      installer.install(Seq(SkillAgent.Codex), force = true)
+      installer.remove(Seq(SkillAgent.Codex), force = true)
+      Files.readString(outside) shouldBe "keep"
+      installer.install(Seq(SkillAgent.Codex))
+  }
+
+  test("keep files the user added when removing") {
+    val (installer, project, _) = newInstaller()
+    installer.install(Seq(SkillAgent.Claude))
+    val notes = project.resolve(".claude/skills/wvlet/team-notes.md")
+    Files.writeString(notes, "ours")
+    installer.list().map(_.status) shouldBe Seq("edited")
+    statuses(installer.remove(Seq(SkillAgent.Claude))) shouldBe Seq("skipped")
+    // --force deletes only what wvlet wrote
+    statuses(installer.remove(Seq(SkillAgent.Claude), force = true)) shouldBe Seq("removed")
+    Files.readString(notes) shouldBe "ours"
+    Files.exists(project.resolve(".claude/skills/wvlet/SKILL.md")) shouldBe false
+    Files.exists(project.resolve(".claude/skills/wvlet/references")) shouldBe false
+  }
+
+  test("list an install made with --dir") {
+    val (installer, _, _) = newInstaller()
+    val dir               = tempDir("skill-dir")
+    installer.install(Nil, dir = Some(dir.toString))
+    installer.list(dir = Some(dir.toString)).map(_.status) shouldBe Seq("current")
+    installer.list().isEmpty shouldBe true
   }
 
 end SkillInstallerTest

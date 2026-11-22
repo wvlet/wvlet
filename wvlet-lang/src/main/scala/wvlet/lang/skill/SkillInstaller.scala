@@ -69,18 +69,13 @@ object SkillAgent:
       .distinct
 
 /**
-  * What an install or remove did to one skill folder
-  */
-enum SkillStatus:
-  case installed,
-    updated,
-    unchanged,
-    removed,
-    skipped,
-    missing
-
-/**
-  * The outcome for one skill folder. `detail` explains a `skipped` status.
+  * The outcome for one skill folder.
+  *
+  * @param status
+  *   `install`: installed, updated, unchanged, or skipped. `remove`: removed, would-remove,
+  *   missing, or skipped. `list`: current, outdated, unmanaged, or edited.
+  * @param detail
+  *   why a folder was skipped
   */
 case class SkillResult(
     agents: Seq[String],
@@ -105,6 +100,9 @@ case class SkillMarker(version: String, hash: String, files: Seq[String]) derive
   * small, and copies behave the same on every platform (Windows needs privileges for symlinks, and
   * file deletion through a link differs between JVM, Node.js, and Native).
   *
+  * Only files wvlet wrote are ever deleted: the paths a marker lists must be bundled-style relative
+  * paths inside the folder, and files the user added keep the folder from being removed.
+  *
   * @param baseDir
   *   the project folder for a project install
   * @param homeDir
@@ -116,7 +114,7 @@ class SkillInstaller(
     version: String,
     baseDir: IOPath = IOPath.parse("."),
     homeDir: IOPath = FileSystem.homeDirectory,
-    claudeConfigDir: Option[IOPath] = sys.env.get("CLAUDE_CONFIG_DIR").map(IOPath.parse)
+    claudeConfigDir: Option[IOPath] = SkillEnv.get("CLAUDE_CONFIG_DIR").map(IOPath.parse)
 ):
   import SkillInstaller.*
 
@@ -141,13 +139,7 @@ class SkillInstaller(
     * Agent folders grouped by location, since Codex and Pi share one
     */
   private def targets(agents: Seq[SkillAgent], global: Boolean): Seq[(IOPath, Seq[SkillAgent])] =
-    agents
-      .groupBy(a => skillsDir(a, global).resolve(Skill.name).path)
-      .toSeq
-      .sortBy(_._1)
-      .map { (path, as) =>
-        IOPath.parse(path) -> as
-      }
+    agents.groupBy(a => skillsDir(a, global).resolve(Skill.name)).toSeq.sortBy(_._1.path)
 
   /**
     * Install or update the skill for the given agents, or into `<dir>/wvlet` when `dir` is given
@@ -162,8 +154,9 @@ class SkillInstaller(
   }
 
   /**
-    * Remove the skill wvlet installed for the given agents. Folders wvlet did not write, or that
-    * were edited after install, are kept unless `force` is set.
+    * Remove the skill wvlet installed for the given agents. Folders wvlet did not write, that were
+    * edited after install, or that hold files the user added are kept unless `force` is set; even
+    * then only the files wvlet wrote are deleted.
     */
   def remove(
       agents: Seq[SkillAgent],
@@ -174,52 +167,54 @@ class SkillInstaller(
   ): Seq[SkillResult] = locations(agents, global, dir).map { (root, names) =>
     inspect(root) match
       case Missing =>
-        SkillResult(names, root.path, SkillStatus.missing.toString)
+        SkillResult(names, root.path, "missing")
       case problem: NotManaged if !force =>
-        SkillResult(names, root.path, SkillStatus.skipped.toString, detail = Some(problem.reason))
+        SkillResult(names, root.path, "skipped", problem.version, Some(problem.reason))
       case state =>
-        if !dryRun then
-          FileSystem.deleteRecursively(root)
-        SkillResult(names, root.path, SkillStatus.removed.toString, state.version)
+        if dryRun then
+          SkillResult(names, root.path, "would-remove", state.version)
+        else
+          deleteInstalled(root, state.files)
+          SkillResult(names, root.path, "removed", state.version)
   }
 
   /**
-    * Report the skill folders of every agent, in the project and in the home directory
+    * Report the skill folders of the given agents (all when empty), in the project and in the home
+    * directory, or in `<dir>/wvlet` when `dir` is given
     */
-  def list(): Seq[SkillResult] =
+  def list(
+      agents: Seq[SkillAgent] = Nil,
+      global: Option[Boolean] = None,
+      dir: Option[String] = None
+  ): Seq[SkillResult] =
+    val scopes = global.map(Seq(_)).getOrElse(Seq(false, true))
+    val roots  = scopes
+      .flatMap(g => locations(agents, g, dir))
+      // A project at the home directory has the same folders in both scopes
+      .distinctBy((root, _) => root.path.stripPrefix("./"))
     for
-      global     <- Seq(false, true)
-      (root, as) <- targets(SkillAgent.values.toSeq, global)
-      names = as.map(_.id)
+      (root, names) <- roots
       state = inspect(root)
       if state != Missing
     yield state match
-      case Managed(marker) =>
+      case Managed(marker, _) =>
         val status =
           if marker.hash == bundleHash then
-            SkillStatus.unchanged
-          else
-            SkillStatus.updated
-        SkillResult(
-          names,
-          root.path,
-          if status == SkillStatus.unchanged then
             "current"
           else
             "outdated"
-          ,
-          Some(marker.version)
-        )
+        SkillResult(names, root.path, status, Some(marker.version))
       case problem: NotManaged =>
-        SkillResult(
-          names,
-          root.path,
-          SkillStatus.skipped.toString,
-          problem.version,
-          Some(problem.reason)
-        )
+        val status =
+          if problem.files.isEmpty then
+            "unmanaged"
+          else
+            "edited"
+        SkillResult(names, root.path, status, problem.version, Some(problem.reason))
       case Missing =>
-        SkillResult(names, root.path, SkillStatus.missing.toString)
+        SkillResult(names, root.path, "missing")
+
+  end list
 
   private def locations(
       agents: Seq[SkillAgent],
@@ -249,7 +244,6 @@ class SkillInstaller(
         val target = root.resolve(path)
         target.parent.foreach(FileSystem.createDirectoryIfNotExists)
         FileSystem.writeString(target, content, WriteMode.Create)
-      FileSystem.createDirectoryIfNotExists(root)
       val marker = SkillMarker(version, bundleHash, BundledSkill.files.keys.toSeq)
       FileSystem.writeString(
         root.resolve(markerFile),
@@ -260,22 +254,22 @@ class SkillInstaller(
     inspect(root) match
       case Missing =>
         write(Nil)
-        SkillResult(names, root.path, SkillStatus.installed.toString, Some(version))
-      case Managed(marker) if marker.hash == bundleHash =>
+        SkillResult(names, root.path, "installed", Some(version))
+      case Managed(marker, _) if marker.hash == bundleHash =>
         if marker.version != version then
           write(marker.files)
-        SkillResult(names, root.path, SkillStatus.unchanged.toString, Some(version))
-      case Managed(marker) =>
+        SkillResult(names, root.path, "unchanged", Some(version))
+      case Managed(marker, _) =>
         write(marker.files)
-        SkillResult(names, root.path, SkillStatus.updated.toString, Some(version))
+        SkillResult(names, root.path, "updated", Some(version))
       case problem: NotManaged if force =>
         write(problem.files)
-        SkillResult(names, root.path, SkillStatus.updated.toString, Some(version))
+        SkillResult(names, root.path, "updated", Some(version))
       case problem: NotManaged =>
         SkillResult(
           names,
           root.path,
-          SkillStatus.skipped.toString,
+          "skipped",
           problem.version,
           Some(s"${problem.reason}; use --force to replace it")
         )
@@ -283,6 +277,24 @@ class SkillInstaller(
     end match
 
   end installInto
+
+  /**
+    * Delete the files wvlet wrote and the marker, then the folders they leave empty
+    */
+  private def deleteInstalled(root: IOPath, files: Seq[String]): Unit =
+    (files :+ markerFile).foreach(f => FileSystem.delete(root.resolve(f)))
+    val dirs = files
+      .flatMap(f => f.split('/').inits.drop(1).filter(_.nonEmpty).map(_.mkString("/")))
+      .distinct
+      .sortBy(-_.length)
+    for d <- dirs :+ "" do
+      val p =
+        if d.isEmpty then
+          root
+        else
+          root.resolve(d)
+      if FileSystem.isDirectory(p) && FileSystem.list(p).isEmpty then
+        FileSystem.delete(p)
 
   private def inspect(root: IOPath): FolderState =
     if !FileSystem.exists(root) then
@@ -294,13 +306,38 @@ class SkillInstaller(
       else
         try
           val marker = Weaver.of[SkillMarker].fromJson(FileSystem.readString(markerPath))
-          if hashOf(root, marker.files) == marker.hash then
-            Managed(marker)
-          else
+          if !marker.files.forall(isSafePath) then
+            NotManaged(s"${markerFile} lists paths outside the skill folder", None, Nil)
+          else if hashOf(root, marker.files) != marker.hash then
             NotManaged("edited after install", Some(marker.version), marker.files)
+          else
+            val extra = filesUnder(root).filterNot((marker.files :+ markerFile).toSet)
+            if extra.nonEmpty then
+              NotManaged(
+                s"has files wvlet did not write: ${extra.mkString(", ")}",
+                Some(marker.version),
+                marker.files
+              )
+            else
+              Managed(marker, marker.files)
         catch
-          case NonFatal(e) =>
+          case NonFatal(_) =>
             NotManaged(s"unreadable ${markerFile}", None, Nil)
+
+  /**
+    * Relative paths of every file under the folder
+    */
+  private def filesUnder(root: IOPath): Seq[String] =
+    def walk(dir: IOPath, prefix: String): Seq[String] = FileSystem
+      .list(dir)
+      .flatMap { p =>
+        val name = s"${prefix}${p.fileName}"
+        if FileSystem.isDirectory(p) then
+          walk(p, s"${name}/")
+        else
+          Seq(name)
+      }
+    walk(root, "")
 
 end SkillInstaller
 
@@ -312,15 +349,24 @@ object SkillInstaller:
 
   private sealed trait FolderState:
     def version: Option[String]
+    def files: Seq[String]
 
   private case object Missing extends FolderState:
     def version: Option[String] = None
+    def files: Seq[String]      = Nil
 
-  private case class Managed(marker: SkillMarker) extends FolderState:
+  private case class Managed(marker: SkillMarker, files: Seq[String]) extends FolderState:
     def version: Option[String] = Some(marker.version)
 
   private case class NotManaged(reason: String, version: Option[String], files: Seq[String])
       extends FolderState
+
+  /**
+    * A marker entry must be a relative path inside the folder, like the bundled ones
+    */
+  private def isSafePath(path: String): Boolean =
+    path.nonEmpty && !path.startsWith("/") && !path.contains('\\') && !path.contains(':') &&
+      path.split('/').forall(part => part.nonEmpty && part != "." && part != "..")
 
   private def hash(files: Seq[(String, String)]): String =
     MurmurHash3.orderedHash(files.sortBy(_._1).map((p, c) => s"${p}\u0000${c}")).toHexString
