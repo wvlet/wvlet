@@ -341,21 +341,21 @@ class PlanExecutorWvletEngineTest extends UniTest:
                        |reshape alt_t {
                        |  add price: double
                        |  rename name as item
-                       |  cast id as string
+                       |  cast id as long
                        |}
                        |
                        |from alt_t
                        |order by id
                        |test _.columns should be ['id', 'item', 'price']
-                       |test _.rows should be [['1', 'pen', null], ['2', 'book', null]]
+                       |test _.rows should be [[1, 'pen', null], [2, 'book', null]]
                        |
                        |-- The default follows the renamed column
                        |append to alt_t (id) {
-                       |  from [['3']] as t(id)
+                       |  from [[3]] as t(id)
                        |}
                        |from alt_t
-                       |where id = '3'
-                       |test _.rows should be [['3', 'none', null]]
+                       |where id = 3
+                       |test _.rows should be [[3, 'none', null]]
                        |
                        |reshape alt_t {
                        |  exclude price
