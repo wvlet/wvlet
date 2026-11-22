@@ -27,6 +27,7 @@ import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.BindScope
+import wvlet.lang.engine.plan.CardinalityEstimator
 import wvlet.lang.engine.plan.AggPlanBuilder
 import wvlet.lang.engine.plan.Binder
 import wvlet.lang.engine.plan.JoinOrderOptimizer
@@ -255,11 +256,51 @@ class RuntimeBinder(planner: Planner):
     then
       legacyOp(planner.planJoinTree(j, filters))
     else if planner.isInnerJoin(j) then
-      planner.innerJoinTree(j, filters, r => lowered(bind(r)), plans).plan
+      innerJoins(j, filters)
     else
       val left  = lowered(bind(j.left))
       val right = lowered(bind(j.right))
       plans.conjuncts(planner.joinOn(j, planner.joinKind(j), left, right, plans), filters).plan
+
+  /**
+    * A tree of inner joins (without a lateral unnest on top) and filter conditions over it, as one
+    * [[RuntimePlan.InnerJoins]] node that [[ReorderJoins]] orders. Conditions with subqueries apply
+    * over the ordered tree, through the planner, except for uncorrelated scalar subqueries, which
+    * are constants (e.g., d_month_seq = (select ... from date_dim)).
+    *
+    * Conditions bind in the planner's order, as they may evaluate scalar subqueries: the
+    * single-input ones input by input, then the others
+    */
+  private def innerJoins(j: Join, filters: List[Expression]): RuntimePlan =
+    val (leaves, joinConds)     = planner.flattenJoins(j)
+    val inputs                  = leaves.map(bind).toIndexedSeq
+    val all                     = (joinConds ++ filters).filterNot(planner.isTrueLiteral)
+    val (withSubqueries, conds) = all
+      .map(c => c -> planner.withoutScalarSubqueries(c))
+      .partition((_, e) => planner.hasSubquery(e))
+    val output  = inputs.flatMap(_.output)
+    val schema  = Schema(output.map(_.toField))
+    val schemas = inputs.map(_.schema).toList
+    // The inputs each condition reads, without evaluating its scalar subqueries
+    val refs  = conds.map((_, e) => schemas.indices.filter(planner.referencesInput(e, schemas, _)))
+    val bound = Array.ofDim[BExpr](conds.size)
+    def bindAt(k: Int): Unit =
+      bound(k) = BExpr.of(Binder(planner, BindScope(schema)).bind(conds(k)._1), output)
+    // Single-input conditions first, input by input, as the planner pushes them
+    inputs.indices.foreach(i => conds.indices.filter(refs(_) == Seq(i)).foreach(bindAt))
+    conds.indices.filter(bound(_) == null).foreach(bindAt)
+    val node = RuntimePlan.InnerJoins(
+      inputs,
+      conds
+        .indices
+        .map(k => JoinCondition(bound(k), CardinalityEstimator.literalCount(conds(k)._1)))
+    )
+    if withSubqueries.isEmpty then
+      node
+    else
+      plans.conjuncts(lowered(node), withSubqueries.map(_._1)).plan
+
+  end innerJoins
 
   /** An aggregation, planned as `Planner.planAggregation` plans it */
   private def aggregation(

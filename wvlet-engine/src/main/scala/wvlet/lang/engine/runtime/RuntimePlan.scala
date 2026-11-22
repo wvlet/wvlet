@@ -114,6 +114,15 @@ object AggregateCall:
     c.ptype
   )
 
+/**
+  * A condition of a [[RuntimePlan.InnerJoins]]. `literals` is the number of literals the condition
+  * compares an expression to, when it is `x = literal` (1) or `x in (n literals)` (n) in the query,
+  * for its selectivity: a bound constant may also be a folded expression or a scalar subquery
+  * result, which are estimated with the default selectivity
+  */
+case class JoinCondition(cond: BExpr, literals: Option[Int]):
+  override def toString: String = cond.toString
+
 /** A sort key of a [[RuntimePlan.Sort]] */
 case class OrderKey(expr: BExpr, ascending: Boolean, nullsFirst: Boolean)
 
@@ -172,6 +181,13 @@ enum RuntimePlan:
       buildLeft: Boolean
   )
 
+  /**
+    * Inner joins of `inputs` in no particular order: the rows of their product for which every
+    * condition is true, with the columns of the inputs in order. [[ReorderJoins]] replaces it with
+    * a tree of [[Join]]s, which outputs the same columns in its join order
+    */
+  case InnerJoins(inputs: IndexedSeq[RuntimePlan], conds: IndexedSeq[JoinCondition])
+
   /** A relation planned by the recursive planner, whose operator schema gives the columns */
   case Legacy(op: Operator, columns: IndexedSeq[Column])
 
@@ -194,6 +210,8 @@ enum RuntimePlan:
         left.output ++ right.output
       case Aggregate(_, _, _, columns) =>
         columns
+      case InnerJoins(inputs, _) =>
+        inputs.flatMap(_.output)
       case Legacy(_, columns) =>
         columns
 
@@ -213,6 +231,8 @@ enum RuntimePlan:
         Seq(left, right)
       case Aggregate(child, _, _, _) =>
         Seq(child)
+      case InnerJoins(inputs, _) =>
+        inputs
 
   /**
     * The node over new children, in the order of [[children]]. Returns this node when every child
@@ -239,6 +259,8 @@ enum RuntimePlan:
           j.copy(left = cs(0), right = cs(1))
         case a: Aggregate =>
           a.copy(child = cs(0))
+        case j: InnerJoins =>
+          j.copy(inputs = cs.toIndexedSeq)
 
   /** The output as an operator schema */
   def schema: Schema = Schema(output.map(_.toField))
@@ -293,6 +315,8 @@ enum RuntimePlan:
         s"Join[${kind}](${args.mkString(", ")})"
       case Aggregate(_, keys, calls, _) =>
         s"Aggregate(keys=[${keys.mkString(", ")}], ${calls.mkString(", ")})"
+      case InnerJoins(_, conds) =>
+        s"InnerJoins(${conds.mkString(", ")})"
       case Legacy(op, _) =>
         s"Legacy[${op.name}]"
 

@@ -16,44 +16,53 @@ package wvlet.lang.engine.plan
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.model.expr.*
 
-/** An input of a join graph: a lowered relation with its single-input conditions applied */
-case class JoinInput(op: Operator, rows: Double)
-
 /**
-  * A condition over several inputs, or over none (a constant), with the inputs it reads. For an
-  * equality, `sides` holds the inputs each side reads
+  * A condition over several inputs of a join graph, or over none (a constant), with the inputs it
+  * reads. An equality has its two sides with the inputs each side reads
   */
-case class JoinEdge(cond: Expression, refs: Set[Int], sides: Option[(Set[Int], Set[Int])]):
+case class JoinEdge[C](cond: C, refs: Set[Int], sides: Option[JoinEdge.Sides[C]]):
 
   /**
     * Whether this is an equality between the joined inputs and input i: one side reads only joined
     * inputs, the other only i
     */
-  def isEquiTo(joined: collection.Set[Int], i: Int): Boolean = sides.exists { (l, r) =>
-    (l.nonEmpty && l.subsetOf(joined) && r == Set(i)) ||
-    (r.nonEmpty && r.subsetOf(joined) && l == Set(i))
+  def isEquiTo(joined: collection.Set[Int], i: Int): Boolean = sides.exists { s =>
+    (s.leftRefs.nonEmpty && s.leftRefs.subsetOf(joined) && s.rightRefs == Set(i)) ||
+    (s.rightRefs.nonEmpty && s.rightRefs.subsetOf(joined) && s.leftRefs == Set(i))
   }
 
   /** The sides of this equality: the one over the joined inputs first */
-  def sidesOf(joined: collection.Set[Int]): (Expression, Expression) =
-    val eq = cond.asInstanceOf[Eq]
-    if sides.exists(_._1.subsetOf(joined)) then
-      (eq.left, eq.right)
+  def sidesOf(joined: collection.Set[Int]): (C, C) =
+    val s = sides.get
+    if s.leftRefs.subsetOf(joined) then
+      (s.left, s.right)
     else
-      (eq.right, eq.left)
+      (s.right, s.left)
 
 end JoinEdge
 
+object JoinEdge:
+  /** The sides of an equality, with the inputs each one reads */
+  case class Sides[C](left: C, leftRefs: Set[Int], right: C, rightRefs: Set[Int])
+
 /**
-  * Inputs of a tree of inner joins and the conditions between them. The inputs each condition reads
-  * are computed once, as the join order search checks them at every step
+  * Inputs of a tree of inner joins, with their estimated rows after their single-input conditions,
+  * and the conditions between them. The inputs each condition reads are computed once, as the join
+  * order search checks them at every step. `P` is the plan form of the inputs, and `C` the form of
+  * the conditions
   */
-case class JoinGraph(inputs: IndexedSeq[JoinInput], edges: List[JoinEdge])
+case class JoinGraph[P, C](
+    inputs: IndexedSeq[P],
+    rows: IndexedSeq[Double],
+    edges: List[JoinEdge[C]]
+)
 
 object JoinGraph:
 
   /**
-    * Build a join graph over lowered leaves, pushing single-input conditions to their inputs.
+    * Build a join graph over leaves whose operators (`op`) give the estimates, pushing single-input
+    * conditions to their inputs. The graph's inputs are the leaves with their conditions pushed, in
+    * input order.
     *
     * @param conds
     *   each condition paired with the expression to read its inputs from (e.g., with uncorrelated
@@ -65,18 +74,6 @@ object JoinGraph:
     * @param selectivity
     *   the estimated fraction of the rows of an input passing a condition
     */
-  def apply(
-      leaves: List[Operator],
-      conds: List[(Expression, Expression)],
-      refs: Expression => Set[Int],
-      push: (Operator, List[Expression]) => Operator,
-      selectivity: (Operator, Expression) => Double
-  ): JoinGraph = build(leaves, identity, conds, refs, push, selectivity)._1
-
-  /**
-    * Build a join graph over leaves of any plan form whose operators (`op`) give the estimates.
-    * Returns the graph and the leaves with their single-input conditions pushed, in input order
-    */
   def build[P](
       leaves: List[P],
       op: P => Operator,
@@ -84,7 +81,7 @@ object JoinGraph:
       refs: Expression => Set[Int],
       push: (P, List[Expression]) => P,
       selectivity: (Operator, Expression) => Double
-  ): (JoinGraph, IndexedSeq[P]) =
+  ): JoinGraph[P, Expression] =
     val condRefs = conds.map((c, e) => (c, refs(e)))
     // Push and estimate one input at a time, as the conditions bind (and may plan subqueries)
     val pushed = leaves
@@ -100,27 +97,21 @@ object JoinGraph:
           else
             push(leaves(i), local)
         val leaf = op(leaves(i))
-        (
-          p,
-          JoinInput(
-            op(p),
-            CardinalityEstimator.rows(op(p)) * local.map(selectivity(leaf, _)).product
-          )
-        )
+        (p, CardinalityEstimator.rows(op(p)) * local.map(selectivity(leaf, _)).product)
       }
     val edges = conds
       .zip(condRefs)
       .collect {
         case ((c, e), (_, r)) if r.size != 1 =>
           val sides =
-            e match
-              case eq: Eq =>
-                Some((refs(eq.left), refs(eq.right)))
+            (c, e) match
+              case (ceq: Eq, eq: Eq) =>
+                Some(JoinEdge.Sides(ceq.left, refs(eq.left), ceq.right, refs(eq.right)))
               case _ =>
                 None
           JoinEdge(c, r, sides)
       }
-    (JoinGraph(pushed.map(_._2), edges), pushed.map(_._1))
+    JoinGraph(pushed.map(_._1), pushed.map(_._2), edges)
 
   end build
 

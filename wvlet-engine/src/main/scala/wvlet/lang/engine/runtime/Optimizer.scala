@@ -43,7 +43,10 @@ class OptimizerContext(val options: OptimizerOptions):
   def isEnabled(r: Rule): Boolean = options.isEnabled(r.optimization)
 
   /** Record that a rule rewrote a node */
-  def fired(r: Rule): Unit = counts(r.name) = counts.getOrElse(r.name, 0) + 1
+  def fired(r: Rule): Unit = fired(r.name)
+
+  /** Record that a rule or pass, by name, rewrote a plan */
+  def fired(name: String): Unit = counts(name) = counts.getOrElse(name, 0) + 1
 
   /** How many times each rule fired, by rule name */
   def firedRules: Map[String, Int] = counts.toMap
@@ -115,7 +118,7 @@ class Optimizer(val passes: Seq[Pass], options: OptimizerOptions):
 
 object Optimizer:
   /** The passes, in order */
-  val defaultPasses: Seq[Pass] = Seq(Normalize)
+  val defaultPasses: Seq[Pass] = Seq(Normalize, ReorderJoins)
 
   /** The default passes */
   def default(options: OptimizerOptions): Optimizer = Optimizer(defaultPasses, options)

@@ -21,9 +21,9 @@ import wvlet.lang.model.expr.*
 import wvlet.uni.test.UniTest
 
 class JoinOrderOptimizerTest extends UniTest:
-  private def input(rows: Double, cols: String*): JoinInput =
+  private def input(cols: String*): Operator =
     val schema = Schema(cols.map(Field(_, PType.Int64)).toIndexedSeq)
-    JoinInput(BatchesOp(schema, Nil, cols.head), rows)
+    BatchesOp(schema, Nil, cols.head)
 
   private def col(name: String): Expression = UnquotedIdentifier(name, NoSpan)
 
@@ -49,24 +49,32 @@ class JoinOrderOptimizerTest extends UniTest:
 
   // A fact table with two dimensions, and a condition over both dimensions
   private val graph = JoinGraph(
-    IndexedSeq(input(10, "a_k"), input(1e6, "f_a", "f_b"), input(100, "b_k")),
+    IndexedSeq(input("a_k"), input("f_a", "f_b"), input("b_k")),
+    IndexedSeq(10.0, 1e6, 100.0),
     List(
-      JoinEdge(Eq(col("f_a"), col("a_k"), NoSpan), Set(0, 1), Some((Set(1), Set(0)))),
-      JoinEdge(Eq(col("f_b"), col("b_k"), NoSpan), Set(1, 2), Some((Set(1), Set(2)))),
+      JoinEdge(
+        Eq(col("f_a"), col("a_k"), NoSpan),
+        Set(0, 1),
+        Some(JoinEdge.Sides(col("f_a"), Set(1), col("a_k"), Set(0)))
+      ),
+      JoinEdge(
+        Eq(col("f_b"), col("b_k"), NoSpan),
+        Set(1, 2),
+        Some(JoinEdge.Sides(col("f_b"), Set(1), col("b_k"), Set(2)))
+      ),
       JoinEdge(GreaterThan(col("a_k"), col("b_k"), NoSpan), Set(0, 2), None)
     )
   )
 
   private def plan(options: OptimizerOptions): (Operator, List[Expression]) = JoinOrderOptimizer(
-    options,
-    NameBinding
-  ).plan(graph)
+    options
+  ).plan(graph, JoinOrderOptimizer.expressionSearch(OperatorTreeBuilder, NameBinding))
 
   test("should join every input once and place every condition once") {
     val (tree, remaining) = plan(OptimizerOptions())
     remaining shouldBe Nil
     val ops = operators(tree)
-    graph.inputs.foreach(in => ops.count(_ eq in.op) shouldBe 1)
+    graph.inputs.foreach(in => ops.count(_ eq in) shouldBe 1)
     ops.count(_.isInstanceOf[HashJoinOp]) shouldBe 2
     ops.count(_.isInstanceOf[FilterOp]) shouldBe 1
     ops.count(_.isInstanceOf[NestedLoopJoinOp]) shouldBe 0
@@ -78,7 +86,7 @@ class JoinOrderOptimizerTest extends UniTest:
       j
     }
     // The bottom join probes with the fact table
-    joins.last.left shouldBeTheSameInstanceAs graph.inputs(1).op
+    joins.last.left shouldBeTheSameInstanceAs graph.inputs(1)
   }
 
   test("should join in written order without reorder_joins") {
@@ -89,8 +97,8 @@ class JoinOrderOptimizerTest extends UniTest:
     }
     joins.size shouldBe 2
     // Starts from the first input; the fact table is connected to it by an equality
-    operators(joins.last).exists(_ eq graph.inputs(0).op) shouldBe true
-    operators(joins.last).exists(_ eq graph.inputs(1).op) shouldBe true
+    operators(joins.last).exists(_ eq graph.inputs(0)) shouldBe true
+    operators(joins.last).exists(_ eq graph.inputs(1)) shouldBe true
   }
 
 end JoinOrderOptimizerTest

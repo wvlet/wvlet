@@ -95,12 +95,28 @@ object CardinalityEstimator:
       right: Operator,
       rightRows: Double,
       rightKeys: IndexedSeq[VExpr]
+  ): Double = joinOutputRows(
+    leftRows,
+    leftKeys.map(keyDistinct(left, _)),
+    rightRows,
+    rightKeys.map(keyDistinct(right, _))
+  )
+
+  /**
+    * [[joinOutputRows]] from the distinct counts of each key pair (None for unknown) and the rows
+    * of each side
+    */
+  def joinOutputRows(
+      leftRows: Double,
+      leftDistinct: IndexedSeq[Option[Double]],
+      rightRows: Double,
+      rightDistinct: IndexedSeq[Option[Double]]
   ): Double =
-    val divisors = leftKeys
+    val divisors = leftDistinct
       .indices
       .map { k =>
-        val l = keyDistinct(left, leftKeys(k)).map(math.min(_, leftRows))
-        val r = keyDistinct(right, rightKeys(k)).map(math.min(_, rightRows))
+        val l = leftDistinct(k).map(math.min(_, leftRows))
+        val r = rightDistinct(k).map(math.min(_, rightRows))
         val d =
           (l, r) match
             case (Some(a), Some(b)) =>
@@ -142,6 +158,21 @@ object CardinalityEstimator:
         case _ =>
           None
     s.getOrElse(DefaultSelectivity)
+
+  /**
+    * The number of literals a condition compares an expression to, when it is `x = literal` (1) or
+    * `x in (n literals)` (n): the conditions whose selectivity reads the distinct count of x
+    */
+  def literalCount(c: Expression): Option[Int] =
+    c match
+      case Eq(_, l: Literal, _) if !l.isInstanceOf[NullLiteral] =>
+        Some(1)
+      case Eq(l: Literal, _, _) if !l.isInstanceOf[NullLiteral] =>
+        Some(1)
+      case In(_, list, _) if list.forall(isNonNullLiteral) =>
+        Some(list.size)
+      case _ =>
+        None
 
   private def isNonNullLiteral(e: Expression): Boolean =
     e.isInstanceOf[Literal] && !e.isInstanceOf[NullLiteral]
