@@ -115,12 +115,20 @@ object AggregateCall:
   )
 
 /**
-  * A condition of a [[RuntimePlan.InnerJoins]]. `literals` is the number of literals the condition
-  * compares an expression to, when it is `x = literal` (1) or `x in (n literals)` (n) in the query,
-  * for its selectivity: a bound constant may also be a folded expression or a scalar subquery
-  * result, which are estimated with the default selectivity
+  * A condition of a [[RuntimePlan.InnerJoins]]. `literalCounts` maps the bound signatures of the
+  * condition and its `and`/`or` sub-conditions to the number of literals each compares an
+  * expression to, when it is `x = literal` (1) or `x in (n literals)` (n) in the query, for
+  * selectivity: a bound constant may also be a folded expression or a scalar subquery result, which
+  * are estimated with the default selectivity. Rewrites that keep sub-conditions (FactorOr) keep
+  * their counts this way
   */
-case class JoinCondition(cond: BExpr, literals: Option[Int]):
+case class JoinCondition(cond: BExpr, literalCounts: Map[String, Int] = Map.empty):
+  /** The number of literals the condition compares an expression to, if it is such a comparison */
+  def literals: Option[Int] = literalCounts.get(cond.expr.sig)
+
+  /** A condition over a sub-condition of this one, keeping the literal counts */
+  def withCond(e: VExpr): JoinCondition = copy(cond = BExpr(e))
+
   override def toString: String = cond.toString
 
 /** A sort key of a [[RuntimePlan.Sort]] */

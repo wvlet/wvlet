@@ -71,8 +71,7 @@ class EngineReorderJoinsTest extends UniTest:
   )
 
   private def eq(l: BExpr, r: BExpr): JoinCondition = JoinCondition(
-    BExpr(Compare(CmpOp.Eq, l.expr, r.expr)),
-    None
+    BExpr(Compare(CmpOp.Eq, l.expr, r.expr))
   )
 
   // region (5 rows) <- nation (25) <- supplier, with a condition on region
@@ -81,11 +80,10 @@ class EngineReorderJoinsTest extends UniTest:
     IndexedSeq(region, nation, supplier),
     IndexedSeq(
       eq(column(nation, "n_regionkey"), column(region, "r_regionkey")),
-      eq(column(supplier, "s_nationkey"), column(nation, "n_nationkey")),
-      JoinCondition(
-        BExpr(Compare(CmpOp.Eq, column(region, "r_name").expr, Const("ASIA", PType.Str))),
-        Some(1)
-      )
+      eq(column(supplier, "s_nationkey"), column(nation, "n_nationkey")), {
+        val asia = Compare(CmpOp.Eq, column(region, "r_name").expr, Const("ASIA", PType.Str))
+        JoinCondition(BExpr(asia), Map(asia.sig -> 1))
+      }
     )
   )
 

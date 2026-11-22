@@ -1639,12 +1639,14 @@ class Planner(
 
   // --- filters and subqueries -----------------------------------------------------------
 
-  private[engine] def conjuncts(e: Expression): List[Expression] =
-    val split = splitConjuncts(e)
+  private[engine] def conjuncts(e: Expression): List[Expression] = factorOrs(splitConjuncts(e))
+
+  /** Factor the common conjuncts out of the `or`s among conjuncts, when FactorOr is enabled */
+  private[engine] def factorOrs(conds: List[Expression]): List[Expression] =
     if enabled(Optimization.FactorOr) then
-      split.flatMap(factorOr)
+      conds.flatMap(factorOr)
     else
-      split
+      conds
 
   /** The conjuncts of a condition, without factoring common conjuncts out of `or`s */
   private[engine] def splitConjuncts(e: Expression): List[Expression] = splitAnd(
@@ -2261,19 +2263,25 @@ class Planner(
           false
     )
 
-  /** Leaves and conditions of a tree of inner joins */
-  private[engine] def flattenJoins(r: Relation): (List[Relation], List[Expression]) =
+  /**
+    * Leaves and conditions of a tree of inner joins, with the ON conditions split by `split`
+    * (factored by [[conjuncts]] by default)
+    */
+  private[engine] def flattenJoins(
+      r: Relation,
+      split: Expression => List[Expression] = conjuncts
+  ): (List[Relation], List[Expression]) =
     r match
       // A lateral unnest needs its left input: plan it as one leaf
       case j: Join if isInnerJoin(j) && unnestCall(j.right).isEmpty =>
-        val (l, lc)  = flattenJoins(j.left)
-        val (rr, rc) = flattenJoins(j.right)
+        val (l, lc)  = flattenJoins(j.left, split)
+        val (rr, rc) = flattenJoins(j.right, split)
         val cond     =
           j.cond match
             case JoinOn(e, _) =>
-              conjuncts(e)
+              split(e)
             case JoinOnEq(keys, _) =>
-              conjuncts(Expression.concatWithEq(keys))
+              split(Expression.concatWithEq(keys))
             case _ =>
               Nil
         (l ++ rr, lc ++ rc ++ cond)

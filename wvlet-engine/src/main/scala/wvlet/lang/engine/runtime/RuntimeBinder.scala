@@ -25,6 +25,7 @@ import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.BindScope
 import wvlet.lang.engine.plan.CardinalityEstimator
@@ -219,8 +220,9 @@ class RuntimeBinder(planner: Planner):
         // HAVING without a selection
         aggregation(f, None, defaultItems = true)
       case j: Join if planner.isInnerJoin(j) =>
-        // The join tree takes the conditions for its join order and pushdown
-        join(j, planner.conjuncts(f.filterExpr))
+        // The join tree takes the conditions for its join order and pushdown. Common conjuncts
+        // of `or`s are factored by the Normalize pass
+        join(j, planner.splitConjuncts(f.filterExpr))
       case j: Join if j.joinType == JoinType.LeftOuterJoin && !j.asof =>
         // Conditions on the preserved (left) side filter before the join, so that an inner join
         // tree under left joins can use them for its join order and pushdown. As the planner
@@ -254,7 +256,7 @@ class RuntimeBinder(planner: Planner):
   private def join(j: Join, filters: List[Expression]): RuntimePlan =
     if planner.unnestCall(j.right).isDefined || !(planner.isInnerJoin(j) || planner.isJoinOn(j))
     then
-      legacyOp(planner.planJoinTree(j, filters))
+      legacyOp(planner.planJoinTree(j, planner.factorOrs(filters)))
     else if planner.isInnerJoin(j) then
       innerJoins(j, filters)
     else
@@ -269,17 +271,27 @@ class RuntimeBinder(planner: Planner):
     * are constants (e.g., d_month_seq = (select ... from date_dim)).
     *
     * Conditions bind in the planner's order, as they may evaluate scalar subqueries: the
-    * single-input ones input by input, then the others
+    * single-input ones input by input, then the others. They bind unfactored: the Normalize pass
+    * factors their `or`s, except for conditions with subqueries, which the planner factors as it
+    * applies them
     */
   private def innerJoins(j: Join, filters: List[Expression]): RuntimePlan =
-    val (leaves, joinConds)     = planner.flattenJoins(j)
-    val inputs                  = leaves.map(bind).toIndexedSeq
-    val all                     = (joinConds ++ filters).filterNot(planner.isTrueLiteral)
-    val (withSubqueries, conds) = all
-      .map(c => c -> planner.withoutScalarSubqueries(c))
-      .partition((_, e) => planner.hasSubquery(e))
-    val output  = inputs.flatMap(_.output)
-    val schemas = inputs.map(_.schema).toList
+    val (leaves, joinConds) = planner.flattenJoins(j, planner.splitConjuncts)
+    val inputs              = leaves.map(bind).toIndexedSeq
+    // Each condition with the form it takes without its scalar subqueries
+    val all = (joinConds ++ filters)
+      .flatMap { c =>
+        val e = planner.withoutScalarSubqueries(c)
+        if planner.hasSubquery(e) then
+          // Factored in place, so that its conjuncts without subqueries join the others
+          planner.factorOrs(List(c)).map(f => f -> planner.withoutScalarSubqueries(f))
+        else
+          List(c -> e)
+      }
+      .filterNot((c, _) => planner.isTrueLiteral(c))
+    val (withSubqueries, conds) = all.partition((_, e) => planner.hasSubquery(e))
+    val output                  = inputs.flatMap(_.output)
+    val schemas                 = inputs.map(_.schema).toList
     // The inputs each condition reads, without evaluating its scalar subqueries
     val refs  = conds.map((_, e) => schemas.indices.filter(planner.referencesInput(e, schemas, _)))
     val bound = Array.ofDim[BExpr](conds.size)
@@ -294,9 +306,7 @@ class RuntimeBinder(planner: Planner):
     conds.indices.filter(bound(_) == null).foreach(bindAt(_, output))
     val node = RuntimePlan.InnerJoins(
       inputs,
-      conds
-        .indices
-        .map(k => JoinCondition(bound(k), CardinalityEstimator.literalCount(conds(k)._1)))
+      conds.indices.map(k => JoinCondition(bound(k), literalCounts(conds(k)._1, bound(k).expr)))
     )
     if withSubqueries.isEmpty then
       node
@@ -304,6 +314,28 @@ class RuntimeBinder(planner: Planner):
       plans.conjuncts(lowered(node), withSubqueries.map(_._1)).plan
 
   end innerJoins
+
+  /**
+    * The literal counts of a condition and its `and`/`or` sub-conditions
+    * ([[CardinalityEstimator.literalCount]], decided on the query's expressions), by the bound
+    * signature of each, walking the condition and its binding together
+    */
+  private def literalCounts(e: Expression, bound: VExpr): Map[String, Int] =
+    val counts                              = Map.newBuilder[String, Int]
+    def loop(e: Expression, b: VExpr): Unit =
+      (e, b) match
+        case (p: ParenthesizedExpression, _) =>
+          loop(p.child, b)
+        case (a: And, AndExpr(l, r)) =>
+          loop(a.left, l)
+          loop(a.right, r)
+        case (o: Or, OrExpr(l, r)) =>
+          loop(o.left, l)
+          loop(o.right, r)
+        case _ =>
+          CardinalityEstimator.literalCount(e).foreach(n => counts += b.sig -> n)
+    loop(e, bound)
+    counts.result()
 
   /** An aggregation, planned as `Planner.planAggregation` plans it */
   private def aggregation(
