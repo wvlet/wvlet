@@ -47,6 +47,9 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   // Named relations of WITH clauses
   private val cteDefs = mutable.HashMap.empty[String, AliasedRelation]
+  // CTEs referenced more than once are computed once and scanned from memory afterwards
+  private val cteRefCounts = mutable.HashMap.empty[String, Int]
+  private val cteTables    = mutable.HashMap.empty[String, (AliasedRelation, MemTable)]
 
   /** Window function calls collected while binding a projection */
   private var windowCollector: Option[WindowCollector] = None
@@ -62,6 +65,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         planRelation(q.body)
       case w: WithQuery =>
         w.queryDefs.foreach(d => cteDefs(d.alias.leafName.toLowerCase) = d)
+        countCTERefs(w)
         planRelation(w.queryBody)
       case b: BracedRelation =>
         planRelation(b.child)
@@ -319,8 +323,34 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     Seq(planRelation(l).schema, planRelation(r).schema)
   )
 
+  /** Count the references to each CTE of `w`, including those in subqueries */
+  private def countCTERefs(w: WithQuery): Unit =
+    val names = w.queryDefs.map(_.alias.leafName.toLowerCase).toSet
+    names.foreach(n => cteRefCounts(n) = 0)
+    def count(n: String): Unit =
+      if names.contains(n) then
+        cteRefCounts(n) = cteRefCounts(n) + 1
+    w.traverse {
+      case t: TableRef =>
+        count(t.name.leafName.toLowerCase)
+      case t: TableScan =>
+        count(t.name.name.toLowerCase)
+    }
+
   private def planTable(name: String, fullName: String): Operator =
-    cteDefs.get(name.toLowerCase) match
+    val key = name.toLowerCase
+    cteDefs.get(key) match
+      case Some(d) if cteRefCounts.getOrElse(key, 0) > 1 =>
+        val table =
+          cteTables.get(key) match
+            case Some((defn, t)) if defn eq d =>
+              t
+            case _ =>
+              val op = Parallelizer(ColumnPruner(planAliased(d)), TaskRunner.default)
+              val t  = MemTable(name, op.schema, op.drain())
+              cteTables(key) = (d, t)
+              t
+        ScanOp(table, table.schema, None, None)
       case Some(d) =>
         planAliased(d)
       case None =>
