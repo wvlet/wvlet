@@ -662,18 +662,21 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           i.leafName == "*"
         case _ =>
           false
+    // Every visible column, optionally only those of a qualifier (t.*)
+    def expandStar(qualifier: Option[String]): Unit =
+      val visibleFields = binder.scope.schema.fields
+      visibleFields
+        .indices
+        .foreach { i =>
+          val f = visibleFields(i)
+          if !isHidden(f) && qualifier.forall(q => f.qualifiers.exists(_.equalsIgnoreCase(q))) then
+            exprs += ColRef(binder.scope.offset + i, f.ptype, f.name)
+            fields += f
+        }
     items.foreach {
       // `select *` of a parsed SQL subquery
       case s: SingleColumn if isStar(s.expr) =>
-        val visibleFields = binder.scope.schema.fields
-        visibleFields
-          .indices
-          .foreach { i =>
-            val f = visibleFields(i)
-            if !isHidden(f) then
-              exprs += ColRef(binder.scope.offset + i, f.ptype, f.name)
-              fields += f
-          }
+        expandStar(None)
       case a: AllColumns =>
         val qualifier =
           a.nameExpr match
@@ -683,16 +686,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
               }
             case _ =>
               None
-        val visibleFields = binder.scope.schema.fields
-        visibleFields
-          .indices
-          .foreach { i =>
-            val f = visibleFields(i)
-            if !isHidden(f) && qualifier.forall(q => f.qualifiers.exists(_.equalsIgnoreCase(q)))
-            then
-              exprs += ColRef(binder.scope.offset + i, f.ptype, f.name)
-              fields += f
-          }
+        expandStar(qualifier)
       case attr =>
         val e = binder.bind(attr)
         exprs += e

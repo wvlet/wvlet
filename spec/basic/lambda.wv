@@ -15,3 +15,7 @@ select
   ) as arr
 test _.rows should be [[[16, 17, 18]]]
 ;
+
+-- method-call form: the receiver is the list
+select [4, 5, 6].list_transform(x -> x * 2) as arr
+test _.rows should be [[[8, 10, 12]]]

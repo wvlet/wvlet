@@ -1179,9 +1179,14 @@ class Binder(
     * parameters, typed by the elements of a constant list (Any otherwise), and evaluated over all
     * elements of a list at once (sequentially for reduce)
     */
-  private def bindLambdaCall(name: String, f: FunctionApply): VExpr =
+  private def bindLambdaCall(
+      name: String,
+      f: FunctionApply,
+      receiverArgs: List[Expression]
+  ): VExpr =
     val (listArg, lambda) =
-      f.args.map(_.value) match
+      // The list may be the receiver of a method call: xs.list_transform(x -> x + 1)
+      (receiverArgs ++ f.args.map(_.value)) match
         case List(l, lam: LambdaExpr) =>
           (l, lam)
         case _ =>
@@ -1360,7 +1365,7 @@ class Binder(
       case "list_transform" | "array_transform" | "list_apply" | "array_apply" | "apply" |
           "list_filter" | "array_filter" | "filter" | "list_reduce" | "array_reduce" | "reduce"
           if f.args.exists(_.value.isInstanceOf[LambdaExpr]) =>
-        bindLambdaCall(name, f)
+        bindLambdaCall(name, f, receiverArgs)
       case "date_add" if args.size == 2 =>
         args(1) match
           case Const(iv: Interval, _) =>

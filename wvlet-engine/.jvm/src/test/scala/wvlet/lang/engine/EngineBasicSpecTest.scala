@@ -37,7 +37,7 @@ class EngineBasicSpecTest extends UniTest:
   for unit <- conformance.units do
     test(unit.sourceFile.fileName) {
       if knownGaps.contains(unit.sourceFile.fileName) then
-        ignore("Not supported by the engine yet")
+        ignore("Depends on DuckDB-specific catalogs, functions, or types")
       conformance
         .run(unit)
         .foreach { r =>
