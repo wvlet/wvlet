@@ -159,6 +159,34 @@ class EngineRuntimePlanTest extends UniTest:
     PlanValidator.violations(p) shouldBe Nil
   }
 
+  test("bind a count of groups as a global count over the aggregation") {
+    val query = "from lineitem group by l_returnflag, l_linestatus count"
+    val p     = runtimePlan(query)
+    debug(p.explain)
+    p match
+      case RuntimePlan.Aggregate(
+            RuntimePlan.Project(g: RuntimePlan.Aggregate, _, _),
+            keys,
+            calls,
+            _
+          ) =>
+        // A global count over the groups
+        keys.isEmpty shouldBe true
+        calls.map(_.name) shouldBe IndexedSeq("count_star")
+        g.keys.size shouldBe 2
+      case other =>
+        fail(s"Unexpected plan:\n${other.explain}")
+    PlanValidator.violations(p) shouldBe Nil
+    def rows(e: WvletEngine): Seq[Seq[Any]] =
+      withQuery(query) { q =>
+        val r = e.execute(q)
+        r.batches.flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).toSeq))
+      }
+    val expected = rows(legacy)
+    expected shouldBe Seq(Seq(4L))
+    rows(engine) shouldBe expected
+  }
+
   test("keep grouping sets as a legacy node over the bound input") {
     val p = runtimePlan("""from lineitem
         |group by rollup(l_returnflag, l_linestatus)

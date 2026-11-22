@@ -16,6 +16,7 @@ package wvlet.lang.engine.runtime
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.engine.exec.AggCall
+import wvlet.lang.engine.exec.Aggregates
 import wvlet.lang.engine.exec.FilterOp
 import wvlet.lang.engine.exec.HashAggOp
 import wvlet.lang.engine.exec.ProjectOp
@@ -140,8 +141,7 @@ class RuntimeBinder(planner: Planner):
       case a: Agg =>
         aggregation(a.child, Some(a.selectItems), defaultItems = false)
       case c: Count if planner.isAggregationInput(c.child) =>
-        // Count the groups
-        legacy(c)
+        countGroups(c)
       case c: Count =>
         aggregation(c.child, Some(c.selectItems), defaultItems = false)
       case p: Project if isPlainProjection(p) =>
@@ -268,6 +268,18 @@ class RuntimeBinder(planner: Planner):
       defaultItems: Boolean
   ): RuntimePlan =
     planner.aggregation(input, items, defaultItems, r => lowered(bind(r)), plans).plan
+
+  /** Count the groups of an aggregation input: a global count over the grouping */
+  private def countGroups(c: Count): RuntimePlan =
+    val groups = aggregation(c.child, None, defaultItems = false)
+    val t      = Aggregates.resultType("count_star", Nil)
+    val name   = c.selectItems.headOption.map(planner.nameOf).getOrElse("count")
+    RuntimePlan.Aggregate(
+      groups,
+      IndexedSeq.empty,
+      IndexedSeq(AggregateCall("count_star", Nil, distinct = false, filter = None, t)),
+      IndexedSeq(newColumn(Field(name, t)))
+    )
 
   /** A runtime plan with its operators, from which join planning reads schemas and estimates */
   private case class Lowered(plan: RuntimePlan, op: Operator)
