@@ -235,7 +235,8 @@ class RuntimeBinder(planner: Planner):
           val left = Filter(j.left, pushed.reduce((a, b) => And(a, b, NoSpan)), f.span)
           plans.conjuncts(lowered(bind(j.copy(left = left))), rest).plan
       case child =>
-        val conds = planner.conjuncts(f.filterExpr)
+        // Common conjuncts of `or`s are factored by the Normalize pass
+        val conds = planner.splitConjuncts(f.filterExpr)
         if conds.exists(planner.hasSubquery) then
           // Subqueries become joins over the planned input
           legacy(f)
@@ -271,7 +272,13 @@ class RuntimeBinder(planner: Planner):
   /** A runtime plan with its operators, from which join planning reads schemas and estimates */
   private case class Lowered(plan: RuntimePlan, op: Operator)
 
-  private def lowered(p: RuntimePlan): Lowered = Lowered(p, Lowering(p))
+  /**
+    * Join planning reads schemas and estimates from the operators, so inputs are optimized first,
+    * and join order sees their rewritten conditions
+    */
+  private def lowered(p: RuntimePlan): Lowered =
+    val o = planner.optimizeRuntime(p)
+    Lowered(o, Lowering(o))
 
   /**
     * Builds runtime-plan joins, aggregations, filters, and projections, and legacy nodes for what

@@ -26,7 +26,9 @@ import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.runtime.RuntimeBinder
 import wvlet.lang.engine.runtime.Lowering
+import wvlet.lang.engine.runtime.Optimizer
 import wvlet.lang.engine.runtime.PlanValidator
+import wvlet.lang.engine.runtime.RuntimePlan
 import wvlet.lang.engine.vector.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -165,6 +167,9 @@ class Planner(
   /** Binds relations to the engine's runtime plan (with the runtime planner) */
   private lazy val runtimeBinder = RuntimeBinder(this)
 
+  /** The logical passes over runtime plans */
+  private lazy val runtimeOptimizer = Optimizer.default(options)
+
   /**
     * Plan a relation into operators: through the runtime plan (`wvlet.engine.planner=runtime`),
     * whose relations it doesn't cover yet are planned by [[planLegacy]], or directly by
@@ -173,17 +178,24 @@ class Planner(
   private[engine] def planRelation(r: Relation): Operator =
     options.planner match
       case PlannerMode.Runtime =>
-        val p = runtimeBinder.bind(r)
-        if options.validatePlans then
-          PlanValidator.validate(p)
-        Lowering(p)
+        Lowering(runtimePlan(r))
       case PlannerMode.Legacy =>
         planLegacy(r)
 
   /**
-    * The runtime plan of a relation, whose relations the runtime binder doesn't cover are planned
+    * The optimized runtime plan of a relation, whose relations the runtime binder doesn't cover are
+    * planned
     */
-  def runtimePlan(r: Relation): wvlet.lang.engine.runtime.RuntimePlan = runtimeBinder.bind(r)
+  def runtimePlan(r: Relation): RuntimePlan = optimizeRuntime(runtimeBinder.bind(r))
+
+  /** Run the logical passes over a bound runtime plan (and validate it, with `validatePlans`) */
+  private[engine] def optimizeRuntime(p: RuntimePlan): RuntimePlan =
+    if options.validatePlans then
+      PlanValidator.validate(p)
+    runtimeOptimizer.run(p)
+
+  /** How many times each logical rule fired in the runtime plans of this planner, by rule name */
+  def firedRules: Map[String, Int] = runtimeOptimizer.firedRules
 
   /** Register the CTEs of a WITH clause, which table references resolve by name */
   private[engine] def registerCTEs(w: WithQuery): Unit =
@@ -1628,11 +1640,16 @@ class Planner(
   // --- filters and subqueries -----------------------------------------------------------
 
   private[engine] def conjuncts(e: Expression): List[Expression] =
-    val split = splitAnd(Binder.expandTemplates(e))
+    val split = splitConjuncts(e)
     if enabled(Optimization.FactorOr) then
       split.flatMap(factorOr)
     else
       split
+
+  /** The conjuncts of a condition, without factoring common conjuncts out of `or`s */
+  private[engine] def splitConjuncts(e: Expression): List[Expression] = splitAnd(
+    Binder.expandTemplates(e)
+  )
 
   private def splitOr(e: Expression): List[Expression] =
     e match

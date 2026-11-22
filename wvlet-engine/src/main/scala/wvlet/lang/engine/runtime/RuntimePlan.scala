@@ -214,6 +214,32 @@ enum RuntimePlan:
       case Aggregate(child, _, _, _) =>
         Seq(child)
 
+  /**
+    * The node over new children, in the order of [[children]]. Returns this node when every child
+    * is the same instance
+    */
+  def withChildren(cs: Seq[RuntimePlan]): RuntimePlan =
+    val old = children
+    require(cs.size == old.size, s"${cs.size} children for ${old.size}")
+    if cs.lazyZip(old).forall(_ eq _) then
+      this
+    else
+      this match
+        case Scan(_, _) | Values(_, _) | Legacy(_, _) =>
+          this
+        case f: Filter =>
+          f.copy(child = cs(0))
+        case p: Project =>
+          p.copy(child = cs(0))
+        case s: Sort =>
+          s.copy(child = cs(0))
+        case l: Limit =>
+          l.copy(child = cs(0))
+        case j: Join =>
+          j.copy(left = cs(0), right = cs(1))
+        case a: Aggregate =>
+          a.copy(child = cs(0))
+
   /** The output as an operator schema */
   def schema: Schema = Schema(output.map(_.toField))
 
