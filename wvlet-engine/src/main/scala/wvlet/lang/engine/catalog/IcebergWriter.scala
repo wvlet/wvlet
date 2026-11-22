@@ -21,6 +21,7 @@ import wvlet.uni.parquet.ParquetDatasetWriteOptions
 import wvlet.uni.parquet.ParquetException
 import wvlet.uni.parquet.ParquetTableFormat
 import wvlet.uni.parquet.ParquetWriteMode
+import wvlet.uni.parquet.ParquetWriteOptions
 
 /**
   * Writes engine batches to a local Apache Iceberg table through uni's dataset writer: Parquet data
@@ -102,21 +103,31 @@ object IcebergWriter:
     DataFileWriter.writeOptionsOf(Map.empty)
   )
 
-  private def write(
+  /**
+    * Commit `batches` to the Iceberg table at `path` with uni's `mode`. With `replacedFiles`
+    * (Overwrite only), the commit removes just those data files, as [[ParquetSource.dataFiles]]
+    * lists them; `properties` are table properties the commit sets
+    */
+  private[engine] def write(
       path: String,
       schema: Schema,
       batches: Seq[Batch],
       mode: ParquetWriteMode,
-      partitionBy: Seq[String],
-      writeOptions: wvlet.uni.parquet.ParquetWriteOptions
+      partitionBy: Seq[String] = Nil,
+      writeOptions: wvlet.uni.parquet.ParquetWriteOptions = ParquetWriteOptions.default,
+      replacedFiles: Seq[String] = Nil,
+      properties: Map[String, String] = Map.empty
   ): Unit =
     val pschema = DataFileWriter.parquetSchemaOf(schema)
-    val options = ParquetDatasetWriteOptions
+    var options = ParquetDatasetWriteOptions
       .default
       .withTableFormat(ParquetTableFormat.Iceberg)
       .withMode(mode)
       .withPartitionBy(partitionBy*)
       .withWriteOptions(writeOptions)
+      .withTableProperties(properties)
+    if replacedFiles.nonEmpty then
+      options = options.withReplacedFiles(replacedFiles)
     try
       val writer = Parquet.newDatasetBatchWriter(path, pschema, options)
       try

@@ -46,7 +46,7 @@ Every write ends in one uni commit, which creates `v{N+1}.metadata.json` only if
 
 | Statement | Iceberg commit |
 |---|---|
-| `create table t` | a new table with an empty snapshot; NOT NULL columns become required fields |
+| `create table t` | a new table with an empty snapshot |
 | `create or replace table t` | an overwrite snapshot with the declared schema (history kept) |
 | `save to t` | an overwrite snapshot; a result with other columns commits a new schema |
 | `append to t` | an append snapshot (rows cast to the table types, as today) |
@@ -56,19 +56,19 @@ Every write ends in one uni commit, which creates `v{N+1}.metadata.json` only if
 | `drop table t` | the table folder is deleted (metadata first) |
 | `alter table` / `reshape` | a metadata-only schema change (below) |
 
-- Defaults and unique keys have no Iceberg v2 field, so they go into table properties (`wvlet.column-defaults`, `wvlet.unique-keys`, JSON) and are read back at session start; constraints are checked on every write as today.
+- Defaults, NOT NULL, and unique keys go into one table property (`wvlet.table-spec`, JSON), read back when a session first writes the table; constraints are checked on every write as today. Columns stay optional in Iceberg, so other engines see plain columns and alters never fight required fields.
 - Writes to external tables stay read-only errors; `drop table` on one only unregisters it.
 
 ### `alter table`
 
 Metadata-only Iceberg schema changes, on managed and in-memory tables alike:
 
-- `add column c t` / `reshape { add c: t }`: an optional column, null in existing rows. A column with a default or `not null` is rejected (Iceberg v2 can't fill existing rows).
+- `add column c t` / `reshape { add c: t }`: an optional column, null in existing rows. A column with a default or `not null` rewrites the table with the column filled (Iceberg v2 can't fill existing rows from metadata).
 - `drop column c` / `reshape { exclude c }`: refused for a partition column.
 - `rename column a to b` / `reshape { rename a as b }`: keeps the field ID, so old files read under the new name.
-- `alter column c type t`: widening only (int → long, float → double, decimal precision up). Anything else is an error pointing to `save to t` with a cast.
-- `alter column c drop not null`; `set` / `drop default` update the default property.
-- `set not null` and `rename table` are errors for now (`set not null` needs a full scan; `rename table` needs uni to move the table location).
+- `alter column c type t` / `reshape { cast c as t }`: widening (int → long, decimal precision up) is metadata-only; other casts rewrite the table in one snapshot.
+- `alter column c drop not null`, `set not null` (checked against the rows), and `set` / `drop default` update the spec property.
+- `rename table` works on in-memory tables; on a warehouse table it is an error for now (uni would need to move the table location).
 - `alter` on an external table is an error.
 
 ### uni changes (separate uni PR, needed first)
@@ -84,8 +84,8 @@ Metadata-only Iceberg schema changes, on managed and in-memory tables alike:
 ### Code layout and phasing
 
 1. uni PR (above), then a uni release and a `UNI_VERSION` bump.
-2. This PR: design note, ADR, `catalog/Warehouse` (listing, schema folders, managed vs external registration, name-collision check), the `warehouse` connector property, and `alter table` / `reshape` on in-memory tables. No change to `TableWriter`, `DataFileWriter`, or `IcebergWriter`.
-3. After the engine Iceberg PR merges: `TableWriter` gets a table store with two implementations, in-memory (today's `MemTable`s) and warehouse (commits through `IcebergWriter`), so each statement above has one code path. Copy-on-write `delete` / keyed append read the table file by file (`withFiles`), pruning files by min/max statistics where the condition allows.
+2. The engine Iceberg PR (#2224) merged first; this PR builds on its `IcebergWriter.write`.
+3. This PR: `catalog/Warehouse` (listing, schema folders, commits) and `ManagedTable`, the `warehouse` connector property, and `TableWriter` dispatching each statement to an in-memory table or a warehouse commit. Copy-on-write `delete` / keyed append read the table file by file (`withFiles`) through an overlay catalog. `alter table` / `reshape` on both kinds of table. Pruning files by min/max statistics during copy-on-write is a follow-up.
 4. Tests: JVM round trips that close the session, open a new one, and read the tables back, plus a DuckDB `iceberg_scan` read of each write; cross-platform cases in `PlanExecutorWvletEngineTest` (JVM, Node.js, Native).
 5. Docs: a "Persistent tables" section in `usage/wvlet-engine.md`, and the `warehouse` property in `for-ai-agents.md`.
 

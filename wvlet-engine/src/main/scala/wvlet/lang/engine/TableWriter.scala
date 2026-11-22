@@ -22,10 +22,15 @@ import wvlet.lang.engine.catalog.DataFileFormat
 import wvlet.lang.engine.catalog.DataFileWriter
 import wvlet.lang.engine.catalog.IcebergWriter
 import wvlet.lang.engine.catalog.JsonSource
+import wvlet.lang.engine.catalog.ManagedTable
 import wvlet.lang.engine.catalog.MemTable
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.catalog.ScanSpec
 import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.engine.catalog.Warehouse
+import wvlet.uni.json.JSON
+import wvlet.uni.json.JSON.*
+import wvlet.uni.parquet.IcebergTableChange
 import wvlet.lang.engine.vector.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -38,17 +43,42 @@ import scala.collection.mutable
   * `append to` (plain and keyed), and `delete`. Tables backed by files are read-only: writes to
   * them fail instead of silently replacing the files' rows with an in-memory copy
   */
-class TableWriter(engine: WvletEngine) extends LogSupport:
+class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) extends LogSupport:
   import TableWriter.*
 
   private def catalog = engine.catalog
 
-  // Declared shapes (defaults and constraints) of tables made by `create table`, by lower-case name
-  private val specs = mutable.HashMap.empty[String, TableSpec]
+  // Declared shapes (defaults and constraints) of tables made by `create table`, by lower-case name.
+  // A warehouse table keeps its shape in a table property, read when first needed
+  private val specs = mutable.HashMap.empty[String, Option[TableSpec]]
 
   private def specOf(name: String): Option[TableSpec] = specs.synchronized(
-    specs.get(name.toLowerCase)
+    specs.getOrElseUpdate(
+      name.toLowerCase,
+      catalog.find(name) match
+        case Some(m: ManagedTable) =>
+          m.properties.get(SpecProperty).filter(_.nonEmpty).map(specFromJson(_, m.schema))
+        case _ =>
+          None
+    )
   )
+
+  private def setSpec(name: String, spec: Option[TableSpec]): Unit = specs.synchronized(
+    specs(name.toLowerCase) = spec
+  )
+
+  // The property that stores a warehouse table's declared shape; empty when it has none
+  private def specProperties(spec: Option[TableSpec]): Map[String, String] = Map(
+    SpecProperty -> spec.map(specToJson).getOrElse("")
+  )
+
+  /**
+    * Where a new table goes: the warehouse when there is one, so it outlives the session, or an
+    * in-memory table
+    */
+  private def persistent: Boolean = warehouse.isDefined
+
+  private def wh: Warehouse = warehouse.get
 
   private def defaultsOf(name: String, schema: Schema): IndexedSeq[Any] =
     specOf(name) match
@@ -67,7 +97,7 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
       spec: TableSpec,
       ifNotExists: Boolean = false,
       replace: Boolean = false
-  ): Option[MemTable] =
+  ): Option[TableSource] =
     catalog.find(name) match
       case Some(_) if ifNotExists =>
         None
@@ -75,8 +105,15 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
         throw StatusCode.TABLE_ALREADY_EXISTS.newException(s"Table ${name} already exists")
       case existing =>
         existing.foreach(t => writable(t, "replace"))
-        specs.synchronized(specs(name.toLowerCase) = spec)
-        Some(register(MemTable(name, spec.schema, Nil)))
+        setSpec(name, Some(spec))
+        if persistent then
+          Some(
+            register(
+              wh.create(name, spec.schema, specProperties(Some(spec)), replace = existing.isDefined)
+            )
+          )
+        else
+          Some(register(MemTable(name, spec.schema, Nil)))
 
   /** `drop table <name>`: remove the table; returns false when it doesn't exist and `ifExists` */
   def dropTable(name: String, ifExists: Boolean = false): Boolean =
@@ -86,15 +123,23 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
       case None =>
         throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${name}")
       case Some(t) =>
-        // Dropping a table registered from files unregisters it; the files are left as they are
+        // A warehouse table is deleted; dropping a table registered from files unregisters it, and
+        // the files are left as they are
+        t match
+          case _: ManagedTable =>
+            wh.drop(name)
+          case _ =>
         catalog.drop(name)
         specs.synchronized(specs.remove(name.toLowerCase))
         true
 
   /** `truncate <name>`: remove every row, keeping the table's columns and constraints */
-  def truncate(name: String): MemTable =
-    val table = writable(catalog.get(name), "truncate")
-    register(MemTable(table.name, table.schema, Nil))
+  def truncate(name: String): TableSource =
+    writable(catalog.get(name), "truncate") match
+      case m: ManagedTable =>
+        register(wh.replace(name, unqualified(m.schema), Nil))
+      case table =>
+        register(MemTable(table.name, table.schema, Nil))
 
   /**
     * `save to '<path>' [with options]`: write the query result to a Parquet, CSV, TSV, or JSON
@@ -180,11 +225,24 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
       case _ =>
         replaceWith(name, query)
 
-  private def replaceWith(name: String, query: Relation)(using Context): MemTable =
+  private def replaceWith(name: String, query: Relation)(using Context): TableSource =
+    val existing = catalog.find(name)
+    // Only the warehouse's own tables are replaced there; a table registered from files stays
+    // read-only rather than gaining a warehouse table of the same name
+    existing.filter(_ => persistent).foreach(t => writable(t, "save to"))
     val result = engine.execute(query)
     // A replaced table takes the query's shape, without the declared defaults and constraints
-    specs.synchronized(specs.remove(name.toLowerCase))
-    register(MemTable(name, unqualified(result.schema), result.batches))
+    val hadSpec = specOf(name).isDefined
+    setSpec(name, None)
+    if persistent then
+      val props =
+        if hadSpec then
+          specProperties(None)
+        else
+          Map.empty[String, String]
+      register(wh.replace(name, unqualified(result.schema), result.batches, props))
+    else
+      register(MemTable(name, unqualified(result.schema), result.batches))
 
   /**
     * `append to <name> [(columns)] [on keys]`: insert the query rows into the table, creating the
@@ -198,69 +256,406 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
     */
   def appendTo(name: String, query: Relation, columns: Seq[String] = Nil, keys: Seq[String] = Nil)(
       using Context
-  ): MemTable =
+  ): TableSource =
     val result = engine.execute(query)
     catalog.find(name) match
+      case None if persistent =>
+        register(wh.replace(name, unqualified(result.schema), result.batches))
       case None =>
         register(MemTable(name, unqualified(result.schema), result.batches))
       case Some(target) =>
-        val table    = writable(target, "append to")
-        val schema   = table.schema
-        val defaults = defaultsOf(name, schema)
-        if keys.isEmpty then
-          val sourceOf = positionalSources(name, schema, result.schema, columns)
-          val added    = result
-            .batches
-            .map(b => castBatch(b, result.schema, schema, sourceOf, defaults))
-          val batches = batchesOf(table) ++ added
-          // Existing rows were checked when they were written: NOT NULL needs only the new ones
-          checkConstraints(name, schema, batches, notNullOf = added)
-          register(MemTable(table.name, schema, batches))
-        else
-          val batches = Seq(
-            toBatch(schema, upsert(name, schema, table, result, columns, keys, defaults))
-          )
-          checkConstraints(name, schema, batches, notNullOf = batches)
-          register(MemTable(table.name, schema, batches))
+        writable(target, "append to") match
+          case m: ManagedTable =>
+            appendToWarehouse(name, m, result, columns, keys)
+          case table =>
+            appendToMemory(name, table, result, columns, keys)
+
+  private def appendToMemory(
+      name: String,
+      table: TableSource,
+      result: EngineResult,
+      columns: Seq[String],
+      keys: Seq[String]
+  ): TableSource =
+    val schema   = table.schema
+    val defaults = defaultsOf(name, schema)
+    if keys.isEmpty then
+      val sourceOf = positionalSources(name, schema, result.schema, columns)
+      val added   = result.batches.map(b => castBatch(b, result.schema, schema, sourceOf, defaults))
+      val batches = batchesOf(table) ++ added
+      // Existing rows were checked when they were written: NOT NULL needs only the new ones
+      checkConstraints(name, schema, batches, notNullOf = added)
+      register(MemTable(table.name, schema, batches))
+    else
+      val batches = Seq(
+        toBatch(schema, upsert(name, schema, table, result, columns, keys, defaults))
+      )
+      checkConstraints(name, schema, batches, notNullOf = batches)
+      register(MemTable(table.name, schema, batches))
 
   /**
     * `delete`: remove the rows of the table that satisfy the filters of `input` (all rows when it
     * has none). `input` is the delete's input relation: filters over a single table scan
     */
-  def delete(name: String, input: Relation)(using Context): MemTable =
+  def delete(name: String, input: Relation)(using Context): TableSource =
     val table         = writable(catalog.get(name), "delete")
     val (scan, conds) = deleteInput(input)
-    val kept          =
-      conds match
-        case Nil =>
-          Nil
-        case _ =>
-          val cond = conds.reduce((a, b) => And(a, b, NoSpan))
-          // Keep the rows whose condition is not TRUE: false and NULL rows survive, as in SQL
-          val keep = Not(
-            FunctionApply(
-              UnquotedIdentifier("coalesce", NoSpan),
-              List(
-                FunctionArg(None, cond, span = NoSpan),
-                FunctionArg(None, FalseLiteral(NoSpan), span = NoSpan)
-              ),
-              None,
-              span = NoSpan
-            ),
-            NoSpan
-          )
-          engine.execute(Filter(scan, keep, NoSpan)).batches
-    register(MemTable(table.name, table.schema, kept))
+    table match
+      case m: ManagedTable if conds.isEmpty =>
+        register(wh.replace(name, unqualified(m.schema), Nil))
+      case m: ManagedTable =>
+        deleteFromWarehouse(name, m, scan, conds.reduce((a, b) => And(a, b, NoSpan)))
+      case _ =>
+        val kept =
+          conds match
+            case Nil =>
+              Nil
+            case _ =>
+              val cond = conds.reduce((a, b) => And(a, b, NoSpan))
+              engine.execute(Filter(scan, keepRows(cond), NoSpan)).batches
+        register(MemTable(table.name, table.schema, kept))
 
-  private def register(t: MemTable): MemTable =
+  /**
+    * `alter table` / `reshape`: apply the operations in order. On a warehouse table, operations
+    * Iceberg makes without rewriting data (adding a nullable column without a default, dropping,
+    * renaming, widening a type, dropping NOT NULL, defaults) commit metadata only; others (a new
+    * column with a default or NOT NULL, a narrowing type change) rewrite the table in one snapshot
+    */
+  def alterTable(name: String, ops: Seq[AlterOp]): TableSource =
+    val table = writable(catalog.get(name), "alter")
+    ops.collectFirst { case AlterOp.RenameTable(to) =>
+      to
+    } match
+      case Some(to) =>
+        if ops.size > 1 then
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException("Renaming a table can't be combined with other changes")
+        renameTable(name, table, to)
+      case None =>
+        val before = unqualified(table.schema)
+        val spec0  = specOf(name)
+        // The new schema, spec, and how to compute each new column from the old row
+        var columns: IndexedSeq[AlteredColumn] = before
+          .fields
+          .zipWithIndex
+          .map((f, i) =>
+            AlteredColumn(
+              f.name,
+              f.ptype,
+              Some(i),
+              spec0.map(_.columns(i).default).orNull,
+              spec0.exists(_.columns(i).notNull)
+            )
+          )
+        var uniqueKeys = spec0.map(_.uniqueKeys).getOrElse(Nil)
+        // Whether the warehouse table needs its rows rewritten
+        var rewrite                 = false
+        def find(c: String): Int    = columns.indexWhere(_.name.equalsIgnoreCase(c))
+        def require(c: String): Int =
+          val i = find(c)
+          if i < 0 then
+            throw StatusCode.COLUMN_NOT_FOUND.newException(s"Column ${c} is not found in ${name}")
+          i
+        val changes = List.newBuilder[IcebergTableChange]
+        ops.foreach {
+          case AlterOp.AddColumn(c, ifNotExists) =>
+            if find(c.name) >= 0 then
+              if !ifNotExists then
+                throw StatusCode
+                  .INVALID_ARGUMENT
+                  .newException(s"Column ${c.name} already exists in ${name}")
+            else
+              columns :+= AlteredColumn(c.name, c.ptype, None, c.default, c.notNull)
+              if c.default != null || c.notNull then
+                rewrite = true
+              else
+                changes += IcebergTableChange.AddColumn(Warehouse.columnOf(Field(c.name, c.ptype)))
+          case AlterOp.DropColumn(c, ifExists) =>
+            val i = find(c)
+            if i < 0 then
+              if !ifExists then
+                require(c)
+            else
+              if columns.size == 1 then
+                throw StatusCode
+                  .INVALID_ARGUMENT
+                  .newException(s"Cannot drop ${c}, the only column of ${name}")
+              if uniqueKeys.exists(_.exists(_.equalsIgnoreCase(c))) then
+                throw StatusCode
+                  .INVALID_ARGUMENT
+                  .newException(s"Cannot drop ${c}: it is in a primary key or unique constraint")
+              columns = columns.patch(i, Nil, 1)
+              changes += IcebergTableChange.DropColumn(c)
+          case AlterOp.RenameColumn(from, to, ifExists) =>
+            val i = find(from)
+            if i < 0 then
+              if !ifExists then
+                require(from)
+            else
+              if find(to) >= 0 && !to.equalsIgnoreCase(from) then
+                throw StatusCode
+                  .INVALID_ARGUMENT
+                  .newException(s"Column ${to} already exists in ${name}")
+              val old = columns(i).name
+              columns = columns.updated(i, columns(i).copy(name = to))
+              uniqueKeys = uniqueKeys.map(
+                _.map(k =>
+                  if k.equalsIgnoreCase(old) then
+                    to
+                  else
+                    k
+                )
+              )
+              changes += IcebergTableChange.RenameColumn(old, to)
+          case AlterOp.SetType(c, ptype) =>
+            val i    = require(c)
+            val from = columns(i).ptype
+            if from != ptype then
+              columns = columns.updated(i, columns(i).copy(ptype = ptype))
+              if canWiden(from, ptype) then
+                changes +=
+                  IcebergTableChange.WidenColumn(
+                    columns(i).name,
+                    Warehouse
+                      .columnOf(Field(columns(i).name, ptype))
+                      .tpe
+                      .asInstanceOf[wvlet.uni.parquet.ParquetType.Primitive]
+                  )
+              else
+                rewrite = true
+          case AlterOp.SetNotNull(c) =>
+            val i = require(c)
+            columns = columns.updated(i, columns(i).copy(notNull = true))
+          case AlterOp.DropNotNull(c) =>
+            val i = require(c)
+            columns = columns.updated(i, columns(i).copy(notNull = false))
+          case AlterOp.SetDefault(c, v) =>
+            val i = require(c)
+            columns = columns.updated(i, columns(i).copy(default = v))
+          case AlterOp.DropDefault(c) =>
+            val i = require(c)
+            columns = columns.updated(i, columns(i).copy(default = null))
+          case AlterOp.RenameTable(_) =>
+        }
+        val schema  = Schema(columns.map(c => Field(c.name, c.ptype)))
+        val hasSpec = columns.exists(c => c.notNull || c.default != null) || uniqueKeys.nonEmpty
+        val spec    =
+          Option.when(hasSpec)(
+            TableSpec(
+              columns.map(c => ColumnSpec(c.name, c.ptype, c.default, c.notNull)),
+              uniqueKeys
+            )
+          )
+        // The rows in the new shape, computed only when they are rewritten
+        def rows(): Seq[Batch] = batchesOf(table).map { b =>
+          val cols = columns.map { c =>
+            c.from match
+              case Some(i) if before(i).ptype == c.ptype =>
+                b.column(i)
+              case Some(i) =>
+                val out = VecBuilder(c.ptype, b.size)
+                var r   = 0
+                while r < b.size do
+                  out.add(ValueOps.cast(b.column(i).get(r), before(i).ptype, c.ptype))
+                  r += 1
+                out.result()
+              case None if c.default == null =>
+                Vec.nullVec(c.ptype, b.size)
+              case None =>
+                val out = VecBuilder(c.ptype, b.size)
+                var r   = 0
+                while r < b.size do
+                  out.add(c.default)
+                  r += 1
+                out.result()
+          }
+          Batch(cols.toArray, b.size)
+        }
+        setSpec(name, spec)
+        table match
+          case m: ManagedTable =>
+            if rewrite then
+              val batches = rows()
+              checkConstraints(name, schema, batches, notNullOf = batches)
+              register(wh.replace(name, schema, batches, specProperties(spec)))
+            else
+              if columns.exists(c =>
+                  c.notNull &&
+                    !spec0.exists(
+                      _.columns.exists(o => o.name.equalsIgnoreCase(c.name) && o.notNull)
+                    )
+                )
+              then
+                checkConstraints(name, schema, rows(), notNullOf = rows())
+              register(
+                wh.alter(
+                  name,
+                  changes.result() :+
+                    IcebergTableChange.SetProperty(SpecProperty, spec.map(specToJson).getOrElse(""))
+                )
+              )
+          case _ =>
+            val batches = rows()
+            checkConstraints(name, schema, batches, notNullOf = batches)
+            register(MemTable(table.name, schema, batches))
+    end match
+
+  end alterTable
+
+  private def renameTable(name: String, table: TableSource, to: String): TableSource =
+    table match
+      case _: ManagedTable =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"Renaming the warehouse table ${name} is not supported yet")
+      case _ =>
+        if catalog.find(to).isDefined then
+          throw StatusCode.TABLE_ALREADY_EXISTS.newException(s"Table ${to} already exists")
+        val spec = specOf(name)
+        catalog.drop(name)
+        specs.synchronized(specs.remove(name.toLowerCase))
+        setSpec(to, spec)
+        register(MemTable(to, table.schema, batchesOf(table)))
+
+  // The rows whose condition is TRUE
+  private def matching(cond: Expression): Expression = FunctionApply(
+    UnquotedIdentifier("coalesce", NoSpan),
+    List(
+      FunctionArg(None, cond, span = NoSpan),
+      FunctionArg(None, FalseLiteral(NoSpan), span = NoSpan)
+    ),
+    None,
+    span = NoSpan
+  )
+
+  // Keep the rows whose condition is not TRUE: false and NULL rows survive, as in SQL
+  private def keepRows(cond: Expression): Expression = Not(matching(cond), NoSpan)
+
+  /**
+    * A copy-on-write delete: only the data files holding deleted rows are rewritten (with their
+    * other rows), in one snapshot that removes them
+    */
+  private def deleteFromWarehouse(
+      name: String,
+      table: ManagedTable,
+      scan: Relation,
+      cond: Expression
+  )(using Context): TableSource =
+    val schema         = unqualified(table.schema)
+    val (parts, close) = wh.parts(name, schema)
+    try
+      val touched = parts.flatMap { part =>
+        val onPart = engine.withCatalog(catalog.overlay(part))
+        if onPart.execute(Filter(scan, matching(cond), NoSpan)).numRows == 0 then
+          None
+        else
+          Some(part.file.path -> onPart.execute(Filter(scan, keepRows(cond), NoSpan)).batches)
+      }
+      if touched.isEmpty then
+        table
+      else
+        register(
+          wh.replaceFiles(
+            name,
+            schema,
+            touched.map(_._1),
+            touched
+              .flatMap(_._2)
+              .map(b => castBatch(b, schema, schema, identityOf(schema), nulls(schema)))
+          )
+        )
+    finally
+      close()
+
+  end deleteFromWarehouse
+
+  private def identityOf(schema: Schema): Array[Int] = Array.tabulate(schema.size)(identity)
+
+  private def nulls(schema: Schema): IndexedSeq[Any] = IndexedSeq.fill(schema.size)(null)
+
+  /**
+    * `append to` a warehouse table: a plain append adds a snapshot; a keyed append rewrites only
+    * the data files with matching keys, and adds the other rows, in one snapshot
+    */
+  private def appendToWarehouse(
+      name: String,
+      table: ManagedTable,
+      result: EngineResult,
+      columns: Seq[String],
+      keys: Seq[String]
+  ): TableSource =
+    val schema   = unqualified(table.schema)
+    val defaults = defaultsOf(name, schema)
+    if keys.isEmpty then
+      val sourceOf = positionalSources(name, schema, result.schema, columns)
+      val added = result.batches.map(b => castBatch(b, result.schema, schema, sourceOf, defaults))
+      // Unique keys need the existing rows; NOT NULL only the new ones
+      val existing =
+        if specOf(name).exists(_.uniqueKeys.nonEmpty) then
+          batchesOf(table)
+        else
+          Nil
+      checkConstraints(name, schema, existing ++ added, notNullOf = added)
+      register(wh.append(name, schema, added))
+    else
+      val m              = mergeInput(name, schema, result, columns, keys, defaults)
+      val (parts, close) = wh.parts(name, schema)
+      try
+        val keyNames = m.keyIdx.map(schema(_).name)
+        val incoming = m.incoming.flatMap(r => m.keyOf(r).map(_ -> r))
+        val keySet   = incoming.map(_._1).toSet
+        val matched  = mutable.HashSet.empty[Seq[Any]]
+        // Files with a matching key are read in full and rewritten with the updates
+        val touched = parts.flatMap { part =>
+          val partKeys =
+            part
+              .scan(ScanSpec(columns = Some(keyNames)))
+              .flatMap(b =>
+                Iterator.range(0, b.size).map(i => keyNames.indices.map(k => b.column(k).get(i)))
+              )
+              .filter(keySet.contains)
+              .toSet
+          if partKeys.isEmpty then
+            None
+          else
+            matched ++= partKeys
+            val rows = mutable.ArrayBuffer.empty[Array[Any]]
+            batchesOf(part).foreach(b => Iterator.range(0, b.size).foreach(i => rows += b.row(i)))
+            Some(part.file.path -> applyUpdates(rows, m))
+        }
+        val inserted = m.incoming.filter(r => m.keyOf(r).forall(k => !matched.contains(k)))
+        val written  =
+          touched.map(t => toBatch(schema, t._2.toIndexedSeq)) :+ toBatch(schema, inserted)
+        val untouched =
+          if specOf(name).exists(_.uniqueKeys.nonEmpty) then
+            val replaced = touched.map(_._1).toSet
+            parts.filterNot(p => replaced.contains(p.file.path)).flatMap(batchesOf)
+          else
+            Nil
+        checkConstraints(name, schema, untouched ++ written, notNullOf = written)
+        if touched.isEmpty then
+          register(wh.append(name, schema, written))
+        else
+          register(wh.replaceFiles(name, schema, touched.map(_._1), written))
+      finally
+        close()
+      end try
+    end if
+
+  end appendToWarehouse
+
+  private def register[T <: TableSource](t: T): T =
     catalog.register(t)
     t
 
   private def unqualified(schema: Schema): Schema = schema.mapFields(_.noQualifier)
 
-  private def writable(source: TableSource, op: String): MemTable =
+  private def writable(source: TableSource, op: String): TableSource =
     source match
       case m: MemTable =>
+        m
+      case m: ManagedTable =>
         m
       case other =>
         throw StatusCode
@@ -343,15 +738,25 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
 
   end castBatch
 
-  private def upsert(
+  // The rows of a keyed append, cast to the table schema, and how they match existing rows
+  private case class MergeInput(
+      sourceOf: Array[Int],
+      keyIdx: Seq[Int],
+      incoming: IndexedSeq[Array[Any]]
+  ):
+    // NULL never equals NULL in a MERGE condition, so rows with a NULL key never match
+    def keyOf(r: Array[Any]): Option[Seq[Any]] =
+      val k = keyIdx.map(r(_))
+      Option.when(!k.contains(null))(k)
+
+  private def mergeInput(
       name: String,
       schema: Schema,
-      table: TableSource,
       result: EngineResult,
       columns: Seq[String],
       keys: Seq[String],
       defaults: IndexedSeq[Any]
-  ): IndexedSeq[Array[Any]] =
+  ): MergeInput =
     // Query columns are matched to table columns by name, as MERGE reads `src.<column>`
     val sourceNames =
       if columns.nonEmpty then
@@ -374,25 +779,11 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
         throw StatusCode.SYNTAX_ERROR.newException(s"Key column(s) ${k} not found in table ${name}")
       i
     }
-    // NULL never equals NULL in a MERGE condition, so rows with a NULL key never match
-    def keyOf(r: Array[Any]): Option[Seq[Any]] =
-      val k = keyIdx.map(r(_))
-      Option.when(!k.contains(null))(k)
-
-    val rows = mutable.ArrayBuffer.empty[Array[Any]]
-    batchesOf(table).foreach(b => Iterator.range(0, b.size).foreach(i => rows += b.row(i)))
-    // Positions of the existing rows by key; rows inserted by this append are not matched again
-    val positions = mutable.HashMap.empty[Seq[Any], mutable.ArrayBuffer[Int]]
-    rows
-      .indices
-      .foreach(i =>
-        keyOf(rows(i)).foreach(k => positions.getOrElseUpdate(k, mutable.ArrayBuffer.empty) += i)
-      )
     val fromTypes = result.schema.types
-    result
-      .rows
-      .foreach { r =>
-        val incoming =
+    val incoming  =
+      result
+        .rows
+        .map { r =>
           Array.tabulate[Any](schema.size) { i =>
             val src = sourceOf(i)
             if src < 0 then
@@ -400,22 +791,61 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
             else
               ValueOps.cast(r(src), fromTypes(src), schema(i).ptype)
           }
-        keyOf(incoming).flatMap(positions.get) match
-          case Some(matched) =>
-            // Update the mapped columns of every matched row; unmapped columns keep their values
+        }
+        .toIndexedSeq
+    MergeInput(sourceOf, keyIdx, incoming)
+
+  end mergeInput
+
+  /** Update the mapped columns of every row whose key an incoming row has */
+  private def applyUpdates(
+      rows: mutable.ArrayBuffer[Array[Any]],
+      m: MergeInput
+  ): mutable.ArrayBuffer[Array[Any]] =
+    val positions = mutable.HashMap.empty[Seq[Any], mutable.ArrayBuffer[Int]]
+    rows
+      .indices
+      .foreach(i =>
+        m.keyOf(rows(i)).foreach(k => positions.getOrElseUpdate(k, mutable.ArrayBuffer.empty) += i)
+      )
+    m.incoming
+      .foreach { incoming =>
+        m.keyOf(incoming)
+          .flatMap(positions.get)
+          .foreach { matched =>
+            // Unmapped columns keep their values
             matched.foreach { p =>
               val updated = rows(p).clone()
-              sourceOf
+              m.sourceOf
                 .indices
                 .foreach(i =>
-                  if sourceOf(i) >= 0 then
+                  if m.sourceOf(i) >= 0 then
                     updated(i) = incoming(i)
                 )
               rows(p) = updated
             }
-          case None =>
-            rows += incoming
+          }
       }
+    rows
+
+  end applyUpdates
+
+  private def upsert(
+      name: String,
+      schema: Schema,
+      table: TableSource,
+      result: EngineResult,
+      columns: Seq[String],
+      keys: Seq[String],
+      defaults: IndexedSeq[Any]
+  ): IndexedSeq[Array[Any]] =
+    val m    = mergeInput(name, schema, result, columns, keys, defaults)
+    val rows = mutable.ArrayBuffer.empty[Array[Any]]
+    batchesOf(table).foreach(b => Iterator.range(0, b.size).foreach(i => rows += b.row(i)))
+    val existingKeys = rows.flatMap(m.keyOf).toSet
+    applyUpdates(rows, m)
+    // Rows inserted by this append are not matched again
+    rows ++= m.incoming.filter(r => m.keyOf(r).forall(k => !existingKeys.contains(k)))
     rows.toIndexedSeq
 
   end upsert
@@ -491,9 +921,120 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
 end TableWriter
 
 object TableWriter:
+  /** The table property that keeps a warehouse table's declared defaults and constraints */
+  val SpecProperty = "wvlet.table-spec"
+
+  /** An `alter table` operation */
+  enum AlterOp:
+    case AddColumn(column: ColumnSpec, ifNotExists: Boolean = false)
+    case DropColumn(name: String, ifExists: Boolean = false)
+    case RenameColumn(from: String, to: String, ifExists: Boolean = false)
+    case SetType(name: String, ptype: PType)
+    case SetNotNull(name: String)
+    case DropNotNull(name: String)
+    case SetDefault(name: String, value: Any)
+    case DropDefault(name: String)
+    case RenameTable(to: String)
+
+  // A column of an altered table: `from` is its index in the old schema (None for a new column)
+  private case class AlteredColumn(
+      name: String,
+      ptype: PType,
+      from: Option[Int],
+      default: Any,
+      notNull: Boolean
+  )
+
+  // The type changes Iceberg makes without rewriting data
+  private def canWiden(from: PType, to: PType): Boolean =
+    (from, to) match
+      case (PType.Int32, PType.Int64) =>
+        true
+      case (a: PType.Decimal, b: PType.Decimal) =>
+        a.scale == b.scale && b.precision > a.precision
+      case _ =>
+        false
+
+  /** A table spec as the JSON of [[SpecProperty]]; defaults are kept as strings */
+  def specToJson(spec: TableSpec): String =
+    JSONObject(
+      Seq(
+        "columns" ->
+          JSONArray(
+            spec
+              .columns
+              .map { c =>
+                JSONObject(
+                  Seq(
+                    "name"    -> JSONString(c.name),
+                    "notNull" -> JSONBoolean(c.notNull),
+                    "default" -> (
+                      if c.default == null then
+                        JSONNull()
+                      else
+                        JSONString(ValueOps.cast(c.default, c.ptype, PType.Str).toString)
+                    )
+                  )
+                )
+              }
+              .toIndexedSeq
+          ),
+        "uniqueKeys" ->
+          JSONArray(
+            spec.uniqueKeys.map(k => JSONArray(k.map(JSONString(_)).toIndexedSeq)).toIndexedSeq
+          )
+      )
+    ).toJSON
+
+  /** The spec from [[specToJson]], typed by the table's columns */
+  def specFromJson(json: String, schema: Schema): TableSpec =
+    val o                                                = JSON.parse(json).asInstanceOf[JSONObject]
+    def arr(v: Option[JSONValue]): IndexedSeq[JSONValue] =
+      v match
+        case Some(JSONArray(vs)) =>
+          vs
+        case _ =>
+          IndexedSeq.empty
+    val byName =
+      arr(o.get("columns"))
+        .collect { case c: JSONObject =>
+          c.get("name")
+            .collect { case JSONString(n) =>
+              n.toLowerCase
+            }
+            .getOrElse("") -> c
+        }
+        .toMap
+    val columns = schema
+      .fields
+      .map { f =>
+        val c       = byName.get(f.name.toLowerCase)
+        val default = c
+          .flatMap(_.get("default"))
+          .collect { case JSONString(v) =>
+            ValueOps.cast(v, PType.Str, f.ptype)
+          }
+        ColumnSpec(
+          f.name,
+          f.ptype,
+          default.orNull,
+          c.flatMap(_.get("notNull")).contains(JSONBoolean(true))
+        )
+      }
+    val keys = arr(o.get("uniqueKeys")).map(k =>
+      arr(Some(k)).collect { case JSONString(n) =>
+        n
+      }
+    )
+    TableSpec(columns, keys)
+
+  end specFromJson
+
   /** A declared column of a table made by `create table` */
   case class ColumnSpec(name: String, ptype: PType, default: Any = null, notNull: Boolean = false)
 
   /** The declared shape of a table: its columns and unique keys (primary key included) */
   case class TableSpec(columns: Seq[ColumnSpec], uniqueKeys: Seq[Seq[String]] = Nil):
     def schema: Schema = Schema(columns.map(c => Field(c.name, c.ptype)).toIndexedSeq)
+
+end TableWriter

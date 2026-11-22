@@ -34,9 +34,11 @@ import wvlet.lang.engine.WvletEngine
 import wvlet.lang.engine.plan.ColumnNotFound
 import wvlet.lang.engine.catalog.CsvSource
 import wvlet.lang.engine.catalog.JsonSource
+import wvlet.lang.engine.catalog.ManagedTable
 import wvlet.lang.engine.catalog.MemTable
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.engine.catalog.Warehouse
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -57,8 +59,12 @@ import scala.util.control.NonFatal
   *     without extension)
   *
   * Relative paths resolve against `baseDir` (the work folder). Local files referenced in queries
-  * (`from 'x.parquet'`) need no registration, and `save to <table>` keeps the result as an
-  * in-memory table of this session.
+  * (`from 'x.parquet'`) need no registration.
+  *
+  * With a `warehouse` folder, tables persist as Apache Iceberg tables at
+  * `<warehouse>/<schema>/<table>` (schemas are sub-folders), as in a DuckDB database file; the next
+  * session reads them back. Without one, `create table` and `save to <table>` keep tables in memory
+  * for this session only.
   */
 class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSupport:
   val engine: WvletEngine = WvletEngine(baseDir = baseDir)
@@ -84,7 +90,49 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     Catalog.CreateMode.CREATE_IF_NOT_EXISTS
   )
 
+  /** The folder of persistent tables, when the connector has a `warehouse` property */
+  val warehouse: Option[Warehouse] = config
+    .properties
+    .get("warehouse")
+    .map { dir =>
+      val root = resolvePath(dir.toString)
+      if SourceIO.existsFile(root) && !SourceIO.isDirectory(root) then
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"warehouse of connector '${config.name}' is not a folder: ${root}")
+      wvlet.uni.io.FileSystem.createDirectoryIfNotExists(wvlet.uni.io.IOPath.parse(root))
+      Warehouse(root, schemaName)
+    }
+
   registerConfiguredTables()
+  registerWarehouseTables()
+
+  // Tables of the warehouse; a name that a dataDir / tables entry also registers is an error, so
+  // a query never silently reads the other table
+  private def registerWarehouseTables(): Unit = warehouse.foreach { w =>
+    w.schemas
+      .foreach { s =>
+        catalog.createSchema(
+          Catalog.TableSchema(Some(catalogName), s),
+          Catalog.CreateMode.CREATE_IF_NOT_EXISTS
+        )
+      }
+    w.tables
+      .foreach { t =>
+        engine
+          .catalog
+          .find(t.name)
+          .foreach { other =>
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(
+                s"Table ${t.name} of connector '${config.name}' is both in the warehouse (${t
+                    .path}) and registered from files; rename one of them"
+              )
+          }
+        register(t)
+      }
+  }
 
   private def resolvePath(path: String): String =
     if SourceIO.isAbsolutePath(path) || path.contains("://") then
@@ -176,7 +224,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
       case NonFatal(e) =>
         warn(s"Failed to read the schema of table ${source.name}: ${e.getMessage}")
 
-  private val writer = TableWriter(engine)
+  private val writer = TableWriter(engine, warehouse)
 
   // Report engine-internal binding errors as user errors with a status code
   private def guarded[A](body: => A): A =
@@ -318,9 +366,14 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
         registerSchema(writer.truncate(tableKey(t.targetName)))
       case c: CreateSchema if c.location.isEmpty && c.options.isEmpty && c.properties.isEmpty =>
         val name = schemaKey(c.schema.fullName)
-        if schemas.contains(name.toLowerCase) && !c.ifNotExists then
+        if hasSchema(name) && !c.ifNotExists then
           throw StatusCode.SCHEMA_ALREADY_EXISTS.newException(s"Schema ${name} already exists")
+        warehouse.foreach(_.createSchema(name))
         schemas += name.toLowerCase
+        catalog.createSchema(
+          Catalog.TableSchema(Some(catalogName), name),
+          Catalog.CreateMode.CREATE_IF_NOT_EXISTS
+        )
       case d: DropSchema if schemaKey(d.schema.fullName).equalsIgnoreCase(schemaName) =>
         throw StatusCode
           .NOT_IMPLEMENTED
@@ -329,7 +382,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
         val name   = schemaKey(d.schema.fullName)
         val prefix = s"${name.toLowerCase}."
         val tables = engine.catalog.tableNames.filter(_.toLowerCase.startsWith(prefix))
-        if !schemas.contains(name.toLowerCase) && tables.isEmpty then
+        if !hasSchema(name) && tables.isEmpty then
           if !d.ifExists then
             throw StatusCode.SCHEMA_NOT_FOUND.newException(s"Schema not found: ${name}")
         else if tables.nonEmpty && !d.cascade then
@@ -342,16 +395,81 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
             )
         else
           tables.foreach(t => writer.dropTable(t))
+          warehouse.foreach(_.dropSchema(name))
           schemas -= name.toLowerCase
+      case a: AlterTable =>
+        val key = tableKey(a.table.fullName)
+        engine.catalog.find(key) match
+          case None if a.ifExists =>
+          case None               =>
+            throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${key}")
+          case Some(t) =>
+            registerSchema(writer.alterTable(key, a.operations.map(alterOpOf(key, t, _))))
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
           .newException(
             s"${other
                 .nodeName} is not supported by the wvlet engine yet (supported: create / drop " +
-              "table, truncate, and create / drop schema)"
+              "table, alter table, truncate, and create / drop schema)"
           )
   }
+
+  private def hasSchema(name: String): Boolean =
+    schemas.contains(name.toLowerCase) || warehouse.exists(_.hasSchema(name))
+
+  // An `alter table` operation as the engine's
+  private def alterOpOf(key: String, table: TableSource, op: AlterTableOps)(using
+      Context
+  ): TableWriter.AlterOp =
+    import TableWriter.AlterOp
+    def unsupported(): Nothing =
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(s"${op.nodeName} in alter table is not supported by the wvlet engine")
+    op match
+      case a: AddColumnOp =>
+        AlterOp.AddColumn(tableSpecOf(key, List(a.column)).columns.head, a.ifNotExists)
+      case d: DropColumnOp =>
+        AlterOp.DropColumn(d.column.leafName, d.ifExists)
+      case r: RenameColumnOp =>
+        AlterOp.RenameColumn(r.oldName.leafName, r.newName.leafName, r.ifExists)
+      case t: AlterColumnSetDataTypeOp if t.using.isEmpty =>
+        AlterOp.SetType(t.column.leafName, PType.fromDataType(t.dataType))
+      case n: AlterColumnDropNotNullOp =>
+        AlterOp.DropNotNull(n.column.leafName)
+      case n: AlterColumnSetNotNullOp =>
+        AlterOp.SetNotNull(n.column.leafName)
+      case d: AlterColumnDropDefaultOp =>
+        AlterOp.DropDefault(d.column.leafName)
+      case d: AlterColumnSetDefaultOp =>
+        val column = d.column.leafName
+        val ptype  = table
+          .schema
+          .fields
+          .find(_.name.equalsIgnoreCase(column))
+          .map(_.ptype)
+          .getOrElse(
+            throw StatusCode
+              .COLUMN_NOT_FOUND
+              .newException(s"Column ${column} is not found in ${key}")
+          )
+        val v = literalValueOf(ExpressionEvaluator.eval(d.defaultValue)).getOrElse(
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(
+              s"The default of column ${column} must be a literal on the wvlet engine",
+              d.defaultValue.sourceLocation
+            )
+        )
+        AlterOp.SetDefault(column, ValueOps.cast(v, ptypeOfLiteral(v), ptype))
+      case r: RenameTableOp =>
+        AlterOp.RenameTable(tableKey(r.newName.fullName))
+      case _ =>
+        unsupported()
+    end match
+
+  end alterOpOf
 
   // Schemas made by `create schema`; tables of a schema are keyed `<schema>.<table>`
   private val schemas = mutable.Set.empty[String]
