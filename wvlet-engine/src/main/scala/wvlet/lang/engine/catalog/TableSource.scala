@@ -46,6 +46,19 @@ trait TableSource:
   /** Row count estimate for join ordering */
   def estimatedRows: Option[Long] = None
 
+  /** Whether [[scanSplits]] may cut a scan into parts */
+  def canSplit: Boolean = false
+
+  /**
+    * The scan cut into parts that can be read independently and concurrently (e.g. Parquet row
+    * groups), whose batches in part order are the batches of `scan(spec)`. None when the source
+    * can't split, or the scan has a single part
+    */
+  def scanSplits(spec: ScanSpec): Option[ScanSplits] = None
+
+/** Independently readable parts of a scan; `close` releases what the parts share */
+case class ScanSplits(parts: IndexedSeq[() => Iterator[Batch]], close: () => Unit)
+
 /** An in-memory table */
 class MemTable(val name: String, val schema: Schema, batches: Seq[Batch]) extends TableSource:
   override def estimatedRows: Option[Long]  = Some(batches.map(_.size.toLong).sum)
@@ -106,11 +119,40 @@ class ParquetSource(val name: String, path: String) extends TableSource:
       case _: Exception =>
         None
 
-  def scan(spec: ScanSpec): Iterator[Batch] =
+  private def readOptions(spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =
     val cols    = spec.columns.getOrElse(schema.names)
     val types   = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
     var options = ParquetReadOptions.default.withColumns(cols*).withBinaryAsString(true)
     spec.filter.foreach(f => options = options.withRowGroupFilter(f))
+    (cols, types, options)
+
+  override def canSplit: Boolean = isSingleFile
+
+  /** One part per row group the filter doesn't skip */
+  override def scanSplits(spec: ScanSpec): Option[ScanSplits] =
+    if !isSingleFile then
+      None
+    else
+      val (cols, types, options) = readOptions(spec)
+      val f                      = Parquet.open(path)
+      val groups                 =
+        try
+          f.selectRowGroups(options)
+        catch
+          case e: Throwable =>
+            f.close()
+            throw e
+      if groups.size <= 1 then
+        f.close()
+        None
+      else
+        val parts = groups.map { g => () =>
+          Iterator.single(ParquetSource.toBatch(f.readRowGroup(g, options), cols, types))
+        }
+        Some(ScanSplits(parts, () => f.close()))
+
+  def scan(spec: ScanSpec): Iterator[Batch] =
+    val (cols, types, options) = readOptions(spec)
     if isSingleFile then
       val f  = Parquet.open(path)
       val it = f.readBatches(options)

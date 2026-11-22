@@ -75,7 +75,8 @@ object WindowCall:
         Aggregates.resultType(other, argTypes)
 
 /** Appends one column per window call to the input rows (input order is not preserved) */
-class WindowOp(child: Operator, calls: IndexedSeq[WindowCall], val schema: Schema) extends Operator:
+class WindowOp(val child: Operator, val calls: IndexedSeq[WindowCall], val schema: Schema)
+    extends Operator:
   private var result: Iterator[Batch]  = null
   override def children: Seq[Operator] = Seq(child)
   override protected def details       = s"(${calls.map(_.sig).mkString(", ")})"

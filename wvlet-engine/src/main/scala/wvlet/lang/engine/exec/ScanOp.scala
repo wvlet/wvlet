@@ -34,9 +34,10 @@ class ScanOp(
         .map(c => s"columns=${c.map(source.schema(_).name).mkString(",")}")
         .getOrElse("")}${filter.map(f => s" filter=${f}").getOrElse("")})"
 
-  private lazy val it: Iterator[Batch] =
-    val names = columns.map(_.map(source.schema(_).name))
-    source.scan(ScanSpec(names, filter))
+  /** The scan request this operator sends to the source */
+  def spec: ScanSpec = ScanSpec(columns.map(_.map(source.schema(_).name)), filter)
+
+  private lazy val it: Iterator[Batch] = source.scan(spec)
 
   /** The source column name of output position i */
   def sourceColumnName(i: Int): String = source.schema(columns.map(_(i)).getOrElse(i)).name

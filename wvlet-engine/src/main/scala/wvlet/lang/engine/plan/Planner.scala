@@ -51,7 +51,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private var windowCollector: Option[WindowCollector] = None
 
   /** Plan a relation, then drop columns no operator needs so that scans read fewer columns */
-  def plan(r: Relation): Operator = ColumnPruner(planRelation(r))
+  def plan(r: Relation): Operator = Parallelizer(ColumnPruner(planRelation(r)), TaskRunner.default)
 
   // --- relations ------------------------------------------------------------------------
 

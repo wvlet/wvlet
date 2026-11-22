@@ -69,7 +69,13 @@ object ColumnPruner:
             (s.project(keep.toIndexedSeq), keep)
 
       case f: FilterOp =>
-        val need = mutable.BitSet(required*)
+        // Input position of each output column
+        val src: Int => Int =
+          if f.keep == null then
+            i => i
+          else
+            f.keep(_)
+        val need = mutable.BitSet(required.map(src)*)
         VExprs.collectRefs(f.cond, need)
         val input =
           f.child match
@@ -82,7 +88,13 @@ object ColumnPruner:
               other
         val (child, kept) = prune(input, sorted(need))
         val m             = mapping(kept, f.child.schema.size)
-        (FilterOp(child, VExprs.remap(f.cond, m)), kept)
+        val cond          = VExprs.remap(f.cond, m)
+        // Only the required columns are output: those only the condition reads aren't copied
+        val keep = required.map(r => m(src(r)))
+        if keep.length == kept.length then
+          (FilterOp(child, cond), required)
+        else
+          (FilterOp(child, cond, keep), required)
 
       case p: ProjectOp =>
         val keep = required
