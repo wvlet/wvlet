@@ -449,7 +449,14 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       _.withModuleKind(ModuleKind.CommonJSModule)
     }
   )
-  .nativeSettings(uniNativeCurlLinking)
+  .nativeSettings(
+    uniNativeCurlLinking,
+    // wvlet-lang's native resources (DuckDB C helpers) are linked into every test binary
+    nativeConfig ~= { c =>
+      c.withLinkingOptions(c.linkingOptions :+ "-lduckdb")
+    },
+    nativeLibRpathLinking
+  )
   .dependsOn(lang)
 
 // Capability-based Connector traits, the factory registry, and the built-in engine connectors
