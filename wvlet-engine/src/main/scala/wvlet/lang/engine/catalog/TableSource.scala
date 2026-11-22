@@ -251,9 +251,14 @@ object ParquetSource:
 
   /** The columns, their engine types, and uni read options of a scan over `schema` */
   def readOptions(schema: Schema, spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =
-    val cols    = spec.columns.getOrElse(schema.names)
-    val types   = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
-    var options = ParquetReadOptions.default.withColumns(cols*).withBinaryAsString(true)
+    val cols  = spec.columns.getOrElse(schema.names)
+    val types = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
+    // Decimals are unscaled Long values in the engine: INT32 decimals are read as such directly
+    var options = ParquetReadOptions
+      .default
+      .withColumns(cols*)
+      .withBinaryAsString(true)
+      .withInt32DecimalAsLong(true)
     spec.filter.foreach(f => options = options.withRowGroupFilter(f))
     (cols, types, options)
 
