@@ -1,0 +1,10 @@
+-- Pivot column names: dates are formatted, and a named aggregate is appended
+from [
+  ['2023-01-01'.to_date, 'a', 1],
+  ['2023-01-02'.to_date, 'b', 2],
+] as t(d, name, x)
+pivot on d
+group by name
+agg x.sum as total
+order by name
+test _.columns should be ['name', '2023-01-01_total', '2023-01-02_total']

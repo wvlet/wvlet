@@ -1,0 +1,7 @@
+-- JSON pointer paths index arrays and decode ~1 ('/') and ~0 ('~')
+from [['[10, 20]', '{"a/b": 1, "c~d": 2}']] as t(arr, obj)
+select
+  arr.json_extract('/1').to_string as second,
+  obj.json_extract('/a~1b').to_string as slash,
+  obj.json_extract('/c~0d').to_string as tilde,
+test _.rows should be [['20', '1', '2']]

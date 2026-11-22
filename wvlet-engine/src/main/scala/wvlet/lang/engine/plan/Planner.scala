@@ -484,6 +484,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         List(("count", countStar))
       else
         aggItems.map(a => (nameOf(a), aggBinder0.aggCall(aggFunction(a))))
+    // Whether the single aggregate has an explicit name (`agg _.sum(x) as total`)
+    val aliased = aggItems.exists(a => a.nameExpr.nonEmpty && !a.nameExpr.leafName.startsWith("<"))
     // Grouping keys
     val pivotCols                         = pivots.flatMap(x => columnRefs(x._1)).toSet
     val usedCols                          = aggs.flatMap(_._2.args.flatMap(columnRefs)).toSet
@@ -516,13 +518,19 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           Compare(CmpOp.Eq, col, Const(v, col.ptype)): VExpr
         }
         .reduce((a, b) => AndExpr(a, b))
-      val prefix = combo.map(ValueOps.toStr).mkString("_")
+      val prefix = pivots
+        .zip(combo)
+        .map { case ((col, _), v) =>
+          ValueOps.cast(v, col.ptype, PType.Str)
+        }
+        .mkString("_")
       aggs.foreach { (aggName, call) =>
         val filter = call.filter.map(f => AndExpr(f, cond)).getOrElse(cond)
         calls += call.copy(filter = Some(filter))
         fields +=
           Field(
-            if aggs.size == 1 then
+            // DuckDB: <value> for a single unnamed aggregate, otherwise <value>_<name>
+            if aggs.size == 1 && !aliased then
               prefix
             else
               s"${prefix}_${aggName}"
@@ -749,7 +757,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private def planUnnest(
       left: Option[Operator],
       call: TableFunctionCall,
-      alias: Option[AliasedRelation]
+      alias: Option[AliasedRelation],
+      outer: Boolean = false
   ): Operator =
     val input  = left.getOrElse(SingleRowOp())
     val binder = Binder(this, BindScope(input.schema))
@@ -766,7 +775,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         input.schema.fields
       else
         IndexedSeq.empty
-    UnnestOp(input, lists, keepInput = left.isDefined, Schema(inputFields ++ fields))
+    UnnestOp(input, lists, keepInput = left.isDefined, Schema(inputFields ++ fields), outer)
 
   /** select ..., unnest(list), ...: the row repeats per list element */
   private def projectWithUnnest(op: Operator, items: List[Attribute]): Operator =
@@ -777,36 +786,35 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         case None =>
           i
     }
-    val binder          = Binder(this, BindScope(op.schema))
-    val (exprs, fields) = bindItems(binder, op, replaced)
-    val proj            = ProjectOp(op, exprs, Schema(fields))
-    val listIdx         = items.indices.filter(i => unnestArg(items(i)).isDefined)
-    val elemFields      = listIdx.map(i => fields(i).copy(ptype = Binder.listElementType(exprs(i))))
-    val unnest          = UnnestOp(
+    val binder = Binder(this, BindScope(op.schema))
+    // Bind items one by one: `*` expands to several fields, so item and field indexes differ
+    val bound  = replaced.map(r => bindItems(binder, op, List(r)))
+    val exprs  = bound.flatMap(_._1).toIndexedSeq
+    val fields = bound.flatMap(_._2).toIndexedSeq
+    val isList =
+      items
+        .zip(bound)
+        .flatMap((item, b) => Seq.fill(b._2.size)(unnestArg(item).isDefined))
+        .toIndexedSeq
+    val proj       = ProjectOp(op, exprs, Schema(fields))
+    val listIdx    = fields.indices.filter(isList)
+    val elemFields = listIdx.map(i => fields(i).copy(ptype = Binder.listElementType(exprs(i))))
+    val unnest     = UnnestOp(
       proj,
       listIdx.map(i => ColRef(i, fields(i).ptype, fields(i).name): VExpr),
       keepInput = true,
       Schema(fields ++ elemFields)
     )
-    val outExprs = items
+    val out = fields
       .indices
       .map { i =>
         listIdx.indexOf(i) match
           case -1 =>
-            ColRef(i, fields(i).ptype, fields(i).name): VExpr
+            (ColRef(i, fields(i).ptype, fields(i).name): VExpr, fields(i))
           case k =>
-            ColRef(fields.size + k, elemFields(k).ptype, elemFields(k).name)
+            (ColRef(fields.size + k, elemFields(k).ptype, elemFields(k).name), elemFields(k))
       }
-    val outFields = items
-      .indices
-      .map { i =>
-        listIdx.indexOf(i) match
-          case -1 =>
-            fields(i)
-          case k =>
-            elemFields(k)
-      }
-    ProjectOp(unnest, outExprs, Schema(outFields))
+    ProjectOp(unnest, out.map(_._1), Schema(out.map(_._2)))
 
   end projectWithUnnest
 
@@ -1576,7 +1584,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   /** Leaves and conditions of a tree of inner joins */
   private def flattenJoins(r: Relation): (List[Relation], List[Expression]) =
     r match
-      case j: Join if isInnerJoin(j) =>
+      // A lateral unnest needs its left input: plan it as one leaf
+      case j: Join if isInnerJoin(j) && unnestCall(j.right).isEmpty =>
         val (l, lc)  = flattenJoins(j.left)
         val (rr, rc) = flattenJoins(j.right)
         val cond     =
@@ -1602,17 +1611,34 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     unnestCall(j.right) match
       case Some((call, alias)) =>
         // A lateral unnest over the left input: join ... unnest(left.column)
-        val op    = planUnnest(Some(planRelation(j.left)), call, alias)
         val conds =
-          j.cond match
-            case JoinOn(e, _) =>
-              conjuncts(e)
-            case JoinOnEq(keys, _) =>
-              conjuncts(Expression.concatWithEq(keys))
-            case _ =>
-              Nil
-        return applyConjuncts(op, (conds ++ filters).filterNot(isTrueLiteral))
+          (
+            j.cond match
+              case JoinOn(e, _) =>
+                conjuncts(e)
+              case JoinOnEq(keys, _) =>
+                conjuncts(Expression.concatWithEq(keys))
+              case _ =>
+                Nil
+          ).filterNot(isTrueLiteral)
+        val outer =
+          j.joinType match
+            case JoinType.LeftOuterJoin =>
+              if conds.nonEmpty then
+                throw StatusCode
+                  .NOT_IMPLEMENTED
+                  .newException("LEFT JOIN unnest(...) supports only ON true in the engine")
+              true
+            case JoinType.InnerJoin | JoinType.ImplicitJoin | JoinType.CrossJoin =>
+              false
+            case other =>
+              throw StatusCode
+                .NOT_IMPLEMENTED
+                .newException(s"${other} with unnest(...) is not supported by the engine")
+        val op = planUnnest(Some(planRelation(j.left)), call, alias, outer)
+        return applyConjuncts(op, conds ++ filters)
       case None =>
+    end match
     if !isInnerJoin(j) then
       return applyConjuncts(planOuterJoin(j), filters)
     val (leaves, joinConds) = flattenJoins(j)
@@ -1998,10 +2024,15 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val (lk, rk) = joinKeys(lb, rb, eqs.map(c => equiSides(c, left.schema, right.schema)))
     val (lv, rv) = joinKeys(lb, rb, Seq((inequality._1, inequality._3)))
     val asofKind =
-      if kind == JoinKind.Left then
-        JoinKind.Left
-      else
-        JoinKind.Inner
+      kind match
+        case JoinKind.Left =>
+          JoinKind.Left
+        case JoinKind.Inner | JoinKind.Cross =>
+          JoinKind.Inner
+        case other =>
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(s"${other} ASOF joins are not supported by the engine")
     AsOfJoinOp(
       left,
       right,
