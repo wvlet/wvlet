@@ -173,9 +173,21 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
 
   def groupIds(keys: Array[Vec], n: Int): Array[Int] =
     val norm = normalize(keys)
-    val h    = hashes(norm, n)
-    val ids  = new Array[Int](n)
-    var i    = 0
+    assignIds(norm, n, hashes(norm, n))
+
+  /**
+    * [[groupIds]] with each row's hash already computed by [[keyHashes]] (of a table with the same
+    * key types), so the keys are not hashed again
+    */
+  def groupIds(keys: Array[Vec], n: Int, keyHashes: Array[Int]): Array[Int] = assignIds(
+    normalize(keys),
+    n,
+    keyHashes
+  )
+
+  private def assignIds(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
+    val ids = new Array[Int](n)
+    var i   = 0
     while i < n do
       val g = find(norm, i, h(i))
       ids(i) =
