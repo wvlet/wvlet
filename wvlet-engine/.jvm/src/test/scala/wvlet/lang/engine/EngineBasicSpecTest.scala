@@ -17,21 +17,7 @@ import wvlet.uni.test.UniTest
 
 /** Queries in spec/basic on the engine must return the same rows as DuckDB */
 class EngineBasicSpecTest extends UniTest:
-  /**
-    * Specs whose results depend on DuckDB itself rather than on query semantics: DuckDB's system
-    * catalogs (`system`, `temp`) in SHOW CATALOGS / SHOW SCHEMAS / wv_schemas(), the
-    * `duckdb_functions()` and `parquet_metadata()` table functions (the latter reads a file the
-    * runner specs write, so it only runs after them), and the `inet` type. This list must only
-    * shrink
-    */
-  private val knownGaps: Set[String] = Set(
-    "execute.wv",
-    "from_table_function.wv",
-    "information_schema.wv",
-    "save-with-options.wv",
-    "show-catalogs.wv",
-    "show-schemas.wv"
-  )
+  import EngineBasicSpecTest.knownGaps
 
   private val conformance = EngineConformance("spec/basic", Nil, _ => ())
 
@@ -51,3 +37,20 @@ class EngineBasicSpecTest extends UniTest:
     }
 
 end EngineBasicSpecTest
+
+object EngineBasicSpecTest:
+  /**
+    * Specs whose results depend on DuckDB itself rather than on query semantics: DuckDB's system
+    * catalogs (`system`, `temp`) in SHOW CATALOGS / SHOW SCHEMAS / wv_schemas(), the
+    * `duckdb_functions()` and `parquet_metadata()` table functions (the latter reads a file the
+    * runner specs write, so it only runs after them), and the `inet` type. This list must only
+    * shrink
+    */
+  val knownGaps: Set[String] = Set(
+    "execute.wv",
+    "from_table_function.wv",
+    "information_schema.wv",
+    "save-with-options.wv",
+    "show-catalogs.wv",
+    "show-schemas.wv"
+  )

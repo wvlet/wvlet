@@ -36,8 +36,30 @@ import scala.collection.mutable
   * Column names are resolved against the runtime schemas of the operators (not the compiler's
   * types), so queries over files with unknown schemas plan the same way as catalog tables.
   */
-class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Context)
+class Planner(
+    catalog: EngineCatalog,
+    sources: SourceResolver,
+    options: OptimizerOptions = OptimizerOptions()
+)(using ctx: Context)
     extends LogSupport:
+
+  private def enabled(o: Optimization): Boolean = options.isEnabled(o)
+
+  /** Whether a join builds on the other input, as this one has much more rows than that */
+  private def swapBuild(rows: Double, otherRows: Double): Boolean =
+    enabled(Optimization.SwapBuildSide) && rows > Planner.SwapBuildRatio * otherRows
+
+  /** The physical passes over a lowered plan: column pruning (with scan filters), parallelism */
+  private def optimizePhysical(op: Operator): Operator =
+    val pruned = ColumnPruner(
+      op,
+      pruneColumns = enabled(Optimization.PruneColumns),
+      scanFilters = enabled(Optimization.PushScanFilters)
+    )
+    if enabled(Optimization.Parallelize) then
+      Parallelizer(pruned, TaskRunner.default)
+    else
+      pruned
 
   private var hiddenSeq                          = 0
   private def hiddenName(prefix: String): String =
@@ -61,8 +83,9 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   /** Plan a relation, then drop columns no operator needs so that scans read fewer columns */
   def plan(r: Relation): Operator =
-    prefetchScalarSubqueries(r)
-    Parallelizer(ColumnPruner(planRelation(r)), TaskRunner.default)
+    if enabled(Optimization.PrefetchScalarSubqueries) then
+      prefetchScalarSubqueries(r)
+    optimizePhysical(planRelation(r))
 
   /**
     * Evaluate uncorrelated scalar subqueries that aggregate the same input (same FROM and WHERE,
@@ -415,13 +438,13 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private def planTable(name: String, fullName: String): Operator =
     val key = name.toLowerCase
     cteDefs.get(key) match
-      case Some(d) if cteRefCounts.getOrElse(key, 0) > 1 =>
+      case Some(d) if enabled(Optimization.ShareCTEs) && cteRefCounts.getOrElse(key, 0) > 1 =>
         val shared =
           cteTables.get(key) match
             case Some((defn, r)) if defn eq d =>
               r
             case _ =>
-              val r = SharedResult(Parallelizer(ColumnPruner(planAliased(d)), TaskRunner.default))
+              val r = SharedResult(optimizePhysical(planAliased(d)))
               cteTables(key) = (d, r)
               r
         shared.newReader(s"CTE[${name}]")
@@ -1292,9 +1315,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           val cols = refs.toIndexedSeq
           val m    = Array.fill(inOp.schema.size)(-1)
           cols.indices.foreach(i => m(cols(i)) = i)
-          val shared = SharedResult(
-            Parallelizer(ColumnPruner(projectIndexes(inOp, cols)), TaskRunner.default)
-          )
+          val shared      = SharedResult(optimizePhysical(projectIndexes(inOp, cols)))
           val setKeyExprs = keys.map(VExprs.remap(_, m))
           val setCalls    = calls.map(c =>
             c.copy(args = c.args.map(VExprs.remap(_, m)), filter = c.filter.map(VExprs.remap(_, m)))
@@ -1531,8 +1552,12 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   // --- filters and subqueries -----------------------------------------------------------
 
-  private def conjuncts(e: Expression): List[Expression] = splitAnd(Binder.expandTemplates(e))
-    .flatMap(factorOr)
+  private def conjuncts(e: Expression): List[Expression] =
+    val split = splitAnd(Binder.expandTemplates(e))
+    if enabled(Optimization.FactorOr) then
+      split.flatMap(factorOr)
+    else
+      split
 
   private def splitOr(e: Expression): List[Expression] =
     e match
@@ -1852,7 +1877,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       kind: JoinKind,
       residual: Option[VExpr]
   ): Operator =
-    if estimateRows(inner) > Planner.SwapBuildRatio * estimateRows(op) then
+    if swapBuild(estimateRows(inner), estimateRows(op)) then
       val lw = op.schema.size
       val rw = inner.schema.size
       // Position of each op ++ inner column in inner ++ op
@@ -2297,7 +2322,10 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           (i, eqs, lk, rk, out)
         }
         val (next, eqs) =
-          if keyed.nonEmpty then
+          if !enabled(Optimization.ReorderJoins) then
+            // Written order: the first input connected by an equality, else the first one
+            connected.headOption.getOrElse(candidates.head)
+          else if keyed.nonEmpty then
             val (i, e, _, _, _) = keyed.minBy((i, _, _, _, out) => (out, pushed(i).rows))
             (i, e)
           else
@@ -2307,7 +2335,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         if eqs.nonEmpty then
           val (_, _, lk, rk, out) = keyed.find(_._1 == next).get
           current =
-            if pushed(next).rows > Planner.SwapBuildRatio * currentRows then
+            if swapBuild(pushed(next).rows, currentRows) then
               // Build on the joined rows, much fewer than the input to join (e.g., the returns
               // joined so far vs. a sales table), and probe with that input
               cost += currentRows
@@ -2343,7 +2371,11 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
     // Try every input as the start and keep the cheapest tree (ties: the largest start, whose
     // scan then drives the parallel pipeline)
-    val bySize                  = pushed.indices.sortBy(i => -pushed(i).rows)
+    val bySize =
+      if enabled(Optimization.ReorderJoins) then
+        pushed.indices.sortBy(i => -pushed(i).rows)
+      else
+        pushed.indices.take(1)
     val trees                   = bySize.map(greedy)
     val best                    = trees.indices.minBy(k => (trees(k)._3, k))
     var (current, remaining, _) = trees(best)
@@ -2609,7 +2641,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         case _ =>
           None
     swapped match
-      case Some(k) if estimateRows(right) > Planner.SwapBuildRatio * estimateRows(left) =>
+      case Some(k) if swapBuild(estimateRows(right), estimateRows(left)) =>
         swappedHashJoin(left, right, lk, rk, k, residual, combined)
       case _ =>
         HashJoinOp(left, right, lk, rk, kind, residual, combined)
