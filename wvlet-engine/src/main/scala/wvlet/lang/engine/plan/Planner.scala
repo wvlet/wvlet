@@ -971,15 +971,60 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
     private var explained = false
 
+    // The first reader shows the shared plan once (it is not a child: readers must not close it)
+    private def sharedPlan(indent: Int): String =
+      if explained then
+        ""
+      else
+        explained = true
+        s"\n${"  " * indent}(shared)\n${op.explain(indent + 1)}"
+
     def newReader(label: String): Operator =
-      new IteratorOp(op.schema, () => batches.iterator, label):
-        // The first reader shows the shared plan once (it is not a child: readers must not close it)
-        override def explain(indent: Int): String =
-          if explained then
-            super.explain(indent)
-          else
-            explained = true
-            s"${super.explain(indent)}\n${"  " * (indent + 1)}(shared)\n${op.explain(indent + 2)}"
+      if op.schema.names.distinct.size == op.schema.size then
+        // A scan of the result as a table whose parts are its batches, so that the Parallelizer
+        // runs the filters, join probes, and aggregations over a reader in parallel, as over a
+        // Parquet scan (scans select columns by name, so names must be unique)
+        ScanOp(SharedTable(label, op.schema, () => batches, sharedPlan), op.schema, None, None)
+      else
+        new IteratorOp(op.schema, () => batches.iterator, label):
+          override def explain(indent: Int): String =
+            s"${super.explain(indent)}${sharedPlan(indent + 1)}"
+
+  end SharedResult
+
+  /** Batches computed on first read, scanned as a table whose parts are the batches */
+  private class SharedTable(
+      val name: String,
+      val schema: Schema,
+      batches: () => Seq[Batch],
+      plan: Int => String
+  ) extends TableSource:
+    def scan(spec: ScanSpec): Iterator[Batch] =
+      val sel = selector(spec)
+      batches().iterator.map(sel)
+
+    /** Selects the requested columns of a batch; the positions are looked up once per scan */
+    private def selector(spec: ScanSpec): Batch => Batch =
+      spec.columns match
+        case None =>
+          b => b
+        case Some(cols) =>
+          val idx = cols.map(c => schema.names.indexOf(c)).toArray
+          b => b.select(idx)
+
+    override def canSplit: Boolean = true
+
+    override def scanSplits(spec: ScanSpec): Option[ScanSplits] =
+      val bs = batches().filter(_.size > 0)
+      if bs.size <= 1 then
+        None
+      else
+        val sel = selector(spec)
+        Some(ScanSplits(bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))), () => ()))
+
+    override def explainDetail(indent: Int): String = plan(indent)
+
+  end SharedTable
 
   private def isAggregationInput(r: Relation): Boolean =
     r match
