@@ -262,7 +262,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               Some(ws + "with" + nest(wsOrNL + cl(a.options.map(o => expr(o)))))
           group(wl("use", expr(a.path), "as", expr(a.alias)) + opts)
         }
-      case a: AlterTable if a.operations.forall(isReshapeOp) =>
+      // reshape and rename have no IF EXISTS form, so ALTER TABLE IF EXISTS stays SQL
+      case a: AlterTable if !a.ifExists && a.operations.forall(isReshapeOp) =>
         a.operations match
           case List(r: RenameTableOp) =>
             code(a) {

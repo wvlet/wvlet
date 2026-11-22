@@ -1037,6 +1037,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     *     add <column>: <type>
     *     rename <column> as <new name>
     *     exclude <column>
+    *     cast <column> as <type>
+    *     set <column> not null
+    *     set <column> = <default>
+    *     drop <column> not null
+    *     drop <column> default
     *   }
     * }}}
     * Each operation lowers to one AlterTableOps case; SQL generation emits one ALTER TABLE
