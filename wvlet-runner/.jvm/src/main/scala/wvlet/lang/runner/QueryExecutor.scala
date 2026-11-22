@@ -42,6 +42,9 @@ import wvlet.lang.runner.activity.ItemStore
 import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.connector.SourceTableStaging
+import wvlet.lang.runner.connector.ConnectorCatalogs
+import wvlet.lang.runner.engine.WvletEngineConnector
+import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.json.JSON
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
@@ -98,6 +101,18 @@ class QueryExecutor(
 
   private def activeDBConnector: DBConnector = dbConnectorProvider.getDBConnector(activeEngine)
 
+  // The in-process engine session when the active connector is a `wvlet` engine, which runs
+  // typed plans directly instead of SQL
+  private def activeEngineSession: Option[WvletEngineSession] =
+    if WvletEngineSession.isInProcess(activeEngine) then
+      dbConnectorProvider.getConnector(activeEngine) match
+        case w: WvletEngineConnector =>
+          Some(w.session)
+        case _ =>
+          None
+    else
+      None
+
   // Resolve a profile connector name to a live connector, for per-stage `on <connector>` in
   // flows and cross-connector staging
   private def profileEngineResolver(name: String): Connector = defaultProfile
@@ -147,20 +162,30 @@ class QueryExecutor(
                 "Expected format: <connector>, <connector>.<schema>, or <connector>.<catalog>.<schema>"
             )
     val schema  = schemaName.getOrElse("main")
-    val catalog = catalogName.getOrElse(
-      // Without a catalog the switched engine could not drive name resolution or dialect
-      // selection, silently leaving the previous engine's catalog active
-      throw StatusCode
-        .INVALID_ARGUMENT
-        .newException(
-          s"Connector '${connectorName}' has no catalog configured. Add \"catalog\" to its " +
-            s"profile entry or switch with `use ${connectorName}.<catalog>.<schema>`"
-        )
-    )
+    val catalog = catalogName
+      .orElse(WvletEngineSession.defaultCatalogName(config))
+      .getOrElse(
+        // Without a catalog the switched engine could not drive name resolution or dialect
+        // selection, silently leaving the previous engine's catalog active
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            s"Connector '${connectorName}' has no catalog configured. Add \"catalog\" to its " +
+              s"profile entry or switch with `use ${connectorName}.<catalog>.<schema>`"
+          )
+      )
     // Resolve the connector and its catalog BEFORE committing any state, so a connection
     // failure leaves the previous engine fully active
-    val connector  = dbConnectorProvider.getDBConnector(config)
-    val newCatalog = connector.getCatalog(catalog, schema)
+    val newCatalog =
+      if WvletEngineSession.isInProcess(config) then
+        ConnectorCatalogs.catalogOf(
+          dbConnectorProvider.getConnector(config),
+          config,
+          catalog,
+          schema
+        )
+      else
+        dbConnectorProvider.getDBConnector(config).getCatalog(catalog, schema)
     activeEngine = config
     context.global.defaultCatalog = newCatalog
     context.global.defaultSchema = schema
@@ -260,8 +285,10 @@ class QueryExecutor(
     workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result
 
-  override protected def runStatements(sqls: List[String])(using context: Context): Unit = sqls
-    .foreach: sql =>
+  override protected def runStatements(sqls: List[String])(using context: Context): Unit =
+    if activeEngineSession.isDefined then
+      throw WvletEngineSession.sqlNotSupported(sqls)
+    sqls.foreach: sql =>
       workEnv.info(s"Executing SQL:\n${sql}")
       debug(s"Executing SQL:\n${sql}")
       given monitor: QueryProgressMonitor = context.queryProgressMonitor
@@ -323,6 +350,9 @@ class QueryExecutor(
     trace(s"Executing save:\n${save.pp}")
     workEnv.trace(s"Executing save: ${save.pp}")
     save match
+      case _ if activeEngineSession.isDefined =>
+        activeEngineSession.get.save(save)
+        QueryResult.empty
       case s: SaveTo if s.isForFile && !context.dbType.supportSaveAsFile =>
         // Cross-engine handoff (e.g., Trino -> DuckDB) for local file output
         executeSaveToLocalFileViaDuckDB(s)
@@ -700,6 +730,9 @@ class QueryExecutor(
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
+      case q: Relation if activeEngineSession.isDefined =>
+        workEnv.info(s"Executing on the wvlet engine:\n${q.pp}")
+        activeEngineSession.get.execute(q, config.rowLimit)
       case q0: Relation =>
         // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
         // summary tables

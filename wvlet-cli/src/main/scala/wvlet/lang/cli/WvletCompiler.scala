@@ -25,6 +25,7 @@ import wvlet.lang.connector.DBConnector
 import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.log.LogSupport
 
 case class WvletCompilerOption(
@@ -109,13 +110,24 @@ class WvletCompiler(
         Compiler.parseOnly(options)
       else
         Compiler(options)
-    // Set catalog from connector
-    currentProfile
-      .defaultEngine
-      .catalog
+    // Set catalog from connector. The in-process wvlet engine needs no catalog setting: its
+    // registered tables form the `wvlet` catalog
+    val defaultEngine = currentProfile.defaultEngine
+    WvletEngineSession
+      .defaultCatalogName(defaultEngine)
       .foreach { catalog =>
-        val schema = currentProfile.defaultEngine.schema.getOrElse("main")
-        compiler.setDefaultCatalog(getDBConnector.getCatalog(catalog, schema))
+        val schema        = defaultEngine.schema.getOrElse("main")
+        val engineCatalog =
+          if WvletEngineSession.isInProcess(defaultEngine) then
+            ConnectorCatalogs.catalogOf(
+              dbConnectorProvider.getConnector(defaultEngine),
+              defaultEngine,
+              catalog,
+              schema
+            )
+          else
+            getDBConnector.getCatalog(catalog, schema)
+        compiler.setDefaultCatalog(engineCatalog)
       }
 
     currentProfile

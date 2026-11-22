@@ -38,7 +38,7 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
   def to_wvlet(opt: WvletCliCompileOption): Unit = println(WvletCliCompiler(opt).generateWvlet)
 
   @command(description =
-    "Compile and execute a wvlet query against DuckDB, Trino, or a remote wvlet server"
+    "Compile and execute a wvlet query against DuckDB, Trino, the in-process wvlet engine, or a remote wvlet server"
   )
   def run(opt: WvletCliRunOption): Unit =
     val result = executeAgainst(opt)
@@ -64,10 +64,11 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
       .orElse(engine.map(_.`type`))
       .map(_.toLowerCase)
       .getOrElse("duckdb")
-    if backend == "wvlet" then
+    if backend == "wvlet" && opt.host.orElse(engine.flatMap(_.host)).isDefined then
       // Remote execution: the server compiles and runs the ORIGINAL wvlet text with its own
       // profile, catalogs, and credentials — no local engine or compilation involved
       return executeOnRemoteServer(opt, engine)
+    // `wvlet` without a host runs on the in-process columnar engine (PlanExecutor routes it)
     // CLI flags override the matching profile field. `--https` (a Boolean flag) can't
     // distinguish "user passed false" from "user didn't pass it", so the profile setting only
     // applies when the flag was left at the default `false`.
@@ -224,7 +225,8 @@ case class WvletCliRunOption(
     profile: Option[String] = None,
     @option(
       prefix = "-t,--target",
-      description = "Backend: duckdb (default), trino, or wvlet (remote server)"
+      description =
+        "Backend: duckdb (default), trino, or wvlet (in-process engine; a remote server with --host)"
     )
     targetDBType: Option[String] = None,
     @option(prefix = "--format", description = "Output format: box (default), csv")

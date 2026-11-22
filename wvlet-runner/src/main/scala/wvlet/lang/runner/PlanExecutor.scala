@@ -25,6 +25,9 @@ import wvlet.lang.compiler.connector.SqlConnector
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.SqlConnectorProvider
+import wvlet.lang.runner.engine.WvletEngineSession
+
+import scala.collection.mutable
 
 /**
   * The cross-platform `ExecutionPlan` interpreter: runs queries, multi-statement scripts, `test`
@@ -36,6 +39,9 @@ import wvlet.lang.runner.connector.SqlConnectorProvider
   * (SQL is generated at execution time). Unlike the JVM `QueryExecutor`, no live catalog metadata
   * is registered — the thin CLIs compile catalog-free, so the switched engine gets an in-memory
   * catalog carrying its dialect and catalog/schema names.
+  *
+  * A `wvlet` connector without a host runs queries on the in-process columnar engine
+  * ([[WvletEngineSession]]) instead of a SQL engine.
   */
 class PlanExecutor(
     connectorProvider: SqlConnectorProvider,
@@ -50,8 +56,18 @@ class PlanExecutor(
 
   private def activeConnector: SqlConnector = connectorProvider.getConnector(activeConfig)
 
+  // In-process engine sessions, one per wvlet connector config (tables saved in a session stay
+  // visible to later statements)
+  private val engineSessions = mutable.Map.empty[ConnectorConfig, WvletEngineSession]
+
+  private def engineSessionOf(config: ConnectorConfig): Option[WvletEngineSession] =
+    if WvletEngineSession.isInProcess(config) then
+      Some(engineSessions.getOrElseUpdate(config, WvletEngineSession(config, workEnv.path)))
+    else
+      None
+
   // The connector provider (and its cached connections) is owned by the caller
-  override def close(): Unit = ()
+  override def close(): Unit = engineSessions.clear()
 
   override protected def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
     executeQuery(plan, rowLimit)
@@ -62,6 +78,9 @@ class PlanExecutor(
 
   private def executeQuery(plan: LogicalPlan, limit: Int)(using context: Context): QueryResult =
     plan match
+      case q: Relation if WvletEngineSession.isInProcess(activeConfig) =>
+        workEnv.info(s"Executing on the wvlet engine:\n${q.pp}")
+        engineSessionOf(activeConfig).get.execute(q, limit)
       case q: Relation =>
         val generatedSQL = GenSQL.generateSQLFromRelation(q)
         workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
@@ -71,8 +90,18 @@ class PlanExecutor(
       case _ =>
         QueryResult.empty
 
-  override protected def runStatements(sqls: List[String])(using context: Context): Unit = sqls
-    .foreach { sql =>
+  override protected def executeSave(save: Save)(using context: Context): QueryResult =
+    engineSessionOf(activeConfig) match
+      case Some(session) =>
+        session.save(save)
+        QueryResult.empty
+      case None =>
+        super.executeSave(save)
+
+  override protected def runStatements(sqls: List[String])(using context: Context): Unit =
+    if WvletEngineSession.isInProcess(activeConfig) then
+      throw WvletEngineSession.sqlNotSupported(sqls)
+    sqls.foreach { sql =>
       workEnv.info(s"Executing SQL:\n${sql}")
       debug(s"Executing SQL:\n${sql}")
       given monitor: QueryProgressMonitor = context.queryProgressMonitor
@@ -136,7 +165,9 @@ class PlanExecutor(
             )
     // Resolve the connector BEFORE committing state, so an unsupported type or connection
     // failure leaves the previous engine fully active
-    connectorProvider.getConnector(config)
+    val engineSession = engineSessionOf(config)
+    if engineSession.isEmpty then
+      connectorProvider.getConnector(config)
     activeConfig = config
     // Switch the SQL dialect along with the engine: SQL is generated at execution time from
     // context.dbType (= defaultCatalog.dbType), so replacing the default catalog makes every
@@ -144,11 +175,15 @@ class PlanExecutor(
     // catalog-free, so an in-memory catalog carrying the dialect (and catalog/schema names for
     // qualification) is all the switched engine needs
     val newDBType = DBType.fromString(config.`type`)
-    context.global.defaultCatalog = InMemoryCatalog(
-      catalogName = catalogName.getOrElse(connectorName),
-      functions = Nil,
-      catalogDBType = newDBType
-    )
+    context.global.defaultCatalog = engineSession
+      .map(_.catalog)
+      .getOrElse(
+        InMemoryCatalog(
+          catalogName = catalogName.getOrElse(connectorName),
+          functions = Nil,
+          catalogDBType = newDBType
+        )
+      )
     schemaName.foreach { schema =>
       context.global.defaultSchema = schema
     }
