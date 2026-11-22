@@ -14,13 +14,14 @@ import wvlet.lang.runner.QueryResultList
 import wvlet.lang.runner.TableRows
 import wvlet.lang.runner.connector.SqlConnectorProvider
 import wvlet.lang.runner.connector.WvletServerClient
+import wvlet.lang.skill.SkillOption
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.command
 import wvlet.uni.cli.launcher.option
 import wvlet.uni.log.LogSupport
 
 /**
-  * Cross-platform wvlet CLI surface — `version`, `compile`, `to_wvlet`, `run`.
+  * Cross-platform wvlet CLI surface — `version`, `compile`, `to_wvlet`, `skill`, `run`.
   *
   * Each platform (JVM, Node.js, Native) wires its own `main` that reads argv and dispatches through
   * `Launcher.of[WvletCli]`. The JVM `wvlet-cli` module additionally exposes `ui` and the REPL via
@@ -36,6 +37,11 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
 
   @command(description = "Convert SQL to wvlet flow-style query")
   def to_wvlet(opt: WvletCliCompileOption): Unit = println(WvletCliCompiler(opt).generateWvlet)
+
+  @command(description =
+    "Print the AI-agent skill for this wvlet version (SKILL.md, or a reference file), or install it with --install <dir>"
+  )
+  def skill(opt: SkillOption): Unit = SkillOption.execute(opt)
 
   @command(description =
     "Compile and execute a wvlet query against DuckDB, Trino, the in-process wvlet engine, or a remote wvlet server"

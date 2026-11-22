@@ -11,6 +11,7 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.server.WvletServer
 import wvlet.lang.server.WvletServerConfig
+import wvlet.lang.skill.SkillOption
 import wvlet.uni.log.LogSupport
 
 object WvletMain:
@@ -112,6 +113,11 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   ): Unit = handleError {
     WvletFlowCommand(opts).build(flowOption, select, dryRun)
   }
+
+  @command(description =
+    "Print the AI-agent skill for this wvlet version (SKILL.md, or a reference file), or install it with --install <dir>"
+  )
+  def skill(opt: SkillOption): Unit = handleError(SkillOption.execute(opt))
 
   @command(description = "Convert SQL to Wvlet query")
   def to_wvlet(compilerOption: WvletCompilerOption): Unit = handleError {

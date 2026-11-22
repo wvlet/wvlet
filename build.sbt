@@ -216,6 +216,34 @@ def generateWvletLib(path: File, packageName: String, className: String): String
   body
 }
 
+/**
+  * Embed the Markdown files of the bundled AI-agent skill as Scala strings, so that `wvlet skill`
+  * prints the copy that matches the compiler on every platform (JVM, Scala.js, Native).
+  */
+def generateSkillBundle(skillDir: File, packageName: String, className: String): String = {
+  val mdFiles = (skillDir ** "*.md").get().sortBy(_.relativeTo(skillDir).get.getPath)
+  val q3      = "\"\"\""
+  val entries = mdFiles.map { f =>
+    val name    = f.relativeTo(skillDir).get.getPath.replace("\\", "/")
+    val content = IO.read(f)
+    // Constant strings in a class file are limited to 64 KB
+    require(content.getBytes("UTF-8").length < 60000, s"${name} is too large to embed")
+    // Raw triple-quoted string; a literal triple quote is spliced in as a separate string
+    val literal = content.split(q3, -1).map(part => s"${q3}${part}${q3}").mkString(" + \"\\\"\\\"\\\"\" + ")
+    s"""    "${name}" -> (${literal})"""
+  }
+  // Embedded content is appended after stripMargin, which would otherwise strip Markdown table rows
+  val header = s"""package ${packageName}
+     |
+     |import scala.collection.immutable.ListMap
+     |
+     |// Generated from plugins/wvlet/skills/wvlet by the skillGen task. Do not edit.
+     |object ${className}:
+     |  val files: ListMap[String, String] = ListMap(
+     |""".stripMargin
+  header + entries.mkString(",\n") + s"\n  )\nend ${className}\n"
+}
+
 lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-lang"))
@@ -239,6 +267,13 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       Seq(targetFile)
     },
     Compile / sourceGenerators += stdlibGen.taskValue,
+    skillGen := {
+      val skillDir   = (ThisBuild / baseDirectory).value / "plugins" / "wvlet" / "skills" / "wvlet"
+      val targetFile = (Compile / sourceManaged).value / "BundledSkill.scala"
+      IO.write(targetFile, generateSkillBundle(skillDir, "wvlet.lang.skill", "BundledSkill"))
+      Seq(targetFile)
+    },
+    Compile / sourceGenerators += skillGen.taskValue,
     // Watch changes of example .wv files upon testing. In sbt 2, Seq[File] outputs are
     // rejected by the caching layer, so wrap the value in Def.uncached (same trick uni
     // uses for JSEnv).
