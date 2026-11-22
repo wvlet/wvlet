@@ -127,7 +127,11 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
       IcebergWriter.append(
         path,
         schema,
-        result.batches.map(b => castBatch(b, result.schema, schema, sourceOf))
+        result
+          .batches
+          .map(b =>
+            castBatch(b, result.schema, schema, sourceOf, IndexedSeq.fill(schema.size)(null))
+          )
       )
     else if !SourceIO.existsFile(path) then
       DataFileWriter.write(path, unqualified(result.schema), result.batches)
