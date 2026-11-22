@@ -482,7 +482,7 @@ enum JoinKind:
   * The hash table of a join's build (right) input: its rows, and for each distinct key the chain of
   * rows holding it. Built once on first use, then only read, so probes may share it across threads
   */
-final class JoinBuild(right: Operator, rightKeys: IndexedSeq[VExpr]):
+final class JoinBuild(right: Operator, rightKeys: IndexedSeq[VExpr], trackMatches: Boolean = false):
   @volatile
   private var built = false
 
@@ -490,6 +490,12 @@ final class JoinBuild(right: Operator, rightKeys: IndexedSeq[VExpr]):
   var table: GroupTable = null
   var head: Array[Int]  = null
   var chain: Array[Int] = null
+
+  /**
+    * Build rows some probe matched, shared by the probe copies of a right / full join. Copies only
+    * ever set entries to true, and the unmatched rows are read after every copy has finished
+    */
+  var matched: Array[Boolean] = null
 
   def ensureBuilt(): Unit =
     if !built then
@@ -524,8 +530,21 @@ final class JoinBuild(right: Operator, rightKeys: IndexedSeq[VExpr]):
       chain(row) = head(g)
       head(g) = row
       j -= 1
+    if trackMatches then
+      matched = new Array[Boolean](build.size)
 
 end JoinBuild
+
+/** How a right / full join tracks and emits build rows no probe row matched */
+enum OuterMode:
+  /** Tracks its own matches and emits the unmatched rows at the end of its input */
+  case Own
+
+  /** One part of a split probe: marks the shared build's matches, emits no unmatched rows */
+  case Part
+
+  /** The last run after every part: marks the shared matches, then emits the unmatched rows */
+  case Tail
 
 /**
   * Equi hash join building on the right input. Output: left columns then right columns (Semi /
@@ -542,7 +561,8 @@ class HashJoinOp(
     val kind: JoinKind,
     val residual: Option[VExpr],
     val schema: Schema,
-    shared: JoinBuild = null
+    shared: JoinBuild = null,
+    outerMode: OuterMode = OuterMode.Own
 ) extends Operator:
   override def children: Seq[Operator] = Seq(left, right)
   override def name: String            = s"HashJoin[${kind}]"
@@ -556,10 +576,10 @@ class HashJoinOp(
     if shared != null then
       shared
     else
-      JoinBuild(right, rightKeys)
+      JoinBuild(right, rightKeys, trackMatches = kind == JoinKind.Right || kind == JoinKind.Full)
 
   /** The same join over another left input, sharing this join's build */
-  def withLeft(newLeft: Operator): HashJoinOp = HashJoinOp(
+  def withLeft(newLeft: Operator, mode: OuterMode = OuterMode.Own): HashJoinOp = HashJoinOp(
     newLeft,
     right,
     leftKeys,
@@ -567,7 +587,8 @@ class HashJoinOp(
     kind,
     residual,
     schema,
-    joinBuild
+    joinBuild,
+    mode
   )
 
   override def close(): Unit =
@@ -593,7 +614,15 @@ class HashJoinOp(
     head = joinBuild.head
     chain = joinBuild.chain
     if kind == JoinKind.Right || kind == JoinKind.Full then
-      buildMatched = new Array[Boolean](build.size)
+      buildMatched =
+        outerMode match
+          case OuterMode.Own if shared == null =>
+            // This join's own build: its matched array is this join's alone
+            joinBuild.matched
+          case OuterMode.Own =>
+            new Array[Boolean](build.size)
+          case _ =>
+            joinBuild.matched
     built = true
 
   def next(): Batch =
@@ -608,14 +637,13 @@ class HashJoinOp(
     out
 
   private def emitUnmatchedBuild(): Batch =
-    if buildMatched == null || emittedUnmatched then
+    if buildMatched == null || emittedUnmatched || outerMode == OuterMode.Part then
       return null
     emittedUnmatched = true
     val idx = (0 until build.size).filter(i => !buildMatched(i)).toArray
     if idx.isEmpty then
       return null
     val n       = idx.length
-    val pad     = Array.fill(n)(-1)
     val leftPad = left.schema.types.map(t => Vec.nullVec(t, n)).toArray
     Batch(leftPad ++ build.gather(idx, n).columns, n)
 

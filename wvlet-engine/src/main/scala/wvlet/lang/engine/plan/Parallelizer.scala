@@ -33,38 +33,36 @@ object Parallelizer:
 
   /**
     * A scan and the operators over it that can run on parts of the scan independently:
-    * `rebuild(input)` makes a copy of those operators over another input. `prepare` runs on the
-    * calling thread before parts start (hash join builds), and `close` releases what the copies
-    * share
+    * `rebuild(input)` makes a copy of those operators over another input. `tail`, when the pipeline
+    * has right / full joins, makes the copy that runs once after every part over an empty input,
+    * emitting the build rows no part matched. `prepare` runs on the calling thread before parts
+    * start (hash join builds), and `close` releases what the copies share
     */
   private case class Pipeline(
       scan: ScanOp,
       rebuild: Operator => Operator,
+      tail: Option[Operator => Operator],
       prepare: List[() => Unit],
       close: List[() => Unit]
-  )
+  ):
+    /** Add an operator over the pipeline, the same over the parts and the tail */
+    def map(f: Operator => Operator): Pipeline = copy(
+      rebuild = x => f(rebuild(x)),
+      tail = tail.map(t => x => f(t(x)))
+    )
 
-  /** Joins whose probe side can be split: each probe row's output depends on that row only */
-  private def probeSplittable(kind: JoinKind): Boolean =
-    kind match
-      case JoinKind.Inner | JoinKind.Left | JoinKind.Semi | JoinKind.Anti | JoinKind.Cross =>
-        true
-      case _ =>
-        false
+  private def isOuterBuild(kind: JoinKind): Boolean =
+    kind == JoinKind.Right || kind == JoinKind.Full
 
   private def pipeline(op: Operator, runner: TaskRunner): Option[Pipeline] =
     op match
       case s: ScanOp if s.source.canSplit =>
-        Some(Pipeline(s, x => x, Nil, Nil))
+        Some(Pipeline(s, x => x, None, Nil, Nil))
       case f: FilterOp =>
-        pipeline(f.child, runner).map(p =>
-          p.copy(rebuild = x => FilterOp(p.rebuild(x), f.cond, f.keep))
-        )
+        pipeline(f.child, runner).map(_.map(x => FilterOp(x, f.cond, f.keep)))
       case pr: ProjectOp =>
-        pipeline(pr.child, runner).map(p =>
-          p.copy(rebuild = x => ProjectOp(p.rebuild(x), pr.exprs, pr.schema))
-        )
-      case j: HashJoinOp if probeSplittable(j.kind) =>
+        pipeline(pr.child, runner).map(_.map(x => ProjectOp(x, pr.exprs, pr.schema)))
+      case j: HashJoinOp =>
         pipeline(j.left, runner).map { p =>
           // One join over the (itself parallelized) build input, whose build every copy shares
           val template = HashJoinOp(
@@ -76,12 +74,18 @@ object Parallelizer:
             j.residual,
             j.schema
           )
-          Pipeline(
-            p.scan,
-            x => template.withLeft(p.rebuild(x)),
-            p.prepare :+ (() => template.joinBuild.ensureBuilt()),
-            p.close :+ (() => template.right.close())
+          val shared = p.copy(
+            prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
+            close = p.close :+ (() => template.right.close())
           )
+          if isOuterBuild(j.kind) then
+            // Parts mark matched build rows; the tail emits the rest once every part is done
+            shared.copy(
+              rebuild = x => template.withLeft(p.rebuild(x), OuterMode.Part),
+              tail = Some(x => template.withLeft(p.tail.getOrElse(p.rebuild)(x), OuterMode.Tail))
+            )
+          else
+            shared.map(x => template.withLeft(x))
         }
       case _ =>
         None
@@ -90,13 +94,13 @@ object Parallelizer:
     def r(x: Operator): Operator = rewrite(x, runner)
     pipeline(op, runner) match
       case Some(p) =>
-        MorselOp(p.scan, p.rebuild, op.schema, runner, p.prepare, p.close)
+        MorselOp(p.scan, p.rebuild, op.schema, runner, p.prepare, p.close, p.tail)
       case None =>
         op match
           case a: HashAggOp if TwoPhaseAgg.supports(a) =>
             pipeline(a.child, runner) match
               case Some(p) =>
-                TwoPhaseAgg.plan(a, p.scan, p.rebuild, runner, p.prepare, p.close)
+                TwoPhaseAgg.plan(a, p.scan, p.rebuild, p.tail, runner, p.prepare, p.close)
               case None =>
                 HashAggOp(r(a.child), a.keys, a.aggs, a.schema)
           case f: FilterOp =>
@@ -155,6 +159,7 @@ private[plan] object TwoPhaseAgg:
       a: HashAggOp,
       scan: ScanOp,
       rebuild: Operator => Operator,
+      tail: Option[Operator => Operator],
       runner: TaskRunner,
       prepare: List[() => Unit],
       release: List[() => Unit]
@@ -197,7 +202,8 @@ private[plan] object TwoPhaseAgg:
       partialSchema,
       runner,
       prepare,
-      release
+      release,
+      tail.map(t => x => HashAggOp(t(x), a.keys, partialAggs, partialSchema))
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
     // Combine partial results by key

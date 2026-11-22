@@ -26,6 +26,9 @@ import scala.collection.mutable
   * sequential one. `prepare` runs on the calling thread before any part starts (hash join builds,
   * so that tasks never wait for other tasks), and `release` when the operator closes.
   *
+  * With `tail` (right / full joins), one more run over an empty input follows the parts, on the
+  * calling thread, to emit the build rows no part matched.
+  *
   * Falls back to running the pipeline over the whole scan when the source has a single part.
   */
 class MorselOp(
@@ -34,7 +37,8 @@ class MorselOp(
     val schema: Schema,
     runner: TaskRunner,
     prepare: List[() => Unit] = Nil,
-    release: List[() => Unit] = Nil
+    release: List[() => Unit] = Nil,
+    tail: Option[Operator => Operator] = None
 ) extends Operator:
   override def name: String            = s"Morsel[parallelism=${runner.parallelism}]"
   override def children: Seq[Operator] = Seq(pipeline(scan))
@@ -45,6 +49,13 @@ class MorselOp(
   private var nextPart                 = 0
   private var current: Iterator[Batch] = Iterator.empty
   private val window                   = math.max(2, runner.parallelism * 2)
+  private var tailDone                 = false
+
+  /** The tail pipeline over an empty input, run on the calling thread after every part */
+  private def runTail(): Seq[Batch] =
+    val op = tail.get(IteratorOp(scan.schema, () => Iterator.empty, scan.name))
+    try op.drain()
+    finally op.close()
 
   private def runPart(k: Int): Seq[Batch] =
     val part = IteratorOp(scan.schema, splits.parts(k), scan.name)
@@ -67,14 +78,19 @@ class MorselOp(
         case Some(s) =>
           splits = s
         case None =>
-          sequential = pipeline(scan)
+          // A single run is both the only part and the tail
+          sequential = tail.getOrElse(pipeline)(scan)
     if sequential != null then
       return sequential.next()
     while !current.hasNext do
       fill()
       if inFlight.isEmpty then
-        return null
-      current = inFlight.dequeue().get().iterator
+        if tail.isEmpty || tailDone then
+          return null
+        tailDone = true
+        current = runTail().iterator
+      else
+        current = inFlight.dequeue().get().iterator
     current.next()
 
   override def close(): Unit =
