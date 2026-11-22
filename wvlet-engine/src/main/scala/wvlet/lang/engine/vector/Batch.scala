@@ -57,14 +57,17 @@ final class Batch(val columns: Array[Vec], val size: Int):
   def gather(idx: Array[Int], n: Int): Batch = Batch(columns.map(_.gather(idx, n)), n)
 
   def slice(from: Int, until: Int): Batch =
-    if from == 0 && until >= size then
+    val end = math.min(until, size)
+    if from == 0 && end == size then
       this
     else
-      Batch(columns.map(_.slice(from, until)), math.max(0, math.min(until, size) - from))
+      Batch(columns.map(_.slice(from, end)), math.max(0, end - from))
 
   def select(indexes: Array[Int]): Batch = Batch(indexes.map(columns), size)
 
   override def toString: String = s"Batch(${size} rows, ${numColumns} columns)"
+
+end Batch
 
 object Batch:
   val DefaultSize = 4096

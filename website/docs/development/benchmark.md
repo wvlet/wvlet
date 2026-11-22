@@ -34,6 +34,28 @@ sum of per-query median exec time over 22 queries: 1213.5 ms
 Execution time here includes the JDBC round trip and building the `QueryResult`, so it is what a
 `wv` user experiences rather than the pure engine time.
 
+## Columnar engine vs DuckDB
+
+`EngineTPCHBench` runs the same `spec/tpch` queries on the in-process columnar engine
+(`wvlet-engine`) and on DuckDB, both reading the same Parquet files, and reports the median time
+of each and their ratio. The data is generated once per scale factor with DuckDB's `tpch`
+extension into `target/tpch-sf<sf>/<table>.parquet` (never committed) and reused afterwards:
+
+```bash
+# one warm-up plus 3 timed executions per query on each side
+WVLET_ENGINE_BENCH_SF=1 ./sbt "engineJVM/testOnly *EngineTPCHBench"
+
+# a subset of the queries, with a single-threaded DuckDB for a like-for-like comparison
+WVLET_ENGINE_BENCH_SF=1 WVLET_ENGINE_BENCH_QUERIES=q1,q6 WVLET_ENGINE_BENCH_DUCKDB_THREADS=1 \
+  ./sbt "engineJVM/testOnly *EngineTPCHBench"
+```
+
+`WVLET_ENGINE_BENCH_RUNS` sets the number of timed runs. The log ends with a Markdown table and
+the same numbers are written to `target/engine-bench/tpch-sf<sf>.tsv`. Engine time covers
+planning and execution of an already compiled query; DuckDB time covers running the generated
+SQL over JDBC and reading every result row. Row counts are compared too, and a mismatch is
+flagged in the table.
+
 ## Manual recipe: `EXPLAIN ANALYZE` on the duckdb CLI
 
 For engine-level numbers, or to compare against hand-written SQL, run the generated SQL directly

@@ -17,16 +17,7 @@ import wvlet.uni.test.UniTest
 
 /** TPC-H queries (spec/tpch) on the engine must return the same rows as DuckDB */
 class EngineTPCHTest extends UniTest:
-  private val tables = Seq(
-    "customer",
-    "lineitem",
-    "nation",
-    "orders",
-    "part",
-    "partsupp",
-    "region",
-    "supplier"
-  )
+  private val tables = EngineTPCHBench.tables
 
   private val conformance = EngineConformance(
     "spec/tpch",
