@@ -55,17 +55,17 @@ enum PlannerMode(val name: String):
   case Legacy extends PlannerMode("legacy")
 
   /**
-    * Through the engine's logical plan ([[wvlet.lang.engine.logical.LogicalPlan]]): relations it
+    * Through the engine's runtime plan ([[wvlet.lang.engine.runtime.RuntimePlan]]): relations it
     * doesn't cover yet are planned by the recursive planner
     */
-  case Logical extends PlannerMode("logical")
+  case Runtime extends PlannerMode("runtime")
 
 object PlannerMode:
   def fromName(name: String): Option[PlannerMode] = values.find(_.name == name)
 
 /**
   * Which planner optimizations run, and how relations are planned. `validatePlans` checks every
-  * logical plan with [[wvlet.lang.engine.logical.PlanValidator]] (for tests and debugging)
+  * runtime plan with [[wvlet.lang.engine.runtime.PlanValidator]] (for tests and debugging)
   */
 case class OptimizerOptions(
     disabled: Set[Optimization] = Set.empty,
@@ -86,7 +86,7 @@ object OptimizerOptions:
   val PlannerPropertyName: String = "wvlet.engine.planner"
   val PlannerEnvName: String      = "WVLET_ENGINE_PLANNER"
 
-  /** Parse a planner mode name (`legacy` or `logical`). Unknown names are an error */
+  /** Parse a planner mode name (`legacy` or `runtime`). Unknown names are an error */
   def parsePlanner(name: String): PlannerMode = PlannerMode
     .fromName(name.trim.toLowerCase)
     .getOrElse {

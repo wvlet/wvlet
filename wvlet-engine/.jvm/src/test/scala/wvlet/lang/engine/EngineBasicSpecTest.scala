@@ -42,10 +42,10 @@ end EngineBasicSpecBase
 
 class EngineBasicSpecTest extends EngineBasicSpecBase(OptimizerOptions())
 
-/** spec/basic through the engine's logical plan, checked by the plan validator */
-class EngineBasicSpecLogicalTest
+/** spec/basic through the engine's runtime plan, checked by the plan validator */
+class EngineBasicSpecRuntimeTest
     extends EngineBasicSpecBase(
-      OptimizerOptions().withPlanner(PlannerMode.Logical).withValidatePlans(true)
+      OptimizerOptions().withPlanner(PlannerMode.Runtime).withValidatePlans(true)
     )
 
 object EngineBasicSpecTest:

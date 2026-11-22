@@ -26,7 +26,7 @@ import scala.jdk.CollectionConverters.*
 /**
   * The engine's physical plans of the TPC-H and TPC-DS queries must match the golden files under
   * spec/engine-plans, so that a planner change shows its plan changes in the PR diff. Regenerate
-  * them with [[EnginePlanGolden.regenCommand]]. The logical planner must produce the same plans as
+  * them with [[EnginePlanGolden.regenCommand]]. The runtime planner must produce the same plans as
   * the recursive planner, so it is checked against the same files
   */
 class EnginePlanGoldenTest extends UniTest:
@@ -40,7 +40,7 @@ class EnginePlanGoldenTest extends UniTest:
       if TaskRunner.default.parallelism <= 1 then
         ignore("The golden plans are parallel plans: run on a machine with 2 or more processors")
       val generated = suite.generate(
-        OptimizerOptions().withPlanner(planner).withValidatePlans(planner == PlannerMode.Logical)
+        OptimizerOptions().withPlanner(planner).withValidatePlans(planner == PlannerMode.Runtime)
       )
       val dir      = suite.dir
       val existing =

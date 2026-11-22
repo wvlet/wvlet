@@ -11,20 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.engine.logical
+package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 
 /**
-  * Turns a [[LogicalPlan]] into physical operators: column ids become input positions. The physical
+  * Turns a [[RuntimePlan]] into physical operators: column ids become input positions. The physical
   * passes over operators (column pruning, parallelism) run afterwards, as for the recursive
   * planner.
   */
 object Lowering:
-  import LogicalPlan.*
+  import RuntimePlan.*
 
-  def apply(p: LogicalPlan): Operator =
+  def apply(p: RuntimePlan): Operator =
     p match
       case Scan(source, _) =>
         ScanOp(source, p.schema, None, None)
@@ -64,7 +64,7 @@ object Lowering:
         op
 
   /** Column id -> position in the output of `p` (-1 for ids it doesn't output) */
-  private def positions(p: LogicalPlan): Array[Int] =
+  private def positions(p: RuntimePlan): Array[Int] =
     val out = p.output
     val pos = Array.fill(out.map(_.id.value).maxOption.getOrElse(-1) + 1)(-1)
     out.indices.foreach(i => pos(out(i).id.value) = i)

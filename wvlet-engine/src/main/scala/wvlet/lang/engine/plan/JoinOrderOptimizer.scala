@@ -34,9 +34,9 @@ trait JoinBinding:
   def bind(schema: Schema, e: Expression): VExpr
 
 /**
-  * Builds join trees for [[JoinOrderOptimizer]]: operators for the recursive planner, or logical
-  * nodes paired with their operators for the logical binder. Schemas and estimates come from the
-  * operator form
+  * Builds join trees for [[JoinOrderOptimizer]]: operators for the recursive planner, or
+  * runtime-plan nodes paired with their operators for the runtime binder. Schemas and estimates
+  * come from the operator form
   */
 trait JoinTreeBuilder[P]:
   /** The operator form of a plan */

@@ -24,9 +24,9 @@ import wvlet.lang.compiler.DBType
 import wvlet.lang.engine.catalog.*
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
-import wvlet.lang.engine.logical.LogicalBinder
-import wvlet.lang.engine.logical.Lowering
-import wvlet.lang.engine.logical.PlanValidator
+import wvlet.lang.engine.runtime.RuntimeBinder
+import wvlet.lang.engine.runtime.Lowering
+import wvlet.lang.engine.runtime.PlanValidator
 import wvlet.lang.engine.vector.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -162,18 +162,18 @@ class Planner(
 
   // --- relations ------------------------------------------------------------------------
 
-  /** Binds relations to the engine's logical plan (with the logical planner) */
-  private lazy val logicalBinder = LogicalBinder(this)
+  /** Binds relations to the engine's runtime plan (with the runtime planner) */
+  private lazy val runtimeBinder = RuntimeBinder(this)
 
   /**
-    * Plan a relation into operators: through the logical plan (`wvlet.engine.planner=logical`),
+    * Plan a relation into operators: through the runtime plan (`wvlet.engine.planner=runtime`),
     * whose relations it doesn't cover yet are planned by [[planLegacy]], or directly by
     * [[planLegacy]]
     */
   private[engine] def planRelation(r: Relation): Operator =
     options.planner match
-      case PlannerMode.Logical =>
-        val p = logicalBinder.bind(r)
+      case PlannerMode.Runtime =>
+        val p = runtimeBinder.bind(r)
         if options.validatePlans then
           PlanValidator.validate(p)
         Lowering(p)
@@ -181,9 +181,9 @@ class Planner(
         planLegacy(r)
 
   /**
-    * The logical plan of a relation, whose relations the logical binder doesn't cover are planned
+    * The runtime plan of a relation, whose relations the runtime binder doesn't cover are planned
     */
-  def logicalPlan(r: Relation): wvlet.lang.engine.logical.LogicalPlan = logicalBinder.bind(r)
+  def runtimePlan(r: Relation): wvlet.lang.engine.runtime.RuntimePlan = runtimeBinder.bind(r)
 
   /** Register the CTEs of a WITH clause, which table references resolve by name */
   private[engine] def registerCTEs(w: WithQuery): Unit =
@@ -2729,7 +2729,7 @@ private[engine] trait JoinPlanBuilder[P] extends JoinTreeBuilder[P]:
   /** Apply filter conjuncts as `Planner.applyConjuncts` does */
   def conjuncts(p: P, conds: List[Expression]): P
 
-/** Builds aggregations for the planner: operators, or logical nodes with their operators */
+/** Builds aggregations for the planner: operators, or runtime nodes with their operators */
 private[engine] trait AggPlanBuilder[P]:
   /** The operator form of a plan */
   def op(p: P): Operator
