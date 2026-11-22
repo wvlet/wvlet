@@ -297,6 +297,37 @@ class PlanExecutorWvletEngineTest extends UniTest:
     result.getError shouldBe None
   }
 
+  test("never resolve a qualified table to a same-named table of another schema") {
+    val e = intercept[WvletLangException] {
+      run("""create schema ddl_s3
+            |from [[1]] as t(id)
+            |save to ddl_s3.items3
+            |
+            |from [[2]] as t(id)
+            |save to items3
+            |
+            |drop schema wvlet.ddl_s3 with cascade: true
+            |
+            |from ddl_s3.items3""".stripMargin)
+    }
+    e.getMessage shouldContain "not found"
+  }
+
+  test("reject declarations the engine can't honor") {
+    val pk = intercept[WvletLangException] {
+      run("""table ddl_pk2 = {
+            |  a: int primary key
+            |  b: int primary key
+            |}
+            |create table ddl_pk2""".stripMargin)
+    }
+    pk.getMessage shouldContain "more than one primary key"
+    val main = intercept[WvletLangException] {
+      run("drop schema main with cascade: true")
+    }
+    main.getMessage shouldContain "default schema"
+  }
+
   test("reject SQL statements the engine can't run") {
     val e = intercept[WvletLangException] {
       run("execute sql\"select 1\"")

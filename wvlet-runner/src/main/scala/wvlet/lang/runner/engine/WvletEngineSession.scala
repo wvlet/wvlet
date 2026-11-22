@@ -66,6 +66,9 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
   private val catalogName = config.catalog.getOrElse(WvletEngineSession.connectorType)
   private val schemaName  = config.schema.getOrElse("main")
 
+  // Table references resolve with the same naming as writes (see tableKey)
+  engine.catalog.withNameKey(tableKey)
+
   /**
     * The compile-time catalog: carries the `wvlet` dialect and the schemas of registered tables, so
     * the typer resolves their columns
@@ -263,6 +266,14 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
       case other =>
         other.mkString(".")
 
+  // A schema name relative to this session's catalog: `wvlet.s` and `s` are the same schema
+  private def schemaKey(name: String): String =
+    name.split("\\.").toList match
+      case c :: s :: Nil if c.equalsIgnoreCase(catalogName) =>
+        s
+      case other =>
+        other.mkString(".")
+
   /**
     * Run a catalog statement: `create table` (from declared columns, with defaults and NOT NULL /
     * primary key / unique constraints), `drop table`, `truncate`, and `create` / `drop schema`
@@ -270,6 +281,26 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
   def ddl(statement: TopLevelStatement)(using ctx: Context): Unit = guarded {
     statement match
       case c: CreateTable =>
+        c.tableElems
+          .collectFirst {
+            case e if !e.isInstanceOf[ColumnDef] =>
+              e
+          }
+          .foreach { e =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(
+                s"${e.nodeName} in create table is not supported by the wvlet engine yet",
+                c.sourceLocation
+              )
+          }
+        if c.properties.nonEmpty then
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(
+              "Table properties are not supported by the wvlet engine",
+              c.sourceLocation
+            )
         val key  = tableKey(c.table.fullName)
         val spec = tableSpecOf(
           c.table.fullName,
@@ -285,13 +316,17 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
         writer.dropTable(tableKey(d.table.fullName), ifExists = d.ifExists)
       case t: Truncate if t.isForTable =>
         registerSchema(writer.truncate(tableKey(t.targetName)))
-      case c: CreateSchema if c.location.isEmpty && c.options.isEmpty =>
-        val name = tableKey(c.schema.fullName)
+      case c: CreateSchema if c.location.isEmpty && c.options.isEmpty && c.properties.isEmpty =>
+        val name = schemaKey(c.schema.fullName)
         if schemas.contains(name.toLowerCase) && !c.ifNotExists then
           throw StatusCode.SCHEMA_ALREADY_EXISTS.newException(s"Schema ${name} already exists")
         schemas += name.toLowerCase
+      case d: DropSchema if schemaKey(d.schema.fullName).equalsIgnoreCase(schemaName) =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"The default schema ${schemaName} can't be dropped on the wvlet engine")
       case d: DropSchema =>
-        val name   = tableKey(d.schema.fullName)
+        val name   = schemaKey(d.schema.fullName)
         val prefix = s"${name.toLowerCase}."
         val tables = engine.catalog.tableNames.filter(_.toLowerCase.startsWith(prefix))
         if !schemas.contains(name.toLowerCase) && tables.isEmpty then
@@ -356,12 +391,19 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
         notNull = c.notNull || c.primaryKey
       )
     }
+    // Column-level `primary key` marks one column, as in SQL: a table has at most one
     val keys =
       columns.filter(_.primaryKey).map(_.columnName.leafName) match
         case Nil =>
           Nil
-        case pk =>
-          List(pk)
+        case pk :: Nil =>
+          List(List(pk))
+        case pks =>
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Table ${name} declares more than one primary key column: ${pks.mkString(", ")}"
+            )
     val uniques = columns.filter(_.unique).map(c => List(c.columnName.leafName))
     TableWriter.TableSpec(specs, keys ++ uniques)
 

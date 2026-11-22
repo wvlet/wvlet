@@ -323,10 +323,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       case Some(d) =>
         planAliased(d)
       case None =>
-        // A qualified reference (`s.t`) names its table exactly; the bare name is the fallback
         val src = catalog
-          .find(fullName)
-          .orElse(catalog.find(name))
+          .lookup(name, fullName)
           .orElse(sources.tableSource(name, fullName))
           .getOrElse {
             throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${fullName}")

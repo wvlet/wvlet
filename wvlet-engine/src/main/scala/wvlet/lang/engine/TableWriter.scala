@@ -187,15 +187,21 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
         val table    = writable(target, "append to")
         val schema   = table.schema
         val defaults = defaultsOf(name, schema)
-        val batches  =
-          if keys.isEmpty then
-            val sourceOf = positionalSources(name, schema, result.schema, columns)
-            batchesOf(table) ++
-              result.batches.map(b => castBatch(b, result.schema, schema, sourceOf, defaults))
-          else
-            Seq(toBatch(schema, upsert(name, schema, table, result, columns, keys, defaults)))
-        checkConstraints(name, schema, batches)
-        register(MemTable(table.name, schema, batches))
+        if keys.isEmpty then
+          val sourceOf = positionalSources(name, schema, result.schema, columns)
+          val added    = result
+            .batches
+            .map(b => castBatch(b, result.schema, schema, sourceOf, defaults))
+          val batches = batchesOf(table) ++ added
+          // Existing rows were checked when they were written: NOT NULL needs only the new ones
+          checkConstraints(name, schema, batches, notNullOf = added)
+          register(MemTable(table.name, schema, batches))
+        else
+          val batches = Seq(
+            toBatch(schema, upsert(name, schema, table, result, columns, keys, defaults))
+          )
+          checkConstraints(name, schema, batches, notNullOf = batches)
+          register(MemTable(table.name, schema, batches))
 
   /**
     * `delete`: remove the rows of the table that satisfy the filters of `input` (all rows when it
@@ -395,16 +401,20 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
   end upsert
 
   // NOT NULL and unique (primary key) constraints of a table made by `create table`
-  private def checkConstraints(name: String, schema: Schema, batches: Seq[Batch]): Unit = specOf(
-    name
-  ).filter(_.columns.size == schema.size)
+  private def checkConstraints(
+      name: String,
+      schema: Schema,
+      batches: Seq[Batch],
+      notNullOf: Seq[Batch]
+  ): Unit = specOf(name)
+    .filter(_.columns.size == schema.size)
     .foreach { spec =>
       spec
         .columns
         .zipWithIndex
         .filter(_._1.notNull)
         .foreach { (c, i) =>
-          if batches.exists(b => Iterator.range(0, b.size).exists(b.column(i).isNull)) then
+          if notNullOf.exists(b => Iterator.range(0, b.size).exists(b.column(i).isNull)) then
             throw StatusCode
               .INVALID_ARGUMENT
               .newException(
