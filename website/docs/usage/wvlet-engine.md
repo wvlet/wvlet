@@ -10,11 +10,12 @@ supports (JVM, Node.js, and the native binary), reading Parquet, Iceberg, JSON, 
 through pure-Scala readers, so it also works where DuckDB is unavailable.
 
 :::warning Preview
-The engine covers queries over files and registered tables (filters, projections, joins,
-aggregations, window functions, subqueries, and TPC-H). Features it doesn't support yet report an
-error: SQL DDL (`create table`, `drop`), `execute`, `append to`, `delete`, `save to` a file,
-`pivot` / `unpivot`, `unnest`, ASOF joins, lambdas, `show` commands, and some engine-specific
-functions.
+The engine covers queries over files and registered tables (filters, projections, joins
+including ASOF joins, aggregations, window functions, subqueries, `pivot`, `unnest`, lambdas,
+`show` commands, and TPC-H). Features it doesn't support yet report an error: SQL DDL
+(`create table`, `drop`), `execute`, `append to`, `delete`, `save to` a file, flows, table
+functions such as `read_csv(...)`, and some engine-specific functions. `unpivot` and map values
+run but can return results that differ from DuckDB.
 :::
 
 ## Usage
