@@ -33,11 +33,7 @@ class EngineTPCDSTest extends UniTest:
     */
   private val knownGaps: Set[Int] = Set(
     // ROLLUP / GROUPING()
-    5, 14, 18, 22, 67, 70, 77, 80, 86,
-    // OR-ed EXISTS subqueries
-    10, 35,
-    // Runs out of heap on CI runners: the inventory join builds a large intermediate result
-    72
+    5, 14, 18, 22, 67, 70, 77, 80, 86
   )
 
   private val (dataDir, tables) = EngineTPCDSTest.prepareData(EngineTPCDSTest.scaleFactor)

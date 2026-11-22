@@ -1287,12 +1287,16 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           val (joined, column) = decorrelateScalar(op, s.query)
           op = joined
           UnquotedIdentifier(column, NoSpan)
+        case ex: Exists if isCorrelated(subqueryRelation(ex.child), op.schema) =>
+          // EXISTS under OR / NOT / CASE: a match flag column
+          val (joined, column) = decorrelateExists(op, subqueryRelation(ex.child))
+          op = joined
+          UnquotedIdentifier(column, NoSpan)
         case _: SubQueryExpression | _: Exists | _: InRelation | _: NotInRelation =>
           e
         case other =>
-          other.transformChildExpressions { case c: Expression =>
-            rewrite(c)
-          }
+          // Top-down, so that subqueries are rewritten as a whole, not from their insides
+          other.mapChildExpressions(rewrite)
     val rewritten = rewrite(cond)
     (op, Binder(this, BindScope(op.schema)).bind(rewritten))
 
@@ -1629,6 +1633,52 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     (joined, valueName)
 
   end decorrelateScalar
+
+  /**
+    * A correlated EXISTS as a boolean column: left join `outer` with the distinct correlation keys
+    * of the subquery and flag the matched rows
+    */
+  private def decorrelateExists(outer: Operator, sub: Relation): (Operator, String) =
+    val (inner, correlated, _) = planCorrelated(sub, outer.schema)
+    val (pairs, rest)          = correlationKeys(correlated, inner.schema, outer.schema)
+    if rest.nonEmpty || pairs.isEmpty then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"Unsupported correlated EXISTS: only equality correlations are supported: ${rest
+              .mkString(", ")}"
+        )
+    val (lk, rk) = joinKeys(
+      Binder(this, BindScope(outer.schema)),
+      Binder(this, BindScope(inner.schema)),
+      pairs.map(p => (p._2, p._1))
+    )
+    val keyFields = rk.map(k => Field(hiddenName("k"), k.ptype))
+    val distinct  = HashAggOp(inner, rk, IndexedSeq.empty, Schema(keyFields))
+    val keyRefs   = keyFields.indices.map(i => ColRef(i, keyFields(i).ptype, keyFields(i).name))
+    val joined    = HashJoinOp(
+      outer,
+      distinct,
+      lk,
+      keyRefs,
+      JoinKind.Left,
+      None,
+      outer.schema ++ distinct.schema
+    )
+    val markName = hiddenName("exists")
+    val marked   = ProjectOp(
+      joined,
+      outer
+        .schema
+        .fields
+        .indices
+        .map(i => ColRef(i, outer.schema(i).ptype, outer.schema(i).name)) :+
+        IsNullExpr(ColRef(outer.schema.size, keyFields(0).ptype, keyFields(0).name), negate = true),
+      Schema(outer.schema.fields :+ Field(markName, PType.Bool))
+    )
+    (marked, markName)
+
+  end decorrelateExists
 
   /** Uncorrelated scalar subquery as a constant */
   def bindScalarSubquery(binder: Binder, sub: Relation): VExpr =
