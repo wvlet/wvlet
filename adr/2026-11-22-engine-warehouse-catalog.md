@@ -1,6 +1,6 @@
 # ADR: The wvlet engine persists tables as Iceberg tables in a warehouse folder
 
-Date: 2026-11-22 · PR #TBD
+Date: 2026-11-22 · PR #2232
 
 ## Context
 
