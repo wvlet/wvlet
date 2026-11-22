@@ -127,7 +127,11 @@ object IcebergWriter:
         writer.close()
       catch
         case e: Throwable =>
-          writer.abort()
+          try
+            writer.abort()
+          catch
+            case s: Throwable =>
+              e.addSuppressed(s)
           throw e
     catch
       case e: ParquetException =>

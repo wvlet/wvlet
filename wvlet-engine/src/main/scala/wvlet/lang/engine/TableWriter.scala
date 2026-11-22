@@ -114,6 +114,12 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
     * Iceberg table gets the rows, cast to the table's column types, as a new snapshot
     */
   def appendToFile(path: String, query: Relation)(using Context): Unit =
+    if path.toLowerCase.endsWith(".metadata.json") then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"Cannot append to the Iceberg metadata file ${path}: append to the table folder instead"
+        )
     val result = engine.execute(query)
     if IcebergWriter.isTable(path) then
       val schema   = unqualified(ParquetSource(path, path).schema)

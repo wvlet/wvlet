@@ -162,6 +162,16 @@ class WvletEngineIcebergTest extends UniTest:
     Files.exists(Path.of(workDir, "out/missing")) shouldBe false
   }
 
+  test("refuse append to an Iceberg metadata file, keeping it") {
+    check("""from [[1]] as t(id)
+            |save to 'out/t7' with format: 'iceberg'""".stripMargin)
+    val before = Files.readString(Path.of(workDir, "out/t7/metadata/v1.metadata.json"))
+    failure("""from [[2]] as t(id)
+              |append to 'out/t7/metadata/v1.metadata.json'""".stripMargin).getMessage shouldContain
+      "append to the table folder"
+    Files.readString(Path.of(workDir, "out/t7/metadata/v1.metadata.json")) shouldBe before
+  }
+
   test("reject unknown Iceberg write options and missing partition columns") {
     failure("""from [[1]] as t(id)
               |save to 'out/t5' with format: 'iceberg', header: true""".stripMargin)
