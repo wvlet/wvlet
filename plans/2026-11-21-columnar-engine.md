@@ -62,6 +62,20 @@ done, so what remains is the execution layer, which is plain Scala.
 
 - Milestones 2–3 core landed together: TPC-H 22/22 matches DuckDB; spec/basic 115/162
 
+## Performance tracking
+
+`EngineTPCHBench` (see website/docs/development/benchmark.md) compares the engine with DuckDB on
+spec/tpch at a given scale factor. Baseline on an 18-core Apple Silicon laptop, sf=1, DuckDB
+with its default thread count, sum of the per-query medians: DuckDB 0.36 s, engine 42.3 s
+(118x). Plan, roughly one PR each:
+
+1. Benchmark harness (this baseline); fix sorted output of more than 4096 rows (q16 at sf=1)
+2. Column pruning and Parquet row-group pruning by statistics
+3. Faster kernels: scalar comparisons, typed hash tables for grouping and joins, selection
+   vectors, dictionary-encoded strings, incremental window aggregates
+4. Parallelism on JVM / Native: morsel-driven scans over row groups, partitioned hash
+   aggregation and join build (Scala.js stays single-threaded)
+
 ## Milestones (one PR each)
 
 1. uni 2026.3.0 migration
