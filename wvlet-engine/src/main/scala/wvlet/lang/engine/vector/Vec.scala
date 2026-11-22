@@ -50,7 +50,11 @@ sealed abstract class Vec:
 
   def slice(from: Int, until: Int): Vec =
     val n   = math.max(0, until - from)
-    val idx = Array.tabulate(n)(i => from + i)
+    val idx = new Array[Int](n)
+    var i   = 0
+    while i < n do
+      idx(i) = from + i
+      i += 1
     gather(idx, n)
 
   protected def gatherNulls(idx: Array[Int], n: Int): Array[Boolean] =
@@ -74,6 +78,59 @@ sealed abstract class Vec:
 end Vec
 
 object Vec:
+  // Element-wise maps over primitive arrays. Array.map and Array.fill go through generic array
+  // updates that box every element; these inline into plain loops
+
+  inline def mapIntToLong(a: Array[Int])(inline f: Int => Long): Array[Long] =
+    val out = new Array[Long](a.length)
+    var i   = 0
+    while i < a.length do
+      out(i) = f(a(i))
+      i += 1
+    out
+
+  inline def mapInt(a: Array[Int])(inline f: Int => Int): Array[Int] =
+    val out = new Array[Int](a.length)
+    var i   = 0
+    while i < a.length do
+      out(i) = f(a(i))
+      i += 1
+    out
+
+  inline def mapLong(a: Array[Long])(inline f: Long => Long): Array[Long] =
+    val out = new Array[Long](a.length)
+    var i   = 0
+    while i < a.length do
+      out(i) = f(a(i))
+      i += 1
+    out
+
+  inline def mapFloatToDouble(a: Array[Float]): Array[Double] =
+    val out = new Array[Double](a.length)
+    var i   = 0
+    while i < a.length do
+      out(i) = a(i).toDouble
+      i += 1
+    out
+
+  inline def mapDouble(a: Array[Double])(inline f: Double => Double): Array[Double] =
+    val out = new Array[Double](a.length)
+    var i   = 0
+    while i < a.length do
+      out(i) = f(a(i))
+      i += 1
+    out
+
+  def filledInts(n: Int, v: Int): Array[Int] =
+    val a = new Array[Int](n)
+    java.util.Arrays.fill(a, v)
+    a
+
+  def allTrue(n: Int): Array[Boolean] =
+    val a = new Array[Boolean](n)
+    java.util.Arrays.fill(a, true)
+    a
+
   /** Gather positions may be -1 to produce NULL (outer join padding) */
   private[vector] inline def nullsWithPadding(
       nulls: Array[Boolean],
@@ -92,7 +149,7 @@ object Vec:
     out
 
   def nullVec(ptype: PType, n: Int): Vec =
-    val nulls = Array.fill(n)(true)
+    val nulls = allTrue(n)
     ptype match
       case PType.Bool =>
         BoolVec(new Array[Boolean](n), nulls)
@@ -115,16 +172,25 @@ object Vec:
       nullVec(ptype, n)
     else
       ptype match
+        // The value is converted once and filled without boxing
         case PType.Bool =>
-          BoolVec(Array.fill(n)(ValueOps.toBoolean(value)), null)
+          val a = new Array[Boolean](n)
+          java.util.Arrays.fill(a, ValueOps.toBoolean(value))
+          BoolVec(a, null)
         case PType.Int32 | PType.Date =>
-          IntVec(ptype, Array.fill(n)(ValueOps.toInt(value)), null)
+          IntVec(ptype, filledInts(n, ValueOps.toInt(value)), null)
         case PType.Int64 | PType.Timestamp =>
-          LongVec(ptype, Array.fill(n)(ValueOps.toLong(value)), null)
+          val a = new Array[Long](n)
+          java.util.Arrays.fill(a, ValueOps.toLong(value))
+          LongVec(ptype, a, null)
         case PType.Float64 =>
-          DoubleVec(Array.fill(n)(ValueOps.toDouble(value)), null)
+          val a = new Array[Double](n)
+          java.util.Arrays.fill(a, ValueOps.toDouble(value))
+          DoubleVec(a, null)
         case PType.Str =>
-          StrVec(Array.fill(n)(ValueOps.toStr(value)), null)
+          val a = new Array[String](n)
+          java.util.Arrays.fill(a.asInstanceOf[Array[AnyRef]], ValueOps.toStr(value))
+          StrVec(a, null)
         case _ =>
           val b = VecBuilder(ptype, n)
           var i = 0

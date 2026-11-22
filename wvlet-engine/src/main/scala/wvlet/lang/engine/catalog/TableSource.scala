@@ -347,9 +347,9 @@ object ParquetSource:
         IntVec(ptype, x.values, nulls)
       case (x: ColumnVector.IntColumn, PType.Int64) =>
         // unsigned int32
-        LongVec(PType.Int64, x.values.map(v => Integer.toUnsignedLong(v)), nulls)
+        LongVec(PType.Int64, Vec.mapIntToLong(x.values)(Integer.toUnsignedLong), nulls)
       case (x: ColumnVector.IntColumn, d: PType.Decimal) =>
-        LongVec(d, x.values.map(_.toLong), nulls)
+        LongVec(d, Vec.mapIntToLong(x.values)(_.toLong), nulls)
       case (x: ColumnVector.LongColumn, PType.Int64) =>
         LongVec(PType.Int64, x.values, nulls)
       case (x: ColumnVector.LongColumn, d: PType.Decimal) =>
@@ -365,11 +365,11 @@ object ParquetSource:
           case TimeUnit.MICROS =>
             LongVec(PType.Timestamp, x.values, nulls)
           case TimeUnit.MILLIS =>
-            LongVec(PType.Timestamp, x.values.map(_ * 1000L), nulls)
+            LongVec(PType.Timestamp, Vec.mapLong(x.values)(_ * 1000L), nulls)
           case TimeUnit.NANOS =>
-            LongVec(PType.Timestamp, x.values.map(v => Math.floorDiv(v, 1000L)), nulls)
+            LongVec(PType.Timestamp, Vec.mapLong(x.values)(Math.floorDiv(_, 1000L)), nulls)
       case (x: ColumnVector.FloatColumn, PType.Float64) =>
-        DoubleVec(x.values.map(_.toDouble), nulls)
+        DoubleVec(Vec.mapFloatToDouble(x.values), nulls)
       case (x: ColumnVector.DoubleColumn, PType.Float64) =>
         DoubleVec(x.values, nulls)
       case (x: ColumnVector.BinaryColumn, PType.Str) =>

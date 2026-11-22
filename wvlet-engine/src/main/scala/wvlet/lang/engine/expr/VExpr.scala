@@ -298,7 +298,7 @@ case class CaseWhen(whens: Seq[(VExpr, VExpr)], elseExpr: Option[VExpr], ptype: 
 
   def eval(b: Batch): Vec =
     val n       = b.size
-    val chosen  = Array.fill(n)(-1)
+    val chosen  = Vec.filledInts(n, -1)
     var pending = n
     val conds   = whens.map(_._1)
     var k       = 0
@@ -629,11 +629,11 @@ object Kernels:
   def negate(v: Vec): Vec =
     v match
       case i: IntVec if i.ptype == PType.Int32 =>
-        IntVec(PType.Int32, i.values.map(x => -x), i.nulls)
+        IntVec(PType.Int32, Vec.mapInt(i.values)(-_), i.nulls)
       case l: LongVec if l.ptype != PType.Timestamp =>
-        LongVec(l.ptype, l.values.map(x => -x), l.nulls)
+        LongVec(l.ptype, Vec.mapLong(l.values)(-_), l.nulls)
       case d: DoubleVec =>
-        DoubleVec(d.values.map(x => -x), d.nulls)
+        DoubleVec(Vec.mapDouble(d.values)(-_), d.nulls)
       case o: ObjVec if o.ptype.isDecimal =>
         ObjVec(
           o.ptype,
@@ -909,7 +909,7 @@ object Kernels:
   def compareScalar(op: CmpOp, l: Vec, v: Any, vt: PType): Vec =
     val n = l.size
     if v == null then
-      return BoolVec(new Array[Boolean](n), Array.fill(n)(true))
+      return BoolVec(new Array[Boolean](n), Vec.allTrue(n))
     val o = new Array[Boolean](n)
     l match
       case a: IntVec if vt == a.ptype =>
