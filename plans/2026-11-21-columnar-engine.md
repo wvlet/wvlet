@@ -90,6 +90,7 @@ Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0
 | Column pruning through windows, unboxed window outputs, parallel row partitioning (no TPC-H windows) | unchanged | |
 | Split sort merges into parallel output ranges, bounded-heap top-N (no TPC-H sort reaches 64K rows) | unchanged | |
 | Typed window aggregate / value outputs, unboxed partition sort, reused partition hashes (no TPC-H windows) | unchanged | |
+| Incremental running-frame window aggregates (no TPC-H windows) | unchanged | |
 
 Parallel sorts and windows (A/B with the parallel paths disabled, sf=1 lineitem, 6M rows):
 top-N (limit 10) 2.29 s → 0.15 s, full sort 2.3 s → 1.1–1.3 s (bounded by the merge on one
@@ -112,6 +113,15 @@ two PARTITION BYs 0.36–0.45 s → 0.21–0.27 s; rank unchanged (0.13–0.27 s
 still aggregate each frame from scratch: `sum(l_quantity) over (partition by l_suppkey order by
 l_orderkey)` (about 600 rows per partition) takes 0.7 s against 0.26 s with about 30 rows per
 partition, so incremental running aggregates are the next window step.
+Running frames now fold one accumulator per partition, feeding each row only the rows added to
+its frame (A/B against main, interleaved, 3 rounds of 5 runs, medians, same result checksums):
+`sum(l_quantity) over (partition by l_suppkey order by l_orderkey)` 0.46–0.64 s → 0.14–0.15 s;
+the same with `partition by l_partkey` 0.19–0.22 s → 0.13–0.15 s; a running sum without
+PARTITION BY over 20K rows 0.27–0.29 s → 7–8 ms, and over all 6M rows 0.17–0.18 s (main doesn't
+finish). A sliding `rows[-5,5]` frame still recomputes each frame and is unchanged (0.21–0.24 s
+both when measured first; it varies with JIT warm-up order). Exact add/remove for sliding count /
+integer / decimal sums, a sliding min/max structure, and suffix frames (`CURRENT ROW AND
+UNBOUNDED FOLLOWING`) are possible follow-ups.
 
 ## Milestones (one PR each)
 
