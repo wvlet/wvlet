@@ -1029,7 +1029,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val sub = subqueryRelation(e.child)
     if !isCorrelated(sub, op.schema) then
       // Uncorrelated: a constant condition
-      val rows = Operator.materialize(Planner.nested(this).planRelation(sub)).size
+      val rows = Operator.materialize(Planner.nested(this).plan(sub)).size
       val keep = (rows > 0) != negate
       Some(
         (
@@ -1076,7 +1076,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       if correlated then
         planCorrelated(sub, op.schema)
       else
-        (Planner.nested(this).planRelation(sub), Nil, None)
+        (Planner.nested(this).plan(sub), Nil, None)
     // The compared value: the single select item
     val (innerOp, valueIdx) =
       items match
@@ -1181,7 +1181,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   /** Uncorrelated scalar subquery as a constant */
   def bindScalarSubquery(binder: Binder, sub: Relation): VExpr =
-    val op = Planner.nested(this).planRelation(sub)
+    val op = Planner.nested(this).plan(sub)
     val b  = Operator.materialize(op)
     if b.size > 1 then
       throw StatusCode.INVALID_ARGUMENT.newException("A scalar subquery returned more than one row")
@@ -1195,7 +1195,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   /** IN (subquery) in a non-filter position: an uncorrelated value set */
   def bindInSubquery(binder: Binder, a: Expression, sub: Relation, negate: Boolean): VExpr =
-    val op     = Planner.nested(this).planRelation(sub)
+    val op     = Planner.nested(this).plan(sub)
     val b      = Operator.materialize(op)
     val target = binder.bind(a)
     val t      = PType.common(target.ptype, op.schema(0).ptype)
@@ -1204,7 +1204,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     InList(castExpr(target, t), values.filter(_ != null).toSet, values.contains(null), negate)
 
   def bindExists(binder: Binder, e: Exists): VExpr =
-    val op = Planner.nested(this).planRelation(subqueryRelation(e.child))
+    val op = Planner.nested(this).plan(subqueryRelation(e.child))
     Const(op.next() != null, PType.Bool)
 
   def windowRef(binder: Binder, e: Expression): VExpr =

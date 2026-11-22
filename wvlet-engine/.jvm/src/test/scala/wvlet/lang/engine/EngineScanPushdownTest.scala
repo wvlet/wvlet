@@ -14,6 +14,8 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
+import wvlet.lang.engine.catalog.*
+import wvlet.lang.engine.vector.*
 import wvlet.lang.model.plan.*
 import wvlet.uni.test.UniTest
 
@@ -23,7 +25,32 @@ import java.sql.DriverManager
 
 /** Scans read only the referenced columns and skip Parquet row groups by statistics */
 class EngineScanPushdownTest extends UniTest:
-  private val engine   = WvletEngine()
+  private val engine = WvletEngine()
+
+  /** An in-memory table that records the columns each scan asks for */
+  private class RecordingTable(name: String, schema: Schema, batches: Seq[Batch])
+      extends MemTable(name, schema, batches):
+    val requests                                       = Seq.newBuilder[Seq[String]]
+    override def scan(spec: ScanSpec): Iterator[Batch] =
+      requests += spec.columns.getOrElse(schema.names)
+      super.scan(spec)
+
+  private val wide = RecordingTable(
+    "wide",
+    Schema(IndexedSeq(Field("a", PType.Int64), Field("b", PType.Int64), Field("c", PType.Str))),
+    Seq(
+      Batch(
+        Array(
+          LongVec(PType.Int64, Array(1L, 2L, 3L), null),
+          LongVec(PType.Int64, Array(10L, 20L, 30L), null),
+          StrVec(Array("x", "y", "z"), null)
+        ),
+        3
+      )
+    )
+  )
+
+  engine.catalog.register(wide)
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
   private def run[A](query: String)(body: (WvletEngine, Relation) => Context ?=> A): A =
@@ -87,6 +114,14 @@ class EngineScanPushdownTest extends UniTest:
     rows(s"from '${rowGroupFile}' where id < 0 or id > 2000 select id") shouldBe Nil
     rows(s"from '${rowGroupFile}' where id = 5 or name = 'v777' select id").map(_.head) shouldBe
       Seq(5L, 777L)
+  }
+
+  test("should prune the columns of subqueries run while planning") {
+    rows("from wide where b = { from wide select b.max } select a") shouldBe Seq(IndexedSeq(3L))
+    val requests = wide.requests.result()
+    debug(requests)
+    requests.size shouldBe 2
+    requests.foreach(cols => cols.contains("c") shouldBe false)
   }
 
 end EngineScanPushdownTest
