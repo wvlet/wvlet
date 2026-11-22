@@ -22,15 +22,11 @@ class EngineBasicSpecTest extends UniTest:
     * lambdas, SHOW, some functions). This list must only shrink
     */
   private val knownGaps: Set[String] = Set(
-    "agg_col_type.wv",
-    "count.wv",
     "execute.wv",
     "from_table_function.wv",
     "information_schema.wv",
     "join-asof.wv",
     "lambda.wv",
-    "method_chain_agg.wv",
-    "partial-query-nested.wv",
     "pivot-agg-in.wv",
     "pivot-agg.wv",
     "pivot-group-by.wv",
@@ -41,7 +37,6 @@ class EngineBasicSpecTest extends UniTest:
     "show-schemas.wv",
     "show-tables.wv",
     "stdlib_range.wv",
-    "stdlib_window.wv",
     "table_val_asof_join.wv",
     "table_val_join.wv",
     "tuple-in-subquery.wv",
@@ -51,8 +46,6 @@ class EngineBasicSpecTest extends UniTest:
     "unnest-cross-join.wv",
     "unnest.wv",
     "unpivot.wv",
-    "window-chain.wv",
-    "window.wv",
     "with-values.wv"
   )
 
