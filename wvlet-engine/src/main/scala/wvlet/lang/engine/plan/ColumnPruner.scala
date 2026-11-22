@@ -33,13 +33,9 @@ object ColumnPruner:
   def apply(op: Operator): Operator =
     val all = (0 until op.schema.size).toArray
     try
-      val (pruned, kept) = prune(op, all)
-      if kept.length == all.length then
-        pruned
-      else
-        op
+      prune(op, all)._1
     catch
-      // An expression this pass can't rewrite: run the plan unpruned
+      // An expression this pass can't rewrite (VExprs.remap): run the plan unpruned
       case e: IllegalStateException =>
         op
 
@@ -78,7 +74,10 @@ object ColumnPruner:
         val input =
           f.child match
             case s: ScanOp if s.source.supportsFilter =>
-              ScanFilters.toParquet(f.cond, s.sourceColumnName).map(s.withFilter).getOrElse(s)
+              ScanFilters
+                .toParquet(f.cond, i => Some(s.sourceColumnName(i)).filter(s.source.canFilterOn))
+                .map(s.withFilter)
+                .getOrElse(s)
             case other =>
               other
         val (child, kept) = prune(input, sorted(need))

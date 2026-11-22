@@ -27,7 +27,10 @@ class ScanFiltersTest extends UniTest:
   private val day  = ColRef(2, PType.Date, "day")
   private val cols = IndexedSeq("id", "name", "day")
 
-  private def translate(e: VExpr): Option[ParquetFilter] = ScanFilters.toParquet(e, cols)
+  private def translate(e: VExpr): Option[ParquetFilter] = ScanFilters.toParquet(
+    e,
+    i => Some(cols(i))
+  )
 
   test("should translate integer and date comparisons") {
     translate(Compare(CmpOp.Ge, id, Const(10L, PType.Int64))) shouldBe Some(col("id") >= 10L)
@@ -61,6 +64,14 @@ class ScanFiltersTest extends UniTest:
   test("should skip comparisons with NULL or a different type") {
     translate(Compare(CmpOp.Eq, id, Const(null, PType.Int64))) shouldBe None
     translate(Compare(CmpOp.Eq, id, Const(1.5, PType.Float64))) shouldBe None
+  }
+
+  test("should skip columns the source can't filter on") {
+    val e = AndExpr(
+      Compare(CmpOp.Eq, id, Const(1L, PType.Int64)),
+      Compare(CmpOp.Eq, name, Const("x", PType.Str))
+    )
+    ScanFilters.toParquet(e, i => Option.when(i != 0)(cols(i))) shouldBe Some(col("name") === "x")
   }
 
 end ScanFiltersTest

@@ -33,8 +33,11 @@ import java.time.LocalDate
   */
 object ScanFilters:
 
-  /** `columnName(i)` is the Parquet column name of input position i */
-  def toParquet(cond: VExpr, columnName: Int => String): Option[ParquetFilter] =
+  /**
+    * `columnName(i)` is the Parquet column name of input position i, or None when the source can't
+    * filter on that column
+    */
+  def toParquet(cond: VExpr, columnName: Int => Option[String]): Option[ParquetFilter] =
     def go(e: VExpr): Option[ParquetFilter] =
       e match
         case AndExpr(a, b) =>
@@ -49,20 +52,20 @@ object ScanFilters:
             y <- go(b)
           yield x || y
         case Compare(op, c: ColRef, k: Const) =>
-          compare(columnName(c.index), c.ptype, op, k)
+          columnName(c.index).flatMap(compare(_, c.ptype, op, k))
         case Compare(op, k: Const, c: ColRef) =>
-          compare(columnName(c.index), c.ptype, flip(op), k)
+          columnName(c.index).flatMap(compare(_, c.ptype, flip(op), k))
         case IsNullExpr(c: ColRef, negate) =>
-          Some(
+          columnName(c.index).map { name =>
             if negate then
-              ParquetFilter.IsNotNull(columnName(c.index))
+              ParquetFilter.IsNotNull(name)
             else
-              ParquetFilter.IsNull(columnName(c.index))
-          )
+              ParquetFilter.IsNull(name)
+          }
         case InList(c: ColRef, values, _, false) if values.nonEmpty && values.size <= 64 =>
           val eqs = values
             .toSeq
-            .map(v => compare(columnName(c.index), c.ptype, CmpOp.Eq, Const(v, c.ptype)))
+            .map(v => columnName(c.index).flatMap(compare(_, c.ptype, CmpOp.Eq, Const(v, c.ptype))))
           if eqs.forall(_.isDefined) then
             Some(eqs.flatten.reduce(_ || _))
           else

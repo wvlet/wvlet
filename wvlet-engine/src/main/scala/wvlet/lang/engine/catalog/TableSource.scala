@@ -40,6 +40,9 @@ trait TableSource:
   /** Whether `scan` uses `spec.filter` to skip data; otherwise the filter is ignored */
   def supportsFilter: Boolean = false
 
+  /** Whether `spec.filter` may refer to this column */
+  def canFilterOn(column: String): Boolean = supportsFilter
+
   /** Row count estimate for join ordering */
   def estimatedRows: Option[Long] = None
 
@@ -74,6 +77,22 @@ class ParquetSource(val name: String, path: String) extends TableSource:
   )
 
   override def supportsFilter: Boolean = true
+
+  /**
+    * UINT64 columns are read as signed Int64 values while Parquet statistics order them unsigned,
+    * so a filter on them could skip row groups holding matching rows
+    */
+  override def canFilterOn(column: String): Boolean = parquetSchema
+    .field(column)
+    .forall {
+      case p: ParquetField.Primitive =>
+        !(
+          p.physicalType == PhysicalType.INT64 &&
+            p.logicalType.contains(LogicalType.Integer(64, false))
+        )
+      case _ =>
+        true
+    }
 
   override lazy val estimatedRows: Option[Long] =
     try
