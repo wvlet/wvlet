@@ -427,10 +427,16 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private def planPivot(p: Pivot, aggItems: List[Attribute]): Operator =
     val childOp = planRelation(p.child)
     val schema  = childOp.schema
-    val batch   = Operator.materialize(childOp)
-    def input   = BatchesOp(schema, Seq(batch))
-    val scope   = BindScope(schema)
-    val binder  = Binder(this, scope)
+    // The input is materialized only when pivot values must be read from the data
+    val needsValues = p.pivotKeys.exists(_.values.isEmpty)
+    lazy val batch  = Operator.materialize(childOp)
+    val input       =
+      if needsValues then
+        BatchesOp(schema, Seq(batch))
+      else
+        childOp
+    val scope  = BindScope(schema)
+    val binder = Binder(this, scope)
     // Pivot columns and their values
     val pivots: List[(VExpr, Seq[Any])] = p
       .pivotKeys
@@ -548,7 +554,6 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   /** UNPIVOT: one row per (input row, target column) with a non-NULL value */
   private def planUnpivot(u: Unpivot): Operator =
     val child   = planRelation(u.child)
-    val batches = Operator.materialize(child)
     val schema  = child.schema
     val key     = u.unpivotKey
     val targets = key
@@ -568,18 +573,45 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           Field(key.getValueColumnName.leafName, valueType)
         )
     )
-    val parts = targets.map { t =>
-      val in    = BatchesOp(schema, Seq(batches))
-      val value = castExpr(ColRef(t, schema(t).ptype, schema(t).name), valueType)
-      val proj  = ProjectOp(
-        FilterOp(in, IsNullExpr(ColRef(t, schema(t).ptype, schema(t).name), negate = true)),
-        others.map(i => ColRef(i, schema(i).ptype, schema(i).name): VExpr) ++
-          IndexedSeq(Const(schema(t).name, PType.Str), value),
-        outSchema
+    // Stream through UnnestOp over (target names, target values), keeping DuckDB's row order:
+    // all target columns of one input row before the next row
+    val w      = others.size
+    val names  = Const(targets.map(schema(_).name).toList, PType.AnyT)
+    val values = RowFn(
+      "unpivot_values",
+      targets.map(t => castExpr(ColRef(t, schema(t).ptype, schema(t).name), valueType)),
+      PType.AnyT,
+      a => a.toList,
+      nullSafe = true
+    )
+    val pre = ProjectOp(
+      child,
+      others.map(i => ColRef(i, schema(i).ptype, schema(i).name): VExpr) ++
+        IndexedSeq(names, values),
+      Schema(
+        others.map(schema(_)) ++
+          IndexedSeq(
+            Field(hiddenName("names"), PType.AnyT),
+            Field(hiddenName("values"), PType.AnyT)
+          )
       )
-      proj: Operator
-    }
-    UnionAllOp(parts, outSchema)
+    )
+    val unnest = UnnestOp(
+      pre,
+      IndexedSeq(
+        ColRef(w, PType.AnyT, pre.schema(w).name),
+        ColRef(w + 1, PType.AnyT, pre.schema(w + 1).name)
+      ),
+      keepInput = true,
+      Schema(pre.schema.fields ++ outSchema.fields.takeRight(2))
+    )
+    val valueRef = ColRef(w + 3, valueType, key.getValueColumnName.leafName)
+    ProjectOp(
+      FilterOp(unnest, IsNullExpr(valueRef, negate = true)),
+      (0 until w).map(i => ColRef(i, schema(others(i)).ptype, schema(others(i)).name): VExpr) ++
+        IndexedSeq(ColRef(w + 2, PType.Str, key.unpivotColumnName.leafName), valueRef),
+      outSchema
+    )
 
   end planUnpivot
 
@@ -1581,6 +1613,16 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           false
     )
 
+  /** The conjuncts of an ON condition (none for USING / NATURAL / no criteria) */
+  private def joinConjuncts(j: Join): List[Expression] =
+    j.cond match
+      case JoinOn(e, _) =>
+        conjuncts(e)
+      case JoinOnEq(keys, _) =>
+        conjuncts(Expression.concatWithEq(keys))
+      case _ =>
+        Nil
+
   /** Leaves and conditions of a tree of inner joins */
   private def flattenJoins(r: Relation): (List[Relation], List[Expression]) =
     r match
@@ -1588,15 +1630,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       case j: Join if isInnerJoin(j) && unnestCall(j.right).isEmpty =>
         val (l, lc)  = flattenJoins(j.left)
         val (rr, rc) = flattenJoins(j.right)
-        val cond     =
-          j.cond match
-            case JoinOn(e, _) =>
-              conjuncts(e)
-            case JoinOnEq(keys, _) =>
-              conjuncts(Expression.concatWithEq(keys))
-            case _ =>
-              Nil
-        (l ++ rr, lc ++ rc ++ cond)
+        (l ++ rr, lc ++ rc ++ joinConjuncts(j))
       case other =>
         (List(other), Nil)
 
@@ -1611,16 +1645,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     unnestCall(j.right) match
       case Some((call, alias)) =>
         // A lateral unnest over the left input: join ... unnest(left.column)
-        val conds =
-          (
-            j.cond match
-              case JoinOn(e, _) =>
-                conjuncts(e)
-              case JoinOnEq(keys, _) =>
-                conjuncts(Expression.concatWithEq(keys))
-              case _ =>
-                Nil
-          ).filterNot(isTrueLiteral)
+        val conds = joinConjuncts(j).filterNot(isTrueLiteral)
         val outer =
           j.joinType match
             case JoinType.LeftOuterJoin =>

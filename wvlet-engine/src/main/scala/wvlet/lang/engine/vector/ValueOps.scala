@@ -198,6 +198,15 @@ object ValueOps:
               parseDate(v.asInstanceOf[String])
             case PType.Timestamp =>
               Math.floorDiv(v.asInstanceOf[Long], MicrosPerDay).toInt
+            // A dynamically typed value already in the physical form (days), or a string
+            case PType.AnyT =>
+              v match
+                case i: Int =>
+                  i
+                case s: String =>
+                  parseDate(s)
+                case _ =>
+                  throw castError(v, "date")
             case _ =>
               throw castError(v, "date")
         case PType.Timestamp =>
@@ -206,6 +215,15 @@ object ValueOps:
               parseTimestamp(v.asInstanceOf[String])
             case PType.Date =>
               v.asInstanceOf[Int].toLong * MicrosPerDay
+            // A dynamically typed value already in the physical form (micros), or a string
+            case PType.AnyT =>
+              v match
+                case l: Long =>
+                  l
+                case s: String =>
+                  parseTimestamp(s)
+                case _ =>
+                  throw castError(v, "timestamp")
             case _ =>
               throw castError(v, "timestamp")
         case _ =>

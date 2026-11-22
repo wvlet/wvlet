@@ -1,0 +1,14 @@
+-- Engine conformance cases (compared against DuckDB by EngineBasicSpecTest)
+select
+  hash(1.5) as h_double,
+  hash(12.345) as h_decimal,
+  hash('2023-01-01'.to_date) as h_date,
+  hash(1, 'a') as h_multi,
+  isnan('NaN'.to_double) as nan_cast,
+  list_slice([1, 2, 3, 4, 5], 1, 5, 2) as sliced
+
+from [[1, 'a', 10, 20], [2, 'b', null, 40]] as t(id, name, q1, q2)
+unpivot v for quarter in (q1, q2)
+
+from [['2023-01-01'.to_date], ['2023-01-02'.to_date]] as t(d)
+agg d.to_array as ds
