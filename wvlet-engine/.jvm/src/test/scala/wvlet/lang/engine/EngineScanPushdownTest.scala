@@ -1,0 +1,92 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package wvlet.lang.engine
+
+import wvlet.lang.compiler.*
+import wvlet.lang.model.plan.*
+import wvlet.uni.test.UniTest
+
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.sql.DriverManager
+
+/** Scans read only the referenced columns and skip Parquet row groups by statistics */
+class EngineScanPushdownTest extends UniTest:
+  private val engine   = WvletEngine()
+  private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
+
+  private def run[A](query: String)(body: (WvletEngine, Relation) => Context ?=> A): A =
+    val unit           = CompilationUnit.fromWvletString(query)
+    val r              = compiler.compileSingleUnit(unit)
+    given ctx: Context = r.context
+    val q              = queryOf(unit.executionPlan).getOrElse(fail(s"No query in ${query}"))
+    body(engine, q)
+
+  private def queryOf(e: ExecutionPlan): Option[Relation] =
+    e match
+      case ExecuteQuery(q: Relation) =>
+        Some(q)
+      case ExecuteTasks(ts) =>
+        ts.iterator.flatMap(queryOf).nextOption()
+      case _ =>
+        None
+
+  private def explain(query: String): String = run(query)((e, q) => e.explain(q))
+
+  private def rows(query: String): Seq[IndexedSeq[Any]] =
+    run(query)((e, q) => e.execute(q).rows.toSeq)
+
+  /** A Parquet file of ids 0 until 1000 in row groups of 100 rows */
+  private lazy val rowGroupFile: String =
+    val dir = Paths.get("target/engine-test").toAbsolutePath
+    Files.createDirectories(dir)
+    val path = dir.resolve("row_groups.parquet")
+    Files.deleteIfExists(path)
+    Class.forName("org.duckdb.DuckDBDriver")
+    val conn = DriverManager.getConnection("jdbc:duckdb:")
+    try
+      val st = conn.createStatement()
+      try st.execute(
+          s"copy (select range::bigint as id, 'v' || range as name from range(1000)) to '${path}' (format parquet, row_group_size 100)"
+        )
+      finally st.close()
+    finally
+      conn.close()
+    path.toString
+
+  test("should read only the columns a query references") {
+    val plan = explain("""from 'spec/tpch/data/lineitem.parquet'
+        |where l_shipdate <= '1998-09-02'::date
+        |group by l_returnflag
+        |select l_returnflag, cnt = _.count""".stripMargin)
+    debug(plan)
+    plan shouldContain "columns=l_returnflag,l_shipdate"
+    plan.contains("l_comment") shouldBe false
+  }
+
+  test("should push comparisons into the Parquet scan") {
+    val plan = explain(s"from '${rowGroupFile}' where id >= 950 select id")
+    debug(plan)
+    plan shouldContain "filter="
+  }
+
+  test("should return the same rows when row groups are skipped") {
+    rows(s"from '${rowGroupFile}' where id >= 950 and id < 1000 select id").size shouldBe 50
+    rows(s"from '${rowGroupFile}' where id = 123 select name") shouldBe Seq(IndexedSeq("v123"))
+    rows(s"from '${rowGroupFile}' where id < 0 or id > 2000 select id") shouldBe Nil
+    rows(s"from '${rowGroupFile}' where id = 5 or name = 'v777' select id").map(_.head) shouldBe
+      Seq(5L, 777L)
+  }
+
+end EngineScanPushdownTest

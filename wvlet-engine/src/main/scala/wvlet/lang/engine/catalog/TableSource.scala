@@ -22,7 +22,11 @@ import wvlet.uni.parquet.format.TimeUnit
 
 import scala.collection.mutable
 
-/** Scan request pushed down to a table source */
+/**
+  * Scan request pushed down to a table source. `filter` is implied by the query's own filter: a
+  * source may use it to skip data that can't match (e.g. Parquet row groups by statistics), but
+  * rows it returns are still filtered by the engine
+  */
 case class ScanSpec(columns: Option[Seq[String]] = None, filter: Option[ParquetFilter] = None)
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -33,7 +37,7 @@ trait TableSource:
   /** Batches with exactly the requested columns (all columns when not given), in that order */
   def scan(spec: ScanSpec): Iterator[Batch]
 
-  /** Whether `scan` evaluates `spec.filter` (row groups / rows); otherwise the filter is ignored */
+  /** Whether `scan` uses `spec.filter` to skip data; otherwise the filter is ignored */
   def supportsFilter: Boolean = false
 
   /** Row count estimate for join ordering */
@@ -87,7 +91,7 @@ class ParquetSource(val name: String, path: String) extends TableSource:
     val cols    = spec.columns.getOrElse(schema.names)
     val types   = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
     var options = ParquetReadOptions.default.withColumns(cols*).withBinaryAsString(true)
-    spec.filter.foreach(f => options = options.withFilter(f))
+    spec.filter.foreach(f => options = options.withRowGroupFilter(f))
     if isSingleFile then
       val f  = Parquet.open(path)
       val it = f.readBatches(options)

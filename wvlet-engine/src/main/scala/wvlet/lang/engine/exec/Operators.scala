@@ -94,7 +94,7 @@ class SingleRowOp extends Operator:
       done = true
       Batch.ofRows(1)
 
-class FilterOp(child: Operator, val cond: VExpr) extends Operator:
+class FilterOp(val child: Operator, val cond: VExpr) extends Operator:
   def schema: Schema                   = child.schema
   override def children: Seq[Operator] = Seq(child)
   override protected def details       = s"(${cond.sig})"
@@ -110,7 +110,8 @@ class FilterOp(child: Operator, val cond: VExpr) extends Operator:
         out = r
     out
 
-class ProjectOp(child: Operator, val exprs: IndexedSeq[VExpr], val schema: Schema) extends Operator:
+class ProjectOp(val child: Operator, val exprs: IndexedSeq[VExpr], val schema: Schema)
+    extends Operator:
   override def children: Seq[Operator] = Seq(child)
   override protected def details       = s"(${exprs.map(_.sig).mkString(", ")})"
   def next(): Batch                    =
@@ -120,7 +121,7 @@ class ProjectOp(child: Operator, val exprs: IndexedSeq[VExpr], val schema: Schem
     else
       Batch(exprs.map(_.eval(b)).toArray, b.size)
 
-class LimitOp(child: Operator, limit: Long, offset: Long) extends Operator:
+class LimitOp(val child: Operator, val limit: Long, val offset: Long) extends Operator:
   private var skipped                  = 0L
   private var emitted                  = 0L
   def schema: Schema                   = child.schema
@@ -146,7 +147,8 @@ class LimitOp(child: Operator, limit: Long, offset: Long) extends Operator:
 case class SortKey(expr: VExpr, ascending: Boolean, nullsFirst: Boolean)
 
 /** Full sort; with a limit only the top rows are kept */
-class SortOp(child: Operator, keys: Seq[SortKey], limit: Option[Long] = None) extends Operator:
+class SortOp(val child: Operator, val keys: Seq[SortKey], val limit: Option[Long] = None)
+    extends Operator:
   private var result: Iterator[Batch]  = null
   def schema: Schema                   = child.schema
   override def children: Seq[Operator] = Seq(child)
@@ -242,9 +244,9 @@ end SortOp
   * exactly one row is produced, even for an empty input
   */
 class HashAggOp(
-    child: Operator,
-    keys: IndexedSeq[VExpr],
-    aggs: IndexedSeq[AggCall],
+    val child: Operator,
+    val keys: IndexedSeq[VExpr],
+    val aggs: IndexedSeq[AggCall],
     val schema: Schema
 ) extends Operator:
   private var done                     = false
@@ -322,7 +324,7 @@ class HashAggOp(
 end HashAggOp
 
 /** Concatenation of inputs with the same column count; values are cast to the output types */
-class UnionAllOp(inputs: Seq[Operator], val schema: Schema) extends Operator:
+class UnionAllOp(val inputs: Seq[Operator], val schema: Schema) extends Operator:
   private var current                  = 0
   override def children: Seq[Operator] = inputs
   def next(): Batch                    =
@@ -337,7 +339,7 @@ class UnionAllOp(inputs: Seq[Operator], val schema: Schema) extends Operator:
     null
 
 /** Removes duplicate rows */
-class DistinctOp(child: Operator) extends Operator:
+class DistinctOp(val child: Operator) extends Operator:
   private val table                    = GroupTable(child.schema.types)
   def schema: Schema                   = child.schema
   override def children: Seq[Operator] = Seq(child)
@@ -458,12 +460,12 @@ enum JoinKind:
   * Anti: left columns only). `residual` is an extra condition over the joined row
   */
 class HashJoinOp(
-    left: Operator,
-    right: Operator,
-    leftKeys: IndexedSeq[VExpr],
-    rightKeys: IndexedSeq[VExpr],
-    kind: JoinKind,
-    residual: Option[VExpr],
+    val left: Operator,
+    val right: Operator,
+    val leftKeys: IndexedSeq[VExpr],
+    val rightKeys: IndexedSeq[VExpr],
+    val kind: JoinKind,
+    val residual: Option[VExpr],
     val schema: Schema
 ) extends Operator:
   override def children: Seq[Operator] = Seq(left, right)
@@ -623,10 +625,10 @@ end HashJoinOp
 
 /** Nested-loop join for non-equi conditions and cross joins (right input materialized) */
 class NestedLoopJoinOp(
-    left: Operator,
-    right: Operator,
-    cond: Option[VExpr],
-    kind: JoinKind,
+    val left: Operator,
+    val right: Operator,
+    val cond: Option[VExpr],
+    val kind: JoinKind,
     val schema: Schema
 ) extends Operator:
   override def children: Seq[Operator]     = Seq(left, right)

@@ -19,8 +19,8 @@ import wvlet.uni.parquet.ParquetFilter
 
 /**
   * Reads a table source. `schema` is the output schema (source columns, possibly renamed or
-  * requalified); `columns` are the source column positions to read (all when None); `filter` is a
-  * predicate the source evaluates while reading
+  * requalified); `columns` are the source column positions to read (all when None); `filter` lets
+  * the source skip data that can't match (see [[ScanSpec]])
   */
 class ScanOp(
     val source: TableSource,
@@ -37,6 +37,9 @@ class ScanOp(
   private lazy val it: Iterator[Batch] =
     val names = columns.map(_.map(source.schema(_).name))
     source.scan(ScanSpec(names, filter))
+
+  /** The source column name of output position i */
+  def sourceColumnName(i: Int): String = source.schema(columns.map(_(i)).getOrElse(i)).name
 
   def withSchema(s: Schema): ScanOp = ScanOp(source, s, columns, filter)
 

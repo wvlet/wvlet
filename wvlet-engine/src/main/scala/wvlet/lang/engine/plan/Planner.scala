@@ -50,7 +50,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   /** Window function calls collected while binding a projection */
   private var windowCollector: Option[WindowCollector] = None
 
-  def plan(r: Relation): Operator = planRelation(r)
+  /** Plan a relation, then drop columns no operator needs so that scans read fewer columns */
+  def plan(r: Relation): Operator = ColumnPruner(planRelation(r))
 
   // --- relations ------------------------------------------------------------------------
 
