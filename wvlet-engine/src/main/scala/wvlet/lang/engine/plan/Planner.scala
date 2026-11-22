@@ -652,9 +652,28 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       op: Operator,
       items: List[Attribute]
   ): (IndexedSeq[VExpr], IndexedSeq[Field]) =
-    val exprs  = IndexedSeq.newBuilder[VExpr]
-    val fields = IndexedSeq.newBuilder[Field]
+    val exprs                          = IndexedSeq.newBuilder[VExpr]
+    val fields                         = IndexedSeq.newBuilder[Field]
+    def isStar(e: Expression): Boolean =
+      e match
+        case _: Wildcard =>
+          true
+        case i: Identifier =>
+          i.leafName == "*"
+        case _ =>
+          false
     items.foreach {
+      // `select *` of a parsed SQL subquery
+      case s: SingleColumn if isStar(s.expr) =>
+        val visibleFields = binder.scope.schema.fields
+        visibleFields
+          .indices
+          .foreach { i =>
+            val f = visibleFields(i)
+            if !isHidden(f) then
+              exprs += ColRef(binder.scope.offset + i, f.ptype, f.name)
+              fields += f
+          }
       case a: AllColumns =>
         val qualifier =
           a.nameExpr match
@@ -732,42 +751,6 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       case _ =>
         None
 
-  /** The element type of lists produced by a constant expression, or Any */
-  private def elementType(e: VExpr): PType =
-    if !e.isConstant && !e.isInstanceOf[Const] then
-      PType.AnyT
-    else
-      e.eval(Batch.ofRows(1)).get(0) match
-        case s: Seq[?] =>
-          val ts =
-            s.filter(_ != null)
-              .map {
-                case _: Int =>
-                  PType.Int32
-                case _: Long =>
-                  PType.Int64
-                case _: Double =>
-                  PType.Float64
-                case _: String =>
-                  PType.Str
-                case _: Boolean =>
-                  PType.Bool
-                case _ =>
-                  PType.AnyT
-              }
-              .distinct
-          ts match
-            case Seq() =>
-              PType.Int32
-            case Seq(t) =>
-              t
-            case many if many.forall(_.isNumeric) =>
-              many.reduce(PType.common)
-            case _ =>
-              PType.AnyT
-        case _ =>
-          PType.AnyT
-
   /** unnest(list, ...) as a relation; over `left` (a lateral join) when given */
   private def planUnnest(
       left: Option[Operator],
@@ -782,7 +765,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val fields = lists
       .indices
       .map { i =>
-        Field(names.lift(i).getOrElse("unnest"), elementType(lists(i)), q)
+        Field(names.lift(i).getOrElse("unnest"), Binder.listElementType(lists(i)), q)
       }
     val inputFields =
       if left.isDefined then
@@ -804,7 +787,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val (exprs, fields) = bindItems(binder, op, replaced)
     val proj            = ProjectOp(op, exprs, Schema(fields))
     val listIdx         = items.indices.filter(i => unnestArg(items(i)).isDefined)
-    val elemFields      = listIdx.map(i => fields(i).copy(ptype = elementType(exprs(i))))
+    val elemFields      = listIdx.map(i => fields(i).copy(ptype = Binder.listElementType(exprs(i))))
     val unnest          = UnnestOp(
       proj,
       listIdx.map(i => ColRef(i, fields(i).ptype, fields(i).name): VExpr),

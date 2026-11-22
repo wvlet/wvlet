@@ -63,7 +63,8 @@ class WvletEngine(val catalog: EngineCatalog = EngineCatalog(), baseDir: String 
     extends LogSupport:
 
   private class DefaultResolver(using ctx: Context) extends SourceResolver:
-    def tableSource(name: String, fullName: String): Option[TableSource] = None
+    def tableSource(name: String, fullName: String): Option[TableSource] = catalog
+      .informationSchema(fullName)
 
     def fileSource(path: String): Option[TableSource] =
       val resolved = resolvePath(path)
@@ -90,16 +91,19 @@ class WvletEngine(val catalog: EngineCatalog = EngineCatalog(), baseDir: String 
             s.unquotedValue
           case other =>
             sql
-      val unit                = CompilationUnit.fromSqlString(text)
-      val plan                = SqlParser(unit).parse()
-      var q: Option[Relation] = None
-      plan.traverseOnce { case r: Relation =>
-        if q.isEmpty then
-          q = Some(r)
-      }
-      q.getOrElse(throw StatusCode.SYNTAX_ERROR.newException(s"No query found in: ${text}"))
+      parseSqlText(text)
 
   end DefaultResolver
+
+  private def parseSqlText(text: String): Relation =
+    val unit                = CompilationUnit.fromSqlString(text)
+    val plan                = SqlParser(unit).parse()
+    var q: Option[Relation] = None
+    plan.traverseOnce { case r: Relation =>
+      if q.isEmpty then
+        q = Some(r)
+    }
+    q.getOrElse(throw StatusCode.SYNTAX_ERROR.newException(s"No query found in: ${text}"))
 
   private def resolvePath(path: String): String =
     if path.startsWith("/") || path.contains("://") || SourceIO.existsFile(path) then
@@ -113,7 +117,15 @@ class WvletEngine(val catalog: EngineCatalog = EngineCatalog(), baseDir: String 
 
   /** Build the physical plan of a relation (model references must already be expanded) */
   def physicalPlan(r: Relation)(using ctx: Context): Operator = Planner(catalog, DefaultResolver())
-    .plan(r)
+    .plan(lowerShow(r))
+
+  /** SHOW statements become their SQL queries over information_schema (or a VALUES list) */
+  private def lowerShow(r: Relation)(using ctx: Context): Relation = r
+    .transformUp { case s: Show =>
+      // e.g., SHOW MODELS lists doc comments joined with ||
+      parseSqlText(Binder.rewriteConcat(GenSQL.generateSQLFromRelation(s, addHeader = false).sql))
+    }
+    .asInstanceOf[Relation]
 
   /** Expand model references, plan, and run a query relation */
   def execute(r: Relation)(using ctx: Context): EngineResult =

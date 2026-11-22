@@ -18,18 +18,16 @@ import wvlet.uni.test.UniTest
 /** Queries in spec/basic on the engine must return the same rows as DuckDB */
 class EngineBasicSpecTest extends UniTest:
   /**
-    * Specs using features the engine doesn't support yet (pivot, unnest, ASOF joins, tuple IN,
-    * lambdas, SHOW, some functions). This list must only shrink
+    * Specs whose results depend on DuckDB itself rather than on query semantics: DuckDB's system
+    * catalogs (`system`, `temp`) in SHOW CATALOGS / SHOW SCHEMAS / wv_schemas(), the
+    * `duckdb_functions()` table function, and the `inet` type. This list must only shrink
     */
   private val knownGaps: Set[String] = Set(
     "execute.wv",
     "from_table_function.wv",
     "information_schema.wv",
-    "lambda.wv",
     "show-catalogs.wv",
-    "show-modelsl.wv",
-    "show-schemas.wv",
-    "show-tables.wv"
+    "show-schemas.wv"
   )
 
   private val conformance = EngineConformance("spec/basic", Nil, _ => ())

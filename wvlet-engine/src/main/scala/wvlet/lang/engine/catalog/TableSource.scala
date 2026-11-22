@@ -306,6 +306,46 @@ class EngineCatalog:
 
   def tableNames: Seq[String] = tables.synchronized(tables.values.map(_.name).toSeq)
 
+  /**
+    * information_schema views of this catalog. Tables live in the `main` schema of the `memory`
+    * catalog, the names DuckDB uses for an in-memory database
+    */
+  def informationSchema(name: String): Option[TableSource] =
+    def strTable(n: String, cols: Seq[String], rows: Seq[Seq[String]]): TableSource =
+      val schema = Schema(cols.map(c => Field(c, PType.Str)).toIndexedSeq)
+      val batch  = Batch(
+        cols.indices.map(i => Vec.fromValues(PType.Str, rows.map(_(i)))).toArray,
+        rows.size
+      )
+      MemTable(n, schema, Seq(batch))
+    name.toLowerCase.split("\\.").takeRight(2) match
+      case Array("information_schema", "schemata") =>
+        Some(
+          strTable(
+            "schemata",
+            Seq("catalog_name", "schema_name"),
+            Seq(Seq(EngineCatalog.CatalogName, EngineCatalog.SchemaName))
+          )
+        )
+      case Array("information_schema", "tables") =>
+        Some(
+          strTable(
+            "tables",
+            Seq("table_catalog", "table_schema", "table_name", "table_type"),
+            tableNames.map(t =>
+              Seq(EngineCatalog.CatalogName, EngineCatalog.SchemaName, t, "BASE TABLE")
+            )
+          )
+        )
+      case _ =>
+        None
+
   def get(name: String): TableSource = find(name).getOrElse {
     throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${name}")
   }
+
+end EngineCatalog
+
+object EngineCatalog:
+  val CatalogName = "memory"
+  val SchemaName  = "main"
