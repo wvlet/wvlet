@@ -175,17 +175,8 @@ object ParquetSource:
       case g: ParquetField.Group =>
         PType.AnyT
 
-  private def nullsOf(c: ColumnVector): Array[Boolean] =
-    if !c.hasNulls then
-      null
-    else
-      val n = c.size
-      val o = new Array[Boolean](n)
-      var i = 0
-      while i < n do
-        o(i) = c.isNull(i)
-        i += 1
-      o
+  /** The reader's null flags, shared without copying (vectors are immutable) */
+  private def nullsOf(c: ColumnVector): Array[Boolean] = c.nullFlags
 
   /** Convert uni column vectors into engine vectors, mostly without copying the value arrays */
   def toBatch(b: ColumnBatch, cols: Seq[String], types: Seq[PType]): Batch =
