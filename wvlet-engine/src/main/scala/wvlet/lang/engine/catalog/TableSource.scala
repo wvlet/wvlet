@@ -46,6 +46,12 @@ trait TableSource:
   /** Row count estimate for join ordering */
   def estimatedRows: Option[Long] = None
 
+  /**
+    * Estimate of the number of distinct non-null values of a column, for join ordering. None when
+    * unknown
+    */
+  def estimatedDistinct(column: String): Option[Double] = None
+
   /** Whether [[scanSplits]] may cut a scan into parts */
   def canSplit: Boolean = false
 
@@ -55,6 +61,8 @@ trait TableSource:
     * can't split, or the scan has a single part
     */
   def scanSplits(spec: ScanSpec): Option[ScanSplits] = None
+
+end TableSource
 
 /** Independently readable parts of a scan; `close` releases what the parts share */
 case class ScanSplits(parts: IndexedSeq[() => Iterator[Batch]], close: () => Unit)
@@ -119,6 +127,73 @@ class ParquetSource(val name: String, path: String) extends TableSource:
       case _: Exception =>
         None
 
+  /**
+    * Integer and date columns: the width of the [min, max] range in the file statistics, at most
+    * the non-null count. Strings of files up to [[ParquetSource.DistinctScanLimit]] rows: counted
+    * by reading the column once (cached), as DuckDB keeps distinct-count statistics for join
+    * ordering
+    */
+  override def estimatedDistinct(column: String): Option[Double] =
+    // Keyed by path: file sources in queries are new ParquetSource instances per query
+    val key = (path, column)
+    val c   = ParquetSource.distinctCache.get(key)
+    if c != null then
+      c
+    else
+      // Computed outside the map, so that a scan doesn't block other planners
+      val d = computeDistinct(column)
+      ParquetSource.distinctCache.putIfAbsent(key, d)
+      d
+
+  private def computeDistinct(column: String): Option[Double] =
+    if !isSingleFile then
+      None
+    else
+      try
+        val f = Parquet.open(path)
+        try
+          val rows    = f.numRows
+          val stats   = f.columnStatistics.get(column)
+          val nonNull = stats.flatMap(_.numNulls).map(n => rows - n).getOrElse(rows).toDouble
+          def asLong(v: Any): Option[Long] =
+            v match
+              case i: Int =>
+                Some(i.toLong)
+              case l: Long =>
+                Some(l)
+              case d: java.time.LocalDate =>
+                Some(d.toEpochDay)
+              case _ =>
+                None
+          schema.fields.find(_.name == column).map(_.ptype) match
+            // canFilterOn excludes UINT64, whose statistics are ordered unsigned
+            case Some(PType.Int32 | PType.Int64 | PType.Date) if canFilterOn(column) =>
+              for
+                s   <- stats
+                min <- s.min.flatMap(asLong)
+                max <- s.max.flatMap(asLong)
+              yield math.min(nonNull, max.toDouble - min.toDouble + 1)
+            case Some(PType.Str) if rows <= ParquetSource.DistinctScanLimit =>
+              val seen = scala.collection.mutable.HashSet.empty[Any]
+              scan(ScanSpec(Some(Seq(column)))).foreach { b =>
+                val v = b.columns(0)
+                var i = 0
+                while i < b.size do
+                  val x = v.get(i)
+                  if x != null then
+                    seen += x
+                  i += 1
+              }
+              Some(math.max(1.0, seen.size.toDouble))
+            case _ =>
+              None
+        finally
+          f.close()
+        end try
+      catch
+        case _: Exception =>
+          None
+
   private def readOptions(spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =
     ParquetSource.readOptions(schema, spec)
 
@@ -161,6 +236,15 @@ class ParquetSource(val name: String, path: String) extends TableSource:
 end ParquetSource
 
 object ParquetSource:
+
+  /** Up to how many rows a string column is read to count its distinct values */
+  val DistinctScanLimit: Long = 1000000
+
+  /** Distinct-count estimates per (file path, column), shared by the sources of the same file */
+  private val distinctCache = java
+    .util
+    .concurrent
+    .ConcurrentHashMap[(String, String), Option[Double]]()
 
   /** The columns, their engine types, and uni read options of a scan over `schema` */
   def readOptions(schema: Schema, spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =

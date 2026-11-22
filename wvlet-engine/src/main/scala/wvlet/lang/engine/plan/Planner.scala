@@ -2084,7 +2084,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
             inputs(i)
           else
             applyConjuncts(inputs(i), local)
-        JoinInput(op, estimateRows(op) * math.pow(0.3, local.size))
+        JoinInput(op, estimateRows(op) * local.map(c => selectivity(inputs(i), c)).product)
       }
     var remaining = condRefs.filter(_._2.size != 1).map(_._1)
     // constant conditions (no references) apply at the end
@@ -2103,23 +2103,31 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           val eqs = remaining.filter(c => isEquiBetween(c, current.schema, pushed(i).op.schema))
           (i, eqs)
         }
-      val connected   = candidates.filter(_._2.nonEmpty)
-      val (next, eqs) =
-        if connected.nonEmpty then
-          connected.minBy(c => pushed(c._1).rows)
-        else
-          candidates.minBy(c => pushed(c._1).rows)
-      val right    = pushed(next).op
-      val combined = current.schema ++ right.schema
-      if eqs.nonEmpty then
+      val connected = candidates.filter(_._2.nonEmpty)
+      // As DuckDB's greedy join ordering does, join next the input giving the fewest rows
+      val keyed = connected.map { (i, eqs) =>
+        val right    = pushed(i).op
         val pairs    = eqs.map(c => equiSides(c, current.schema, right.schema))
         val (lk, rk) = joinKeys(
           Binder(this, BindScope(current.schema)),
           Binder(this, BindScope(right.schema)),
           pairs
         )
+        val out = joinOutputRows(current, currentRows, lk, right, pushed(i).rows, rk)
+        (i, eqs, lk, rk, out)
+      }
+      val (next, eqs) =
+        if keyed.nonEmpty then
+          val (i, e, _, _, _) = keyed.minBy((i, _, _, _, out) => (out, pushed(i).rows))
+          (i, e)
+        else
+          candidates.minBy(c => pushed(c._1).rows)
+      val right    = pushed(next).op
+      val combined = current.schema ++ right.schema
+      if eqs.nonEmpty then
+        val (_, _, lk, rk, out) = keyed.find(_._1 == next).get
         current = HashJoinOp(current, right, lk, rk, JoinKind.Inner, None, combined)
-        currentRows = math.max(currentRows, pushed(next).rows)
+        currentRows = out
       else
         current = NestedLoopJoinOp(current, right, None, JoinKind.Cross, combined)
         currentRows = currentRows * pushed(next).rows
@@ -2187,6 +2195,92 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         (eq.right, eq.left)
       case other =>
         throw IllegalStateException(s"Not an equality: ${other}")
+
+  /**
+    * Estimated rows of an inner equi-join, |L| * |R| / prod(max(ndv(l), ndv(r))) over the key
+    * pairs. A key of unknown distinct count is assumed unique on the build (right) side, i.e. a
+    * foreign key to primary key join. The divisor is capped at max(|L|, |R|) since keys of one join
+    * are usually correlated (e.g. ticket number and item of a sales line)
+    */
+  private def joinOutputRows(
+      left: Operator,
+      leftRows: Double,
+      leftKeys: IndexedSeq[VExpr],
+      right: Operator,
+      rightRows: Double,
+      rightKeys: IndexedSeq[VExpr]
+  ): Double =
+    val divisors = leftKeys
+      .indices
+      .map { k =>
+        val l = keyDistinct(left, leftKeys(k)).map(math.min(_, leftRows)).getOrElse(0.0)
+        val r = keyDistinct(right, rightKeys(k)).map(math.min(_, rightRows)).getOrElse(rightRows)
+        math.max(1.0, math.max(l, r))
+      }
+    val divisor = math.min(divisors.product, math.max(math.max(leftRows, rightRows), 1.0))
+    math.max(1.0, leftRows * rightRows / divisor)
+
+  /**
+    * Estimated fraction of the rows of op passing a condition: 1 / ndv for column = constant (n /
+    * ndv for IN lists of n constants), as in DuckDB, and [[Planner.DefaultSelectivity]] otherwise
+    */
+  private def selectivity(op: Operator, c: Expression): Double =
+    def distinct(e: Expression): Option[Double] =
+      try
+        keyDistinct(op, Binder(this, BindScope(op.schema)).bind(e)).filter(_ >= 1)
+      catch
+        case _: Exception =>
+          None
+    val s =
+      c match
+        // x = null is `x is null` in wvlet
+        case Eq(a, l: Literal, _) if !l.isInstanceOf[NullLiteral] =>
+          distinct(a).map(1 / _)
+        case Eq(l: Literal, b, _) if !l.isInstanceOf[NullLiteral] =>
+          distinct(b).map(1 / _)
+        case In(a, list, _) if list.forall(isNonNullLiteral) =>
+          distinct(a).map(n => math.min(1.0, list.size / n))
+        case _ =>
+          None
+    s.getOrElse(Planner.DefaultSelectivity)
+
+  private def isNonNullLiteral(e: Expression): Boolean =
+    e.isInstanceOf[Literal] && !e.isInstanceOf[NullLiteral]
+
+  private def keyDistinct(op: Operator, key: VExpr): Option[Double] =
+    key match
+      case c: ColRef =>
+        columnDistinct(op, c.index)
+      case c: CastExpr =>
+        keyDistinct(op, c.child)
+      case _ =>
+        None
+
+  /** Distinct values of output column i of op from source statistics, if traceable */
+  private def columnDistinct(op: Operator, i: Int): Option[Double] =
+    op match
+      case s: ScanOp =>
+        s.source.estimatedDistinct(s.sourceColumnName(i))
+      case f: FilterOp =>
+        val j =
+          if f.keep == null then
+            i
+          else
+            f.keep(i)
+        columnDistinct(f.child, j)
+      case p: ProjectOp =>
+        p.exprs(i) match
+          case c: ColRef =>
+            columnDistinct(p.child, c.index)
+          case _ =>
+            None
+      case j: HashJoinOp if j.schema.size == j.left.schema.size + j.right.schema.size =>
+        if i < j.left.schema.size then
+          columnDistinct(j.left, i)
+        else
+          columnDistinct(j.right, i - j.left.schema.size)
+      case _ =>
+        None
 
   private def estimateRows(op: Operator): Double =
     op match
@@ -2482,6 +2576,9 @@ end Planner
 object Planner:
   /** How much larger the build input of an outer join must be before the inputs swap sides */
   val SwapBuildRatio: Double = 4.0
+
+  /** Estimated fraction of rows passing a filter condition whose selectivity is unknown */
+  val DefaultSelectivity: Double = 0.3
 
   /** A planner for a subquery: shares the catalog, sources, and CTE definitions */
   def nested(p: Planner): Planner = p
