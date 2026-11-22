@@ -281,6 +281,14 @@ class QueryExecutor(
     workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result
 
+  override protected def executeDDL(ddl: TopLevelStatement)(using context: Context): QueryResult =
+    activeEngineSession match
+      case Some(session) =>
+        session.ddl(ddl)
+        QueryResult.empty
+      case None =>
+        super.executeDDL(ddl)
+
   override protected def runStatements(sqls: List[String])(using context: Context): Unit =
     if activeEngineSession.isDefined then
       throw WvletEngineSession.sqlNotSupported(sqls)

@@ -339,6 +339,27 @@ class EngineCatalog:
 
   def tableNames: Seq[String] = tables.synchronized(tables.values.map(_.name).toSeq)
 
+  // Maps a (possibly qualified) table reference to its catalog key, when the owner of this
+  // catalog names tables by a scheme of its own (e.g. relative to a default schema)
+  private var nameKey: Option[String => String] = None
+
+  /**
+    * Name tables by `key`: a reference resolves to exactly the table `key(fullName)`, with no
+    * fallback to the bare table name, so `s.t` never silently reads another schema's `t`
+    */
+  def withNameKey(key: String => String): EngineCatalog =
+    nameKey = Some(key)
+    this
+
+  /** The table a reference (`name`, qualified as `fullName`) points to */
+  def lookup(name: String, fullName: String): Option[TableSource] =
+    nameKey match
+      case Some(key) =>
+        find(key(fullName))
+      case None =>
+        // A qualified reference names its table exactly; the bare name is the fallback
+        find(fullName).orElse(find(name))
+
   /**
     * information_schema views of this catalog. Tables live in the `main` schema of the `memory`
     * catalog, the names DuckDB uses for an in-memory database

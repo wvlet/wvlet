@@ -324,8 +324,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         planAliased(d)
       case None =>
         val src = catalog
-          .find(name)
-          .orElse(catalog.find(fullName))
+          .lookup(name, fullName)
           .orElse(sources.tableSource(name, fullName))
           .getOrElse {
             throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${fullName}")

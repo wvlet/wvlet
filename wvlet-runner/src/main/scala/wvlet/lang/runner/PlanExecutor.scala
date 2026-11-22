@@ -98,6 +98,14 @@ class PlanExecutor(
       case None =>
         super.executeSave(save)
 
+  override protected def executeDDL(ddl: TopLevelStatement)(using context: Context): QueryResult =
+    engineSessionOf(activeConfig) match
+      case Some(session) =>
+        session.ddl(ddl)
+        QueryResult.empty
+      case None =>
+        super.executeDDL(ddl)
+
   override protected def runStatements(sqls: List[String])(using context: Context): Unit =
     if WvletEngineSession.isInProcess(activeConfig) then
       throw WvletEngineSession.sqlNotSupported(sqls)
