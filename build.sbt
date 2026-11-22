@@ -98,6 +98,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   httpServer,
   server,
   lang.jvm,
+  engine.jvm,
   connector,
   runner.jvm,
   client.jvm,
@@ -111,6 +112,7 @@ lazy val jsProjects: Seq[ProjectReference] = Seq(
   api.js,
   client.js,
   lang.js,
+  engine.js,
   runner.js,
   ui,
   uiMain,
@@ -123,6 +125,7 @@ lazy val nativeProjects: Seq[ProjectReference] = Seq(
   api.native,
   client.native,
   lang.native,
+  engine.native,
   runner.native,
   cliCore.native,
   wvc,
@@ -429,6 +432,33 @@ lazy val testUtil = project
       Seq("org.wvlet.uni" %% "uni" % UNI_VERSION, "org.wvlet.uni" %% "uni-test" % UNI_VERSION)
   )
 
+// In-process, cross-platform columnar query engine that executes Wvlet logical plans directly,
+// reading Parquet / Iceberg through uni's pure-Scala readers (no JDBC, parquet-java, or Hadoop)
+lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("wvlet-engine"))
+  .settings(
+    buildSettings,
+    name        := "wvlet-engine",
+    description := "Columnar query engine for Wvlet plans"
+  )
+  .jvmSettings(specRunnerSettings)
+  .jsSettings(
+    libraryDependencies += scalajsJavaSecureRandom,
+    scalaJSLinkerConfig ~= {
+      _.withModuleKind(ModuleKind.CommonJSModule)
+    }
+  )
+  .nativeSettings(
+    uniNativeCurlLinking,
+    // wvlet-lang's native resources (DuckDB C helpers) are linked into every test binary
+    nativeConfig ~= { c =>
+      c.withLinkingOptions(c.linkingOptions :+ "-lduckdb")
+    },
+    nativeLibRpathLinking
+  )
+  .dependsOn(lang)
+
 // Capability-based Connector traits, the factory registry, and the built-in engine connectors
 // (DuckDB, Trino, Snowflake) extracted from wvlet-runner. One module for now; packages are kept
 // per-engine (wvlet.lang.connector.{duckdb,trino,snowflake}) so future service connectors with
@@ -510,7 +540,7 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       )
   )
   // `client` provides the RPC client for the remote wvlet-server backend (WvletServerClient)
-  .dependsOn(lang, client)
+  .dependsOn(lang, engine, client)
   .jvmConfigure(_.dependsOn(connector, testUtil % Test))
 
 lazy val spec = project
