@@ -87,6 +87,23 @@ object Parallelizer:
           else
             shared.map(x => template.withLeft(x))
         }
+      case j: NestedLoopJoinOp if j.kind == JoinKind.Cross && j.cond.isEmpty =>
+        // A cross join (e.g. with a one-row aggregate): the right rows are computed once before
+        // the parts start, and every part joins its rows with them
+        pipeline(j.left, runner).map { p =>
+          val right       = rewrite(j.right, runner)
+          var rows: Batch = null
+          // Not a child: parts must not close the shared right input, released once below
+          def shared: Operator =
+            new IteratorOp(right.schema, () => Iterator.single(rows), "CrossInput"):
+              override def explain(indent: Int): String =
+                s"${super.explain(indent)}\n${right.explain(indent + 1)}"
+          p.copy(
+              prepare = p.prepare :+ (() => rows = Operator.materialize(right)),
+              close = p.close :+ (() => right.close())
+            )
+            .map(x => NestedLoopJoinOp(x, shared, None, JoinKind.Cross, j.schema))
+        }
       case _ =>
         None
 
