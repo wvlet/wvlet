@@ -21,14 +21,16 @@ import java.sql.DriverManager
 
 /**
   * TPC-H queries on the engine with the tables rewritten in small row groups, so that scans, join
-  * probes, and their filters run as parallel morsels, and with grouped aggregations and join builds
-  * partitioned at any size, must return the same rows as DuckDB
+  * probes, and their filters run as parallel morsels, and with grouped aggregations, join builds,
+  * sorts, and windows parallel at any size, must return the same rows as DuckDB
   */
 class EngineTPCHParallelTest extends UniTest:
-  // Partition grouped aggregations and join builds at any size
+  // Partition grouped aggregations, join builds, sorts, and windows at any size
   private val minRowsKeys = Seq(
     "wvlet.engine.partitionedAggMinRows",
-    "wvlet.engine.partitionedJoinMinRows"
+    "wvlet.engine.partitionedJoinMinRows",
+    "wvlet.engine.parallelSortMinRows",
+    "wvlet.engine.parallelWindowMinRows"
   )
 
   minRowsKeys.foreach(k => sys.props(k) = "1")

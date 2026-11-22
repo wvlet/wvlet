@@ -115,7 +115,7 @@ object Parallelizer:
           case l: LimitOp =>
             LimitOp(r(l.child), l.limit, l.offset)
           case s: SortOp =>
-            SortOp(r(s.child), s.keys, s.limit)
+            SortOp(r(s.child), s.keys, s.limit, runner)
           case a: HashAggOp =>
             HashAggOp(r(a.child), a.keys, a.aggs, a.schema)
           case d: DistinctOp =>
@@ -138,7 +138,7 @@ object Parallelizer:
           case s: SetOpOp =>
             SetOpOp(r(s.left), r(s.right), s.isIntersect, s.all, s.schema)
           case w: WindowOp =>
-            WindowOp(r(w.child), w.calls, w.schema)
+            WindowOp(r(w.child), w.calls, w.schema, runner)
           case other =>
             other
     end match

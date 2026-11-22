@@ -85,7 +85,14 @@ Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0
 | Kernels, typed hash tables (#2205) | 8.6 s | 26x |
 | Parallel scans, join probes, two-phase aggregation (#2210) | 2.1 s | 6.4x |
 | Parallel right / full joins, outer joins build on the smaller side (#2214; all 22 queries) | 2.0 s | 5.2x |
-| Partitioned join builds and grouped aggregation, swapped semi / anti joins | 1.6 s | 4.4x |
+| Partitioned join builds and grouped aggregation, swapped semi / anti joins (#2218) | 1.6 s | 4.4x |
+| Parallel sorts, top-N, and partitioned windows (no TPC-H sort reaches 64K rows) | unchanged | |
+
+Parallel sorts and windows (A/B with the parallel paths disabled, sf=1 lineitem, 6M rows):
+top-N (limit 10) 2.29 s → 0.15 s, full sort 2.3 s → 1.1–1.3 s (bounded by the merge on one
+thread). A window partitioned by l_orderkey stayed in the noise (0.6–1.2 s vs 0.9–1.1 s): its
+sequential steps (materializing the input, building the output vector from boxed values)
+dominate.
 
 ## Milestones (one PR each)
 
