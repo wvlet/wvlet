@@ -37,7 +37,9 @@ class EngineTPCDSTest extends UniTest:
     // Window functions over aggregates
     12, 20, 47, 51, 53, 57, 63, 70, 89, 98,
     // OR-ed EXISTS subqueries
-    10, 35
+    10, 35,
+    // Runs out of heap on CI runners: the inventory join builds a large intermediate result
+    72
   )
 
   private val (dataDir, tables) = EngineTPCDSTest.prepareData(EngineTPCDSTest.scaleFactor)
