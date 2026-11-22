@@ -62,14 +62,8 @@ object ScanFilters:
             else
               ParquetFilter.IsNull(name)
           }
-        case InList(c: ColRef, values, _, false) if values.nonEmpty && values.size <= 64 =>
-          val eqs = values
-            .toSeq
-            .map(v => columnName(c.index).flatMap(compare(_, c.ptype, CmpOp.Eq, Const(v, c.ptype))))
-          if eqs.forall(_.isDefined) then
-            Some(eqs.flatten.reduce(_ || _))
-          else
-            None
+        case InList(c: ColRef, values, _, false) =>
+          columnName(c.index).flatMap(equalities(_, c.ptype, values.toSeq))
         case _ =>
           None
     go(cond)
@@ -91,12 +85,15 @@ object ScanFilters:
             hi <- compare(column, t, CmpOp.Le, Const(values.maxBy(ValueOps.toLong), t))
           yield lo && hi
         case _ =>
-          val distinct = values.toSeq.distinct
-          if distinct.size > 64 then
-            None
-          else
-            val eqs = distinct.map(v => compare(column, t, CmpOp.Eq, Const(v, t)))
-            Option.when(eqs.forall(_.isDefined))(eqs.flatten.reduce(_ || _))
+          equalities(column, t, values.toSeq.distinct)
+
+  /** `column = v1 or column = v2 ...` for up to 64 non-null values, when every one translates */
+  private def equalities(column: String, t: PType, values: Seq[Any]): Option[ParquetFilter] =
+    if values.isEmpty || values.size > 64 then
+      None
+    else
+      val eqs = values.map(v => compare(column, t, CmpOp.Eq, Const(v, t)))
+      Option.when(eqs.forall(_.isDefined))(eqs.flatten.reduce(_ || _))
 
   private def flip(op: CmpOp): CmpOp =
     op match
