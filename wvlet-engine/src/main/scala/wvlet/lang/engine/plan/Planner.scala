@@ -24,6 +24,9 @@ import wvlet.lang.compiler.DBType
 import wvlet.lang.engine.catalog.*
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
+import wvlet.lang.engine.logical.LogicalBinder
+import wvlet.lang.engine.logical.Lowering
+import wvlet.lang.engine.logical.PlanValidator
 import wvlet.lang.engine.vector.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -64,12 +67,12 @@ class Planner(
     else
       pruned
 
-  private var hiddenSeq                          = 0
-  private def hiddenName(prefix: String): String =
+  private var hiddenSeq                                  = 0
+  private[engine] def hiddenName(prefix: String): String =
     hiddenSeq += 1
     s"__wv_${prefix}${hiddenSeq}"
 
-  private def isHidden(f: Field): Boolean = f.name.startsWith("__wv_")
+  private[engine] def isHidden(f: Field): Boolean = f.name.startsWith("__wv_")
 
   // Named relations of WITH clauses
   private val cteDefs = mutable.HashMap.empty[String, AliasedRelation]
@@ -159,13 +162,46 @@ class Planner(
 
   // --- relations ------------------------------------------------------------------------
 
-  private def planRelation(r: Relation): Operator =
+  /** Binds relations to the engine's logical plan (with the logical planner) */
+  private lazy val logicalBinder = LogicalBinder(this)
+
+  /**
+    * Plan a relation into operators: through the logical plan (`wvlet.engine.planner=logical`),
+    * whose relations it doesn't cover yet are planned by [[planLegacy]], or directly by
+    * [[planLegacy]]
+    */
+  private[engine] def planRelation(r: Relation): Operator =
+    options.planner match
+      case PlannerMode.Logical =>
+        val p = logicalBinder.bind(r)
+        if options.validatePlans then
+          PlanValidator.validate(p)
+        Lowering(p)
+      case PlannerMode.Legacy =>
+        planLegacy(r)
+
+  /**
+    * The logical plan of a relation, whose relations the logical binder doesn't cover are planned
+    */
+  def logicalPlan(r: Relation): wvlet.lang.engine.logical.LogicalPlan = logicalBinder.bind(r)
+
+  /** Register the CTEs of a WITH clause, which table references resolve by name */
+  private[engine] def registerCTEs(w: WithQuery): Unit =
+    w.queryDefs.foreach(d => cteDefs(d.alias.leafName.toLowerCase) = d)
+    countCTERefs(w)
+
+  /** Whether a table name refers to a CTE in scope */
+  private[engine] def isCTE(name: String): Boolean = cteDefs.contains(name.toLowerCase)
+
+  private[engine] def parseSql(r: RawSQL): Relation = sources.parseSql(r)
+
+  /** Plan a relation with the planner's own recursion (children go through [[planRelation]]) */
+  private[engine] def planLegacy(r: Relation): Operator =
     r match
       case q: Query =>
         planRelation(q.body)
       case w: WithQuery =>
-        w.queryDefs.foreach(d => cteDefs(d.alias.leafName.toLowerCase) = d)
-        countCTERefs(w)
+        registerCTEs(w)
         planRelation(w.queryBody)
       case b: BracedRelation =>
         planRelation(b.child)
@@ -209,17 +245,9 @@ class Planner(
       case t: TableRef =>
         planTable(t.name.leafName, t.name.fullName)
       case f: FileScan =>
-        sources.fileSource(f.filePath) match
-          case Some(src) =>
-            scanOp(src, None)
-          case None =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported file format: ${f.filePath}")
+        scanOp(fileSource(f.filePath), None)
       case f: FileRef =>
-        sources.fileSource(f.filePath) match
-          case Some(src) =>
-            scanOp(src, None)
-          case None =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported file format: ${f.filePath}")
+        scanOp(fileSource(f.filePath), None)
       case r: RawSQL =>
         planRelation(sources.parseSql(r))
       case f: Filter =>
@@ -368,7 +396,7 @@ class Planner(
           .NOT_IMPLEMENTED
           .newException(s"Unsupported relation in the engine: ${other.nodeName}")
 
-  end planRelation
+  end planLegacy
 
   private def batchOf(schema: Schema, rows: Seq[Seq[Any]]): Batch =
     val cols = schema
@@ -454,13 +482,22 @@ class Planner(
       case Some(d) =>
         planAliased(d)
       case None =>
-        val src = catalog
-          .lookup(name, fullName)
-          .orElse(sources.tableSource(name, fullName))
-          .getOrElse {
-            throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${fullName}")
-          }
-        scanOp(src, Some(name))
+        scanOp(tableSource(name, fullName), Some(name))
+
+  /** The source of a catalog table (not a CTE) */
+  private[engine] def tableSource(name: String, fullName: String): TableSource = catalog
+    .lookup(name, fullName)
+    .orElse(sources.tableSource(name, fullName))
+    .getOrElse {
+      throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${fullName}")
+    }
+
+  /** The source of a file path */
+  private[engine] def fileSource(path: String): TableSource = sources
+    .fileSource(path)
+    .getOrElse {
+      throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported file format: ${path}")
+    }
 
   private def scanOp(src: TableSource, alias: Option[String]): Operator =
     val schema = alias.map(a => src.schema.withQualifier(a)).getOrElse(src.schema)
@@ -498,6 +535,14 @@ class Planner(
       v: Values,
       columnNames: Option[List[wvlet.lang.model.DataType.NamedType]]
   ): Operator =
+    val (schema, batch) = valuesBatch(v, columnNames)
+    BatchesOp(schema, Seq(batch), "Values")
+
+  /** The rows of a VALUES list, evaluated, and their schema */
+  private[engine] def valuesBatch(
+      v: Values,
+      columnNames: Option[List[wvlet.lang.model.DataType.NamedType]]
+  ): (Schema, Batch) =
     val binder                  = Binder(this, BindScope(Schema.empty))
     val rows: List[List[VExpr]] = v
       .rows
@@ -535,9 +580,9 @@ class Planner(
     val values = rows.map(r =>
       r.zipWithIndex.map((e, i) => ValueOps.cast(e.eval(one).get(0), e.ptype, types(i)))
     )
-    BatchesOp(schema, Seq(batchOf(schema, values)), "Values")
+    (schema, batchOf(schema, values))
 
-  end planValues
+  end valuesBatch
 
   // --- pivot / unpivot -----------------------------------------------------------------
 
@@ -729,7 +774,10 @@ class Planner(
 
   // --- SQL SELECT blocks ----------------------------------------------------------------
 
-  private def planSQLSelect(s: SQLSelect): Operator =
+  private def planSQLSelect(s: SQLSelect): Operator = planRelation(desugarSQLSelect(s))
+
+  /** A SQL SELECT block as wvlet operators: filters, grouping, HAVING, projection, order, limit */
+  private[engine] def desugarSQLSelect(s: SQLSelect): Relation =
     var r: Relation = s.child
     s.filters.foreach(f => r = Filter(r, f.filterExpr, f.span))
     if s.groupingKeys.nonEmpty then
@@ -744,7 +792,7 @@ class Planner(
           r = Limit(r, l, s.span)
         case _ =>
       }
-    planRelation(r)
+    r
 
   // --- projection -----------------------------------------------------------------------
 
@@ -800,9 +848,8 @@ class Planner(
         false
 
   /** Bind select items over an operator, expanding `*` */
-  private def bindItems(
+  private[engine] def bindItems(
       binder: Binder,
-      op: Operator,
       items: List[Attribute]
   ): (IndexedSeq[VExpr], IndexedSeq[Field]) =
     val exprs  = IndexedSeq.newBuilder[VExpr]
@@ -873,7 +920,7 @@ class Planner(
         None
 
   /** The list argument of a select item `unnest(list)` */
-  private def unnestArg(e: Expression): Option[Expression] =
+  private[engine] def unnestArg(e: Expression): Option[Expression] =
     e match
       case s: SingleColumn =>
         unnestArg(s.expr)
@@ -925,7 +972,7 @@ class Planner(
     }
     val binder = Binder(this, BindScope(op.schema))
     // Bind items one by one: `*` expands to several fields, so item and field indexes differ
-    val bound  = replaced.map(r => bindItems(binder, op, List(r)))
+    val bound  = replaced.map(r => bindItems(binder, List(r)))
     val exprs  = bound.flatMap(_._1).toIndexedSeq
     val fields = bound.flatMap(_._2).toIndexedSeq
     val isList =
@@ -957,7 +1004,7 @@ class Planner(
 
   /** Bind a projection, evaluating window functions first when there are any */
   private def projectWithWindows(op: Operator, items: List[Attribute]): Operator =
-    val (in, (exprs, fields)) = withWindows(op, items)((o, b) => bindItems(b, o, items))
+    val (in, (exprs, fields)) = withWindows(op, items)((_, b) => bindItems(b, items))
     ProjectOp(in, exprs, Schema(fields))
 
   /**
@@ -1124,7 +1171,7 @@ class Planner(
 
   end SharedTable
 
-  private def isAggregationInput(r: Relation): Boolean =
+  private[engine] def isAggregationInput(r: Relation): Boolean =
     r match
       case _: GroupBy =>
         true
@@ -1142,7 +1189,7 @@ class Planner(
     // Window functions in new columns are evaluated first; their results follow the input columns
     val (op, (exprs, fields)) =
       withWindows(input, newColumns) { (op, binder) =>
-        bindItems(binder, op, newColumns)
+        bindItems(binder, newColumns)
       }
     // A new column with an existing name replaces it in place
     val existing = input
@@ -1404,19 +1451,22 @@ class Planner(
 
   // --- sort -----------------------------------------------------------------------------
 
-  private def sortKeys(binder: Binder, items: List[SortItem], schema: Schema): Seq[SortKey] = items
-    .map { s =>
-      val e =
-        s.sortKey match
-          case l: LongLiteral =>
-            val i = l.value.toInt - 1
-            ColRef(binder.scope.offset + i, schema(i).ptype, schema(i).name)
-          case other =>
-            binder.bind(other)
-      sortKey(s, e)
-    }
+  private[engine] def sortKeys(
+      binder: Binder,
+      items: List[SortItem],
+      schema: Schema
+  ): Seq[SortKey] = items.map { s =>
+    val e =
+      s.sortKey match
+        case l: LongLiteral =>
+          val i = l.value.toInt - 1
+          ColRef(binder.scope.offset + i, schema(i).ptype, schema(i).name)
+        case other =>
+          binder.bind(other)
+    sortKey(s, e)
+  }
 
-  private def sortKey(s: SortItem, e: VExpr): SortKey =
+  private[engine] def sortKey(s: SortItem, e: VExpr): SortKey =
     // DuckDB's default: NULLS LAST for both directions
     val nullsFirst = s.nullOrdering.contains(NullOrdering.NullIsFirst)
     SortKey(e, !s.ordering.contains(SortOrdering.Descending), nullsFirst)
@@ -1444,7 +1494,7 @@ class Planner(
     * `item.i_brand_id as brand_id`) into positional references to the select output. Keys naming an
     * output column are kept as is
     */
-  private def resolveSortItems(s: Sort): List[SortItem] =
+  private[engine] def resolveSortItems(s: Sort): List[SortItem] =
     def selectItems(r: Relation): Option[List[Attribute]] =
       r match
         case p: Project =>
@@ -1506,7 +1556,7 @@ class Planner(
 
   end resolveSortItems
 
-  private def planSort(s: Sort, limit: Option[Long]): Operator =
+  private[engine] def planSort(s: Sort, limit: Option[Long]): Operator =
     val op      = planRelation(s.child)
     val orderBy = resolveSortItems(s)
     val outKeys = orderBy.map { k =>
@@ -1555,7 +1605,7 @@ class Planner(
 
   // --- filters and subqueries -----------------------------------------------------------
 
-  private def conjuncts(e: Expression): List[Expression] =
+  private[engine] def conjuncts(e: Expression): List[Expression] =
     val split = splitAnd(Binder.expandTemplates(e))
     if enabled(Optimization.FactorOr) then
       split.flatMap(factorOr)
@@ -1919,7 +1969,7 @@ class Planner(
       items match
         case Some(its) =>
           val b               = Binder(this, BindScope(inner.schema))
-          val (exprs, fields) = bindItems(b, inner, its)
+          val (exprs, fields) = bindItems(b, its)
           val proj            = ProjectOp(
             inner,
             inner
@@ -2159,7 +2209,7 @@ class Planner(
 
   // --- joins ----------------------------------------------------------------------------
 
-  private def isInnerJoin(j: Join): Boolean =
+  private[engine] def isInnerJoin(j: Join): Boolean =
     !j.asof && (
       j.joinType match
         case JoinType.InnerJoin | JoinType.ImplicitJoin | JoinType.CrossJoin =>
@@ -2285,7 +2335,7 @@ class Planner(
       NullLiteral(s.span)
   }
 
-  private def hasSubquery(e: Expression): Boolean =
+  private[engine] def hasSubquery(e: Expression): Boolean =
     var found = false
     e.traverseExpressions {
       case _: SubQueryExpression | _: Exists | _: InRelation | _: NotInRelation =>
