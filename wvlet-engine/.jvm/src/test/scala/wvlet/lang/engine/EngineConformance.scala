@@ -268,6 +268,17 @@ class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: Wv
           ValueOps.formatTimestamp(v.asInstanceOf[Long])
         case PType.AnyT =>
           v match
+            // Dynamically typed values (e.g., unnested list elements)
+            case i: Int =>
+              i.toLong
+            case l: Long =>
+              l
+            case d: Double =>
+              d
+            case b: JBigDecimal =>
+              b
+            case b: Boolean =>
+              b
             case s: Seq[?] =>
               nested(s)
             case m: scala.collection.Map[?, ?] =>

@@ -144,6 +144,15 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         DistinctOp(planRelation(d.child))
       case g: GroupBy =>
         planAggregation(g, None, defaultItems = true)
+      case Agg(p: Pivot, _, items, _) =>
+        planPivot(p, items)
+      case p: Pivot =>
+        planPivot(p, Nil)
+      case u: Unpivot =>
+        planUnpivot(u)
+      case r if unnestCall(r).isDefined =>
+        val (call, alias) = unnestCall(r).get
+        planUnnest(None, call, alias)
       case a: Agg =>
         planAggregation(a.child, Some(a.selectItems), defaultItems = false)
       case c: Count if isAggregationInput(c.child) =>
@@ -400,6 +409,172 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 
   end planValues
 
+  // --- pivot / unpivot -----------------------------------------------------------------
+
+  /** Column indexes referenced by an expression */
+  private def columnRefs(e: VExpr): Set[Int] =
+    e match
+      case c: ColRef =>
+        Set(c.index)
+      case other =>
+        other.children.flatMap(columnRefs).toSet
+
+  /**
+    * PIVOT with DuckDB semantics: one output column per pivot value (combination), each an
+    * aggregate filtered to its value. Without USING aggregates, count(*). Without GROUP BY, rows
+    * are grouped by the columns used neither for pivoting nor in the aggregates
+    */
+  private def planPivot(p: Pivot, aggItems: List[Attribute]): Operator =
+    val childOp = planRelation(p.child)
+    val schema  = childOp.schema
+    val batch   = Operator.materialize(childOp)
+    def input   = BatchesOp(schema, Seq(batch))
+    val scope   = BindScope(schema)
+    val binder  = Binder(this, scope)
+    // Pivot columns and their values
+    val pivots: List[(VExpr, Seq[Any])] = p
+      .pivotKeys
+      .map { k =>
+        val col    = binder.bind(k.name)
+        val values =
+          if k.values.nonEmpty then
+            k.values
+              .map { v =>
+                val c = binder.bind(v)
+                ValueOps.cast(c.eval(Batch.ofRows(1)).get(0), c.ptype, col.ptype)
+              }
+          else
+            val vec = col.eval(batch)
+            (0 until batch.size)
+              .map(vec.get)
+              .filter(_ != null)
+              .distinct
+              .sortWith((x, y) => ValueOps.compare(x, y) < 0)
+        (col, values)
+      }
+    val combos: Seq[List[Any]] =
+      pivots.foldRight(Seq(List.empty[Any])) { case ((_, vs), acc) =>
+        for
+          v    <- vs
+          rest <- acc
+        yield v :: rest
+      }
+    // USING aggregates
+    val aggCtx0    = AggContext(scope, IndexedSeq.empty, IndexedSeq.empty)
+    val aggBinder0 = Binder(this, BindScope(aggCtx0.outputSchema), Some(aggCtx0))
+    def aggFunction(e: Expression): FunctionApply =
+      Binder.expandTemplates(e) match
+        case f: FunctionApply =>
+          f
+        case a: SingleColumn =>
+          aggFunction(a.expr)
+        case a: Alias =>
+          aggFunction(a.expr)
+        case other =>
+          throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported pivot aggregate: ${other}")
+    val countStar = AggCall(
+      "count_star",
+      Nil,
+      distinct = false,
+      filter = None,
+      Aggregates.resultType("count_star", Nil)
+    )
+    val aggs: List[(String, AggCall)] =
+      if aggItems.isEmpty then
+        List(("count", countStar))
+      else
+        aggItems.map(a => (nameOf(a), aggBinder0.aggCall(aggFunction(a))))
+    // Grouping keys
+    val pivotCols                         = pivots.flatMap(x => columnRefs(x._1)).toSet
+    val usedCols                          = aggs.flatMap(_._2.args.flatMap(columnRefs)).toSet
+    val keys: IndexedSeq[(String, VExpr)] =
+      if p.groupingKeys.nonEmpty then
+        p.groupingKeys
+          .map { k =>
+            val n    = k.name.leafName
+            val name =
+              if n.nonEmpty && !n.startsWith("<") then
+                n
+              else
+                exprName(k.child)
+            (name, binder.bind(k.child))
+          }
+          .toIndexedSeq
+      else
+        schema
+          .fields
+          .indices
+          .filterNot(i => pivotCols.contains(i) || usedCols.contains(i) || isHidden(schema(i)))
+          .map(i => (schema(i).name, ColRef(i, schema(i).ptype, schema(i).name): VExpr))
+    // One filtered aggregate per (pivot values, aggregate)
+    val calls  = IndexedSeq.newBuilder[AggCall]
+    val fields = IndexedSeq.newBuilder[Field]
+    combos.foreach { combo =>
+      val cond = pivots
+        .zip(combo)
+        .map { case ((col, _), v) =>
+          Compare(CmpOp.Eq, col, Const(v, col.ptype)): VExpr
+        }
+        .reduce((a, b) => AndExpr(a, b))
+      val prefix = combo.map(ValueOps.toStr).mkString("_")
+      aggs.foreach { (aggName, call) =>
+        val filter = call.filter.map(f => AndExpr(f, cond)).getOrElse(cond)
+        calls += call.copy(filter = Some(filter))
+        fields +=
+          Field(
+            if aggs.size == 1 then
+              prefix
+            else
+              s"${prefix}_${aggName}"
+            ,
+            call.ptype
+          )
+      }
+    }
+    val aggCalls  = calls.result()
+    val outSchema = Schema(keys.map((n, e) => Field(n, e.ptype)) ++ fields.result())
+    HashAggOp(input, keys.map(_._2), aggCalls, outSchema)
+
+  end planPivot
+
+  /** UNPIVOT: one row per (input row, target column) with a non-NULL value */
+  private def planUnpivot(u: Unpivot): Operator =
+    val child   = planRelation(u.child)
+    val batches = Operator.materialize(child)
+    val schema  = child.schema
+    val key     = u.unpivotKey
+    val targets = key
+      .targetColumns
+      .map { c =>
+        val i = schema.names.indexWhere(_.equalsIgnoreCase(c.leafName))
+        if i < 0 then
+          throw ColumnNotFound(s"Column not found: ${c.leafName}")
+        i
+      }
+    val others    = schema.fields.indices.filterNot(targets.contains)
+    val valueType = targets.map(schema(_).ptype).reduce(PType.common)
+    val outSchema = Schema(
+      others.map(schema(_)).map(_.noQualifier) ++
+        IndexedSeq(
+          Field(key.unpivotColumnName.leafName, PType.Str),
+          Field(key.getValueColumnName.leafName, valueType)
+        )
+    )
+    val parts = targets.map { t =>
+      val in    = BatchesOp(schema, Seq(batches))
+      val value = castExpr(ColRef(t, schema(t).ptype, schema(t).name), valueType)
+      val proj  = ProjectOp(
+        FilterOp(in, IsNullExpr(ColRef(t, schema(t).ptype, schema(t).name), negate = true)),
+        others.map(i => ColRef(i, schema(i).ptype, schema(i).name): VExpr) ++
+          IndexedSeq(Const(schema(t).name, PType.Str), value),
+        outSchema
+      )
+      proj: Operator
+    }
+    UnionAllOp(parts, outSchema)
+
+  end planUnpivot
+
   private def planSample(s: Sample): Operator =
     val op = planRelation(s.child)
     s.size match
@@ -519,9 +694,144 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private def planProject(child: Relation, items: List[Attribute]): Operator =
     if isAggregationInput(child) || items.exists(i => Binder.containsAggregate(i)) then
       planAggregation(child, Some(items), defaultItems = false)
+    else if items.exists(i => unnestArg(i).isDefined) then
+      projectWithUnnest(planRelation(child), items)
     else
       val op = planRelation(child)
       projectWithWindows(op, items)
+
+  // --- unnest ---------------------------------------------------------------------------
+
+  private def isUnnest(name: NameExpr): Boolean = name.leafName.equalsIgnoreCase("unnest")
+
+  /** unnest(...) as a relation, with its alias */
+  private def unnestCall(r: Relation): Option[(TableFunctionCall, Option[AliasedRelation])] =
+    r match
+      case t: TableFunctionCall if isUnnest(t.name) =>
+        Some((t, None))
+      case a @ AliasedRelation(t: TableFunctionCall, _, _, _) if isUnnest(t.name) =>
+        Some((t, Some(a)))
+      case _ =>
+        None
+
+  /** The list argument of a select item `unnest(list)` */
+  private def unnestArg(e: Expression): Option[Expression] =
+    e match
+      case s: SingleColumn =>
+        unnestArg(s.expr)
+      case a: Alias =>
+        unnestArg(a.expr)
+      case t: TypedExpression =>
+        unnestArg(t.child)
+      case f: FunctionApply if f.window.isEmpty && Binder.functionName(f) == "unnest" =>
+        f.args match
+          case List(a) =>
+            Some(a.value)
+          case _ =>
+            throw StatusCode.NOT_IMPLEMENTED.newException("unnest expects a single list argument")
+      case _ =>
+        None
+
+  /** The element type of lists produced by a constant expression, or Any */
+  private def elementType(e: VExpr): PType =
+    if !e.isConstant && !e.isInstanceOf[Const] then
+      PType.AnyT
+    else
+      e.eval(Batch.ofRows(1)).get(0) match
+        case s: Seq[?] =>
+          val ts =
+            s.filter(_ != null)
+              .map {
+                case _: Int =>
+                  PType.Int32
+                case _: Long =>
+                  PType.Int64
+                case _: Double =>
+                  PType.Float64
+                case _: String =>
+                  PType.Str
+                case _: Boolean =>
+                  PType.Bool
+                case _ =>
+                  PType.AnyT
+              }
+              .distinct
+          ts match
+            case Seq() =>
+              PType.Int32
+            case Seq(t) =>
+              t
+            case many if many.forall(_.isNumeric) =>
+              many.reduce(PType.common)
+            case _ =>
+              PType.AnyT
+        case _ =>
+          PType.AnyT
+
+  /** unnest(list, ...) as a relation; over `left` (a lateral join) when given */
+  private def planUnnest(
+      left: Option[Operator],
+      call: TableFunctionCall,
+      alias: Option[AliasedRelation]
+  ): Operator =
+    val input  = left.getOrElse(SingleRowOp())
+    val binder = Binder(this, BindScope(input.schema))
+    val lists  = call.args.map(a => binder.bind(a.value)).toIndexedSeq
+    val names  = alias.flatMap(_.columnNames).map(_.map(_.name.name)).getOrElse(Nil)
+    val q      = alias.map(_.alias.leafName).toList
+    val fields = lists
+      .indices
+      .map { i =>
+        Field(names.lift(i).getOrElse("unnest"), elementType(lists(i)), q)
+      }
+    val inputFields =
+      if left.isDefined then
+        input.schema.fields
+      else
+        IndexedSeq.empty
+    UnnestOp(input, lists, keepInput = left.isDefined, Schema(inputFields ++ fields))
+
+  /** select ..., unnest(list), ...: the row repeats per list element */
+  private def projectWithUnnest(op: Operator, items: List[Attribute]): Operator =
+    val replaced = items.map { i =>
+      unnestArg(i) match
+        case Some(arg) =>
+          SingleColumn(NameExpr.fromString(nameOf(i)), arg, NoSpan)
+        case None =>
+          i
+    }
+    val binder          = Binder(this, BindScope(op.schema))
+    val (exprs, fields) = bindItems(binder, op, replaced)
+    val proj            = ProjectOp(op, exprs, Schema(fields))
+    val listIdx         = items.indices.filter(i => unnestArg(items(i)).isDefined)
+    val elemFields      = listIdx.map(i => fields(i).copy(ptype = elementType(exprs(i))))
+    val unnest          = UnnestOp(
+      proj,
+      listIdx.map(i => ColRef(i, fields(i).ptype, fields(i).name): VExpr),
+      keepInput = true,
+      Schema(fields ++ elemFields)
+    )
+    val outExprs = items
+      .indices
+      .map { i =>
+        listIdx.indexOf(i) match
+          case -1 =>
+            ColRef(i, fields(i).ptype, fields(i).name): VExpr
+          case k =>
+            ColRef(fields.size + k, elemFields(k).ptype, elemFields(k).name)
+      }
+    val outFields = items
+      .indices
+      .map { i =>
+        listIdx.indexOf(i) match
+          case -1 =>
+            fields(i)
+          case k =>
+            elemFields(k)
+      }
+    ProjectOp(unnest, outExprs, Schema(outFields))
+
+  end projectWithUnnest
 
   /** Bind a projection, evaluating window functions first when there are any */
   private def projectWithWindows(op: Operator, items: List[Attribute]): Operator =
@@ -1312,6 +1622,20 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     * building on the smaller side
     */
   private def planJoinTree(j: Join, filters: List[Expression]): Operator =
+    unnestCall(j.right) match
+      case Some((call, alias)) =>
+        // A lateral unnest over the left input: join ... unnest(left.column)
+        val op    = planUnnest(Some(planRelation(j.left)), call, alias)
+        val conds =
+          j.cond match
+            case JoinOn(e, _) =>
+              conjuncts(e)
+            case JoinOnEq(keys, _) =>
+              conjuncts(Expression.concatWithEq(keys))
+            case _ =>
+              Nil
+        return applyConjuncts(op, (conds ++ filters).filterNot(isTrueLiteral))
+      case None =>
     if !isInnerJoin(j) then
       return applyConjuncts(planOuterJoin(j), filters)
     val (leaves, joinConds) = flattenJoins(j)
