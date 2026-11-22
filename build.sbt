@@ -475,7 +475,9 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     buildSettings,
     name        := "wvlet-engine",
-    description := "Columnar query engine for Wvlet plans"
+    description := "Columnar query engine for Wvlet plans",
+    // A pass over the engine's closed plan enums must handle every case
+    scalacOptions += "-Wconf:id=E029:e"
   )
   .jvmSettings(specRunnerSettings)
   .jsSettings(

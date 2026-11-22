@@ -51,4 +51,19 @@ class OptimizerOptionsTest extends UniTest:
       )
   }
 
+  test("should plan with the recursive planner by default") {
+    OptimizerOptions().planner shouldBe PlannerMode.Legacy
+    OptimizerOptions().withPlanner(PlannerMode.Logical).planner shouldBe PlannerMode.Logical
+  }
+
+  test("should parse planner names") {
+    OptimizerOptions.parsePlanner(" Logical ") shouldBe PlannerMode.Logical
+    OptimizerOptions.parsePlanner("legacy") shouldBe PlannerMode.Legacy
+    val e = intercept[WvletLangException] {
+      OptimizerOptions.parsePlanner("cascades")
+    }
+    e.getMessage shouldContain "cascades"
+    e.getMessage shouldContain "legacy, logical"
+  }
+
 end OptimizerOptionsTest

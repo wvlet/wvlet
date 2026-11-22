@@ -15,6 +15,7 @@ package wvlet.lang.engine
 
 import wvlet.lang.engine.exec.TaskRunner
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.plan.PlannerMode
 import wvlet.uni.test.UniTest
 
 import java.nio.file.Files
@@ -25,18 +26,24 @@ import scala.jdk.CollectionConverters.*
 /**
   * The engine's physical plans of the TPC-H and TPC-DS queries must match the golden files under
   * spec/engine-plans, so that a planner change shows its plan changes in the PR diff. Regenerate
-  * them with [[EnginePlanGolden.regenCommand]]
+  * them with [[EnginePlanGolden.regenCommand]]. The logical planner must produce the same plans as
+  * the recursive planner, so it is checked against the same files
   */
 class EnginePlanGoldenTest extends UniTest:
   import EnginePlanGolden.*
 
-  for suite <- suites do
-    test(s"${suite.name} plans match spec/engine-plans/${suite.name}") {
+  for
+    suite   <- suites
+    planner <- PlannerMode.values
+  do
+    test(s"${suite.name} plans match spec/engine-plans/${suite.name} (${planner.name} planner)") {
       if TaskRunner.default.parallelism <= 1 then
         ignore("The golden plans are parallel plans: run on a machine with 2 or more processors")
-      val generated = suite.generate()
-      val dir       = suite.dir
-      val existing  =
+      val generated = suite.generate(
+        OptimizerOptions().withPlanner(planner).withValidatePlans(planner == PlannerMode.Logical)
+      )
+      val dir      = suite.dir
+      val existing =
         if Files.isDirectory(dir) then
           planFiles(dir).map(_.getFileName.toString).toSet
         else
