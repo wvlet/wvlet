@@ -490,13 +490,14 @@ class WindowOp(
   end aggregateRunning
 
   /**
-    * ROWS frames bounded on both sides, for counts and Int64 / Decimal sums: two pointers add the
-    * rows entering the frame and remove the rows leaving it, so a partition costs O(size) whatever
-    * the frame width. Sums wrap on overflow, which still gives the exact frame sum when it fits in
-    * a Long. When the absolute values of the partition's summed rows add up to more than a Long,
-    * some frame might overflow in the per-frame fold (failing an integer sum, or switching a
-    * decimal sum to BigDecimal); this returns false without writing anything, and the caller
-    * recomputes each frame as before
+    * ROWS frames bounded on both sides. min / max / max_by / min_by go to
+    * `aggregateSlidingExtreme`, which always applies. For counts and Int64 / Decimal sums, two
+    * pointers add the rows entering the frame and remove the rows leaving it, so a partition costs
+    * O(size) whatever the frame width. Sums wrap on overflow, which still gives the exact frame sum
+    * when it fits in a Long. When the absolute values of the partition's summed rows add up to more
+    * than a Long, some frame might overflow in the per-frame fold (failing an integer sum, or
+    * switching a decimal sum to BigDecimal); this returns false without writing anything, and the
+    * caller recomputes each frame as before
     */
   private def aggregateSliding(
       c: WindowCall,
@@ -504,12 +505,15 @@ class WindowOp(
       args: Array[Vec],
       out: WindowOp.OutColumn
   ): Boolean =
+    val name = c.name.toLowerCase
+    if WindowOp.extremeAggregates.contains(name) then
+      aggregateSlidingExtreme(c, rows, args, out)
+      return true
     val size = rows.length
     val f    = c.frame.get
     // Bounds clamped to the partition size, so that k + bound can't overflow
     val lo    = math.max(-size.toLong, math.min(size.toLong, f.start.get))
     val hi    = math.max(-size.toLong, math.min(size.toLong, f.end.get))
-    val name  = c.name.toLowerCase
     val isSum = name.startsWith("sum")
     // Whether each row is folded, or null when every row is (count_star, count())
     var counted: Array[Boolean] = null
@@ -596,6 +600,189 @@ class WindowOp(
 
   end aggregateSliding
 
+  /**
+    * min / max / max_by / min_by over ROWS frames bounded on both sides. The per-frame fold keeps
+    * the first non-NULL value (or key) and replaces it only on a strict improvement, so it ends on
+    * the leftmost best row of the frame. A monotonic deque of row positions finds that row for
+    * every frame in O(size): a row enters at the back after dropping the rows it strictly beats,
+    * and leaves at the front once it falls out of the frame, so the front is the leftmost best row.
+    * For Float64 min / max, the fold compares with primitive `<` / `>`: a NaN never replaces a
+    * value and is never replaced, so the result is NaN when the frame's first non-NULL value is
+    * NaN, and otherwise the deque's winner over the non-NaN values.
+    *
+    * The winning rows are then fed to one accumulator of the aggregate, one group per row, so each
+    * result is the per-frame accumulator's result over its winning row alone: the same value, NULLs
+    * included (a frame without a winner feeds nothing)
+    */
+  private def aggregateSlidingExtreme(
+      c: WindowCall,
+      rows: Array[Int],
+      args: Array[Vec],
+      out: WindowOp.OutColumn
+  ): Unit =
+    val size  = rows.length
+    val f     = c.frame.get
+    val lo    = math.max(-size.toLong, math.min(size.toLong, f.start.get))
+    val hi    = math.max(-size.toLong, math.min(size.toLong, f.end.get))
+    val name  = c.name.toLowerCase
+    val isBy  = name != "max" && name != "min"
+    val isMax = name == "max" || name == "max_by" || name == "arg_max"
+    // The compared values: the key of max_by / min_by
+    val v = args(
+      if isBy then
+        1
+      else
+        0
+    ).gather(rows, size)
+    // Rows that can win the deque
+    val eligible                 = new Array[Boolean](size)
+    def notNull(k: Int): Boolean = v.nulls == null || !v.nulls(k)
+    def eligibleNonNull(): Unit  =
+      var k = 0
+      while k < size do
+        eligible(k) = notNull(k)
+        k += 1
+    def boxedValues(): Array[Any] =
+      val o = new Array[Any](size)
+      var k = 0
+      while k < size do
+        val x = v.get(k)
+        o(k) = x
+        eligible(k) = x != null
+        k += 1
+      o
+    // The compared values, in exactly one of three layouts. ByKey compares non-NULL keys with
+    // ValueOps.compare: Long / Int keys as Longs, doubles with Double.compare (a total order)
+    val longs: Array[Long] =
+      if isBy then
+        v match
+          case l: LongVec =>
+            l.values
+          case i: IntVec =>
+            Kernels.asLongs(i)
+          case _ =>
+            null
+      else
+        c.ptype match
+          case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
+            v match
+              case l: LongVec =>
+                l.values
+              case other =>
+                Kernels.asLongs(other)
+          case PType.Float64 =>
+            null
+          case _ =>
+            v match
+              // One scale for the whole vector: comparing unscaled Longs equals comparing values
+              case l: LongVec if l.ptype.isDecimal =>
+                l.values
+              case _ =>
+                null
+    // Float64 min / max: the frame's first non-NULL value wins when it is NaN
+    val nanFirst               = !isBy && c.ptype == PType.Float64
+    val doubles: Array[Double] =
+      if nanFirst then
+        Kernels.asDoubles(v)
+      else
+        null
+    val objs: Array[Any] =
+      if longs == null && doubles == null then
+        boxedValues()
+      else
+        null
+    val nonNull: Array[Boolean] =
+      if nanFirst then
+        new Array[Boolean](size)
+      else
+        null
+    if longs != null then
+      eligibleNonNull()
+    else if nanFirst then
+      var k = 0
+      while k < size do
+        nonNull(k) = notNull(k)
+        eligible(k) = nonNull(k) && !java.lang.Double.isNaN(doubles(k))
+        k += 1
+
+    // Whether row a strictly beats row b
+    def beats(a: Int, b: Int): Boolean =
+      val cmp =
+        if longs != null then
+          java.lang.Long.compare(longs(a), longs(b))
+        else if nanFirst then
+          val x = doubles(a)
+          val y = doubles(b)
+          if x < y then
+            -1
+          else if x > y then
+            1
+          else
+            0
+        else
+          ValueOps.compare(objs(a), objs(b))
+      if isMax then
+        cmp > 0
+      else
+        cmp < 0
+
+    val dq      = new Array[Int](size)
+    var head    = 0
+    var tail    = 0
+    val winners = new Array[Int](size)
+    val groups  = new Array[Int](size)
+    var m       = 0
+    var e       = 0 // rows before e have been offered to the deque
+    var p       = 0 // the first non-NULL row at or after the frame start, for nanFirst
+    var k       = 0
+    while k < size do
+      val ts = math.max(0L, math.min(size, k + lo)).toInt
+      val te = math.max(0L, math.min(size, k + hi + 1)).toInt
+      if e < ts then
+        // Rows before the frame start never enter a later frame
+        e = ts
+      while e < te do
+        if eligible(e) then
+          while tail > head && beats(e, dq(tail - 1)) do
+            tail -= 1
+          dq(tail) = e
+          tail += 1
+        e += 1
+      while head < tail && dq(head) < ts do
+        head += 1
+      var w = -1
+      if nanFirst then
+        if p < ts then
+          p = ts
+        while p < te && !nonNull(p) do
+          p += 1
+        if p < te && java.lang.Double.isNaN(doubles(p)) then
+          w = p
+      if w < 0 && head < tail then
+        w = dq(head)
+      if w >= 0 then
+        winners(m) = rows(w)
+        groups(m) = k
+        m += 1
+      k += 1
+    end while
+
+    val acc = Aggregates.accumulator(c.name, c.args.map(_.ptype), c.ptype)
+    acc.ensureGroups(size)
+    val in = new Array[Vec](args.length)
+    var a  = 0
+    while a < in.length do
+      in(a) = args(a).gather(winners, m)
+      a += 1
+    acc.update(groups, m, in)
+    val res = acc.result(size)
+    k = 0
+    while k < size do
+      out.copyFrom(rows(k), res, k)
+      k += 1
+
+  end aggregateSlidingExtreme
+
   /** The aggregate of the frame rows(s..e), as a one-row vector */
   private def aggregate(c: WindowCall, rows: Array[Int], s: Int, e: Int, args: Array[Vec]): Vec =
     val acc = Aggregates.accumulator(c.name, c.args.map(_.ptype), c.ptype)
@@ -668,15 +855,33 @@ object WindowOp:
     startsAtPartitionStart && runningAggregates.contains(c.name.toLowerCase)
 
   /**
-    * True when `c` is a count, or a sum with an Int64 or Decimal result, over a ROWS frame bounded
-    * on both sides, which `aggregateSliding` folds with exact adds and removes. Float64 sums and
-    * avg stay per frame: removing a double changes the result bits
+    * Aggregates whose frame result is one leftmost best row, which `aggregateSlidingExtreme` finds
+    */
+  private[exec] val extremeAggregates: Set[String] = Set(
+    "min",
+    "max",
+    "max_by",
+    "arg_max",
+    "min_by",
+    "arg_min"
+  )
+
+  /**
+    * True when `c` is a count, a sum with an Int64 or Decimal result, or min / max / max_by /
+    * min_by over a ROWS frame bounded on both sides, which `aggregateSliding` folds with exact adds
+    * and removes (or a monotonic deque for min / max). Float64 sums and avg stay per frame:
+    * removing a double changes the result bits
     */
   def isSlidingFrame(c: WindowCall): Boolean =
     val bounded  = c.frame.exists(f => f.rows && f.start.nonEmpty && f.end.nonEmpty)
     def exactSum = c.ptype == PType.Int64 || c.ptype.isDecimal
+    val name     = c.name.toLowerCase
     bounded && (
-      c.name.toLowerCase match
+      name match
+        case "min" | "max" =>
+          c.args.size == 1
+        case _ if extremeAggregates.contains(name) =>
+          c.args.size == 2
         case "count_star" =>
           true
         case "count" =>

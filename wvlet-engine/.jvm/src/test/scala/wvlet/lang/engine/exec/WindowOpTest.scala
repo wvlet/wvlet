@@ -102,13 +102,21 @@ class WindowOpTest extends UniTest:
       GroupTable.partitionRows(h, 10, 16).map(_.toSeq).toSeq
   }
 
-  /** Same vector class, values, and NULL mask (null when there is no NULL) */
+  /**
+    * Same vector class, values, and NULL mask (null when there is no NULL). Values are compared
+    * with `equals`, so NaN matches NaN while -0.0 and 0.0, or 1.5 and 1.50, differ
+    */
   private def sameVec(actual: Vec, expected: Vec): Unit =
     actual.getClass shouldBe expected.getClass
     actual.ptype shouldBe expected.ptype
     actual.size shouldBe expected.size
     Option(actual.nulls).map(_.toSeq) shouldBe Option(expected.nulls).map(_.toSeq)
-    (0 until actual.size).map(actual.get) shouldBe (0 until expected.size).map(expected.get)
+    def show(v: Any) = s"${v} (${Option(v).map(_.getClass.getSimpleName).getOrElse("null")})"
+    (0 until actual.size)
+      .find(i => !java.util.Objects.equals(actual.get(i), expected.get(i)))
+      .foreach(i =>
+        s"row ${i}: ${show(actual.get(i))}" shouldBe s"row ${i}: ${show(expected.get(i))}"
+      )
 
   test("should build typed output columns equal to Vec.fromValues") {
     val dec                           = PType.Decimal(38, 2)
@@ -465,6 +473,120 @@ class WindowOpTest extends UniTest:
     )
   }
 
+  test("should find sliding min / max / max_by / min_by rows with the per-frame results") {
+    val rnd  = scala.util.Random(23)
+    val n    = 4000
+    val wide = PType.Decimal(38, 2)
+    // NaN, -0.0, and 0.0 compare specially in MinMax's Float64 fold
+    val specials      = Array(Double.NaN, -0.0, 0.0, 1.5, -2.0)
+    def nulls(k: Int) = Array.fill(n)(rnd.nextInt(k) == 0)
+    // BigDecimal values of different scales that compare equal, and values beyond a Long
+    val wideValues =
+      Array.fill[AnyRef](n)(
+        rnd.nextInt(6) match
+          case 0 =>
+            null
+          case 1 =>
+            java.math.BigDecimal("1.5")
+          case 2 =>
+            java.math.BigDecimal("1.50")
+          case 3 =>
+            java.math.BigDecimal(s"${rnd.nextInt(10)}00000000000000000000000.25")
+          case _ =>
+            java.math.BigDecimal.valueOf(rnd.nextInt(400) - 200, 2)
+      )
+    val in = Schema(
+      IndexedSeq(
+        Field("p", PType.Int64),
+        Field("o", PType.Int64),
+        Field("x", PType.Int64),
+        Field("i", PType.Int32),
+        Field("d", PType.Date),
+        Field("t", PType.Timestamp),
+        Field("f", PType.Float64),
+        Field("s", PType.Str),
+        Field("m", PType.Decimal(18, 2)),
+        Field("w", wide),
+        Field("b", PType.Bool)
+      )
+    )
+    val cols = Array[Vec](
+      LongVec(PType.Int64, Array.tabulate(n)(i => (i % 4).toLong), null),
+      LongVec(PType.Int64, Array.fill(n)(rnd.nextInt(50).toLong), null),
+      LongVec(PType.Int64, Array.fill(n)(rnd.nextInt(20).toLong - 10), nulls(5)),
+      IntVec(PType.Int32, Array.fill(n)(rnd.nextInt()), nulls(7)),
+      IntVec(PType.Date, Array.fill(n)(rnd.nextInt(30)), nulls(6)),
+      LongVec(PType.Timestamp, Array.fill(n)(rnd.nextLong() >> 8), nulls(6)),
+      DoubleVec(
+        Array.fill(n)(
+          if rnd.nextInt(3) == 0 then
+            specials(rnd.nextInt(specials.length))
+          else
+            rnd.nextInt(10) - 5.0
+        ),
+        nulls(5)
+      ),
+      StrVec(Array.fill(n)(s"s${rnd.nextInt(15)}"), nulls(5)),
+      Vec.fromValues(
+        PType.Decimal(18, 2),
+        (0 until n).map(i =>
+          if i % 9 == 0 then
+            null
+          else
+            java.math.BigDecimal.valueOf(rnd.nextInt(2000) - 1000, 2)
+        )
+      ),
+      ObjVec(wide, wideValues, wideValues.map(_ == null)),
+      BoolVec(Array.fill(n)(rnd.nextBoolean()), nulls(8))
+    )
+    def col(i: Int)                     = ColRef(i, in.fields(i).ptype, in.fields(i).name)
+    val (pr, or)                        = (col(0), col(1))
+    val values                          = (2 until in.fields.size).map(col)
+    val aggs: Seq[(String, Seq[VExpr])] =
+      values.flatMap(c => Seq("min" -> Seq(c), "max" -> Seq(c))) ++
+        Seq(
+          // Tied keys: the value tells which row won
+          "max_by"  -> Seq(col(6), col(2)),
+          "min_by"  -> Seq(col(6), col(2)),
+          "arg_max" -> Seq(col(2), col(6)),
+          "arg_min" -> Seq(col(7), col(6)),
+          "max_by"  -> Seq(col(3), col(7)),
+          "min_by"  -> Seq(col(9), col(4)),
+          "max_by"  -> Seq(col(2), col(9))
+        )
+    val frames = Seq(
+      FrameSpec(true, Some(-1), Some(1)),
+      FrameSpec(true, Some(-5), Some(5)),
+      FrameSpec(true, Some(-200), Some(200)),
+      FrameSpec(true, Some(0), Some(0)),
+      FrameSpec(true, Some(-3), Some(-1)),
+      FrameSpec(true, Some(2), Some(6)),
+      FrameSpec(true, Some(3), Some(1)),
+      FrameSpec(true, Some(-5000), Some(-2000)),
+      FrameSpec(true, Some(2000), Some(5000)),
+      FrameSpec(true, Some(-5000), Some(5000))
+    )
+    val ord = Seq(SortKey(or, ascending = true, nullsFirst = false))
+    val cs  =
+      for
+        (name, args) <- aggs
+        frame        <- frames
+      yield WindowCall(
+        name,
+        args,
+        Seq(pr),
+        ord,
+        Some(frame),
+        false,
+        WindowCall.resultType(name, args.map(_.ptype))
+      )
+    cs.foreach(c => WindowOp.isSlidingFrame(c) shouldBe true)
+    sameBatches(
+      evalWindows(in, cols, cs, incremental = true),
+      evalWindows(in, cols, cs, incremental = false)
+    )
+  }
+
   test("should overflow sliding integer sums only where the per-frame fold does") {
     val big                   = 6000000000000000000L
     val in                    = Schema(IndexedSeq(Field("o", PType.Int64), Field("x", PType.Int64)))
@@ -537,7 +659,8 @@ class WindowOpTest extends UniTest:
     WindowOp.isSlidingFrame(win("sum", sliding)) shouldBe true
     WindowOp.isSlidingFrame(win("sum", sliding).copy(ptype = PType.Float64)) shouldBe false
     WindowOp.isSlidingFrame(win("avg", sliding)) shouldBe false
-    WindowOp.isSlidingFrame(win("min", sliding)) shouldBe false
+    WindowOp.isSlidingFrame(win("min", sliding)) shouldBe true
+    WindowOp.isSlidingFrame(win("string_agg", sliding)) shouldBe false
     WindowOp.isSlidingFrame(win("sum", Some(FrameSpec(false, Some(-1), Some(1))))) shouldBe false
     WindowOp.isSlidingFrame(win("sum", Some(FrameSpec(true, Some(0), None)))) shouldBe false
   }
