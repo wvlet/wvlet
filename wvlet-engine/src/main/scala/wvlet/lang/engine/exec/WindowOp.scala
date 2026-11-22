@@ -79,14 +79,17 @@ object WindowCall:
   * with PARTITION BY over inputs of at least `minParallelRows` rows, the rows are split by the hash
   * of the partition key, so that every window partition falls in one part, and the parts are
   * evaluated as tasks of `runner`. Each row's value doesn't depend on how partitions are grouped
-  * into parts, so the output equals the sequential one.
+  * into parts, so the output equals the sequential one. Aggregates over frames that start at the
+  * partition start are folded incrementally (see `aggregateRunning`); `runningFrames = false`
+  * recomputes every frame instead, which tests use as the reference.
   */
 class WindowOp(
     val child: Operator,
     val calls: IndexedSeq[WindowCall],
     val schema: Schema,
     runner: TaskRunner = TaskRunner.Sequential,
-    minParallelRows: Int = WindowOp.MinParallelRows
+    minParallelRows: Int = WindowOp.MinParallelRows,
+    runningFrames: Boolean = true
 ) extends Operator:
   private var result: Iterator[Batch]  = null
   override def children: Seq[Operator] = Seq(child)
@@ -406,6 +409,8 @@ class WindowOp(
       while k < size do
         out.copyFrom(rows(k), v, 0)
         k += 1
+    else if runningFrames && WindowOp.isRunningFrame(c) then
+      aggregateRunning(c, rows, args, out, peers)
     else
       var k = 0
       while k < size do
@@ -413,6 +418,74 @@ class WindowOp(
         // Peers share the same value under the default frame
         out.copyFrom(rows(k), aggregate(c, rows, s, e, args), 0)
         k += 1
+
+  /**
+    * Frames that start at the partition start, whose end never moves backwards: one accumulator
+    * folds the rows between the previous frame end and the current one, so a partition costs
+    * O(size). The rows are folded in the order the per-frame path folds them, and `result` doesn't
+    * change the accumulator's state, so each value equals the per-frame one, floating-point sums
+    * included. Rows with the same frame end share one result vector
+    */
+  private def aggregateRunning(
+      c: WindowCall,
+      rows: Array[Int],
+      args: Array[Vec],
+      out: WindowOp.OutColumn,
+      peers: (Int, Int) => Boolean
+  ): Unit =
+    val size = rows.length
+    val acc  = Aggregates.accumulator(c.name, c.args.map(_.ptype), c.ptype)
+    acc.ensureGroups(1)
+    // Bounds as frameRange reads them: a RANGE end other than UNBOUNDED is the last peer
+    val toEnd   = c.frame.exists(_.end.isEmpty)
+    val byPeers = !toEnd && c.frame.forall(!_.rows)
+    val rowsEnd =
+      c.frame match
+        case Some(f) if f.rows && f.end.nonEmpty =>
+          f.end.get
+        case _ =>
+          0L
+    val groups    = new Array[Int](size)
+    val in        = new Array[Vec](args.length)
+    val idx       = new Array[Int](size)
+    var fed       = 0 // rows(0 until fed) are folded into acc
+    var lastEnd   = Int.MinValue
+    var last: Vec = null
+    var k         = 0
+    while k < size do
+      // The inclusive frame end of the k-th row, possibly before the partition start
+      val e =
+        if toEnd then
+          size - 1
+        else if byPeers then
+          if k <= lastEnd then
+            lastEnd
+          else
+            var x = k
+            while x + 1 < size && peers(rows(k), rows(x + 1)) do
+              x += 1
+            x
+        else
+          math.max(-1L, math.min(size - 1L, k + rowsEnd)).toInt
+      if last == null || e != lastEnd then
+        val upto = math.max(fed, e + 1)
+        if upto > fed then
+          // Gather the newly framed rows straight from the input
+          val n = upto - fed
+          System.arraycopy(rows, fed, idx, 0, n)
+          var a = 0
+          while a < in.length do
+            in(a) = args(a).gather(idx, n)
+            a += 1
+          acc.update(groups, n, in)
+          fed = upto
+        last = acc.result(1)
+        lastEnd = e
+      out.copyFrom(rows(k), last, 0)
+      k += 1
+    end while
+
+  end aggregateRunning
 
   /** The aggregate of the frame rows(s..e), as a one-row vector */
   private def aggregate(c: WindowCall, rows: Array[Int], s: Int, e: Int, args: Array[Vec]): Vec =
@@ -432,6 +505,59 @@ class WindowOp(
 end WindowOp
 
 object WindowOp:
+
+  /**
+    * Aggregates whose accumulator folds rows one at a time in row order and whose `result` leaves
+    * its state unchanged, with a result that costs O(1). Aggregates that collect their rows
+    * (string_agg, array_agg, quantiles, mode, ...) recompute each frame instead
+    */
+  private val runningAggregates: Set[String] = Set(
+    "count_star",
+    "count",
+    "count_if",
+    "countif",
+    "approx_count_distinct",
+    "count_distinct",
+    "sum",
+    "sum_if",
+    "product",
+    "avg",
+    "mean",
+    "min",
+    "max",
+    "arbitrary",
+    "any_value",
+    "first",
+    "last",
+    "max_by",
+    "arg_max",
+    "min_by",
+    "arg_min",
+    "bool_and",
+    "every",
+    "bool_or",
+    "stddev",
+    "stddev_samp",
+    "stddev_pop",
+    "variance",
+    "var_samp",
+    "var_pop"
+  )
+
+  /**
+    * True when every frame of `c` starts at the partition start and the frame end never moves
+    * backwards, and the aggregate can be folded incrementally. The whole-partition frame (no ORDER
+    * BY, no frame) is handled separately
+    */
+  def isRunningFrame(c: WindowCall): Boolean =
+    val startsAtPartitionStart =
+      c.frame match
+        case None =>
+          c.orderBy.nonEmpty
+        case Some(f) =>
+          f.start.isEmpty
+    startsAtPartitionStart && runningAggregates.contains(c.name.toLowerCase)
+
   /**
     * One window call's output column, written by row position. Results are kept in a primitive
     * array of the result type's vector layout (Bool, Int32 / Date, Int64 / Timestamp, Decimal,

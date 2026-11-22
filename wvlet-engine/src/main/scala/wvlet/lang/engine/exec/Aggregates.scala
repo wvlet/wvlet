@@ -605,7 +605,12 @@ object Aggregates:
         case 0 =>
           ptype match
             case PType.Int32 | PType.Date =>
-              IntVec(ptype, Array.tabulate(numGroups)(g => longs(g).toInt), nulls)
+              val ints = new Array[Int](numGroups)
+              var g    = 0
+              while g < numGroups do
+                ints(g) = longs(g).toInt
+                g += 1
+              IntVec(ptype, ints, nulls)
             case _ =>
               LongVec(ptype, java.util.Arrays.copyOf(longs, numGroups), nulls)
         case 1 =>

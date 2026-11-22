@@ -227,4 +227,159 @@ class WindowOpTest extends UniTest:
     GroupTable(types).groupIds(keys, n, h).toSeq shouldBe GroupTable(types).groupIds(keys, n).toSeq
   }
 
+  test("should fold running frames incrementally with the per-frame results") {
+    val rnd = scala.util.Random(7)
+    val n   = 3000
+    val dec = PType.Decimal(38, 2)
+    // Partition 0 has a single peer group; the others have ties and NULL order keys
+    val part = Array.tabulate(n)(i => (i % 5).toLong)
+    val in   = Schema(
+      IndexedSeq(
+        Field("p", PType.Int64),
+        Field("o", PType.Int64),
+        Field("x", PType.Int64),
+        Field("d", PType.Float64),
+        Field("m", dec),
+        Field("dt", PType.Date),
+        Field("b", PType.Bool),
+        Field("s", PType.Str)
+      )
+    )
+    val cols = Array[Vec](
+      LongVec(PType.Int64, part, null),
+      LongVec(
+        PType.Int64,
+        Array.tabulate(n)(i =>
+          if part(i) == 0 then
+            0L
+          else
+            rnd.nextInt(40).toLong
+        ),
+        Array.tabulate(n)(i => part(i) == 4 && i % 13 == 0)
+      ),
+      LongVec(
+        PType.Int64,
+        Array.fill(n)(rnd.nextInt(1000).toLong),
+        Array.fill(n)(rnd.nextInt(7) == 0)
+      ),
+      // Magnitudes far apart, so the sums depend on the summation order
+      DoubleVec(
+        Array.fill(n)((rnd.nextDouble() - 0.5) * math.pow(10, rnd.nextInt(20))),
+        Array.fill(n)(rnd.nextInt(9) == 0)
+      ),
+      // Unscaled values near Long.MaxValue / 2, so running sums overflow to BigDecimal
+      Vec.fromValues(
+        dec,
+        (0 until n).map(i =>
+          if i % 11 == 0 then
+            null
+          else
+            java.math.BigDecimal.valueOf(4000000000000000000L + rnd.nextInt(1000), 2)
+        )
+      ),
+      IntVec(
+        PType.Date,
+        Array.fill(n)(19000 + rnd.nextInt(500)),
+        Array.fill(n)(rnd.nextInt(6) == 0)
+      ),
+      BoolVec(Array.fill(n)(rnd.nextInt(10) != 0), Array.fill(n)(rnd.nextInt(8) == 0)),
+      StrVec(Array.fill(n)(s"s${rnd.nextInt(100)}"), Array.fill(n)(rnd.nextInt(5) == 0))
+    )
+    def col(i: Int)                       = ColRef(i, in.fields(i).ptype, in.fields(i).name)
+    val (pr, or, xr, dr, mr, dtr, br, sr) =
+      (col(0), col(1), col(2), col(3), col(4), col(5), col(6), col(7))
+    val aggs: Seq[(String, Seq[VExpr])] = Seq(
+      "count_star"     -> Nil,
+      "count"          -> Seq(dr),
+      "count_if"       -> Seq(br),
+      "count_distinct" -> Seq(xr),
+      "sum"            -> Seq(xr),
+      "sum"            -> Seq(dr),
+      "sum"            -> Seq(mr),
+      "sum_if"         -> Seq(dr, br),
+      "product"        -> Seq(dr),
+      "avg"            -> Seq(dr),
+      "avg"            -> Seq(mr),
+      "min"            -> Seq(dtr),
+      "max"            -> Seq(sr),
+      "max"            -> Seq(dr),
+      "first"          -> Seq(sr),
+      "last"           -> Seq(xr),
+      "max_by"         -> Seq(sr, xr),
+      "min_by"         -> Seq(xr, dr),
+      "bool_and"       -> Seq(br),
+      "bool_or"        -> Seq(br),
+      "stddev"         -> Seq(dr),
+      "var_pop"        -> Seq(dr)
+    )
+    val ord    = Seq(SortKey(or, ascending = true, nullsFirst = false))
+    val frames = Seq(
+      None,
+      Some(FrameSpec(true, None, Some(0))),
+      Some(FrameSpec(true, None, Some(3))),
+      Some(FrameSpec(true, None, Some(-2))),
+      // Ends beyond either side of a 600-row partition
+      Some(FrameSpec(true, None, Some(5000))),
+      Some(FrameSpec(true, None, Some(-5000))),
+      Some(FrameSpec(false, None, Some(-2))),
+      Some(FrameSpec(true, None, None)),
+      Some(FrameSpec(false, None, Some(0))),
+      Some(FrameSpec(false, None, Some(2))),
+      Some(FrameSpec(false, None, None))
+    )
+    val cs =
+      for
+        (name, args) <- aggs
+        frame        <- frames
+        orderBy      <- Seq(ord, Nil)
+        if !(orderBy.isEmpty && frame.isEmpty)
+      yield WindowCall(
+        name,
+        args,
+        Seq(pr),
+        orderBy,
+        frame,
+        false,
+        WindowCall.resultType(name, args.map(_.ptype))
+      )
+    cs.foreach(c => WindowOp.isRunningFrame(c) shouldBe true)
+    // Peers hold the input order after the stable sort, so both paths see the same rows in order
+    def eval(running: Boolean): Seq[Batch] =
+      val op = WindowOp(
+        BatchesOp(in, Seq(Batch(cols, n))),
+        cs.toIndexedSeq,
+        Schema(in.fields ++ cs.indices.map(i => Field(s"w${i}", cs(i).ptype))),
+        runningFrames = running
+      )
+      try op.drain()
+      finally op.close()
+    val expected = eval(running = false)
+    val actual   = eval(running = true)
+    actual.size shouldBe expected.size
+    for
+      (a, e) <- actual.zip(expected)
+      c      <- a.columns.indices
+    do
+      sameVec(a.columns(c), e.columns(c))
+  }
+
+  test("should not fold sliding frames or collecting aggregates incrementally") {
+    val x   = ColRef(0, PType.Int64, "x")
+    val ord = Seq(SortKey(x, ascending = true, nullsFirst = false))
+    def win(name: String, frame: Option[FrameSpec]) = WindowCall(
+      name,
+      Seq(x),
+      Nil,
+      ord,
+      frame,
+      false,
+      PType.Int64
+    )
+    WindowOp.isRunningFrame(win("sum", Some(FrameSpec(true, Some(-1), Some(1))))) shouldBe false
+    WindowOp.isRunningFrame(win("sum", Some(FrameSpec(false, Some(0), None)))) shouldBe false
+    WindowOp.isRunningFrame(win("string_agg", None)) shouldBe false
+    WindowOp.isRunningFrame(win("median", None)) shouldBe false
+    WindowOp.isRunningFrame(win("sum", None)) shouldBe true
+  }
+
 end WindowOpTest
