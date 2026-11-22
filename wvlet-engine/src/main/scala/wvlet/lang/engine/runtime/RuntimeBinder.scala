@@ -279,16 +279,19 @@ class RuntimeBinder(planner: Planner):
       .map(c => c -> planner.withoutScalarSubqueries(c))
       .partition((_, e) => planner.hasSubquery(e))
     val output  = inputs.flatMap(_.output)
-    val schema  = Schema(output.map(_.toField))
     val schemas = inputs.map(_.schema).toList
     // The inputs each condition reads, without evaluating its scalar subqueries
     val refs  = conds.map((_, e) => schemas.indices.filter(planner.referencesInput(e, schemas, _)))
     val bound = Array.ofDim[BExpr](conds.size)
-    def bindAt(k: Int): Unit =
-      bound(k) = BExpr.of(Binder(planner, BindScope(schema)).bind(conds(k)._1), output)
-    // Single-input conditions first, input by input, as the planner pushes them
-    inputs.indices.foreach(i => conds.indices.filter(refs(_) == Seq(i)).foreach(bindAt))
-    conds.indices.filter(bound(_) == null).foreach(bindAt)
+    def bindAt(k: Int, over: IndexedSeq[Column]): Unit =
+      val b = Binder(planner, BindScope(Schema(over.map(_.toField)))).bind(conds(k)._1)
+      bound(k) = BExpr.of(b, over)
+    // Single-input conditions first, input by input and over their input alone, as the planner
+    // pushes them; then the others over every input
+    inputs
+      .indices
+      .foreach(i => conds.indices.filter(refs(_) == Seq(i)).foreach(bindAt(_, inputs(i).output)))
+    conds.indices.filter(bound(_) == null).foreach(bindAt(_, output))
     val node = RuntimePlan.InnerJoins(
       inputs,
       conds
