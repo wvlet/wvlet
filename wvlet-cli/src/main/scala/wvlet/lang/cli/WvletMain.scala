@@ -117,7 +117,7 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   @command(description =
     "Print the AI-agent skill for this wvlet version (SKILL.md, or a reference file), or install it with --install <dir>"
   )
-  def skill(opt: SkillOption): Unit = SkillOption.execute(opt)
+  def skill(opt: SkillOption): Unit = handleError(SkillOption.execute(opt))
 
   @command(description = "Convert SQL to Wvlet query")
   def to_wvlet(compilerOption: WvletCompilerOption): Unit = handleError {

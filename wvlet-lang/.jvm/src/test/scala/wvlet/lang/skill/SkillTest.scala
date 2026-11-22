@@ -48,6 +48,9 @@ class SkillTest extends UniTest:
       Skill.read("no-such-file")
     }
     e.getMessage shouldContain "references/syntax.md"
+    intercept[WvletLangException] {
+      Skill.read("/")
+    }
   }
 
   test("install the skill into a folder") {
@@ -55,8 +58,11 @@ class SkillTest extends UniTest:
     val written = Skill.install(dir.toString)
     written.size shouldBe Skill.fileNames.size
     Files.readString(dir.resolve("wvlet/SKILL.md")) shouldBe Skill.read("SKILL.md")
-    // Installing again overwrites the files
+    // Installing again replaces the folder, dropping files that are no longer bundled
+    val stale = dir.resolve("wvlet/references/removed.md")
+    Files.writeString(stale, "old")
     Skill.install(dir.toString).size shouldBe written.size
+    Files.exists(stale) shouldBe false
   }
 
 end SkillTest

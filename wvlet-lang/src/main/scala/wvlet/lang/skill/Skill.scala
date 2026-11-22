@@ -41,7 +41,7 @@ object Skill:
     */
   def find(fileName: String): Option[String] =
     val key                            = fileName.stripPrefix("./")
-    def baseName(path: String): String = path.split('/').last.stripSuffix(".md")
+    def baseName(path: String): String = path.split('/').lastOption.getOrElse("").stripSuffix(".md")
     BundledSkill
       .files
       .get(key)
@@ -74,11 +74,15 @@ object Skill:
   }
 
   /**
-    * Write the skill to `<dir>/wvlet/`, replacing existing files, and return the written paths. For
-    * Claude Code, install into `.claude/skills` of a project or `~/.claude/skills`.
+    * Write the skill to `<dir>/wvlet/` and return the written paths. An existing `<dir>/wvlet/`
+    * folder is replaced, so files dropped from a newer version do not linger. A leading `~/` is
+    * expanded to the home directory. For Claude Code, install into `.claude/skills` of a project or
+    * `~/.claude/skills`.
     */
   def install(dir: String): Seq[String] =
-    val root = IOPath.parse(dir).resolve(name)
+    val root = IOPath.parse(expandHome(dir)).resolve(name)
+    if FileSystem.isDirectory(root) then
+      FileSystem.deleteRecursively(root)
     BundledSkill
       .files
       .map { (path, content) =>
@@ -88,6 +92,12 @@ object Skill:
         target.path
       }
       .toSeq
+
+  private def expandHome(dir: String): String =
+    if dir == "~" || dir.startsWith("~/") then
+      sys.env.get("HOME").map(home => s"${home}${dir.drop(1)}").getOrElse(dir)
+    else
+      dir
 
 end Skill
 
