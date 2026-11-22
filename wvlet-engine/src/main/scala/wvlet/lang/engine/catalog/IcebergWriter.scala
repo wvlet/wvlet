@@ -15,6 +15,7 @@ package wvlet.lang.engine.catalog
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.SourceIO
+import wvlet.lang.engine.TableWriter
 import wvlet.lang.engine.vector.*
 import wvlet.uni.parquet.Parquet
 import wvlet.uni.parquet.ParquetDatasetWriteOptions
@@ -86,7 +87,14 @@ object IcebergWriter:
         ParquetWriteMode.ErrorIfExists
       ,
       partitionBy,
-      DataFileWriter.writeOptionsOf(opts)
+      DataFileWriter.writeOptionsOf(opts),
+      // A replaced warehouse table's declared defaults and constraints no longer apply, as with
+      // `save to t`
+      properties =
+        if exists then
+          Map(TableWriter.SpecProperty -> "")
+        else
+          Map.empty
     )
 
   end create

@@ -254,7 +254,7 @@ from 'warehouse/events/metadata/v1.metadata.json'
 - `save to '<dir>' with format: 'iceberg'` creates a table in a new or empty folder. Options:
   `partition_by` (comma-separated identity partition columns) and `compression`. On an existing
   Iceberg table, `save to` commits a snapshot that replaces every row: the schema follows the
-  result, and the table keeps its partition spec unless `partition_by` is given. Older snapshots
+  result, and the table keeps its partition spec unless `partition_by` is given or the result drops a partition column. Older snapshots
   stay readable from their `metadata/vN.metadata.json` files. A non-empty folder that isn't an
   Iceberg table is an error
 - `append to '<dir>'` commits the rows as a new snapshot, mapped to the table's columns by position

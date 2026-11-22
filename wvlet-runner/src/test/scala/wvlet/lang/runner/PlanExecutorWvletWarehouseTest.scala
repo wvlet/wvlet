@@ -170,6 +170,32 @@ class PlanExecutorWvletWarehouseTest extends UniTest:
     SourceIO.existsFile(s"${w}/main/decl") shouldBe false
   }
 
+  test("drop declared constraints when saving over a warehouse table by path") {
+    val w = newWarehouse()
+    run(
+      w,
+      """table decl = {
+        |  id: int primary key
+        |  name: string not null
+        |}
+        |create table decl""".stripMargin
+    )
+    run(
+      w,
+      s"""from [[1, 'a']] as t(id, name)
+         |save to '${w}/main/decl' with format: 'iceberg'""".stripMargin
+    )
+    // The replaced table has no NOT NULL or primary key constraint left
+    run(
+      w,
+      """append to decl (id, name) {
+        |  from [[1, null]] as t(id, name)
+        |}
+        |from decl
+        |test _.size should be 2""".stripMargin
+    )
+  }
+
   test("alter warehouse tables") {
     val w = newWarehouse()
     run(
