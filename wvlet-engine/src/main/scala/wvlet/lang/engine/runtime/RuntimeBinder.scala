@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.engine.logical
+package wvlet.lang.engine.runtime
 
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.WvletLangException
@@ -36,12 +36,12 @@ import wvlet.lang.engine.vector.Field
 import wvlet.lang.engine.vector.Schema
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
-import wvlet.lang.model.plan.{LogicalPlan as _, *}
+import wvlet.lang.model.plan.*
 
 /**
-  * Binds a typed, model-expanded [[Relation]] to a [[LogicalPlan]]: names resolve to column ids
+  * Binds a typed, model-expanded [[Relation]] to a [[RuntimePlan]]: names resolve to column ids
   * once, here. It covers scans, VALUES, filters, projections, sorts, and limits, and the wrappers
-  * that only rename or requalify columns. Every other relation becomes a [[LogicalPlan.Legacy]]
+  * that only rename or requalify columns. Every other relation becomes a [[RuntimePlan.Legacy]]
   * leaf planned by `planner` (whose own inputs come back here).
   *
   * The binder routes a relation by the same tests the planner uses, and binds inputs in the
@@ -49,7 +49,7 @@ import wvlet.lang.model.plan.{LogicalPlan as _, *}
   * CTEs, hidden column names) changes in the same order. A relation that fails to bind is an error,
   * as in the planner; the binder never falls back to the planner after binding an input.
   */
-class LogicalBinder(planner: Planner):
+class RuntimeBinder(planner: Planner):
   private var lastId = 0
 
   private def newColumn(f: Field): Column =
@@ -59,11 +59,11 @@ class LogicalBinder(planner: Planner):
   private def columnsOf(s: Schema): IndexedSeq[Column] = s.fields.map(newColumn)
 
   /** A relation planned by the recursive planner */
-  private def legacy(r: Relation): LogicalPlan = legacyOp(planner.planLegacy(r))
+  private def legacy(r: Relation): RuntimePlan = legacyOp(planner.planLegacy(r))
 
-  private def legacyOp(op: Operator): LogicalPlan = LogicalPlan.Legacy(op, columnsOf(op.schema))
+  private def legacyOp(op: Operator): RuntimePlan = RuntimePlan.Legacy(op, columnsOf(op.schema))
 
-  def bind(r: Relation): LogicalPlan =
+  def bind(r: Relation): RuntimePlan =
     // Same case order as Planner.planLegacy, so that a relation takes the planner's path
     r match
       case q: Query =>
@@ -119,18 +119,18 @@ class LogicalBinder(planner: Planner):
           case s: Sort =>
             sort(s, Some(n))
           case Offset(s: Sort, rows, _) =>
-            LogicalPlan.Limit(sort(s, Some(n + rows.value)), n, rows.value)
+            RuntimePlan.Limit(sort(s, Some(n + rows.value)), n, rows.value)
           case Offset(child, rows, _) =>
-            LogicalPlan.Limit(bind(child), n, rows.value)
+            RuntimePlan.Limit(bind(child), n, rows.value)
           case child =>
-            LogicalPlan.Limit(bind(child), n, 0)
+            RuntimePlan.Limit(bind(child), n, 0)
       case o: Offset =>
         o.child match
           case Limit(child, limit, _) =>
             // LIMIT n OFFSET m in SQL order: the offset applies first
-            LogicalPlan.Limit(bind(child), limit.value, o.rows.value)
+            RuntimePlan.Limit(bind(child), limit.value, o.rows.value)
           case child =>
-            LogicalPlan.Limit(bind(child), Long.MaxValue, o.rows.value)
+            RuntimePlan.Limit(bind(child), Long.MaxValue, o.rows.value)
       case g: GroupBy =>
         aggregation(g, None, defaultItems = true)
       case Agg(_: Pivot, _, _, _) | (_: Pivot) | (_: Unpivot) =>
@@ -159,23 +159,23 @@ class LogicalBinder(planner: Planner):
 
   end bind
 
-  private def scan(src: wvlet.lang.engine.catalog.TableSource, alias: Option[String]): LogicalPlan =
+  private def scan(src: wvlet.lang.engine.catalog.TableSource, alias: Option[String]): RuntimePlan =
     val schema = alias.map(a => src.schema.withQualifier(a)).getOrElse(src.schema)
-    LogicalPlan.Scan(src, columnsOf(schema))
+    RuntimePlan.Scan(src, columnsOf(schema))
 
-  private def table(r: Relation, name: String, fullName: String): LogicalPlan =
+  private def table(r: Relation, name: String, fullName: String): RuntimePlan =
     if planner.isCTE(name) then
       // The planner inlines or shares CTEs
       legacy(r)
     else
       scan(planner.tableSource(name, fullName), Some(name))
 
-  private def values(v: Values, names: Option[List[DataType.NamedType]]): LogicalPlan =
+  private def values(v: Values, names: Option[List[DataType.NamedType]]): RuntimePlan =
     val (schema, batch) = planner.valuesBatch(v, names)
-    LogicalPlan.Values(columnsOf(schema), batch)
+    RuntimePlan.Values(columnsOf(schema), batch)
 
   /** The same columns under new names and qualifiers, as a projection */
-  private def renamed(child: LogicalPlan, columns: IndexedSeq[Column]): LogicalPlan = LogicalPlan
+  private def renamed(child: RuntimePlan, columns: IndexedSeq[Column]): RuntimePlan = RuntimePlan
     .Project(
       child,
       child
@@ -185,12 +185,12 @@ class LogicalBinder(planner: Planner):
       columns
     )
 
-  private def requalify(p: LogicalPlan, q: String): LogicalPlan = renamed(
+  private def requalify(p: RuntimePlan, q: String): RuntimePlan = renamed(
     p,
     p.output.map(c => newColumn(Field(c.name, c.ptype, List(q))))
   )
 
-  private def aliased(a: AliasedRelation): LogicalPlan =
+  private def aliased(a: AliasedRelation): RuntimePlan =
     val child =
       a.child match
         case v: Values =>
@@ -205,14 +205,14 @@ class LogicalBinder(planner: Planner):
         Field(names.flatMap(_.lift(i)).getOrElse(c.name), c.ptype, List(a.alias.leafName))
       }
     child match
-      case LogicalPlan.Scan(src, _) =>
-        LogicalPlan.Scan(src, fields.map(newColumn))
-      case LogicalPlan.Legacy(s: ScanOp, _) =>
+      case RuntimePlan.Scan(src, _) =>
+        RuntimePlan.Scan(src, fields.map(newColumn))
+      case RuntimePlan.Legacy(s: ScanOp, _) =>
         legacyOp(s.withSchema(Schema(fields)))
       case _ =>
         renamed(child, fields.map(newColumn))
 
-  private def filter(f: Filter): LogicalPlan =
+  private def filter(f: Filter): RuntimePlan =
     f.child match
       case _: GroupBy =>
         // HAVING without a selection
@@ -243,13 +243,13 @@ class LogicalBinder(planner: Planner):
           val in     = bind(child)
           val schema = in.schema
           val bound  = conds.map(c => Binder(planner, BindScope(schema)).bind(c))
-          LogicalPlan.Filter(in, BExpr.of(bound.reduce((a, b) => AndExpr(a, b)), in.output))
+          RuntimePlan.Filter(in, BExpr.of(bound.reduce((a, b) => AndExpr(a, b)), in.output))
 
   /**
     * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them. ASOF,
     * USING, and NATURAL joins and joins with a lateral unnest stay legacy
     */
-  private def join(j: Join, filters: List[Expression]): LogicalPlan =
+  private def join(j: Join, filters: List[Expression]): RuntimePlan =
     if planner.unnestCall(j.right).isDefined || !(planner.isInnerJoin(j) || planner.isJoinOn(j))
     then
       legacyOp(planner.planJoinTree(j, filters))
@@ -265,17 +265,17 @@ class LogicalBinder(planner: Planner):
       input: Relation,
       items: Option[List[Attribute]],
       defaultItems: Boolean
-  ): LogicalPlan =
+  ): RuntimePlan =
     planner.aggregation(input, items, defaultItems, r => lowered(bind(r)), plans).plan
 
-  /** A logical plan with its operators, from which join planning reads schemas and estimates */
-  private case class Lowered(plan: LogicalPlan, op: Operator)
+  /** A runtime plan with its operators, from which join planning reads schemas and estimates */
+  private case class Lowered(plan: RuntimePlan, op: Operator)
 
-  private def lowered(p: LogicalPlan): Lowered = Lowered(p, Lowering(p))
+  private def lowered(p: RuntimePlan): Lowered = Lowered(p, Lowering(p))
 
   /**
-    * Builds logical joins, aggregations, filters, and projections, and legacy nodes for what the
-    * planner builds as operators (subquery conditions, grouping sets, windows over aggregates)
+    * Builds runtime-plan joins, aggregations, filters, and projections, and legacy nodes for what
+    * the planner builds as operators (subquery conditions, grouping sets, windows over aggregates)
     */
   private object plans extends JoinPlanBuilder[Lowered] with AggPlanBuilder[Lowered]:
     override def op(p: Lowered): Operator = p.op
@@ -292,7 +292,7 @@ class LogicalBinder(planner: Planner):
       val l = left.plan
       val r = right.plan
       Lowered(
-        LogicalPlan.Join(
+        RuntimePlan.Join(
           l,
           r,
           kind,
@@ -323,7 +323,7 @@ class LogicalBinder(planner: Planner):
         calls: IndexedSeq[AggCall],
         schema: Schema
     ): Lowered = Lowered(
-      LogicalPlan.Aggregate(
+      RuntimePlan.Aggregate(
         in.plan,
         keys.map(BExpr.of(_, in.plan.output)),
         calls.map(AggregateCall.of(_, in.plan.output)),
@@ -333,12 +333,12 @@ class LogicalBinder(planner: Planner):
     )
 
     override def project(p: Lowered, exprs: IndexedSeq[VExpr], schema: Schema): Lowered = Lowered(
-      LogicalPlan.Project(p.plan, exprs.map(BExpr.of(_, p.plan.output)), columnsOf(schema)),
+      RuntimePlan.Project(p.plan, exprs.map(BExpr.of(_, p.plan.output)), columnsOf(schema)),
       ProjectOp(p.op, exprs, schema)
     )
 
     override def filter(p: Lowered, cond: VExpr): Lowered = Lowered(
-      LogicalPlan.Filter(p.plan, BExpr.of(cond, p.plan.output)),
+      RuntimePlan.Filter(p.plan, BExpr.of(cond, p.plan.output)),
       FilterOp(p.op, cond)
     )
 
@@ -349,7 +349,7 @@ class LogicalBinder(planner: Planner):
         planner.applyConjuncts(p.op, conds) match
           case f: FilterOp if (f.child eq p.op) && f.keep == null =>
             // Plain conditions (uncorrelated scalar subqueries are constants in them)
-            Lowered(LogicalPlan.Filter(p.plan, BExpr.of(f.cond, p.plan.output)), f)
+            Lowered(RuntimePlan.Filter(p.plan, BExpr.of(f.cond, p.plan.output)), f)
           case op if op eq p.op =>
             p
           case op =>
@@ -367,13 +367,13 @@ class LogicalBinder(planner: Planner):
           !Binder.containsWindow(i) && !planner.hasSubquery(Binder.expandTemplates(i))
         }
 
-  private def project(p: Project): LogicalPlan =
+  private def project(p: Project): RuntimePlan =
     val in              = bind(p.child)
     val binder          = Binder(planner, BindScope(in.schema))
     val (exprs, fields) = planner.bindItems(binder, p.selectItems)
-    LogicalPlan.Project(in, exprs.map(BExpr.of(_, in.output)), fields.map(newColumn))
+    RuntimePlan.Project(in, exprs.map(BExpr.of(_, in.output)), fields.map(newColumn))
 
-  private def sort(s: Sort, limit: Option[Long]): LogicalPlan =
+  private def sort(s: Sort, limit: Option[Long]): RuntimePlan =
     if s.orderBy.exists(k => planner.hasSubquery(k.sortKey)) then
       legacyOp(planner.planSort(s, limit))
     else
@@ -388,13 +388,13 @@ class LogicalBinder(planner: Planner):
           case e @ (_: ColumnNotFound | _: WvletLangException) =>
             Left(e)
       }
-      def orderKey(k: wvlet.lang.engine.exec.SortKey, over: LogicalPlan): OrderKey = OrderKey(
+      def orderKey(k: wvlet.lang.engine.exec.SortKey, over: RuntimePlan): OrderKey = OrderKey(
         BExpr.of(k.expr, over.output),
         k.ascending,
         k.nullsFirst
       )
       if outKeys.forall(_.isRight) then
-        LogicalPlan.Sort(in, outKeys.map(k => orderKey(k.toOption.get, in)).toIndexedSeq, limit)
+        RuntimePlan.Sort(in, outKeys.map(k => orderKey(k.toOption.get, in)).toIndexedSeq, limit)
       else
         s.child match
           case p: Project =>
@@ -429,10 +429,10 @@ class LogicalBinder(planner: Planner):
               case Left(_) =>
                 hiddenRefs.next()
             }
-            val sorted = LogicalPlan.Sort(proj, keys.toIndexedSeq, limit)
+            val sorted = RuntimePlan.Sort(proj, keys.toIndexedSeq, limit)
             if out.exists(c => planner.isHidden(c.toField)) then
               val keep = out.filterNot(c => planner.isHidden(c.toField))
-              LogicalPlan.Project(sorted, keep.map(BExpr.ref), keep.map(c => newColumn(c.toField)))
+              RuntimePlan.Project(sorted, keep.map(BExpr.ref), keep.map(c => newColumn(c.toField)))
             else
               sorted
           case _ =>
@@ -445,4 +445,4 @@ class LogicalBinder(planner: Planner):
 
   end sort
 
-end LogicalBinder
+end RuntimeBinder

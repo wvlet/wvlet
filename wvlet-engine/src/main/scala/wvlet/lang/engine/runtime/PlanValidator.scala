@@ -11,30 +11,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.engine.logical
+package wvlet.lang.engine.runtime
 
 import wvlet.lang.api.StatusCode
 
 /**
-  * Checks the invariants of a [[LogicalPlan]] that passes and [[Lowering]] rely on: every column an
+  * Checks the invariants of a [[RuntimePlan]] that passes and [[Lowering]] rely on: every column an
   * expression reads is an output of the node's input, with the same type, and no node outputs a
   * column id twice. It runs between passes in tests and debugging
   * (`OptimizerOptions.validatePlans`)
   */
 object PlanValidator:
-  import LogicalPlan.*
+  import RuntimePlan.*
 
   /** Throws an INVALID_ARGUMENT error describing the first violation */
-  def validate(p: LogicalPlan): Unit = violations(p)
+  def validate(p: RuntimePlan): Unit = violations(p)
     .headOption
     .foreach { v =>
-      throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid logical plan: ${v}\n${p.explain}")
+      throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid runtime plan: ${v}\n${p.explain}")
     }
 
   /** Every violation, from the leaves up */
-  def violations(p: LogicalPlan): Seq[String] =
+  def violations(p: RuntimePlan): Seq[String] =
     val b                          = Seq.newBuilder[String]
-    def loop(n: LogicalPlan): Unit =
+    def loop(n: RuntimePlan): Unit =
       n.children.foreach(loop)
       val out = n.output.map(_.id)
       if out.distinct.size != out.size then

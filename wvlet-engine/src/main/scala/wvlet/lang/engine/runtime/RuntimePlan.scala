@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.engine.logical
+package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.exec.AggCall
@@ -27,11 +27,11 @@ import wvlet.lang.engine.vector.Schema
 
 import scala.collection.mutable
 
-/** The identity of a column in a logical plan, unique within a query */
+/** The identity of a column in a runtime plan, unique within a query */
 case class ColumnId(value: Int):
   override def toString: String = s"#${value}"
 
-/** An output column of a logical plan node */
+/** An output column of a runtime plan node */
 case class Column(id: ColumnId, name: String, ptype: PType, qualifiers: List[String] = Nil):
   def toField: Field            = Field(name, ptype, qualifiers)
   override def toString: String = s"${name}${id}"
@@ -76,7 +76,7 @@ object BExpr:
   /** A reference to a column */
   def ref(c: Column): BExpr = BExpr(ColRef(c.id.value, c.ptype, c.name))
 
-/** An aggregate call of a logical [[LogicalPlan.Aggregate]], over the ids of its input */
+/** An aggregate call of a [[RuntimePlan.Aggregate]], over the ids of its input */
 case class AggregateCall(
     name: String,
     args: Seq[BExpr],
@@ -114,19 +114,19 @@ object AggregateCall:
     c.ptype
   )
 
-/** A sort key of a logical [[LogicalPlan.Sort]] */
+/** A sort key of a [[RuntimePlan.Sort]] */
 case class OrderKey(expr: BExpr, ascending: Boolean, nullsFirst: Boolean)
 
 /**
-  * The engine's logical plan: relations over identified columns ([[ColumnId]]) and bound
+  * The engine's runtime plan: relations over identified columns ([[ColumnId]]) and bound
   * expressions ([[BExpr]]), between the compiler's relations and the physical operators.
-  * [[LogicalBinder]] builds it and [[Lowering]] turns it into operators. Relations the binder
-  * doesn't cover yet are [[LogicalPlan.Legacy]] leaves, already planned by the recursive planner.
+  * [[RuntimeBinder]] builds it and [[Lowering]] turns it into operators. Relations the binder
+  * doesn't cover yet are [[RuntimePlan.Legacy]] leaves, already planned by the recursive planner.
   *
   * Passes over the plan match its cases without a wildcard default, so that a new case fails the
   * build (non-exhaustive matches are errors in wvlet-engine) until every pass handles it.
   */
-enum LogicalPlan:
+enum RuntimePlan:
   /** Read a table source; `columns` are the source columns, possibly renamed or requalified */
   case Scan(source: TableSource, columns: IndexedSeq[Column])
 
@@ -134,23 +134,23 @@ enum LogicalPlan:
   case Values(columns: IndexedSeq[Column], rows: Batch)
 
   /** Rows of `child` for which `cond` is true */
-  case Filter(child: LogicalPlan, cond: BExpr)
+  case Filter(child: RuntimePlan, cond: BExpr)
 
   /** One output column per expression */
-  case Project(child: LogicalPlan, exprs: IndexedSeq[BExpr], columns: IndexedSeq[Column])
+  case Project(child: RuntimePlan, exprs: IndexedSeq[BExpr], columns: IndexedSeq[Column])
 
   /** Sort by `keys`; with a limit only the top rows are kept */
-  case Sort(child: LogicalPlan, keys: IndexedSeq[OrderKey], limit: Option[Long])
+  case Sort(child: RuntimePlan, keys: IndexedSeq[OrderKey], limit: Option[Long])
 
   /** Skip `offset` rows, then return at most `limit` rows */
-  case Limit(child: LogicalPlan, limit: Long, offset: Long)
+  case Limit(child: RuntimePlan, limit: Long, offset: Long)
 
   /**
     * Group by `keys` and compute `calls` per group (a global aggregation without keys): one output
     * column per key, then one per call
     */
   case Aggregate(
-      child: LogicalPlan,
+      child: RuntimePlan,
       keys: IndexedSeq[BExpr],
       calls: IndexedSeq[AggregateCall],
       columns: IndexedSeq[Column]
@@ -163,8 +163,8 @@ enum LogicalPlan:
     * columns of both inputs
     */
   case Join(
-      left: LogicalPlan,
-      right: LogicalPlan,
+      left: RuntimePlan,
+      right: RuntimePlan,
       kind: JoinKind,
       leftKeys: IndexedSeq[BExpr],
       rightKeys: IndexedSeq[BExpr],
@@ -197,7 +197,7 @@ enum LogicalPlan:
       case Legacy(_, columns) =>
         columns
 
-  def children: Seq[LogicalPlan] =
+  def children: Seq[RuntimePlan] =
     this match
       case Scan(_, _) | Values(_, _) | Legacy(_, _) =>
         Nil
@@ -224,7 +224,7 @@ enum LogicalPlan:
     */
   def explain: String =
     val lines                                  = Seq.newBuilder[String]
-    def loop(p: LogicalPlan, depth: Int): Unit =
+    def loop(p: RuntimePlan, depth: Int): Unit =
       p.children.headOption.foreach(loop(_, depth))
       p.children.drop(1).foreach(loop(_, depth + 1))
       val marker =
@@ -270,4 +270,4 @@ enum LogicalPlan:
       case Legacy(op, _) =>
         s"Legacy[${op.name}]"
 
-end LogicalPlan
+end RuntimePlan

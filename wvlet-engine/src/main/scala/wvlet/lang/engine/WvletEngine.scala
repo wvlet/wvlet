@@ -127,15 +127,15 @@ class WvletEngine(
   ).plan(lowerShow(r))
 
   /**
-    * The engine's logical plan of a relation (model references must already be expanded), for tests
-    * and debugging. Relations the logical binder doesn't cover yet are already planned, as Legacy
+    * The engine's runtime plan of a relation (model references must already be expanded), for tests
+    * and debugging. Relations the runtime binder doesn't cover yet are already planned, as Legacy
     * leaves
     */
-  def logicalPlan(r: Relation)(using ctx: Context): wvlet.lang.engine.logical.LogicalPlan = Planner(
+  def runtimePlan(r: Relation)(using ctx: Context): wvlet.lang.engine.runtime.RuntimePlan = Planner(
     catalog,
     DefaultResolver(),
     optimizer
-  ).logicalPlan(lowerShow(r))
+  ).runtimePlan(lowerShow(r))
 
   /** SHOW statements become their SQL queries over information_schema (or a VALUES list) */
   private def lowerShow(r: Relation)(using ctx: Context): Relation = r
