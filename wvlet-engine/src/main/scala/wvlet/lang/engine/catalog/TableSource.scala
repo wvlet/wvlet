@@ -22,7 +22,11 @@ import wvlet.uni.parquet.format.TimeUnit
 
 import scala.collection.mutable
 
-/** Scan request pushed down to a table source */
+/**
+  * Scan request pushed down to a table source. `filter` is implied by the query's own filter: a
+  * source may use it to skip data that can't match (e.g. Parquet row groups by statistics), but
+  * rows it returns are still filtered by the engine
+  */
 case class ScanSpec(columns: Option[Seq[String]] = None, filter: Option[ParquetFilter] = None)
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -33,8 +37,11 @@ trait TableSource:
   /** Batches with exactly the requested columns (all columns when not given), in that order */
   def scan(spec: ScanSpec): Iterator[Batch]
 
-  /** Whether `scan` evaluates `spec.filter` (row groups / rows); otherwise the filter is ignored */
+  /** Whether `scan` uses `spec.filter` to skip data; otherwise the filter is ignored */
   def supportsFilter: Boolean = false
+
+  /** Whether `spec.filter` may refer to this column */
+  def canFilterOn(column: String): Boolean = supportsFilter
 
   /** Row count estimate for join ordering */
   def estimatedRows: Option[Long] = None
@@ -71,6 +78,22 @@ class ParquetSource(val name: String, path: String) extends TableSource:
 
   override def supportsFilter: Boolean = true
 
+  /**
+    * UINT64 columns are read as signed Int64 values while Parquet statistics order them unsigned,
+    * so a filter on them could skip row groups holding matching rows
+    */
+  override def canFilterOn(column: String): Boolean = parquetSchema
+    .field(column)
+    .forall {
+      case p: ParquetField.Primitive =>
+        !(
+          p.physicalType == PhysicalType.INT64 &&
+            p.logicalType.contains(LogicalType.Integer(64, false))
+        )
+      case _ =>
+        true
+    }
+
   override lazy val estimatedRows: Option[Long] =
     try
       if isSingleFile then
@@ -87,7 +110,7 @@ class ParquetSource(val name: String, path: String) extends TableSource:
     val cols    = spec.columns.getOrElse(schema.names)
     val types   = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
     var options = ParquetReadOptions.default.withColumns(cols*).withBinaryAsString(true)
-    spec.filter.foreach(f => options = options.withFilter(f))
+    spec.filter.foreach(f => options = options.withRowGroupFilter(f))
     if isSingleFile then
       val f  = Parquet.open(path)
       val it = f.readBatches(options)
