@@ -7,6 +7,12 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  # The Nix / Chocolatey sbt launchers default to a 1 GB heap, which Scala Native's codegen for
+  # wvc-lib (which links wvlet-engine through the runner) outgrows: its live heap peaks at ~2 GB.
+  # 4 GB leaves headroom while fitting the smallest runner (macos-latest, 7 GB RAM).
+  SBT_OPTS: -Xmx4g -Xss4m
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -33,7 +39,7 @@ jobs:
   build_native:
     name: Build native on ${{ matrix.name }}-${{ matrix.arch }}
     needs: changes
-    if: ${{ needs.changes.outputs.src == 'true' }}
+    if: ${{ needs.changes.outputs.src == 'true' || github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,12 +48,12 @@ jobs:
             arch: arm64
             name: mac
             suffix: dylib
-            skip: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+            skip: ${{ !(github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
           - os: ubuntu-24.04-arm
             arch: arm64
             name: linux
             suffix: so
-            skip: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+            skip: ${{ !(github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
           - os: ubuntu-latest
             arch: x64
             name: linux
@@ -112,8 +118,8 @@ jobs:
   build_windows:
     name: Build native on Windows (${{ matrix.arch }})
     needs: changes
-    # Only run on push to main branch
-    if: ${{ needs.changes.outputs.src == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    # Only run on push to main branch, or on manual dispatch (to verify a branch on every platform)
+    if: ${{ github.event_name == 'workflow_dispatch' || (needs.changes.outputs.src == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     strategy:
       fail-fast: false
       matrix:
@@ -137,18 +143,23 @@ jobs:
           choco install sbt -y
       - name: Install LLVM and Clang
         run: |
-          if ("${{ matrix.arch }}" -eq "arm64") {
-            # Chocolatey LLVM package doesn't support ARM64, download directly.
-            # The MSVC STL on the runner (14.51+) requires Clang 20 or newer (STL1000)
-            $llvmVersion = "22.1.8"
-            $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/LLVM-$llvmVersion-woa64.exe"
-            Write-Host "Downloading LLVM $llvmVersion for ARM64..."
-            Invoke-WebRequest -Uri $url -OutFile "llvm-installer.exe"
-            Write-Host "Installing LLVM..."
-            Start-Process -FilePath ".\llvm-installer.exe" -ArgumentList "/S","/D=C:\Program Files\LLVM" -Wait
-            echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-          } else {
-            choco install llvm -y
+          # Download LLVM directly instead of using Chocolatey: the Chocolatey package lags
+          # behind (Clang 20) and has no ARM64 build, while the MSVC STL on the runner
+          # (14.52+) requires Clang 22 or newer (STL1000)
+          $llvmVersion = "22.1.8"
+          $installer = if ("${{ matrix.arch }}" -eq "arm64") { "woa64" } else { "win64" }
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/LLVM-$llvmVersion-$installer.exe"
+          Write-Host "Downloading LLVM $llvmVersion ($installer)..."
+          Invoke-WebRequest -Uri $url -OutFile "llvm-installer.exe"
+          Write-Host "Installing LLVM..."
+          $proc = Start-Process -FilePath ".\llvm-installer.exe" -ArgumentList "/S","/D=C:\Program Files\LLVM" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "LLVM installer failed with exit code $($proc.ExitCode)" }
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          # windows-latest preinstalls an older LLVM in the same folder; fail here, not in sbt
+          $clangVersion = & "C:\Program Files\LLVM\bin\clang.exe" --version | Out-String
+          Write-Host $clangVersion
+          if ($clangVersion -notmatch "clang version $([regex]::Escape($llvmVersion))") {
+            throw "Expected clang $llvmVersion"
           }
         shell: pwsh
       # Cache vcpkg compiled libraries to avoid rebuilding OpenSSL etc. every time
