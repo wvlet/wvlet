@@ -75,7 +75,8 @@ class ColumnNotFound(msg: String) extends Exception(msg)
 class AggContext(
     val input: BindScope,
     val keyNames: IndexedSeq[String],
-    val keys: IndexedSeq[VExpr]
+    val keys: IndexedSeq[VExpr],
+    val groupingId: Option[Int] = None
 ):
   val calls = mutable.ArrayBuffer.empty[AggCall]
 
@@ -296,7 +297,10 @@ object Binder:
   /** True when the expression has an aggregate call outside subqueries and window functions */
   def containsAggregate(e: Expression): Boolean =
     e match
-      case f: FunctionApply if f.window.isEmpty && Aggregates.isAggregate(functionName(f)) =>
+      case f: FunctionApply
+          if f.window.isEmpty &&
+            (Aggregates.isAggregate(functionName(f)) || functionName(f) == "grouping") =>
+        // grouping() reads the grouping id of aggregated rows
         true
       case f: FunctionApply if f.window.isDefined =>
         // Window arguments may still contain aggregates (e.g. sum(sum(x)) over ...)
@@ -443,6 +447,8 @@ class Binder(
 
   private def bindInAgg(e: Expression, a: AggContext): VExpr =
     e match
+      case f: FunctionApply if f.window.isEmpty && functionName(f) == "grouping" =>
+        bindGrouping(f, a)
       case f: FunctionApply if f.window.isEmpty && Aggregates.isAggregate(functionName(f)) =>
         a.addCall(aggCall(f))
       case s: InterpolatedString if isSqlTemplate(s) =>
@@ -496,6 +502,34 @@ class Binder(
                     )
                   case _ =>
                     bindExpr(e)
+
+  /**
+    * grouping(k1, ..., kn) over grouping sets: a bit per argument, most significant first, set when
+    * the row does not group by that key
+    */
+  private def bindGrouping(f: FunctionApply, a: AggContext): VExpr =
+    val gid = a
+      .groupingId
+      .getOrElse(error("grouping() needs GROUP BY ROLLUP, CUBE, or GROUPING SETS", f))
+    val bits =
+      f.args
+        .map { arg =>
+          bindInAgg(arg.value, a) match
+            case ColRef(i, _, _) if i < gid =>
+              i
+            case _ =>
+              error(s"grouping() argument is not a grouping key: ${arg.value}", f)
+        }
+        .toIndexedSeq
+    RowFn(
+      "grouping",
+      Seq(a.keyRef(gid)),
+      PType.Int64,
+      { v =>
+        val mask = v(0).asInstanceOf[Long]
+        bits.foldLeft(0L)((acc, k) => (acc << 1) | ((mask >> k) & 1L))
+      }
+    )
 
   private def keyNameIsUnambiguous(a: AggContext, k: Int, name: String): Boolean = true
 

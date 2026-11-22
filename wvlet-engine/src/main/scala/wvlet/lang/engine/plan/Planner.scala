@@ -15,6 +15,7 @@ package wvlet.lang.engine.plan
 
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.compiler.codegen.SqlGenerator
@@ -854,6 +855,79 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     else
       (op, bindAll(op, Binder(this, BindScope(op.schema))))
 
+  /**
+    * Expand ROLLUP / CUBE / GROUPING SETS into the distinct grouping keys and the key indexes of
+    * each grouping set (None for a plain GROUP BY). Several elements combine as a cross product
+    */
+  private def expandGroupingSets(
+      keys: List[GroupingKey]
+  ): (List[GroupingKey], Option[List[Set[Int]]]) =
+    val base                         = mutable.ArrayBuffer.empty[GroupingKey]
+    def indexOf(k: GroupingKey): Int =
+      val text = exprText(k.child)
+      base.indexWhere(b => exprText(b.child) == text) match
+        case -1 =>
+          base += k
+          base.size - 1
+        case i =>
+          i
+    def keyOf(e: Expression): GroupingKey =
+      e match
+        case k: GroupingKey =>
+          k
+        case a: FunctionArg =>
+          keyOf(a.value)
+        case other =>
+          UnresolvedGroupingKey(NameExpr.EmptyName, other, NoSpan)
+    def prefixes(ks: List[GroupingKey]): List[Set[Int]] =
+      val idx = ks.map(indexOf)
+      (idx.size to 0 by -1).map(n => idx.take(n).toSet).toList
+    def subsets(ks: List[GroupingKey]): List[Set[Int]] =
+      val idx = ks.map(indexOf)
+      idx.foldRight(List(Set.empty[Int]))((i, acc) => acc.map(_ + i) ++ acc)
+    def funcName(k: GroupingKey): Option[(String, List[GroupingKey])] =
+      k.child match
+        case f: FunctionApply if f.window.isEmpty =>
+          Binder.functionName(f).toLowerCase match
+            case n @ ("rollup" | "cube") =>
+              Some(n -> f.args.map(keyOf))
+            case _ =>
+              None
+        case _ =>
+          None
+    var hasSets                        = false
+    val elements: List[List[Set[Int]]] = keys.map {
+      case r: Rollup =>
+        hasSets = true
+        prefixes(r.groupingKeys)
+      case c: Cube =>
+        hasSets = true
+        subsets(c.groupingKeys)
+      case g: GroupingSets =>
+        hasSets = true
+        g.groupingSets.map(_.map(indexOf).toSet)
+      case k =>
+        funcName(k) match
+          case Some(("rollup", args)) =>
+            hasSets = true
+            prefixes(args)
+          case Some((_, args)) =>
+            hasSets = true
+            subsets(args)
+          case None =>
+            List(Set(indexOf(k)))
+    }
+    val sets =
+      elements.foldLeft(List(Set.empty[Int]))((acc, e) =>
+        for
+          a <- acc;
+          b <- e
+        yield a ++ b
+      )
+    (base.toList, Option.when(hasSets)(sets))
+
+  end expandGroupingSets
+
   private def isAggregationInput(r: Relation): Boolean =
     r match
       case _: GroupBy =>
@@ -915,13 +989,13 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           (Some(g), Some(cond))
         case _ =>
           (None, None)
-    val source                     = groupBy.map(_.child).getOrElse(input)
-    val inOp                       = planRelation(source)
-    val scope                      = BindScope(inOp.schema)
-    val binder                     = Binder(this, scope)
-    val keyDefs: List[GroupingKey] = groupBy.map(_.groupingKeys).getOrElse(Nil)
+    val source                  = groupBy.map(_.child).getOrElse(input)
+    val inOp                    = planRelation(source)
+    val scope                   = BindScope(inOp.schema)
+    val binder                  = Binder(this, scope)
+    val (keyDefs, groupingSets) = expandGroupingSets(groupBy.map(_.groupingKeys).getOrElse(Nil))
     // Grouping keys; `group by 1` and `group by <select alias>` refer to select items
-    val keyExprs =
+    val baseKeyExprs =
       keyDefs
         .map { k =>
           def selectItem(i: Int): Option[Attribute] = items.flatMap(_.lift(i))
@@ -956,7 +1030,18 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
           (name, bound)
         }
         .toIndexedSeq
-    val aggCtx                       = AggContext(scope, keyExprs.map(_._1), keyExprs.map(_._2))
+    // With grouping sets, a grouping id key tells which keys each row aggregates over
+    val keyExprs =
+      if groupingSets.isDefined then
+        baseKeyExprs :+ (hiddenName("gid") -> Const(0L, PType.Int64))
+      else
+        baseKeyExprs
+    val aggCtx = AggContext(
+      scope,
+      keyExprs.map(_._1),
+      keyExprs.map(_._2),
+      groupingId = Option.when(groupingSets.isDefined)(baseKeyExprs.size)
+    )
     val aggBinder                    = Binder(this, BindScope(aggCtx.outputSchema), Some(aggCtx))
     val selectItems: List[Attribute] = items.getOrElse {
       // GroupBy without a selection: keys, then an arbitrary value of every input column
@@ -1019,7 +1104,34 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val aggOp: Operator =
       val keys  = keyExprs.map(_._2)
       val calls = aggCtx.calls.toIndexedSeq
-      HashAggOp(inOp, keys, calls, aggCtx.outputSchema)
+      groupingSets match
+        case None =>
+          HashAggOp(inOp, keys, calls, aggCtx.outputSchema)
+        case Some(sets) =>
+          // One aggregation per grouping set over its own scan of the input; keys outside the
+          // set are NULL, and the grouping id has a bit set for each of them
+          val n = baseKeyExprs.size
+          UnionAllOp(
+            sets
+              .zipWithIndex
+              .map { (set, i) =>
+                val gid     = (0 until n).filterNot(set.contains).map(k => 1L << k).sum
+                val setKeys = (0 until n).map(k =>
+                  if set.contains(k) then
+                    keys(k)
+                  else
+                    Const(null, keys(k).ptype)
+                ) :+ Const(gid, PType.Int64)
+                val in =
+                  if i == 0 then
+                    inOp
+                  else
+                    planRelation(source)
+                HashAggOp(in, setKeys.toIndexedSeq, calls, aggCtx.outputSchema)
+              },
+            aggCtx.outputSchema
+          )
+    end aggOp
     val filtered = havingExpr.map(h => FilterOp(aggOp, h)).getOrElse(aggOp)
     collector match
       case Some(c) =>
@@ -1142,47 +1254,47 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private def planSort(s: Sort, limit: Option[Long]): Operator =
     val op      = planRelation(s.child)
     val orderBy = resolveSortItems(s)
-    try
-      val keys = sortKeys(Binder(this, BindScope(op.schema)), orderBy, op.schema)
-      SortOp(op, keys, limit)
-    catch
-      case e: ColumnNotFound =>
-        // ORDER BY a column of the projection input: carry it as a hidden column
-        s.child match
-          case p: Project
-              if !isAggregationInput(p.child) &&
-                !p.selectItems.exists(i => Binder.containsAggregate(i)) =>
-            val in              = planRelation(p.child)
-            val binder          = Binder(this, BindScope(in.schema))
-            val (exprs, fields) = bindItems(binder, in, p.selectItems)
-            val outBinder       = Binder(this, BindScope(Schema(fields)))
-            // Keys resolvable over the select output use it; the others read the input
-            val outKeys = orderBy.map { k =>
-              try
-                Some(sortKeys(outBinder, List(k), Schema(fields)).head)
-              catch
-                case _: ColumnNotFound =>
-                  None
+    val outKeys = orderBy.map { k =>
+      try
+        Right(sortKeys(Binder(this, BindScope(op.schema)), List(k), op.schema).head)
+      catch
+        case e @ (_: ColumnNotFound | _: WvletLangException) =>
+          Left(e)
+    }
+    if outKeys.forall(_.isRight) then
+      SortOp(op, outKeys.map(_.toOption.get), limit)
+    else
+      s.child match
+        case p: Project =>
+          // ORDER BY an expression outside the select list (an input column, or an aggregate
+          // over a grouping): evaluate it as a hidden select item
+          val hidden = orderBy
+            .zip(outKeys)
+            .collect { case (k, Left(_)) =>
+              k -> hiddenName("sort")
             }
-            val hiddenKeys = orderBy
-              .zip(outKeys)
-              .collect { case (k, None) =>
-                k -> binder.bind(k.sortKey)
+          val proj = planRelation(
+            p.copy(selectItems =
+              p.selectItems ++
+                hidden.map((k, name) => SingleColumn(NameExpr.fromString(name), k.sortKey, NoSpan))
+            )
+          )
+          val hiddenRefs =
+            hidden
+              .map { (k, name) =>
+                val i = proj.schema.fields.indexWhere(_.name == name)
+                sortKey(k, ColRef(i, proj.schema(i).ptype, name))
               }
-            val hidden     = hiddenKeys.map((_, x) => Field(hiddenName("sort"), x.ptype))
-            val proj       = ProjectOp(in, exprs ++ hiddenKeys.map(_._2), Schema(fields ++ hidden))
-            val hiddenRefs =
-              hiddenKeys
-                .indices
-                .map(i =>
-                  sortKey(hiddenKeys(i)._1, ColRef(exprs.size + i, hidden(i).ptype, hidden(i).name))
-                )
-                .iterator
-            val keys = outKeys.map(_.getOrElse(hiddenRefs.next()))
-            dropHidden(SortOp(proj, keys, limit))
-          case _ =>
-            throw e
-    end try
+              .iterator
+          val keys = outKeys.map(_.getOrElse(hiddenRefs.next()))
+          dropHidden(SortOp(proj, keys, limit))
+        case _ =>
+          throw outKeys
+            .collectFirst { case Left(e) =>
+              e
+            }
+            .get
+    end if
 
   end planSort
 
