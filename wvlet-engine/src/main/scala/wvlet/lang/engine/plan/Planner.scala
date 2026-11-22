@@ -639,6 +639,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         d.name.leafName
       case t: TypedExpression =>
         exprName(t.child)
+      case p: ParenthesizedExpression =>
+        exprName(p.child)
       case s: SingleColumn if s.nameExpr.nonEmpty =>
         s.nameExpr.leafName
       case s: SingleColumn =>
@@ -1044,10 +1046,106 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       SortKey(e, asc, nullsFirst)
     }
 
+  /** SQL text of an expression, used to match ORDER BY keys with select items */
+  private def exprText(e: Expression): String =
+    e match
+      case p: ParenthesizedExpression =>
+        exprText(p.child)
+      case other =>
+        try
+          SqlGenerator(
+            CodeFormatterConfig(sqlDBType = DBType.DuckDB, fitToLine = true, maxLineWidth = 10000)
+          ).print(other).replaceAll("\\s+", " ").toLowerCase
+        catch
+          case _: Exception =>
+            other.toString
+
+  private def itemExpr(a: Attribute): Option[Expression] =
+    a match
+      case s: SingleColumn =>
+        Some(s.expr)
+      case al: Alias =>
+        Some(al.expr)
+      case _ =>
+        None
+
+  /**
+    * Rewrite ORDER BY keys that repeat a select item expression (e.g., `dt.d_year`,
+    * `substring(s_city, 1, 30)`, `count(*)`) or name a column of a select item (`i_brand_id` for
+    * `item.i_brand_id as brand_id`) into positional references to the select output. Keys naming an
+    * output column are kept as is
+    */
+  private def resolveSortItems(s: Sort): List[SortItem] =
+    def selectItems(r: Relation): Option[List[Attribute]] =
+      r match
+        case p: Project =>
+          Some(p.selectItems)
+        case d: Distinct =>
+          selectItems(d.child)
+        case _ =>
+          None
+    selectItems(s.child) match
+      case Some(items) if !items.exists(i => itemExpr(i).exists(isStarExpr)) =>
+        val outNames = items.map(i => nameOf(i).toLowerCase).toSet
+        val texts    = items.map(i => itemExpr(i).map(exprText))
+        s.orderBy
+          .map { k =>
+            k.sortKey match
+              case _: LongLiteral =>
+                k
+              case i: Identifier if outNames.contains(i.leafName.toLowerCase) =>
+                k
+              case key =>
+                val text   = exprText(key)
+                val byExpr = texts.indexWhere(_.contains(text))
+                val idx    =
+                  if byExpr >= 0 then
+                    byExpr
+                  else
+                    key match
+                      case i: Identifier =>
+                        // An unqualified column of a qualified select item
+                        val leaf = i.leafName.toLowerCase
+                        val hits = items
+                          .indices
+                          .filter { j =>
+                            itemExpr(items(j)) match
+                              case Some(d: DotRef) =>
+                                d.name.leafName.toLowerCase == leaf
+                              case _ =>
+                                false
+                          }
+                        if hits.size == 1 then
+                          hits.head
+                        else
+                          -1
+                      case _ =>
+                        -1
+                if idx >= 0 then
+                  k.copy(sortKey = LongLiteral(idx + 1, (idx + 1).toString, key.span))
+                else
+                  k
+          }
+      case _ =>
+        s.orderBy
+    end match
+
+  end resolveSortItems
+
+  private def isStarExpr(e: Expression): Boolean =
+    e match
+      case _: Wildcard =>
+        true
+      case i: Identifier =>
+        i.leafName == "*"
+      case _ =>
+        false
+
   private def planSort(s: Sort, limit: Option[Long]): Operator =
-    val op = planRelation(s.child)
+    val op      = planRelation(s.child)
+    val orderBy = resolveSortItems(s)
     try
-      val keys = sortKeys(Binder(this, BindScope(op.schema)), s.orderBy, op.schema)
+      val keys = sortKeys(Binder(this, BindScope(op.schema)), orderBy, op.schema)
       SortOp(op, keys, limit)
     catch
       case e: ColumnNotFound =>
@@ -1059,18 +1157,40 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
             val in              = planRelation(p.child)
             val binder          = Binder(this, BindScope(in.schema))
             val (exprs, fields) = bindItems(binder, in, p.selectItems)
-            val keyExprs        = s.orderBy.map(k => binder.bind(k.sortKey))
-            val hidden = keyExprs.indices.map(i => Field(hiddenName("sort"), keyExprs(i).ptype))
-            val proj   = ProjectOp(in, exprs ++ keyExprs, Schema(fields ++ hidden))
-            val keys   = sortKeys(Binder(this, BindScope(proj.schema)), s.orderBy, proj.schema)
-            val keys2  = keys
-              .zipWithIndex
-              .map { (k, i) =>
-                k.copy(expr = ColRef(exprs.size + i, keyExprs(i).ptype, hidden(i).name))
+            val outBinder       = Binder(this, BindScope(Schema(fields)))
+            // Keys resolvable over the select output use it; the others read the input
+            val outKeys = orderBy.map { k =>
+              try
+                Some(sortKeys(outBinder, List(k), Schema(fields)).head)
+              catch
+                case _: ColumnNotFound =>
+                  None
+            }
+            val hiddenExprs = orderBy
+              .zip(outKeys)
+              .collect { case (k, None) =>
+                binder.bind(k.sortKey)
               }
-            dropHidden(SortOp(proj, keys2, limit))
+            val hidden = hiddenExprs.map(x => Field(hiddenName("sort"), x.ptype))
+            val proj   = ProjectOp(in, exprs ++ hiddenExprs, Schema(fields ++ hidden))
+            var h      = 0
+            val keys   = orderBy
+              .zip(outKeys)
+              .map {
+                case (_, Some(key)) =>
+                  key
+                case (k, None) =>
+                  val key = sortKeys(binder, List(k), in.schema).head
+                  val i   = h
+                  h += 1
+                  key.copy(expr = ColRef(exprs.size + i, hiddenExprs(i).ptype, hidden(i).name))
+              }
+            dropHidden(SortOp(proj, keys, limit))
           case _ =>
             throw e
+    end try
+
+  end planSort
 
   // --- filters and subqueries -----------------------------------------------------------
 
