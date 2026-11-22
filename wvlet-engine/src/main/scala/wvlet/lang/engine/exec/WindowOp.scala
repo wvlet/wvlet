@@ -490,13 +490,14 @@ class WindowOp(
   end aggregateRunning
 
   /**
-    * ROWS frames bounded on both sides, for counts and Int64 / Decimal sums: two pointers add the
-    * rows entering the frame and remove the rows leaving it, so a partition costs O(size) whatever
-    * the frame width. Sums wrap on overflow, which still gives the exact frame sum when it fits in
-    * a Long. When the absolute values of the partition's summed rows add up to more than a Long,
-    * some frame might overflow in the per-frame fold (failing an integer sum, or switching a
-    * decimal sum to BigDecimal); this returns false without writing anything, and the caller
-    * recomputes each frame as before
+    * ROWS frames bounded on both sides. min / max / max_by / min_by go to
+    * `aggregateSlidingExtreme`, which always applies. For counts and Int64 / Decimal sums, two
+    * pointers add the rows entering the frame and remove the rows leaving it, so a partition costs
+    * O(size) whatever the frame width. Sums wrap on overflow, which still gives the exact frame sum
+    * when it fits in a Long. When the absolute values of the partition's summed rows add up to more
+    * than a Long, some frame might overflow in the per-frame fold (failing an integer sum, or
+    * switching a decimal sum to BigDecimal); this returns false without writing anything, and the
+    * caller recomputes each frame as before
     */
   private def aggregateSliding(
       c: WindowCall,
@@ -633,79 +634,83 @@ class WindowOp(
       else
         0
     ).gather(rows, size)
-    // Rows that can win the deque, and the compared values in one of three layouts
-    val eligible               = new Array[Boolean](size)
-    var longs: Array[Long]     = null
-    var doubles: Array[Double] = null
-    var objs: Array[Any]       = null
-    // Float64 min / max: the frame's first non-NULL value wins when it is NaN
-    var nanFirst                 = false
-    var nonNull: Array[Boolean]  = null
+    // Rows that can win the deque
+    val eligible                 = new Array[Boolean](size)
     def notNull(k: Int): Boolean = v.nulls == null || !v.nulls(k)
     def eligibleNonNull(): Unit  =
       var k = 0
       while k < size do
         eligible(k) = notNull(k)
         k += 1
-    if isBy then
-      // ByKey compares non-NULL keys with ValueOps.compare: Long / Int keys as Longs, doubles
-      // with Double.compare (a total order), other values as they are
-      v match
-        case l: LongVec =>
-          longs = l.values
-          eligibleNonNull()
-        case i: IntVec =>
-          longs = Kernels.asLongs(i)
-          eligibleNonNull()
-        case _ =>
-          objs = new Array[Any](size)
-          var k = 0
-          while k < size do
-            val x = v.get(k)
-            objs(k) = x
-            eligible(k) = x != null
-            k += 1
-    else
-      c.ptype match
-        case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
-          longs =
+    def boxedValues(): Array[Any] =
+      val o = new Array[Any](size)
+      var k = 0
+      while k < size do
+        val x = v.get(k)
+        o(k) = x
+        eligible(k) = x != null
+        k += 1
+      o
+    // The compared values, in exactly one of three layouts. ByKey compares non-NULL keys with
+    // ValueOps.compare: Long / Int keys as Longs, doubles with Double.compare (a total order)
+    val longs: Array[Long] =
+      if isBy then
+        v match
+          case l: LongVec =>
+            l.values
+          case i: IntVec =>
+            Kernels.asLongs(i)
+          case _ =>
+            null
+      else
+        c.ptype match
+          case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
             v match
               case l: LongVec =>
                 l.values
               case other =>
                 Kernels.asLongs(other)
-          eligibleNonNull()
-        case PType.Float64 =>
-          doubles = Kernels.asDoubles(v)
-          nanFirst = true
-          nonNull = new Array[Boolean](size)
-          var k = 0
-          while k < size do
-            nonNull(k) = notNull(k)
-            eligible(k) = nonNull(k) && !java.lang.Double.isNaN(doubles(k))
-            k += 1
-        case _ =>
-          v match
-            case l: LongVec if l.ptype.isDecimal =>
+          case PType.Float64 =>
+            null
+          case _ =>
+            v match
               // One scale for the whole vector: comparing unscaled Longs equals comparing values
-              longs = l.values
-              eligibleNonNull()
-            case _ =>
-              objs = new Array[Any](size)
-              var k = 0
-              while k < size do
-                val x = v.get(k)
-                objs(k) = x
-                eligible(k) = x != null
-                k += 1
-    end if
+              case l: LongVec if l.ptype.isDecimal =>
+                l.values
+              case _ =>
+                null
+    // Float64 min / max: the frame's first non-NULL value wins when it is NaN
+    val nanFirst               = !isBy && c.ptype == PType.Float64
+    val doubles: Array[Double] =
+      if nanFirst then
+        Kernels.asDoubles(v)
+      else
+        null
+    val objs: Array[Any] =
+      if longs == null && doubles == null then
+        boxedValues()
+      else
+        null
+    val nonNull: Array[Boolean] =
+      if nanFirst then
+        new Array[Boolean](size)
+      else
+        null
+    if longs != null then
+      eligibleNonNull()
+    else if nanFirst then
+      var k = 0
+      while k < size do
+        nonNull(k) = notNull(k)
+        eligible(k) = nonNull(k) && !java.lang.Double.isNaN(doubles(k))
+        k += 1
 
     // Whether row a strictly beats row b
     def beats(a: Int, b: Int): Boolean =
       val cmp =
         if longs != null then
           java.lang.Long.compare(longs(a), longs(b))
-        else if doubles != null then
+        else if nanFirst then
           val x = doubles(a)
           val y = doubles(b)
           if x < y then
@@ -850,12 +855,6 @@ object WindowOp:
     startsAtPartitionStart && runningAggregates.contains(c.name.toLowerCase)
 
   /**
-    * True when `c` is a count, a sum with an Int64 or Decimal result, or min / max / max_by /
-    * min_by over a ROWS frame bounded on both sides, which `aggregateSliding` folds with exact adds
-    * and removes (or a monotonic deque for min / max). Float64 sums and avg stay per frame:
-    * removing a double changes the result bits
-    */
-  /**
     * Aggregates whose frame result is one leftmost best row, which `aggregateSlidingExtreme` finds
     */
   private[exec] val extremeAggregates: Set[String] = Set(
@@ -867,11 +866,22 @@ object WindowOp:
     "arg_min"
   )
 
+  /**
+    * True when `c` is a count, a sum with an Int64 or Decimal result, or min / max / max_by /
+    * min_by over a ROWS frame bounded on both sides, which `aggregateSliding` folds with exact adds
+    * and removes (or a monotonic deque for min / max). Float64 sums and avg stay per frame:
+    * removing a double changes the result bits
+    */
   def isSlidingFrame(c: WindowCall): Boolean =
     val bounded  = c.frame.exists(f => f.rows && f.start.nonEmpty && f.end.nonEmpty)
     def exactSum = c.ptype == PType.Int64 || c.ptype.isDecimal
+    val name     = c.name.toLowerCase
     bounded && (
-      c.name.toLowerCase match
+      name match
+        case "min" | "max" =>
+          c.args.size == 1
+        case _ if extremeAggregates.contains(name) =>
+          c.args.size == 2
         case "count_star" =>
           true
         case "count" =>
@@ -882,10 +892,6 @@ object WindowOp:
           c.args.size == 1 && exactSum
         case "sum_if" =>
           c.args.size == 2 && exactSum
-        case "min" | "max" =>
-          c.args.size == 1
-        case "max_by" | "arg_max" | "min_by" | "arg_min" =>
-          c.args.size == 2
         case _ =>
           false
     )
