@@ -138,8 +138,11 @@ Options for `save to ... with`:
 - `compression` (Parquet): `snappy`, `zstd`, `gzip`, `brotli`, `lz4`, or `uncompressed`
 - `header` (CSV, default `true`) and `delimiter` (CSV)
 
-Appended rows map to the file's columns by position and are cast to their types. Files are
-written to local paths only; writing to `s3://` or other remote paths isn't supported yet.
+Appended rows map to the file's columns by position. CSV, TSV, and JSON lines files get the new
+rows added at the end, leaving the existing text as is; Parquet files are rewritten with the new
+rows cast to the file's column types, through a temporary file so a failed append keeps the
+original. Files are written to local paths only; writing to `s3://` or other remote paths isn't
+supported yet.
 
 ## Mixing with other connectors
 

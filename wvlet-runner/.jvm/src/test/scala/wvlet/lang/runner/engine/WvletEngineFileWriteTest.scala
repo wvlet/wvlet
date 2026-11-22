@@ -92,6 +92,54 @@ class WvletEngineFileWriteTest extends UniTest:
     result.getError.foreach(e => throw e)
   }
 
+  test("append rows to a CSV file without rewriting the existing text") {
+    Files.createDirectories(Path.of(workDir, "out"))
+    Files.writeString(Path.of(workDir, "out/codes.csv"), "code,name\n007,bond\n")
+    run("""from [['008', 'trevelyan']] as t(code, name)
+          |append to 'out/codes.csv'""".stripMargin).getError.foreach(e => throw e)
+    Files.readString(Path.of(workDir, "out/codes.csv")) shouldBe
+      "code,name\n007,bond\n008,trevelyan\n"
+  }
+
+  test("keep empty strings distinct from NULL in CSV") {
+    run("""from [[1, ''], [2, null]] as t(id, s)
+          |save to 'out/empty.csv'""".stripMargin).getError.foreach(e => throw e)
+    Files.readString(Path.of(workDir, "out/empty.csv")) shouldBe "id,s\n1,\"\"\n2,\n"
+  }
+
+  test("append rows to a JSON lines file under the file's column names") {
+    run("""from [[1, 'a']] as t(id, name)
+          |save to 'out/append.jsonl'
+          |
+          |from [[2, 'b']] as t(x, y)
+          |append to 'out/append.jsonl'""".stripMargin).getError.foreach(e => throw e)
+    Files.readString(Path.of(workDir, "out/append.jsonl")) shouldBe
+      "{\"id\":1,\"name\":\"a\"}\n{\"id\":2,\"name\":\"b\"}\n"
+  }
+
+  test("write timestamps to Parquet without a UTC adjustment") {
+    run("""select '2024-01-02 03:04:05'::timestamp as ts
+          |save to 'out/ts.parquet'""".stripMargin).getError.foreach(e => throw e)
+    val field = wvlet.uni.parquet.Parquet.open(s"${workDir}/out/ts.parquet").schema.columns.head
+    field.logicalType.toString shouldContain "false"
+    val result = run("""from 'out/ts.parquet'
+                       |test _.rows should be [['2024-01-02 03:04:05']]""".stripMargin)
+    result.getError.foreach(e => throw e)
+  }
+
+  test("reject decimals wider than the column precision, keeping the file") {
+    run("""from [[1.5]] as t(v)
+          |save to 'out/dec.parquet'""".stripMargin).getError.foreach(e => throw e)
+    val e = intercept[wvlet.lang.api.WvletLangException] {
+      run("""from [[123.5]] as t(v)
+            |append to 'out/dec.parquet'""".stripMargin)
+    }
+    e.getMessage shouldContain "doesn't fit"
+    val result = run("""from 'out/dec.parquet'
+                       |test _.rows should be [['1.5']]""".stripMargin)
+    result.getError.foreach(e => throw e)
+  }
+
   test("compress Parquet files with the compression option") {
     val result = run("""from [[1, 'a']] as t(id, name)
                        |save to 'out/zstd.parquet' with compression: 'zstd'

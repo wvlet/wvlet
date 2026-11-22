@@ -25,7 +25,9 @@ import wvlet.uni.parquet.ParquetSchema
 import wvlet.uni.parquet.ParquetType
 import wvlet.uni.parquet.ParquetWriteOptions
 import wvlet.uni.parquet.format.CompressionCodec
+import wvlet.uni.parquet.format.LogicalType
 import wvlet.uni.parquet.format.PhysicalType
+import wvlet.uni.parquet.format.TimeUnit
 
 import java.math.BigDecimal as JBigDecimal
 import java.nio.charset.StandardCharsets
@@ -98,12 +100,69 @@ object DataFileWriter extends LogSupport:
     format match
       case DataFileFormat.Parquet =>
         writeParquet(path, schema, batches, opts)
+      case text =>
+        IO.writeString(path, "")
+        textChunks(text, schema, batches, opts, withHeader = true).foreach(IO.appendString(path, _))
+
+  /**
+    * Add rows to the end of an existing CSV / TSV / JSON lines file without rewriting its rows, so
+    * the existing text stays as is. `schema` names the file's columns (rows map to them by
+    * position)
+    */
+  def appendText(path: String, schema: Schema, batches: Seq[Batch]): Unit =
+    val format = DataFileFormat.of(path)
+    if format == DataFileFormat.Parquet then
+      throw StatusCode.INVALID_ARGUMENT.newException(s"Not a text file: ${path}")
+    textChunks(format, schema, batches, Map.empty, withHeader = false).foreach(
+      IO.appendString(path, _)
+    )
+
+  /**
+    * Replace `path` with `batches`, writing a temporary file first so a failed write leaves the
+    * original file intact
+    */
+  def replace(path: String, schema: Schema, batches: Seq[Batch]): Unit =
+    val tmp = s"${path}.tmp-${wvlet.uni.util.ULID.newULIDString}"
+    try
+      write(tmp, schema, batches, Map("format" -> formatName(DataFileFormat.of(path))))
+      IO.copy(tmp, path, wvlet.uni.io.CopyOptions().withOverwrite(true))
+    finally
+      IO.deleteIfExists(tmp)
+
+  private def formatName(f: DataFileFormat): String =
+    f match
+      case DataFileFormat.Parquet =>
+        "parquet"
       case DataFileFormat.Csv =>
-        writeDelimited(path, schema, batches, opts, defaultDelimiter = ",")
+        "csv"
       case DataFileFormat.Tsv =>
-        writeDelimited(path, schema, batches, opts, defaultDelimiter = "\t")
+        "tsv"
       case DataFileFormat.JsonLines =>
-        IO.writeString(path, jsonLines(schema, batches))
+        "json"
+
+  // Text output, one chunk per batch, so large results are never held as one string
+  private def textChunks(
+      format: DataFileFormat,
+      schema: Schema,
+      batches: Seq[Batch],
+      opts: Map[String, Any],
+      withHeader: Boolean
+  ): Iterator[String] =
+    format match
+      case DataFileFormat.Csv =>
+        delimitedChunks(schema, batches, opts, ",", withHeader)
+      case DataFileFormat.Tsv =>
+        delimitedChunks(schema, batches, opts, "\t", withHeader)
+      case _ =>
+        opts
+          .keys
+          .filterNot(_ == "format")
+          .foreach { k =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"Unsupported JSON write option for the wvlet engine: ${k}")
+          }
+        batches.iterator.map(b => jsonLines(schema, b))
 
   private def parentOf(path: String): Option[String] =
     val i = path.lastIndexWhere(c => c == '/' || c == '\\')
@@ -198,7 +257,12 @@ object DataFileWriter extends LogSupport:
       case PType.Date =>
         ParquetType.DATE
       case PType.Timestamp =>
-        ParquetType.TIMESTAMP_MICROS
+        // Engine timestamps have no time zone: not adjusted to UTC, as DuckDB writes TIMESTAMP
+        ParquetType.Primitive(
+          PhysicalType.INT64,
+          Some(LogicalType.Timestamp(false, TimeUnit.MICROS)),
+          0
+        )
       case PType.Decimal(p, s) =>
         ParquetType.decimal(p, s)
       case other =>
@@ -286,10 +350,24 @@ object DataFileWriter extends LogSupport:
       v: Vec,
       nulls: Array[Boolean]
   ): ColumnVector =
-    val n                                      = v.size
-    def unscaled(i: Int): java.math.BigInteger = ValueOps
-      .rescale(ValueOps.toBigDecimal(v.get(i)), d.scale)
-      .unscaledValue()
+    val n     = v.size
+    val bound = java.math.BigInteger.TEN.pow(d.precision)
+    // Unscaled values; a value wider than the declared precision is an error, not a truncation
+    def unscaled(i: Int): java.math.BigInteger =
+      val u =
+        v match
+          case l: LongVec if l.ptype == d =>
+            java.math.BigInteger.valueOf(l.values(i))
+          case _ =>
+            ValueOps.rescale(ValueOps.toBigDecimal(v.get(i)), d.scale).unscaledValue()
+      if u.abs().compareTo(bound) >= 0 then
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            s"Value ${JBigDecimal(u, d.scale).toPlainString} doesn't fit ${d.name} of column ${field
+                .name}"
+          )
+      u
     val (physical, typeLength) =
       field match
         case p: ParquetField.Primitive =>
@@ -371,13 +449,13 @@ object DataFileWriter extends LogSupport:
 
   // --- CSV / TSV ----------------------------------------------------------------------------
 
-  private def writeDelimited(
-      path: String,
+  private def delimitedChunks(
       schema: Schema,
       batches: Seq[Batch],
       opts: Map[String, Any],
-      defaultDelimiter: String
-  ): Unit =
+      defaultDelimiter: String,
+      withHeader: Boolean
+  ): Iterator[String] =
     opts
       .keys
       .filterNot(Set("format", "header", "delimiter", "delim", "sep").contains)
@@ -392,41 +470,55 @@ object DataFileWriter extends LogSupport:
       .orElse(opts.get("sep"))
       .map(_.toString)
       .getOrElse(defaultDelimiter)
-    val header                   = opts.get("header").forall(h => ValueOps.toBoolean(h))
+    val header = withHeader && opts.get("header").forall(h => ValueOps.toBoolean(h))
+    // Empty strings are quoted to stay distinct from NULL, which is written as nothing
     def quote(s: String): String =
-      if s.contains(delimiter) || s.exists(c => c == '"' || c == '\n' || c == '\r') then
+      if s.isEmpty || s.contains(delimiter) || s.exists(c => c == '"' || c == '\n' || c == '\r')
+      then
         "\"" + s.replace("\"", "\"\"") + "\""
       else
         s
-    val sb = StringBuilder()
-    if header then
-      sb.append(schema.names.map(quote).mkString(delimiter)).append('\n')
-    val types = schema.types
-    batches.foreach { b =>
-      var r = 0
-      while r < b.size do
-        var c = 0
-        while c < b.numColumns do
-          if c > 0 then
-            sb.append(delimiter)
-          val v = b.column(c).get(r)
-          if v != null then
-            sb.append(quote(ValueOps.toStr(ValueOps.toExternal(v, types(c)))))
-          c += 1
-        sb.append('\n')
-        r += 1
-    }
-    IO.writeString(path, sb.result())
+    val types      = schema.types
+    val headerLine = Option.when(header)(schema.names.map(quote).mkString(delimiter) + "\n")
+    headerLine.iterator ++
+      batches
+        .iterator
+        .map { b =>
+          val sb = StringBuilder()
+          var r  = 0
+          while r < b.size do
+            var c = 0
+            while c < b.numColumns do
+              if c > 0 then
+                sb.append(delimiter)
+              val v = b.column(c).get(r)
+              if v != null then
+                sb.append(quote(textOf(v, types(c))))
+              c += 1
+            sb.append('\n')
+            r += 1
+          sb.result()
+        }
 
-  end writeDelimited
+  end delimitedChunks
+
+  // A CSV cell: arrays and maps as JSON, other values as their SQL text
+  private def textOf(v: Any, ptype: PType): String =
+    v match
+      case _: Seq[?] | _: Map[?, ?] =>
+        val sb = StringBuilder()
+        appendJson(sb, v, ptype)
+        sb.result()
+      case _ =>
+        ValueOps.toStr(ValueOps.toExternal(v, ptype))
 
   // --- JSON lines ---------------------------------------------------------------------------
 
-  private def jsonLines(schema: Schema, batches: Seq[Batch]): String =
+  private def jsonLines(schema: Schema, b: Batch): String =
     val sb    = StringBuilder()
     val names = schema.names.map(jsonString)
     val types = schema.types
-    batches.foreach { b =>
+    locally {
       var r = 0
       while r < b.size do
         sb.append('{')
