@@ -126,7 +126,7 @@ Install the CLI with npm (`npm install -g @wvlet/cli`, Node.js 22+). It provides
 Engines:
 
 - **DuckDB** is the default and needs no setup. File paths in `from '...'` are read by DuckDB. See [DuckDB](./usage/duckdb.md).
-- **wvlet** (`-t wvlet`) is the in-process columnar engine: it executes Wvlet plans directly on Parquet, JSON, CSV, and Iceberg files with no DuckDB, on every CLI including the npm and native ones. Register tables by name with a `wvlet` connector's `dataDir` / `tables` properties. It doesn't run SQL DDL, `append`, `delete`, `save to` a file, or flows yet. With `--host`, `-t wvlet` connects to a remote wvlet server instead. See [Wvlet Engine](./usage/wvlet-engine.md).
+- **wvlet** (`-t wvlet`) is the in-process columnar engine: it executes Wvlet plans directly on Parquet, JSON, CSV, and Iceberg files with no DuckDB, on every CLI including the npm and native ones. Register tables by name with a `wvlet` connector's `dataDir` / `tables` properties. It doesn't run SQL DDL, `append`, `delete`, or `pivot` yet. With `--host`, `-t wvlet` connects to a remote wvlet server instead. See [Wvlet Engine](./usage/wvlet-engine.md).
 - **Trino**, **Snowflake**, and others are configured as profiles in `~/.wvlet/profiles.json` and selected with `--profile <name>`. See [Trino](./usage/trino.md) and [Connectors](./usage/connectors.md).
 - To check a query without a database, run `wvlet compile`: syntax errors are reported with the line and column.
 

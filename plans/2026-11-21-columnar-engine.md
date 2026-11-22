@@ -83,7 +83,8 @@ Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0
 | Baseline (#2200) | 42.3 s | 118x |
 | Column pruning, row-group pruning (#2204) | 10.8 s | 31x |
 | Kernels, typed hash tables (#2205) | 8.6 s | 26x |
-| Parallel scans, join probes, two-phase aggregation | 2.1 s | 6.4x |
+| Parallel scans, join probes, two-phase aggregation (#2210) | 2.1 s | 6.4x |
+| Parallel right / full joins, outer joins build on the smaller side (all 22 queries) | 2.0 s | 5.2x |
 
 ## Milestones (one PR each)
 

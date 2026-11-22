@@ -1738,6 +1738,15 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         s.source.estimatedRows.map(_.toDouble).getOrElse(1e6)
       case b: BatchesOp =>
         1e3
+      case j: HashJoinOp =>
+        // About the rows of the side every output row comes from
+        j.kind match
+          case JoinKind.Right =>
+            estimateRows(j.right)
+          case JoinKind.Full =>
+            math.max(estimateRows(j.left), estimateRows(j.right))
+          case _ =>
+            estimateRows(j.left)
       case other =>
         other.children.headOption.map(estimateRows).getOrElse(1e6)
 
@@ -1801,10 +1810,70 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
             Binder(this, BindScope(right.schema)),
             pairs
           )
-          HashJoinOp(left, right, lk, rk, kind, residual, combined)
+          outerHashJoin(left, right, lk, rk, kind, residual, combined)
     end match
 
   end planOuterJoin
+
+  /**
+    * An outer hash join, building on the smaller input: when the right (build) input is estimated
+    * to be much larger than the left one, the inputs swap sides (LEFT becomes RIGHT and back) and a
+    * projection restores the left-then-right column order. The larger input then becomes the probe
+    * side, which runs in parallel parts, and the hash table holds the smaller one
+    */
+  private def outerHashJoin(
+      left: Operator,
+      right: Operator,
+      lk: IndexedSeq[VExpr],
+      rk: IndexedSeq[VExpr],
+      kind: JoinKind,
+      residual: Option[VExpr],
+      combined: Schema
+  ): Operator =
+    val swapped =
+      kind match
+        case JoinKind.Left =>
+          Some(JoinKind.Right)
+        case JoinKind.Right =>
+          Some(JoinKind.Left)
+        case JoinKind.Full =>
+          Some(JoinKind.Full)
+        case _ =>
+          None
+    swapped match
+      case Some(k) if estimateRows(right) > Planner.SwapBuildRatio * estimateRows(left) =>
+        val lw = left.schema.size
+        val rw = right.schema.size
+        // Position of each left ++ right column in right ++ left
+        val toSwapped =
+          Array.tabulate(lw + rw)(i =>
+            if i < lw then
+              rw + i
+            else
+              i - lw
+          )
+        val join = HashJoinOp(
+          right,
+          left,
+          rk,
+          lk,
+          k,
+          residual.map(VExprs.remap(_, toSwapped)),
+          right.schema ++ left.schema
+        )
+        ProjectOp(
+          join,
+          combined
+            .fields
+            .indices
+            .map(i => ColRef(toSwapped(i), combined(i).ptype, combined(i).name)),
+          combined
+        )
+      case _ =>
+        HashJoinOp(left, right, lk, rk, kind, residual, combined)
+    end match
+
+  end outerHashJoin
 
   /** JOIN ... USING (cols): one output column per key (coalesced for outer joins) */
   private def usingJoin(
@@ -1820,7 +1889,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     )
     val (lk, rk) = joinKeys(lb, rb, pairs)
     val combined = left.schema ++ right.schema
-    val join     = HashJoinOp(left, right, lk, rk, kind, None, combined)
+    val join     = outerHashJoin(left, right, lk, rk, kind, None, combined)
     val lw       = left.schema.size
     val keyIdx   = names.map { n =>
       (
@@ -1950,6 +2019,9 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
 end Planner
 
 object Planner:
+  /** How much larger the build input of an outer join must be before the inputs swap sides */
+  val SwapBuildRatio: Double = 4.0
+
   /** A planner for a subquery: shares the catalog, sources, and CTE definitions */
   def nested(p: Planner): Planner = p
 
