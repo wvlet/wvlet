@@ -21,6 +21,7 @@ import wvlet.uni.test.UniTest
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.sql.Connection
 import java.sql.DriverManager
 
@@ -154,7 +155,7 @@ class EngineTPCHBench extends UniTest:
 
     val outDir = File("target/engine-bench")
     outDir.mkdirs()
-    val tsv   = File(outDir, s"tpch-sf${sf}.tsv")
+    val tsv   = File(outDir, s"tpch-sf${sfLabel(sf)}.tsv")
     val lines =
       "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror" +:
         results.map { r =>
@@ -201,6 +202,13 @@ object EngineTPCHBench:
           else
             s"  ROW COUNT MISMATCH duckdb=${duckdbRows} engine=${engineRows}"
         }"
+
+  /** The scale factor as written in paths: 1 rather than 1.0, 0.1 as is */
+  def sfLabel(sf: Double): String =
+    if sf == sf.floor then
+      sf.toLong.toString
+    else
+      sf.toString
 
   def median(xs: Seq[Double]): Double =
     if xs.isEmpty then
@@ -253,7 +261,7 @@ object EngineTPCHBench:
 
   /** Generate TPC-H Parquet files with DuckDB's tpch extension, once per scale factor */
   def prepareData(sf: Double): String =
-    val dir = Paths.get(s"target/tpch-sf${sf}").toAbsolutePath
+    val dir = Paths.get(s"target/tpch-sf${sfLabel(sf)}").toAbsolutePath
     if tables.forall(t => Files.exists(dir.resolve(s"${t}.parquet"))) then
       dir.toString
     else
@@ -267,7 +275,7 @@ object EngineTPCHBench:
         tables.foreach { t =>
           val tmp = dir.resolve(s"${t}.parquet.tmp")
           execute(conn, s"copy ${t} to '${tmp}' (format parquet)")
-          Files.move(tmp, dir.resolve(s"${t}.parquet"))
+          Files.move(tmp, dir.resolve(s"${t}.parquet"), StandardCopyOption.REPLACE_EXISTING)
         }
       finally
         conn.close()
