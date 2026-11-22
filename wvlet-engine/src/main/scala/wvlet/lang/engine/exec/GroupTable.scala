@@ -312,10 +312,13 @@ object GroupTable:
           canonical(other, t)
 
     def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
-      val x = v.asInstanceOf[IntVec].values
-      var i = 0
+      val x  = v.asInstanceOf[IntVec].values
+      val ns = v.nulls
+      var i  = 0
       while i < n do
-        mixInto(h, i, x(i))
+        // NULL slots may hold any value; all NULLs must hash alike
+        if ns == null || !ns(i) then
+          mixInto(h, i, x(i))
         i += 1
 
     def equalsAt(g: Int, v: Vec, i: Int): Boolean =
@@ -338,10 +341,12 @@ object GroupTable:
           canonical(other, t)
 
     def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
-      val x = v.asInstanceOf[LongVec].values
-      var i = 0
+      val x  = v.asInstanceOf[LongVec].values
+      val ns = v.nulls
+      var i  = 0
       while i < n do
-        mixInto(h, i, hashLong(x(i)))
+        if ns == null || !ns(i) then
+          mixInto(h, i, hashLong(x(i)))
         i += 1
 
     def equalsAt(g: Int, v: Vec, i: Int): Boolean =
@@ -365,10 +370,12 @@ object GroupTable:
           canonical(other, PType.Float64)
 
     def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
-      val x = v.asInstanceOf[DoubleVec].values
-      var i = 0
+      val x  = v.asInstanceOf[DoubleVec].values
+      val ns = v.nulls
+      var i  = 0
       while i < n do
-        mixInto(h, i, hashLong(java.lang.Double.doubleToLongBits(x(i))))
+        if ns == null || !ns(i) then
+          mixInto(h, i, hashLong(java.lang.Double.doubleToLongBits(x(i))))
         i += 1
 
     def equalsAt(g: Int, v: Vec, i: Int): Boolean =
@@ -382,6 +389,8 @@ object GroupTable:
 
     def result(n: Int): Vec = DoubleVec(java.util.Arrays.copyOf(values, n), resultNulls(n))
 
+  end DoubleStore
+
   final class StrStore extends KeyStore:
     private var values                 = new Array[String](16)
     protected def capacity: Int        = values.length
@@ -394,11 +403,12 @@ object GroupTable:
           canonical(other, PType.Str)
 
     def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
-      val x = v.asInstanceOf[StrVec].values
-      var i = 0
+      val x  = v.asInstanceOf[StrVec].values
+      val ns = v.nulls
+      var i  = 0
       while i < n do
         val s = x(i)
-        if s != null then
+        if s != null && (ns == null || !ns(i)) then
           mixInto(h, i, s.hashCode)
         i += 1
 
@@ -422,17 +432,19 @@ object GroupTable:
           canonical(other, PType.Bool)
 
     def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
-      val x = v.asInstanceOf[BoolVec].values
-      var i = 0
+      val x  = v.asInstanceOf[BoolVec].values
+      val ns = v.nulls
+      var i  = 0
       while i < n do
-        mixInto(
-          h,
-          i,
-          if x(i) then
-            1231
-          else
-            1237
-        )
+        if ns == null || !ns(i) then
+          mixInto(
+            h,
+            i,
+            if x(i) then
+              1231
+            else
+              1237
+          )
         i += 1
 
     def equalsAt(g: Int, v: Vec, i: Int): Boolean =
@@ -442,6 +454,8 @@ object GroupTable:
       values(g) = v.asInstanceOf[BoolVec].values(i)
 
     def result(n: Int): Vec = BoolVec(java.util.Arrays.copyOf(values, n), resultNulls(n))
+
+  end BoolStore
 
   /** Any other type, through boxed engine values and their equals / hashCode */
   final class ObjStore(t: PType) extends KeyStore:

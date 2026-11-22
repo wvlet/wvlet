@@ -66,4 +66,18 @@ class GroupTableTest extends UniTest:
     t.groupIds(Array(v), 5).toSeq shouldBe Seq(0, 0, 1, 2, 3)
   }
 
+  test("should put NULL keys in one group whatever their slots hold") {
+    // Kernels compute values for NULL rows too, e.g. NULL + 5 and NULL + 7
+    val nulls = Array(true, true, false)
+    for v <- Seq[Vec](
+        LongVec(PType.Int64, Array(5L, 7L, 1L), nulls),
+        IntVec(PType.Int32, Array(5, 7, 1), nulls),
+        DoubleVec(Array(5.0, 7.0, 1.0), nulls),
+        StrVec(Array("a", "b", "c"), nulls),
+        BoolVec(Array(true, false, true), nulls)
+      )
+    do
+      GroupTable(IndexedSeq(v.ptype)).groupIds(Array(v), 3).toSeq shouldBe Seq(0, 0, 1)
+  }
+
 end GroupTableTest

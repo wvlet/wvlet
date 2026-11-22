@@ -922,11 +922,14 @@ object Kernels:
         val y = ValueOps.toLong(v)
         cmpLoop(op, n, o, i => java.lang.Long.compare(x(i), y))
         BoolVec(o, a.nulls)
-      case a: LongVec if vt == a.ptype && unscaledOf(v, a.ptype).isDefined =>
-        val x = a.values
-        val y = unscaledOf(v, a.ptype).get
-        cmpLoop(op, n, o, i => java.lang.Long.compare(x(i), y))
-        BoolVec(o, a.nulls)
+      case a: LongVec if vt == a.ptype =>
+        unscaledOf(v, a.ptype) match
+          case Some(y) =>
+            val x = a.values
+            cmpLoop(op, n, o, i => java.lang.Long.compare(x(i), y))
+            BoolVec(o, a.nulls)
+          case None =>
+            compare(op, l, Vec.constant(vt, v, n))
       case a: DoubleVec if vt == PType.Float64 =>
         val x = a.values
         val y = ValueOps.toDouble(v)
