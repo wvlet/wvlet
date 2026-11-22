@@ -114,12 +114,24 @@ object Vec:
     if value == null then
       nullVec(ptype, n)
     else
-      val b = VecBuilder(ptype, n)
-      var i = 0
-      while i < n do
-        b.add(value)
-        i += 1
-      b.result()
+      ptype match
+        case PType.Bool =>
+          BoolVec(Array.fill(n)(ValueOps.toBoolean(value)), null)
+        case PType.Int32 | PType.Date =>
+          IntVec(ptype, Array.fill(n)(ValueOps.toInt(value)), null)
+        case PType.Int64 | PType.Timestamp =>
+          LongVec(ptype, Array.fill(n)(ValueOps.toLong(value)), null)
+        case PType.Float64 =>
+          DoubleVec(Array.fill(n)(ValueOps.toDouble(value)), null)
+        case PType.Str =>
+          StrVec(Array.fill(n)(ValueOps.toStr(value)), null)
+        case _ =>
+          val b = VecBuilder(ptype, n)
+          var i = 0
+          while i < n do
+            b.add(value)
+            i += 1
+          b.result()
 
   def fromValues(ptype: PType, values: Seq[Any]): Vec =
     val b = VecBuilder(ptype, values.size)

@@ -42,7 +42,19 @@ case class ColRef(index: Int, ptype: PType, name: String) extends VExpr:
   override def isConstant: Boolean = false
 
 case class Const(value: Any, ptype: PType) extends VExpr:
-  def eval(b: Batch): Vec          = Vec.constant(ptype, value, b.size)
+  // Vectors are immutable, so the last vector built is reused for batches of the same size
+  @volatile
+  private var cached: Vec = null
+
+  def eval(b: Batch): Vec =
+    val c = cached
+    if c != null && c.size == b.size then
+      c
+    else
+      val v = Vec.constant(ptype, value, b.size)
+      cached = v
+      v
+
   def sig: String                  = s"lit(${value}:${ptype})"
   override def isConstant: Boolean = true
 
@@ -114,6 +126,20 @@ enum CmpOp(val symbol: String):
   case Gt extends CmpOp(">")
   case Ge extends CmpOp(">=")
 
+  /** The operator with its operands swapped: `a < b` is `b > a` */
+  def flip: CmpOp =
+    this match
+      case Lt =>
+        Gt
+      case Le =>
+        Ge
+      case Gt =>
+        Lt
+      case Ge =>
+        Le
+      case other =>
+        other
+
   def test(c: Int): Boolean =
     this match
       case Eq =>
@@ -129,12 +155,27 @@ enum CmpOp(val symbol: String):
       case Ge =>
         c >= 0
 
+end CmpOp
+
 /** Comparison of two operands already cast to the same type */
 case class Compare(op: CmpOp, left: VExpr, right: VExpr) extends VExpr:
   override def children: Seq[VExpr] = Seq(left, right)
   def ptype: PType                  = PType.Bool
   def sig: String                   = s"(${left.sig}${op.symbol}${right.sig})"
-  def eval(b: Batch): Vec           = Kernels.compare(op, left.eval(b), right.eval(b))
+  // Constant operands are evaluated once and compared as scalars
+  private lazy val leftScalar: Option[Any]  = Kernels.scalarOf(left)
+  private lazy val rightScalar: Option[Any] = Kernels.scalarOf(right)
+
+  def eval(b: Batch): Vec =
+    rightScalar match
+      case Some(v) if leftScalar.isEmpty =>
+        Kernels.compareScalar(op, left.eval(b), v, right.ptype)
+      case _ =>
+        leftScalar match
+          case Some(v) if rightScalar.isEmpty =>
+            Kernels.compareScalar(op.flip, right.eval(b), v, left.ptype)
+          case _ =>
+            Kernels.compare(op, left.eval(b), right.eval(b))
 
 /** IS [NOT] DISTINCT FROM: NULL-safe equality */
 case class NullSafeDistinct(left: VExpr, right: VExpr, negate: Boolean) extends VExpr:
@@ -828,6 +869,111 @@ object Kernels:
 
   end decimalArith
 
+  /** The value of a row-independent expression, evaluated once */
+  def scalarOf(e: VExpr): Option[Any] =
+    if e.isConstant then
+      Some(e.eval(Batch.ofRows(1)).get(0))
+    else
+      None
+
+  /** Fill `o(i) = test(i)` for every row, with the comparison operator resolved outside the loop */
+  private inline def cmpLoop(op: CmpOp, n: Int, o: Array[Boolean], inline c: Int => Int): Unit =
+    var i = 0
+    op match
+      case CmpOp.Eq =>
+        while i < n do
+          o(i) = c(i) == 0
+          i += 1
+      case CmpOp.Ne =>
+        while i < n do
+          o(i) = c(i) != 0
+          i += 1
+      case CmpOp.Lt =>
+        while i < n do
+          o(i) = c(i) < 0
+          i += 1
+      case CmpOp.Le =>
+        while i < n do
+          o(i) = c(i) <= 0
+          i += 1
+      case CmpOp.Gt =>
+        while i < n do
+          o(i) = c(i) > 0
+          i += 1
+      case CmpOp.Ge =>
+        while i < n do
+          o(i) = c(i) >= 0
+          i += 1
+
+  /** Compare a vector with a scalar of type `vt` (the vector's type) */
+  def compareScalar(op: CmpOp, l: Vec, v: Any, vt: PType): Vec =
+    val n = l.size
+    if v == null then
+      return BoolVec(new Array[Boolean](n), Array.fill(n)(true))
+    val o = new Array[Boolean](n)
+    l match
+      case a: IntVec if vt == a.ptype =>
+        val x = a.values
+        val y = ValueOps.toInt(v)
+        cmpLoop(op, n, o, i => Integer.compare(x(i), y))
+        BoolVec(o, a.nulls)
+      case a: LongVec if vt == a.ptype && !a.ptype.isDecimal =>
+        val x = a.values
+        val y = ValueOps.toLong(v)
+        cmpLoop(op, n, o, i => java.lang.Long.compare(x(i), y))
+        BoolVec(o, a.nulls)
+      case a: LongVec if vt == a.ptype && unscaledOf(v, a.ptype).isDefined =>
+        val x = a.values
+        val y = unscaledOf(v, a.ptype).get
+        cmpLoop(op, n, o, i => java.lang.Long.compare(x(i), y))
+        BoolVec(o, a.nulls)
+      case a: DoubleVec if vt == PType.Float64 =>
+        val x = a.values
+        val y = ValueOps.toDouble(v)
+        cmpLoop(op, n, o, i => java.lang.Double.compare(x(i), y))
+        BoolVec(o, a.nulls)
+      case a: StrVec if vt == PType.Str =>
+        val x     = a.values
+        val y     = v.toString
+        val nulls = a.nulls
+        if nulls == null then
+          cmpLoop(op, n, o, i => x(i).compareTo(y))
+        else
+          // NULL slots may hold null strings
+          cmpLoop(
+            op,
+            n,
+            o,
+            i =>
+              if nulls(i) then
+                0
+              else
+                x(i).compareTo(y)
+          )
+        BoolVec(o, nulls)
+      case _ =>
+        compare(op, l, Vec.constant(vt, v, n))
+    end match
+
+  end compareScalar
+
+  /** The unscaled Long of a decimal value at the scale of `t`, when it is exact and fits */
+  private def unscaledOf(v: Any, t: PType): Option[Long] =
+    t match
+      case PType.Decimal(_, s) =>
+        try
+          val d = ValueOps.toBigDecimal(v).setScale(s)
+          val u = d.unscaledValue()
+          if u.bitLength() < 64 then
+            Some(u.longValue())
+          else
+            None
+        catch
+          case _: ArithmeticException =>
+            None
+      case _ =>
+        None
+
   def compare(op: CmpOp, l: Vec, r: Vec): Vec =
     val n     = l.size
     val nulls = orNulls(l.nulls, r.nulls, n)
@@ -836,24 +982,15 @@ object Kernels:
       case (a: IntVec, b: IntVec) =>
         val x = a.values
         val y = b.values
-        var i = 0
-        while i < n do
-          o(i) = op.test(Integer.compare(x(i), y(i)))
-          i += 1
+        cmpLoop(op, n, o, i => Integer.compare(x(i), y(i)))
       case (a: LongVec, b: LongVec) if a.ptype == b.ptype =>
         val x = a.values
         val y = b.values
-        var i = 0
-        while i < n do
-          o(i) = op.test(java.lang.Long.compare(x(i), y(i)))
-          i += 1
+        cmpLoop(op, n, o, i => java.lang.Long.compare(x(i), y(i)))
       case (a: DoubleVec, b: DoubleVec) =>
         val x = a.values
         val y = b.values
-        var i = 0
-        while i < n do
-          o(i) = op.test(java.lang.Double.compare(x(i), y(i)))
-          i += 1
+        cmpLoop(op, n, o, i => java.lang.Double.compare(x(i), y(i)))
       case (a: StrVec, b: StrVec) =>
         val x = a.values
         val y = b.values

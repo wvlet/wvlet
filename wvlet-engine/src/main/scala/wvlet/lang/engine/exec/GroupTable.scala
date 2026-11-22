@@ -76,111 +76,401 @@ object GroupKey:
 end GroupKey
 
 /**
-  * Assigns dense group ids to distinct keys and keeps one copy of each key's values
+  * Assigns dense group ids to distinct keys and keeps one copy of each key's values.
+  *
+  * An open-addressing hash table over typed key columns: hashes are computed a column at a time,
+  * and keys are compared in place against the stored key columns, so no per-row key objects are
+  * allocated. NULL key values are equal to each other (GROUP BY semantics); [[lookup]] treats rows
+  * with a NULL key as unmatched (join semantics).
   */
 final class GroupTable(keyTypes: IndexedSeq[PType]):
-  private val map         = java.util.HashMap[AnyRef, Integer]()
-  private val keyBuilders = keyTypes.map(t => VecBuilder(t, 64)).toArray
-  private var count       = 0
-  // Single integer keys take a specialized path without boxing composite keys
-  private val singleLong: Boolean =
-    keyTypes.size == 1 &&
-      (keyTypes.head == PType.Int64 || keyTypes.head == PType.Int32 || keyTypes.head == PType.Date)
+  import GroupTable.*
 
-  private val longMap   = LongIntMap()
-  private var nullGroup = -1
+  private val stores: Array[KeyStore] = keyTypes.map(KeyStore.apply).toArray
+  private val width                   = stores.length
+  private var count                   = 0
+  private var groupHash               = new Array[Int](64)
+  private var slots                   = Array.fill(1024)(-1)
+  private var mask                    = 1023
 
   def numGroups: Int = count
 
-  def groupIds(keys: Array[Vec], n: Int): Array[Int] =
-    val ids = new Array[Int](n)
-    if singleLong then
-      val v                  = keys(0)
-      val longs: Array[Long] =
-        v match
-          case l: LongVec =>
-            l.values
-          case iv: IntVec =>
-            null
-          case _ =>
-            null
-      var i = 0
-      while i < n do
-        if v.isNull(i) then
-          if nullGroup < 0 then
-            nullGroup = count
-            keyBuilders(0).addNull()
-            count += 1
-          ids(i) = nullGroup
-        else
-          val x: Long =
-            if longs != null then
-              longs(i)
-            else
-              v.asInstanceOf[IntVec].values(i).toLong
-          val g = longMap.getOrElse(x, -1)
-          if g >= 0 then
-            ids(i) = g
-          else
-            longMap.put(x, count)
-            keyBuilders(0).add(v.get(i))
-            ids(i) = count
-            count += 1
-        i += 1
-    else
-      var i = 0
-      while i < n do
-        val key = GroupKey.of(keys, i)
-        val g   = map.get(key)
-        if g != null then
-          ids(i) = g.intValue()
-        else
-          map.put(key, count)
-          var k = 0
-          while k < keys.length do
-            keyBuilders(k).add(keys(k).get(i))
-            k += 1
-          ids(i) = count
-          count += 1
-        i += 1
-    end if
-    ids
+  private def normalize(keys: Array[Vec]): Array[Vec] =
+    val out = new Array[Vec](width)
+    var k   = 0
+    while k < width do
+      out(k) = stores(k).normalize(keys(k))
+      k += 1
+    out
 
-  end groupIds
+  private def hashes(keys: Array[Vec], n: Int): Array[Int] =
+    val h = new Array[Int](n)
+    var k = 0
+    while k < width do
+      stores(k).hashInto(keys(k), n, h)
+      k += 1
+    var i = 0
+    while i < n do
+      h(i) = fmix(h(i))
+      i += 1
+    h
+
+  private def sameKey(g: Int, keys: Array[Vec], i: Int): Boolean =
+    var k = 0
+    while k < width do
+      if !stores(k).equalsAt(g, keys(k), i) then
+        return false
+      k += 1
+    true
+
+  /** The group of row i, or -1 when its key is not in the table */
+  private def find(keys: Array[Vec], i: Int, h: Int): Int =
+    var idx = h & mask
+    while true do
+      val g = slots(idx)
+      if g < 0 then
+        return -1
+      if groupHash(g) == h && sameKey(g, keys, i) then
+        return g
+      idx = (idx + 1) & mask
+    -1
+
+  private def insert(keys: Array[Vec], i: Int, h: Int): Int =
+    val g = count
+    if g == groupHash.length then
+      groupHash = java.util.Arrays.copyOf(groupHash, g * 2)
+    groupHash(g) = h
+    var k = 0
+    while k < width do
+      stores(k).add(keys(k), i)
+      k += 1
+    count += 1
+    if count * 2 > slots.length then
+      rehash(slots.length * 2)
+    else
+      var idx = h & mask
+      while slots(idx) >= 0 do
+        idx = (idx + 1) & mask
+      slots(idx) = g
+    g
+
+  private def rehash(cap: Int): Unit =
+    slots = Array.fill(cap)(-1)
+    mask = cap - 1
+    var g = 0
+    while g < count do
+      var idx = groupHash(g) & mask
+      while slots(idx) >= 0 do
+        idx = (idx + 1) & mask
+      slots(idx) = g
+      g += 1
+
+  def groupIds(keys: Array[Vec], n: Int): Array[Int] =
+    val norm = normalize(keys)
+    val h    = hashes(norm, n)
+    val ids  = new Array[Int](n)
+    var i    = 0
+    while i < n do
+      val g = find(norm, i, h(i))
+      ids(i) =
+        if g >= 0 then
+          g
+        else
+          insert(norm, i, h(i))
+      i += 1
+    ids
 
   /**
     * Group ids of existing keys without inserting new ones: -1 for keys not in the table and for
     * rows with a NULL key column
     */
   def lookup(keys: Array[Vec], n: Int): Array[Int] =
-    val ids = new Array[Int](n)
-    var i   = 0
+    val norm = normalize(keys)
+    val h    = hashes(norm, n)
+    val ids  = new Array[Int](n)
+    var i    = 0
     while i < n do
-      if GroupKey.hasNull(keys, i) then
-        ids(i) = -1
-      else if singleLong then
-        val v       = keys(0)
-        val x: Long =
-          v match
-            case l: LongVec =>
-              l.values(i)
-            case iv: IntVec =>
-              iv.values(i).toLong
-            case other =>
-              ValueOps.toLong(other.get(i))
-        ids(i) = longMap.getOrElse(x, -1)
-      else
-        val g = map.get(GroupKey.of(keys, i))
-        ids(i) =
-          if g == null then
-            -1
-          else
-            g.intValue()
+      ids(i) = find(norm, i, h(i))
       i += 1
+    var k = 0
+    while k < width do
+      val nulls = norm(k).nulls
+      if nulls != null then
+        i = 0
+        while i < n do
+          if nulls(i) then
+            ids(i) = -1
+          i += 1
+      k += 1
     ids
 
   /** Key values of every group, in group id order */
-  def keyVectors(): Array[Vec] = keyBuilders.map(_.result())
+  def keyVectors(): Array[Vec] = stores.map(_.result(count))
+
+end GroupTable
+
+object GroupTable:
+  /** Murmur3 finalizer */
+  inline def fmix(x: Int): Int =
+    var h = x
+    h ^= h >>> 16
+    h *= 0x85ebca6b
+    h ^= h >>> 13
+    h *= 0xc2b2ae35
+    h ^= h >>> 16
+    h
+
+  inline def mixInto(h: Array[Int], i: Int, x: Int): Unit = h(i) = h(i) * 31 + x
+
+  inline def hashLong(x: Long): Int = (x ^ (x >>> 32)).toInt
+
+  /** The stored key values of one key column */
+  abstract class KeyStore:
+    protected var nulls: Array[Boolean] = null
+    protected def capacity: Int
+    protected def grow(cap: Int): Unit
+
+    /** The vector in the representation this store reads */
+    def normalize(v: Vec): Vec
+
+    def hashInto(v: Vec, n: Int, h: Array[Int]): Unit
+
+    /** Whether row i of v equals the key of group g */
+    def equalsAt(g: Int, v: Vec, i: Int): Boolean
+
+    protected def addValue(g: Int, v: Vec, i: Int): Unit
+    def result(n: Int): Vec
+
+    private var size = 0
+
+    final def add(v: Vec, i: Int): Unit =
+      if size == capacity then
+        val cap = math.max(16, capacity * 2)
+        grow(cap)
+        if nulls != null then
+          nulls = java.util.Arrays.copyOf(nulls, cap)
+      if v.isNull(i) then
+        if nulls == null then
+          nulls = new Array[Boolean](capacity)
+        nulls(size) = true
+      else
+        addValue(size, v, i)
+      size += 1
+
+    protected final inline def nullsEqual(g: Int, v: Vec, i: Int)(
+        inline same: => Boolean
+    ): Boolean =
+      val gn = nulls != null && nulls(g)
+      val vn = v.isNull(i)
+      if gn || vn then
+        gn && vn
+      else
+        same
+
+    protected final def resultNulls(n: Int): Array[Boolean] =
+      if nulls == null then
+        null
+      else
+        java.util.Arrays.copyOf(nulls, n)
+
+  end KeyStore
+
+  object KeyStore:
+    def apply(t: PType): KeyStore =
+      t match
+        case PType.Int32 | PType.Date =>
+          IntStore(t)
+        case PType.Int64 | PType.Timestamp =>
+          LongStore(t)
+        case PType.Float64 =>
+          DoubleStore()
+        case PType.Str =>
+          StrStore()
+        case PType.Bool =>
+          BoolStore()
+        case _ =>
+          ObjStore(t)
+
+  /** Rebuild a vector in the canonical representation of a type */
+  private def canonical(v: Vec, t: PType): Vec =
+    val b = VecBuilder(t, v.size)
+    var i = 0
+    while i < v.size do
+      b.add(v.get(i))
+      i += 1
+    b.result()
+
+  final class IntStore(t: PType) extends KeyStore:
+    private var values                 = new Array[Int](16)
+    protected def capacity: Int        = values.length
+    protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
+    def normalize(v: Vec): Vec         =
+      v match
+        case x: IntVec =>
+          x
+        case other =>
+          canonical(other, t)
+
+    def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
+      val x = v.asInstanceOf[IntVec].values
+      var i = 0
+      while i < n do
+        mixInto(h, i, x(i))
+        i += 1
+
+    def equalsAt(g: Int, v: Vec, i: Int): Boolean =
+      nullsEqual(g, v, i)(values(g) == v.asInstanceOf[IntVec].values(i))
+
+    protected def addValue(g: Int, v: Vec, i: Int): Unit =
+      values(g) = v.asInstanceOf[IntVec].values(i)
+
+    def result(n: Int): Vec = IntVec(t, java.util.Arrays.copyOf(values, n), resultNulls(n))
+
+  final class LongStore(t: PType) extends KeyStore:
+    private var values                 = new Array[Long](16)
+    protected def capacity: Int        = values.length
+    protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
+    def normalize(v: Vec): Vec         =
+      v match
+        case x: LongVec if x.ptype == t =>
+          x
+        case other =>
+          canonical(other, t)
+
+    def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
+      val x = v.asInstanceOf[LongVec].values
+      var i = 0
+      while i < n do
+        mixInto(h, i, hashLong(x(i)))
+        i += 1
+
+    def equalsAt(g: Int, v: Vec, i: Int): Boolean =
+      nullsEqual(g, v, i)(values(g) == v.asInstanceOf[LongVec].values(i))
+
+    protected def addValue(g: Int, v: Vec, i: Int): Unit =
+      values(g) = v.asInstanceOf[LongVec].values(i)
+
+    def result(n: Int): Vec = LongVec(t, java.util.Arrays.copyOf(values, n), resultNulls(n))
+
+  /** Doubles are equal when their bits are (as java.lang.Double.equals) */
+  final class DoubleStore extends KeyStore:
+    private var values                 = new Array[Double](16)
+    protected def capacity: Int        = values.length
+    protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
+    def normalize(v: Vec): Vec         =
+      v match
+        case x: DoubleVec =>
+          x
+        case other =>
+          canonical(other, PType.Float64)
+
+    def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
+      val x = v.asInstanceOf[DoubleVec].values
+      var i = 0
+      while i < n do
+        mixInto(h, i, hashLong(java.lang.Double.doubleToLongBits(x(i))))
+        i += 1
+
+    def equalsAt(g: Int, v: Vec, i: Int): Boolean =
+      nullsEqual(g, v, i)(
+        java.lang.Double.doubleToLongBits(values(g)) ==
+          java.lang.Double.doubleToLongBits(v.asInstanceOf[DoubleVec].values(i))
+      )
+
+    protected def addValue(g: Int, v: Vec, i: Int): Unit =
+      values(g) = v.asInstanceOf[DoubleVec].values(i)
+
+    def result(n: Int): Vec = DoubleVec(java.util.Arrays.copyOf(values, n), resultNulls(n))
+
+  final class StrStore extends KeyStore:
+    private var values                 = new Array[String](16)
+    protected def capacity: Int        = values.length
+    protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
+    def normalize(v: Vec): Vec         =
+      v match
+        case x: StrVec =>
+          x
+        case other =>
+          canonical(other, PType.Str)
+
+    def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
+      val x = v.asInstanceOf[StrVec].values
+      var i = 0
+      while i < n do
+        val s = x(i)
+        if s != null then
+          mixInto(h, i, s.hashCode)
+        i += 1
+
+    def equalsAt(g: Int, v: Vec, i: Int): Boolean =
+      nullsEqual(g, v, i)(values(g) == v.asInstanceOf[StrVec].values(i))
+
+    protected def addValue(g: Int, v: Vec, i: Int): Unit =
+      values(g) = v.asInstanceOf[StrVec].values(i)
+
+    def result(n: Int): Vec = StrVec(java.util.Arrays.copyOf(values, n), resultNulls(n))
+
+  final class BoolStore extends KeyStore:
+    private var values                 = new Array[Boolean](16)
+    protected def capacity: Int        = values.length
+    protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
+    def normalize(v: Vec): Vec         =
+      v match
+        case x: BoolVec =>
+          x
+        case other =>
+          canonical(other, PType.Bool)
+
+    def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
+      val x = v.asInstanceOf[BoolVec].values
+      var i = 0
+      while i < n do
+        mixInto(
+          h,
+          i,
+          if x(i) then
+            1231
+          else
+            1237
+        )
+        i += 1
+
+    def equalsAt(g: Int, v: Vec, i: Int): Boolean =
+      nullsEqual(g, v, i)(values(g) == v.asInstanceOf[BoolVec].values(i))
+
+    protected def addValue(g: Int, v: Vec, i: Int): Unit =
+      values(g) = v.asInstanceOf[BoolVec].values(i)
+
+    def result(n: Int): Vec = BoolVec(java.util.Arrays.copyOf(values, n), resultNulls(n))
+
+  /** Any other type, through boxed engine values and their equals / hashCode */
+  final class ObjStore(t: PType) extends KeyStore:
+    private var values                 = new Array[AnyRef](16)
+    protected def capacity: Int        = values.length
+    protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
+    def normalize(v: Vec): Vec         = v
+    def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
+      var i = 0
+      while i < n do
+        val x = v.get(i)
+        if x != null then
+          mixInto(h, i, x.hashCode)
+        i += 1
+
+    def equalsAt(g: Int, v: Vec, i: Int): Boolean =
+      nullsEqual(g, v, i)(java.util.Objects.equals(values(g), v.get(i)))
+
+    protected def addValue(g: Int, v: Vec, i: Int): Unit = values(g) = v.get(i).asInstanceOf[AnyRef]
+    def result(n: Int): Vec                              =
+      val b = VecBuilder(t, n)
+      var i = 0
+      while i < n do
+        if nulls != null && nulls(i) then
+          b.addNull()
+        else
+          b.add(values(i))
+        i += 1
+      b.result()
 
 end GroupTable
 
