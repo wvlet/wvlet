@@ -125,6 +125,7 @@ pipelines are in [references/models.md](references/models.md).
 | `wvlet run -f q.wv` / `wvlet run "<query>"` | Run on DuckDB, or on `--profile <name>` |
 | `wvlet to_wvlet "<sql>"` | Convert SQL to Wvlet |
 | `wvlet build [-s m+] [--dry-run]` | Build materialized models in dependency order |
+| `wvlet skill [syntax\|models\|testing\|cli]` | Print this skill as shipped with the installed CLI |
 | `wv` | Interactive REPL; `wv -c "<query>"` runs one query |
 
 Engines, profiles, flows, and installation are in [references/cli.md](references/cli.md).

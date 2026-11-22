@@ -23,7 +23,10 @@ In Claude Code:
 /plugin install wvlet@wvlet
 ```
 
-Other agents can read the same Markdown files from `plugins/wvlet/skills/wvlet/` (`SKILL.md` and `references/`), or copy that folder into the agent's skills directory.
+Every CLI (npm, Homebrew, native) also embeds the skill of its own version, so agents without plugin support, or offline, read the guide that matches the installed compiler:
+
+- `wvlet skill` prints `SKILL.md`; `wvlet skill syntax` (or `models`, `testing`, `cli`) prints a reference; `wvlet skill --list` lists the files.
+- `wvlet skill --install .claude/skills` writes the skill to `.claude/skills/wvlet/` (use `~/.claude/skills` for every project, or another agent's skills folder).
 
 ## When should I choose Wvlet?
 

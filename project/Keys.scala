@@ -9,6 +9,11 @@ object WvletBuildKeys:
   lazy val stdlibGen = taskKey[Seq[File]]("Generate stdlib.scala from wvlet-stdlib .wv files")
 
   @transient
+  lazy val skillGen = taskKey[Seq[File]](
+    "Generate BundledSkill.scala from the AI-agent skill in plugins/wvlet/skills/wvlet"
+  )
+
+  @transient
   lazy val sampleQueryGen = taskKey[Seq[File]]("Generate SampleQuery.scala for the playground")
 
   @transient

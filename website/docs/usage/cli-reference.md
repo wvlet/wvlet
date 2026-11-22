@@ -94,6 +94,17 @@ wvlet catalog import --profile production
 wvlet catalog import --profile production --schema sales
 ```
 
+### `wvlet skill`
+
+Print the AI-agent skill embedded in this wvlet version, so coding agents read syntax that matches the installed compiler. See [Wvlet for AI Agents](../for-ai-agents.md).
+
+```bash
+wvlet skill                          # SKILL.md
+wvlet skill syntax                   # references/syntax.md (also models, testing, cli)
+wvlet skill --list                   # list the files
+wvlet skill --install .claude/skills # write the skill to .claude/skills/wvlet/
+```
+
 ### `wvlet run`
 
 Run Wvlet queries and display results.
