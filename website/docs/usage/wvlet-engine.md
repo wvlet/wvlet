@@ -14,7 +14,8 @@ The engine covers queries over files and registered tables (filters, projections
 including ASOF joins, aggregations, window functions, subqueries, `pivot`, `unnest`, lambdas,
 `show` commands, and TPC-H). Features it doesn't support yet report an error: SQL DDL
 (`create table`, `drop`), `execute`, `append to`, `delete`, `save to` a file, flows, table
-functions such as `read_csv(...)`, and some engine-specific functions.
+functions such as `read_csv(...)`, and some engine-specific functions. `unpivot` and map values
+run but can return results that differ from DuckDB.
 :::
 
 ## Usage
