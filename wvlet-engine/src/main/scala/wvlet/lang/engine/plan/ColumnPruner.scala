@@ -142,6 +142,30 @@ object ColumnPruner:
       case u: UnionAllOp =>
         identity(UnionAllOp(u.inputs.map(i => prune(i, all(i))._1), u.schema))
 
+      case w: WindowOp =>
+        // Output: the input columns, then one column per call (all kept)
+        val width = w.child.schema.size
+        val need  = mutable.BitSet(required.filter(_ < width)*)
+        w.calls
+          .foreach { c =>
+            c.args.foreach(VExprs.collectRefs(_, need))
+            c.partitionBy.foreach(VExprs.collectRefs(_, need))
+            c.orderBy.foreach(k => VExprs.collectRefs(k.expr, need))
+          }
+        val (child, kept) = prune(w.child, sorted(need))
+        val m             = mapping(kept, width)
+        val calls         = w
+          .calls
+          .map(c =>
+            c.copy(
+              args = c.args.map(VExprs.remap(_, m)),
+              partitionBy = c.partitionBy.map(VExprs.remap(_, m)),
+              orderBy = c.orderBy.map(k => k.copy(expr = VExprs.remap(k.expr, m)))
+            )
+          )
+        val schema = Schema(kept.map(w.child.schema(_)).toIndexedSeq ++ w.schema.fields.drop(width))
+        (WindowOp(child, calls, schema), kept ++ (width until w.schema.size))
+
       case j: HashJoinOp =>
         pruneHashJoin(j, required)
 

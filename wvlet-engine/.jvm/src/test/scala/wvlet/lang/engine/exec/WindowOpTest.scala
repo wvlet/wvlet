@@ -92,4 +92,14 @@ class WindowOpTest extends UniTest:
     actual shouldBe expected
   }
 
+  test("should partition rows in parallel as GroupTable.partitionRows does") {
+    val n        = 100000
+    val keys     = LongVec(PType.Int64, Array.tabulate(n)(i => (i % 40000).toLong), null)
+    val h        = GroupTable(IndexedSeq(PType.Int64)).keyHashes(Array(keys), n)
+    val expected = GroupTable.partitionRows(h, n, 16).map(_.toSeq).toSeq
+    WindowOp.partitionRows(h, n, 16, runner).map(_.toSeq).toSeq shouldBe expected
+    WindowOp.partitionRows(h, 10, 16, runner).map(_.toSeq).toSeq shouldBe
+      GroupTable.partitionRows(h, 10, 16).map(_.toSeq).toSeq
+  }
+
 end WindowOpTest

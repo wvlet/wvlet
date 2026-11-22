@@ -102,6 +102,17 @@ class EngineScanPushdownTest extends UniTest:
     plan.contains("l_comment") shouldBe false
   }
 
+  test("should read only the columns window functions and the query above them reference") {
+    val plan = explain(
+      """from 'spec/tpch/data/lineitem.parquet'
+        |select l_orderkey, r = rank() over (partition by l_orderkey order by l_extendedprice)"""
+        .stripMargin
+    )
+    debug(plan)
+    plan shouldContain "columns=l_orderkey,l_extendedprice"
+    plan.contains("l_comment") shouldBe false
+  }
+
   test("should push comparisons into the Parquet scan") {
     val plan = explain(s"from '${rowGroupFile}' where id >= 950 select id")
     debug(plan)
