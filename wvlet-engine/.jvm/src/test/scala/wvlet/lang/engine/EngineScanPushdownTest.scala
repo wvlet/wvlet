@@ -183,6 +183,23 @@ class EngineScanPushdownTest extends UniTest:
       rows(s"from ${li} where l_orderkey <= 3 select distinct l_returnflag").size
   }
 
+  test("should cross join a scan with a one-row aggregate in parallel parts") {
+    val li = "'spec/tpch/data/lineitem.parquet'"
+    val q  =
+      s"""from ${li}, { from ${li} select m = l_quantity.max } as mx
+        |where l_quantity * 2 > m
+        |select l_orderkey""".stripMargin
+    val plan = explain(q)
+    debug(plan)
+    // The cross join runs inside the scan's parts, over the aggregate computed once
+    """Morsel[^\n]*\n(\s+[^\n]*\n)*?\s+NestedLoopJoin\[Cross\]"""
+      .r
+      .findFirstIn(plan)
+      .isDefined shouldBe true
+    plan shouldContain "CrossInput"
+    rows(q).size shouldBe rows(s"from ${li} where l_quantity * 2 > 50 select l_orderkey").size
+  }
+
   test("should push comparisons into the Parquet scan") {
     val plan = explain(s"from '${rowGroupFile}' where id >= 950 select id")
     debug(plan)
