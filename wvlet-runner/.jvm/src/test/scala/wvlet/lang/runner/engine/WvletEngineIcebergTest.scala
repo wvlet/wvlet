@@ -135,15 +135,16 @@ class WvletEngineIcebergTest extends UniTest:
             |test _.rows should be [[2, 'US', 20], [4, 'US', 40]]""".stripMargin)
   }
 
-  test("refuse save to an existing Iceberg table, keeping its files") {
+  test("replace an existing Iceberg table with save to, keeping its old files") {
     check("""from [[1]] as t(id)
             |save to 'out/t4' with format: 'iceberg'""".stripMargin)
     val before = filesUnder("out/t4")
-    val e      = failure("""from [[2]] as t(id)
-                       |save to 'out/t4' with format: 'iceberg'""".stripMargin)
-    e.getMessage shouldContain "already an Iceberg table"
-    e.getMessage shouldContain "append to"
-    filesUnder("out/t4") shouldBe before
+    check("""from [[2]] as t(id)
+            |save to 'out/t4' with format: 'iceberg'""".stripMargin)
+    check("""from 'out/t4'
+            |test _.rows should be [[2]]""".stripMargin)
+    // Older snapshots still reference their files
+    before.toSet.subsetOf(filesUnder("out/t4").toSet) shouldBe true
   }
 
   test("refuse an Iceberg table in a folder that holds other files") {
