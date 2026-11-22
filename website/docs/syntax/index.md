@@ -232,7 +232,7 @@ Native statements for schemas, tables, and views — see
 | `create schema s [in 'uri'] [if not exists] [with k: v]` / `drop schema s [if exists] [with cascade: true]` | Schema lifecycle, locations, and engine options |
 | `create table t` / `... if not exists` / `create or replace table t` | SQL-equivalent table creation from a declaration |
 | `drop table t [if exists]` / `truncate t` | Remove a table / delete all rows |
-| `reshape t { add c: type / rename a as b / exclude c }` | Evolve a table's columns |
+| `reshape t { add c: type / rename a as b / exclude c / set c not null / set c = value }` | Evolve a table's columns |
 | `rename table a to b` / `rename schema a to b` | Rename catalog objects |
 | `drop view v [if exists]` | Remove a view |
 | `use 'file.duckdb' as name` | Attach an external database under an alias |

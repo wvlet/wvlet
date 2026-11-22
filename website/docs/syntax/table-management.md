@@ -319,6 +319,18 @@ reshape users {
 
 Each operation is retry-safe: `add` is a no-op when the column already exists with that type,
 `exclude` when it is already gone, and `cast` when the column already has the target type.
+
+`set` and `drop` change a column's `not null` constraint and default value, matching the column
+declaration syntax (`active: boolean not null = true`):
+
+```wvlet
+reshape users {
+  set email not null      -- ALTER COLUMN email SET NOT NULL
+  set active = true       -- ALTER COLUMN active SET DEFAULT true
+  drop email not null     -- ALTER COLUMN email DROP NOT NULL
+  drop active default     -- ALTER COLUMN active DROP DEFAULT
+}
+```
 When a table declaration and the database schema have drifted apart,
 [`wvlet catalog diff`](../usage/catalog-import.md#detecting-schema-drift) generates a
 ready-to-run `reshape` block for the migration.
