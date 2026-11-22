@@ -528,13 +528,17 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
 
   private def renameTable(name: String, table: TableSource, to: String): TableSource =
     table match
+      case _ if catalog.find(to).isDefined =>
+        throw StatusCode.TABLE_ALREADY_EXISTS.newException(s"Table ${to} already exists")
       case _: ManagedTable =>
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(s"Renaming the warehouse table ${name} is not supported yet")
+        // The spec property moves with the table's metadata
+        val spec    = specOf(name)
+        val renamed = wh.rename(name, to)
+        catalog.drop(name)
+        specs.synchronized(specs.remove(name.toLowerCase))
+        setSpec(to, spec)
+        register(renamed)
       case _ =>
-        if catalog.find(to).isDefined then
-          throw StatusCode.TABLE_ALREADY_EXISTS.newException(s"Table ${to} already exists")
         val spec = specOf(name)
         catalog.drop(name)
         specs.synchronized(specs.remove(name.toLowerCase))
