@@ -13,8 +13,19 @@
  */
 package wvlet.lang.runner.engine
 
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.runner.PlanExecutor
+import wvlet.lang.runner.connector.SqlConnectorProvider
+import wvlet.uni.log.LogLevel
 import wvlet.uni.test.UniTest
 
 import java.nio.file.Files
@@ -45,6 +56,33 @@ class WvletEngineSessionTest extends UniTest:
     val session = WvletEngineSession(profile.defaultEngine, ".")
     session.tableNames shouldBe Seq("nations")
     session.catalog.getTable("main", "nations").columns.size shouldBe 4
+  }
+
+  test("reject writes to tables backed by files") {
+    val config = ConnectorConfig(
+      name = "wvlet",
+      `type` = "wvlet",
+      properties = Map("dataDir" -> "data")
+    )
+    val profile  = Profile("test", List(config))
+    val workEnv  = WorkEnv("spec/tpch", logLevel = LogLevel.WARN)
+    val compiler = Compiler(
+      CompilerOptions(sourceFolders = Nil, workEnv = workEnv, dbType = DBType.Wvlet)
+    )
+    val unit = CompilationUnit.fromWvletString("""from nation
+                                                 |where n_nationkey = 0
+                                                 |delete""".stripMargin)
+    val result = compiler.compileSingleUnit(unit)
+    result.reportAllErrors
+    val ctx      = result.context.withCompilationUnit(unit).newContext(Symbol.NoSymbol)
+    val provider = SqlConnectorProvider(profile)
+    try
+      val e = intercept[WvletLangException] {
+        PlanExecutor(provider, profile, workEnv).execute(ExecutionPlanner.plan(unit, ctx), ctx)
+      }
+      e.getMessage shouldContain "read-only"
+    finally
+      provider.close()
   }
 
   test("derive table names from data file names") {

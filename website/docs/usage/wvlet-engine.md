@@ -10,11 +10,13 @@ supports (JVM, Node.js, and the native binary), reading Parquet, Iceberg, JSON, 
 through pure-Scala readers, so it also works where DuckDB is unavailable.
 
 :::warning Preview
-The engine covers queries over files and registered tables (filters, projections, joins,
-aggregations, window functions, subqueries, and TPC-H). Features it doesn't support yet report an
-error: SQL DDL (`create table`, `drop`), `execute`, `append to`, `delete`, `save to` a file,
-`pivot` / `unpivot`, `unnest`, ASOF joins, lambdas, `show` commands, and some engine-specific
-functions.
+The engine covers queries over files and registered tables (filters, projections, joins
+including ASOF joins, aggregations, window functions, subqueries, `pivot`, `unnest`, lambdas,
+`show` commands, and TPC-H), plus `save to`, `append to`, and `delete` on in-memory tables.
+Features it doesn't support yet report an error: SQL DDL (`create table`, `drop`), `execute`,
+`update`, writes to files (`save to` / `append to` a file path), flows, table functions such as
+`read_csv(...)`, and some engine-specific functions. `unpivot` and map values run but can return
+results that differ from DuckDB.
 :::
 
 ## Usage
@@ -78,16 +80,36 @@ JSON and CSV tables are read only when a query scans them.
 
 ## Saving results
 
-`save to <table>` keeps a query result as an in-memory table for the rest of the session:
+`save to <table>` keeps a query result as an in-memory table for the rest of the session, and
+`append to` and `delete` change it:
 
 ```wvlet
 from 'data/orders.parquet'
 where o_orderstatus = 'F'
 save to finished_orders
 
+-- Add rows; `append to` a table that doesn't exist creates it
+from 'data/orders_today.parquet'
+where o_orderstatus = 'F'
+append to finished_orders
+
+-- Insert-or-update by key: rows with a matching o_orderkey update the existing rows
+append to finished_orders on o_orderkey {
+  from 'data/order_fixes.parquet'
+}
+
+-- Remove rows
 from finished_orders
-agg _.count
+where o_totalprice < 100
+delete
 ```
+
+Appended rows map to the table's columns by position, or to the columns listed in
+`append to t (c1, c2)` (the others become NULL), and are cast to the column types. A keyed
+`append to t on k` matches columns by name, as SQL `MERGE` does: matched rows get the new values
+of the query's columns, and rows with a NULL key always insert. Tables
+registered from files (`dataDir`, `tables`) are read-only: writing to them reports an error
+instead of changing the files.
 
 ## Mixing with other connectors
 

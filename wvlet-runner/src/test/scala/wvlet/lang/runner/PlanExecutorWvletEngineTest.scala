@@ -99,6 +99,107 @@ class PlanExecutorWvletEngineTest extends UniTest:
     result.getError shouldBe None
   }
 
+  test("append rows to a saved table, casting to its column types") {
+    val result = run("""from [[1, 'a']] as t(id, name)
+                       |save to append_t
+                       |
+                       |from [[2.0, 'b']] as t(id, name)
+                       |append to append_t
+                       |
+                       |from append_t
+                       |test _.rows should be [[1, 'a'], [2, 'b']]""".stripMargin)
+    result.getError shouldBe None
+  }
+
+  test("append to the listed columns, filling the others with NULL") {
+    val result = run("""from [[1, 'a', 10]] as t(id, name, score)
+                       |save to append_cols
+                       |
+                       |append to append_cols (score, id) {
+                       |  from [[20, 2]] as t(s, i)
+                       |}
+                       |
+                       |from append_cols
+                       |where name is null
+                       |test _.rows should be [[2, null, 20]]""".stripMargin)
+    result.getError shouldBe None
+  }
+
+  test("update matching rows in place with a keyed append") {
+    val result = run(
+      """from [[1, 'alice'], [2, 'bob']] as t(id, name)
+                       |save to upsert_t
+                       |
+                       |append to upsert_t on id {
+                       |  from [[2, 'bobby'], [3, 'carol']] as t(id, name)
+                       |}
+                       |
+                       |from upsert_t
+                       |test _.rows should be [[1, 'alice'], [2, 'bobby'], [3, 'carol']]"""
+        .stripMargin
+    )
+    result.getError shouldBe None
+  }
+
+  test("match keyed append columns by name, keeping unmapped columns") {
+    val result = run(
+      """from [[1, 'alice', 10], [2, 'bob', 20]] as t(id, name, score)
+                       |save to upsert_named
+                       |
+                       |append to upsert_named on id {
+                       |  from [[25, 2], [30, 3]] as t(score, id)
+                       |}
+                       |
+                       |from upsert_named
+                       |test _.rows should be [[1, 'alice', 10], [2, 'bob', 25], [3, null, 30]]"""
+        .stripMargin
+    )
+    result.getError shouldBe None
+  }
+
+  test("insert keyed rows with NULL or duplicate unmatched keys") {
+    val result = run(
+      """from [[null, 'x']] as t(id, name)
+                       |save to upsert_nulls
+                       |
+                       |append to upsert_nulls on id {
+                       |  from [[null, 'y'], [5, 'a'], [5, 'b']] as t(id, name)
+                       |}
+                       |
+                       |from upsert_nulls
+                       |test _.rows should be [[null, 'x'], [null, 'y'], [5, 'a'], [5, 'b']]"""
+        .stripMargin
+    )
+    result.getError shouldBe None
+  }
+
+  test("match append column lists case-insensitively") {
+    val result = run("""from [[1, 'a']] as t(id, name)
+                       |save to append_case
+                       |
+                       |append to append_case (ID) {
+                       |  from [[2]] as t(x)
+                       |}
+                       |
+                       |from append_case
+                       |test _.size should be 2""".stripMargin)
+    result.getError shouldBe None
+  }
+
+  test("delete only rows whose condition is true") {
+    val result = run("""from [[1, 10], [2, null], [3, 30]] as t(id, v)
+                       |save to delete_t
+                       |
+                       |from delete_t
+                       |where v > 15
+                       |delete
+                       |
+                       |from delete_t
+                       |order by id
+                       |test _.rows should be [[1, 10], [2, null]]""".stripMargin)
+    result.getError shouldBe None
+  }
+
   test("reject SQL statements the engine can't run") {
     val e = intercept[WvletLangException] {
       run("create schema engine_s if not exists")
