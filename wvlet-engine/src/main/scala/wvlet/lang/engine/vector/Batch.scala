@@ -52,7 +52,16 @@ final class Batch(val columns: Array[Vec], val size: Int):
     if count == size then
       this
     else
-      Batch(columns.map(_.filter(mask, count)), count)
+      // Positions are computed once and shared by every column
+      val idx = new Array[Int](count)
+      var j   = 0
+      i = 0
+      while i < size do
+        if mask(i) then
+          idx(j) = i
+          j += 1
+        i += 1
+      gather(idx, count)
 
   def gather(idx: Array[Int], n: Int): Batch = Batch(columns.map(_.gather(idx, n)), n)
 
