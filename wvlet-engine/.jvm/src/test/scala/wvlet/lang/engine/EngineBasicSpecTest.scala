@@ -40,13 +40,12 @@ abstract class EngineBasicSpecBase(optimizer: OptimizerOptions) extends UniTest:
 
 end EngineBasicSpecBase
 
-class EngineBasicSpecTest extends EngineBasicSpecBase(OptimizerOptions())
+/** spec/basic through the engine's runtime plan (the default), checked by the plan validator */
+class EngineBasicSpecTest extends EngineBasicSpecBase(OptimizerOptions().withValidatePlans(true))
 
-/** spec/basic through the engine's runtime plan, checked by the plan validator */
-class EngineBasicSpecRuntimeTest
-    extends EngineBasicSpecBase(
-      OptimizerOptions().withPlanner(PlannerMode.Runtime).withValidatePlans(true)
-    )
+/** spec/basic through the recursive planner alone, until the runtime plan covers every relation */
+class EngineBasicSpecLegacyTest
+    extends EngineBasicSpecBase(OptimizerOptions().withPlanner(PlannerMode.Legacy))
 
 object EngineBasicSpecTest:
   /**
