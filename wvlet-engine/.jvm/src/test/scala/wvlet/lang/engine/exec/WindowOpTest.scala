@@ -363,6 +363,158 @@ class WindowOpTest extends UniTest:
       sameVec(a.columns(c), e.columns(c))
   }
 
+  /** Evaluates `cs` over one batch, folding frames incrementally or recomputing each frame */
+  private def evalWindows(in: Schema, cols: Array[Vec], cs: Seq[WindowCall], incremental: Boolean) =
+    val op = WindowOp(
+      BatchesOp(in, Seq(Batch(cols, cols(0).size))),
+      cs.toIndexedSeq,
+      Schema(in.fields ++ cs.indices.map(i => Field(s"w${i}", cs(i).ptype))),
+      runningFrames = incremental
+    )
+    try op.drain()
+    finally op.close()
+
+  private def sameBatches(actual: Seq[Batch], expected: Seq[Batch]): Unit =
+    actual.size shouldBe expected.size
+    for
+      (a, e) <- actual.zip(expected)
+      c      <- a.columns.indices
+    do
+      sameVec(a.columns(c), e.columns(c))
+
+  test("should add and remove rows of sliding frames with the per-frame results") {
+    val rnd = scala.util.Random(11)
+    val n   = 4000
+    val dec = PType.Decimal(18, 2)
+    // Partition 3 holds decimals near the Long limit, so it recomputes each frame
+    val part = Array.tabulate(n)(i => (i % 4).toLong)
+    val in   = Schema(
+      IndexedSeq(
+        Field("p", PType.Int64),
+        Field("o", PType.Int64),
+        Field("x", PType.Int64),
+        Field("i", PType.Int32),
+        Field("m", dec),
+        Field("b", PType.Bool)
+      )
+    )
+    val cols = Array[Vec](
+      LongVec(PType.Int64, part, null),
+      LongVec(PType.Int64, Array.fill(n)(rnd.nextInt(50).toLong), null),
+      LongVec(PType.Int64, Array.fill(n)(rnd.nextLong() >> 20), Array.fill(n)(rnd.nextInt(5) == 0)),
+      IntVec(PType.Int32, Array.fill(n)(rnd.nextInt()), Array.fill(n)(rnd.nextInt(7) == 0)),
+      Vec.fromValues(
+        dec,
+        (0 until n).map(i =>
+          if i % 9 == 0 then
+            null
+          else if part(i) == 3 then
+            java.math.BigDecimal.valueOf(4000000000000000000L + rnd.nextInt(1000), 2)
+          else
+            java.math.BigDecimal.valueOf(rnd.nextInt(100000) - 50000, 2)
+        )
+      ),
+      BoolVec(Array.fill(n)(rnd.nextInt(3) != 0), Array.fill(n)(rnd.nextInt(8) == 0))
+    )
+    def col(i: Int)                     = ColRef(i, in.fields(i).ptype, in.fields(i).name)
+    val (pr, or, xr, ir, mr, br)        = (col(0), col(1), col(2), col(3), col(4), col(5))
+    val aggs: Seq[(String, Seq[VExpr])] = Seq(
+      "count_star" -> Nil,
+      "count"      -> Nil,
+      "count"      -> Seq(xr),
+      "count_if"   -> Seq(br),
+      "countif"    -> Seq(br),
+      "sum"        -> Seq(xr),
+      "sum"        -> Seq(ir),
+      "sum"        -> Seq(mr),
+      "sum"        -> Seq(br),
+      "sum_if"     -> Seq(ir, br),
+      "sum_if"     -> Seq(mr, br)
+    )
+    val frames = Seq(
+      FrameSpec(true, Some(-1), Some(1)),
+      FrameSpec(true, Some(-5), Some(5)),
+      FrameSpec(true, Some(-200), Some(200)),
+      FrameSpec(true, Some(0), Some(0)),
+      FrameSpec(true, Some(-3), Some(-1)),
+      FrameSpec(true, Some(2), Some(6)),
+      // Empty frames: start after end, and bounds beyond a 1000-row partition
+      FrameSpec(true, Some(3), Some(1)),
+      FrameSpec(true, Some(-5000), Some(-2000)),
+      FrameSpec(true, Some(2000), Some(5000)),
+      FrameSpec(true, Some(-5000), Some(5000))
+    )
+    val ord = Seq(SortKey(or, ascending = true, nullsFirst = false))
+    val cs  =
+      for
+        (name, args) <- aggs
+        frame        <- frames
+      yield WindowCall(
+        name,
+        args,
+        Seq(pr),
+        ord,
+        Some(frame),
+        false,
+        WindowCall.resultType(name, args.map(_.ptype))
+      )
+    cs.foreach(c => WindowOp.isSlidingFrame(c) shouldBe true)
+    sameBatches(
+      evalWindows(in, cols, cs, incremental = true),
+      evalWindows(in, cols, cs, incremental = false)
+    )
+  }
+
+  test("should overflow sliding integer sums only where the per-frame fold does") {
+    val big                   = 6000000000000000000L
+    val in                    = Schema(IndexedSeq(Field("o", PType.Int64), Field("x", PType.Int64)))
+    val o                     = ColRef(0, PType.Int64, "o")
+    val x                     = ColRef(1, PType.Int64, "x")
+    def sum(frame: FrameSpec) = WindowCall(
+      "sum",
+      Seq(x),
+      Nil,
+      Seq(SortKey(o, ascending = true, nullsFirst = false)),
+      Some(frame),
+      false,
+      PType.Int64
+    )
+    val n = 100
+    // Alternating signs: the partition's absolute values overflow a Long, but no frame does
+    val alternating = Array[Vec](
+      LongVec(PType.Int64, Array.tabulate(n)(_.toLong), null),
+      LongVec(
+        PType.Int64,
+        Array.tabulate(n)(i =>
+          if i % 2 == 0 then
+            big
+          else
+            -big
+        ),
+        null
+      )
+    )
+    val pair = Seq(sum(FrameSpec(true, Some(-1), Some(0))), sum(FrameSpec(true, Some(0), Some(1))))
+    sameBatches(
+      evalWindows(in, alternating, pair, incremental = true),
+      evalWindows(in, alternating, pair, incremental = false)
+    )
+    // Two adjacent positive values overflow in both paths
+    val positive = Array[Vec](alternating(0), LongVec(PType.Int64, Array.fill(n)(big), null))
+    intercept[ArithmeticException] {
+      evalWindows(in, positive, pair, incremental = false)
+    }
+    intercept[ArithmeticException] {
+      evalWindows(in, positive, pair, incremental = true)
+    }
+    // One row per frame never overflows, in both paths
+    val single = Seq(sum(FrameSpec(true, Some(0), Some(0))))
+    sameBatches(
+      evalWindows(in, positive, single, incremental = true),
+      evalWindows(in, positive, single, incremental = false)
+    )
+  }
+
   test("should not fold sliding frames or collecting aggregates incrementally") {
     val x   = ColRef(0, PType.Int64, "x")
     val ord = Seq(SortKey(x, ascending = true, nullsFirst = false))
@@ -380,6 +532,14 @@ class WindowOpTest extends UniTest:
     WindowOp.isRunningFrame(win("string_agg", None)) shouldBe false
     WindowOp.isRunningFrame(win("median", None)) shouldBe false
     WindowOp.isRunningFrame(win("sum", None)) shouldBe true
+    // Add/remove is exact only for counts and Int64 / Decimal sums over bounded ROWS frames
+    val sliding = Some(FrameSpec(true, Some(-1), Some(1)))
+    WindowOp.isSlidingFrame(win("sum", sliding)) shouldBe true
+    WindowOp.isSlidingFrame(win("sum", sliding).copy(ptype = PType.Float64)) shouldBe false
+    WindowOp.isSlidingFrame(win("avg", sliding)) shouldBe false
+    WindowOp.isSlidingFrame(win("min", sliding)) shouldBe false
+    WindowOp.isSlidingFrame(win("sum", Some(FrameSpec(false, Some(-1), Some(1))))) shouldBe false
+    WindowOp.isSlidingFrame(win("sum", Some(FrameSpec(true, Some(0), None)))) shouldBe false
   }
 
 end WindowOpTest
