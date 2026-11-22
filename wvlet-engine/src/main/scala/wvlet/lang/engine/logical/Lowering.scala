@@ -14,6 +14,7 @@
 package wvlet.lang.engine.logical
 
 import wvlet.lang.engine.exec.*
+import wvlet.lang.engine.plan.JoinOrderOptimizer
 
 /**
   * Turns a [[LogicalPlan]] into physical operators: column ids become input positions. The physical
@@ -43,11 +44,24 @@ object Lowering:
         )
       case Limit(child, limit, offset) =>
         LimitOp(apply(child), limit, offset)
+      case Join(left, right, kind, lk, rk, residual, buildLeft) =>
+        val lpos = positions(left)
+        val rpos = positions(right)
+        JoinOrderOptimizer.joinOp(
+          apply(left),
+          apply(right),
+          kind,
+          lk.map(_.lower(lpos)),
+          rk.map(_.lower(rpos)),
+          residual.map(_.lower(positions(p))),
+          buildLeft,
+          p.schema
+        )
       case Legacy(op, _) =>
         op
 
   /** Column id -> position in the output of `p` (-1 for ids it doesn't output) */
-  private def positions(p: LogicalPlan): Array[Int] =
+  private[logical] def positions(p: LogicalPlan): Array[Int] =
     val out = p.output
     val pos = Array.fill(out.map(_.id.value).maxOption.getOrElse(-1) + 1)(-1)
     out.indices.foreach(i => pos(out(i).id.value) = i)

@@ -83,6 +83,85 @@ class EngineLogicalPlanTest extends UniTest:
         fail(s"Unexpected plan:\n${other.explain}")
   }
 
+  private def joins(p: LogicalPlan): Seq[LogicalPlan.Join] =
+    p match
+      case j: LogicalPlan.Join =>
+        j +: p.children.flatMap(joins)
+      case LogicalPlan.Legacy(_, _) =>
+        Nil
+      case _ =>
+        p.children.flatMap(joins)
+
+  test("bind an inner join tree with its filters to joins over scans") {
+    val p = logicalPlan("""from nation, region
+        |where n_regionkey = r_regionkey and r_name = 'ASIA'
+        |select n_name, r_name""".stripMargin)
+    debug(p.explain)
+    val js = joins(p)
+    js.size shouldBe 1
+    val j = js.head
+    j.kind shouldBe wvlet.lang.engine.exec.JoinKind.Inner
+    j.leftKeys.size shouldBe 1
+    // The single-input condition is pushed below the join
+    j.children
+      .collect { case f: LogicalPlan.Filter =>
+        f
+      }
+      .size shouldBe 1
+    // The keys read the inputs' columns by id
+    j.leftKeys.head.refs.subsetOf(j.left.output.map(_.id).toSet) shouldBe true
+    j.rightKeys.head.refs.subsetOf(j.right.output.map(_.id).toSet) shouldBe true
+    PlanValidator.violations(p) shouldBe Nil
+  }
+
+  test("bind a left join with a residual condition") {
+    val p = logicalPlan("""from customer
+        |left join orders on c_custkey = o_custkey and o_comment not like '%special%'
+        |select c_custkey, o_orderkey""".stripMargin)
+    debug(p.explain)
+    val js = joins(p)
+    js.size shouldBe 1
+    js.head.kind shouldBe wvlet.lang.engine.exec.JoinKind.Left
+    js.head.residual.isDefined shouldBe true
+    PlanValidator.violations(p) shouldBe Nil
+  }
+
+  test("bind the joins under an aggregation") {
+    withQuery("""from lineitem, orders
+        |where l_orderkey = o_orderkey and o_orderstatus = 'F'
+        |group by o_orderpriority
+        |select o_orderpriority, count(*)""".stripMargin) { q =>
+      engine.logicalPlan(q) match
+        case LogicalPlan.Legacy(_, _) =>
+        case other                    =>
+          fail(s"Unexpected plan:\n${other.explain}")
+      // The aggregation's input binds through the IR
+      def groupInput(r: Relation): Option[Relation] =
+        r match
+          case g: wvlet.lang.model.plan.GroupBy =>
+            Some(g.child)
+          case other =>
+            other
+              .children
+              .collectFirst { case c: Relation =>
+                c
+              }
+              .flatMap(groupInput)
+      val input = groupInput(q).getOrElse(fail(s"No GROUP BY in ${q}"))
+      joins(engine.logicalPlan(input)).size shouldBe 1
+    }
+  }
+
+  test("keep a join with a subquery condition as a legacy node over the joined inputs") {
+    val p = logicalPlan("""from nation, region
+        |where n_regionkey = r_regionkey
+        |  and n_nationkey in (from supplier select s_nationkey)
+        |select n_name""".stripMargin)
+    debug(p.explain)
+    p.explain shouldContain "Legacy["
+    PlanValidator.violations(p) shouldBe Nil
+  }
+
   test("order by a column outside the select list through a hidden select item") {
     val p = logicalPlan("from nation select n_name order by n_regionkey, n_name")
     p match

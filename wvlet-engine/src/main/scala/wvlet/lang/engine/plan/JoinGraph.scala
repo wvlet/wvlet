@@ -71,23 +71,41 @@ object JoinGraph:
       refs: Expression => Set[Int],
       push: (Operator, List[Expression]) => Operator,
       selectivity: (Operator, Expression) => Double
-  ): JoinGraph =
+  ): JoinGraph = build(leaves, identity, conds, refs, push, selectivity)._1
+
+  /**
+    * Build a join graph over leaves of any plan form whose operators (`op`) give the estimates.
+    * Returns the graph and the leaves with their single-input conditions pushed, in input order
+    */
+  def build[P](
+      leaves: List[P],
+      op: P => Operator,
+      conds: List[(Expression, Expression)],
+      refs: Expression => Set[Int],
+      push: (P, List[Expression]) => P,
+      selectivity: (Operator, Expression) => Double
+  ): (JoinGraph, IndexedSeq[P]) =
     val condRefs = conds.map((c, e) => (c, refs(e)))
-    val inputs   = leaves
+    // Push and estimate one input at a time, as the conditions bind (and may plan subqueries)
+    val pushed = leaves
       .indices
       .map { i =>
         val local = condRefs.collect {
           case (c, r) if r == Set(i) =>
             c
         }
-        val op =
+        val p =
           if local.isEmpty then
             leaves(i)
           else
             push(leaves(i), local)
-        JoinInput(
-          op,
-          CardinalityEstimator.rows(op) * local.map(c => selectivity(leaves(i), c)).product
+        val leaf = op(leaves(i))
+        (
+          p,
+          JoinInput(
+            op(p),
+            CardinalityEstimator.rows(op(p)) * local.map(selectivity(leaf, _)).product
+          )
         )
       }
     val edges = conds
@@ -102,8 +120,8 @@ object JoinGraph:
                 None
           JoinEdge(c, r, sides)
       }
-    JoinGraph(inputs, edges)
+    (JoinGraph(pushed.map(_._2), edges), pushed.map(_._1))
 
-  end apply
+  end build
 
 end JoinGraph

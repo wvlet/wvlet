@@ -910,7 +910,9 @@ class Planner(
   private def isUnnest(name: NameExpr): Boolean = name.leafName.equalsIgnoreCase("unnest")
 
   /** unnest(...) as a relation, with its alias */
-  private def unnestCall(r: Relation): Option[(TableFunctionCall, Option[AliasedRelation])] =
+  private[engine] def unnestCall(
+      r: Relation
+  ): Option[(TableFunctionCall, Option[AliasedRelation])] =
     r match
       case t: TableFunctionCall if isUnnest(t.name) =>
         Some((t, None))
@@ -1674,7 +1676,7 @@ class Planner(
         applyConjuncts(planRelation(child), conjuncts(f.filterExpr))
 
   /** Apply filter conjuncts, turning subqueries into joins where possible */
-  private def applyConjuncts(input: Operator, conds: List[Expression]): Operator =
+  private[engine] def applyConjuncts(input: Operator, conds: List[Expression]): Operator =
     val originalWidth = input.schema.size
     var op            = input
     val plain         = mutable.ArrayBuffer.empty[Expression]
@@ -1818,7 +1820,7 @@ class Planner(
           .NOT_IMPLEMENTED
           .newException(s"Unsupported correlated subquery shape: ${other.nodeName}")
 
-  private def bindsIn(e: Expression, schema: Schema): Boolean =
+  private[engine] def bindsIn(e: Expression, schema: Schema): Boolean =
     try
       Binder(Planner.nested(this), BindScope(schema)).bind(e)
       true
@@ -2246,7 +2248,7 @@ class Planner(
     * inputs, equalities between inputs become hash join keys, and inputs are joined greedily,
     * building on the smaller side
     */
-  private def planJoinTree(j: Join, filters: List[Expression]): Operator =
+  private[engine] def planJoinTree(j: Join, filters: List[Expression]): Operator =
     unnestCall(j.right) match
       case Some((call, alias)) =>
         // A lateral unnest over the left input: join ... unnest(left.column)
@@ -2280,31 +2282,77 @@ class Planner(
     end match
     if !isInnerJoin(j) then
       return applyConjuncts(planOuterJoin(j), filters)
+    innerJoinTree(j, filters, planRelation, operatorJoins)
+
+  end planJoinTree
+
+  /** Builds the planner's own join trees: operators */
+  private val operatorJoins: JoinPlanBuilder[Operator] =
+    new JoinPlanBuilder[Operator]:
+      override def op(p: Operator): Operator = p
+      override def join(
+          left: Operator,
+          right: Operator,
+          kind: JoinKind,
+          leftKeys: IndexedSeq[VExpr],
+          rightKeys: IndexedSeq[VExpr],
+          residual: Option[VExpr],
+          buildLeft: Boolean
+      ): Operator = OperatorTreeBuilder.join(
+        left,
+        right,
+        kind,
+        leftKeys,
+        rightKeys,
+        residual,
+        buildLeft
+      )
+
+      override def filter(p: Operator, cond: VExpr): Operator = OperatorTreeBuilder.filter(p, cond)
+
+      override def conjuncts(p: Operator, conds: List[Expression]): Operator = applyConjuncts(
+        p,
+        conds
+      )
+
+  /**
+    * Plan a tree of inner joins (without a lateral unnest on top) and filter conditions together:
+    * the leaves are planned with `leaf`, single-input conditions are pushed to their inputs,
+    * equalities between inputs become hash join keys, and [[JoinOrderOptimizer]] orders the joins
+    */
+  private[engine] def innerJoinTree[P](
+      j: Join,
+      filters: List[Expression],
+      leaf: Relation => P,
+      builder: JoinPlanBuilder[P]
+  ): P =
     val (leaves, joinConds) = flattenJoins(j)
-    val inputs              = leaves.map(planRelation)
+    val plans               = leaves.map(leaf)
+    val inputs              = plans.map(builder.op)
     val all                 = (joinConds ++ filters).filterNot(isTrueLiteral)
     // Conditions with subqueries are applied after joining, except for uncorrelated scalar
     // subqueries, which are constants (e.g., d_month_seq = (select ... from date_dim))
     val (withSubqueries, conds) = all
       .map(c => c -> withoutScalarSubqueries(c))
       .partition((_, e) => hasSubquery(e))
-    val subqueryConds = withSubqueries.map(_._1)
-    val graph         = JoinGraph(
-      inputs,
+    val subqueryConds   = withSubqueries.map(_._1)
+    val (graph, pushed) = JoinGraph.build(
+      plans,
+      builder.op,
       conds,
       // Which inputs a condition references
       refs = e => inputs.indices.filter(i => referencesInput(e, inputs, i)).toSet,
-      push = applyConjuncts,
+      push = builder.conjuncts,
       selectivity = selectivity
     )
-    var (current, remaining) = JoinOrderOptimizer(options, joinBinding).plan(graph)
+    var (current, remaining) = JoinOrderOptimizer(options, joinBinding).plan(graph, pushed, builder)
     if remaining.nonEmpty then
-      current = applyConjuncts(current, remaining)
+      current = builder.conjuncts(current, remaining)
     if subqueryConds.nonEmpty then
-      current = applyConjuncts(current, subqueryConds)
+      current = builder.conjuncts(current, subqueryConds)
     current
 
-  end planJoinTree
+  end innerJoinTree
 
   /** Binds join conditions for [[JoinOrderOptimizer]] */
   private val joinBinding: JoinBinding =
@@ -2377,22 +2425,34 @@ class Planner(
     e => Binder(this, BindScope(op.schema)).bind(e)
   )
 
+  /** The operator join kind of a join that is not part of an inner join tree */
+  private[engine] def joinKind(j: Join): JoinKind =
+    j.joinType match
+      case JoinType.LeftOuterJoin =>
+        JoinKind.Left
+      case JoinType.RightOuterJoin =>
+        JoinKind.Right
+      case JoinType.FullOuterJoin =>
+        JoinKind.Full
+      case JoinType.CrossJoin =>
+        JoinKind.Cross
+      case _ =>
+        JoinKind.Inner
+
+  /** Whether a join is planned by [[joinOn]]: not ASOF, USING, or NATURAL */
+  private[engine] def isJoinOn(j: Join): Boolean =
+    !j.asof && (
+      j.cond match
+        case _: JoinOnTheSameColumns | _: NaturalJoin =>
+          false
+        case _ =>
+          true
+    )
+
   private def planOuterJoin(j: Join): Operator =
     val left  = planRelation(j.left)
     val right = planRelation(j.right)
-    val kind  =
-      j.joinType match
-        case JoinType.LeftOuterJoin =>
-          JoinKind.Left
-        case JoinType.RightOuterJoin =>
-          JoinKind.Right
-        case JoinType.FullOuterJoin =>
-          JoinKind.Full
-        case JoinType.CrossJoin =>
-          JoinKind.Cross
-        case _ =>
-          JoinKind.Inner
-    val combined = left.schema ++ right.schema
+    val kind  = joinKind(j)
     if j.asof then
       return planAsOfJoin(j, left, right, kind)
     j.cond match
@@ -2402,17 +2462,39 @@ class Planner(
       case _: NaturalJoin =>
         val names = left.schema.names.filter(n => right.schema.names.exists(_.equalsIgnoreCase(n)))
         usingJoin(left, right, names.toList, kind)
+      case _ =>
+        joinOn(j, kind, left, right, operatorJoins)
+
+  end planOuterJoin
+
+  /**
+    * A join of planned inputs on its ON condition (or none): equalities between the inputs become
+    * hash join keys, and the other conditions a residual
+    */
+  private[engine] def joinOn[P](
+      j: Join,
+      kind: JoinKind,
+      left: P,
+      right: P,
+      builder: JoinTreeBuilder[P]
+  ): P =
+    val ls       = builder.op(left).schema
+    val rs       = builder.op(right).schema
+    val combined = ls ++ rs
+    j.cond match
       case NoJoinCriteria =>
-        NestedLoopJoinOp(
+        builder.join(
           left,
           right,
-          None,
           if kind == JoinKind.Inner then
             JoinKind.Cross
           else
             kind
           ,
-          combined
+          IndexedSeq.empty,
+          IndexedSeq.empty,
+          None,
+          buildLeft = false
         )
       case other =>
         val condExpr =
@@ -2424,23 +2506,27 @@ class Planner(
             case x =>
               throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported join condition: ${x}")
         val conds       = conjuncts(condExpr)
-        val (eqs, rest) = conds.partition(c => isEquiBetween(c, left.schema, right.schema))
+        val (eqs, rest) = conds.partition(c => isEquiBetween(c, ls, rs))
         val residual    = Option
           .when(rest.nonEmpty)(rest.reduce((a, b) => And(a, b, NoSpan)))
           .map(r => Binder(this, BindScope(combined)).bind(r))
         if eqs.isEmpty then
-          NestedLoopJoinOp(left, right, residual, kind, combined)
+          builder.join(left, right, kind, IndexedSeq.empty, IndexedSeq.empty, residual, false)
         else
-          val pairs    = eqs.map(c => equiSides(c, left.schema, right.schema))
-          val (lk, rk) = joinKeys(
-            Binder(this, BindScope(left.schema)),
-            Binder(this, BindScope(right.schema)),
-            pairs
+          val pairs    = eqs.map(c => equiSides(c, ls, rs))
+          val (lk, rk) = joinKeys(Binder(this, BindScope(ls)), Binder(this, BindScope(rs)), pairs)
+          builder.join(
+            left,
+            right,
+            kind,
+            lk,
+            rk,
+            residual,
+            buildLeft = swapsOuterBuild(kind, builder.op(left), builder.op(right))
           )
-          outerHashJoin(left, right, lk, rk, kind, residual, combined)
     end match
 
-  end planOuterJoin
+  end joinOn
 
   /**
     * An outer hash join, building on the smaller input: when the right (build) input is estimated
@@ -2456,26 +2542,27 @@ class Planner(
       kind: JoinKind,
       residual: Option[VExpr],
       combined: Schema
-  ): Operator =
-    val swapped =
-      kind match
-        case JoinKind.Left =>
-          Some(JoinKind.Right)
-        case JoinKind.Right =>
-          Some(JoinKind.Left)
-        case JoinKind.Full =>
-          Some(JoinKind.Full)
-        case _ =>
-          None
-    swapped match
-      case Some(k)
-          if swapBuild(CardinalityEstimator.rows(right), CardinalityEstimator.rows(left)) =>
-        JoinOrderOptimizer.swappedHashJoin(left, right, lk, rk, k, residual, combined)
-      case _ =>
-        HashJoinOp(left, right, lk, rk, kind, residual, combined)
-    end match
+  ): Operator = JoinOrderOptimizer.joinOp(
+    left,
+    right,
+    kind,
+    lk,
+    rk,
+    residual,
+    swapsOuterBuild(kind, left, right),
+    combined
+  )
 
-  end outerHashJoin
+  /**
+    * Whether an outer hash join builds on its left input, as the right (build) input is estimated
+    * to be much larger
+    */
+  private def swapsOuterBuild(kind: JoinKind, left: Operator, right: Operator): Boolean =
+    kind match
+      case JoinKind.Left | JoinKind.Right | JoinKind.Full =>
+        swapBuild(CardinalityEstimator.rows(right), CardinalityEstimator.rows(left))
+      case _ =>
+        false
 
   /** JOIN ... USING (cols): one output column per key (coalesced for outer joins) */
   private def usingJoin(
@@ -2624,6 +2711,11 @@ class Planner(
   end planAsOfJoin
 
 end Planner
+
+/** Builds join trees for the planner, with the planner's filter conditions (and subqueries) */
+private[engine] trait JoinPlanBuilder[P] extends JoinTreeBuilder[P]:
+  /** Apply filter conjuncts as `Planner.applyConjuncts` does */
+  def conjuncts(p: P, conds: List[Expression]): P
 
 object Planner:
   /** A planner for a subquery: shares the catalog, sources, and CTE definitions */
