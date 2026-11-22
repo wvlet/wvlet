@@ -86,13 +86,18 @@ Progress (sf=1, sum of per-query medians over q1–q22 without q16, DuckDB ≈ 0
 | Parallel scans, join probes, two-phase aggregation (#2210) | 2.1 s | 6.4x |
 | Parallel right / full joins, outer joins build on the smaller side (#2214; all 22 queries) | 2.0 s | 5.2x |
 | Partitioned join builds and grouped aggregation, swapped semi / anti joins (#2218) | 1.6 s | 4.4x |
-| Parallel sorts, top-N, and partitioned windows (no TPC-H sort reaches 64K rows) | unchanged | |
+| Parallel sorts, top-N, and partitioned windows (#2219; no TPC-H sort reaches 64K rows) | unchanged | |
+| Column pruning through windows, unboxed window outputs, parallel row partitioning (no TPC-H windows) | unchanged | |
 
 Parallel sorts and windows (A/B with the parallel paths disabled, sf=1 lineitem, 6M rows):
 top-N (limit 10) 2.29 s → 0.15 s, full sort 2.3 s → 1.1–1.3 s (bounded by the merge on one
-thread). A window partitioned by l_orderkey stayed in the noise (0.6–1.2 s vs 0.9–1.1 s): its
-sequential steps (materializing the input, building the output vector from boxed values)
-dominate.
+thread). A window partitioned by l_orderkey stayed in the noise (0.6–1.2 s vs 0.9–1.1 s). Profiling
+showed that its "materialize" step was really the scan: column pruning stopped below windows,
+so the window read all 16 lineitem columns. With pruning through windows, rank / row_number
+written to primitive arrays, a counting sort for partition rows, and parallel row
+partitioning (A/B against main, interleaved): `rank() over (partition by l_orderkey order by
+l_extendedprice)` 0.62–0.98 s → 0.13–0.14 s; row_number and sum over two other PARTITION BYs
+0.65–0.97 s → 0.31–0.33 s.
 
 ## Milestones (one PR each)
 
