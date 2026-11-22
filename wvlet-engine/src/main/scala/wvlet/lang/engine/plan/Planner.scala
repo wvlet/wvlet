@@ -347,7 +347,8 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
               t
             case _ =>
               val op = Parallelizer(ColumnPruner(planAliased(d)), TaskRunner.default)
-              val t  = MemTable(name, op.schema, op.drain())
+              debug(s"Materializing CTE ${name}:\n${op.explain()}")
+              val t = MemTable(name, op.schema, op.drain())
               cteTables(key) = (d, t)
               t
         ScanOp(table, table.schema, None, None)
@@ -2018,11 +2019,13 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
     val (leaves, joinConds) = flattenJoins(j)
     val inputs              = leaves.map(planRelation)
     val all                 = (joinConds ++ filters).filterNot(isTrueLiteral)
-    // Conditions with subqueries are applied after joining
-    val (subqueryConds, conds) = all.partition(hasSubquery)
+    // Conditions with subqueries are applied after joining, except for uncorrelated scalar
+    // subqueries, which are constants (e.g., d_month_seq = (select ... from date_dim))
+    val (subqueryConds, conds) = all.partition(c => hasSubquery(withoutScalarSubqueries(c)))
     // Which inputs a condition references
     def refs(c: Expression): Set[Int] =
-      inputs.indices.filter(i => referencesInput(c, inputs, i)).toSet
+      val e = withoutScalarSubqueries(c)
+      inputs.indices.filter(i => referencesInput(e, inputs, i)).toSet
     val condRefs = conds.map(c => (c, refs(c)))
     // Push single-input conditions down
     val pushed = inputs
@@ -2096,6 +2099,15 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   end planJoinTree
 
   private def isTrueLiteral(e: Expression): Boolean = e.isInstanceOf[TrueLiteral]
+
+  /**
+    * Replace uncorrelated scalar subqueries with NULL, for deciding which inputs a condition reads
+    * without evaluating the subqueries
+    */
+  private def withoutScalarSubqueries(e: Expression): Expression = e.transformExpression {
+    case s: SubQueryExpression if !isCorrelated(s.query, Schema.empty) =>
+      NullLiteral(s.span)
+  }
 
   private def hasSubquery(e: Expression): Boolean =
     var found = false
