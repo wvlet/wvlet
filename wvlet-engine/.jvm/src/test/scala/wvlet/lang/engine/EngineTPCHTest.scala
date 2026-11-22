@@ -46,3 +46,5 @@ class EngineTPCHTest extends UniTest:
             fail(s"${r.name}: ${r.message}")
         }
     }
+
+end EngineTPCHTest
