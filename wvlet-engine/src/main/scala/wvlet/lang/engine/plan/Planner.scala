@@ -18,6 +18,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.SqlGenerator
 import wvlet.lang.compiler.DBType
 import wvlet.lang.engine.catalog.*
@@ -52,12 +53,83 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
   private val cteTables    = mutable.HashMap.empty[String, (AliasedRelation, SharedResult)]
   // Uncorrelated scalar subqueries are evaluated once per query
   private val scalarResults = java.util.IdentityHashMap[Relation, VExpr]()
+  // Scalar subqueries prefetchScalarSubqueries has considered, so nested plans don't retry them
+  private val prefetchTried = java.util.IdentityHashMap[Relation, Unit]()
 
   /** Window function calls collected while binding a projection */
   private var windowCollector: Option[WindowCollector] = None
 
   /** Plan a relation, then drop columns no operator needs so that scans read fewer columns */
-  def plan(r: Relation): Operator = Parallelizer(ColumnPruner(planRelation(r)), TaskRunner.default)
+  def plan(r: Relation): Operator =
+    prefetchScalarSubqueries(r)
+    Parallelizer(ColumnPruner(planRelation(r)), TaskRunner.default)
+
+  /**
+    * Evaluate uncorrelated scalar subqueries that aggregate the same input (same FROM and WHERE,
+    * e.g. the count, avg, and avg of each TPC-DS q09 bucket) as one query, so that the input is
+    * read once for all of them. The results fill [[scalarResults]]
+    */
+  private def prefetchScalarSubqueries(r: Relation): Unit =
+    // CTE names are resolved by scope while planning, not here: skip inputs that may read one
+    val cteNames = mutable.Set.from(cteDefs.keys)
+    r.traverse { case w: WithQuery =>
+      w.queryDefs.foreach(d => cteNames += d.alias.leafName.toLowerCase)
+    }
+    def readsCTE(rel: Relation): Boolean =
+      var found = false
+      rel.traverse {
+        case t: TableRef if cteNames.contains(t.name.leafName.toLowerCase) =>
+          found = true
+        case t: TableScan if cteNames.contains(t.name.name.toLowerCase) =>
+          found = true
+      }
+      found
+    val subs = mutable.ArrayBuffer.empty[(String, Project)]
+    r.traverseExpressions { case s: SubQueryExpression =>
+      s.query match
+        case p: Project
+            if p.selectItems.size == 1 && Binder.containsAggregate(p.selectItems.head) &&
+              !scalarResults.containsKey(p) && !prefetchTried.containsKey(p) =>
+          prefetchTried.put(p, ())
+          if !readsCTE(p.child) then
+            try
+              subs += GenSQL.generateSQLFromRelation(p.child, addHeader = false).sql -> p
+            catch
+              case _: Exception =>
+          end if
+        case _ =>
+    }
+    subs
+      .groupBy(_._1)
+      .values
+      .map(_.map(_._2))
+      .filter(_.size > 1)
+      .foreach { ps =>
+        val merged = Project(ps.head.child, ps.map(_.selectItems.head).toList, NoSpan)
+        val op     =
+          try
+            Option.when(!isCorrelated(merged, Schema.empty))(Planner.nested(this).plan(merged))
+          catch
+            case e: Exception =>
+              // Each subquery is planned and evaluated on its own instead
+              debug(s"Could not merge scalar subqueries: ${e.getMessage}")
+              None
+        op.foreach { op =>
+          val b = Operator.materialize(op)
+          if b.size <= 1 then
+            ps.indices
+              .foreach { i =>
+                val v =
+                  if b.size == 0 then
+                    null
+                  else
+                    b.columns(i).get(0)
+                scalarResults.put(ps(i), Const(v, op.schema(i).ptype))
+              }
+        }
+      }
+
+  end prefetchScalarSubqueries
 
   // --- relations ------------------------------------------------------------------------
 
