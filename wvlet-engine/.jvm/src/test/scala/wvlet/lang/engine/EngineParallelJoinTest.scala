@@ -125,4 +125,24 @@ class EngineParallelJoinTest extends UniTest:
     check(s"from ${small} left join ${facts} on sk = k group by sk select sk, n = k.count")
   }
 
+  test("should probe the larger side of EXISTS and NOT EXISTS") {
+    val small = s"'${dir}/small.parquet'"
+    val semi  =
+      s"from ${small} where exists { from ${facts} where k = sk and v > 2 } select sk, label"
+    explainOf(semi) shouldContain "HashJoin[RightSemi]"
+    check(semi)
+    val anti =
+      s"from ${small} where not exists { from ${facts} where k = sk and v > 2 } select sk, label"
+    explainOf(anti) shouldContain "HashJoin[RightAnti]"
+    check(anti)
+  }
+
+  test("should probe the larger side of IN subqueries") {
+    val small = s"'${dir}/small.parquet'"
+    check(s"from ${small} where sk.in(from ${facts} where v = 1 select k) select sk")
+    check(
+      s"from ${small} where exists { from ${facts} where k = sk and v != sk % 7 } group by label select label, n = _.count"
+    )
+  }
+
 end EngineParallelJoinTest

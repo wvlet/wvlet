@@ -51,8 +51,7 @@ object Parallelizer:
       tail = tail.map(t => x => f(t(x)))
     )
 
-  private def isOuterBuild(kind: JoinKind): Boolean =
-    kind == JoinKind.Right || kind == JoinKind.Full
+  private def isOuterBuild(kind: JoinKind): Boolean = kind.tracksBuildMatches
 
   private def pipeline(op: Operator, runner: TaskRunner): Option[Pipeline] =
     op match
@@ -72,7 +71,8 @@ object Parallelizer:
             j.rightKeys,
             j.kind,
             j.residual,
-            j.schema
+            j.schema,
+            buildRunner = runner
           )
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
@@ -101,8 +101,13 @@ object Parallelizer:
             pipeline(a.child, runner) match
               case Some(p) =>
                 TwoPhaseAgg.plan(a, p.scan, p.rebuild, p.tail, runner, p.prepare, p.close)
+              case None if a.keys.nonEmpty =>
+                PartitionedAggOp(r(a.child), a.keys, a.aggs, a.schema, runner)
               case None =>
                 HashAggOp(r(a.child), a.keys, a.aggs, a.schema)
+          case a: HashAggOp if a.keys.nonEmpty =>
+            // Any aggregate (DISTINCT, quantiles, ...): every group falls in one key partition
+            PartitionedAggOp(r(a.child), a.keys, a.aggs, a.schema, runner)
           case f: FilterOp =>
             FilterOp(r(f.child), f.cond, f.keep)
           case p: ProjectOp =>
@@ -118,7 +123,16 @@ object Parallelizer:
           case u: UnionAllOp =>
             UnionAllOp(u.inputs.map(r), u.schema)
           case j: HashJoinOp =>
-            HashJoinOp(r(j.left), r(j.right), j.leftKeys, j.rightKeys, j.kind, j.residual, j.schema)
+            HashJoinOp(
+              r(j.left),
+              r(j.right),
+              j.leftKeys,
+              j.rightKeys,
+              j.kind,
+              j.residual,
+              j.schema,
+              buildRunner = runner
+            )
           case j: NestedLoopJoinOp =>
             NestedLoopJoinOp(r(j.left), r(j.right), j.cond, j.kind, j.schema)
           case s: SetOpOp =>
@@ -220,7 +234,12 @@ private[plan] object TwoPhaseAgg:
       a.schema.fields.take(nk) ++
         finalAggs.zipWithIndex.map((c, i) => Field(s"__final_${i}", c.ptype))
     )
-    val combined = HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)
+    // Many groups: combine them in parallel, partitioned by key
+    val combined =
+      if nk > 0 then
+        PartitionedAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema, runner)
+      else
+        HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)
     // Restore the original output: keys, then each aggregate in its original type
     def fcol(i: Int): VExpr           = ColRef(i, finalSchema(i).ptype, finalSchema(i).name)
     def as(e: VExpr, t: PType): VExpr =

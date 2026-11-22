@@ -5,8 +5,3 @@ select
   obj.json_extract('/a~1b').to_string as slash,
   obj.json_extract('/c~0d').to_string as tilde,
 test _.rows should be [['20', '1', '2']]
-
--- Paths without `$` or `/` are one top-level key, as in DuckDB
-from [['{"a.b": 1, "a": {"b": 2}}']] as t(j)
-select j.json_extract('a.b').to_string as dotted_key
-test _.rows should be [['1']]

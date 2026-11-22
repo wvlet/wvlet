@@ -13,7 +13,6 @@
  */
 package wvlet.lang.engine.exec
 
-import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
 
@@ -56,7 +55,12 @@ class UnnestOp(
         // DuckDB unnests maps as key/value structs
         m.toSeq.map((k, x) => scala.collection.immutable.ListMap("key" -> k, "value" -> x))
       case other =>
-        throw StatusCode.INVALID_ARGUMENT.newException(s"unnest expects a list, but got ${other}")
+        throw wvlet
+          .lang
+          .api
+          .StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"unnest expects a list, but got ${other}")
 
   private def expand(in: Batch): Batch =
     val vecs     = lists.map(_.eval(in))

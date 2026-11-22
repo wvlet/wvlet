@@ -153,7 +153,7 @@ object ColumnPruner:
 
   end prune
 
-  private def leftOnly(kind: JoinKind): Boolean = kind == JoinKind.Semi || kind == JoinKind.Anti
+  private def leftOnly(kind: JoinKind): Boolean = kind.outputsProbeOnly
 
   /** Split join output positions into the left and right input positions */
   private def splitRequired(
@@ -172,6 +172,8 @@ object ColumnPruner:
     val expected =
       if leftOnly(kind) then
         left.schema.size
+      else if kind.outputsBuildOnly then
+        right.schema.size
       else
         left.schema.size + right.schema.size
     op.schema.size == expected
@@ -182,7 +184,11 @@ object ColumnPruner:
     val lw        = j.left.schema.size
     val leftNeed  = mutable.BitSet()
     val rightNeed = mutable.BitSet()
-    splitRequired(required, lw, leftNeed, rightNeed)
+    if j.kind.outputsBuildOnly then
+      // Output positions are build (right) positions
+      rightNeed ++= required
+    else
+      splitRequired(required, lw, leftNeed, rightNeed)
     j.leftKeys.foreach(VExprs.collectRefs(_, leftNeed))
     j.rightKeys.foreach(VExprs.collectRefs(_, rightNeed))
     j.residual
@@ -200,6 +206,8 @@ object ColumnPruner:
     val kept   =
       if leftOnly(j.kind) then
         lKept
+      else if j.kind.outputsBuildOnly then
+        rKept
       else
         lKept ++ rKept.map(_ + lw)
     val schema = Schema(kept.map(j.schema(_)).toIndexedSeq)

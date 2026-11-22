@@ -75,12 +75,10 @@ class AsOfJoinOp(
         table.numGroups
     val grouped = Array.fill(numGroups)(Array.newBuilder[Int])
     valid.indices.foreach(k => grouped(ids(k)) += valid(k))
-    // Sort each group by its values, read once per row
-    val sorted = grouped.map { b =>
-      b.result().map(r => (r, values.get(r))).sortWith((x, y) => ValueOps.compare(x._2, y._2) < 0)
+    groupRows = grouped.map { b =>
+      b.result().sortWith((x, y) => ValueOps.compare(values.get(x), values.get(y)) < 0)
     }
-    groupRows = sorted.map(_.map(_._1))
-    groupValues = sorted.map(_.map(_._2))
+    groupValues = groupRows.map(_.map(values.get))
 
   def next(): Batch =
     if build == null then
@@ -145,8 +143,7 @@ class AsOfJoinOp(
     while i < probe.size do
       val g = ids(i)
       val r =
-        // lookup returns -1 for rows with a NULL key
-        if g < 0 || values.isNull(i) then
+        if g < 0 || values.isNull(i) || GroupKey.hasNull(keyVecs, i) then
           -1
         else
           val pos = search(groupValues(g), values.get(i))

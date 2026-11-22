@@ -80,4 +80,20 @@ class GroupTableTest extends UniTest:
       GroupTable(IndexedSeq(v.ptype)).groupIds(Array(v), 3).toSeq shouldBe Seq(0, 0, 1)
   }
 
+  test("should partition rows by key hash without reusing a table's slot bits") {
+    val n    = 100000
+    val keys = LongVec(PType.Int64, Array.tabulate(n)(i => (i % 40000).toLong), null)
+    val h    = GroupTable(IndexedSeq(PType.Int64)).keyHashes(Array(keys), n)
+    val rows = GroupTable.partitionRows(h, n, 16)
+    // Every row once, in input order within a partition
+    rows.flatten.sorted.toSeq shouldBe (0 until n)
+    rows.forall(r => r.toSeq == r.sorted.toSeq) shouldBe true
+    // Rows with the same key share a partition
+    val partOf = new Array[Int](n)
+    rows.indices.foreach(p => rows(p).foreach(i => partOf(i) = p))
+    (0 until n).forall(i => partOf(i) == partOf(i % 40000)) shouldBe true
+    // Bits 16 and up, which large partition tables use as slot bits, still vary inside a partition
+    rows.foreach(r => r.map(i => h(i) & 0xffff0000).distinct.size > 1 shouldBe true)
+  }
+
 end GroupTableTest
