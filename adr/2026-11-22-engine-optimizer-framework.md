@@ -1,6 +1,6 @@
 # ADR: A pass-based optimizer with cost-based join order for the wvlet engine
 
-Date: 2026-11-22 · PR #TBD
+Date: 2026-11-22 · PR #2254
 
 Status: proposed (draft for review; not implemented).
 
