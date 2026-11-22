@@ -140,7 +140,34 @@ object ColumnPruner:
         identity(DistinctOp(child))
 
       case u: UnionAllOp =>
-        identity(UnionAllOp(u.inputs.map(i => prune(i, all(i))._1), u.schema))
+        // Output position i is position i of every input: each input outputs exactly `required`
+        val inputs = u
+          .inputs
+          .map { i =>
+            val (child, kept) = prune(i, required)
+            if kept.sameElements(required) then
+              child
+            else
+              val m = mapping(kept, i.schema.size)
+              ProjectOp(
+                child,
+                required.map(r => ColRef(m(r), i.schema(r).ptype, i.schema(r).name)).toIndexedSeq,
+                Schema(required.map(i.schema(_)).toIndexedSeq)
+              )
+          }
+        (UnionAllOp(inputs, Schema(required.map(u.schema(_)).toIndexedSeq)), required)
+
+      case s: SetOpOp =>
+        // INTERSECT / EXCEPT compare whole rows: every column is needed, but pruning continues below
+        identity(
+          SetOpOp(
+            prune(s.left, all(s.left))._1,
+            prune(s.right, all(s.right))._1,
+            s.isIntersect,
+            s.all,
+            s.schema
+          )
+        )
 
       case w: WindowOp =>
         // Output: the input columns, then one column per call (all kept)

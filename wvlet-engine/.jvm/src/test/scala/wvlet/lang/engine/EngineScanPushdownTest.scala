@@ -113,6 +113,40 @@ class EngineScanPushdownTest extends UniTest:
     plan.contains("l_comment") shouldBe false
   }
 
+  test("should read only the columns used above intersect and except") {
+    val li   = "'spec/tpch/data/lineitem.parquet'"
+    val plan = explain(s"""from {
+        |  from ${li} select l_orderkey
+        |  intersect
+        |  { from ${li} where l_quantity > 10 select l_orderkey }
+        |}
+        |select _.count""".stripMargin)
+    debug(plan)
+    plan shouldContain "columns=l_orderkey)"
+    plan shouldContain "columns=l_orderkey,l_quantity"
+    plan.contains("l_comment") shouldBe false
+  }
+
+  test("should read only the columns used above union all") {
+    val li   = "'spec/tpch/data/lineitem.parquet'"
+    val plan = explain(s"""from {
+        |  from ${li} select l_orderkey, l_quantity, l_comment
+        |  concat
+        |  { from ${li} select l_orderkey, l_extendedprice, l_shipmode }
+        |}
+        |select l_orderkey""".stripMargin)
+    debug(plan)
+    plan.contains("l_comment") shouldBe false
+    plan.contains("l_shipmode") shouldBe false
+    rows(s"""from {
+        |  from ${li} where l_orderkey = 1 select l_orderkey, l_quantity
+        |  concat
+        |  { from ${li} where l_orderkey = 3 select l_orderkey, l_quantity }
+        |}
+        |select l_orderkey
+        |order by l_orderkey""".stripMargin).map(_.head).distinct shouldBe Seq(1L, 3L)
+  }
+
   test("should push comparisons into the Parquet scan") {
     val plan = explain(s"from '${rowGroupFile}' where id >= 950 select id")
     debug(plan)
