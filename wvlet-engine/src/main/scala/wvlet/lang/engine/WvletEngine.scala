@@ -127,6 +127,9 @@ class WvletEngine(val catalog: EngineCatalog = EngineCatalog(), baseDir: String 
     }
     .asInstanceOf[Relation]
 
+  /** An engine over another catalog, resolving files against the same folder */
+  def withCatalog(c: EngineCatalog): WvletEngine = WvletEngine(c, baseDir)
+
   /** Expand model references, plan, and run a query relation */
   def execute(r: Relation)(using ctx: Context): EngineResult =
     val expanded = GenSQL.expand(r, ctx)

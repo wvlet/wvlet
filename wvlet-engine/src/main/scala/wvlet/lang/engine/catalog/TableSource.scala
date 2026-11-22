@@ -120,11 +120,7 @@ class ParquetSource(val name: String, path: String) extends TableSource:
         None
 
   private def readOptions(spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =
-    val cols    = spec.columns.getOrElse(schema.names)
-    val types   = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
-    var options = ParquetReadOptions.default.withColumns(cols*).withBinaryAsString(true)
-    spec.filter.foreach(f => options = options.withRowGroupFilter(f))
-    (cols, types, options)
+    ParquetSource.readOptions(schema, spec)
 
   override def canSplit: Boolean = isSingleFile
 
@@ -165,6 +161,14 @@ class ParquetSource(val name: String, path: String) extends TableSource:
 end ParquetSource
 
 object ParquetSource:
+
+  /** The columns, their engine types, and uni read options of a scan over `schema` */
+  def readOptions(schema: Schema, spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =
+    val cols    = spec.columns.getOrElse(schema.names)
+    val types   = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
+    var options = ParquetReadOptions.default.withColumns(cols*).withBinaryAsString(true)
+    spec.filter.foreach(f => options = options.withRowGroupFilter(f))
+    (cols, types, options)
 
   /**
     * A Parquet dataset (a folder of Parquet files, a Delta table, or an Iceberg table). What uni
@@ -370,6 +374,17 @@ class EngineCatalog:
   def withNameKey(key: String => String): EngineCatalog =
     nameKey = Some(key)
     this
+
+  /**
+    * A copy of this catalog, with the same naming, where `source` replaces the table of its name:
+    * for running a query over one part of a table
+    */
+  def overlay(source: TableSource): EngineCatalog =
+    val c = EngineCatalog()
+    tables.synchronized(c.tables ++= tables)
+    c.nameKey = nameKey
+    c.register(source)
+    c
 
   /** The table a reference (`name`, qualified as `fullName`) points to */
   def lookup(name: String, fullName: String): Option[TableSource] =

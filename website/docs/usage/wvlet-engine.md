@@ -81,8 +81,8 @@ JSON and CSV tables are read only when a query scans them.
 
 ## Saving results
 
-`save to <table>` keeps a query result as an in-memory table for the rest of the session, and
-`append to` and `delete` change it:
+`save to <table>` keeps a query result as a table, and `append to` and `delete` change it.
+Without a [warehouse](#persistent-tables), tables live in memory for the rest of the session:
 
 ```wvlet
 from 'data/orders.parquet'
@@ -115,7 +115,7 @@ instead of changing the files.
 
 ## Creating tables
 
-`create table` makes an empty in-memory table from a `table` declaration, including column
+`create table` makes an empty table from a `table` declaration, including column
 defaults and `not null`, `primary key`, and `unique` constraints, which every write to the table
 checks:
 
@@ -142,6 +142,58 @@ drop table accounts
 - `create schema s` and `save to s.t` group tables under a schema; `drop schema s with cascade:
   true` drops them, and `drop schema s` of a schema that still holds tables is an error
 - `drop table` of a table registered from files only unregisters it; the files stay as they are
+
+## Changing tables
+
+`reshape` (or SQL `alter table`) changes a table's columns, keeping its rows:
+
+```wvlet
+reshape accounts {
+  add signup_date: date      -- NULL in existing rows
+  rename status as state
+  cast id as long            -- change a column's type
+  exclude email              -- drop a column
+}
+
+rename table accounts to members
+```
+
+SQL `alter table` also sets or drops a column's default and `not null`. Tables registered from
+files can't be changed.
+
+## Persistent tables
+
+Give the connector a `warehouse` folder to keep tables across sessions, as a DuckDB database file
+does. Every table written by name (`create table`, `save to t`, `append to t`) goes there and is
+read back by the next session:
+
+```jsonc title='~/.wvlet/profiles.json'
+{
+  "name": "wvlet",
+  "type": "wvlet",
+  "properties": {
+    "warehouse": "warehouse"
+  }
+}
+```
+
+- Each table is an [Iceberg](#iceberg-tables) table at `<warehouse>/<schema>/<table>`: tables of
+  the default schema `main` are under `warehouse/main/`, and `create schema s` makes the
+  `warehouse/s/` folder. DuckDB, Spark, Trino, and pyiceberg read the tables too
+- Every write is one atomic Iceberg commit: `save to t` and `truncate t` replace the rows in a new
+  snapshot (`save to` may change the columns), `append to t` adds a snapshot, and `delete` and
+  `append to t on k` rewrite only the data files holding the rows they change (copy-on-write)
+- `reshape` / `alter table` change the table's metadata only when Iceberg allows it (adding a
+  column without a default, dropping or renaming a column, widening `int` to `long` or a
+  decimal's precision, defaults, dropping `not null`); other changes rewrite the table in one
+  snapshot. Renaming a warehouse table isn't supported yet
+- Declared defaults and `not null` / `primary key` / `unique` constraints are kept in the table's
+  properties and checked by later sessions too
+- `drop table` deletes the table's folder, and `drop schema s with cascade: true` the schema's
+- A name that is both a warehouse table and a `dataDir` / `tables` entry is an error when the
+  session starts. Tables registered from files stay read-only
+- Without `warehouse`, tables are in memory only (like DuckDB's `:memory:`). The browser
+  playground always keeps tables in memory
 
 ## Writing files
 
@@ -205,9 +257,9 @@ from 'warehouse/events/metadata/v1.metadata.json'
   wvlet engine and Hadoop-catalog writers create them); a table that a catalog owns, such as one
   written by pyiceberg or a REST catalog, is read-only. `append to` a folder that isn't an Iceberg
   table is an error, since `append to` can't name the format
-- Reads cover partitioned tables, v1 and v2 tables, and schema evolution (promoted, added, and
-  dropped columns). Tables with delete files, renamed columns, ORC data files, or format version 3
-  aren't supported yet and report an error
+- Reads cover partitioned tables, v1 and v2 tables, and schema evolution (promoted, added,
+  dropped, and renamed columns, matched by Iceberg field ID). Tables with delete files, ORC data
+  files, or format version 3 aren't supported yet and report an error
 - The engine never deletes table files; a failed commit removes only the files it wrote
 
 ## Mixing with other connectors

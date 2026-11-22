@@ -255,7 +255,7 @@ object DataFileWriter extends LogSupport:
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported Parquet compression: ${other}")
 
-  private def parquetTypeOf(f: Field): ParquetType =
+  private[catalog] def parquetTypeOf(f: Field): ParquetType =
     f.ptype match
       case PType.Bool =>
         ParquetType.BOOLEAN

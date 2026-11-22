@@ -328,6 +328,57 @@ class PlanExecutorWvletEngineTest extends UniTest:
     main.getMessage shouldContain "default schema"
   }
 
+  test("reshape and rename in-memory tables") {
+    val result = run("""table alt_t = {
+                       |  id: int
+                       |  name: string = 'none'
+                       |}
+                       |create table alt_t
+                       |append to alt_t {
+                       |  from [[1, 'pen'], [2, 'book']] as t(id, name)
+                       |}
+                       |
+                       |reshape alt_t {
+                       |  add price: double
+                       |  rename name as item
+                       |  cast id as long
+                       |}
+                       |
+                       |from alt_t
+                       |order by id
+                       |test _.columns should be ['id', 'item', 'price']
+                       |test _.rows should be [[1, 'pen', null], [2, 'book', null]]
+                       |
+                       |-- The default follows the renamed column
+                       |append to alt_t (id) {
+                       |  from [[3]] as t(id)
+                       |}
+                       |from alt_t
+                       |where id = 3
+                       |test _.rows should be [[3, 'none', null]]
+                       |
+                       |reshape alt_t {
+                       |  exclude price
+                       |}
+                       |rename table alt_t to alt_u
+                       |
+                       |from alt_u
+                       |test _.columns should be ['id', 'item']
+                       |test _.size should be 3""".stripMargin)
+    result.getError shouldBe None
+  }
+
+  test("reject altering missing columns and file tables") {
+    val e = intercept[WvletLangException] {
+      run("""from [[1]] as t(id)
+            |save to alt_m
+            |reshape alt_m {
+            |  exclude missing
+            |}""".stripMargin)
+    }
+    e.getMessage shouldContain "missing is not found"
+  }
+
   test("create an Iceberg table and append a snapshot") {
     val path   = s"target/engine-xp-iceberg/${System.currentTimeMillis()}"
     val result = run(s"""from [[1, 'JP'], [2, 'US']] as t(id, country)
