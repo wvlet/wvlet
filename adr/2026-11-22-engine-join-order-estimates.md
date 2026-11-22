@@ -1,6 +1,6 @@
 # ADR: Engine join order from distinct-count estimates
 
-Date: 2026-11-22 · PR #TBD
+Date: 2026-11-22 · PR #2233
 
 ## Context
 
