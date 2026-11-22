@@ -14,6 +14,8 @@
 package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.expr.AndExpr
+import wvlet.lang.engine.expr.CmpOp
+import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.Optimization
@@ -39,7 +41,7 @@ object FactorOr extends Rule:
   override def apply(p: RuntimePlan): Option[RuntimePlan] =
     p match
       case f: RuntimePlan.Filter =>
-        val conds    = leftConjuncts(f.cond.expr)
+        val conds    = conjuncts(f.cond.expr)
         val factored = conds.map(factor)
         if factored.forall(_.isEmpty) then
           None
@@ -50,15 +52,17 @@ object FactorOr extends Rule:
         None
 
   /**
-    * The conjuncts of a condition along its left spine: the binder reduces a filter's conjuncts
-    * with `and` from the left, and parsed `a and b and c` nests the same way, so reducing them
-    * again gives the same expression. A conjunct on the right stays whole, as `x between a and b`
-    * (bound as `x >= a and x <= b`) does in the planner's factoring over compiler expressions
+    * The conjuncts of a condition, as the planner splits compiler expressions: every `and` is split
+    * except a bound `x between a and b` (`x >= a and x <= b`), which stays one conjunct. The binder
+    * reduces a filter's bound conjuncts with `and` from the left, so reducing them again gives the
+    * same expression
     */
-  private def leftConjuncts(e: VExpr): List[VExpr] =
+  private def conjuncts(e: VExpr): List[VExpr] =
     e match
+      case AndExpr(Compare(CmpOp.Ge, x, _), Compare(CmpOp.Le, y, _)) if x.sig == y.sig =>
+        List(e)
       case AndExpr(l, r) =>
-        leftConjuncts(l) :+ r
+        conjuncts(l) ++ conjuncts(r)
       case other =>
         List(other)
 
@@ -75,7 +79,7 @@ object FactorOr extends Rule:
   private def factor(e: VExpr): Option[List[VExpr]] =
     e match
       case o: OrExpr =>
-        val branches = disjuncts(o).map(leftConjuncts)
+        val branches = disjuncts(o).map(conjuncts)
         val common   = branches.map(_.map(_.sig).toSet).reduce(_ intersect _)
         if common.isEmpty then
           None

@@ -20,7 +20,7 @@ Lane: Express — an internal refactor with no change to plans or results, insid
 - Rules are named by the existing `Optimization` values, so `wvlet.engine.optimizer.disabled=factor_or` turns the IR rule off too, and `EngineOptimizerToggleTest` keeps covering it.
 - Each run records which rules fired and how often; the planner accumulates the counts so tests can assert that a rule fires (or doesn't).
 - With `validatePlans`, `PlanValidator` runs after every pass.
-- `Normalize` holds one rule for now, `factor_or`, over the conditions of `Filter` nodes: conjuncts are matched by their bound signature (column ids), with the same factoring and absorption as `Planner.factorOr`.
+- `Normalize` holds one rule for now, `factor_or`, over the conditions of `Filter` nodes: conjuncts are matched by their bound signature (column ids), split as `Planner.factorOr` splits them (a bound `between` stays one conjunct), with the same factoring and absorption.
 - The binder no longer factors the conditions of a plain filter (no join below, no subqueries); `Normalize` does it. Join, LEFT JOIN pushdown, and subquery paths keep the Relation-level factoring until their rules move.
 - Join leaves are optimized before they're lowered for join-order estimates, so join order sees the same filters as today.
 - Tests: per-rule plan tests through `Optimizer.only(Normalize)`, fired counts, and the existing golden plans and conformance suites as the no-change check.

@@ -88,6 +88,25 @@ class EngineNormalizeTest extends UniTest:
     cs.head.sig shouldNotContain " or "
   }
 
+  test("factor a common conjunct nested in parentheses") {
+    val p = bound("""from lineitem
+        |where (l_quantity > 10 and (l_returnflag = 'R' and l_tax < 0.1))
+        |   or (l_discount < 0.05 and (l_returnflag = 'R' and l_tax > 0.2))
+        |select l_orderkey""".stripMargin)
+    val cs = conjuncts(filterOf(Optimizer.only(Normalize, options).run(p)).cond.expr)
+    cs.size shouldBe 2
+    cs.head.sig shouldContain "lit(R"
+  }
+
+  test("keep a between as one conjunct") {
+    val p = bound("""from lineitem
+        |where (l_returnflag = 'R' and l_quantity between 1 and 10)
+        |   or (l_returnflag = 'A' and l_quantity between 1 and 20)
+        |select l_orderkey""".stripMargin)
+    val o = Optimizer.only(Normalize, options)
+    o.run(p) shouldBeTheSameInstanceAs p
+  }
+
   test("leave an or without common conjuncts unchanged") {
     val p = bound("""from lineitem
         |where l_returnflag = 'R' or l_quantity > 10
