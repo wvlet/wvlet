@@ -1,6 +1,6 @@
 # Engine query optimizer framework
 
-Status: proposal for review. Nothing here is implemented yet.
+Status: accepted 2026-11-22 (all decisions below as proposed). Implementation follows the milestones in section 7.
 
 ## Goals
 
@@ -175,12 +175,14 @@ Until M2 switches the default, the parallel sessions keep editing `Planner` as n
 - **Rewriting the physical `Operator` tree only.** Positions instead of ids make every rule remap indexes (as `ColumnPruner` does), and physical operators have already fixed join order and build sides.
 - **Bushy DP for every join graph size.** Planning time grows exponentially with graph size; DuckDB, Spark, and Trino all cap exact search (12, 12, and 8 relations) and fall back to greedy.
 
-## Decisions for the reviewer
+## Decisions (accepted 2026-11-22)
 
-- **D1. Rule mechanism:** fixed passes plus small fixpoint batches (proposed), or an iterative rule engine in the style of Trino.
-- **D2. Where speed rules live:** engine only (proposed), or compiler phases so that the SQL generators also benefit.
-- **D3. A new engine logical IR with `ColumnId`s** (proposed, M2–M4 is the largest cost), or a narrower plan: extract join ordering (M1) and harden the physical passes, without an IR.
-- **D4. Join enumerator:** DPhyp or DPccp, the exact threshold (proposal: ≤10 relations, 10,000-pair budget), and whether to search bushy trees or only left-deep ones (left-deep is friendlier to MorselOp probe pipelines).
-- **D5. Lean scope:** model the 3VL-sensitive rules (pushdown through outer joins, NOT IN, OR factoring, decorrelation) on a small bag-algebra core, or rely on conformance plus the differential toggle tests.
-- **D6. Golden plan files in CI:** gating with a regenerate command (proposed), or informational only.
-- **D7. Adaptive execution (M5):** in scope for this framework, or deferred until the IR has landed.
+All accepted as proposed:
+
+- **D1. Rule mechanism:** fixed, ordered passes; each is a tree walk or a small fixpoint batch capped at 10 iterations.
+- **D2. Where speed rules live:** in the engine only. Meaning-level rules stay in compiler phases, and the generated SQL is unchanged.
+- **D3. IR:** a new engine logical IR with `ColumnId`s, migrated behind a `Legacy(relation)` leaf (M2–M4).
+- **D4. Join enumerator:** DPhyp/DPccp for up to 10 relations with a 10,000-pair budget and a greedy fallback. Bushy trees are allowed; the cost adds a pipeline-break term so that left-deep probe chains win ties.
+- **D5. Lean:** model the 3VL-sensitive rules (pushdown through outer joins, NOT IN, OR factoring, decorrelation) with trace conformance (M5).
+- **D6. Golden plans:** golden TPC-H/TPC-DS plan files gate CI, with a regenerate command (M0).
+- **D7. Adaptive execution:** in scope (M5).

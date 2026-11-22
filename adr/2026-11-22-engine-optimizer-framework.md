@@ -2,7 +2,7 @@
 
 Date: 2026-11-22 · PR #2254
 
-Status: proposed (draft for review; not implemented).
+Status: accepted; implementation in progress (milestones M0–M5 in the plan).
 
 ## Context
 
@@ -21,11 +21,11 @@ DuckDB, Trino, Spark, Calcite, CockroachDB, and DataFusion all optimize a bound 
 
 ## Decision
 
-Proposed; to be confirmed in review. See `plans/2026-11-22-engine-optimizer-framework.md`.
+Accepted as proposed on 2026-11-22. See `plans/2026-11-22-engine-optimizer-framework.md`.
 
 - Add an engine-local logical IR (`LogicalPlan`): a closed enum of about 16 nodes whose columns are `ColumnId`s. Names are bound once, Relation → LogicalPlan, and surface operators are normalized into core nodes while binding. Lowering then maps ids to positions and builds `Operator`s, and `Parallelizer` stays a physical pass.
 - The optimizer is an explicit, ordered list of named passes, as in DuckDB and Calcite's HepPlanner: Normalize, Decorrelate, PushDownFilters, ReorderJoins, ShareSubplans, PruneColumns, PushScanFilters. A pass is a hand-written traversal or a small batch of partial-function rules run to a fixpoint with an iteration cap. There is no memo, Cascades search, or rule DSL.
-- Join order is the only cost-based search. It uses DPhyp/DPccp up to a relation threshold with a pair budget, and falls back to today's multi-start greedy. The cost is C_out plus hash build rows, and statistics are derived per logical node from Parquet/Iceberg metadata.
+- Join order is the only cost-based search. It uses DPhyp/DPccp up to 10 relations with a 10,000-pair budget (bushy trees allowed, with a pipeline-break term in the cost), and falls back to today's multi-start greedy. The cost is C_out plus hash build rows, and statistics are derived per logical node from Parquet/Iceberg metadata.
 - Speed rules live in the engine; meaning-level normalizations stay in compiler phases, as `RewriteExpr` does. The SQL generated for DuckDB, Trino, and Snowflake does not change.
 - Every pass can be disabled by name, records when it fires, and is checked by a plan validator between passes. Golden `explain` files for TPC-H and TPC-DS make plan changes visible in PRs.
 - Migration goes in steps: a safety net first, then extracting join ordering, then the IR behind a `Legacy(relation)` leaf that grows node by node, then the rules moved one by one, and finally adaptive re-planning. Each step keeps TPC-H/TPC-DS conformance and the benchmarks.
