@@ -61,7 +61,7 @@ object Lowering:
         op
 
   /** Column id -> position in the output of `p` (-1 for ids it doesn't output) */
-  private[logical] def positions(p: LogicalPlan): Array[Int] =
+  private def positions(p: LogicalPlan): Array[Int] =
     val out = p.output
     val pos = Array.fill(out.map(_.id.value).maxOption.getOrElse(-1) + 1)(-1)
     out.indices.foreach(i => pos(out(i).id.value) = i)

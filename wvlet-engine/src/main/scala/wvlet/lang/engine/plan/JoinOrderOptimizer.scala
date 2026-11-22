@@ -60,7 +60,7 @@ trait JoinTreeBuilder[P]:
   def filter(p: P, cond: VExpr): P
 
 /** Builds operator trees */
-object OperatorTreeBuilder extends JoinTreeBuilder[Operator]:
+trait OperatorTreeBuilder extends JoinTreeBuilder[Operator]:
   override def op(p: Operator): Operator = p
   override def join(
       left: Operator,
@@ -82,6 +82,8 @@ object OperatorTreeBuilder extends JoinTreeBuilder[Operator]:
   )
 
   override def filter(p: Operator, cond: VExpr): Operator = FilterOp(p, cond)
+
+object OperatorTreeBuilder extends OperatorTreeBuilder
 
 /**
   * Orders the inner joins of a [[JoinGraph]] and builds the join tree, choosing the build side of

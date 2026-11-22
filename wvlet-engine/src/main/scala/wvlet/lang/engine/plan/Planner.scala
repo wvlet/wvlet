@@ -2288,28 +2288,7 @@ class Planner(
 
   /** Builds the planner's own join trees: operators */
   private val operatorJoins: JoinPlanBuilder[Operator] =
-    new JoinPlanBuilder[Operator]:
-      override def op(p: Operator): Operator = p
-      override def join(
-          left: Operator,
-          right: Operator,
-          kind: JoinKind,
-          leftKeys: IndexedSeq[VExpr],
-          rightKeys: IndexedSeq[VExpr],
-          residual: Option[VExpr],
-          buildLeft: Boolean
-      ): Operator = OperatorTreeBuilder.join(
-        left,
-        right,
-        kind,
-        leftKeys,
-        rightKeys,
-        residual,
-        buildLeft
-      )
-
-      override def filter(p: Operator, cond: VExpr): Operator = OperatorTreeBuilder.filter(p, cond)
-
+    new JoinPlanBuilder[Operator] with OperatorTreeBuilder:
       override def conjuncts(p: Operator, conds: List[Expression]): Operator = applyConjuncts(
         p,
         conds
