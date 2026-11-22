@@ -16,6 +16,7 @@ package wvlet.lang.engine
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.model.plan.*
+import wvlet.uni.log.LogSupport
 import wvlet.uni.test.UniTest
 
 import java.io.File
@@ -24,6 +25,10 @@ import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.sql.Connection
 import java.sql.DriverManager
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
   * Opt-in benchmark of the columnar engine against DuckDB on the TPC-H queries in spec/tpch, both
@@ -42,38 +47,93 @@ import java.sql.DriverManager
   *   - `WVLET_ENGINE_BENCH_QUERIES`: comma-separated query names to run, e.g. `q1,q6` (default all)
   *   - `WVLET_ENGINE_BENCH_DUCKDB_THREADS`: DuckDB worker threads (default: DuckDB's own default,
   *     all cores). Set 1 for a single-threaded comparison
+  *   - `WVLET_ENGINE_BENCH_TIMEOUT`: seconds to wait for all engine runs of one query, warm-up
+  *     included (default 300); the remaining queries are skipped after a timeout
+  *   - `WVLET_ENGINE_BENCH_EXPLAIN`: set 1 to write each engine plan to
+  *     `target/engine-bench/<suite>-<query>.plan`
+  *
+  * [[EngineTPCDSBench]] runs spec/tpcds the same way.
   */
 class EngineTPCHBench extends UniTest:
   import EngineTPCHBench.*
 
   test("time spec/tpch queries on the engine and DuckDB") {
-    sys.env.get("WVLET_ENGINE_BENCH_SF").map(_.toDouble) match
+    BenchOptions.fromEnv() match
       case None =>
         ignore("Set WVLET_ENGINE_BENCH_SF=<scale factor> (e.g. 1) to run the engine benchmark")
-      case Some(sf) =>
-        val runs = sys.env.get("WVLET_ENGINE_BENCH_RUNS").map(_.toInt).getOrElse(3)
-        require(runs >= 1, s"WVLET_ENGINE_BENCH_RUNS must be at least 1, but got ${runs}")
-        val queries = sys
-          .env
-          .get("WVLET_ENGINE_BENCH_QUERIES")
-          .map(_.split(",").map(_.trim.stripSuffix(".wv")).filter(_.nonEmpty).toSet)
-        val threads = sys.env.get("WVLET_ENGINE_BENCH_DUCKDB_THREADS").map(_.toInt)
-        runBench(sf, runs, queries, threads)
+      case Some(opts) =>
+        val dataDir = prepareData(opts.sf)
+        runBench("tpch", "spec/tpch", dataDir, tables, opts)
   }
 
-  private def runBench(
+end EngineTPCHBench
+
+object EngineTPCHBench extends LogSupport:
+  val tables: Seq[String] = Seq(
+    "customer",
+    "lineitem",
+    "nation",
+    "orders",
+    "part",
+    "partsupp",
+    "region",
+    "supplier"
+  )
+
+  /**
+    * Benchmark settings read from environment variables (sbt forks the test JVM, so -D properties
+    * would not reach it). None when `WVLET_ENGINE_BENCH_SF` is unset, so that benchmarks never run
+    * in CI
+    */
+  case class BenchOptions(
       sf: Double,
       runs: Int,
       queries: Option[Set[String]],
-      duckdbThreads: Option[Int]
-  ): Unit =
-    val specPath = "spec/tpch"
-    val dataDir  = prepareData(sf)
+      duckdbThreads: Option[Int],
+      timeoutSeconds: Int,
+      explain: Boolean
+  )
 
+  object BenchOptions:
+    def fromEnv(): Option[BenchOptions] = sys
+      .env
+      .get("WVLET_ENGINE_BENCH_SF")
+      .map { sf =>
+        val runs = sys.env.get("WVLET_ENGINE_BENCH_RUNS").map(_.toInt).getOrElse(3)
+        require(runs >= 1, s"WVLET_ENGINE_BENCH_RUNS must be at least 1, but got ${runs}")
+        BenchOptions(
+          sf = sf.toDouble,
+          runs = runs,
+          queries = sys
+            .env
+            .get("WVLET_ENGINE_BENCH_QUERIES")
+            .map(_.split(",").map(_.trim.stripSuffix(".wv")).filter(_.nonEmpty).toSet),
+          duckdbThreads = sys.env.get("WVLET_ENGINE_BENCH_DUCKDB_THREADS").map(_.toInt),
+          timeoutSeconds = sys.env.get("WVLET_ENGINE_BENCH_TIMEOUT").map(_.toInt).getOrElse(300),
+          explain = sys.env.get("WVLET_ENGINE_BENCH_EXPLAIN").exists(v => v == "1" || v == "true")
+        )
+      }
+
+  /** The number of a query file name, e.g. 24 for q24.wv */
+  def queryNumber(fileName: String): Int = fileName.filter(_.isDigit).toInt
+
+  /**
+    * Time the q<N>.wv queries in specPath on DuckDB and the engine, both reading
+    * `<dataDir>/<table>.parquet`, and write `target/engine-bench/<label>-sf<sf>.tsv`
+    */
+  def runBench(
+      label: String,
+      specPath: String,
+      dataDir: String,
+      tables: Seq[String],
+      opts: BenchOptions
+  ): Seq[QueryTiming] =
     Class.forName("org.duckdb.DuckDBDriver")
     val conn: Connection = DriverManager.getConnection("jdbc:duckdb:")
+    // Engine runs go through a worker thread so that a slow query can time out
+    val worker = Executors.newSingleThreadExecutor()
     try
-      duckdbThreads.foreach(t => execute(conn, s"set threads = ${t}"))
+      opts.duckdbThreads.foreach(t => execute(conn, s"set threads = ${t}"))
       tables.foreach { t =>
         execute(conn, s"create view ${t} as select * from '${dataDir}/${t}.parquet'")
       }
@@ -86,51 +146,76 @@ class EngineTPCHBench extends UniTest:
       val units = compiler
         .localCompilationUnits
         .filter(_.sourceFile.fileName.matches("q\\d+\\.wv"))
-        .filter(u => queries.forall(_.contains(u.sourceFile.fileName.stripSuffix(".wv"))))
-        .sortBy(_.sourceFile.fileName.stripPrefix("q").stripSuffix(".wv").toInt)
+        .filter(u =>
+          opts.queries.forall(qs => qs.contains(u.sourceFile.fileName.stripSuffix(".wv")))
+        )
+        .sortBy(u => queryNumber(u.sourceFile.fileName))
 
-      val results = units.map { unit =>
+      val outDir = File("target/engine-bench")
+      outDir.mkdirs()
+      var timedOut = false
+      val results  = units.map { unit =>
         val name          = unit.sourceFile.fileName.stripSuffix(".wv")
         val compileResult = compiler.compileSingleUnit(unit)
         given Context     = compileResult.context
         queryOf(unit) match
           case None =>
             QueryTiming(name, Nil, Nil, -1, -1, Some("no query"))
+          case Some(_) if timedOut =>
+            // A timed-out engine run may still occupy the worker thread
+            QueryTiming(name, Nil, Nil, -1, -1, Some("skipped after a timeout"))
           case Some(q) =>
             val sql = GenSQL.generateSQLFromRelation(q, addHeader = false).sql
             def duckdbOnce(): (Double, Long) = timed(countRows(conn, sql))
             def engineOnce(): (Double, Long) = timed(engine.execute(q).numRows.toLong)
             try
-              val (_, duckRows)   = duckdbOnce() // warm-up
-              val duck            = (1 to runs).map(_ => duckdbOnce()._1)
-              val (_, engineRows) = engineOnce()
-              val eng             = (1 to runs).map(_ => engineOnce()._1)
+              if opts.explain then
+                Files.writeString(File(outDir, s"${label}-${name}.plan").toPath, engine.explain(q))
+              val (_, duckRows) = duckdbOnce() // warm-up
+              val duck          = (1 to opts.runs).map(_ => duckdbOnce()._1)
+              val task          = worker.submit { () =>
+                val (_, rows) = engineOnce()
+                (rows, (1 to opts.runs).map(_ => engineOnce()._1))
+              }
+              val (engineRows, eng) =
+                try
+                  task.get(opts.timeoutSeconds.toLong, TimeUnit.SECONDS)
+                catch
+                  case e: ExecutionException =>
+                    throw e.getCause
+                  case e: TimeoutException =>
+                    task.cancel(true)
+                    timedOut = true
+                    throw e
               val r = QueryTiming(name, duck.sorted, eng.sorted, duckRows, engineRows, None)
               info(r.logLine)
               r
             catch
+              case e: TimeoutException =>
+                warn(s"${name}: timed out after ${opts.timeoutSeconds}s")
+                QueryTiming(name, Nil, Nil, -1, -1, Some(s"timeout ${opts.timeoutSeconds}s"))
               case e: Throwable =>
                 warn(s"${name}: ${e}", e)
                 QueryTiming(name, Nil, Nil, -1, -1, Some(e.toString))
+            end try
+        end match
       }
-      report(sf, runs, duckdbThreads, results)
+      report(label, opts, results)
+      results
     finally
+      worker.shutdownNow()
       conn.close()
     end try
 
   end runBench
 
-  private def report(
-      sf: Double,
-      runs: Int,
-      duckdbThreads: Option[Int],
-      results: Seq[QueryTiming]
-  ): Unit =
+  private def report(label: String, opts: BenchOptions, results: Seq[QueryTiming]): Unit =
     val ok        = results.filter(_.error.isEmpty)
     val duckTotal = ok.map(_.duckdbMedian).sum
     val engTotal  = ok.map(_.engineMedian).sum
     val header    =
-      s"TPC-H sf=${sf}, ${runs} runs, DuckDB threads=${duckdbThreads
+      s"${label} sf=${opts.sf}, ${opts.runs} runs, DuckDB threads=${opts
+          .duckdbThreads
           .map(_.toString)
           .getOrElse("default")}"
     val table = Seq.newBuilder[String]
@@ -153,9 +238,7 @@ class EngineTPCHBench extends UniTest:
     table += f"| total | ${duckTotal}%.1f | ${engTotal}%.1f | ${engTotal / duckTotal}%.1fx | |"
     info(s"${header}\n${table.result().mkString("\n")}")
 
-    val outDir = File("target/engine-bench")
-    outDir.mkdirs()
-    val tsv   = File(outDir, s"tpch-sf${sfLabel(sf)}.tsv")
+    val tsv   = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.tsv")
     val lines =
       "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror" +:
         results.map { r =>
@@ -166,20 +249,6 @@ class EngineTPCHBench extends UniTest:
     info(s"Wrote ${tsv.getPath}")
 
   end report
-
-end EngineTPCHBench
-
-object EngineTPCHBench:
-  val tables: Seq[String] = Seq(
-    "customer",
-    "lineitem",
-    "nation",
-    "orders",
-    "part",
-    "partsupp",
-    "region",
-    "supplier"
-  )
 
   case class QueryTiming(
       name: String,

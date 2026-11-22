@@ -969,7 +969,17 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       debug(s"Materializing a shared result:\n${op.explain()}")
       op.drain()
 
-    def newReader(label: String): Operator = IteratorOp(op.schema, () => batches.iterator, label)
+    private var explained = false
+
+    def newReader(label: String): Operator =
+      new IteratorOp(op.schema, () => batches.iterator, label):
+        // The first reader shows the shared plan once (it is not a child: readers must not close it)
+        override def explain(indent: Int): String =
+          if explained then
+            super.explain(indent)
+          else
+            explained = true
+            s"${super.explain(indent)}\n${"  " * (indent + 1)}(shared)\n${op.explain(indent + 2)}"
 
   private def isAggregationInput(r: Relation): Boolean =
     r match

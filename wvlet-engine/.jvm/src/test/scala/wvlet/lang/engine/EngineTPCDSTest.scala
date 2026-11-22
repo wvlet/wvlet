@@ -48,15 +48,13 @@ class EngineTPCDSTest extends UniTest:
     wv.close()
     sql.close()
 
-  private def queryNumber(fileName: String): Int = fileName.filter(_.isDigit).toInt
-
   for
     (label, c) <- Seq("wv" -> wv, "sql" -> sql)
     unit       <- c.units
   do
     val fileName = unit.sourceFile.fileName
     test(s"${label}:${fileName}") {
-      if knownGaps.contains(queryNumber(fileName)) then
+      if knownGaps.contains(EngineTPCHBench.queryNumber(fileName)) then
         ignore("Not supported in the engine yet")
       c.run(unit)
         .foreach { r =>
@@ -75,7 +73,7 @@ object EngineTPCDSTest:
 
   /** Generate TPC-DS Parquet files with DuckDB's tpcds extension, once per scale factor */
   def prepareData(sf: Double): (String, Seq[String]) =
-    val dir    = Paths.get(s"target/tpcds-sf${sf}").toAbsolutePath
+    val dir    = Paths.get(s"target/tpcds-sf${EngineTPCHBench.sfLabel(sf)}").toAbsolutePath
     val done   = dir.resolve("_tables")
     val tables =
       if Files.exists(done) then
