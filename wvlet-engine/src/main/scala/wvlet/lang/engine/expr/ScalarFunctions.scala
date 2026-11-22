@@ -18,6 +18,7 @@ import wvlet.lang.engine.vector.*
 
 import java.math.BigDecimal as JBigDecimal
 import java.math.RoundingMode
+import scala.collection.immutable.NumericRange
 
 /**
   * Scalar functions by (DuckDB-compatible) name. Every function receives bound argument expressions
@@ -331,6 +332,74 @@ object ScalarFunctions:
 
   end strftime
 
+  /** Levenshtein distance over code points */
+  private def levenshtein(x: String, y: String): Int =
+    val a    = x.codePoints().toArray
+    val b    = y.codePoints().toArray
+    var prev = Array.tabulate(b.length + 1)(identity)
+    var cur  = new Array[Int](b.length + 1)
+    var i    = 1
+    while i <= a.length do
+      cur(0) = i
+      var j = 1
+      while j <= b.length do
+        val cost =
+          if a(i - 1) == b(j - 1) then
+            0
+          else
+            1
+        cur(j) = math.min(math.min(cur(j - 1) + 1, prev(j) + 1), prev(j - 1) + cost)
+        j += 1
+      val t = prev
+      prev = cur
+      cur = t
+      i += 1
+    prev(b.length)
+
+  // DuckDB's hash functions (src/common/types/hash.cpp)
+  private def murmurHash64(v: Long): Long =
+    var x = v
+    x ^= x >>> 32
+    x *= 0xd6e8feb86659fd93L
+    x ^= x >>> 32
+    x *= 0xd6e8feb86659fd93L
+    x ^= x >>> 32
+    x
+
+  private def hashBytes(bytes: Array[Byte]): Long =
+    var h   = 0xe17a1465L ^ (bytes.length.toLong * 0xc6a4a7935bd1e995L)
+    var pos = 0
+    while pos < bytes.length do
+      var block = 0L
+      var k     = 0
+      while k < 8 && pos + k < bytes.length do
+        block |= (bytes(pos + k) & 0xffL) << (8 * k)
+        k += 1
+      h ^= block
+      h *= 0xd6e8feb86659fd93L
+      pos += 8
+    murmurHash64(h)
+
+  private def duckdbHash(v: Any): Long =
+    v match
+      case s: String =>
+        hashBytes(s.getBytes("UTF-8"))
+      case i: Int =>
+        murmurHash64(i.toLong)
+      case l: Long =>
+        murmurHash64(l)
+      case b: Boolean =>
+        murmurHash64(
+          if b then
+            1L
+          else
+            0L
+        )
+      case other =>
+        hashBytes(other.toString.getBytes("UTF-8"))
+
+  private def combineHash(a: Long, b: Long): Long = (a * 0xbf58476d1ce4e5b9L) ^ b
+
   private def regex(p: String): java.util.regex.Pattern = java.util.regex.Pattern.compile(p)
 
   private val regexCache = scala.collection.mutable.HashMap.empty[String, java.util.regex.Pattern]
@@ -451,7 +520,7 @@ object ScalarFunctions:
         a.iterator.filter(_ != null).map(_.toString).mkString
       )
     }
-    reg("||") { args =>
+    reg("||", "__wv_concat") { args =>
       fn("||", args.map(str), PType.Str)(a => a.mkString)
     }
     reg("concat_ws") { args =>
@@ -520,9 +589,19 @@ object ScalarFunctions:
       )
     }
     reg("contains") { args =>
-      fn("contains", args.map(str), PType.Bool)(a =>
-        a(0).asInstanceOf[String].contains(a(1).asInstanceOf[String])
-      )
+      if args.head.ptype == PType.AnyT then
+        // contains(list, x)
+        fn("contains", args, PType.Bool) { a =>
+          a(0) match
+            case s: Seq[?] =>
+              s.exists(x => x != null && ValueOps.compare(x, a(1)) == 0)
+            case other =>
+              ValueOps.toStr(other).contains(ValueOps.toStr(a(1)))
+        }
+      else
+        fn("contains", args.map(str), PType.Bool)(a =>
+          a(0).asInstanceOf[String].contains(a(1).asInstanceOf[String])
+        )
     }
     reg("repeat") { args =>
       fn("repeat", Seq(str(args(0)), toLong(args(1))), PType.Str)(a =>
@@ -918,6 +997,8 @@ object ScalarFunctions:
         a(0) match
           case s: Seq[?] =>
             s.size.toLong
+          case m: Map[?, ?] =>
+            m.size.toLong
           case s: String =>
             s.length.toLong
           case other =>
@@ -956,6 +1037,170 @@ object ScalarFunctions:
           .map(ValueOps.toStr)
           .mkString(a(1).asInstanceOf[String])
       )
+    }
+
+    reg("list_position", "array_position", "list_indexof", "array_indexof") { args =>
+      // 1-origin position of the first match, or NULL when absent
+      fn("list_position", args, PType.Int64) { a =>
+        val i = a(0)
+          .asInstanceOf[Seq[Any]]
+          .indexWhere(x => x != null && ValueOps.compare(x, a(1)) == 0)
+        if i < 0 then
+          null
+        else
+          i + 1L
+      }
+    }
+
+    def listFn(names: String*)(f: (Seq[Any], Array[Any]) => Any): Unit =
+      reg(names*) { args =>
+        fn(names.head, args, PType.AnyT)(a => f(a(0).asInstanceOf[Seq[Any]], a))
+      }
+    listFn("list_sort", "array_sort", "sort_array") { (s, _) =>
+      // NULLs last, as in DuckDB
+      val (nulls, values) = s.partition(_ == null)
+      values.sortWith((x, y) => ValueOps.compare(x, y) < 0) ++ nulls
+    }
+    listFn("list_reverse_sort", "array_reverse_sort") { (s, _) =>
+      val (nulls, values) = s.partition(_ == null)
+      values.sortWith((x, y) => ValueOps.compare(x, y) > 0) ++ nulls
+    }
+    listFn("list_reverse", "array_reverse")((s, _) => s.reverse)
+    listFn("list_distinct", "array_distinct")((s, _) => s.filter(_ != null).distinct)
+    reg("list_concat", "array_concat", "array_cat", "list_cat") { args =>
+      // NULL lists are skipped
+      nullSafeFn("list_concat", args, PType.AnyT)(a =>
+        a.iterator.filter(_ != null).flatMap(_.asInstanceOf[Seq[Any]]).toList
+      )
+    }
+    reg("list_slice", "array_slice") { args =>
+      fn("list_slice", args.head +: args.tail.map(toLong), PType.AnyT) { a =>
+        val s                 = a(0).asInstanceOf[Seq[Any]]
+        def pos(i: Long): Int =
+          if i < 0 then
+            math.max(0, s.size + i.toInt + 1)
+          else
+            i.toInt
+        val begin = math.max(1, pos(a(1).asInstanceOf[Long]))
+        val end   = math.min(s.size, pos(a(2).asInstanceOf[Long]))
+        s.slice(begin - 1, end)
+      }
+    }
+    def rangeFn(name: String, inclusive: Boolean): Unit =
+      reg(name) { args =>
+        arity(name, args, 1, 2, 3)
+        fn(name, args.map(toLong), PType.AnyT) { a =>
+          val (start, stop) =
+            if a.length == 1 then
+              (0L, a(0).asInstanceOf[Long])
+            else
+              (a(0).asInstanceOf[Long], a(1).asInstanceOf[Long])
+          val step =
+            if a.length == 3 then
+              a(2).asInstanceOf[Long]
+            else
+              1L
+          if step == 0 then
+            throw StatusCode.INVALID_ARGUMENT.newException(s"${name} step must not be 0")
+          if inclusive then
+            NumericRange.inclusive(start, stop, step).toList
+          else
+            NumericRange(start, stop, step).toList
+        }
+      }
+    rangeFn("range", inclusive = false)
+    rangeFn("generate_series", inclusive = true)
+
+    // ---- maps ----
+    reg("map_keys") { args =>
+      fn("map_keys", args, PType.AnyT)(a => a(0).asInstanceOf[Map[Any, Any]].keys.toList)
+    }
+    reg("map_values") { args =>
+      fn("map_values", args, PType.AnyT)(a => a(0).asInstanceOf[Map[Any, Any]].values.toList)
+    }
+    reg("map_contains", "map_contains_key") { args =>
+      fn("map_contains", args, PType.Bool)(a => a(0).asInstanceOf[Map[Any, Any]].contains(a(1)))
+    }
+    reg("map_extract_value", "element_at") { args =>
+      fn("map_extract_value", args, PType.AnyT) { a =>
+        a(0) match
+          case m: Map[?, ?] =>
+            m.asInstanceOf[Map[Any, Any]].getOrElse(a(1), null)
+          case s: Seq[?] =>
+            val i = ValueOps.toLong(a(1)).toInt
+            if i >= 1 && i <= s.size then
+              s(i - 1)
+            else
+              null
+          case _ =>
+            null
+      }
+    }
+
+    // ---- floating point ----
+    def dblPredicate(names: String*)(f: Double => Boolean): Unit =
+      reg(names*) { args =>
+        args.head.ptype match
+          case PType.Float64 =>
+            fn(names.head, args, PType.Bool)(a => f(a(0).asInstanceOf[Double]))
+          case _ =>
+            // Integers and decimals are always finite
+            fn(names.head, args, PType.Bool)(_ => f(0.0))
+      }
+    dblPredicate("isnan")(_.isNaN)
+    dblPredicate("isinf")(_.isInfinite)
+    dblPredicate("isfinite")(d => !d.isNaN && !d.isInfinite)
+
+    // ---- string similarity ----
+    reg("levenshtein", "editdist3") { args =>
+      fn("levenshtein", args.map(str), PType.Int64)(a =>
+        levenshtein(a(0).asInstanceOf[String], a(1).asInstanceOf[String]).toLong
+      )
+    }
+
+    // ---- hashing ----
+    reg("hash") { args =>
+      // DuckDB's hash() returns a UBIGINT
+      fn("hash", args, PType.Decimal(20, 0)) { a =>
+        val h = a.iterator.map(duckdbHash).reduceLeft((x, y) => combineHash(x, y))
+        JBigDecimal(java.lang.Long.toUnsignedString(h))
+      }
+    }
+
+    // ---- timestamps ----
+    reg("make_timestamp") { args =>
+      arity("make_timestamp", args, 1, 6)
+      if args.size == 1 then
+        fn("make_timestamp", Seq(toLong(args.head)), PType.Timestamp)(a => a(0))
+      else
+        fn("make_timestamp", args.take(5).map(toLong) :+ toDouble(args(5)), PType.Timestamp) { a =>
+          def i(k: Int): Int = a(k).asInstanceOf[Long].toInt
+          val day            = ValueOps.daysFromCivil(i(0), i(1), i(2)).toLong
+          day * ValueOps.MicrosPerDay +
+            (i(3) * 3600L + i(4) * 60L) * ValueOps.MicrosPerSecond +
+            math.round(a(5).asInstanceOf[Double] * ValueOps.MicrosPerSecond)
+        }
+    }
+
+    // ---- JSON ----
+    reg("json_extract_string", "json_extract_path_text", "json_value") { args =>
+      fn("json_extract_string", args.map(str), PType.Str) { a =>
+        JsonPath.extract(a(0).asInstanceOf[String], a(1).asInstanceOf[String]) match
+          case Some(s: wvlet.uni.json.JSON.JSONString) =>
+            s.v
+          case Some(_: wvlet.uni.json.JSON.JSONNull) | None =>
+            null
+          case Some(other) =>
+            wvlet.uni.json.JSON.format(other)
+      }
+    }
+    reg("json_extract", "json_extract_path") { args =>
+      fn("json_extract", args.map(str), PType.Str) { a =>
+        JsonPath
+          .extract(a(0).asInstanceOf[String], a(1).asInstanceOf[String])
+          .map(wvlet.uni.json.JSON.format)
+          .orNull
+      }
     }
 
     m.result()
@@ -1043,3 +1288,72 @@ object MD5:
   end hex
 
 end MD5
+
+/** A subset of JSONPath (`$.a.b[0]`) for json_extract functions */
+object JsonPath:
+  import wvlet.uni.json.JSON
+  import wvlet.uni.json.JSON.*
+
+  def extract(json: String, path: String): Option[JSONValue] =
+    val doc =
+      try
+        JSON.parse(json)
+      catch
+        case _: Exception =>
+          throw StatusCode.INVALID_ARGUMENT.newException(s"Malformed JSON: ${json}")
+    steps(path).foldLeft(Option(doc)) { (cur, step) =>
+      cur.flatMap { v =>
+        (v, step) match
+          case (o: JSONObject, Left(key)) =>
+            o.v.find(_._1 == key).map(_._2)
+          case (a: JSONArray, Right(i)) =>
+            val idx =
+              if i < 0 then
+                a.v.size + i
+              else
+                i
+            a.v.lift(idx)
+          case _ =>
+            None
+      }
+    }
+
+  private def steps(path: String): List[Either[String, Int]] =
+    val p =
+      if path.startsWith("$") then
+        path.drop(1)
+      else if path.startsWith("/") then
+        // JSON pointer
+        return path.drop(1).split("/").toList.map(Left(_))
+      else
+        "." + path
+    val out = List.newBuilder[Either[String, Int]]
+    var i   = 0
+    while i < p.length do
+      p.charAt(i) match
+        case '.' =>
+          val end0 = p.indexWhere(c => c == '.' || c == '[', i + 1)
+          val end  =
+            if end0 < 0 then
+              p.length
+            else
+              end0
+          out += Left(p.substring(i + 1, end).stripPrefix("\"").stripSuffix("\""))
+          i = end
+        case '[' =>
+          val end = p.indexOf(']', i)
+          val tok = p.substring(i + 1, end).trim
+          if tok.startsWith("\"") || tok.startsWith("'") then
+            out += Left(tok.drop(1).dropRight(1))
+          else if tok.startsWith("#-") then
+            out += Right(-tok.drop(2).toInt)
+          else
+            out += Right(tok.toInt)
+          i = end + 1
+        case _ =>
+          throw StatusCode.INVALID_ARGUMENT.newException(s"Unsupported JSON path: ${path}")
+    out.result()
+
+  end steps
+
+end JsonPath

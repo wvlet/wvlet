@@ -71,7 +71,32 @@ class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: Wv
     walk(unit.executionPlan)
     results.result()
 
+  /** How much of a nondeterministic query's result can be compared */
+  private enum Determinism:
+    case Full,
+      RowCountOnly,
+      SchemaOnly
+
+  private def determinism(q: Relation): Determinism =
+    var d                            = Determinism.Full
+    def weaken(x: Determinism): Unit =
+      if x.ordinal > d.ordinal then
+        d = x
+    q.traverse { case s: Sample =>
+      s.size match
+        case SamplingSize.Rows(_) =>
+          weaken(Determinism.RowCountOnly)
+        case _ =>
+          weaken(Determinism.SchemaOnly)
+    }
+    q.traverseExpressions { case _: wvlet.lang.model.expr.NativeExpression =>
+      // e.g., ulid_string returns a new value for every evaluation
+      weaken(Determinism.RowCountOnly)
+    }
+    d
+
   private def compare(name: String, q: Relation)(using ctx: Context): ConformanceResult =
+    val mode     = determinism(q)
     val expected =
       try
         Right(runDuckDB(GenSQL.generateSQLFromRelation(q, addHeader = false).sql))
@@ -112,12 +137,24 @@ class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: Wv
                 false,
                 s"column count: expected ${cols.mkString(",")} but got ${actualCols.mkString(",")}"
               )
+            else if mode == Determinism.SchemaOnly then
+              ConformanceResult(
+                name,
+                true,
+                s"${actualRows.size} rows (nondeterministic: schema only)"
+              )
             else if actualRows.size != expectedRows.size then
               ConformanceResult(
                 name,
                 false,
                 s"row count: expected ${expectedRows.size} but got ${actualRows
                     .size}\nexpected: ${expectedRows.take(3)}\nactual:   ${actualRows.take(3)}"
+              )
+            else if mode == Determinism.RowCountOnly then
+              ConformanceResult(
+                name,
+                true,
+                s"${actualRows.size} rows (nondeterministic: row count only)"
               )
             else
               val e    = expectedRows.sortBy(rowKey)
@@ -185,6 +222,36 @@ class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: Wv
         t.toString.replace('T', ' ')
       case b: java.lang.Boolean =>
         b.booleanValue()
+      case a: java.sql.Array =>
+        nested(a.getArray.asInstanceOf[Array[AnyRef]].toSeq.map(normalizeJdbc))
+      case s: org.duckdb.DuckDBStruct =>
+        import scala.jdk.CollectionConverters.*
+        nested(s.getMap.asScala.toSeq.map((k, v) => (k, normalizeJdbc(v))).toMap)
+      case m: java.util.Map[?, ?] =>
+        import scala.jdk.CollectionConverters.*
+        nested(m.asScala.toSeq.map((k, v) => (normalizeJdbc(k), normalizeJdbc(v))).toMap)
+      case other =>
+        other.toString
+
+  /** A canonical string for lists, maps, and structs (as maps of field names) */
+  private def nested(v: Any): String =
+    v match
+      case null =>
+        "NULL"
+      case s: Seq[?] =>
+        s.map(nested).mkString("[", ", ", "]")
+      case m: scala.collection.Map[?, ?] =>
+        m.toSeq
+          .map((k, x) => (nested(k), nested(x)))
+          .sortBy(_._1)
+          .map((k, x) => s"${k}=${x}")
+          .mkString("{", ", ", "}")
+      case i: Int =>
+        i.toLong.toString
+      case d: Double =>
+        ValueOps.formatDouble(d)
+      case b: JBigDecimal =>
+        b.stripTrailingZeros().toPlainString
       case other =>
         other.toString
 
@@ -200,7 +267,13 @@ class EngineConformance(specPath: String, setupSQL: Seq[String], setupEngine: Wv
         case PType.Timestamp =>
           ValueOps.formatTimestamp(v.asInstanceOf[Long])
         case PType.AnyT =>
-          v.toString
+          v match
+            case s: Seq[?] =>
+              nested(s)
+            case m: scala.collection.Map[?, ?] =>
+              nested(m)
+            case other =>
+              other.toString
         case _ =>
           v
 

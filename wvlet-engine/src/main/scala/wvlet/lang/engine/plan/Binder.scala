@@ -20,6 +20,7 @@ import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
+import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.Relation
@@ -99,6 +100,19 @@ object Binder:
 
   private val PlaceholderPrefix = "__wv_p"
 
+  val IntervalFunction = "__wv_interval"
+
+  private val IntervalPattern = """(?i)\binterval\s*\(([^()]*)\)\s*([a-z]+)""".r
+
+  val ConcatFunction = "__wv_concat"
+
+  private val ConcatOperand =
+    s"""(${PlaceholderPrefix}[0-9]+|'(?:[^']|'')*'|${ConcatFunction}\\([^()]*\\))"""
+
+  private val ConcatPattern = s"""${ConcatOperand}\\s*\\|\\|\\s*${ConcatOperand}""".r
+
+  private val ExtractPattern = """(?i)\bextract\s*\(\s*([a-z_]+)\s+from\s+""".r
+
   /** IN-list items with list arguments expanded in place */
   private def flattenList(list: List[Expression]): List[Expression] = list.flatMap { x =>
     unwrapArg(x) match
@@ -134,7 +148,21 @@ object Binder:
             args(name) = e
             sb.append(name)
     }
-    val sql    = sb.toString
+    // extract(<field> from x) becomes date_part('<field>', x) so that engine-specific fields (e.g.,
+    // isodow) need no SQL-parser support
+    // INTERVAL (n) unit becomes an engine-internal function for non-literal amounts
+    var sql = IntervalPattern.replaceAllIn(
+      ExtractPattern.replaceAllIn(sb.toString, m => s"date_part('${m.group(1)}', "),
+      m => s"${IntervalFunction}(${m.group(1)}, '${m.group(2)}')"
+    )
+    // The SQL parser has no `||` operator: rewrite `a || b` over placeholders and literals
+    var prev = ""
+    while prev != sql do
+      prev = sql
+      sql = ConcatPattern.replaceFirstIn(
+        sql,
+        scala.util.matching.Regex.quoteReplacement(s"${ConcatFunction}(") + "$1, $2)"
+      )
     val parsed = templateCache.synchronized {
       templateCache.getOrElseUpdate(
         sql, {
@@ -144,6 +172,8 @@ object Binder:
       )
     }
     (parsed, args.toMap)
+
+  end parseTemplate
 
   /**
     * Replace `sql"..."` templates with the parsed SQL expression, arguments substituted. `x in
@@ -282,32 +312,35 @@ object Binder:
         -1
       else
         1
-    val v =
-      unit.toLowerCase.stripSuffix("s") match
-        case "year" =>
-          Interval((n * 12).toInt, 0)
-        case "quarter" =>
-          Interval((n * 3).toInt, 0)
-        case "month" =>
-          Interval(n.toInt, 0)
-        case "week" =>
-          Interval(0, (n * 7 * ValueOps.MicrosPerDay).toLong)
-        case "day" =>
-          Interval(0, (n * ValueOps.MicrosPerDay).toLong)
-        case "hour" =>
-          Interval(0, (n * 3600 * ValueOps.MicrosPerSecond).toLong)
-        case "minute" =>
-          Interval(0, (n * 60 * ValueOps.MicrosPerSecond).toLong)
-        case "second" =>
-          Interval(0, (n * ValueOps.MicrosPerSecond).toLong)
-        case other =>
-          throw StatusCode.INVALID_ARGUMENT.newException(s"Unsupported interval unit: ${other}")
+    val v = intervalOf(unit, n)
     if sign < 0 then
       v.negate
     else
       v
 
   end intervalOf
+
+  /** An interval of `n` units */
+  def intervalOf(unit: String, n: Double): Interval =
+    unit.toLowerCase.stripSuffix("s") match
+      case "year" =>
+        Interval((n * 12).toInt, 0)
+      case "quarter" =>
+        Interval((n * 3).toInt, 0)
+      case "month" =>
+        Interval(n.toInt, 0)
+      case "week" =>
+        Interval(0, (n * 7 * ValueOps.MicrosPerDay).toLong)
+      case "day" =>
+        Interval(0, (n * ValueOps.MicrosPerDay).toLong)
+      case "hour" =>
+        Interval(0, (n * 3600 * ValueOps.MicrosPerSecond).toLong)
+      case "minute" =>
+        Interval(0, (n * 60 * ValueOps.MicrosPerSecond).toLong)
+      case "second" =>
+        Interval(0, (n * ValueOps.MicrosPerSecond).toLong)
+      case other =>
+        throw StatusCode.INVALID_ARGUMENT.newException(s"Unsupported interval unit: ${other}")
 
 end Binder
 
@@ -675,7 +708,16 @@ class Binder(
           nullSafe = true
         )
       case m: MapValue =>
-        val ks = m.entries.map(e => bind(e.key))
+        val ks = m
+          .entries
+          .map { e =>
+            e.key match
+              // map {"a": 1} keys are strings
+              case d: DoubleQuotedIdentifier =>
+                Const(d.unquotedValue, PType.Str)
+              case k =>
+                bind(k)
+          }
         val vs = m.entries.map(e => bind(e.value))
         RowFn(
           "map",
@@ -707,6 +749,21 @@ class Binder(
         Const(currentMicros(), PType.Timestamp)
       case a: AtTimeZone =>
         bind(a.expr)
+      case n: NativeExpression if NativeFunction.isImplemented(n.name) =>
+        // Functions evaluated inside the compiler (e.g., ulid_string)
+        NativeFunction.callByName(n.name) match
+          case s: String =>
+            Const(s, PType.Str)
+          case i: Int =>
+            Const(i, PType.Int32)
+          case l: Long =>
+            Const(l, PType.Int64)
+          case d: Double =>
+            Const(d, PType.Float64)
+          case b: Boolean =>
+            Const(b, PType.Bool)
+          case other =>
+            error(s"Unsupported native value: ${other}", e)
       case n: NativeExpression =>
         error(s"Native expression ${n.name} is not supported by the engine", e)
       case other =>
@@ -815,6 +872,8 @@ class Binder(
         addInterval(l, i)
       case (Const(iv: Interval, _), _) if aop == ArithOp.Add =>
         addInterval(r, iv)
+      case (_, RowFn("interval", _, _, _, _)) if aop == ArithOp.Add || aop == ArithOp.Sub =>
+        addDynamicInterval(l, r, negate = aop == ArithOp.Sub)
       case _ =>
         (l.ptype, r.ptype) match
           case (PType.Null, _) | (_, PType.Null) =>
@@ -921,6 +980,29 @@ class Binder(
               d.toLong * ValueOps.MicrosPerDay + iv.micros
           case _ =>
             ValueOps.addMonthsToTimestamp(a(0).asInstanceOf[Long], iv.months) + iv.micros
+    )
+
+  /** base +- an interval computed per row */
+  private def addDynamicInterval(base: VExpr, interval: VExpr, negate: Boolean): VExpr =
+    val t =
+      base.ptype match
+        case PType.Date | PType.Str =>
+          PType.Timestamp
+        case other =>
+          other
+    val b = castTo(base, t)
+    RowFn(
+      "add_interval",
+      Seq(b, interval),
+      PType.Timestamp,
+      a =>
+        val iv0 = a(1).asInstanceOf[Interval]
+        val iv  =
+          if negate then
+            iv0.negate
+          else
+            iv0
+        ValueOps.addMonthsToTimestamp(a(0).asInstanceOf[Long], iv.months) + iv.micros
     )
 
   private def decimalOf(t: PType): PType.Decimal =
@@ -1068,6 +1150,28 @@ class Binder(
           t,
           a => ScalarFunctions.addInterval(t, a(1), unit, sign * ValueOps.toLong(a(0)))
         )
+      case IntervalFunction =>
+        val unit =
+          args(1) match
+            case Const(v, _) =>
+              v.toString
+            case _ =>
+              error("interval requires a constant unit", f)
+        args(0) match
+          case Const(null, _) =>
+            Const(null, PType.AnyT)
+          case Const(v, t) =>
+            Const(
+              intervalOf(unit, ValueOps.toDouble(ValueOps.cast(v, t, PType.Float64))),
+              PType.AnyT
+            )
+          case n =>
+            RowFn(
+              "interval",
+              Seq(castTo(n, PType.Float64)),
+              PType.AnyT,
+              a => intervalOf(unit, a(0).asInstanceOf[Double])
+            )
       case "date_add" if args.size == 2 =>
         args(1) match
           case Const(iv: Interval, _) =>
