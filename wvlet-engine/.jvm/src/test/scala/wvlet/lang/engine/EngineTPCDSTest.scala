@@ -31,10 +31,7 @@ class EngineTPCDSTest extends UniTest:
     * Query numbers the engine does not support yet (the same in both spec sets). This list must
     * only shrink
     */
-  private val knownGaps: Set[Int] = Set(
-    // Runs out of heap on CI runners: the inventory join builds a large intermediate result
-    72
-  )
+  private val knownGaps: Set[Int] = Set()
 
   private val (dataDir, tables) = EngineTPCDSTest.prepareData(EngineTPCDSTest.scaleFactor)
 

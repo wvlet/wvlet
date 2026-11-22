@@ -1350,6 +1350,17 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
         planAggregation(f, None, defaultItems = true)
       case j: Join if isInnerJoin(j) =>
         planJoinTree(j, conjuncts(f.filterExpr))
+      case j: Join if j.joinType == JoinType.LeftOuterJoin && !j.asof =>
+        // Conditions on the preserved (left) side filter before the join, so that an inner join
+        // tree under left joins can use them for its join order and pushdown
+        val conds          = conjuncts(f.filterExpr)
+        val leftSchema     = planRelation(j.left).schema
+        val (pushed, rest) = conds.partition(c => !hasSubquery(c) && bindsIn(c, leftSchema))
+        if pushed.isEmpty then
+          applyConjuncts(planRelation(j), conds)
+        else
+          val left = Filter(j.left, pushed.reduce((a, b) => And(a, b, NoSpan)), f.span)
+          applyConjuncts(planRelation(j.copy(left = left)), rest)
       case child =>
         applyConjuncts(planRelation(child), conjuncts(f.filterExpr))
 
