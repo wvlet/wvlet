@@ -162,6 +162,27 @@ class EngineScanPushdownTest extends UniTest:
       rows("from 'spec/tpch/data/lineitem.parquet' where l_orderkey <= 3 select l_orderkey").size
   }
 
+  test("should compute DISTINCT and the inputs of INTERSECT in parallel aggregations") {
+    val li       = "'spec/tpch/data/lineitem.parquet'"
+    val distinct = explain(s"from ${li} select distinct l_returnflag, l_linestatus")
+    debug(distinct)
+    distinct.contains("Distinct") shouldBe false
+    distinct shouldContain "PartitionedAgg"
+    val intersect = explain(s"""from ${li} select l_suppkey
+        |intersect
+        |{ from ${li} where l_quantity > 10 select l_suppkey }""".stripMargin)
+    debug(intersect)
+    // Each side is reduced to its distinct rows before the set operation
+    """Intersect[^\n]*\n\s+Project[^\n]*\n\s+PartitionedAgg"""
+      .r
+      .findFirstIn(intersect)
+      .isDefined shouldBe true
+    rows(s"""from ${li} where l_orderkey <= 3 select l_returnflag
+        |intersect
+        |{ from ${li} where l_orderkey <= 3 select l_returnflag }""".stripMargin).size shouldBe
+      rows(s"from ${li} where l_orderkey <= 3 select distinct l_returnflag").size
+  }
+
   test("should push comparisons into the Parquet scan") {
     val plan = explain(s"from '${rowGroupFile}' where id >= 950 select id")
     debug(plan)
