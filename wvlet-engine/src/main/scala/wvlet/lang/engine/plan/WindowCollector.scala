@@ -34,6 +34,9 @@ class WindowCollector(
 
   def frozen(op: Operator): WindowCollector = WindowCollector(input, Some(op), calls.toIndexedSeq)
 
+  /** The collected calls over another input (e.g., the aggregation built after the first pass) */
+  def rebase(op: Operator): WindowCollector = WindowCollector(op, None, calls.toIndexedSeq)
+
   def build(): Operator =
     val fields = calls.zipWithIndex.map((c, i) => Field(s"__wv_win${i}", c.ptype))
     WindowOp(input, calls.toIndexedSeq, Schema(input.schema.fields ++ fields))
@@ -83,8 +86,13 @@ class WindowCollector(
           (f, f.window.get, None)
         case other =>
           throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported window expression: ${other}")
-    // Bind against the window input (the first pass scope is the input schema)
-    val b    = Binder(binder.plannerRef, BindScope(input.schema))
+    // Bind against the window input (the first pass scope is the input schema). Over aggregated
+    // rows, the aggregation binder maps keys and aggregate calls to the aggregation output
+    val b =
+      if binder.aggContext.isDefined then
+        binder
+      else
+        Binder(binder.plannerRef, BindScope(input.schema))
     val name = Binder.functionName(f)
     val args = f
       .args

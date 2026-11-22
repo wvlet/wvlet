@@ -33,9 +33,7 @@ class EngineTPCDSTest extends UniTest:
     */
   private val knownGaps: Set[Int] = Set(
     // ROLLUP / GROUPING()
-    5, 14, 18, 22, 67, 77, 80, 86,
-    // Window functions over aggregates
-    12, 20, 47, 51, 53, 57, 63, 70, 89, 98,
+    5, 14, 18, 22, 67, 70, 77, 80, 86,
     // OR-ed EXISTS subqueries
     10, 35,
     // Runs out of heap on CI runners: the inventory join builds a large intermediate result

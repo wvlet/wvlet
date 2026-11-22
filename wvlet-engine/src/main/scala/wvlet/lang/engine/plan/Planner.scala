@@ -974,19 +974,32 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       keyItems
     }
     // Bind select items in aggregation mode
-    val boundItems = mutable.ArrayBuffer.empty[(VExpr, Field)]
-    selectItems.foreach {
-      case a: AllColumns =>
-        // `select *` over a grouping: every key
-        keyExprs
-          .indices
-          .foreach(i =>
-            boundItems += ((aggCtx.keyRef(i), Field(keyExprs(i)._1, keyExprs(i)._2.ptype)))
-          )
-      case attr =>
-        val e = aggBinder.bind(attr)
-        boundItems += ((e, Field(nameOf(attr), e.ptype)))
-    }
+    def bindSelectItems(): IndexedSeq[(VExpr, Field)] =
+      val boundItems = mutable.ArrayBuffer.empty[(VExpr, Field)]
+      selectItems.foreach {
+        case a: AllColumns =>
+          // `select *` over a grouping: every key
+          keyExprs
+            .indices
+            .foreach(i =>
+              boundItems += ((aggCtx.keyRef(i), Field(keyExprs(i)._1, keyExprs(i)._2.ptype)))
+            )
+        case attr =>
+          val e = aggBinder.bind(attr)
+          boundItems += ((e, Field(nameOf(attr), e.ptype)))
+      }
+      boundItems.toIndexedSeq
+    val hasWindow = selectItems.exists(a => Binder.containsWindow(a))
+    val saved     = windowCollector
+    // Window functions over aggregated rows: the first pass registers window calls (and the
+    // aggregate calls inside them); the window operator then runs over the aggregation output
+    val collector = Option.when(hasWindow)(WindowCollector(inOp))
+    if hasWindow then
+      windowCollector = collector
+    val firstPass =
+      try bindSelectItems()
+      finally windowCollector = saved
+    val extraItems = mutable.ArrayBuffer.empty[(VExpr, Field)]
     if defaultItems && items.isEmpty then
       // arbitrary(c) for every input column
       inOp
@@ -1000,7 +1013,7 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
             val e = aggCtx.addCall(
               AggCall("arbitrary", Seq(c), distinct = false, filter = None, f.ptype)
             )
-            boundItems += ((e, Field(s"arbitrary(${f.name})", f.ptype)))
+            extraItems += ((e, Field(s"arbitrary(${f.name})", f.ptype)))
         }
     val havingExpr      = having.map(h => aggBinder.bind(h))
     val aggOp: Operator =
@@ -1008,21 +1021,17 @@ class Planner(catalog: EngineCatalog, sources: SourceResolver)(using ctx: Contex
       val calls = aggCtx.calls.toIndexedSeq
       HashAggOp(inOp, keys, calls, aggCtx.outputSchema)
     val filtered = havingExpr.map(h => FilterOp(aggOp, h)).getOrElse(aggOp)
-    val items2   = boundItems.toIndexedSeq
-    if selectItems.exists(a => Binder.containsWindow(a)) then
-      // Window functions over aggregated rows: project the aggregate columns first
-      val pre = ProjectOp(
-        filtered,
-        (0 until filtered.schema.size).map(i =>
-          ColRef(i, filtered.schema(i).ptype, filtered.schema(i).name)
-        ),
-        filtered.schema
-      )
-      throw StatusCode
-        .NOT_IMPLEMENTED
-        .newException("Window functions over aggregations are not supported yet")
-    else
-      ProjectOp(filtered, items2.map(_._1), Schema(items2.map(_._2)))
+    collector match
+      case Some(c) =>
+        val winOp = c.rebase(filtered).build()
+        windowCollector = Some(c.rebase(filtered).frozen(winOp))
+        val items2 =
+          try bindSelectItems() ++ extraItems
+          finally windowCollector = saved
+        ProjectOp(winOp, items2.map(_._1), Schema(items2.map(_._2)))
+      case None =>
+        val items2 = firstPass ++ extraItems
+        ProjectOp(filtered, items2.map(_._1), Schema(items2.map(_._2)))
 
   end planAggregation
 

@@ -411,6 +411,9 @@ class Binder(
 
   def plannerRef: Planner = planner
 
+  /** The aggregation context when binding over aggregated rows */
+  def aggContext: Option[AggContext] = agg
+
   private def withSubst(m: Map[String, Expression]): Binder = Binder(
     planner,
     scope,
@@ -470,7 +473,7 @@ class Binder(
             a.keyRef(k)
           case None =>
             val asInput: Option[VExpr] =
-              if containsAggregate(e) then
+              if containsAggregate(e) || containsWindow(e) then
                 None
               else
                 try
