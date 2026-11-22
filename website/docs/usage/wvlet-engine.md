@@ -13,9 +13,10 @@ through pure-Scala readers, so it also works where DuckDB is unavailable.
 The engine covers queries over files and registered tables (filters, projections, joins
 including ASOF joins, aggregations, window functions, subqueries, `pivot`, `unnest`, lambdas,
 `show` commands, and TPC-H), plus `save to`, `append to`, and `delete` on in-memory tables and
-`save to` / `append to` Parquet, CSV, and JSON files. Features it doesn't support yet report an
-error: SQL DDL (`create table`, `drop`), `execute`, `update`, flows, table functions such as
-`read_csv(...)`, and some engine-specific functions. Map values run but can return results that
+`save to` / `append to` Parquet, CSV, and JSON files, and `create table`, `drop table`,
+`truncate`, and `create` / `drop schema`. Features it doesn't support yet report an error:
+`alter table`, views, `update`, `execute`, flows, table functions such as `read_csv(...)`, and some
+engine-specific functions. Map values run but can return results that
 differ from DuckDB.
 :::
 
@@ -105,11 +106,42 @@ delete
 ```
 
 Appended rows map to the table's columns by position, or to the columns listed in
-`append to t (c1, c2)` (the others become NULL), and are cast to the column types. A keyed
+`append to t (c1, c2)` (the others get their declared default, or NULL), and are cast to the
+column types. A keyed
 `append to t on k` matches columns by name, as SQL `MERGE` does: matched rows get the new values
 of the query's columns, and rows with a NULL key always insert. Tables
 registered from files (`dataDir`, `tables`) are read-only: writing to them reports an error
 instead of changing the files.
+
+## Creating tables
+
+`create table` makes an empty in-memory table from a `table` declaration, including column
+defaults and `not null`, `primary key`, and `unique` constraints, which every write to the table
+checks:
+
+```wvlet
+table accounts = {
+  id: int primary key
+  email: string unique not null
+  status: string = 'active'
+}
+
+create table accounts
+-- Fills status with its default
+append to accounts (id, email) {
+  from [[1, 'alice@example.com']] as t(id, email)
+}
+
+truncate accounts
+drop table accounts
+```
+
+- `create table t if not exists` keeps an existing table, and `create or replace table t` starts
+  over; a plain `create table` of an existing table is an error
+- `append to` a declared table that doesn't exist yet creates it from the declaration first
+- `create schema s` and `save to s.t` group tables under a schema; `drop schema s with cascade:
+  true` drops them, and `drop schema s` of a schema that still holds tables is an error
+- `drop table` of a table registered from files only unregisters it; the files stay as they are
 
 ## Writing files
 

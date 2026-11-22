@@ -214,9 +214,92 @@ class PlanExecutorWvletEngineTest extends UniTest:
     result.getError shouldBe None
   }
 
+  test("create and drop declared tables") {
+    val result = run("""table ddl_t = {
+                       |  id: int
+                       |  name: string
+                       |  active: boolean = true
+                       |}
+                       |create table ddl_t
+                       |create table ddl_t if not exists
+                       |
+                       |append to ddl_t (id, name) {
+                       |  from [[1, 'a']] as t(id, name)
+                       |}
+                       |
+                       |from ddl_t
+                       |test _.rows should be [[1, 'a', true]]
+                       |
+                       |truncate ddl_t
+                       |from ddl_t
+                       |test _.size should be 0
+                       |
+                       |drop table ddl_t
+                       |drop table ddl_t if exists""".stripMargin)
+    result.getError shouldBe None
+  }
+
+  test("reject creating a table that already exists") {
+    val e = intercept[WvletLangException] {
+      run("""table ddl_dup = {
+            |  id: int
+            |}
+            |create table ddl_dup
+            |create table ddl_dup""".stripMargin)
+    }
+    e.getMessage shouldContain "already exists"
+  }
+
+  test("enforce NOT NULL and unique constraints of declared tables") {
+    val notNull = intercept[WvletLangException] {
+      run("""table ddl_nn = {
+            |  id: int not null
+            |}
+            |create table ddl_nn
+            |append to ddl_nn {
+            |  from [[null]] as t(id)
+            |}""".stripMargin)
+    }
+    notNull.getMessage shouldContain "NOT NULL"
+    val unique = intercept[WvletLangException] {
+      run("""table ddl_pk = {
+            |  id: int primary key
+            |}
+            |create table ddl_pk
+            |append to ddl_pk {
+            |  from [[1], [1]] as t(id)
+            |}""".stripMargin)
+    }
+    unique.getMessage shouldContain "unique"
+  }
+
+  test("drop schemas only with cascade when they hold tables") {
+    val e = intercept[WvletLangException] {
+      run("""create schema ddl_s
+            |from [[1]] as t(id)
+            |save to ddl_s.items
+            |drop schema ddl_s""".stripMargin)
+    }
+    e.getMessage shouldContain "cascade"
+    val result = run("""create schema ddl_s2
+                       |from [[1]] as t(id)
+                       |save to ddl_s2.items
+                       |
+                       |from [[2]] as t(id)
+                       |save to items
+                       |
+                       |from ddl_s2.items
+                       |test _.rows should be [[1]]
+                       |
+                       |drop schema ddl_s2 with cascade: true
+                       |from items
+                       |test _.rows should be [[2]]""".stripMargin)
+    result.getError shouldBe None
+  }
+
   test("reject SQL statements the engine can't run") {
     val e = intercept[WvletLangException] {
-      run("create schema engine_s if not exists")
+      run("execute sql\"select 1\"")
     }
     e.getMessage shouldContain "not supported by the wvlet engine"
   }

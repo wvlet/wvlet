@@ -23,6 +23,11 @@ import wvlet.lang.compiler.LocalFile
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.codegen.GenSQL
+import scala.collection.mutable
+import wvlet.lang.engine.vector.ValueOps
+import wvlet.lang.engine.vector.PType
+import wvlet.lang.compiler.transform.ExpressionEvaluator
+import wvlet.lang.compiler.analyzer.TableBindings
 import wvlet.lang.engine.EngineResult
 import wvlet.lang.engine.TableWriter
 import wvlet.lang.engine.WvletEngine
@@ -146,14 +151,22 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
   private def registerSchema(source: TableSource): Unit =
     try
       val columns = source.schema.fields.map(f => Catalog.TableColumn(f.name, f.ptype.toDataType))
-      if catalog.tableExists(schemaName, source.name) then
-        catalog.updateColumns(schemaName, source.name, columns)
+      // Tables keyed `s.t` (see tableKey) belong to schema s
+      val (schema, table) =
+        source.name.lastIndexOf('.') match
+          case -1 =>
+            (schemaName, source.name)
+          case i =>
+            (source.name.substring(0, i), source.name.substring(i + 1))
+      catalog.createSchema(
+        Catalog.TableSchema(Some(catalogName), schema),
+        Catalog.CreateMode.CREATE_IF_NOT_EXISTS
+      )
+      if catalog.tableExists(schema, table) then
+        catalog.updateColumns(schema, table, columns)
       else
         catalog.createTable(
-          Catalog.TableDef(
-            Catalog.TableName(Some(catalogName), Some(schemaName), source.name),
-            columns
-          ),
+          Catalog.TableDef(Catalog.TableName(Some(catalogName), Some(schema), table), columns),
           Catalog.CreateMode.FAIL_IF_EXISTS
         )
     catch
@@ -195,7 +208,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     * data file path
     */
   def save(save: Save)(using ctx: Context): Unit =
-    def tableName(s: Save): String = s.targetName.split("\\.").last
+    def tableName(s: Save): String = tableKey(s.targetName)
     guarded {
       GenSQL.bindSaveTarget(save) match
         case s: SaveTo if s.isForFile =>
@@ -203,8 +216,13 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
         case a: AppendTo if a.isForFile && a.columns.isEmpty && a.keyColumns.isEmpty =>
           writer.appendToFile(ctx.dataFilePath(a.targetName), a.child)
         case s: SaveTo if s.isForTable =>
-          registerSchema(writer.saveTo(tableName(s), s.child))
+          registerSchema(writer.saveTo(tableName(s), s.child, ifNotExists = s.ifNotExists))
         case a: AppendTo if a.isForTable =>
+          // Appending to a declared table that doesn't exist yet creates it from the declaration
+          if engine.catalog.find(tableName(a)).isEmpty then
+            TableBindings
+              .declarationFor(a.targetName)
+              .foreach(d => writer.createTable(tableName(a), tableSpecOf(a.targetName, d.columns)))
           registerSchema(
             writer.appendTo(
               tableName(a),
@@ -224,26 +242,175 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
             )
     }
 
+  end save
+
+  /**
+    * The engine catalog key of a table name: the name relative to this session's catalog and
+    * default schema, so `t`, `main.t`, and `wvlet.main.t` are the same table, and `s.t` names table
+    * t of schema s
+    */
+  def tableKey(name: String): String =
+    val parts    = name.split("\\.").toList
+    val relative =
+      parts match
+        case c :: s :: rest if rest.nonEmpty && c.equalsIgnoreCase(catalogName) =>
+          s :: rest
+        case other =>
+          other
+    relative match
+      case s :: t :: Nil if s.equalsIgnoreCase(schemaName) =>
+        t
+      case other =>
+        other.mkString(".")
+
+  /**
+    * Run a catalog statement: `create table` (from declared columns, with defaults and NOT NULL /
+    * primary key / unique constraints), `drop table`, `truncate`, and `create` / `drop schema`
+    */
+  def ddl(statement: TopLevelStatement)(using ctx: Context): Unit = guarded {
+    statement match
+      case c: CreateTable =>
+        val key  = tableKey(c.table.fullName)
+        val spec = tableSpecOf(
+          c.table.fullName,
+          c.tableElems
+            .collect { case d: ColumnDef =>
+              d
+            }
+        )
+        writer
+          .createTable(key, spec, ifNotExists = c.ifNotExists, replace = c.replace)
+          .foreach(registerSchema)
+      case d: DropTable =>
+        writer.dropTable(tableKey(d.table.fullName), ifExists = d.ifExists)
+      case t: Truncate if t.isForTable =>
+        registerSchema(writer.truncate(tableKey(t.targetName)))
+      case c: CreateSchema if c.location.isEmpty && c.options.isEmpty =>
+        val name = tableKey(c.schema.fullName)
+        if schemas.contains(name.toLowerCase) && !c.ifNotExists then
+          throw StatusCode.SCHEMA_ALREADY_EXISTS.newException(s"Schema ${name} already exists")
+        schemas += name.toLowerCase
+      case d: DropSchema =>
+        val name   = tableKey(d.schema.fullName)
+        val prefix = s"${name.toLowerCase}."
+        val tables = engine.catalog.tableNames.filter(_.toLowerCase.startsWith(prefix))
+        if !schemas.contains(name.toLowerCase) && tables.isEmpty then
+          if !d.ifExists then
+            throw StatusCode.SCHEMA_NOT_FOUND.newException(s"Schema not found: ${name}")
+        else if tables.nonEmpty && !d.cascade then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Schema ${name} still has tables (${tables.mkString(
+                  ", "
+                )}); drop it with cascade: true"
+            )
+        else
+          tables.foreach(t => writer.dropTable(t))
+          schemas -= name.toLowerCase
+      case other =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(
+            s"${other
+                .nodeName} is not supported by the wvlet engine yet (supported: create / drop " +
+              "table, truncate, and create / drop schema)"
+          )
+  }
+
+  // Schemas made by `create schema`; tables of a schema are keyed `<schema>.<table>`
+  private val schemas = mutable.Set.empty[String]
+
+  // The engine table spec of declared columns: types, literal defaults, and constraints
+  private def tableSpecOf(name: String, columns: List[ColumnDef])(using
+      Context
+  ): TableWriter.TableSpec =
+    if columns.isEmpty then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"No columns are declared for table ${name}: declare it with `table ${name} = { ... }`"
+        )
+    val specs = columns.map { c =>
+      val ptype   = PType.fromDataType(c.columnType)
+      val default =
+        c.defaultValue match
+          case None =>
+            null
+          case Some(e) =>
+            val v = literalValueOf(ExpressionEvaluator.eval(e)).getOrElse(
+              throw StatusCode
+                .NOT_IMPLEMENTED
+                .newException(
+                  s"The default of column ${c
+                      .columnName
+                      .fullName} must be a literal on the wvlet engine",
+                  e.sourceLocation
+                )
+            )
+            ValueOps.cast(v, ptypeOfLiteral(v), ptype)
+      TableWriter.ColumnSpec(
+        c.columnName.leafName,
+        ptype,
+        default,
+        notNull = c.notNull || c.primaryKey
+      )
+    }
+    val keys =
+      columns.filter(_.primaryKey).map(_.columnName.leafName) match
+        case Nil =>
+          Nil
+        case pk =>
+          List(pk)
+    val uniques = columns.filter(_.unique).map(c => List(c.columnName.leafName))
+    TableWriter.TableSpec(specs, keys ++ uniques)
+
+  end tableSpecOf
+
+  private def ptypeOfLiteral(v: Any): PType =
+    v match
+      case _: Boolean =>
+        PType.Bool
+      case _: Long =>
+        PType.Int64
+      case _: Double =>
+        PType.Float64
+      case d: java.math.BigDecimal =>
+        PType.decimal(math.max(d.precision, d.scale), d.scale)
+      case null =>
+        PType.Null
+      case _ =>
+        PType.Str
+
+  // A literal expression as a Scala value
+  private def literalValueOf(e: Expression): Option[Any] =
+    e match
+      case l: StringLiteral =>
+        Some(l.unquotedValue)
+      case l: LongLiteral =>
+        Some(l.value)
+      case l: DoubleLiteral =>
+        Some(l.value)
+      case l: DecimalLiteral =>
+        Some(java.math.BigDecimal(l.stringValue))
+      case _: TrueLiteral =>
+        Some(true)
+      case _: FalseLiteral =>
+        Some(false)
+      case _: NullLiteral =>
+        Some(null)
+      case _ =>
+        None
+
   // `save to ... with k: v, ...` option values: literals as Scala values
   private def saveOptionsOf(s: SaveTo)(using Context): Map[String, Any] =
     s.saveOptions
       .map { o =>
-        val value: Any =
-          o.value match
-            case l: StringLiteral =>
-              l.unquotedValue
-            case l: LongLiteral =>
-              l.value
-            case l: DoubleLiteral =>
-              l.value
-            case _: TrueLiteral =>
-              true
-            case _: FalseLiteral =>
-              false
-            case other =>
-              throw StatusCode
-                .INVALID_ARGUMENT
-                .newException(s"Option ${o.key.fullName} must be a literal value", o.sourceLocation)
+        val value: Any = literalValueOf(o.value).getOrElse(
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(s"Option ${o.key.fullName} must be a literal value", o.sourceLocation)
+        )
         o.key.fullName -> value
       }
       .toMap

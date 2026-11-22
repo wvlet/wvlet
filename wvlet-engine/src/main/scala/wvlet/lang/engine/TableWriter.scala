@@ -38,7 +38,62 @@ import scala.collection.mutable
   * them fail instead of silently replacing the files' rows with an in-memory copy
   */
 class TableWriter(engine: WvletEngine) extends LogSupport:
+  import TableWriter.*
+
   private def catalog = engine.catalog
+
+  // Declared shapes (defaults and constraints) of tables made by `create table`, by lower-case name
+  private val specs = mutable.HashMap.empty[String, TableSpec]
+
+  private def specOf(name: String): Option[TableSpec] = specs.synchronized(
+    specs.get(name.toLowerCase)
+  )
+
+  private def defaultsOf(name: String, schema: Schema): IndexedSeq[Any] =
+    specOf(name) match
+      case Some(spec) if spec.columns.size == schema.size =>
+        spec.columns.map(_.default).toIndexedSeq
+      case _ =>
+        IndexedSeq.fill(schema.size)(null)
+
+  /**
+    * `create table <name>`: create an empty in-memory table with the declared columns. With
+    * `ifNotExists`, an existing table is kept (returns None); with `replace`, it is dropped first;
+    * otherwise an existing table is an error
+    */
+  def createTable(
+      name: String,
+      spec: TableSpec,
+      ifNotExists: Boolean = false,
+      replace: Boolean = false
+  ): Option[MemTable] =
+    catalog.find(name) match
+      case Some(_) if ifNotExists =>
+        None
+      case Some(_) if !replace =>
+        throw StatusCode.TABLE_ALREADY_EXISTS.newException(s"Table ${name} already exists")
+      case existing =>
+        existing.foreach(t => writable(t, "replace"))
+        specs.synchronized(specs(name.toLowerCase) = spec)
+        Some(register(MemTable(name, spec.schema, Nil)))
+
+  /** `drop table <name>`: remove the table; returns false when it doesn't exist and `ifExists` */
+  def dropTable(name: String, ifExists: Boolean = false): Boolean =
+    catalog.find(name) match
+      case None if ifExists =>
+        false
+      case None =>
+        throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${name}")
+      case Some(t) =>
+        // Dropping a table registered from files unregisters it; the files are left as they are
+        catalog.drop(name)
+        specs.synchronized(specs.remove(name.toLowerCase))
+        true
+
+  /** `truncate <name>`: remove every row, keeping the table's columns and constraints */
+  def truncate(name: String): MemTable =
+    val table = writable(catalog.get(name), "truncate")
+    register(MemTable(table.name, table.schema, Nil))
 
   /**
     * `save to '<path>' [with options]`: write the query result to a Parquet, CSV, TSV, or JSON
@@ -68,7 +123,11 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
           val sourceOf = positionalSources(path, schema, result.schema, Nil)
           // Read the whole file before replacing it
           val oldBatches = batchesOf(existing).toIndexedSeq
-          val newBatches = result.batches.map(b => castBatch(b, result.schema, schema, sourceOf))
+          val newBatches = result
+            .batches
+            .map(b =>
+              castBatch(b, result.schema, schema, sourceOf, IndexedSeq.fill(schema.size)(null))
+            )
           DataFileWriter.replace(path, schema, oldBatches ++ newBatches)
         case format =>
           // The file's column names (JSON keys, CSV header); values keep their query types
@@ -84,16 +143,34 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
             result.schema.fields.zipWithIndex.map((f, i) => f.noQualifier.withName(names(i)))
           )
           DataFileWriter.appendText(path, schema, result.batches)
+    end if
 
-  /** `save to <name>`: create or replace the table with the query result */
-  def saveTo(name: String, query: Relation)(using Context): MemTable =
+  end appendToFile
+
+  /**
+    * `save to <name>`: create or replace the table with the query result. With `ifNotExists` (`save
+    * to t if not exists`), an existing table is kept as is
+    */
+  def saveTo(name: String, query: Relation, ifNotExists: Boolean = false)(using
+      Context
+  ): TableSource =
+    catalog.find(name) match
+      case Some(existing) if ifNotExists =>
+        existing
+      case _ =>
+        replaceWith(name, query)
+
+  private def replaceWith(name: String, query: Relation)(using Context): MemTable =
     val result = engine.execute(query)
+    // A replaced table takes the query's shape, without the declared defaults and constraints
+    specs.synchronized(specs.remove(name.toLowerCase))
     register(MemTable(name, unqualified(result.schema), result.batches))
 
   /**
     * `append to <name> [(columns)] [on keys]`: insert the query rows into the table, creating the
     * table when it doesn't exist. Rows map to the table columns by position, or to `columns` when
-    * given (other columns get NULL), and are cast to the column types.
+    * given (other columns get their declared default, or NULL), and are cast to the column types.
+    * Rows violating the table's NOT NULL or unique constraints fail the append.
     *
     * With `keys`, the append is an insert-or-update (SQL MERGE): query columns map to table columns
     * by name, a row whose non-NULL key values match existing rows updates their mapped columns, and
@@ -107,15 +184,17 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
       case None =>
         register(MemTable(name, unqualified(result.schema), result.batches))
       case Some(target) =>
-        val table   = writable(target, "append to")
-        val schema  = table.schema
-        val batches =
+        val table    = writable(target, "append to")
+        val schema   = table.schema
+        val defaults = defaultsOf(name, schema)
+        val batches  =
           if keys.isEmpty then
             val sourceOf = positionalSources(name, schema, result.schema, columns)
             batchesOf(table) ++
-              result.batches.map(b => castBatch(b, result.schema, schema, sourceOf))
+              result.batches.map(b => castBatch(b, result.schema, schema, sourceOf, defaults))
           else
-            Seq(toBatch(schema, upsert(name, schema, table, result, columns, keys)))
+            Seq(toBatch(schema, upsert(name, schema, table, result, columns, keys, defaults)))
+        checkConstraints(name, schema, batches)
         register(MemTable(table.name, schema, batches))
 
   /**
@@ -203,13 +282,26 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
       Array.tabulate(schema.size)(i => indexOfColumn(columns, schema(i).name))
 
   // Re-arrange and cast the columns of a query batch into the table schema
-  private def castBatch(b: Batch, from: Schema, to: Schema, sourceOf: Array[Int]): Batch =
+  private def castBatch(
+      b: Batch,
+      from: Schema,
+      to: Schema,
+      sourceOf: Array[Int],
+      defaults: IndexedSeq[Any]
+  ): Batch =
     val cols =
       Array.tabulate(to.size) { i =>
         val src   = sourceOf(i)
         val ptype = to(i).ptype
-        if src < 0 then
+        if src < 0 && defaults(i) == null then
           Vec.nullVec(ptype, b.size)
+        else if src < 0 then
+          val out = VecBuilder(ptype, b.size)
+          var r   = 0
+          while r < b.size do
+            out.add(defaults(i))
+            r += 1
+          out.result()
         else if from(src).ptype == ptype then
           b.columns(src)
         else
@@ -223,13 +315,16 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
       }
     Batch(cols, b.size)
 
+  end castBatch
+
   private def upsert(
       name: String,
       schema: Schema,
       table: TableSource,
       result: EngineResult,
       columns: Seq[String],
-      keys: Seq[String]
+      keys: Seq[String],
+      defaults: IndexedSeq[Any]
   ): IndexedSeq[Array[Any]] =
     // Query columns are matched to table columns by name, as MERGE reads `src.<column>`
     val sourceNames =
@@ -275,7 +370,7 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
           Array.tabulate[Any](schema.size) { i =>
             val src = sourceOf(i)
             if src < 0 then
-              null
+              defaults(i)
             else
               ValueOps.cast(r(src), fromTypes(src), schema(i).ptype)
           }
@@ -298,6 +393,48 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
     rows.toIndexedSeq
 
   end upsert
+
+  // NOT NULL and unique (primary key) constraints of a table made by `create table`
+  private def checkConstraints(name: String, schema: Schema, batches: Seq[Batch]): Unit = specOf(
+    name
+  ).filter(_.columns.size == schema.size)
+    .foreach { spec =>
+      spec
+        .columns
+        .zipWithIndex
+        .filter(_._1.notNull)
+        .foreach { (c, i) =>
+          if batches.exists(b => Iterator.range(0, b.size).exists(b.column(i).isNull)) then
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(
+                s"NULL value in column ${c.name} of ${name} violates its NOT NULL constraint"
+              )
+        }
+      spec
+        .uniqueKeys
+        .foreach { key =>
+          val idx  = key.map(k => indexOfColumn(schema.names, k))
+          val seen = mutable.HashSet.empty[Seq[Any]]
+          batches.foreach { b =>
+            var r = 0
+            while r < b.size do
+              val k = idx.map(i => b.column(i).get(r))
+              // NULLs never collide in a unique constraint
+              if !k.contains(null) && !seen.add(k) then
+                throw StatusCode
+                  .INVALID_ARGUMENT
+                  .newException(
+                    s"Duplicate value (${k.mkString(
+                        ", "
+                      )}) in ${name} violates its unique constraint on (${key.mkString(", ")})"
+                  )
+              r += 1
+          }
+        }
+    }
+
+  end checkConstraints
 
   private def toBatch(schema: Schema, rows: IndexedSeq[Array[Any]]): Batch =
     val cols =
@@ -322,3 +459,11 @@ class TableWriter(engine: WvletEngine) extends LogSupport:
         throw StatusCode.SYNTAX_ERROR.newException(s"Unsupported delete input: ${other.nodeName}")
 
 end TableWriter
+
+object TableWriter:
+  /** A declared column of a table made by `create table` */
+  case class ColumnSpec(name: String, ptype: PType, default: Any = null, notNull: Boolean = false)
+
+  /** The declared shape of a table: its columns and unique keys (primary key included) */
+  case class TableSpec(columns: Seq[ColumnSpec], uniqueKeys: Seq[Seq[String]] = Nil):
+    def schema: Schema = Schema(columns.map(c => Field(c.name, c.ptype)).toIndexedSeq)
