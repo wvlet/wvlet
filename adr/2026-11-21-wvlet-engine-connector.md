@@ -1,6 +1,6 @@
 # ADR: The `wvlet` connector type runs the in-process engine
 
-Date: 2026-11-21 · PR #TBD
+Date: 2026-11-21 · PR #2202
 
 ## Context
 
