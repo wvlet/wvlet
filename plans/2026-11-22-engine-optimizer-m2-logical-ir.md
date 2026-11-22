@@ -22,7 +22,7 @@ Lane: Express. Internal refactor behind a switch whose default keeps today's pla
 - `LogicalBinder` turns a `Relation` into a `LogicalPlan` for the core forms and the wrappers that only rename or requalify columns. Anything else becomes `Legacy(op)`: the old `Planner` plans the subtree at bind time, in the same order as today, so its side effects (CTE sharing, hidden column names, scalar prefetch) stay identical.
 - It routes by the same tests the planner uses. For example, a `Filter` over a join or `GROUP BY`, a filter with a subquery, or a `Project` with aggregates, windows, or `unnest` stays `Legacy`. A failed bind is an error, as it is today; it never falls back after binding a child.
 - `Lowering` maps ids to positions and builds the same operators as `Planner`. The physical passes (`ColumnPruner`, `Parallelizer`) are unchanged.
-- `PlanValidator` checks that every referenced id is produced by the child, types agree, and output ids are unique. It runs in tests and when debug logging is on.
+- `PlanValidator` checks that every referenced id is produced by the child, types agree, and output ids are unique. It runs when `OptimizerOptions.validatePlans` is on (the logical-path tests).
 - `wvlet.engine.planner=logical|legacy` (or `WVLET_ENGINE_PLANNER`) picks the path, default `legacy`. The option lives on `OptimizerOptions`, so tests can choose it per engine.
 - Non-exhaustive match warnings become errors for `wvlet-engine`, so a new `LogicalPlan` case that a pass doesn't handle fails the build.
 - Tests: per-node binder/lowering tests with a stable `name#id` text form; the golden plan test also runs with the logical planner and must match the same files; spec/basic runs on the logical path.

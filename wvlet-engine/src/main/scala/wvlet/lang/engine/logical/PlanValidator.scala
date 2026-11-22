@@ -47,13 +47,13 @@ object PlanValidator:
           if columns.size != rows.columns.length then
             b += s"Values has ${columns.size} columns for ${rows.columns.length}"
         case Filter(child, cond) =>
-          checkExpr(b, "Filter", cond, child)
+          checkExprs(b, "Filter", Seq(cond), child)
         case Project(child, exprs, columns) =>
           if exprs.size != columns.size then
             b += s"Project has ${exprs.size} expressions for ${columns.size} columns"
-          exprs.foreach(checkExpr(b, "Project", _, child))
+          checkExprs(b, "Project", exprs, child)
         case Sort(child, keys, _) =>
-          keys.foreach(k => checkExpr(b, "Sort", k.expr, child))
+          checkExprs(b, "Sort", keys.map(_.expr), child)
         case Limit(_, limit, offset) =>
           if limit < 0 || offset < 0 then
             b += s"Limit(${limit}, offset=${offset}) is negative"
@@ -67,14 +67,15 @@ object PlanValidator:
 
   end violations
 
-  private def checkExpr(
+  private def checkExprs(
       b: collection.mutable.Builder[String, Seq[String]],
       node: String,
-      e: BExpr,
+      exprs: Seq[BExpr],
       input: LogicalPlan
   ): Unit =
     val byId = input.output.map(c => c.id.value -> c).toMap
-    e.colRefs
+    exprs
+      .flatMap(_.colRefs)
       .foreach { r =>
         byId.get(r.index) match
           case None =>

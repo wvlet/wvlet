@@ -143,18 +143,22 @@ enum LogicalPlan:
   def schema: Schema = Schema(output.map(_.toField))
 
   /**
-    * The plan as text, source first: each line is a node with its output columns (`name#id`), and
-    * `↓` marks the node consuming the line above
+    * The plan as text, source first, like `Operator.explain`: each line is a node with its output
+    * columns (`name#id`). `↓` marks the node consuming the line above; inputs after the first are
+    * indented, and `↙` marks the node consuming them
     */
   def explain: String =
     val lines                                  = Seq.newBuilder[String]
     def loop(p: LogicalPlan, depth: Int): Unit =
-      p.children.foreach(loop(_, depth))
+      p.children.headOption.foreach(loop(_, depth))
+      p.children.drop(1).foreach(loop(_, depth + 1))
       val marker =
-        if p.children.isEmpty then
-          ""
-        else
+        if p.children.size > 1 then
+          "↙ "
+        else if p.children.nonEmpty then
           "↓ "
+        else
+          ""
       lines += s"${"  " * depth}${marker}${p.nodeText} -> [${p.output.mkString(", ")}]"
     loop(this, 0)
     lines.result().mkString("\n")
