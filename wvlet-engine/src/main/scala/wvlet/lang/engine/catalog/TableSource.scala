@@ -52,8 +52,8 @@ trait TableSource:
     */
   def estimatedDistinct(column: String): Option[Double] = None
 
-  /** Lines appended under a scan of this source in EXPLAIN output (indented by `indent`) */
-  def explainDetail(indent: Int): String = ""
+  /** EXPLAIN lines of what a scan of this source reads, nested above the scan (at `indent`) */
+  def explainDetail(indent: Int): Option[String] = None
 
   /** Whether [[scanSplits]] may cut a scan into parts */
   def canSplit: Boolean = false

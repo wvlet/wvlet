@@ -1067,12 +1067,13 @@ class Planner(
     private var explained = false
 
     // The first reader shows the shared plan once (it is not a child: readers must not close it)
-    private def sharedPlan(indent: Int): String =
+    /** The plan, shown under the first reader only */
+    private def sharedPlan(indent: Int): Option[String] =
       if explained then
-        ""
+        None
       else
         explained = true
-        s"\n${"  " * indent}(shared)\n${op.explain(indent + 1)}"
+        Some(s"${"  " * indent}(shared)\n${op.explain(indent + 1)}")
 
     def newReader(label: String): Operator =
       if op.schema.names.distinct.size == op.schema.size then
@@ -1082,8 +1083,7 @@ class Planner(
         ScanOp(SharedTable(label, op.schema, () => batches, sharedPlan), op.schema, None, None)
       else
         new IteratorOp(op.schema, () => batches.iterator, label):
-          override def explain(indent: Int): String =
-            s"${super.explain(indent)}${sharedPlan(indent + 1)}"
+          override protected def extraInputs(indent: Int): Seq[String] = sharedPlan(indent).toSeq
 
   end SharedResult
 
@@ -1092,7 +1092,7 @@ class Planner(
       val name: String,
       val schema: Schema,
       batches: () => Seq[Batch],
-      plan: Int => String
+      plan: Int => Option[String]
   ) extends TableSource:
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = selector(spec)
@@ -1117,7 +1117,7 @@ class Planner(
         val sel = selector(spec)
         Some(ScanSplits(bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))), () => ()))
 
-    override def explainDetail(indent: Int): String = plan(indent)
+    override def explainDetail(indent: Int): Option[String] = plan(indent)
 
   end SharedTable
 

@@ -153,8 +153,7 @@ class EngineScanPushdownTest extends UniTest:
         |select a.l_orderkey, b.l_partkey""".stripMargin)
     debug(plan)
     // A reader of the shared result is a splittable scan: its pipeline runs as a Morsel
-    """Morsel[^\n]*\n(\s+[^\n]*\n)*?\s+Scan\[CTE\[t\]\]""".r.findFirstIn(plan).isDefined shouldBe
-      true
+    PlanText.downstream(plan, "Scan[CTE[t]]").exists(_.startsWith("Morsel")) shouldBe true
     plan shouldContain "(shared)"
     rows("""with t as { from 'spec/tpch/data/lineitem.parquet' where l_orderkey <= 3 }
         |from t as a join t as b on a.l_orderkey = b.l_orderkey and a.l_linenumber = b.l_linenumber
@@ -173,10 +172,8 @@ class EngineScanPushdownTest extends UniTest:
         |{ from ${li} where l_quantity > 10 select l_suppkey }""".stripMargin)
     debug(intersect)
     // Each side is reduced to its distinct rows before the set operation
-    """Intersect[^\n]*\n\s+Project[^\n]*\n\s+PartitionedAgg"""
-      .r
-      .findFirstIn(intersect)
-      .isDefined shouldBe true
+    PlanText.downstream(intersect, "PartitionedAgg").take(2).map(_.takeWhile(_ != '(')) shouldBe
+      Seq("Project", "Intersect")
     rows(s"""from ${li} where l_orderkey <= 3 select l_returnflag
         |intersect
         |{ from ${li} where l_orderkey <= 3 select l_returnflag }""".stripMargin).size shouldBe
@@ -209,10 +206,7 @@ class EngineScanPushdownTest extends UniTest:
     val plan = explain(q)
     debug(plan)
     // The cross join runs inside the scan's parts, over the aggregate computed once
-    """Morsel[^\n]*\n(\s+[^\n]*\n)*?\s+NestedLoopJoin\[Cross\]"""
-      .r
-      .findFirstIn(plan)
-      .isDefined shouldBe true
+    PlanText.downstream(plan, "NestedLoopJoin[Cross]").exists(_.startsWith("Morsel")) shouldBe true
     plan shouldContain "CrossInput"
     rows(q).size shouldBe rows(s"from ${li} where l_quantity * 2 > 50 select l_orderkey").size
   }
