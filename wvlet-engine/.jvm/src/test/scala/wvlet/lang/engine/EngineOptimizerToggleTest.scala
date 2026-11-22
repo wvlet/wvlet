@@ -41,6 +41,14 @@ class EngineOptimizerToggleTest extends UniTest:
   // The plans with every optimization on, to compare with the plans without one
   private lazy val baselinePlans = EnginePlanGolden.suites.map(_.generate())
 
+  /**
+    * Queries too slow to run without an optimization: without OR factoring, q19's join has no
+    * equality key and becomes a cross join of lineitem and part
+    */
+  private val tpchTooSlow: Map[Optimization, Set[String]] = Map(
+    Optimization.FactorOr -> Set("q19.wv")
+  )
+
   for o <- Optimization.values do
     val options = OptimizerOptions().withDisabled(o)
 
@@ -58,7 +66,7 @@ class EngineOptimizerToggleTest extends UniTest:
             tables.foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet")),
           options
         ),
-        Set.empty
+        tpchTooSlow.getOrElse(o, Set.empty)
       )
     }
 
