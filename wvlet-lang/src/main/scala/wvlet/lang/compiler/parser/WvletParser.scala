@@ -1037,6 +1037,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     *     add <column>: <type>
     *     rename <column> as <new name>
     *     exclude <column>
+    *     cast <column> as <type>
+    *     set <column> not null
+    *     set <column> = <default>
+    *     drop <column> not null
+    *     drop <column> default
     *   }
     * }}}
     * Each operation lowers to one AlterTableOps case; SQL generation emits one ALTER TABLE
@@ -1080,6 +1085,41 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val tpe = dataType()
           ops += AlterColumnSetDataTypeOp(colName, tpe, span = spanFrom(tk))
           nextOp()
+        case WvletToken.IDENTIFIER if tk.str == "set" =>
+          // `set <column> not null` or `set <column> = <default>`
+          consume(WvletToken.IDENTIFIER)
+          val colName = identifier()
+          scanner.lookAhead().token match
+            case WvletToken.NOT =>
+              consume(WvletToken.NOT)
+              consume(WvletToken.NULL)
+              ops += AlterColumnSetNotNullOp(colName, spanFrom(tk))
+            case _ =>
+              consume(WvletToken.EQ)
+              val defaultValue = expression()
+              ops += AlterColumnSetDefaultOp(colName, defaultValue, spanFrom(tk))
+          nextOp()
+        case WvletToken.DROP =>
+          // `drop <column> not null` or `drop <column> default`
+          consume(WvletToken.DROP)
+          val colName = identifier()
+          val next    = scanner.lookAhead()
+          next.token match
+            case WvletToken.NOT =>
+              consume(WvletToken.NOT)
+              consume(WvletToken.NULL)
+              ops += AlterColumnDropNotNullOp(colName, spanFrom(tk))
+            case WvletToken.IDENTIFIER if next.str == "default" =>
+              consume(WvletToken.IDENTIFIER)
+              ops += AlterColumnDropDefaultOp(colName, spanFrom(tk))
+            case _ =>
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(
+                  s"Expected 'not null' or 'default' after 'drop ${colName.leafName}'",
+                  next.sourceLocation
+                )
+          nextOp()
         case WvletToken.R_BRACE =>
         // end of block
         case _ =>
@@ -1087,7 +1127,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             .SYNTAX_ERROR
             .newException(
               s"Invalid reshape operation. Expected 'add <column>: <type>', " +
-                s"'rename <column> as <name>', 'exclude <column>', or 'cast <column> as <type>'",
+                s"'rename <column> as <name>', 'exclude <column>', 'cast <column> as <type>', " +
+                s"'set <column> not null', 'set <column> = <default>', " +
+                s"'drop <column> not null', or 'drop <column> default'",
               tk.sourceLocation
             )
       end match

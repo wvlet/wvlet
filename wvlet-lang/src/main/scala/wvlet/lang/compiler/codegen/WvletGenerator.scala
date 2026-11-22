@@ -163,8 +163,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
   private def isReshapeOp(op: AlterTableOps): Boolean =
     op match
       case _: AddColumnOp | _: RenameColumnOp | _: DropColumnOp | _: RenameTableOp |
-          _: AlterColumnSetDataTypeOp =>
+          _: AlterColumnSetNotNullOp | _: AlterColumnDropNotNullOp | _: AlterColumnSetDefaultOp |
+          _: AlterColumnDropDefaultOp =>
         true
+      case c: AlterColumnSetDataTypeOp =>
+        c.using.isEmpty
       case _ =>
         false
 
@@ -259,7 +262,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               Some(ws + "with" + nest(wsOrNL + cl(a.options.map(o => expr(o)))))
           group(wl("use", expr(a.path), "as", expr(a.alias)) + opts)
         }
-      case a: AlterTable if a.operations.forall(isReshapeOp) =>
+      // reshape and rename have no IF EXISTS form, so ALTER TABLE IF EXISTS stays SQL
+      case a: AlterTable if !a.ifExists && a.operations.forall(isReshapeOp) =>
         a.operations match
           case List(r: RenameTableOp) =>
             code(a) {
@@ -275,6 +279,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
                 wl("exclude", expr(d.column))
               case c: AlterColumnSetDataTypeOp =>
                 wl("cast", expr(c.column), "as", c.dataType.wvExpr)
+              case c: AlterColumnSetNotNullOp =>
+                wl("set", expr(c.column), "not null")
+              case c: AlterColumnDropNotNullOp =>
+                wl("drop", expr(c.column), "not null")
+              case c: AlterColumnSetDefaultOp =>
+                wl("set", expr(c.column), "=", expr(c.defaultValue))
+              case c: AlterColumnDropDefaultOp =>
+                wl("drop", expr(c.column), "default")
             }
             code(a) {
               group(wl("reshape", expr(a.table), "{")) + nest(linebreak + lines(opDocs)) +

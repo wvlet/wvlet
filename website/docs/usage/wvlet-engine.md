@@ -153,13 +153,16 @@ reshape accounts {
   rename status as state
   cast id as long            -- change a column's type
   exclude email              -- drop a column
+  set state not null         -- existing rows must have a state
+  set state = 'active'       -- default for rows appended without it
+  drop state not null
+  drop state default
 }
 
 rename table accounts to members
 ```
 
-SQL `alter table` also sets or drops a column's default and `not null`. Tables registered from
-files can't be changed.
+Tables registered from files can't be changed.
 
 ## Persistent tables
 

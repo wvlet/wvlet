@@ -1,0 +1,34 @@
+-- Reshape: set or drop a column's NOT NULL constraint and default
+table ddl3_items = {
+  id: int
+  name: string
+}
+
+create table ddl3_items
+
+reshape ddl3_items {
+  set name = 'none'
+  set id not null
+}
+
+append to ddl3_items (id) {
+  from [[1]] as t(id)
+}
+
+from ddl3_items
+test _.rows should be [[1, 'none']]
+
+reshape ddl3_items {
+  drop name default
+  drop id not null
+}
+
+append to ddl3_items (id) {
+  from [[2]] as t(id)
+}
+
+from ddl3_items
+order by id
+test _.rows should be [[1, 'none'], [2, null]]
+
+drop table ddl3_items
