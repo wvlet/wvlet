@@ -25,3 +25,7 @@ import WvletFormal.NameLookup.Scope
 import WvletFormal.NameLookup.Global
 import WvletFormal.NameLookup.Resolve
 import WvletFormal.NameLookup.Traces
+import WvletFormal.Algebra.Bag
+import WvletFormal.Pushdown.Rule
+import WvletFormal.Pushdown.Necessity
+import WvletFormal.Pushdown.Traces
