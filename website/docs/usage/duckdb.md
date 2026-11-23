@@ -1,16 +1,21 @@
 ---
-description: "Run Wvlet queries on DuckDB, the default in-memory engine: query Parquet files directly by path or URL and generate TPC-H sample data."
+description: "Run Wvlet queries on DuckDB with -t duckdb or a duckdb profile: query Parquet files directly by path or URL and generate TPC-H sample data."
 ---
 
 # Connector - DuckDB
 
-By default, wvlet uses in-memory database of DuckDB (catalog: memory, schema: main).
+`wvlet run` and `wv` run queries on the in-process [wvlet engine](wvlet-engine.md) by default.
+Select DuckDB's in-memory database (catalog: memory, schema: main) with `-t duckdb`
+(`wv -t duckdb`) or a profile with `"type": "duckdb"`. DuckDB is needed for `sql"..."` and
+`execute` statements, `.duckdb` database files, DuckDB extensions, and table functions such as
+`read_csv(...)`. `wvlet compile` generates DuckDB SQL by default, and `wvlet build` and
+`wvlet flow` run on DuckDB.
 
 
 ## Usage Examples
 
 ```bash
-$ wv
+$ wv -t duckdb
 wv> from 'https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet'
   | group by c_mktsegment
   | agg _.count

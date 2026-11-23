@@ -28,9 +28,11 @@ Global options: `--profile <name>`, `-w <folder>` (working folder), `--catalog`,
 
 ## Engines
 
-- DuckDB is the default and needs no setup. `from 'file.parquet'` reads local files.
-- `-t wvlet` runs the in-process columnar engine on Parquet, JSON, CSV, and Iceberg files with
-  no DuckDB.
+- The in-process wvlet engine is the default for `wvlet run` and `wv`: it reads Parquet, JSON,
+  CSV, and Iceberg files (`from 'file.parquet'`) with no setup and no DuckDB.
+- `-t duckdb` (also `wv -t duckdb`) runs on DuckDB: needed for `sql"..."` / `execute`,
+  `.duckdb` files, extensions, and `read_csv(...)`-style table functions. `wvlet compile` emits
+  DuckDB SQL by default; `wvlet build` and `wvlet flow` run on DuckDB.
 - Trino, Snowflake, and other engines are profiles in `~/.wvlet/profiles.json`:
 
 ```json

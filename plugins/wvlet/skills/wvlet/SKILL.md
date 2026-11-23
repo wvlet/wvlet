@@ -7,7 +7,8 @@ description: Write, convert, test, and run Wvlet queries (.wv files), a flow-sty
 
 Wvlet is a flow-style query language. A query starts with `from` and lists one operator per
 line in the order the data is processed; each line takes the output of the line above. The
-compiler turns a `.wv` file into SQL for DuckDB (default, built in), Trino, Snowflake, or Hive.
+compiler turns a `.wv` file into SQL for DuckDB (default dialect), Trino, Snowflake, or Hive, and
+`wvlet run` executes it on the built-in wvlet engine by default.
 
 Every `wvlet` snippet in this skill is checked by the Wvlet compiler in CI, so the syntax shown
 here matches the compiler version this skill ships with.

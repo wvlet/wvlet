@@ -22,15 +22,19 @@ differ from DuckDB.
 
 ## Usage
 
-Select the engine with `-t wvlet`:
+The engine is the default of `wvlet run` and `wv` when neither `-t` nor `--profile` is given
+(`-t wvlet` selects it explicitly):
 
 ```bash
 # Query a local file
-wvlet run -t wvlet "from 'data/orders.parquet' where o_totalprice > 1000 limit 10"
+wvlet run "from 'data/orders.parquet' where o_totalprice > 1000 limit 10"
 
 # Run a query file
-wvlet run -t wvlet -f report.wv
+wvlet run -f report.wv
 ```
+
+Use `-t duckdb` (or a DuckDB profile) for the features listed above as unsupported. With a
+Trino or Snowflake profile, a query that reads only local files also runs on the engine.
 
 Relative file paths resolve against the working folder (`-w`).
 
