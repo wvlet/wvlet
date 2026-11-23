@@ -78,10 +78,9 @@ class BatchTest extends UniTest:
     val b = batchOf(6)
     val t = b.take(Array(1, 3), 2)
     t.gather(Array(1), 1).isDeferred shouldBe false
-    val c = Batch.concat(
-      Schema(IndexedSeq(Field("a", PType.Int32), Field("b", PType.Str))),
-      Seq(t)
-    )
+    val c = Batch.concat(Schema(IndexedSeq(Field("a", PType.Int32), Field("b", PType.Str))), Seq(t))
     c.isDeferred shouldBe false
     c.row(1).toSeq shouldBe Seq(3, "s3")
   }
+
+end BatchTest

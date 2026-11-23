@@ -58,7 +58,9 @@ object Parallelizer:
       case s: ScanOp if s.source.canSplit =>
         Some(Pipeline(s, x => x, None, Nil, Nil))
       case f: FilterOp =>
-        pipeline(f.child, runner).map(_.map(x => FilterOp(x, f.cond, f.keep).withLateGather(f.lateGather)))
+        pipeline(f.child, runner).map(
+          _.map(x => FilterOp(x, f.cond, f.keep).withLateGather(f.lateGather))
+        )
       case pr: ProjectOp =>
         pipeline(pr.child, runner).map(_.map(x => ProjectOp(x, pr.exprs, pr.schema)))
       case j: HashJoinOp =>

@@ -38,10 +38,10 @@ object Schema:
 /**
   * A set of equally sized column vectors.
   *
-  * A column can be deferred: a source vector and the row positions (an index array, -1 for NULL)
-  * to take from it, shared by the columns that came through the same [[take]]. A deferred column is
-  * gathered on its first [[column]] read and cached; [[columns]] and [[compact]] gather all of them.
-  * Taking rows of deferred columns composes the index arrays, so a chain of filters and joins
+  * A column can be deferred: a source vector and the row positions (an index array, -1 for NULL) to
+  * take from it, shared by the columns that came through the same [[take]]. A deferred column is
+  * gathered on its first [[column]] read and cached; [[columns]] and [[compact]] gather all of
+  * them. Taking rows of deferred columns composes the index arrays, so a chain of filters and joins
   * gathers each column once, at its reader. Deferred batches stay inside the operator pipeline that
   * made them: buffered batches ([[wvlet.lang.engine.exec.Operator.drain]], [[Batch.concat]]) are
   * compacted, so the cache is never shared across threads.

@@ -75,6 +75,13 @@ trait Operator:
 end Operator
 
 object Operator:
+  /** EXPLAIN marker of a filter or join that gathers its output eagerly (`late_gather` disabled) */
+  private[exec] def eagerTag(lateGather: Boolean): String =
+    if lateGather then
+      ""
+    else
+      ", eager"
+
   /** Pull every row of the operator into one batch */
   def materialize(op: Operator): Batch =
     val batches = op.drain()
@@ -143,7 +150,7 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
           ""
         else
           s", keep=${keep.mkString(",")}"
-      })"
+      }${Operator.eagerTag(lateGather)})"
 
   def next(): Batch =
     var out: Batch = null
@@ -1079,7 +1086,7 @@ class HashJoinOp(
   override protected def details       =
     s"(${leftKeys.map(_.sig).mkString(",")} = ${rightKeys.map(_.sig).mkString(",")}${residual
         .map(r => s", residual=${r.sig}")
-        .getOrElse("")})"
+        .getOrElse("")}${Operator.eagerTag(lateGather)})"
 
   /** The build this join probes */
   val joinBuild: JoinBuild =
