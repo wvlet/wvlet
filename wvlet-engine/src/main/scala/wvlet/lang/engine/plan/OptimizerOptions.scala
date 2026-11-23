@@ -80,6 +80,12 @@ enum Optimization(val name: String):
     */
   case ReplanBoundCTEJoins extends Optimization("replan_bound_cte_joins")
 
+  /**
+    * With `replan_materialized_ctes`, also compute the shared CTEs read below semi and anti joins,
+    * and choose those joins' build sides again with the exact row counts
+    */
+  case ReplanSemiJoinBuilds extends Optimization("replan_semi_join_builds")
+
   /** Read and pass only the columns the operators above use */
   case PruneColumns extends Optimization("prune_columns")
 

@@ -32,6 +32,10 @@ class EngineMaterializedCTEStatsTest extends UniTest:
     options.withDisabled(Optimization.ReplanBoundCTEJoins)
   )
 
+  private val boundBuilds = engine.withOptimizer(
+    options.withDisabled(Optimization.ReplanSemiJoinBuilds)
+  )
+
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -127,6 +131,33 @@ class EngineMaterializedCTEStatsTest extends UniTest:
          |  select 0, c from t
          |)""".stripMargin
     explain(engine, query) shouldNotBe explain(rootOnly, query)
+    val r = rows(engine, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(disabled, query)
+  }
+
+  test("build semi joins on a small shared CTE once its rows are known") {
+    // With the 1e6 estimate, the IN semi joins build on orders (RightSemi); with two rows, on t
+    val query =
+      s"""${cte}select o_orderkey from orders
+         |where o_orderstatus in (select s from t) and o_orderstatus in (select s from t where c > 0)
+         |""".stripMargin
+    explain(boundBuilds, query) shouldContain "HashJoin[RightSemi]"
+    val plan = explain(engine, query)
+    plan shouldNotContain "HashJoin[RightSemi]"
+    plan shouldContain "HashJoin[Semi]"
+    val r = rows(engine, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(disabled, query)
+  }
+
+  test("build anti joins on a small shared CTE once its rows are known") {
+    val query =
+      s"""${cte}select o_orderkey from orders o
+         |where not exists (select 1 from t where t.s = o.o_orderstatus and t.c > 1000000)
+         |  and exists (select 1 from t where t.s = o.o_orderstatus)""".stripMargin
+    explain(boundBuilds, query) shouldContain "HashJoin[RightAnti]"
+    explain(engine, query) shouldNotContain "HashJoin[RightAnti]"
     val r = rows(engine, query)
     r.nonEmpty shouldBe true
     r shouldBe rows(disabled, query)

@@ -36,8 +36,12 @@ trait Pass:
   def name: String
   def run(p: RuntimePlan, ctx: OptimizerContext): RuntimePlan
 
-/** The options of an optimizer run, and the rules that fired so far */
-class OptimizerContext(val options: OptimizerOptions):
+/**
+  * The options of an optimizer run, and the rules that fired so far. `replanSemiJoinBuilds` is set
+  * for the run that re-plans a query once its shared CTEs are computed: [[ReorderJoins]] then also
+  * chooses again the build side of the semi and anti joins that read one
+  */
+class OptimizerContext(val options: OptimizerOptions, val replanSemiJoinBuilds: Boolean = false):
   private val counts = mutable.LinkedHashMap.empty[String, Int]
 
   def isEnabled(r: Rule): Boolean = options.isEnabled(r.optimization)
@@ -102,8 +106,12 @@ end RuleBatch
   * [[PlanValidator]] checks the plan after each pass. The rules that fired accumulate over runs in
   * [[firedRules]]
   */
-class Optimizer(val passes: Seq[Pass], options: OptimizerOptions):
-  private val ctx = OptimizerContext(options)
+class Optimizer(
+    val passes: Seq[Pass],
+    options: OptimizerOptions,
+    replanSemiJoinBuilds: Boolean = false
+):
+  private val ctx = OptimizerContext(options, replanSemiJoinBuilds)
 
   def run(p: RuntimePlan): RuntimePlan =
     passes.foldLeft(p) { (plan, pass) =>
@@ -152,8 +160,12 @@ object Optimizer:
     PushScanFilters
   )
 
-  /** The default passes */
-  def default(options: OptimizerOptions): Optimizer = Optimizer(defaultPasses, options)
+  /**
+    * The default passes. With `replanSemiJoinBuilds`, for a re-plan over computed shared CTEs
+    * ([[OptimizerContext]])
+    */
+  def default(options: OptimizerOptions, replanSemiJoinBuilds: Boolean = false): Optimizer =
+    Optimizer(defaultPasses, options, replanSemiJoinBuilds)
 
   /** An optimizer running a single pass, for per-rule tests */
   def only(pass: Pass, options: OptimizerOptions = OptimizerOptions()): Optimizer = Optimizer(
