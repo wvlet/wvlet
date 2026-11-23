@@ -45,7 +45,7 @@ object PruneColumns extends Pass:
     p match
       case s @ Scan(_, columns, _, _) =>
         val keep = columns.indices.filter(i => needed.contains(columns(i).id))
-        if keep.size == columns.size || columns.isEmpty then
+        if keep.size == columns.size then
           p
         else
           ctx.fired(name)
