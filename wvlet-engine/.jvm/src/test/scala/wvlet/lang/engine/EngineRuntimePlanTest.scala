@@ -75,8 +75,10 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // A projection evaluating a scalar subquery
-    val p = runtimePlan("from nation select n_name, (from region select max(r_regionkey)) as m")
+    // A sort key evaluating a scalar subquery
+    val p = runtimePlan(
+      "from nation order by n_regionkey = (from region select max(r_regionkey)) select n_name"
+    )
     val leaves = nodes(p).collect { case l: RuntimePlan.Legacy =>
       l
     }
@@ -288,6 +290,46 @@ class EngineRuntimePlanTest extends UniTest:
     }
     PlanValidator.violations(p) shouldBe Nil
     rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+  }
+
+  test("bind projections and column edits with subqueries as plan-time constants") {
+    val queries = Seq(
+      // A scalar subquery next to a window
+      """from nation
+        |select n_name, (from region select max(r_regionkey)) as m,
+        |  row_number() over (partition by n_regionkey order by n_nationkey) as rn
+        |order by n_name
+        |limit 5""".stripMargin,
+      // IN (subquery) in a select item
+      """from nation
+        |select n_name, n_regionkey in (from region where r_name = 'ASIA' select r_regionkey) as asia
+        |order by n_name
+        |limit 5""".stripMargin,
+      // A column edit with a subquery and a window
+      """from nation
+        |add (from region select count(*)) as regions,
+        |  rank() over (order by n_regionkey) as rk
+        |order by n_nationkey
+        |limit 5""".stripMargin,
+      // An unnest projection with a subquery
+      """from nation
+        |select n_name, unnest([n_regionkey, (from region select min(r_regionkey))]) as k
+        |order by n_name, k
+        |limit 6""".stripMargin
+    )
+    queries.foreach { query =>
+      val p = runtimePlan(query)
+      debug(p.explain)
+      nodes(p)
+        .collect { case l: RuntimePlan.Legacy =>
+          l
+        }
+        .isEmpty shouldBe true
+      PlanValidator.violations(p) shouldBe Nil
+      val expected = rowsOf(legacy, query)
+      expected.size > 0 shouldBe true
+      rowsOf(engine, query) shouldBe expected
+    }
   }
 
   test("bind describe and a query without from as values") {

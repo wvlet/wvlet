@@ -210,7 +210,7 @@ class RuntimeBinder(planner: Planner):
       case s: Sample =>
         sample(s)
       case other =>
-        // A Project or column edit that evaluates subqueries, a column edit with unnest, ...
+        // A column edit with aggregates or unnest, a projection with unnest and windows, ...
         legacy(other)
 
   end bind
@@ -950,7 +950,7 @@ class RuntimeBinder(planner: Planner):
 
   end plans
 
-  /** A projection without aggregates, windows, unnest, or subqueries */
+  /** A projection without aggregates, windows, or unnest */
   private def isPlainProjection(p: Project): Boolean =
     !planner.isAggregationInput(p.child) &&
       p.selectItems
@@ -958,20 +958,17 @@ class RuntimeBinder(planner: Planner):
           !Binder.containsAggregate(i) && !Binder.containsWindow(i) && isPlainItem(i)
         }
 
-  /** A projection evaluating window functions, without aggregates, unnest, or subqueries */
+  /** A projection evaluating window functions, without aggregates or unnest */
   private def isWindowProjection(p: Project): Boolean =
     p.selectItems.exists(i => Binder.containsWindow(i)) && p.selectItems.forall(isPlainItem)
 
   /**
-    * A projection with `unnest(list)` items, without windows or subqueries, which the planner plans
-    * with `projectWithUnnest` (aggregations route before it)
+    * A projection with `unnest(list)` items, without windows, which the planner plans with
+    * `projectWithUnnest` (aggregations route before it)
     */
   private def isUnnestProjection(p: Project): Boolean =
     p.selectItems.exists(i => planner.unnestArg(i).isDefined) &&
-      p.selectItems
-        .forall { i =>
-          !Binder.containsWindow(i) && !planner.hasSubquery(Binder.expandTemplates(i))
-        }
+      p.selectItems.forall(i => !Binder.containsWindow(i))
 
   /**
     * select ..., unnest(list), ...: the items with each list in place of its unnest, the lists
@@ -1002,9 +999,12 @@ class RuntimeBinder(planner: Planner):
       }
     RuntimePlan.Project(u, out.map(BExpr.ref), out.map(c => newColumn(c.toField)))
 
-  /** An item without unnest or subqueries, which the binder evaluates in a projection */
-  private def isPlainItem(i: Attribute): Boolean =
-    planner.unnestArg(i).isEmpty && !planner.hasSubquery(Binder.expandTemplates(i))
+  /**
+    * An item without unnest, which the binder evaluates in a projection. Subqueries in items are
+    * uncorrelated and bind as plan-time constants (`Planner.bindScalarSubquery`, `bindInSubquery`,
+    * `bindExists`), as the planner binds them
+    */
+  private def isPlainItem(i: Attribute): Boolean = planner.unnestArg(i).isEmpty
 
   /** The window calls over `in`, whose output is the window `schema` (input columns first) */
   private def windowOver(
@@ -1017,7 +1017,7 @@ class RuntimeBinder(planner: Planner):
     columnsOf(Schema(schema.fields.drop(in.output.size)))
   )
 
-  /** New columns without aggregates, unnest, or subqueries (window functions are evaluated) */
+  /** New columns without aggregates or unnest (window functions are evaluated) */
   private def isPlainColumnEdit(items: List[Attribute]): Boolean = items.forall(i =>
     !Binder.containsAggregate(i) && isPlainItem(i)
   )
