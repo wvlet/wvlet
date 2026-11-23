@@ -77,8 +77,8 @@ def rs : Rel := rightRows.map fun r => mkRow ([.null, .null] ++ r)
 def ons : List Cond := [.eq a c, .and (.eq a c) (.lt b d)]
 
 /-- One conjunct per case: over the left input, the right input, both, and none, with NULL
-tests, negations, and disjunctions. A conjunct that reads no column (TRUE or FALSE) may be
-folded before the pass, which the fixture marks with `constant`. -/
+tests, negations, and disjunctions. A TRUE conjunct that reads no column is dropped (by the
+binder or the pass's own `filter`), which the fixture marks with `trueConstant`. -/
 def conjuncts : List Cond :=
   [ .eq a (int 1)
   , .isNull b
@@ -116,7 +116,7 @@ def jcase (k : JoinKind) (on p : Cond) : String :=
        , ("on", jstr (condWv on))
        , ("where", jstr (condWv p))
        , ("place", jstr (placeName (place k L R p)))
-       , ("constant", if p.reads.isEmpty then "true" else "false")
+       , ("trueConstant", if p.reads.isEmpty && p.holds Row.null then "true" else "false")
        , ("rows", jarr ((rewrite k L R on p ls rs).map jrow)) ]
 
 def fixture : String :=

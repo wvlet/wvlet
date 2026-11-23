@@ -109,8 +109,8 @@ class PushDownFiltersConformanceTest extends UniTest:
     val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}"))
     f(GenSQL.expand(q, summon[Context]))
 
-  /** The plan after the passes that run up to filter pushdown */
-  private def pushed(query: String): RuntimePlan =
+  /** The bound plan, and the plan after the passes that run up to filter pushdown */
+  private def pushed(query: String): (RuntimePlan, RuntimePlan) =
     withQuery(query) { r =>
       val planner = Planner(
         engine.catalog,
@@ -121,7 +121,8 @@ class PushDownFiltersConformanceTest extends UniTest:
         ,
         options
       )
-      Optimizer(Seq(Normalize, PushDownFilters), options).run(RuntimeBinder(planner).bind(r))
+      val bound = RuntimeBinder(planner).bind(r)
+      (bound, Optimizer(Seq(Normalize, PushDownFilters), options).run(bound))
     }
 
   private def rowsOf(query: String): List[List[Option[Long]]] =
@@ -169,6 +170,7 @@ class PushDownFiltersConformanceTest extends UniTest:
   private def checkPlace(p: RuntimePlan, kind: String, place: String): Unit =
     if kind == "inner" then
       // The conjunct is one more condition of the inner join tree, which ReorderJoins places
+      // (along with the equalities to constants the pass infers)
       place shouldBe "cond"
       nodes(p).exists(_.isInstanceOf[InnerJoins]) shouldBe true
       hasFilter(p) shouldBe false
@@ -202,16 +204,21 @@ class PushDownFiltersConformanceTest extends UniTest:
           "join"
         else
           s"${kind} join"
+      // The projection comes first, so that the conjunct reaches the pass as a filter over it
+      // (the binder would otherwise bind a WHERE over an inner join into its conditions)
       val query =
         s"""from ${left} as l(a, b)
            |${join} { from ${right} as r(c, d) } on ${str(c("on"))}
-           |where ${str(c("where"))}
-           |select a, b, c, d""".stripMargin
-      val p = pushed(query)
+           |select a, b, c, d
+           |where ${str(c("where"))}""".stripMargin
+      val (b, p) = pushed(query)
       debug(s"${query}\n${p.explain}")
       try
-        // The compiler may fold a conjunct that reads no column before the pass runs
-        if !(c("constant") == JSONBoolean(true) && !hasFilter(p)) then
+        // A TRUE conjunct that reads no column is dropped, by the binder or by the pass
+        if c("trueConstant") == JSONBoolean(true) then
+          hasFilter(p) shouldBe false
+        else
+          hasFilter(b) shouldBe true
           checkPlace(p, kind, place)
         sorted(rowsOf(query)) shouldBe sorted(rows(c("rows")))
       catch
@@ -221,6 +228,7 @@ class PushDownFiltersConformanceTest extends UniTest:
                 .explain}"
           )
           throw e
+    end for
   }
 
 end PushDownFiltersConformanceTest

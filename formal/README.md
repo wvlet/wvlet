@@ -136,7 +136,8 @@ behavior as traces:
   row) under `a = c` and `a = c and b < d`, each with one of 11 WHERE conjuncts over the left
   input, the right input, both, or no column, with the model's placement and rows.
   `PushDownFiltersConformanceTest` (engineJVM) runs `Normalize` and `PushDownFilters` on each
-  query's bound plan to check where the conjunct went, and runs the query to compare rows.
+  query's bound plan (`select` before `where`, so the conjunct is a filter there) to check
+  where the conjunct went, and runs the query to compare rows.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator
@@ -223,5 +224,7 @@ The model proves today's behavior. These are left for follow-ups:
   the `Join` nodes `ReorderJoins` builds, and ASOF joins are out of scope.
 - The engine never turns an outer join into an inner join under a NULL-rejecting conjunct, so
   the model has no such rule.
-- The compiler folds a TRUE conjunct that reads no column before the pass, so the fixture
-  accepts a plan without the filter for those cases (a FALSE one stays and is checked).
+- A TRUE conjunct that reads no column is dropped (by the binder, or by the pass itself), so
+  for those cases the fixture checks that no filter is left; a FALSE one stays and is checked.
+- The binder binds a WHERE directly over an inner join into the join's conditions, so the
+  fixture's queries project before filtering: every conjunct then reaches the pass as a filter.
