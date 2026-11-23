@@ -225,9 +225,9 @@ class EngineStdlibCoverageCheck extends UniTest:
           .filter(_ != Outcome.Covered)
           .map(o => s"${o}: ${count(o)}")
           .mkString(", ")})"
-    val details = Outcome
-      .values
-      .filter(_ != Outcome.Covered)
+    // Covered functions last, so the gaps stay at the top of the report
+    val details = (Outcome.values.filter(_ != Outcome.Covered) :+ Outcome.Covered)
+      .toSeq
       .flatMap { o =>
         byOutcome
           .get(o)
