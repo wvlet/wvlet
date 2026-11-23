@@ -41,14 +41,14 @@ class JoinEnumerator(options: OptimizerOptions):
     if n < 2 || n > MaxInputs then
       None
     else
-      solve(g, search).map(dp => (build(g, search, dp, (1 << n) - 1), constants(g)))
+      val edges = analyze(g, search)
+      solve(g, edges).map(dp => (build(g, search, edges, dp, (1 << n) - 1), constants(g)))
 
   /** The best join of each input set, by bitset, or None if the full set has no plan */
-  private[plan] def solve[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): Option[Table] =
-    val n     = g.inputs.size
-    val full  = (1 << n) - 1
-    val edges = analyze(g, search)
-    val dp    = Table(1 << n)
+  private def solve[P, C](g: JoinGraph[P, C], edges: IndexedSeq[Edge]): Option[Table] =
+    val n    = g.inputs.size
+    val full = (1 << n) - 1
+    val dp   = Table(1 << n)
     for i <- 0 until n do
       dp.rows(1 << i) = g.rows(i)
       dp.planned(1 << i) = true
@@ -63,60 +63,73 @@ class JoinEnumerator(options: OptimizerOptions):
         while sub != 0 && pairs <= PairBudget do
           val s1 = (s & ~sub)
           val s2 = sub
-          if dp.planned(s1) && dp.planned(s2) && connects(edges, s1, s2) then
+          if dp.planned(s1) && dp.planned(s2) && emit(dp, edges, s1, s2) then
             pairs += 1
-            emit(dp, edges, s1, s2)
           sub = (sub - 1) & ext
       s += 1
     Option.when(pairs <= PairBudget && dp.planned(full))(dp)
 
   end solve
 
-  /** Cost the joins of s1 and s2 in both orders, keeping the cheapest plan of their union */
-  private def emit(dp: Table, edges: IndexedSeq[Edge], s1: Int, s2: Int): Unit =
+  /**
+    * Cost the joins of s1 and s2 in both orders, keeping the cheapest plan of their union. Returns
+    * false, costing nothing, when no equality joins them
+    */
+  private def emit(dp: Table, edges: IndexedSeq[Edge], s1: Int, s2: Int): Boolean =
     val s       = s1 | s2
-    val r1      = dp.rows(s1)
-    val r2      = dp.rows(s2)
     val d1      = IndexedSeq.newBuilder[Option[Double]]
     val d2      = IndexedSeq.newBuilder[Option[Double]]
+    var keys    = 0
     var filters = 0
     edges.foreach { e =>
-      if e.isEqui && within(e.left, s1) && within(e.right, s2) then
-        d1 += e.leftDistinct
-        d2 += e.rightDistinct
-      else if e.isEqui && within(e.left, s2) && within(e.right, s1) then
-        d1 += e.rightDistinct
-        d2 += e.leftDistinct
-      else if e.refs != 0 && placedAt(e.refs, s, s1, s2) then
-        filters += 1
+      e.placement(s1, s2) match
+        case Placement.Key =>
+          keys += 1
+          d1 += e.leftDistinct
+          d2 += e.rightDistinct
+        case Placement.SwappedKey =>
+          keys += 1
+          d1 += e.rightDistinct
+          d2 += e.leftDistinct
+        case Placement.Filter =>
+          filters += 1
+        case Placement.Below =>
     }
-    var out = CardinalityEstimator.joinOutputRows(r1, d1.result(), r2, d2.result())
-    if filters > 0 then
-      out = math.max(1.0, out * math.pow(CardinalityEstimator.DefaultSelectivity, filters))
-    val base                                  = dp.cost(s1) + dp.cost(s2) + out
-    def consider(left: Int, right: Int): Unit =
-      val buildLeft = JoinOrderOptimizer.swapBuild(options, dp.rows(right), dp.rows(left))
-      val build     =
-        if buildLeft then
-          left
-        else
-          right
-      val buildRows     = dp.rows(build)
-      val pipelineBreak =
-        if Integer.bitCount(build) > 1 then
-          buildRows
-        else
-          0.0
-      val cost = base + buildRows + pipelineBreak
-      if !dp.planned(s) || cost < dp.cost(s) then
-        dp.planned(s) = true
-        dp.cost(s) = cost
-        dp.rows(s) = out
-        dp.left(s) = left
-        dp.right(s) = right
-        dp.buildLeft(s) = buildLeft
-    consider(s1, s2)
-    consider(s2, s1)
+    if keys > 0 then
+      var out = CardinalityEstimator.joinOutputRows(
+        dp.rows(s1),
+        d1.result(),
+        dp.rows(s2),
+        d2.result()
+      )
+      if filters > 0 then
+        out = math.max(1.0, out * math.pow(CardinalityEstimator.DefaultSelectivity, filters))
+      val base                                  = dp.cost(s1) + dp.cost(s2) + out
+      def consider(left: Int, right: Int): Unit =
+        val buildLeft = JoinOrderOptimizer.swapBuild(options, dp.rows(right), dp.rows(left))
+        val build     =
+          if buildLeft then
+            left
+          else
+            right
+        val buildRows     = dp.rows(build)
+        val pipelineBreak =
+          if Integer.bitCount(build) > 1 then
+            buildRows
+          else
+            0.0
+        val cost = base + buildRows + pipelineBreak
+        if !dp.planned(s) || cost < dp.cost(s) then
+          dp.planned(s) = true
+          dp.cost(s) = cost
+          dp.rows(s) = out
+          dp.left(s) = left
+          dp.right(s) = right
+          dp.buildLeft(s) = buildLeft
+      consider(s1, s2)
+      consider(s2, s1)
+    end if
+    keys > 0
 
   end emit
 
@@ -124,6 +137,7 @@ class JoinEnumerator(options: OptimizerOptions):
   private def build[P, C, K](
       g: JoinGraph[P, C],
       search: JoinSearch[P, C, K],
+      edges: IndexedSeq[Edge],
       dp: Table,
       s: Int
   ): P =
@@ -132,21 +146,22 @@ class JoinEnumerator(options: OptimizerOptions):
     else
       val l       = dp.left(s)
       val r       = dp.right(s)
-      val left    = build(g, search, dp, l)
-      val right   = build(g, search, dp, r)
+      val left    = build(g, search, edges, dp, l)
+      val right   = build(g, search, edges, dp, r)
       val pairs   = ListBuffer.empty[(C, C)]
       val filters = ListBuffer.empty[C]
+      // The placements the join was costed with
       g.edges
-        .foreach { e =>
-          val refs = mask(e.refs)
-          e.sides match
-            case Some(sd) if isKey(sd, l, r) =>
-              pairs += ((sd.left, sd.right))
-            case Some(sd) if isKey(sd, r, l) =>
-              pairs += ((sd.right, sd.left))
-            case _ if refs != 0 && placedAt(refs, s, l, r) =>
-              filters += e.cond
-            case _ =>
+        .zip(edges)
+        .foreach { (je, e) =>
+          e.placement(l, r) match
+            case Placement.Key =>
+              pairs += ((je.sides.get.left, je.sides.get.right))
+            case Placement.SwappedKey =>
+              pairs += ((je.sides.get.right, je.sides.get.left))
+            case Placement.Filter =>
+              filters += je.cond
+            case Placement.Below =>
         }
       val keys = search.keys(left, right, pairs.toList)
       val join = search.join(left, right, keys, dp.buildLeft(s))
@@ -192,21 +207,37 @@ object JoinEnumerator:
       leftDistinct: Option[Double],
       rightDistinct: Option[Double]
   ):
-    def isEqui: Boolean = left != 0
+    private def isEqui: Boolean = left != 0
+
+    /** Where a join of s1 and s2 applies this condition */
+    def placement(s1: Int, s2: Int): Placement =
+      if isEqui && within(left, s1) && within(right, s2) then
+        Placement.Key
+      else if isEqui && within(left, s2) && within(right, s1) then
+        Placement.SwappedKey
+      else if refs != 0 && within(refs, s1 | s2) && !within(refs, s1) && !within(refs, s2) then
+        Placement.Filter
+      else
+        // Applied below the join, above it, or (reading no input) over the whole tree
+        Placement.Below
+
+  /** How a join applies a condition */
+  private enum Placement:
+    /** A hash key, the left side over the join's left input */
+    case Key
+
+    /** A hash key, the right side over the join's left input */
+    case SwappedKey
+
+    /** A filter over the join, as it reads both inputs */
+    case Filter
+
+    /** Not at this join */
+    case Below
 
   private def mask(refs: Set[Int]): Int = refs.foldLeft(0)((m, i) => m | (1 << i))
 
   private def within(a: Int, s: Int): Boolean = (a & ~s) == 0
-
-  /** Whether a condition over `refs` is applied at the join of s1 and s2 (their union is s) */
-  private def placedAt(refs: Int, s: Int, s1: Int, s2: Int): Boolean =
-    within(refs, s) && !within(refs, s1) && !within(refs, s2)
-
-  /** Whether an equality is a key of a join of l and r: its left side over l, its right over r */
-  private def isKey[C](sd: JoinEdge.Sides[C], l: Int, r: Int): Boolean =
-    val a = mask(sd.leftRefs)
-    val b = mask(sd.rightRefs)
-    a != 0 && b != 0 && (a & b) == 0 && within(a, l) && within(b, r)
 
   private def analyze[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): IndexedSeq[Edge] =
     def distinct(side: C, refs: Set[Int]): Option[Double] =
@@ -229,11 +260,5 @@ object JoinEnumerator:
             Edge(refs, 0, 0, None, None)
       }
       .toIndexedSeq
-
-  /** Whether an equality joins input sets s1 and s2 */
-  private def connects(edges: IndexedSeq[Edge], s1: Int, s2: Int): Boolean = edges.exists { e =>
-    e.isEqui &&
-    ((within(e.left, s1) && within(e.right, s2)) || (within(e.left, s2) && within(e.right, s1)))
-  }
 
 end JoinEnumerator
