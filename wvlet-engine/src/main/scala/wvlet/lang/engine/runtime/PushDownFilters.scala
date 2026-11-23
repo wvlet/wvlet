@@ -24,6 +24,7 @@ import wvlet.lang.engine.expr.IsNullExpr
 import wvlet.lang.engine.expr.Kernels
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.RowFn
+import wvlet.lang.engine.expr.ScalarFunctions
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.VExprs
@@ -536,7 +537,7 @@ object PushDownFilters extends Pass:
 
   private def isDeterministic(e: VExpr): Boolean =
     e match
-      case f: RowFn if f.name == "random" =>
+      case f: RowFn if ScalarFunctions.volatileFunctions.contains(f.name) =>
         false
       case other =>
         other.children.forall(isDeterministic)

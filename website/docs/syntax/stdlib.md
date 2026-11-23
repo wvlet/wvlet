@@ -66,7 +66,10 @@ Available on all values:
 | `s.regexp_replace(pattern, replacement)` | Replace every regex match |
 | `s.split(separator)` | Split into an `array[string]` |
 | `s.levenshtein(other)` | Edit distance |
-| `s.md5` / `s.sha256` | Hex-encoded digest |
+| `s.md5` / `s.sha1` / `s.sha256` | Lowercase hex digest of the UTF-8 bytes |
+| `s.to_base64` / `s.from_base64` | Base64 encoding of the UTF-8 bytes, and its inverse |
+| `s.to_hex` / `s.from_hex` | Lowercase hex of the UTF-8 bytes, and its inverse (either case) |
+| `uuid()` | A random version-4 UUID string, new for every row (not on Hive) |
 | `s.json_extract(path)` | Extract a JSON value with a JSONPath (e.g. `'$.a.b'`) |
 | `s.json_extract_string(path)` | Extract a JSON value as a plain string |
 

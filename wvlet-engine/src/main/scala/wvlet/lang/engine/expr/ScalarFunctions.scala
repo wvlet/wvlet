@@ -46,6 +46,33 @@ object ScalarFunctions:
     else
       CastExpr(e, PType.Str)
 
+  /**
+    * A string argument of an encoding function. Other types are rejected rather than cast, since
+    * e.g. DuckDB's hex of an integer encodes the number, not the bytes of its text
+    */
+  private def stringArg(name: String, e: VExpr): VExpr =
+    e.ptype match
+      case PType.Str | PType.Null =>
+        str(e)
+      case other =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"${name} of ${other} is not supported in the engine; pass a string")
+
+  /** Functions that return a new value on every call, so must not be folded or moved */
+  val volatileFunctions: Set[String] = Set("random", "uuid")
+
+  /** A random version-4 UUID string */
+  private def randomUUID(): String =
+    val r     = scala.util.Random
+    val bytes = new Array[Byte](16)
+    r.nextBytes(bytes)
+    bytes(6) = ((bytes(6) & 0x0f) | 0x40).toByte
+    bytes(8) = ((bytes(8) & 0x3f) | 0x80).toByte
+    val h = Encoding.hex(bytes)
+    s"${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h
+        .substring(20)}"
+
   private def toLong(e: VExpr): VExpr =
     if e.ptype == PType.Int64 then
       e
@@ -761,6 +788,53 @@ object ScalarFunctions:
     }
     reg("md5") { args =>
       fn("md5", Seq(str(args.head)), PType.Str)(a => MD5.hex(a(0).asInstanceOf[String]))
+    }
+    reg("sha1") { args =>
+      arity("sha1", args, 1)
+      fn("sha1", Seq(stringArg("sha1", args.head)), PType.Str)(a =>
+        Encoding.sha1(a(0).asInstanceOf[String])
+      )
+    }
+    reg("sha256") { args =>
+      arity("sha256", args, 1)
+      fn("sha256", Seq(stringArg("sha256", args.head)), PType.Str)(a =>
+        Encoding.sha256(a(0).asInstanceOf[String])
+      )
+    }
+    // The engine has no binary type: DuckDB's encode/decode (VARCHAR <-> BLOB) pass strings
+    // through, and the decoders below return the decoded UTF-8 string
+    reg("encode", "decode") { args =>
+      arity("encode", args, 1)
+      stringArg("encode", args.head)
+    }
+    reg("to_base64") { args =>
+      arity("to_base64", args, 1)
+      fn("to_base64", Seq(stringArg("to_base64", args.head)), PType.Str)(a =>
+        Encoding.toBase64(a(0).asInstanceOf[String])
+      )
+    }
+    reg("from_base64") { args =>
+      arity("from_base64", args, 1)
+      fn("from_base64", Seq(stringArg("from_base64", args.head)), PType.Str)(a =>
+        Encoding.utf8(Encoding.fromBase64(a(0).asInstanceOf[String]))
+      )
+    }
+    reg("hex") { args =>
+      arity("hex", args, 1)
+      // Uppercase, as DuckDB's hex of a string's bytes
+      fn("hex", Seq(stringArg("hex", args.head)), PType.Str)(a =>
+        Encoding.hex(a(0).asInstanceOf[String].getBytes("UTF-8")).toUpperCase
+      )
+    }
+    reg("unhex") { args =>
+      arity("unhex", args, 1)
+      fn("unhex", Seq(stringArg("unhex", args.head)), PType.Str)(a =>
+        Encoding.utf8(Encoding.unhex(a(0).asInstanceOf[String]))
+      )
+    }
+    reg("uuid") { args =>
+      arity("uuid", args, 0)
+      RowFn("uuid", Nil, PType.Str, _ => randomUUID(), nullSafe = true)
     }
     reg("ascii") { args =>
       fn("ascii", Seq(str(args.head)), PType.Int64)(a =>
