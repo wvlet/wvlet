@@ -132,12 +132,14 @@ class Planner(
       val optimized = optimizeRuntime(bound)
       val op        = optimizePhysical(lower(optimized))
       finalizeCTEs(op)
-      if enabled(Optimization.ReplanMaterializedCTEs) then
-        if enabled(Optimization.ReplanCTEBodies) then
-          replanCTEBodies()
-        replanJoinedCTEs(bound, optimized).getOrElse(op)
-      else
-        op
+      val root =
+        if enabled(Optimization.ReplanMaterializedCTEs) then
+          if enabled(Optimization.ReplanCTEBodies) then
+            replanCTEBodies()
+          replanJoinedCTEs(bound, optimized).getOrElse(op)
+        else
+          op
+      startingSharedResults(root)
     finally
       runtimeBinder.clearBoundInputs()
 
@@ -235,6 +237,8 @@ class Planner(
     if joined.isEmpty then
       None
     else
+      // The joined results (and the shared results they read) are computed together
+      computeSharedResults(joined.toSeq.flatMap(_.sharedResult))
       joined.foreach(_.materialize())
       // A separate run, so that firedRules counts the rules of the plan once
       val optimizer                            = Optimizer.default(options, semiJoins)
@@ -1117,15 +1121,19 @@ class Planner(
     * The rows of an operator, computed once on first read and shared by several readers (e.g., a
     * CTE referenced more than once, or the input of grouping sets)
     */
-  private class SharedResult(val op: Operator):
-    private var computed         = false
-    lazy val batches: Seq[Batch] =
+  private class SharedResult(val op: Operator) extends SharedBatches:
+    private val result = ComputeOnce { () =>
       debug(s"Materializing a shared result:\n${op.explain()}")
-      computed = true
       op.drain()
+    }
+
+    /** The batches, computed on this thread unless another thread has started them */
+    def batches: Seq[Batch] = result.get()
 
     /** Whether the batches are computed (or being computed) */
-    def isComputed: Boolean = computed
+    def isComputed: Boolean = result.isStarted
+
+    def compute(): Unit = result.run()
 
     private var explained = false
 
@@ -1150,7 +1158,7 @@ class Planner(
   end SharedResult
 
   /** A reader of a shared result over duplicate column names, which a scan can't select by name */
-  private class SharedReader(shared: SharedResult, schema: Schema, label: String)
+  private class SharedReader(val shared: SharedResult, schema: Schema, label: String)
       extends IteratorOp(schema, () => shared.batches.iterator, label):
     override protected def extraInputs(indent: Int): Seq[String] = shared.sharedPlan(indent).toSeq
     override def sharedInputs: Seq[Operator]                     = Seq(shared.op)
@@ -1314,10 +1322,7 @@ class Planner(
               .UNEXPECTED_STATE
               .newException(s"${label} is read by an iterator after it dropped columns")
         }
-        new IteratorOp(schema, () => result._2.batches.iterator, label):
-          override protected def extraInputs(indent: Int): Seq[String] =
-            result._2.sharedPlan(indent).toSeq
-          override def sharedInputs: Seq[Operator] = resultOp.toSeq
+        CTEIteratorReader(this, schema, label)
 
     /** The body positions of the result columns, and the result */
     private def result: (IndexedSeq[Int], SharedResult) =
@@ -1409,6 +1414,9 @@ class Planner(
     /** The result operator, once finalized */
     def resultOp: Option[Operator] = finalized.map(_._2.op)
 
+    /** The result, once finalized */
+    def sharedResult: Option[SharedResult] = finalized.map(_._2)
+
     /** Whether the result keeps the columns of a scan (body output positions; None: all) */
     def keeps(columns: Option[IndexedSeq[Int]]): Boolean = finalized.forall { (keep, _) =>
       columns.getOrElse(body.output.indices).forall(keep.contains)
@@ -1435,6 +1443,80 @@ class Planner(
     def sharedPlan(indent: Int): Option[String] = result._2.sharedPlan(indent)
 
   end DeferredCTE
+
+  /** A reader of every column and row of a deferred CTE, for bodies with duplicate column names */
+  private class CTEIteratorReader(val cte: DeferredCTE, schema: Schema, label: String)
+      extends IteratorOp(schema, () => cte.batches.iterator, label):
+    override protected def extraInputs(indent: Int): Seq[String] = cte.sharedPlan(indent).toSeq
+    override def sharedInputs: Seq[Operator]                     = cte.resultOp.toSeq
+
+  /**
+    * `results` and the shared results that `roots` and `results` read, directly or through other
+    * shared results. A result comes after the results it reads
+    */
+  private def sharedResultsOf(
+      roots: Seq[Operator],
+      results: Seq[SharedResult] = Nil
+  ): Seq[SharedResult] =
+    val visited                    = java.util.IdentityHashMap[AnyRef, Unit]()
+    val out                        = mutable.ArrayBuffer.empty[SharedResult]
+    def add(r: SharedResult): Unit =
+      if !visited.containsKey(r) then
+        visited.put(r, ())
+        walk(r.op)
+        out += r
+    def walk(op: Operator): Unit =
+      if !visited.containsKey(op) then
+        visited.put(op, ())
+        op match
+          case s: ScanOp =>
+            s.source match
+              case t: CTETable =>
+                t.cte.sharedResult.foreach(add)
+              case t: SharedTable =>
+                add(t.shared)
+              case _ =>
+          case r: SharedReader =>
+            add(r.shared)
+          case r: CTEIteratorReader =>
+            r.cte.sharedResult.foreach(add)
+          case _ =>
+        (op.children ++ op.sharedInputs).foreach(walk)
+    roots.foreach(walk)
+    results.foreach(add)
+    out.toSeq
+
+  end sharedResultsOf
+
+  /** Whether shared results are computed concurrently, on coordinator threads */
+  private def concurrentSharedResults: Boolean =
+    enabled(Optimization.ConcurrentSharedCTEs) && enabled(Optimization.Parallelize) &&
+      TaskRunner.default.parallelism > 1
+
+  /**
+    * Compute `results` and the shared results they read, those not computed yet at the same time on
+    * coordinator threads, and wait until all are done (their failures are raised when read)
+    */
+  private def computeSharedResults(results: Seq[SharedResult]): Unit =
+    if concurrentSharedResults then
+      val pending = sharedResultsOf(Nil, results).filterNot(_.isComputed)
+      if pending.size > 1 then
+        val handles = pending.map(r => TaskRunner.default.coordinate(() => r.compute()))
+        handles.foreach(_.get())
+
+  /**
+    * The plan `root`, which starts computing the shared results it reads on coordinator threads
+    * when it starts running ([[StartSharedOp]]), when there are several
+    */
+  private def startingSharedResults(root: Operator): Operator =
+    if !concurrentSharedResults then
+      root
+    else
+      val pending = sharedResultsOf(Seq(root)).filterNot(_.isComputed)
+      if pending.size > 1 then
+        StartSharedOp(root, pending, TaskRunner.default)
+      else
+        root
 
   /**
     * The result of a deferred CTE, scanned as a table whose parts are its batches. Its schema is

@@ -168,6 +168,12 @@ object EngineTPCHBench extends LogSupport:
             val sql = GenSQL.generateSQLFromRelation(q, addHeader = false).sql
             def duckdbOnce(): (Double, Long) = timed(countRows(conn, sql))
             def engineOnce(): (Double, Long) = timed(engine.execute(q).numRows.toLong)
+            // Wall time and busy cores (process CPU time / wall time) of one engine run
+            def engineTimed(): (Double, Double) =
+              val cpu0    = processCpuNanos()
+              val (ms, _) = engineOnce()
+              val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
+              (ms, cpuMs / math.max(ms, 0.001))
             try
               if opts.explain then
                 Files.writeString(File(outDir, s"${label}-${name}.plan").toPath, engine.explain(q))
@@ -175,7 +181,7 @@ object EngineTPCHBench extends LogSupport:
               val duck          = (1 to opts.runs).map(_ => duckdbOnce()._1)
               val task          = worker.submit { () =>
                 val (_, rows) = engineOnce()
-                (rows, (1 to opts.runs).map(_ => engineOnce()._1))
+                (rows, (1 to opts.runs).map(_ => engineTimed()))
               }
               val (engineRows, eng) =
                 try
@@ -187,7 +193,15 @@ object EngineTPCHBench extends LogSupport:
                     task.cancel(true)
                     timedOut = true
                     throw e
-              val r = QueryTiming(name, duck.sorted, eng.sorted, duckRows, engineRows, None)
+              val r = QueryTiming(
+                name,
+                duck.sorted,
+                eng.map(_._1).sorted,
+                duckRows,
+                engineRows,
+                None,
+                eng.map(_._2).sorted
+              )
               info(r.logLine)
               r
             catch
@@ -219,12 +233,13 @@ object EngineTPCHBench extends LogSupport:
           .map(_.toString)
           .getOrElse("default")}"
     val table = Seq.newBuilder[String]
-    table += "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | rows |"
-    table += "|---|---:|---:|---:|---|"
+    table +=
+      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | engine busy cores | rows |"
+    table += "|---|---:|---:|---:|---:|---|"
     results.foreach { r =>
       r.error match
         case Some(e) =>
-          table += s"| ${r.name} | | | | error: ${e.take(80)} |"
+          table += s"| ${r.name} | | | | | error: ${e.take(80)} |"
         case None =>
           val rows =
             if r.rowsMatch then
@@ -232,18 +247,18 @@ object EngineTPCHBench extends LogSupport:
             else
               s"MISMATCH duckdb=${r.duckdbRows} engine=${r.engineRows}"
           table +=
-            f"| ${r.name} | ${r.duckdbMedian}%.1f | ${r.engineMedian}%.1f | ${r
-                .ratio}%.1fx | ${rows} |"
+            f"| ${r.name} | ${r.duckdbMedian}%.1f | ${r.engineMedian}%.1f | ${r.ratio}%.1fx | ${r
+                .engineCores}%.1f | ${rows} |"
     }
-    table += f"| total | ${duckTotal}%.1f | ${engTotal}%.1f | ${engTotal / duckTotal}%.1fx | |"
+    table += f"| total | ${duckTotal}%.1f | ${engTotal}%.1f | ${engTotal / duckTotal}%.1fx | | |"
     info(s"${header}\n${table.result().mkString("\n")}")
 
     val tsv   = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.tsv")
     val lines =
-      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror" +:
+      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores" +:
         results.map { r =>
           f"${r.name}\t${r.duckdbMedian}%.1f\t${r.engineMedian}%.1f\t${r.ratio}%.2f\t${r
-              .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}"
+              .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}\t${r.engineCores}%.2f"
         }
     Files.writeString(tsv.toPath, lines.mkString("", "\n", "\n"))
     info(s"Wrote ${tsv.getPath}")
@@ -256,8 +271,11 @@ object EngineTPCHBench extends LogSupport:
       engineMs: Seq[Double],
       duckdbRows: Long,
       engineRows: Long,
-      error: Option[String]
+      error: Option[String],
+      engineCoresPerRun: Seq[Double] = Nil
   ):
+    /** The median busy cores of the engine runs: process CPU time / wall time */
+    def engineCores: Double  = median(engineCoresPerRun)
     def duckdbMedian: Double = median(duckdbMs)
     def engineMedian: Double = median(engineMs)
     def ratio: Double        = engineMedian / math.max(duckdbMedian, 0.001)
@@ -286,6 +304,14 @@ object EngineTPCHBench extends LogSupport:
       xs(xs.size / 2)
     else
       (xs(xs.size / 2 - 1) + xs(xs.size / 2)) / 2
+
+  /** CPU time of this process (every thread, GC and JIT included) */
+  def processCpuNanos(): Long =
+    java.lang.management.ManagementFactory.getOperatingSystemMXBean match
+      case os: com.sun.management.OperatingSystemMXBean =>
+        os.getProcessCpuTime
+      case _ =>
+        0L
 
   def timed(body: => Long): (Double, Long) =
     val start = System.nanoTime()

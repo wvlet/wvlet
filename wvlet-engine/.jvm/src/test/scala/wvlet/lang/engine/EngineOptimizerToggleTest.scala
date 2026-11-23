@@ -82,6 +82,9 @@ class EngineOptimizerToggleTest extends UniTest:
       if o == Optimization.ReplanCTEBodies then
         // EngineMaterializedCTEStatsTest checks that the flag changes the plan
         ignore("No TPC-H or TPC-DS shared CTE body reads another shared CTE")
+      if o == Optimization.ConcurrentSharedCTEs then
+        // EngineConcurrentSharedCTEsTest checks that the flag starts the results concurrently
+        ignore("Changes when shared CTE results are computed, not the plan")
       val changed = EnginePlanGolden
         .suites
         .zip(baselinePlans)

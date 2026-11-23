@@ -139,6 +139,12 @@ enum Optimization(val name: String):
     */
   case LateGather extends Optimization("late_gather")
 
+  /**
+    * With `parallelize`, compute the shared CTE results a plan reads at the same time, each drained
+    * on a coordinator thread outside the task pool, instead of one by one on the calling thread
+    */
+  case ConcurrentSharedCTEs extends Optimization("concurrent_shared_ctes")
+
 end Optimization
 
 object Optimization:

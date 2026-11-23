@@ -16,3 +16,6 @@ package wvlet.lang.engine.exec
 /** Scala.js has a single thread: tasks run one at a time when submitted */
 trait TaskRunnerCompatImpl extends TaskRunnerCompat:
   def default: TaskRunner = TaskRunner.Sequential
+
+  def awaitNotify(lock: AnyRef): Unit =
+    throw IllegalStateException("Nothing else runs on Scala.js to wait for")
