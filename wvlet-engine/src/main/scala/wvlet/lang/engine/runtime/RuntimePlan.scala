@@ -216,8 +216,9 @@ object WindowFunction:
 /**
   * The engine's runtime plan: relations over identified columns ([[ColumnId]]) and bound
   * expressions ([[BExpr]]), between the compiler's relations and the physical operators.
-  * [[RuntimeBinder]] builds it and [[Lowering]] turns it into operators. Relations the binder
-  * doesn't cover yet are [[RuntimePlan.Legacy]] leaves, already planned by the recursive planner.
+  * [[RuntimeBinder]] builds it and [[Lowering]] turns it into operators. Subquery filters whose
+  * decorrelation toggles are off are [[RuntimePlan.Legacy]] leaves, already planned by the
+  * recursive planner.
   *
   * Passes over the plan match its cases without a wildcard default, so that a new case fails the
   * build (non-exhaustive matches are errors in wvlet-engine) until every pass handles it.
