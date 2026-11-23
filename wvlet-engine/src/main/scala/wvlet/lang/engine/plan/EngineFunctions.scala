@@ -31,19 +31,15 @@ object EngineFunctions:
         // Trino-style date_add(unit, n, date) and date_add(date, interval)
         "date_add",
         "grouping",
-        "count_star",
         "unnest",
         "rollup",
         "cube"
       )
 
-  /** Function names the parser turns into dedicated expression nodes (written without parens) */
-  val keywordForms: Set[String] = Set("current_date", "current_timestamp", "current_localtimestamp")
-
   /** True when the engine binds calls of the given function name */
   def isSupported(name: String): Boolean =
     val n = name.toLowerCase
     ScalarFunctions.isDefined(n) || Aggregates.isAggregate(n) ||
-    WindowCall.rankingFunctions.contains(n) || specialForms.contains(n) || keywordForms.contains(n)
+    WindowCall.rankingFunctions.contains(n) || specialForms.contains(n)
 
 end EngineFunctions
