@@ -43,6 +43,14 @@ class ScanOp(
 
   override protected def extraInputs(indent: Int): Seq[String] = source.explainDetail(indent).toSeq
 
+  // A breaker's plan is not a child (the source drains and closes it), but walks must reach it
+  override def sharedInputs: Seq[Operator] =
+    source match
+      case b: BreakerSource =>
+        Seq(b.op)
+      case _ =>
+        Nil
+
   /** The scan request this operator sends to the source */
   def spec: ScanSpec = ScanSpec(
     columns.map(_.map(source.schema(_).name)),
