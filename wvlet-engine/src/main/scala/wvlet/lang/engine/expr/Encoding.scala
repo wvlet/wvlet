@@ -70,7 +70,7 @@ object Encoding:
     try
       java.util.Base64.getDecoder.decode(s)
     catch
-      case e: IllegalArgumentException =>
+      case _: IllegalArgumentException =>
         throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid base64 string: '${s}'")
 
   /** Decode bytes as UTF-8, failing on invalid sequences rather than replacing them */
@@ -78,7 +78,7 @@ object Encoding:
     try
       StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString
     catch
-      case e: CharacterCodingException =>
+      case _: CharacterCodingException =>
         throw StatusCode.INVALID_ARGUMENT.newException("The decoded bytes are not valid UTF-8")
 
   /** Pad a message for SHA-1/SHA-256: 0x80, zeros, and the big-endian bit length */
@@ -114,7 +114,7 @@ object Encoding:
   /** Lowercase hex SHA-1 digest of the string's UTF-8 bytes */
   def sha1(s: String): String =
     val buf   = pad(s.getBytes(StandardCharsets.UTF_8))
-    val h     = Array(0x67452301, 0xefcdab89.toInt, 0x98badcfe.toInt, 0x10325476, 0xc3d2e1f0.toInt)
+    val h     = Array(0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0)
     val w     = new Array[Int](80)
     var chunk = 0
     while chunk < buf.length do
@@ -168,14 +168,14 @@ object Encoding:
     0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-  ).map(_.toInt)
+  )
 
   /** Lowercase hex SHA-256 digest of the string's UTF-8 bytes */
   def sha256(s: String): String =
     val buf = pad(s.getBytes(StandardCharsets.UTF_8))
     val h   = Array(
       0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
-    ).map(_.toInt)
+    )
     val w     = new Array[Int](64)
     var chunk = 0
     while chunk < buf.length do
