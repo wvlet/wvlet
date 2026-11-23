@@ -33,8 +33,11 @@
 - `lake exe scalar-subquery-traces` exports outer/inner inline tables with NULL and duplicate keys
   and a set of subqueries (count(*), count(col), sum, max, a CASE over count, a local filter, two
   keys) with the model's value per outer row.
-- `ScalarSubqueryConformanceTest` (engineJVM) runs each as a select item, compares rows with the
-  model and DuckDB, and checks the plan has one left join over an aggregation.
+- `ScalarSubqueryConformanceTest` (engineJVM) reads each outer row's value back through WHERE
+  conditions (`is null`, `= v`, and one under OR; the engine binds correlated scalar subqueries in
+  conditions only), compares rows with the model and DuckDB, and checks the plan: one left join
+  over an aggregation, with the `CASE WHEN key IS NULL` exactly when the value over no rows is not
+  NULL.
 - Formal workflow freshness step, CLAUDE.md formal section, and formal/README.md updated.
 
 ## Alternatives and Why Not?

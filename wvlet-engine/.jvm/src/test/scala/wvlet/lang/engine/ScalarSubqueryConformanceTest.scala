@@ -157,8 +157,11 @@ class ScalarSubqueryConformanceTest extends UniTest:
 
   private val cases = arr(fixture("cases")).map(obj)
 
-  /** The query's runtime plan has one left join, over an aggregation */
-  private def checkPlan(query: String): Unit =
+  /**
+    * The query's runtime plan has one left join, over an aggregation, and above it a `CASE WHEN key
+    * IS NULL` for the unmatched rows exactly when the value over no rows is not NULL
+    */
+  private def checkPlan(query: String, emptyIsNull: Boolean): Unit =
     val p     = withQuery(query)(engine.runtimePlan(_))
     val kinds = nodes(p).collect { case j: Join =>
       j.kind
@@ -166,6 +169,8 @@ class ScalarSubqueryConformanceTest extends UniTest:
     try
       kinds shouldBe Seq(JoinKind.Left)
       nodes(p).exists(_.isInstanceOf[Aggregate]) shouldBe true
+      val aboveJoin = p.explain.split("Join\\[Left\\]", 2)(1)
+      aboveJoin.contains("case(is_null(") shouldBe !emptyIsNull
     catch
       case e: Throwable =>
         warn(s"Unexpected plan for ${query}:\n${p.explain}")
@@ -179,15 +184,15 @@ class ScalarSubqueryConformanceTest extends UniTest:
       // read back through one condition per value: `is null`, and `= v` for each non-NULL v
       val isNull = s"select a, b from ${left} as l(a, b) where ${sub(c)} is null"
       check(isNull, rs.filter(_(2) == "null").map(_.take(2)))
-      checkPlan(isNull)
+      val emptyIsNull = c("emptyIsNull") == JSONBoolean(true)
+      checkPlan(isNull, emptyIsNull)
       for v <- rs.map(_(2)).distinct.filter(_ != "null") do
         check(
           s"select a, b from ${left} as l(a, b) where ${sub(c)} = ${v}",
           rs.filter(_(2) == v).map(_.take(2))
         )
-      // The model's value over no rows is NULL exactly when the planner projects no CASE
-      val empty = (c("emptyIsNull") == JSONBoolean(true))
-      empty shouldBe rs.exists(r => r(0) == "null" && r(2) == "null")
+      // The NULL outer key never matches, so it gets the value over no rows
+      emptyIsNull shouldBe rs.exists(r => r(0) == "null" && r(2) == "null")
   }
 
   test("keep every outer row once with the value under other conditions") {

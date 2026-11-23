@@ -215,7 +215,8 @@ behavior as traces:
   correlations (a key, a key with a local filter on NULLs or on values, and two keys).
   `ScalarSubqueryConformanceTest` (engineJVM) reads each row's value back through WHERE conditions
   (`is null`, `= v`, and one under OR), with decorrelation on and off, compares rows with the model
-  and DuckDB, and checks the plan is one left join over an aggregation.
+  and DuckDB, and checks the plan: one left join over an aggregation, with the
+  `CASE WHEN key IS NULL` above it exactly when the value over no rows is not NULL.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator
