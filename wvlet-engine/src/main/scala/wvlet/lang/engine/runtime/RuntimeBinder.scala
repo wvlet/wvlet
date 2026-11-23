@@ -205,7 +205,7 @@ class RuntimeBinder(planner: Planner):
       case s: Sample =>
         sample(s)
       case other =>
-        // A Project or column edit that evaluates unnest or subqueries, ...
+        // A Project or column edit that evaluates subqueries, a column edit with unnest, ...
         legacy(other)
 
   end bind
@@ -920,12 +920,11 @@ class RuntimeBinder(planner: Planner):
     p.selectItems.exists(i => Binder.containsWindow(i)) && p.selectItems.forall(isPlainItem)
 
   /**
-    * A projection with `unnest(list)` items, without aggregates, windows, or subqueries, which the
-    * planner plans with `projectWithUnnest`
+    * A projection with `unnest(list)` items, without windows or subqueries, which the planner plans
+    * with `projectWithUnnest` (aggregations route before it)
     */
   private def isUnnestProjection(p: Project): Boolean =
-    !planner.isAggregation(p.child, p.selectItems) &&
-      p.selectItems.exists(i => planner.unnestArg(i).isDefined) &&
+    p.selectItems.exists(i => planner.unnestArg(i).isDefined) &&
       p.selectItems
         .forall { i =>
           !Binder.containsWindow(i) && !planner.hasSubquery(Binder.expandTemplates(i))
