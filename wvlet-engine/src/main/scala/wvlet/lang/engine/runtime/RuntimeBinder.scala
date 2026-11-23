@@ -409,8 +409,9 @@ class RuntimeBinder(planner: Planner):
   private def nonLateralJoin(j: Join, filters: List[Expression]): RuntimePlan =
     if j.asof then
       legacyOp(planner.planJoinTree(j, planner.factorOrs(filters)))
-    else if !(planner.isInnerJoin(j) || planner.isJoinOn(j)) then
-      usingJoin(j, filters)
+    else if !planner.isJoinOn(j) then
+      // Filters over a USING or NATURAL join bind above it (only inner join trees take them)
+      usingJoin(j)
     else if planner.isInnerJoin(j) then
       innerJoins(j, filters)
     else if isOuterJoinOn(j) && filters.isEmpty then
@@ -421,17 +422,16 @@ class RuntimeBinder(planner: Planner):
       plans.conjuncts(planner.joinOn(j, planner.joinKind(j), left, right, plans), filters).plan
 
   /**
-    * A USING or NATURAL join and the filter conditions over it: a [[RuntimePlan.Join]] on the keys
-    * under a [[RuntimePlan.Project]] merging them, as `Planner.usingJoin` plans it
+    * A USING or NATURAL join: a [[RuntimePlan.Join]] on the keys under a [[RuntimePlan.Project]]
+    * merging them, as `Planner.usingJoin` plans it
     */
-  private def usingJoin(j: Join, filters: List[Expression]): RuntimePlan =
+  private def usingJoin(j: Join): RuntimePlan =
     val left  = lowered(bind(j.left))
     val right = lowered(bind(j.right))
     val names = planner
       .usingKeys(j, left.op.schema, right.op.schema)
       .getOrElse(throw StatusCode.UNEXPECTED_STATE.newException(s"Not a USING join: ${j.cond}"))
-    val p = planner.usingJoin(left, right, names, planner.joinKind(j), plans)
-    plans.conjuncts(p, planner.factorOrs(filters)).plan
+    planner.usingJoin(left, right, names, planner.joinKind(j), plans).plan
 
   /**
     * Whether a join is a LEFT, RIGHT, or FULL join on an ON condition (or none) without subqueries,

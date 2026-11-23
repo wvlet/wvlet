@@ -17,7 +17,7 @@
 - Lane: Express — an internal refactor with no change in results, pre-approved by the M4b item.
 - `Planner.usingJoin` becomes a shared helper over the plan builder (`JoinTreeBuilder` and `AggPlanBuilder`), as `joinOn`, pivot, and grouping sets are, so both planners build the same operators from one piece of code.
 - On the runtime plan, USING and NATURAL joins bind as a `Join` with keys and no residual, under a `Project` for the merged key columns. No new `RuntimePlan` node is needed.
-- Filters over the join apply over the projection as for an outer ON join (`plans.conjuncts`); PushDownFilters may then move them through the projection and join as for other joins.
+- Filters over the join bind above the projection, as the binder binds filters over any non-inner join; PushDownFilters may then move them through the projection and join.
 - The ASOF join stays legacy in this PR; the legacy-leaf test keeps using it.
 - Tests: EngineRuntimePlanTest checks the bound shape (no `Legacy` leaf) and that inner, left, right, and full USING joins (with NULL keys and a filter above) return the same rows as the legacy planner; a spec/basic file covers USING joins on both planners and DuckDB.
 
