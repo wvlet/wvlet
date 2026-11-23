@@ -149,6 +149,52 @@ trait array[A of numeric] = {
   def var_pop: A = sql"var_pop(${this})"
   def var_samp: A = sql"var_samp(${this})"
 
+  -- Correlation and covariance of (this, x) pairs, skipping pairs with a NULL
+  def corr(x: sql): double = sql"corr(${this}, ${x})"
+  def covar_pop(x: sql): double = sql"covar_pop(${this}, ${x})"
+  def covar_samp(x: sql): double = sql"covar_samp(${this}, ${x})"
+
+  -- Least-squares line of this (dependent) over x (independent), skipping pairs with a NULL
+  def regr_slope(x: sql) in duckdb: double = sql"regr_slope(${this}, ${x})"
+  def regr_slope(x: sql) in trino: double = sql"regr_slope(${this}, ${x})"
+  def regr_slope(x: sql) in hive: double = sql"regr_slope(${this}, ${x})"
+  def regr_slope(x: sql) in snowflake: double = sql"regr_slope(${this}, ${x})"
+  def regr_intercept(x: sql) in duckdb: double = sql"regr_intercept(${this}, ${x})"
+  def regr_intercept(x: sql) in trino: double = sql"regr_intercept(${this}, ${x})"
+  def regr_intercept(x: sql) in hive: double = sql"regr_intercept(${this}, ${x})"
+  def regr_intercept(x: sql) in snowflake: double = sql"regr_intercept(${this}, ${x})"
+  -- Coefficient of determination of the line, and the number of non-NULL pairs
+  def regr_r2(x: sql) in duckdb: double = sql"regr_r2(${this}, ${x})"
+  def regr_r2(x: sql) in hive: double = sql"regr_r2(${this}, ${x})"
+  def regr_r2(x: sql) in snowflake: double = sql"regr_r2(${this}, ${x})"
+  def regr_count(x: sql) in duckdb: long = sql"regr_count(${this}, ${x})"
+  def regr_count(x: sql) in hive: long = sql"regr_count(${this}, ${x})"
+  def regr_count(x: sql) in snowflake: long = sql"regr_count(${this}, ${x})"
+
+  -- Sample excess kurtosis (NULL for fewer than 4 values) and sample skewness (fewer than 3)
+  def kurtosis in duckdb: double = sql"kurtosis(${this})"
+  -- NULL for equal values, as DuckDB (Trino's 0 / 0 would be NaN)
+  def kurtosis in trino: double = sql"if(stddev_pop(${this}) > 0, kurtosis(${this}))"
+  def kurtosis in snowflake: double = sql"kurtosis(${this})"
+  def skewness in duckdb: double = sql"skewness(${this})"
+  -- Trino's skewness is the population form: apply the sample correction
+  def skewness in trino: double = sql"if(count(${this}) > 2 and stddev_pop(${this}) > 0, skewness(${this}) * sqrt(count(${this}) * (count(${this}) - 1.0)) / (count(${this}) - 2))"
+  def skewness in snowflake: double = sql"skew(${this})"
+
+  -- Bitwise AND / OR / XOR of the integer values
+  def bit_and in duckdb: A = sql"bit_and(${this})"
+  def bit_and in trino: A = sql"bitwise_and_agg(${this})"
+  def bit_and in snowflake: A = sql"bitand_agg(${this})"
+  def bit_and in bigquery: A = sql"bit_and(${this})"
+  def bit_or in duckdb: A = sql"bit_or(${this})"
+  def bit_or in trino: A = sql"bitwise_or_agg(${this})"
+  def bit_or in snowflake: A = sql"bitor_agg(${this})"
+  def bit_or in bigquery: A = sql"bit_or(${this})"
+  def bit_xor in duckdb: A = sql"bit_xor(${this})"
+  def bit_xor in trino: A = sql"bitwise_xor_agg(${this})"
+  def bit_xor in snowflake: A = sql"bitxor_agg(${this})"
+  def bit_xor in bigquery: A = sql"bit_xor(${this})"
+
   def approx_quantile(pos:double) in trino: A = sql"approx_percentile(${this}, ${pos})"
   def approx_quantile(pos:double) in duckdb: A = sql"approx_quantile(${this}, ${pos})"
   def approx_quantile(pos:double) in hive: A = sql"percentile_approx(${this}, ${pos})"

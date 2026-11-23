@@ -110,7 +110,19 @@ object Aggregates:
     "sum_if",
     "product",
     "histogram",
-    "mode"
+    "mode",
+    "corr",
+    "covar_pop",
+    "covar_samp",
+    "regr_slope",
+    "regr_intercept",
+    "regr_r2",
+    "regr_count",
+    "kurtosis",
+    "skewness",
+    "bit_and",
+    "bit_or",
+    "bit_xor"
   )
 
   def isAggregate(name: String): Boolean = names.contains(name.toLowerCase)
@@ -147,6 +159,21 @@ object Aggregates:
         argTypes.headOption.getOrElse(PType.Null)
       case "bool_and" | "bool_or" | "every" =>
         PType.Bool
+      case "corr" | "covar_pop" | "covar_samp" | "regr_slope" | "regr_intercept" | "regr_r2" |
+          "kurtosis" | "skewness" =>
+        PType.Float64
+      case "regr_count" =>
+        PType.Int64
+      case "bit_and" | "bit_or" | "bit_xor" =>
+        argTypes.headOption match
+          case Some(t @ (PType.Int32 | PType.Int64)) =>
+            t
+          case Some(PType.Null) | None =>
+            PType.Int64
+          case Some(other) =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"${name} of ${other} is not supported in the engine; pass an integer")
       case "string_agg" | "listagg" | "group_concat" =>
         PType.Str
       case "array_agg" | "list" | "histogram" =>
@@ -218,6 +245,30 @@ object Aggregates:
         Mode(out)
       case "histogram" =>
         Histogram()
+      case "corr" =>
+        CoMoments(CoMoments.Corr)
+      case "covar_pop" =>
+        CoMoments(CoMoments.CovarPop)
+      case "covar_samp" =>
+        CoMoments(CoMoments.CovarSamp)
+      case "regr_slope" =>
+        CoMoments(CoMoments.RegrSlope)
+      case "regr_intercept" =>
+        CoMoments(CoMoments.RegrIntercept)
+      case "regr_r2" =>
+        CoMoments(CoMoments.RegrR2)
+      case "regr_count" =>
+        CoMoments(CoMoments.RegrCount)
+      case "kurtosis" =>
+        PowerSums(isKurtosis = true)
+      case "skewness" =>
+        PowerSums(isKurtosis = false)
+      case "bit_and" =>
+        BitAgg(out, BitAgg.And)
+      case "bit_or" =>
+        BitAgg(out, BitAgg.Or)
+      case "bit_xor" =>
+        BitAgg(out, BitAgg.Xor)
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported aggregate function: ${other}")
 
@@ -892,6 +943,251 @@ object Aggregates:
     end result
 
   end Moments
+
+  object CoMoments:
+    val Corr          = 0
+    val CovarPop      = 1
+    val CovarSamp     = 2
+    val RegrSlope     = 3
+    val RegrIntercept = 4
+    val RegrR2        = 5
+    val RegrCount     = 6
+
+  /**
+    * Online co-moments of (y, x) pairs, skipping pairs with a NULL, for correlation, covariance,
+    * and linear regression. The results follow DuckDB: NaN where a variance is zero (corr,
+    * regr_slope), NULL for regr_intercept and regr_r2 when x is constant, and regr_r2 = 1 when y is
+    * constant
+    */
+  final class CoMoments(kind: Int) extends Accumulator:
+    private var n: Array[Long]       = new Array[Long](0)
+    private var meanX: Array[Double] = new Array[Double](0)
+    private var meanY: Array[Double] = new Array[Double](0)
+    private var m2x: Array[Double]   = new Array[Double](0)
+    private var m2y: Array[Double]   = new Array[Double](0)
+    private var cxy: Array[Double]   = new Array[Double](0)
+    def ptype: PType                 =
+      if kind == CoMoments.RegrCount then
+        PType.Int64
+      else
+        PType.Float64
+
+    protected def grow(newCap: Int): Unit =
+      n = java.util.Arrays.copyOf(n, newCap)
+      meanX = java.util.Arrays.copyOf(meanX, newCap)
+      meanY = java.util.Arrays.copyOf(meanY, newCap)
+      m2x = java.util.Arrays.copyOf(m2x, newCap)
+      m2y = java.util.Arrays.copyOf(m2y, newCap)
+      cxy = java.util.Arrays.copyOf(cxy, newCap)
+
+    def update(groups: Array[Int], size: Int, args: Array[Vec]): Unit =
+      val yv = args(0)
+      val xv = args(1)
+      if yv.ptype == PType.Null || xv.ptype == PType.Null then
+        return
+      val ys = Kernels.asDoubles(yv)
+      val xs = Kernels.asDoubles(xv)
+      var i  = 0
+      while i < size do
+        if !yv.isNull(i) && !xv.isNull(i) then
+          val g = groups(i)
+          val x = xs(i)
+          val y = ys(i)
+          n(g) += 1
+          val c  = n(g).toDouble
+          val dx = x - meanX(g)
+          val dy = y - meanY(g)
+          meanX(g) += dx / c
+          meanY(g) += dy / c
+          m2x(g) += dx * (x - meanX(g))
+          m2y(g) += dy * (y - meanY(g))
+          cxy(g) += dx * (y - meanY(g))
+        i += 1
+
+    def result(numGroups: Int): Vec =
+      val b = VecBuilder(ptype, numGroups)
+      var g = 0
+      while g < numGroups do
+        val c      = n(g)
+        val v: Any =
+          if kind == CoMoments.RegrCount then
+            c
+          else if c == 0 then
+            null
+          else
+            val varX = m2x(g) / c
+            val varY = m2y(g) / c
+            val cov  = cxy(g) / c
+            kind match
+              case CoMoments.Corr =>
+                cov / (math.sqrt(varX) * math.sqrt(varY))
+              case CoMoments.CovarPop =>
+                cov
+              case CoMoments.CovarSamp =>
+                if c < 2 then
+                  null
+                else
+                  cxy(g) / (c - 1)
+              case CoMoments.RegrSlope =>
+                cov / varX
+              case CoMoments.RegrIntercept =>
+                if varX == 0 then
+                  null
+                else
+                  meanY(g) - cov / varX * meanX(g)
+              case _ =>
+                if varX == 0 then
+                  null
+                else if varY == 0 then
+                  1.0
+                else
+                  val r = cov / (math.sqrt(varX) * math.sqrt(varY))
+                  r * r
+        b.add(v)
+        g += 1
+      end while
+      b.result()
+
+    end result
+
+  end CoMoments
+
+  /**
+    * Sample excess kurtosis or sample skewness from power sums, with DuckDB's formulas: NULL for
+    * fewer than 4 (kurtosis) or 3 (skewness) values, or when all values are equal
+    */
+  final class PowerSums(isKurtosis: Boolean) extends Accumulator:
+    private var n: Array[Long]            = new Array[Long](0)
+    private var s1: Array[Double]         = new Array[Double](0)
+    private var s2: Array[Double]         = new Array[Double](0)
+    private var s3: Array[Double]         = new Array[Double](0)
+    private var s4: Array[Double]         = new Array[Double](0)
+    def ptype: PType                      = PType.Float64
+    protected def grow(newCap: Int): Unit =
+      n = java.util.Arrays.copyOf(n, newCap)
+      s1 = java.util.Arrays.copyOf(s1, newCap)
+      s2 = java.util.Arrays.copyOf(s2, newCap)
+      s3 = java.util.Arrays.copyOf(s3, newCap)
+      s4 = java.util.Arrays.copyOf(s4, newCap)
+
+    def update(groups: Array[Int], size: Int, args: Array[Vec]): Unit =
+      val v = args(0)
+      if v.ptype == PType.Null then
+        return
+      val a = Kernels.asDoubles(v)
+      var i = 0
+      while i < size do
+        if !v.isNull(i) then
+          val g  = groups(i)
+          val x  = a(i)
+          val x2 = x * x
+          n(g) += 1
+          s1(g) += x
+          s2(g) += x2
+          s3(g) += x2 * x
+          s4(g) += x2 * x2
+        i += 1
+
+    private def kurtosis(g: Int): Any =
+      val c = n(g).toDouble
+      if n(g) <= 3 then
+        null
+      else
+        val t   = 1.0 / c
+        val sum = s1(g)
+        val m4  =
+          t * (
+            s4(g) - 4 * s3(g) * sum * t + 6 * s2(g) * sum * sum * t * t -
+              3 * math.pow(sum, 4) * math.pow(t, 3)
+          )
+        val m2 = t * (s2(g) - sum * sum * t)
+        if m2 <= 0 then
+          null
+        else
+          (c - 1) *
+            ((c + 1) * m4 / (m2 * m2) - 3 * (c - 1)) /
+            ((c - 2) * (c - 3))
+
+    private def skewness(g: Int): Any =
+      val c = n(g).toDouble
+      if n(g) <= 2 then
+        null
+      else
+        val t   = 1.0 / c
+        val sum = s1(g)
+        val div = math.sqrt(math.pow(t * (s2(g) - sum * sum * t), 3))
+        if div == 0 then
+          null
+        else
+          val t1 = math.sqrt(c * (c - 1)) / (c - 2)
+          t1 * t *
+            (s3(g) - 3 * s2(g) * sum * t + 2 * math.pow(sum, 3) * t * t) / div
+
+    def result(numGroups: Int): Vec =
+      val b = VecBuilder(PType.Float64, numGroups)
+      var g = 0
+      while g < numGroups do
+        b.add(
+          if isKurtosis then
+            kurtosis(g)
+          else
+            skewness(g)
+        )
+        g += 1
+      b.result()
+
+  end PowerSums
+
+  object BitAgg:
+    val And = 0
+    val Or  = 1
+    val Xor = 2
+
+  /** Bitwise AND / OR / XOR of the non-NULL integers of each group; NULL for none */
+  final class BitAgg(val ptype: PType, op: Int) extends SeenAccumulator:
+    private var bits: Array[Long]         = new Array[Long](0)
+    protected def grow(newCap: Int): Unit =
+      bits = java.util.Arrays.copyOf(bits, newCap)
+      growSeen(newCap)
+
+    def update(groups: Array[Int], size: Int, args: Array[Vec]): Unit =
+      val v = args(0)
+      if v.ptype == PType.Null then
+        return
+      val a = Kernels.asLongs(v)
+      var i = 0
+      while i < size do
+        if !v.isNull(i) then
+          val g = groups(i)
+          val x = a(i)
+          bits(g) =
+            if !seen(g) then
+              x
+            else
+              op match
+                case BitAgg.And =>
+                  bits(g) & x
+                case BitAgg.Or =>
+                  bits(g) | x
+                case _ =>
+                  bits(g) ^ x
+          seen(g) = true
+        i += 1
+
+    def result(numGroups: Int): Vec =
+      val b = VecBuilder(ptype, numGroups)
+      var g = 0
+      while g < numGroups do
+        if !seen(g) then
+          b.add(null)
+        else if ptype == PType.Int32 then
+          b.add(bits(g).toInt)
+        else
+          b.add(bits(g))
+        g += 1
+      b.result()
+
+  end BitAgg
 
   /** Exact quantiles over collected values; the fraction comes from the second argument */
   final class Quantile(val ptype: PType, fixed: Option[Double], continuous: Boolean)

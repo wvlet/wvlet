@@ -182,6 +182,11 @@ aggregation functions apply (see also [Aggregation](index.md#group-by)):
 | `c.stddev` / `c.variance` | Sample standard deviation / variance |
 | `c.stddev_pop` / `c.stddev_samp` / `c.var_pop` / `c.var_samp` | Population/sample variants |
 | `c.approx_quantile(pos)` | Approximate quantile (e.g. `0.95`) |
+| `y.corr(x)` / `y.covar_pop(x)` / `y.covar_samp(x)` | Correlation and covariance of (y, x) pairs |
+| `y.regr_slope(x)` / `y.regr_intercept(x)` | Least-squares line of y over x |
+| `y.regr_r2(x)` / `y.regr_count(x)` | Coefficient of determination / number of non-NULL pairs |
+| `c.kurtosis` / `c.skewness` | Sample excess kurtosis / sample skewness |
+| `c.bit_and` / `c.bit_or` / `c.bit_xor` | Bitwise aggregates of integers |
 
 ```wvlet
 from orders
