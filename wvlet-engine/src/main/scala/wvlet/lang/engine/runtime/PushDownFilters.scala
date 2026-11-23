@@ -176,6 +176,14 @@ object PushDownFilters extends Pass:
               filter(keyed.withChildren(Seq(l, r)), out)
             case None =>
               filter(keyed.withChildren(keyed.children.map(push(_, Nil))), conds)
+        case j @ AsOfJoin(left, right, _, _, _, _, _, _) =>
+          // Each left row matches the same right row whatever the other left rows are, so a
+          // conjunct over left columns keeps the same rows below. A conjunct over right columns
+          // stays above: below, it would change which right row is the closest
+          val ids       = left.output.map(_.id).toSet
+          val (in, out) = conds.partition(_.refs.subsetOf(ids))
+          moved(in)
+          filter(j.withChildren(Seq(push(left, in), push(right, Nil))), out)
         case j @ InnerJoins(inputs, joinConds) =>
           val added = conds
             .filterNot(c => c.expr == Const(true, PType.Bool))

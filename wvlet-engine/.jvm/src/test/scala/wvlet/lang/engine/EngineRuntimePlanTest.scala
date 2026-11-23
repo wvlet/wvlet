@@ -75,10 +75,8 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // An ASOF join
-    val p = runtimePlan("""from orders
-        |asof join lineitem on o_orderkey = l_orderkey and l_shipdate <= o_orderdate
-        |select o_orderkey""".stripMargin)
+    // A projection evaluating a scalar subquery
+    val p = runtimePlan("from nation select n_name, (from region select max(r_regionkey)) as m")
     val leaves = nodes(p).collect { case l: RuntimePlan.Legacy =>
       l
     }
@@ -393,6 +391,56 @@ class EngineRuntimePlanTest extends UniTest:
       val expected = rowsOf(legacy, query)
       expected.nonEmpty shouldBe true
       rowsOf(engine, query) shouldBe expected
+  }
+
+  private def asOfJoins(p: RuntimePlan): Seq[RuntimePlan.AsOfJoin] = nodes(p).collect {
+    case j: RuntimePlan.AsOfJoin =>
+      j
+  }
+
+  test("bind an ASOF join and move filters on its left input below it") {
+    val left =
+      "from [['a', 1, 'x'], ['a', 3, 'y'], ['a', 5, null], ['b', 2, 'z'], [null, 4, 'w'], ['a', null, 'v']] as l(k, t, tag)"
+    val right =
+      "{ from [['a', 0, 10], ['a', 2, 20], ['a', 4, null], ['b', 3, 40], [null, 1, 50], ['a', null, 60]] as r(k2, t2, v) }"
+    for
+      kind <- Seq("", "left ")
+      cmp  <- Seq(">=", ">", "<=", "<")
+    do
+      val query =
+        s"""${left}
+          |asof ${kind}join ${right} on l.k = r.k2 and l.t ${cmp} r.t2
+          |where l.tag != 'y' and (v is null or v != 20)
+          |select k, t, tag, t2, v
+          |order by k, t, tag""".stripMargin
+      val p = runtimePlan(query)
+      debug(p.explain)
+      legacyLeafCount(p) shouldBe 0
+      val js = asOfJoins(p)
+      js.size shouldBe 1
+      js.head.leftKeys.size shouldBe 1
+      // The condition on the left input moves below the join; the one on the right stays above
+      nodes(js.head.left).exists(_.isInstanceOf[RuntimePlan.Filter]) shouldBe true
+      nodes(js.head.right).exists(_.isInstanceOf[RuntimePlan.Filter]) shouldBe false
+      nodes(p).takeWhile(_ ne js.head).exists(_.isInstanceOf[RuntimePlan.Filter]) shouldBe true
+      PlanValidator.violations(p) shouldBe Nil
+      val expected = rowsOf(legacy, query)
+      expected.nonEmpty shouldBe true
+      rowsOf(engine, query) shouldBe expected
+    end for
+
+    // Over TPC-H tables, with the inequality written right side first
+    val query =
+      """from orders
+        |asof join lineitem on o_orderkey = l_orderkey and l_shipdate <= o_orderdate
+        |where o_orderkey < 1000
+        |select o_orderkey, l_linenumber
+        |order by o_orderkey""".stripMargin
+    val p = runtimePlan(query)
+    legacyLeafCount(p) shouldBe 0
+    asOfJoins(p).size shouldBe 1
+    PlanValidator.violations(p) shouldBe Nil
+    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
   }
 
   test("bind an inner join tree with its filters to joins over scans") {

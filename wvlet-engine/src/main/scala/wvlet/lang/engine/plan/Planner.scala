@@ -3167,6 +3167,29 @@ class Planner(
     * between the inputs selects the closest right row
     */
   private def planAsOfJoin(j: Join, left: Operator, right: Operator, kind: JoinKind): Operator =
+    val spec = asOfJoinSpec(j, kind, left.schema, right.schema)
+    AsOfJoinOp(
+      left,
+      right,
+      spec.leftKeys,
+      spec.rightKeys,
+      spec.leftValue,
+      spec.rightValue,
+      spec.op,
+      spec.kind,
+      left.schema ++ right.schema
+    )
+
+  /**
+    * The keys and the inequality of an ASOF join of inputs with these schemas, bound over each
+    * input, shared by both planners
+    */
+  private[engine] def asOfJoinSpec(
+      j: Join,
+      kind: JoinKind,
+      left: Schema,
+      right: Schema
+  ): Planner.AsOfJoinSpec =
     val condExpr =
       j.cond match
         case JoinOn(e, _) =>
@@ -3178,11 +3201,11 @@ class Planner(
             .NOT_IMPLEMENTED
             .newException(s"Unsupported ASOF join condition: ${other}")
     val conds       = conjuncts(condExpr)
-    val (eqs, rest) = conds.partition(c => isEquiBetween(c, left.schema, right.schema))
+    val (eqs, rest) = conds.partition(c => isEquiBetween(c, left, right))
     def sides(l: Expression, r: Expression): Option[Boolean] =
-      if bindsIn(l, left.schema) && !bindsIn(l, right.schema) && bindsIn(r, right.schema) then
+      if bindsIn(l, left) && !bindsIn(l, right) && bindsIn(r, right) then
         Some(true)
-      else if bindsIn(r, left.schema) && !bindsIn(r, right.schema) && bindsIn(l, right.schema) then
+      else if bindsIn(r, left) && !bindsIn(r, right) && bindsIn(l, right) then
         Some(false)
       else
         None
@@ -3227,9 +3250,9 @@ class Planner(
           throw StatusCode
             .NOT_IMPLEMENTED
             .newException("ASOF joins need exactly one inequality condition")
-    val lb       = Binder(this, BindScope(left.schema))
-    val rb       = Binder(this, BindScope(right.schema))
-    val (lk, rk) = joinKeys(lb, rb, eqs.map(c => equiSides(c, left.schema, right.schema)))
+    val lb       = Binder(this, BindScope(left))
+    val rb       = Binder(this, BindScope(right))
+    val (lk, rk) = joinKeys(lb, rb, eqs.map(c => equiSides(c, left, right)))
     val (lv, rv) = joinKeys(lb, rb, Seq((inequality._1, inequality._3)))
     val asofKind =
       kind match
@@ -3241,19 +3264,9 @@ class Planner(
           throw StatusCode
             .NOT_IMPLEMENTED
             .newException(s"${other} ASOF joins are not supported by the engine")
-    AsOfJoinOp(
-      left,
-      right,
-      lk,
-      rk,
-      lv.head,
-      rv.head,
-      inequality._2,
-      asofKind,
-      left.schema ++ right.schema
-    )
+    Planner.AsOfJoinSpec(lk, rk, lv.head, rv.head, inequality._2, asofKind)
 
-  end planAsOfJoin
+  end asOfJoinSpec
 
 end Planner
 
@@ -3301,6 +3314,20 @@ private[engine] enum SubqueryConjunct:
 object Planner:
 
   /**
+    * The keys and the inequality of an ASOF join, each bound over its input: a left row matches the
+    * right rows with equal keys, and takes the closest one with `leftValue op rightValue`. `kind`
+    * is Inner or Left
+    */
+  case class AsOfJoinSpec(
+      leftKeys: IndexedSeq[VExpr],
+      rightKeys: IndexedSeq[VExpr],
+      leftValue: VExpr,
+      rightValue: VExpr,
+      op: AsOfOp,
+      kind: JoinKind
+  )
+
+  /**
     * A lateral unnest (join ... unnest(left.column)): the call and its alias, whether rows without
     * elements are kept (LEFT JOIN ... ON true), and the ON conjuncts
     */
@@ -3324,6 +3351,8 @@ object Planner:
 
   /** A planner for a subquery: shares the catalog, sources, and CTE definitions */
   def nested(p: Planner): Planner = p
+
+end Planner
 
 /** Resolves table names and file paths that are not registered in the catalog */
 trait SourceResolver:

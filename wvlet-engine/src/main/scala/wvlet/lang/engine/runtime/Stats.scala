@@ -61,6 +61,9 @@ object Stats:
               math.max(rows(probe), rows(build))
             case _ =>
               rows(probe)
+      case AsOfJoin(left, _, _, _, _, _, _, _) =>
+        // As CardinalityEstimator does for AsOfJoinOp: every output row comes from a left row
+        rows(left)
       case InnerJoins(inputs, _) =>
         rows(inputs.head)
       case Legacy(op, _) =>
@@ -127,7 +130,7 @@ object Stats:
         Option.when(i >= 0)(i).flatMap(CardinalityEstimator.columnDistinct(op, _))
       case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
           InnerJoins(_, _) | CTERef(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) |
-          Window(_, _, _) | Unnest(_, _, _, _, _) =>
+          Window(_, _, _) | Unnest(_, _, _, _, _) | AsOfJoin(_, _, _, _, _, _, _, _) =>
         // As CardinalityEstimator does over operators
         None
 

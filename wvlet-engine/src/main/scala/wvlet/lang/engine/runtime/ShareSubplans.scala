@@ -111,6 +111,10 @@ object ShareSubplans:
           val l = canon(left)
           val r = canon(right)
           ("join", l, r, kind, exprs(lk), exprs(rk), residual.map(expr), buildLeft)
+        case RuntimePlan.AsOfJoin(left, right, kind, lk, rk, lv, rv, op) =>
+          val l = canon(left)
+          val r = canon(right)
+          ("asof_join", l, r, kind, exprs(lk), exprs(rk), expr(lv), expr(rv), op)
         case RuntimePlan.InnerJoins(inputs, conds) =>
           val in = inputs.map(canon)
           ("inner_joins", in, conds.map(c => expr(c.cond)))

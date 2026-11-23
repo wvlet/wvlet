@@ -377,8 +377,7 @@ class RuntimeBinder(planner: Planner):
     )
 
   /**
-    * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them. ASOF joins
-    * stay legacy
+    * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them
     */
   private def join(j: Join, filters: List[Expression]): RuntimePlan =
     planner.lateralUnnest(j) match
@@ -408,7 +407,14 @@ class RuntimeBinder(planner: Planner):
 
   private def nonLateralJoin(j: Join, filters: List[Expression]): RuntimePlan =
     if j.asof then
-      legacyOp(planner.planJoinTree(j, planner.factorOrs(filters)))
+      val p = asOfJoin(j)
+      if filters.isEmpty then
+        p
+      else if filters.exists(planner.hasSubquery) then
+        plans.conjuncts(lowered(p), planner.factorOrs(filters)).plan
+      else
+        // Common conjuncts of `or`s are factored by the Normalize pass
+        filterOver(p, filters.flatMap(planner.splitConjuncts))
     else if !planner.isJoinOn(j) then
       // Filters over a USING or NATURAL join bind above it (only inner join trees take them)
       usingJoin(j)
@@ -420,6 +426,25 @@ class RuntimeBinder(planner: Planner):
       val left  = lowered(bind(j.left))
       val right = lowered(bind(j.right))
       plans.conjuncts(planner.joinOn(j, planner.joinKind(j), left, right, plans), filters).plan
+
+  /**
+    * An ASOF join: a [[RuntimePlan.AsOfJoin]] on the keys and the inequality that
+    * `Planner.asOfJoinSpec` finds, as `Planner.planAsOfJoin` plans it
+    */
+  private def asOfJoin(j: Join): RuntimePlan =
+    val left  = bind(j.left)
+    val right = bind(j.right)
+    val spec  = planner.asOfJoinSpec(j, planner.joinKind(j), left.schema, right.schema)
+    RuntimePlan.AsOfJoin(
+      left,
+      right,
+      spec.kind,
+      spec.leftKeys.map(BExpr.of(_, left.output)),
+      spec.rightKeys.map(BExpr.of(_, right.output)),
+      BExpr.of(spec.leftValue, left.output),
+      BExpr.of(spec.rightValue, right.output),
+      spec.op
+    )
 
   /**
     * A USING or NATURAL join: a [[RuntimePlan.Join]] on the keys under a [[RuntimePlan.Project]]

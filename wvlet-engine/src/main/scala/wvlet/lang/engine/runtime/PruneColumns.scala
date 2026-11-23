@@ -80,6 +80,9 @@ object PruneColumns extends Pass:
       case Join(left, right, _, lk, rk, residual, _) =>
         val reads = needed ++ (lk ++ rk ++ residual).flatMap(_.refs)
         p.withChildren(Seq(prune(left, reads, ctx), prune(right, reads, ctx)))
+      case AsOfJoin(left, right, _, lk, rk, lv, rv, _) =>
+        val reads = needed ++ (lk ++ rk :+ lv :+ rv).flatMap(_.refs)
+        p.withChildren(Seq(prune(left, reads, ctx), prune(right, reads, ctx)))
       case InnerJoins(inputs, conds) =>
         val reads = needed ++ conds.flatMap(_.cond.refs)
         p.withChildren(inputs.map(prune(_, reads, ctx)))

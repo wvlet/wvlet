@@ -70,6 +70,20 @@ object Lowering:
           buildLeft,
           p.schema
         )
+      case AsOfJoin(left, right, kind, lk, rk, lv, rv, op) =>
+        val lpos = positions(left)
+        val rpos = positions(right)
+        AsOfJoinOp(
+          apply(left),
+          apply(right),
+          lk.map(_.lower(lpos)),
+          rk.map(_.lower(rpos)),
+          lv.lower(lpos),
+          rv.lower(rpos),
+          op,
+          kind,
+          p.schema
+        )
       case Aggregate(child, keys, calls, _) =>
         val pos = positions(child)
         HashAggOp(apply(child), keys.map(_.lower(pos)), calls.map(_.lower(pos)), p.schema)
