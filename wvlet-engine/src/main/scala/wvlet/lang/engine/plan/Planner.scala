@@ -1133,7 +1133,9 @@ class Planner(
     /** Whether the batches are computed (or being computed) */
     def isComputed: Boolean = result.isStarted
 
-    def compute(): Unit = result.run()
+    def compute(stop: () => Boolean): Unit = result.runUnless(stop)
+
+    def awaitIfStarted(): Unit = result.awaitIfStarted()
 
     private var explained = false
 
@@ -1501,7 +1503,7 @@ class Planner(
     if concurrentSharedResults then
       val pending = sharedResultsOf(Nil, results).filterNot(_.isComputed)
       if pending.size > 1 then
-        val handles = pending.map(r => TaskRunner.default.coordinate(() => r.compute()))
+        val handles = pending.map(r => TaskRunner.default.coordinate(() => r.compute(() => false)))
         handles.foreach(_.get())
 
   /**

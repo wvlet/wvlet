@@ -32,8 +32,9 @@ class SharedBatchesTest extends UniTest:
 
     def op: Operator        = IteratorOp(Schema(IndexedSeq.empty), () => Iterator.empty, "x")
     def isComputed: Boolean = result.isStarted
-    def compute(): Unit     = result.run()
-    def batches: Seq[Batch] = result.get()
+    def compute(stop: () => Boolean): Unit = result.runUnless(stop)
+    def awaitIfStarted(): Unit             = result.awaitIfStarted()
+    def batches: Seq[Batch]                = result.get()
 
   private def child = IteratorOp(Schema(IndexedSeq.empty), () => Iterator.empty, "root")
 

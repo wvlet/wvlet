@@ -30,9 +30,16 @@ final class ComputeOnce[A](compute: () => A):
   def isStarted: Boolean = synchronized(state != 0)
 
   /** Compute the value on this thread, unless another thread has started; doesn't wait */
-  def run(): Unit =
+  def run(): Unit = runUnless(() => false)
+
+  /**
+    * [[run]], unless `stop` holds when it would start. `stop` is checked under the same lock as
+    * [[awaitIfStarted]], so a caller that makes `stop` hold and then waits either sees the
+    * computation started (and waits for it) or knows it never starts
+    */
+  def runUnless(stop: () => Boolean): Unit =
     val mine = synchronized {
-      if state == 0 then
+      if state == 0 && !stop() then
         state = 1
         true
       else
@@ -50,6 +57,12 @@ final class ComputeOnce[A](compute: () => A):
         state = 2
         notifyAll()
       }
+
+  /** Wait until the computation is done if a thread has started it; never starts it */
+  def awaitIfStarted(): Unit = synchronized {
+    while state == 1 do
+      TaskRunner.awaitNotify(this)
+  }
 
   /** The value, computed on this thread if no thread has started it; raises its failure */
   def get(): A =
@@ -75,8 +88,14 @@ trait SharedBatches:
   /** Whether the computation has started (or is done) */
   def isComputed: Boolean
 
-  /** Compute the batches on this thread unless another thread has started; doesn't wait */
-  def compute(): Unit
+  /**
+    * Compute the batches on this thread unless another thread has started, or `stop` holds when it
+    * would start ([[ComputeOnce.runUnless]]); doesn't wait
+    */
+  def compute(stop: () => Boolean): Unit
+
+  /** Wait until the batches are computed if a thread has started them; never starts them */
+  def awaitIfStarted(): Unit
 
 /**
   * Starts the computation of `shared` results on coordinator threads of `runner` when the plan
@@ -96,24 +115,27 @@ class StartSharedOp(val child: Operator, shared: Seq[SharedBatches], runner: Tas
   override def children: Seq[Operator] = Seq(child)
   private var handles                  = Seq.empty[TaskRunner.Handle[Unit]]
   private var started                  = false
+  @volatile
+  private var closed = false
 
   override def explain(indent: Int): String = child.explain(indent)
 
   def next(): Batch =
     if !started then
       started = true
-      handles = shared.filterNot(_.isComputed).map(s => runner.coordinate(() => s.compute()))
+      handles = shared
+        .filterNot(_.isComputed)
+        .map(s => runner.coordinate(() => s.compute(() => closed)))
     child.next()
 
   override def close(): Unit =
-    handles.foreach(_.cancel())
-    handles.foreach { h =>
-      try
-        h.get()
-      catch
-        case _: Throwable =>
-    }
-    handles = Nil
+    if handles.nonEmpty then
+      // Coordinators that haven't started computing never will; wait for those that have. A
+      // future's cancel also succeeds on a running task, so it only drops queued ones early
+      closed = true
+      handles.foreach(_.cancel())
+      shared.foreach(_.awaitIfStarted())
+      handles = Nil
     child.close()
 
 end StartSharedOp
