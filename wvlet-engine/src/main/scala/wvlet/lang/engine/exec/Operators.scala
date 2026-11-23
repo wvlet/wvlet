@@ -96,7 +96,8 @@ class BatchesOp(val schema: Schema, batches: Seq[Batch], label: String = "Batche
   override def name: String = label
 
 /** Batches produced lazily (file scans) */
-class IteratorOp(val schema: Schema, mk: () => Iterator[Batch], label: String) extends Operator:
+class IteratorOp(val schema: Schema, mk: () => Iterator[Batch], label: String, val rows: Long = -1L)
+    extends Operator:
   private lazy val it       = mk()
   override def name: String = label
   def next(): Batch         =
@@ -612,14 +613,16 @@ end SortOp
   * exactly one row is produced, even for an empty input.
   *
   * `expectedGroups` (0 when unknown) pre-sizes the group table and the aggregate state, so they
-  * grow less often; it never changes the result
+  * grow less often; it never changes the result. `onGroups`, when given, receives the number of
+  * groups once the input is consumed
   */
 class HashAggOp(
     val child: Operator,
     val keys: IndexedSeq[VExpr],
     val aggs: IndexedSeq[AggCall],
     val schema: Schema,
-    val expectedGroups: Int = 0
+    val expectedGroups: Int = 0,
+    onGroups: Int => Unit = null
 ) extends Operator:
   private var done                     = false
   override def children: Seq[Operator] = Seq(child)
@@ -694,6 +697,8 @@ class HashAggOp(
         1
       else
         table.numGroups
+    if onGroups != null then
+      onGroups(numGroups)
     if numGroups == 0 then
       return null
     accs.foreach(_.ensureGroups(numGroups))

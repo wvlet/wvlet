@@ -1177,7 +1177,13 @@ class Planner(
         None
       else
         val sel = selector(spec)
-        Some(ScanSplits(bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))), () => ()))
+        Some(
+          ScanSplits(
+            bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))),
+            () => (),
+            bs.toIndexedSeq.map(_.size.toLong)
+          )
+        )
 
     override def explainDetail(indent: Int): Option[String] = shared.sharedPlan(indent)
 
@@ -1455,7 +1461,13 @@ class Planner(
         None
       else
         val sel = cte.selector(spec.columns)
-        Some(ScanSplits(bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))), () => ()))
+        Some(
+          ScanSplits(
+            bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))),
+            () => (),
+            bs.toIndexedSeq.map(_.size.toLong)
+          )
+        )
 
     override def explainDetail(indent: Int): Option[String] = cte.sharedPlan(indent)
 

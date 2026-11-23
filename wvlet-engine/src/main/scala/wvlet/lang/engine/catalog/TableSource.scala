@@ -74,8 +74,16 @@ trait TableSource:
 
 end TableSource
 
-/** Independently readable parts of a scan; `close` releases what the parts share */
-case class ScanSplits(parts: IndexedSeq[() => Iterator[Batch]], close: () => Unit)
+/**
+  * Independently readable parts of a scan; `close` releases what the parts share. `rows` holds the
+  * row count of each part when the source knows it (e.g. from Parquet row-group metadata), and is
+  * empty otherwise
+  */
+case class ScanSplits(
+    parts: IndexedSeq[() => Iterator[Batch]],
+    close: () => Unit,
+    rows: IndexedSeq[Long] = IndexedSeq.empty
+)
 
 /** An in-memory table */
 class MemTable(val name: String, val schema: Schema, batches: Seq[Batch]) extends TableSource:
@@ -232,7 +240,8 @@ class ParquetSource(val name: String, path: String) extends TableSource:
         val parts = groups.map { g => () =>
           Iterator.single(ParquetSource.toBatch(f.readRowGroup(g, options), cols, types))
         }
-        Some(ScanSplits(parts, () => f.close()))
+        val meta = f.rowGroups
+        Some(ScanSplits(parts, () => f.close(), groups.map(g => meta(g).numRows)))
 
   def scan(spec: ScanSpec): Iterator[Batch] =
     val (cols, types, options) = readOptions(spec)

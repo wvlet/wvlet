@@ -51,7 +51,8 @@ class MorselOpTest extends UniTest:
         Some(
           ScanSplits(
             (0 until parts).map(k => () => Iterator.single(part(k))),
-            () => closed.set(true)
+            () => closed.set(true),
+            IndexedSeq.fill(parts)(100L)
           )
         )
 
@@ -73,6 +74,25 @@ class MorselOpTest extends UniTest:
     val op  = MorselOp(ScanOp(src, schema, None, None), evenFilter, schema, runner)
     values(op) shouldBe (0L until 2000L by 2L)
     src.closed.get() shouldBe true
+  }
+
+  test("should give each part's pipeline the part's row count") {
+    val src  = Splittable(8)
+    val seen = java.util.concurrent.ConcurrentLinkedQueue[Long]()
+    val op   = MorselOp(
+      ScanOp(src, schema, None, None),
+      x =>
+        x match
+          case p: IteratorOp =>
+            seen.add(p.rows)
+          case _ =>
+        x
+      ,
+      schema,
+      runner
+    )
+    values(op).size shouldBe 800
+    seen.toArray.toSeq shouldBe Seq.fill(8)(100L)
   }
 
   test("should stop reading parts when closed early") {

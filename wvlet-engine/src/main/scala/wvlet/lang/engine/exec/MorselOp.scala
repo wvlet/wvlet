@@ -30,6 +30,9 @@ import scala.collection.mutable
   * calling thread, to emit the build rows no part matched.
   *
   * Falls back to running the pipeline over the whole scan when the source has a single part.
+  *
+  * Each part's pipeline gets an [[IteratorOp]] that carries the part's row count when the source
+  * knows it, so that operators can size their state per part (see [[PartialGroupSizer]]).
   */
 class MorselOp(
     val scan: ScanOp,
@@ -58,7 +61,12 @@ class MorselOp(
     finally op.close()
 
   private def runPart(k: Int): Seq[Batch] =
-    val part = IteratorOp(scan.schema, splits.parts(k), scan.name)
+    val rows =
+      if k < splits.rows.size then
+        splits.rows(k)
+      else
+        -1L
+    val part = IteratorOp(scan.schema, splits.parts(k), scan.name, rows)
     val op   = pipeline(part)
     try op.drain()
     finally op.close()

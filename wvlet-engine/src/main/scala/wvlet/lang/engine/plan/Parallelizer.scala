@@ -326,9 +326,11 @@ private[plan] object TwoPhaseAgg:
       a.schema.fields.take(nk) ++
         partialAggs.zipWithIndex.map((c, i) => Field(s"__partial_${i}", c.ptype))
     )
+    // Sized per part: the query-wide estimate would pre-size one table per scan part
+    val sizer   = PartialGroupSizer(a.expectedGroups)
     val partial = MorselOp(
       scan,
-      x => HashAggOp(rebuild(x), a.keys, partialAggs, partialSchema),
+      x => HashAggOp(rebuild(x), a.keys, partialAggs, partialSchema, sizer.hint(x), sizer.report),
       partialSchema,
       runner,
       prepare,
