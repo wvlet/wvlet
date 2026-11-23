@@ -1,6 +1,6 @@
 # ADR: The in-process wvlet engine is the default for running queries
 
-Date: 2026-11-23 · PR #TBD
+Date: 2026-11-23 · PR #2316
 
 ## Context
 

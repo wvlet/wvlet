@@ -769,13 +769,11 @@ class QueryExecutor(
           }
           hasLocalFile && !hasNonFileInput
 
-        val readsLocalFilesOnly = readsOnlyLocalFiles(q)
-        activeEngine.dbType match
-          case DBType.DuckDB | DBType.Generic =>
-          case _ if readsLocalFilesOnly       =>
-            workEnv.info("Auto-switched to the wvlet engine for local file read.")
-            return localEngineSession.execute(q, config.rowLimit)
-          case _ =>
+        val engineReadsLocalFiles =
+          activeEngine.dbType == DBType.DuckDB || activeEngine.dbType == DBType.Generic
+        if !engineReadsLocalFiles && readsOnlyLocalFiles(q) then
+          workEnv.info("Auto-switched to the wvlet engine for local file read.")
+          return localEngineSession.execute(q, config.rowLimit)
         val generatedSQL = GenSQL.generateSQLFromRelation(q)
         workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
