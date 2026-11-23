@@ -1202,9 +1202,10 @@ class Planner(
   end SharedResult
 
   /** A reader of a shared result over duplicate column names, which a scan can't select by name */
-  private class SharedReader(val shared: SharedResult, schema: Schema, label: String)
+  private class SharedReader(shared: SharedResult, schema: Schema, label: String)
       extends IteratorOp(schema, () => shared.batches.iterator, label):
     override protected def extraInputs(indent: Int): Seq[String] = shared.sharedPlan(indent).toSeq
+    override def sharedInputs: Seq[Operator]                     = Seq(shared.op)
 
   /** Batches computed on first read, scanned as a table whose parts are the batches */
   private class SharedTable(val name: String, val schema: Schema, val shared: SharedResult)
@@ -1266,9 +1267,16 @@ class Planner(
       else
         // An iterator reads every column
         needsAll = true
+        finalized.foreach { (keep, _) =>
+          if keep.size != body.output.size then
+            throw StatusCode
+              .UNEXPECTED_STATE
+              .newException(s"${label} is read by an iterator after it dropped columns")
+        }
         new IteratorOp(schema, () => result._2.batches.iterator, label):
           override protected def extraInputs(indent: Int): Seq[String] =
             result._2.sharedPlan(indent).toSeq
+          override def sharedInputs: Seq[Operator] = resultOp.toSeq
 
     /** The body positions of the result columns, and the result */
     private def result: (IndexedSeq[Int], SharedResult) =
@@ -1367,19 +1375,13 @@ class Planner(
           case s: ScanOp =>
             s.source match
               case t: CTETable =>
-                val names = s.columns.map(_.map(t.schema(_).name)).getOrElse(t.schema.names)
-                t.cte.need(names.map(n => t.cte.body.schema.names.indexOf(n)))
+                // The table schema is the body's
+                t.cte.need(s.columns.getOrElse(t.schema.fields.indices))
               case t: SharedTable =>
-                collectShared(t.shared)
+                collect(t.shared.op)
               case _ =>
-          case r: SharedReader =>
-            collectShared(r.shared)
           case _ =>
-        op.children.foreach(collect)
-    def collectShared(r: SharedResult): Unit =
-      if !visited.containsKey(r) then
-        visited.put(r, ())
-        collect(r.op)
+        (op.children ++ op.sharedInputs).foreach(collect)
 
     collect(root)
     var pending = deferredCTEs.toList

@@ -99,6 +99,7 @@ object Parallelizer:
               override protected def extraInputs(indent: Int): Seq[String] = Seq(
                 right.explain(indent)
               )
+              override def sharedInputs: Seq[Operator] = Seq(right)
           p.copy(
               prepare = p.prepare :+ (() => rows = Operator.materialize(right)),
               close = p.close :+ (() => right.close())

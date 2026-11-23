@@ -168,6 +168,26 @@ class EnginePruneColumnsTest extends UniTest:
     sameRows(query)
   }
 
+  test("include the columns read by the right input of a parallel cross join") {
+    // The parallelizer computes the right input once, outside the operator's children. Join
+    // reordering is off to keep the one-row aggregate on the right
+    val fixed   = engine.withOptimizer(options.withDisabled(Optimization.ReorderJoins))
+    val noPrune = engine.withOptimizer(
+      options.withDisabled(Optimization.ReorderJoins, Optimization.PruneColumns)
+    )
+    val query =
+      s"""${cte}select a.l_orderkey, m.mq
+         |from t a cross join (select max(l_quantity) as mq from t) m
+         |where a.l_partkey < 100""".stripMargin
+    val plan = withQuery(sql(query))(q => fixed.explain(q))
+    debug(plan)
+    plan shouldContain "CrossInput"
+    sharedBody(plan).mkString("\n") shouldContain "columns=l_orderkey,l_partkey,l_quantity)"
+    val r = rows(fixed, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(noPrune, query)
+  }
+
   test("compute every column of a CTE read while planning") {
     // The scalar subquery runs at plan time, before the other readers are planned
     val query =
