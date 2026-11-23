@@ -16,4 +16,4 @@ The engine decorrelates a correlated scalar subquery `(select agg(...) from t wh
 ## Consequences
 
 - Queries whose scalar subquery aggregates to non-NULL over no rows (`count`, or `coalesce(sum(x), 0)`) get one extra projection after the left join. In TPC-DS q41 it merges into the filter above it.
-- `decorrelate_scalar` off sends these conjunct lists back through the planner. That reproduces main's golden plans except for queries the fix changes (TPC-DS q41).
+- `decorrelate_scalar` off sends these conjunct lists back through the planner. That reproduces main's golden plans except for queries the fix changes (TPC-DS q41). (Amended 2026-11-23: M4b removed the `decorrelate_scalar` toggle, whose only off state was this fallback.)

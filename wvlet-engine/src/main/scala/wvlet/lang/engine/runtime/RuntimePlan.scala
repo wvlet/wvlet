@@ -216,9 +216,7 @@ object WindowFunction:
 /**
   * The engine's runtime plan: relations over identified columns ([[ColumnId]]) and bound
   * expressions ([[BExpr]]), between the compiler's relations and the physical operators.
-  * [[RuntimeBinder]] builds it and [[Lowering]] turns it into operators. Subquery filters whose
-  * decorrelation toggles are off are [[RuntimePlan.Legacy]] leaves, already planned by the
-  * recursive planner.
+  * [[RuntimeBinder]] builds it and [[Lowering]] turns it into operators.
   *
   * Passes over the plan match its cases without a wildcard default, so that a new case fails the
   * build (non-exhaustive matches are errors in wvlet-engine) until every pass handles it.
@@ -354,9 +352,6 @@ enum RuntimePlan:
       columns: IndexedSeq[Column]
   )
 
-  /** A relation planned by the recursive planner, whose operator schema gives the columns */
-  case Legacy(op: Operator, columns: IndexedSeq[Column])
-
   /**
     * A read of a CTE that several relations read, computed once: `columns` are the output of its
     * body, by position, under ids of this reader
@@ -404,14 +399,12 @@ enum RuntimePlan:
           u.child.output ++ u.columns
         else
           u.columns
-      case Legacy(_, columns) =>
-        columns
       case CTERef(_, columns) =>
         columns
 
   def children: Seq[RuntimePlan] =
     this match
-      case Scan(_, _, _, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
+      case Scan(_, _, _, _) | Values(_, _) | CTERef(_, _) =>
         Nil
       case Filter(child, _, _) =>
         Seq(child)
@@ -453,7 +446,7 @@ enum RuntimePlan:
       this
     else
       this match
-        case Scan(_, _, _, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
+        case Scan(_, _, _, _) | Values(_, _) | CTERef(_, _) =>
           this
         case f: Filter =>
           f.copy(child = cs(0))
@@ -582,8 +575,6 @@ enum RuntimePlan:
           else
             ""
         s"Unnest(${lists.mkString(", ")}${o})"
-      case Legacy(op, _) =>
-        s"Legacy[${op.name}]"
       case CTERef(cte, _) =>
         s"CTERef[${cte.name}]"
 

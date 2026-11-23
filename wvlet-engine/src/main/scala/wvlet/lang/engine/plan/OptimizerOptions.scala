@@ -31,21 +31,6 @@ enum Optimization(val name: String):
   case Decorrelate extends Optimization("decorrelate")
 
   /**
-    * Bind [NOT] EXISTS / [NOT] IN filter conjuncts over correlated subqueries as semi and anti
-    * joins on the runtime plan, with the subquery body on it; disabled, the recursive planner joins
-    * them over the planned input
-    */
-  case DecorrelateCorrelated extends Optimization("decorrelate_correlated")
-
-  /**
-    * Bind filter conjuncts holding correlated scalar subqueries or EXISTS under OR / NOT / CASE on
-    * the runtime plan, as left joins with the decorrelated body grouped by its correlation keys;
-    * disabled, the recursive planner joins them over the planned input (with `decorrelate` also
-    * disabled, uncorrelated [NOT] IN / EXISTS conjuncts too)
-    */
-  case DecorrelateScalar extends Optimization("decorrelate_scalar")
-
-  /**
     * Join an uncorrelated IN conjunct over an inner join tree that reads one input, over a subquery
     * no larger than it, onto that input before join order, instead of over the ordered tree (with
     * `decorrelate`)
@@ -102,10 +87,7 @@ enum PlannerMode(val name: String):
   /** Directly by the recursive [[Planner]] */
   case Legacy extends PlannerMode("legacy")
 
-  /**
-    * Through the engine's runtime plan ([[wvlet.lang.engine.runtime.RuntimePlan]]): relations it
-    * doesn't cover yet are planned by the recursive planner
-    */
+  /** Through the engine's runtime plan ([[wvlet.lang.engine.runtime.RuntimePlan]]) */
   case Runtime extends PlannerMode("runtime")
 
 object PlannerMode:

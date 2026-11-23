@@ -414,11 +414,6 @@ class EnginePushDownFiltersTest extends UniTest:
     sameRows(query)
   }
 
-  private def hasLegacy(p: RuntimePlan): Boolean =
-    find(p) { case l: Legacy =>
-      l
-    }.isDefined
-
   test("push a filter into the body of a CTE read once, below its aggregation") {
     val query =
       """with t as {
@@ -428,9 +423,7 @@ class EnginePushDownFiltersTest extends UniTest:
         |}
         |from t
         |where l_returnflag = 'R'""".stripMargin
-    val b = bound(query)
-    // The body binds in place, not as a Legacy leaf
-    hasLegacy(b) shouldBe false
+    val b      = bound(query)
     val (p, _) = pushed(b)
     find(p) { case Aggregate(Filter(_, cond, _), _, _, _) =>
       cond.toString shouldContain "lit(R"
@@ -450,8 +443,7 @@ class EnginePushDownFiltersTest extends UniTest:
         |}
         |from u
         |where q > 49""".stripMargin
-    val b = bound(query)
-    hasLegacy(b) shouldBe false
+    val b      = bound(query)
     val (p, _) = pushed(b)
     find(p) { case Filter(_: Scan, cond, _) =>
       cond.toString shouldContain "lit(49"
@@ -477,7 +469,6 @@ class EnginePushDownFiltersTest extends UniTest:
     find(b) { case c: CTERef =>
       c
     } shouldBe None
-    hasLegacy(b) shouldBe false
     val (p, _)                          = pushed(b, noShare)
     def keyFilters(p: RuntimePlan): Int =
       (

@@ -46,8 +46,8 @@ import scala.util.control.NonFatal
   *     and below a DISTINCT;
   *   - below a window, when the conjunct reads only columns that every window call partitions by.
   *
-  * It stops at filters (whose own conjuncts push down from there), limits, full joins, and
-  * [[RuntimePlan.Legacy]] leaves. A conjunct keeps its literal count (selectivity) as it moves.
+  * It stops at filters (whose own conjuncts push down from there), limits, and full joins. A
+  * conjunct keeps its literal count (selectivity) as it moves.
   *
   * The pass also turns the equalities between the inputs of an outer join's residual into hash join
   * keys, as the planner does for ON conditions. That always happens, since the binder leaves them
@@ -238,8 +238,8 @@ object PushDownFilters extends Pass:
           val (in, out) = conds.partition(_.refs.subsetOf(ids))
           moved(in)
           filter(withChild(u, push(child, in)), out)
-        case Scan(_, _, _, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) | Sort(_, _, _) |
-            Limit(_, _, _) | Aggregate(_, _, _, _) | Sample(_, _) =>
+        case Scan(_, _, _, _) | Values(_, _) | CTERef(_, _) | Sort(_, _, _) | Limit(_, _, _) |
+            Aggregate(_, _, _, _) | Sample(_, _) =>
           filter(p.withChildren(p.children.map(push(_, Nil))), conds)
 
     /**

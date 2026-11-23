@@ -128,8 +128,7 @@ class WvletEngine(
 
   /**
     * The engine's runtime plan of a relation (model references must already be expanded), for tests
-    * and debugging. Relations the runtime binder doesn't cover yet are already planned, as Legacy
-    * leaves
+    * and debugging
     */
   def runtimePlan(r: Relation)(using ctx: Context): wvlet.lang.engine.runtime.RuntimePlan = Planner(
     catalog,

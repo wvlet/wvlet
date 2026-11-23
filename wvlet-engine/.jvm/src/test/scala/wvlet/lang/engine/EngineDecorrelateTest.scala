@@ -54,8 +54,6 @@ class EngineDecorrelateTest extends UniTest:
     j.kind
   }
 
-  private def hasLegacy(p: RuntimePlan): Boolean = nodes(p).exists(_.isInstanceOf[Legacy])
-
   private def rows(e: WvletEngine, query: String): Seq[String] =
     withQuery(query) { q =>
       e.execute(q)
@@ -76,7 +74,6 @@ class EngineDecorrelateTest extends UniTest:
         |where n_regionkey in (select r_regionkey from region where r_name = 'ASIA')""".stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldBe Seq(JoinKind.Semi)
-    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 5
   }
 
@@ -89,7 +86,6 @@ class EngineDecorrelateTest extends UniTest:
     joinKinds(p) shouldBe Seq(JoinKind.Anti)
     // The values, decided at plan time, are a Values leaf
     nodes(p).exists(_.isInstanceOf[Values]) shouldBe true
-    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 20
   }
 
@@ -101,7 +97,6 @@ class EngineDecorrelateTest extends UniTest:
         |)""".stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldBe Seq(JoinKind.Semi)
-    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 5
   }
 
@@ -119,12 +114,10 @@ class EngineDecorrelateTest extends UniTest:
     val none =
       """select n_name from nation
         |where exists (select 1 from region where r_name = 'MARS')""".stripMargin
-    hasLegacy(runtimePlan(none)) shouldBe false
     sameRows(none) shouldBe Nil
     val all =
       """select n_name from nation
         |where not exists (select 1 from region where r_name = 'MARS')""".stripMargin
-    hasLegacy(runtimePlan(all)) shouldBe false
     sameRows(all).size shouldBe 25
   }
 
@@ -160,7 +153,6 @@ class EngineDecorrelateTest extends UniTest:
         |  and n_regionkey in (select r_regionkey from region where r_name = 'ASIA')""".stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldContain JoinKind.Semi
-    hasLegacy(p) shouldBe false
     // The semi join is below the inner join
     joinAboveSemi(p).isDefined shouldBe true
     sameRows(query).nonEmpty shouldBe true
@@ -229,7 +221,6 @@ class EngineDecorrelateTest extends UniTest:
   private def withoutDecorrelate(query: String): (RuntimePlan, Seq[String]) =
     val p = withQuery(query)(noDecorrelate.runtimePlan(_))
     debug(p.explain)
-    hasLegacy(p) shouldBe false
     val r = rows(noDecorrelate, query)
     r shouldBe rows(legacy, query)
     (p, r)
@@ -299,7 +290,6 @@ class EngineDecorrelateTest extends UniTest:
         .stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldBe Seq(JoinKind.Semi)
-    hasLegacy(p) shouldBe false
     // The body's local filter stays on its side of the join
     nodes(p).collectFirst { case j: Join =>
       j.right.isInstanceOf[Filter]
@@ -324,7 +314,6 @@ class EngineDecorrelateTest extends UniTest:
         .get
     anti.kind shouldBe JoinKind.Anti
     anti.residual.isDefined shouldBe true
-    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 12
   }
 
@@ -343,7 +332,6 @@ class EngineDecorrelateTest extends UniTest:
         .get
     semi.kind shouldBe JoinKind.Semi
     semi.leftKeys.size shouldBe 2
-    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 1
   }
 
@@ -357,7 +345,6 @@ class EngineDecorrelateTest extends UniTest:
         |)""".stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldBe Seq(JoinKind.Anti)
-    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 4
   }
 
@@ -403,16 +390,6 @@ class EngineDecorrelateTest extends UniTest:
     sameRows(query).size shouldBe 1
   }
 
-  test("keep correlated subqueries legacy with decorrelate_correlated disabled") {
-    val query =
-      """select n_name from nation
-        |where exists (select 1 from region where r_regionkey = n_regionkey and r_name = 'ASIA')"""
-        .stripMargin
-    val off = engine.withOptimizer(options.withDisabled(Optimization.DecorrelateCorrelated))
-    hasLegacy(withQuery(query)(off.runtimePlan(_))) shouldBe true
-    rows(off, query).size shouldBe 5
-  }
-
   private def leftJoins(p: RuntimePlan): Int = joinKinds(p).count(_ == JoinKind.Left)
 
   test("bind a correlated scalar subquery as a left join with the grouped body") {
@@ -424,7 +401,6 @@ class EngineDecorrelateTest extends UniTest:
     val p = runtimePlan(query)
     leftJoins(p) shouldBe 1
     nodes(p).exists(_.isInstanceOf[Aggregate]) shouldBe true
-    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 48
   }
 
@@ -434,7 +410,6 @@ class EngineDecorrelateTest extends UniTest:
         |where (
         |  select count(*) from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
         |) = 0""".stripMargin
-    hasLegacy(runtimePlan(query)) shouldBe false
     sameRows(query).size shouldBe 24
     val filtered =
       """select n_name from nation
@@ -462,7 +437,6 @@ class EngineDecorrelateTest extends UniTest:
         |)""".stripMargin
     val p = runtimePlan(query)
     leftJoins(p) shouldBe 1
-    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 4
   }
 
@@ -472,26 +446,13 @@ class EngineDecorrelateTest extends UniTest:
         |where not (n_nationkey < 3 or exists (
         |  select 1 from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
         |))""".stripMargin
-    hasLegacy(runtimePlan(negated)) shouldBe false
     sameRows(negated).size shouldBe 21
     val cased =
       """select n_name from nation
         |where (case when exists (
         |  select 1 from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
         |) then 1 else 0 end) = 0""".stripMargin
-    hasLegacy(runtimePlan(cased)) shouldBe false
     sameRows(cased).size shouldBe 24
-  }
-
-  test("keep correlated scalar subqueries legacy with decorrelate_scalar disabled") {
-    val query =
-      """select n_name from nation
-        |where (
-        |  select count(*) from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
-        |) = 0""".stripMargin
-    val off = engine.withOptimizer(options.withDisabled(Optimization.DecorrelateScalar))
-    hasLegacy(withQuery(query)(off.runtimePlan(_))) shouldBe true
-    rows(off, query).size shouldBe 24
   }
 
 end EngineDecorrelateTest
