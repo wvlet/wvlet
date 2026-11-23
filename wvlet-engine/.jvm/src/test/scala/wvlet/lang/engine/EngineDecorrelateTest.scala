@@ -23,7 +23,7 @@ import wvlet.lang.engine.runtime.*
 import wvlet.lang.model.plan.Relation
 import wvlet.uni.test.UniTest
 
-/** Uncorrelated EXISTS / IN / NOT IN filter conjuncts as semi and anti joins on the runtime plan */
+/** EXISTS / IN / NOT IN filter conjuncts as semi and anti joins on the runtime plan */
 class EngineDecorrelateTest extends UniTest:
   import RuntimePlan.*
 
@@ -208,13 +208,125 @@ class EngineDecorrelateTest extends UniTest:
     joinAboveSemi(p) shouldBe None
   }
 
-  test("keep correlated EXISTS as a legacy node") {
+  test("bind correlated EXISTS as a semi join over the decorrelated body") {
     val query =
       """select n_name from nation
         |where exists (select 1 from region where r_regionkey = n_regionkey and r_name = 'ASIA')"""
         .stripMargin
-    hasLegacy(runtimePlan(query)) shouldBe true
+    val p = runtimePlan(query)
+    joinKinds(p) shouldBe Seq(JoinKind.Semi)
+    hasLegacy(p) shouldBe false
+    // The body's local filter stays on its side of the join
+    nodes(p).collectFirst { case j: Join =>
+      j.right.isInstanceOf[Filter]
+    } shouldBe Some(true)
     sameRows(query).size shouldBe 5
+  }
+
+  test("bind correlated NOT EXISTS with a residual condition as an anti join") {
+    val query =
+      """select n_name from nation n
+        |where not exists (
+        |  select 1 from nation n2
+        |  where n2.n_regionkey = n.n_regionkey and n2.n_nationkey <> n.n_nationkey
+        |    and n2.n_nationkey < 5
+        |)""".stripMargin
+    val p    = runtimePlan(query)
+    val anti =
+      nodes(p)
+        .collectFirst { case j: Join =>
+          j
+        }
+        .get
+    anti.kind shouldBe JoinKind.Anti
+    anti.residual.isDefined shouldBe true
+    hasLegacy(p) shouldBe false
+    sameRows(query).size shouldBe 12
+  }
+
+  test("bind correlated IN as a semi join on the target and the correlation keys") {
+    val query =
+      """select n_name from nation
+        |where n_nationkey in (
+        |  select s_nationkey from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
+        |)""".stripMargin
+    val p    = runtimePlan(query)
+    val semi =
+      nodes(p)
+        .collectFirst { case j: Join =>
+          j
+        }
+        .get
+    semi.kind shouldBe JoinKind.Semi
+    semi.leftKeys.size shouldBe 2
+    hasLegacy(p) shouldBe false
+    sameRows(query).size shouldBe 1
+  }
+
+  // Expected counts are DuckDB's answers for the same queries over the same data
+  test("filter out rows whose correlated NOT IN group has a NULL value") {
+    val query =
+      """select r_name from region
+        |where r_regionkey + 100 not in (
+        |  select case when n_nationkey = 3 then null else n_nationkey end
+        |  from nation where n_regionkey = r_regionkey
+        |)""".stripMargin
+    val p = runtimePlan(query)
+    joinKinds(p) shouldBe Seq(JoinKind.Anti)
+    hasLegacy(p) shouldBe false
+    sameRows(query).size shouldBe 4
+  }
+
+  test("filter out NULL targets of correlated NOT IN only when the group is not empty") {
+    val nonEmpty =
+      """select r_name from region
+        |where (case when r_regionkey = 2 then null else r_regionkey + 100 end) not in (
+        |  select n_nationkey from nation where n_regionkey = r_regionkey
+        |)""".stripMargin
+    sameRows(nonEmpty).size shouldBe 4
+    val empty =
+      """select r_name from region
+        |where (case when r_regionkey = 2 then null else r_regionkey + 100 end) not in (
+        |  select n_nationkey from nation where n_regionkey = r_regionkey and n_nationkey > 100
+        |)""".stripMargin
+    sameRows(empty).size shouldBe 5
+  }
+
+  test("read a correlated NOT IN target from the outer query when an inner column has its name") {
+    val query =
+      """select n_name from nation n1
+        |where n_nationkey not in (
+        |  select n_nationkey from nation n2
+        |  where n2.n_regionkey = n1.n_regionkey and n2.n_nationkey < 3
+        |)""".stripMargin
+    sameRows(query).size shouldBe 22
+  }
+
+  test("bind correlated NOT IN without correlation equalities as a nested loop anti join") {
+    val query =
+      """select r_name from region
+        |where r_regionkey not in (select n_regionkey from nation where n_nationkey > r_regionkey * 5)"""
+        .stripMargin
+    val p    = runtimePlan(query)
+    val anti =
+      nodes(p)
+        .collectFirst { case j: Join =>
+          j
+        }
+        .get
+    anti.kind shouldBe JoinKind.Anti
+    anti.leftKeys.isEmpty shouldBe true
+    sameRows(query).size shouldBe 1
+  }
+
+  test("keep correlated subqueries legacy with decorrelate_correlated disabled") {
+    val query =
+      """select n_name from nation
+        |where exists (select 1 from region where r_regionkey = n_regionkey and r_name = 'ASIA')"""
+        .stripMargin
+    val off = engine.withOptimizer(options.withDisabled(Optimization.DecorrelateCorrelated))
+    hasLegacy(withQuery(query)(off.runtimePlan(_))) shouldBe true
+    rows(off, query).size shouldBe 5
   }
 
 end EngineDecorrelateTest

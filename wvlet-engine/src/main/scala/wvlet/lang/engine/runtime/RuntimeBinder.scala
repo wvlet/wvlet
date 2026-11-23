@@ -295,7 +295,8 @@ class RuntimeBinder(planner: Planner):
         if conds.exists(planner.hasSubquery) then
           if planner.enabled(Optimization.Decorrelate) then
             // Subqueries become joins over the optimized input, factored as the planner does:
-            // semi and anti joins when they are uncorrelated, legacy nodes otherwise
+            // semi and anti joins for [NOT] EXISTS / [NOT] IN conjuncts, legacy nodes for other
+            // subquery forms (under OR / NOT / CASE, correlated scalar subqueries)
             plans.conjuncts(lowered(bind(child)), planner.conjuncts(f.filterExpr)).plan
           else
             legacy(f)
@@ -662,9 +663,10 @@ class RuntimeBinder(planner: Planner):
 
     /**
       * Conjuncts over p as `Planner.applyConjuncts` applies them, when each is plain (uncorrelated
-      * scalar subqueries are constants in it) or [NOT] EXISTS / [NOT] IN over an uncorrelated
-      * subquery, and one is the latter: the subqueries become semi and anti joins in conjunct
-      * order, then the plain conjuncts filter their result
+      * scalar subqueries are constants in it) or [NOT] EXISTS / [NOT] IN over a subquery
+      * (uncorrelated, or correlated with [[Optimization.DecorrelateCorrelated]]), and one is the
+      * latter: the subqueries become semi and anti joins in conjunct order, then the plain
+      * conjuncts filter their result
       */
     private def subqueryJoins(p: Lowered, conds: List[Expression]): Option[Lowered] =
       val subs  = conds.map(planner.subqueryConjunct)
@@ -682,7 +684,10 @@ class RuntimeBinder(planner: Planner):
               planner.hasSubquery(a)
             case _: SubqueryConjunct.Exists =>
               false
-          } || !subs.flatten.forall(s => planner.isUncorrelated(s.sub))
+          } || (
+          !planner.enabled(Optimization.DecorrelateCorrelated) &&
+            !subs.flatten.forall(s => planner.isUncorrelated(s.sub))
+        )
       then
         None
       else
@@ -693,10 +698,13 @@ class RuntimeBinder(planner: Planner):
           val b = Binder(planner, BindScope(joined.op.schema))
           Some(filter(joined, plain.map(b.bind).reduce((a, b) => AndExpr(a, b))))
 
-    /** Rows of p for which an uncorrelated EXISTS / NOT EXISTS / IN / NOT IN is true */
+    /** Rows of p for which an EXISTS / NOT EXISTS / IN / NOT IN is true */
     private def subqueryJoin(p: Lowered, s: SubqueryConjunct): Lowered =
       def none: Lowered = filter(p, Const(false, PType.Bool))
       s match
+        case _ if !planner.isUncorrelated(s.sub) =>
+          // The decorrelated body binds on the runtime plan, joined as the planner joins it
+          planner.correlatedJoin(this, p, s, r => lowered(bind(r)), f => lowered(bind(f)))
         case SubqueryConjunct.Exists(sub, negate) =>
           // A constant condition, decided at plan time
           val rows = Operator.materialize(planner.plan(sub)).size

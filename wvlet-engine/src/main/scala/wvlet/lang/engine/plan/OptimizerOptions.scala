@@ -30,6 +30,12 @@ enum Optimization(val name: String):
   case Decorrelate extends Optimization("decorrelate")
 
   /**
+    * Bind [NOT] EXISTS / [NOT] IN filter conjuncts over correlated subqueries as semi and anti
+    * joins on the runtime plan, with the subquery body on it (with `decorrelate`)
+    */
+  case DecorrelateCorrelated extends Optimization("decorrelate_correlated")
+
+  /**
     * Join an uncorrelated IN conjunct over an inner join tree that reads one input, over a subquery
     * no larger than it, onto that input before join order, instead of over the ordered tree (with
     * `decorrelate`)

@@ -2102,14 +2102,20 @@ class Planner(
       case other =>
         other
 
+  /** [[planCorrelated]] into the planner's operators */
+  private def planCorrelated(sub: Relation): (Operator, List[Expression], Option[List[Attribute]]) =
+    planCorrelated(sub, planRelation, planFilter)
+
   /**
     * Plan a correlated subquery body `[Project] Filter(child, cond)`: conjuncts referencing only
-    * the child stay as a filter; the rest are returned as correlated conditions
+    * the child stay as a filter (`filtered`, or `plan` of the child when there are none); the rest
+    * are returned as correlated conditions, with the select items
     */
-  private def planCorrelated(
+  private def planCorrelated[P](
       sub: Relation,
-      outer: Schema
-  ): (Operator, List[Expression], Option[List[Attribute]]) =
+      plan: Relation => P,
+      filtered: Filter => P
+  ): (P, List[Expression], Option[List[Attribute]]) =
     val (items, body) =
       stripWrappers(sub) match
         case p: Project =>
@@ -2123,12 +2129,12 @@ class Planner(
         // Planning is lazy, so planning the child only to learn its schema is cheap
         val childSchema         = planRelation(f.child).schema
         val (local, correlated) = conjuncts(f.filterExpr).partition(c => bindsIn(c, childSchema))
-        val filtered            =
+        val body                =
           if local.isEmpty then
-            planRelation(f.child)
+            plan(f.child)
           else
-            planFilter(Filter(f.child, local.reduce((a, b) => And(a, b, NoSpan)), f.span))
-        (filtered, correlated, items)
+            filtered(Filter(f.child, local.reduce((a, b) => And(a, b, NoSpan)), f.span))
+        (body, correlated, items)
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
@@ -2208,26 +2214,8 @@ class Planner(
         )
       )
     else
-      val (inner, correlated, _) = planCorrelated(sub, op.schema)
-      val (pairs, rest)          = correlationKeys(correlated, inner.schema, op.schema)
-      val kind                   =
-        if negate then
-          JoinKind.Anti
-        else
-          JoinKind.Semi
-      val residual = Option
-        .when(rest.nonEmpty)(rest.reduce((a, b) => And(a, b, NoSpan)))
-        .map(r => residualBinder(op.schema, inner.schema).bind(r))
-      if pairs.isEmpty then
-        Some((NestedLoopJoinOp(op, inner, residual, kind, op.schema), None))
-      else
-        val (lk, rk) = joinKeys(
-          Binder(this, BindScope(pairs.map(_._2).headOption.map(_ => op.schema).get)),
-          Binder(this, BindScope(inner.schema)),
-          pairs.map(p => (p._2, p._1))
-        )
-        Some((semiJoin(op, inner, lk, rk, kind, residual), None))
-    end if
+      val conj = SubqueryConjunct.Exists(sub, negate)
+      Some((correlatedJoin(operatorPlans, op, conj, planRelation, planFilter), None))
 
   end existsJoin
 
@@ -2260,62 +2248,112 @@ class Planner(
       sub: Relation,
       negate: Boolean
   ): Option[(Operator, Option[Expression])] =
-    val correlated                = isCorrelated(sub, op.schema)
-    val (inner, corrConds, items) =
-      if correlated then
-        planCorrelated(sub, op.schema)
-      else
-        (Planner.nested(this).plan(sub), Nil, None)
-    // The compared value: the single select item
-    val (innerOp, valueIdx) =
-      items match
-        case Some(its) =>
-          val b               = Binder(this, BindScope(inner.schema))
-          val (exprs, fields) = bindItems(b, its)
-          val proj            = ProjectOp(
-            inner,
-            inner
-              .schema
-              .fields
-              .indices
-              .map(i => ColRef(i, inner.schema(i).ptype, inner.schema(i).name)) ++ exprs,
-            Schema(inner.schema.fields ++ fields.map(f => f.withName(hiddenName("in"))))
-          )
-          (proj, inner.schema.size)
-        case None =>
-          (inner, 0)
-    val (pairs, rest) = correlationKeys(corrConds, inner.schema, op.schema)
-    val lb            = Binder(this, BindScope(op.schema))
-    val target        = lb.bind(a)
-    val valueRef   = ColRef(valueIdx, innerOp.schema(valueIdx).ptype, innerOp.schema(valueIdx).name)
-    val t          = PType.common(target.ptype, valueRef.ptype)
-    val (lk0, rk0) = joinKeys(
-      lb,
-      Binder(this, BindScope(inner.schema)),
-      pairs.map(p => (p._2, p._1))
-    )
-    val lk       = castExpr(target, t) +: lk0
-    val rk       = castExpr(valueRef, t) +: rk0
-    val residual = Option
-      .when(rest.nonEmpty)(rest.reduce((x, y) => And(x, y, NoSpan)))
-      .map(r => residualBinder(op.schema, innerOp.schema).bind(r))
+    if isCorrelated(sub, op.schema) then
+      val conj = SubqueryConjunct.In(a, sub, negate)
+      return Some((correlatedJoin(operatorPlans, op, conj, planRelation, planFilter), None))
+    val inner    = Planner.nested(this).plan(sub)
+    val lb       = Binder(this, BindScope(op.schema))
+    val target   = lb.bind(a)
+    val valueRef = ColRef(0, inner.schema(0).ptype, inner.schema(0).name)
+    val t        = PType.common(target.ptype, valueRef.ptype)
+    val lk       = IndexedSeq(castExpr(target, t))
+    val rk       = IndexedSeq(castExpr(valueRef, t))
     if !negate then
-      Some((semiJoin(op, innerOp, lk, rk, JoinKind.Semi, residual), None))
-    else if !correlated then
+      Some((semiJoin(op, inner, lk, rk, JoinKind.Semi, None), None))
+    else
       // NOT IN: no row passes when the subquery has a NULL; NULL targets never pass
-      val values  = Operator.materialize(innerOp)
-      val v       = values.columns(valueIdx)
+      val values  = Operator.materialize(inner)
+      val v       = values.columns(0)
       val hasNull = (0 until values.size).exists(v.isNull)
       if hasNull then
         Some((FilterOp(op, Const(false, PType.Bool)), None))
       else
-        val src  = BatchesOp(innerOp.schema, Seq(values))
-        val anti = HashJoinOp(op, src, lk, rk, JoinKind.Anti, residual, op.schema)
+        val src  = BatchesOp(inner.schema, Seq(values))
+        val anti = HashJoinOp(op, src, lk, rk, JoinKind.Anti, None, op.schema)
         Some((FilterOp(anti, IsNullExpr(target, negate = true)), None))
-    else
-      Some((semiJoin(op, innerOp, lk, rk, JoinKind.Anti, residual), None))
 
   end inJoin
+
+  /**
+    * A correlated [NOT] EXISTS / [NOT] IN filter conjunct over `p` as a semi or anti join with the
+    * decorrelated subquery body, which `plan` and `filtered` plan as in [[planCorrelated]]: the
+    * planner's operators, or runtime-plan nodes. The correlation equalities are hash keys (a nested
+    * loop join without any), the other correlated conditions a residual over p ++ body, with inner
+    * names resolving first. An IN also joins on the target and the select item.
+    *
+    * NOT IN keeps SQL semantics: a row passes when no body row of its correlation group makes
+    * `target <> value` other than TRUE, that is, an anti join on the correlation keys with the
+    * residual `rest and (target = value or target is null or value is null)`
+    */
+  private[engine] def correlatedJoin[P](
+      b: JoinPlanBuilder[P] & AggPlanBuilder[P],
+      p: P,
+      s: SubqueryConjunct,
+      plan: Relation => P,
+      filtered: Filter => P
+  ): P =
+    val outer                      = b.op(p).schema
+    val (inner, correlated, items) = planCorrelated(s.sub, plan, filtered)
+    val innerSchema                = b.op(inner).schema
+    val (pairs, rest)              = correlationKeys(correlated, innerSchema, outer)
+    val lb                         = Binder(this, BindScope(outer))
+    val (lk, rk) = joinKeys(lb, Binder(this, BindScope(innerSchema)), pairs.map(p => (p._2, p._1)))
+    def residual(body: Schema): List[VExpr] = rest.map(residualBinder(outer, body).bind)
+    def join(
+        body: P,
+        kind: JoinKind,
+        lk: IndexedSeq[VExpr],
+        rk: IndexedSeq[VExpr],
+        res: List[VExpr]
+    ) =
+      // Build on the body unless it is much larger than p
+      val buildLeft =
+        lk.nonEmpty &&
+          swapBuild(CardinalityEstimator.rows(b.op(body)), CardinalityEstimator.rows(b.op(p)))
+      b.join(p, body, kind, lk, rk, res.reduceOption((x, y) => AndExpr(x, y)), buildLeft)
+    s match
+      case SubqueryConjunct.Exists(_, negate) =>
+        val kind =
+          if negate then
+            JoinKind.Anti
+          else
+            JoinKind.Semi
+        join(inner, kind, lk, rk, residual(innerSchema))
+      case SubqueryConjunct.In(a, _, negate) =>
+        // The compared value: the single select item, after the body's columns
+        val (valued, valueIdx) =
+          items match
+            case Some(its) =>
+              val (exprs, fields) = bindItems(Binder(this, BindScope(innerSchema)), its)
+              val proj            = b.project(
+                inner,
+                innerSchema
+                  .fields
+                  .indices
+                  .map(i => ColRef(i, innerSchema(i).ptype, innerSchema(i).name)) ++ exprs,
+                Schema(innerSchema.fields ++ fields.map(f => f.withName(hiddenName("in"))))
+              )
+              (proj, innerSchema.size)
+            case None =>
+              (inner, 0)
+        val vs     = b.op(valued).schema
+        val target = lb.bind(a)
+        val t      = PType.common(target.ptype, vs(valueIdx).ptype)
+        val x      = castExpr(target, t)
+        if !negate then
+          val y = castExpr(ColRef(valueIdx, vs(valueIdx).ptype, vs(valueIdx).name), t)
+          join(valued, JoinKind.Semi, x +: lk, y +: rk, residual(vs))
+        else
+          // The value over p ++ body, as the residual reads it
+          val y = castExpr(ColRef(outer.size + valueIdx, vs(valueIdx).ptype, vs(valueIdx).name), t)
+          val same = OrExpr(
+            OrExpr(Compare(CmpOp.Eq, x, y), IsNullExpr(x, negate = false)),
+            IsNullExpr(y, negate = false)
+          )
+          join(valued, JoinKind.Anti, lk, rk, residual(vs) :+ same)
+    end match
+
+  end correlatedJoin
 
   /**
     * A correlated scalar subquery `[Project(agg)] Filter(child, k_inner = k_outer and ...)` as an
@@ -2323,7 +2361,7 @@ class Planner(
     * operator and the name of the column holding the subquery value
     */
   private def decorrelateScalar(outer: Operator, sub: Relation): (Operator, String) =
-    val (inner, correlated, items) = planCorrelated(sub, outer.schema)
+    val (inner, correlated, items) = planCorrelated(sub)
     val (pairs, rest)              = correlationKeys(correlated, inner.schema, outer.schema)
     if rest.nonEmpty || pairs.isEmpty then
       throw StatusCode
@@ -2373,7 +2411,7 @@ class Planner(
     * of the subquery and flag the matched rows
     */
   private def decorrelateExists(outer: Operator, sub: Relation): (Operator, String) =
-    val (inner, correlated, _) = planCorrelated(sub, outer.schema)
+    val (inner, correlated, _) = planCorrelated(sub)
     val (pairs, rest)          = correlationKeys(correlated, inner.schema, outer.schema)
     if rest.nonEmpty || pairs.isEmpty then
       throw StatusCode
