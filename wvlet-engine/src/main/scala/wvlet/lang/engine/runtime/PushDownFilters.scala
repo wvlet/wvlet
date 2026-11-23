@@ -175,17 +175,20 @@ object PushDownFilters extends Pass:
             j
           else
             InnerJoins(newInputs, withInferred)
-        case u @ Union(inputs, columns) =>
-          val (in, out) = conds.partition(_.refs.forall(id => columns.exists(_.id == id)))
-          moved(in)
-          filter(u.withChildren(inputs.map(i => push(i, in.map(toInput(_, columns, i))))), out)
-        case s @ SetOp(left, right, _, _, columns) =>
-          // Rows equal under the set comparison give a conjunct the same value, so filtering both
-          // inputs keeps the result
-          val (in, out) = conds.partition(_.refs.forall(id => columns.exists(_.id == id)))
+        case Union(_, _) | SetOp(_, _, _, _, _) =>
+          // For INTERSECT and EXCEPT, rows equal under the set comparison give a conjunct the
+          // same value, so filtering both inputs keeps the result. An input narrower than the
+          // output keeps the conjuncts above
+          val columns   = p.output
+          val pos       = columns.indices.map(i => columns(i).id.value -> i).toMap
+          val (in, out) =
+            if p.children.forall(_.output.size >= columns.size) then
+              conds.partition(_.refs.forall(id => pos.contains(id.value)))
+            else
+              (Nil, conds)
           moved(in)
           filter(
-            s.withChildren(Seq(left, right).map(i => push(i, in.map(toInput(_, columns, i))))),
+            p.withChildren(p.children.map(i => push(i, in.map(toInput(_, columns, pos, i))))),
             out
           )
         case d @ Distinct(child) =>
@@ -197,11 +200,16 @@ object PushDownFilters extends Pass:
 
     /**
       * A conjunct over the output `columns` of a set operation as a conjunct over its input: each
-      * column becomes the input column at its position, cast to the output type
+      * column becomes the input column at its position (`pos`, by column id), cast to the output
+      * type
       */
-    private def toInput(c: Conjunct, columns: IndexedSeq[Column], input: RuntimePlan): Conjunct =
-      val in  = input.output
-      val pos = columns.indices.map(i => columns(i).id.value -> i).toMap
+    private def toInput(
+        c: Conjunct,
+        columns: IndexedSeq[Column],
+        pos: Map[Int, Int],
+        input: RuntimePlan
+    ): Conjunct =
+      val in = input.output
       c.substitute { r =>
         val col = in(pos(r.index))
         castTo(ColRef(col.id.value, col.ptype, col.name), columns(pos(r.index)).ptype)
