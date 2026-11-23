@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Bind GROUP BY ROLLUP / CUBE / GROUPING SETS aggregations as runtime-plan nodes instead of a `Legacy` leaf, the last M3c entry, so the logical passes (PushDownFilters, PruneColumns, ShareSubplans keys) see through them and M4 has one less operator-only form
+- Bind GROUP BY ROLLUP / CUBE / GROUPING SETS aggregations as runtime-plan nodes instead of a `Legacy` leaf, the last M3c entry, so the logical passes (PushDownFilters, PruneColumns above the sets) see through them and M4 has one less operator-only form
 - Lower to the operators the legacy planner builds today (#2238): one shared, column-reduced evaluation of the input, one hash aggregation per set over its non-constant keys, a projection putting the NULL keys and grouping id back, and a union
 
 ## Background
