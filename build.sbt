@@ -544,7 +544,7 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ),
     libraryDependencies ++=
       Seq(
-        "org.apache.arrow" % "arrow-vector" % "19.0.0",
+        "org.apache.arrow" % "arrow-vector" % "20.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
         "org.xerial" % "sqlite-jdbc" % "3.54.1.0",
         // Postgres-backed flow run store (shared across machines: concurrency claims,
