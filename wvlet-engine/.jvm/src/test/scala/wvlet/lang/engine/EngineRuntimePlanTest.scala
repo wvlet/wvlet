@@ -76,8 +76,7 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // A correlated subquery filter with decorrelate_correlated off. Column edits with aggregates,
-    // the other legacy form, fail on the legacy planner too
+    // A correlated subquery filter with decorrelate_correlated off, the last legacy form
     val off = engine.withOptimizer(runtime.withDisabled(Optimization.DecorrelateCorrelated))
     val p   =
       withQuery(
@@ -91,6 +90,26 @@ class EngineRuntimePlanTest extends UniTest:
     }
     leaves.nonEmpty shouldBe true
     leaves.foreach(l => l.columns.map(_.name) shouldBe l.op.schema.names)
+  }
+
+  test("raise the planner's errors for column edits with aggregates or unnest") {
+    // These forms fail in the shared Binder on both planners; the runtime binder raises the same
+    // error itself, without a legacy leaf
+    def errorOf(f: => Any): String = intercept[wvlet.lang.api.WvletLangException](f).getMessage
+    Seq(
+      "from nation add count(*) as n"             -> "Aggregate function count is not allowed here",
+      "from nation prepend sum(n_nationkey) as n" -> "Aggregate function sum is not allowed here",
+      "from nation add max(n_nationkey) over () as m, count(*) as c" ->
+        "Aggregate function count is not allowed here",
+      "from nation add unnest([1, 2]) as u"     -> "Unsupported function in the engine: unnest",
+      "from nation prepend unnest([1, 2]) as u" -> "Unsupported function in the engine: unnest",
+      "from nation select n_name, unnest([1, 2]) as u, row_number() over (order by n_name) as rn" ->
+        "Window functions are not supported here"
+    ).foreach { (query, message) =>
+      errorOf(runtimePlan(query)) shouldContain message
+      errorOf(rowsOf(engine, query)) shouldContain message
+      errorOf(rowsOf(legacy, query)) shouldContain message
+    }
   }
 
   test("bind sort keys with subqueries as plan-time constants") {

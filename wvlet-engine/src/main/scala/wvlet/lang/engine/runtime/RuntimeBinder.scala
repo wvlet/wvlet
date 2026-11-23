@@ -23,7 +23,6 @@ import wvlet.lang.engine.exec.HashAggOp
 import wvlet.lang.engine.exec.ProjectOp
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
-import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.exec.UnionAllOp
 import wvlet.lang.engine.exec.WindowCall
 import wvlet.lang.engine.exec.WindowOp
@@ -53,9 +52,8 @@ import wvlet.lang.model.plan.*
 
 /**
   * Binds a typed, model-expanded [[Relation]] to a [[RuntimePlan]]: names resolve to column ids
-  * once, here. It covers scans, VALUES, filters, projections, sorts, and limits, and the wrappers
-  * that only rename or requalify columns. Every other relation becomes a [[RuntimePlan.Legacy]]
-  * leaf planned by `planner` (whose own inputs come back here).
+  * once, here. It covers every relation the planner plans; the only [[RuntimePlan.Legacy]] leaves
+  * left are subquery filters whose decorrelation toggles are off, planned by `planner`.
   *
   * The binder routes a relation by the same tests the planner uses, and binds inputs in the
   * planner's order, so that the lowered plan is the planner's plan and the planner's state (shared
@@ -70,9 +68,6 @@ class RuntimeBinder(planner: Planner):
     Column(ColumnId(lastId), f.name, f.ptype, f.qualifiers)
 
   private def columnsOf(s: Schema): IndexedSeq[Column] = s.fields.map(newColumn)
-
-  /** A relation planned by the recursive planner */
-  private def legacy(r: Relation): RuntimePlan = legacyOp(planner.planLegacy(r))
 
   private def legacyOp(op: Operator): RuntimePlan = RuntimePlan.Legacy(op, columnsOf(op.schema))
 
@@ -173,15 +168,18 @@ class RuntimeBinder(planner: Planner):
         project(p)
       case p: Project if planner.isAggregation(p.child, p.selectItems) =>
         aggregation(p.child, Some(p.selectItems), defaultItems = false)
-      case p: Project if isWindowProjection(p) =>
-        windowProject(p)
-      case p: Project if isUnnestProjection(p) =>
+      case p: Project if p.selectItems.exists(i => planner.unnestArg(i).isDefined) =>
+        // Unnest before windows, as `Planner.planProject` routes it: windows next to unnest fail
+        // in `bindUnnestItems`, as on the planner
         unnestProject(p)
+      case p: Project =>
+        windowProject(p)
       case s: SQLSelect =>
         bind(planner.desugarSQLSelect(s))
-      case a: AddColumnsToRelation if isPlainColumnEdit(a.newColumns) =>
+      // New columns with aggregates or unnest fail in the binder, as on the planner
+      case a: AddColumnsToRelation =>
         columnEdit(a.child, prepend = false, a.newColumns)
-      case a: PrependColumnsToRelation if isPlainColumnEdit(a.newColumns) =>
+      case a: PrependColumnsToRelation =>
         columnEdit(a.child, prepend = true, a.newColumns)
       case e: ExcludeColumnsFromRelation =>
         val in = bind(e.child)
@@ -209,8 +207,9 @@ class RuntimeBinder(planner: Planner):
       case s: Sample =>
         sample(s)
       case other =>
-        // A column edit with aggregates or unnest, a projection with unnest and windows, ...
-        legacy(other)
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"Unsupported relation in the engine: ${other.nodeName}")
 
   end bind
 
@@ -296,8 +295,6 @@ class RuntimeBinder(planner: Planner):
     child match
       case s: RuntimePlan.Scan =>
         s.copy(columns = fields.map(newColumn))
-      case RuntimePlan.Legacy(s: ScanOp, _) =>
-        legacyOp(s.withSchema(Schema(fields)))
       case RuntimePlan.CTERef(cte, _) =>
         RuntimePlan.CTERef(cte, fields.map(newColumn))
       case _ =>
@@ -954,18 +951,6 @@ class RuntimeBinder(planner: Planner):
           !Binder.containsAggregate(i) && !Binder.containsWindow(i) && isPlainItem(i)
         }
 
-  /** A projection evaluating window functions, without aggregates or unnest */
-  private def isWindowProjection(p: Project): Boolean =
-    p.selectItems.exists(i => Binder.containsWindow(i)) && p.selectItems.forall(isPlainItem)
-
-  /**
-    * A projection with `unnest(list)` items, without windows, which the planner plans with
-    * `projectWithUnnest` (aggregations route before it)
-    */
-  private def isUnnestProjection(p: Project): Boolean =
-    p.selectItems.exists(i => planner.unnestArg(i).isDefined) &&
-      p.selectItems.forall(i => !Binder.containsWindow(i))
-
   /**
     * select ..., unnest(list), ...: the items with each list in place of its unnest, the lists
     * unnested, then the items in order with each list's elements, as `Planner.projectWithUnnest`
@@ -1011,11 +996,6 @@ class RuntimeBinder(planner: Planner):
     in,
     calls.map(WindowFunction.of(_, in.output)),
     columnsOf(Schema(schema.fields.drop(in.output.size)))
-  )
-
-  /** New columns without aggregates or unnest (window functions are evaluated) */
-  private def isPlainColumnEdit(items: List[Attribute]): Boolean = items.forall(i =>
-    !Binder.containsAggregate(i) && isPlainItem(i)
   )
 
   /**
