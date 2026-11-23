@@ -83,7 +83,7 @@ end GroupKey
   * allocated. NULL key values are equal to each other (GROUP BY semantics); [[lookup]] treats rows
   * with a NULL key as unmatched (join semantics).
   */
-final class GroupTable(keyTypes: IndexedSeq[PType]):
+final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
   import GroupTable.*
 
   private val stores: Array[KeyStore] = keyTypes.map(KeyStore.apply).toArray
@@ -91,10 +91,15 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
   private var count                   = 0
   // Each slot packs (hash << 32 | group id), or is Empty: a probe compares the hash without
   // loading anything of the group, as DuckDB's salted hash table entries
-  private var slots = emptySlots(1024)
-  private var mask  = 1023
+  private var slots = emptySlots(slotCapacity(expectedGroups))
+  private var mask  = slots.length - 1
   // The hash of each group in id order, read sequentially when rehashing
-  private var groupHash = new Array[Int](64)
+  private var groupHash = new Array[Int](math.max(64, expectedGroups))
+  // Per-batch row hashes of groupIds, reused across batches (inserting is single-threaded)
+  private var hashBuf: Array[Int] = null
+
+  if expectedGroups > 0 then
+    stores.foreach(_.reserve(expectedGroups))
 
   def numGroups: Int = count
 
@@ -106,8 +111,10 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
       k += 1
     out
 
-  private def hashes(keys: Array[Vec], n: Int): Array[Int] =
-    val h = new Array[Int](n)
+  private def hashes(keys: Array[Vec], n: Int): Array[Int] = hashesInto(keys, n, new Array[Int](n))
+
+  /** Row hashes into h, whose first n entries must be zero */
+  private def hashesInto(keys: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
     var k = 0
     while k < width do
       stores(k).hashInto(keys(k), n, h)
@@ -205,7 +212,11 @@ final class GroupTable(keyTypes: IndexedSeq[PType]):
 
   def groupIds(keys: Array[Vec], n: Int): Array[Int] =
     val norm = normalize(keys)
-    assignIds(norm, n, hashes(norm, n))
+    if hashBuf == null || hashBuf.length < n then
+      hashBuf = new Array[Int](n)
+    else
+      java.util.Arrays.fill(hashBuf, 0, n, 0)
+    assignIds(norm, n, hashesInto(norm, n, hashBuf))
 
   /**
     * [[groupIds]] with each row's hash already computed by [[keyHashes]] (of a table with the same
@@ -284,6 +295,20 @@ object GroupTable:
 
   private inline def entry(h: Int, g: Int): Long = (h.toLong << 32) | (g.toLong & 0xffffffffL)
 
+  /**
+    * Callers pre-size tables to at most this many groups: group estimates and row-count bounds can
+    * be far above the actual groups, and an overestimate costs this much zero-filled memory at most
+    */
+  inline val MaxPresizeGroups = 1 << 18
+
+  /** Slots for n groups at most half full: a power of two of at least 1024 */
+  private def slotCapacity(n: Int): Int =
+    val want = math.max(1024L, n.toLong * 2)
+    if want >= (1 << 30) then
+      1 << 30
+    else
+      Integer.highestOneBit((want - 1).toInt) << 1
+
   /** Array.fill would box every element */
   private def emptySlots(n: Int): Array[Long] =
     val a = new Array[Long](n)
@@ -359,6 +384,11 @@ object GroupTable:
     def result(n: Int): Vec
 
     private var size = 0
+
+    /** Make room for n keys up front */
+    final def reserve(n: Int): Unit =
+      if n > capacity then
+        grow(n)
 
     final def add(v: Vec, i: Int): Unit =
       if size == capacity then

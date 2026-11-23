@@ -24,7 +24,8 @@ import scala.collection.mutable
   * task of `runner`. Output: the groups of partition 0, then of partition 1, and so on.
   *
   * Inputs of fewer than `minParallelRows` rows are aggregated on the calling thread, in the input's
-  * group order, as [[HashAggOp]] does.
+  * group order, as [[HashAggOp]] does. `expectedGroups` (0 when unknown) pre-sizes the group
+  * tables, split across the partitions.
   */
 class PartitionedAggOp(
     val child: Operator,
@@ -32,7 +33,8 @@ class PartitionedAggOp(
     val aggs: IndexedSeq[AggCall],
     val schema: Schema,
     runner: TaskRunner,
-    minParallelRows: Int = PartitionedAggOp.MinParallelRows
+    minParallelRows: Int = PartitionedAggOp.MinParallelRows,
+    val expectedGroups: Int = 0
 ) extends Operator:
   require(keys.nonEmpty, "PartitionedAggOp needs grouping keys")
 
@@ -52,14 +54,22 @@ class PartitionedAggOp(
       null
 
   private def aggregate(): Iterator[Batch] =
-    val input                                         = child.drain()
-    val total                                         = input.map(_.size).sum
-    def aggregateAll(batches: Seq[Batch]): Seq[Batch] =
-      val op = HashAggOp(BatchesOp(child.schema, batches), keys, aggs, schema)
+    val input = child.drain()
+    val total = input.map(_.size).sum
+    // A partition has at most one group per row
+    def aggregateAll(batches: Seq[Batch], groups: Int): Seq[Batch] =
+      val rows = batches.map(_.size).sum
+      val op   = HashAggOp(
+        BatchesOp(child.schema, batches),
+        keys,
+        aggs,
+        schema,
+        math.min(groups, rows)
+      )
       try op.drain()
       finally op.close()
     if total < minParallelRows || runner.parallelism <= 1 then
-      return aggregateAll(input).iterator
+      return aggregateAll(input, expectedGroups).iterator
     val parts      = GroupTable.partitionCount(runner.parallelism)
     val hasher     = GroupTable(keys.map(_.ptype))
     val partitions = Array.fill(parts)(mutable.ArrayBuffer.empty[Batch])
@@ -72,7 +82,9 @@ class PartitionedAggOp(
           partitions(p) += b.gather(idx(p), idx(p).length)
         p += 1
     }
-    val handles = partitions.toIndexedSeq.map(ps => runner.submit(() => aggregateAll(ps.toSeq)))
+    val handles = partitions
+      .toIndexedSeq
+      .map(ps => runner.submit(() => aggregateAll(ps.toSeq, expectedGroups / parts)))
     handles.iterator.flatMap(_.get())
 
   end aggregate

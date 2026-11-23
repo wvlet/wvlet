@@ -59,6 +59,7 @@ class OptimizerOptionsTest extends UniTest:
         "prune_columns",
         "push_scan_filters",
         "runtime_join_filters",
+        "presize_aggregates",
         "parallelize"
       )
   }

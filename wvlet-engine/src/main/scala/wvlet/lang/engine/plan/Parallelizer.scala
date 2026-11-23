@@ -164,12 +164,26 @@ object Parallelizer:
               case Some(p) =>
                 TwoPhaseAgg.plan(a, p.scan, p.rebuild, p.tail, runner, p.prepare, p.close)
               case None if a.keys.nonEmpty =>
-                PartitionedAggOp(r(a.child), a.keys, a.aggs, a.schema, runner)
+                PartitionedAggOp(
+                  r(a.child),
+                  a.keys,
+                  a.aggs,
+                  a.schema,
+                  runner,
+                  expectedGroups = a.expectedGroups
+                )
               case None =>
-                HashAggOp(r(a.child), a.keys, a.aggs, a.schema)
+                HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
           case a: HashAggOp if a.keys.nonEmpty =>
             // Any aggregate (DISTINCT, quantiles, ...): every group falls in one key partition
-            PartitionedAggOp(r(a.child), a.keys, a.aggs, a.schema, runner)
+            PartitionedAggOp(
+              r(a.child),
+              a.keys,
+              a.aggs,
+              a.schema,
+              runner,
+              expectedGroups = a.expectedGroups
+            )
           case f: FilterOp =>
             FilterOp(r(f.child), f.cond, f.keep)
           case p: ProjectOp =>
@@ -182,7 +196,7 @@ object Parallelizer:
           case s: SortOp =>
             SortOp(r(s.child), s.keys, s.limit, runner)
           case a: HashAggOp =>
-            HashAggOp(r(a.child), a.keys, a.aggs, a.schema)
+            HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
           case d: DistinctOp
               if d.schema.size > 0 && (
                 d.child match
@@ -339,7 +353,14 @@ private[plan] object TwoPhaseAgg:
     // Many groups: combine them in parallel, partitioned by key
     val combined =
       if nk > 0 then
-        PartitionedAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema, runner)
+        PartitionedAggOp(
+          partial,
+          (0 until nk).map(col),
+          finalAggs,
+          finalSchema,
+          runner,
+          expectedGroups = a.expectedGroups
+        )
       else
         HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)
     // Restore the original output: keys, then each aggregate in its original type

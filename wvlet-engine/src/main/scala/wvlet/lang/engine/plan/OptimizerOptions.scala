@@ -116,6 +116,12 @@ enum Optimization(val name: String):
     */
   case RuntimeJoinFilters extends Optimization("runtime_join_filters")
 
+  /**
+    * Pre-size the group tables and aggregate state of hash aggregations from estimated group
+    * counts, so they grow less often
+    */
+  case PresizeAggregates extends Optimization("presize_aggregates")
+
   /** Parallel scan pipelines and two-phase / partitioned aggregation */
   case Parallelize extends Optimization("parallelize")
 

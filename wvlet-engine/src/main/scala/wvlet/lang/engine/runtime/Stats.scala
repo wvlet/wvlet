@@ -141,6 +141,16 @@ object Stats:
         // As CardinalityEstimator does over operators
         None
 
+  /**
+    * Estimated groups of an aggregation of p by `keys`: the product of the keys' distinct values,
+    * at most the rows of p. None when a key's distinct values are unknown
+    */
+  def groups(p: RuntimePlan, keys: Seq[VExpr]): Option[Double] = keys
+    .foldLeft(Option(1.0)) { (acc, k) =>
+      acc.flatMap(a => distinct(p, k).map(d => a * math.max(1.0, d)))
+    }
+    .map(math.min(_, rows(p)))
+
   /** Distinct values of an expression over p: a column, possibly cast */
   def distinct(p: RuntimePlan, e: VExpr): Option[Double] =
     e match
