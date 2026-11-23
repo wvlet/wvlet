@@ -327,17 +327,21 @@ object PushDownFilters extends Pass:
       * comparison of constants a projection substituted) is dropped
       */
     private def filter(p: RuntimePlan, conds: List[Conjunct]): RuntimePlan =
-      // A conjunct already applied by the filter p, which a conjunct carried across join keys may
-      // repeat, is dropped
+      // A deterministic conjunct the filter p already applies, or that comes twice, is dropped: a
+      // conjunct carried across join keys may repeat one. Two random() conjuncts both stay
       val applied =
         p match
           case Filter(_, cond, _) if enabled =>
             conjuncts(cond.expr).map(_.sig).toSet
           case _ =>
             Set.empty[String]
-      val kept = conds
-        .filterNot(c => enabled && (isTrue(c.expr) || applied.contains(c.expr.sig)))
-        .distinctBy(_.expr.sig)
+      val seen = mutable.Set.empty[String]
+      val kept = conds.filterNot { c =>
+        val repeated =
+          enabled && isDeterministic(c.expr) &&
+            (applied.contains(c.expr.sig) || !seen.add(c.expr.sig))
+        (enabled && isTrue(c.expr)) || repeated
+      }
       if kept.isEmpty then
         p
       else
