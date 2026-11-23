@@ -90,6 +90,9 @@ object Lowering:
       case Window(child, calls, _) =>
         val pos = positions(child)
         WindowOp(apply(child), calls.map(_.lower(pos)), p.schema)
+      case Unnest(child, lists, keepInput, outer, _) =>
+        val pos = positions(child)
+        UnnestOp(apply(child), lists.map(_.lower(pos)), keepInput, p.schema, outer)
       case Legacy(op, _) =>
         op
       case CTERef(cte, _) =>

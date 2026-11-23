@@ -156,7 +156,9 @@ class RuntimeBinder(planner: Planner):
       case Agg(_: Pivot, _, _, _) | (_: Pivot) | (_: Unpivot) =>
         legacy(r)
       case r if planner.unnestCall(r).isDefined =>
-        legacy(r)
+        val (call, alias) = planner.unnestCall(r).get
+        // Over one row without columns, as the planner plans it
+        unnest(RuntimePlan.Values(IndexedSeq.empty, Batch.ofRows(1)), call, alias, outer = false)
       case a: Agg =>
         aggregation(a.child, Some(a.selectItems), defaultItems = false)
       case c: Count if planner.isAggregationInput(c.child) =>
@@ -169,6 +171,8 @@ class RuntimeBinder(planner: Planner):
         aggregation(p.child, Some(p.selectItems), defaultItems = false)
       case p: Project if isWindowProjection(p) =>
         windowProject(p)
+      case p: Project if isUnnestProjection(p) =>
+        unnestProject(p)
       case s: SQLSelect =>
         bind(planner.desugarSQLSelect(s))
       case a: AddColumnsToRelation if isPlainColumnEdit(a.newColumns) =>
@@ -201,7 +205,7 @@ class RuntimeBinder(planner: Planner):
       case s: Sample =>
         sample(s)
       case other =>
-        // A Project or column edit that evaluates unnest or subqueries, ...
+        // A Project or column edit that evaluates subqueries, a column edit with unnest, ...
         legacy(other)
 
   end bind
@@ -335,24 +339,70 @@ class RuntimeBinder(planner: Planner):
           else
             legacy(f)
         else
-          val in     = bind(child)
-          val schema = in.schema
-          val bound  = conds.map(c =>
-            BExpr.of(Binder(planner, BindScope(schema)).bind(c), in.output)
-          )
-          RuntimePlan.Filter(
-            in,
-            BExpr(bound.map(_.expr).reduce((a, b) => AndExpr(a, b))),
-            conds.zip(bound).map((c, b) => literalCounts(c, b.expr)).reduce(_ ++ _)
-          )
+          filterOver(bind(child), conds)
+
+  /** Conditions without subqueries over `in`, as one filter */
+  private def filterOver(in: RuntimePlan, conds: List[Expression]): RuntimePlan =
+    val schema = in.schema
+    val bound  = conds.map(c => BExpr.of(Binder(planner, BindScope(schema)).bind(c), in.output))
+    RuntimePlan.Filter(
+      in,
+      BExpr(bound.map(_.expr).reduce((a, b) => AndExpr(a, b))),
+      conds.zip(bound).map((c, b) => literalCounts(c, b.expr)).reduce(_ ++ _)
+    )
+
+  /**
+    * unnest(list, ...) over the rows of `in`, keeping their columns with `keepInput`, as
+    * `Planner.planUnnest` plans it
+    */
+  private def unnest(
+      in: RuntimePlan,
+      call: TableFunctionCall,
+      alias: Option[AliasedRelation],
+      outer: Boolean,
+      keepInput: Boolean = false
+  ): RuntimePlan =
+    val (lists, fields) = planner.unnestLists(in.schema, call, alias)
+    RuntimePlan.Unnest(
+      in,
+      lists.map(BExpr.of(_, in.output)),
+      keepInput,
+      outer,
+      fields.map(newColumn)
+    )
 
   /**
     * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them. ASOF,
-    * USING, and NATURAL joins and joins with a lateral unnest stay legacy
+    * USING, and NATURAL joins stay legacy
     */
   private def join(j: Join, filters: List[Expression]): RuntimePlan =
-    if planner.unnestCall(j.right).isDefined || !(planner.isInnerJoin(j) || planner.isJoinOn(j))
-    then
+    planner.lateralUnnest(j) match
+      case Some(u) =>
+        lateralUnnest(j, u, filters)
+      case None =>
+        nonLateralJoin(j, filters)
+
+  /**
+    * A lateral unnest over the left input and the conditions over it (its ON conjuncts, then the
+    * filters), as `Planner.planJoinTree` plans them
+    */
+  private def lateralUnnest(
+      j: Join,
+      u: Planner.LateralUnnest,
+      filters: List[Expression]
+  ): RuntimePlan =
+    val p     = unnest(bind(j.left), u.call, u.alias, u.outer, keepInput = true)
+    val conds = u.conds ++ filters
+    if conds.isEmpty then
+      p
+    else if conds.exists(planner.hasSubquery) then
+      plans.conjuncts(lowered(p), planner.factorOrs(conds)).plan
+    else
+      // Common conjuncts of `or`s are factored by the Normalize pass
+      filterOver(p, conds.flatMap(planner.splitConjuncts))
+
+  private def nonLateralJoin(j: Join, filters: List[Expression]): RuntimePlan =
+    if !(planner.isInnerJoin(j) || planner.isJoinOn(j)) then
       legacyOp(planner.planJoinTree(j, planner.factorOrs(filters)))
     else if planner.isInnerJoin(j) then
       innerJoins(j, filters)
@@ -868,6 +918,46 @@ class RuntimeBinder(planner: Planner):
   /** A projection evaluating window functions, without aggregates, unnest, or subqueries */
   private def isWindowProjection(p: Project): Boolean =
     p.selectItems.exists(i => Binder.containsWindow(i)) && p.selectItems.forall(isPlainItem)
+
+  /**
+    * A projection with `unnest(list)` items, without windows or subqueries, which the planner plans
+    * with `projectWithUnnest` (aggregations route before it)
+    */
+  private def isUnnestProjection(p: Project): Boolean =
+    p.selectItems.exists(i => planner.unnestArg(i).isDefined) &&
+      p.selectItems
+        .forall { i =>
+          !Binder.containsWindow(i) && !planner.hasSubquery(Binder.expandTemplates(i))
+        }
+
+  /**
+    * select ..., unnest(list), ...: the items with each list in place of its unnest, the lists
+    * unnested, then the items in order with each list's elements, as `Planner.projectWithUnnest`
+    * plans it
+    */
+  private def unnestProject(p: Project): RuntimePlan =
+    val in                       = bind(p.child)
+    val (exprs, fields, listIdx) = planner.bindUnnestItems(in.schema, p.selectItems)
+    val proj  = RuntimePlan.Project(in, exprs.map(BExpr.of(_, in.output)), fields.map(newColumn))
+    val elems = listIdx.map(i => newColumn(planner.unnestElementField(exprs, fields, i)))
+    val u     = RuntimePlan.Unnest(
+      proj,
+      listIdx.map(i => BExpr.ref(proj.output(i))),
+      keepInput = true,
+      outer = false,
+      elems
+    )
+    val out = proj
+      .output
+      .indices
+      .map { i =>
+        listIdx.indexOf(i) match
+          case -1 =>
+            proj.output(i)
+          case k =>
+            elems(k)
+      }
+    RuntimePlan.Project(u, out.map(BExpr.ref), out.map(c => newColumn(c.toField)))
 
   /** An item without unnest or subqueries, which the binder evaluates in a projection */
   private def isPlainItem(i: Attribute): Boolean =
