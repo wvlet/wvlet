@@ -192,7 +192,7 @@ behavior as traces:
   outer table with NULL and duplicate rows against an inner table with NULL keys and duplicate
   matches, with the rows of `exists` and `not exists` over 8 subquery WHEREs (a key, a key and a
   residual, a key and a local filter, only a residual, a key over another column, two keys, a
-  key and a negation, and an OR over outer columns), of 5 `in` subqueries (uncorrelated,
+  key and a negation, and an OR of two correlations), of 5 `in` subqueries (uncorrelated,
   correlated by a residual, by a key, and with a local filter), and of 4 conditions with an
   EXISTS under OR and NOT over 4 key correlations; plus the pushdown model's semi and anti join
   cases (24: both ON conditions of the pushdown fixture with each conjunct over the outer input
@@ -284,7 +284,7 @@ The model proves today's behavior. These are left for follow-ups:
   equalities between the inputs into hash keys. The row replay checks that NULL keys never
   match, but the key extraction itself is not proved.
 - Semi and anti joins are replayed by `DecorrelateConformanceTest`, since queries reach them only
-  through EXISTS subqueries. Right semi and anti joins, the `Join` nodes `ReorderJoins` builds,
+  through IN and EXISTS subqueries; the replay writes them with EXISTS. Right semi and anti joins, the `Join` nodes `ReorderJoins` builds,
   and ASOF joins are out of scope.
 - The engine never turns an outer join into an inner join under a NULL-rejecting conjunct, so
   the model has no such rule.

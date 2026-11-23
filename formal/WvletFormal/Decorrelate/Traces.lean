@@ -4,8 +4,8 @@ Licensed under the Apache License, Version 2.0.
 Conformance traces for EXISTS / IN decorrelation, exported as JSON so that a Scala test can replay
 them against the engine. An outer table with NULL and duplicate rows meets an inner table with
 NULL keys, NULL values, and duplicate matches, through subqueries whose WHERE has a key equality,
-a key and a residual, a key and a local filter, only a residual, two keys, and an OR over outer
-columns. Each case gives the rows of the engine's plan (`planExists`, `planIn`, `markJoin`), which
+a key and a residual, a key and a local filter, only a residual, two keys, and an OR of two
+correlations. Each case gives the rows of the engine's plan (`planExists`, `planIn`, `markJoin`), which
 `Rule.lean` proves equal to SQL's.
 
 It also exports the semi and anti join cases of the filter pushdown model (`Pushdown.place` and
@@ -99,12 +99,12 @@ def flag (e : Bool) : Tri := if e then .true else .false
 private def isNullTri (t : Term) (x : Row) : Tri := (Cond.isNull t).eval x
 private def eqTriAt (t : Term) (n : Int) (x : Row) : Tri := (Cond.eq t (int n)).eval x
 
-/-- Conditions with `exists (...)` in them, in Wvlet syntax with `E` for the EXISTS. -/
+/-- Conditions with `exists (...)` in them, in Wvlet syntax with `{E}` for the EXISTS. -/
 def markConds : List (String × (Row → Bool → Tri)) :=
-  [ ("b is null or E", fun x e => (isNullTri b x).or (flag e))
-  , ("E or a = 2", fun x e => (flag e).or (eqTriAt a 2 x))
-  , ("not (E or b is null)", fun x e => ((flag e).or (isNullTri b x)).not)
-  , ("not (E and a = 1)", fun x e => ((flag e).and (eqTriAt a 1 x)).not) ]
+  [ ("b is null or {E}", fun x e => (isNullTri b x).or (flag e))
+  , ("{E} or a = 2", fun x e => (flag e).or (eqTriAt a 2 x))
+  , ("not ({E} or b is null)", fun x e => ((flag e).or (isNullTri b x)).not)
+  , ("not ({E} and a = 1)", fun x e => ((flag e).and (eqTriAt a 1 x)).not) ]
 
 /-- The subquery's WHERE of a mark: `inner = outer` per key, then the local conjuncts. -/
 def markWhere (ks : Keys) (lws : List Cond) : List Cond :=

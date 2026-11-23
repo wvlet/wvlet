@@ -212,7 +212,7 @@ class DecorrelateConformanceTest extends UniTest:
     for c <- cases do
       val e = s"exists ${sub(str(c("where")))}"
       for cond <- arr(c("conds")).map(obj) do
-        val query = s"${outer} where ${str(cond("cond")).replace("E", e)}"
+        val query = s"${outer} where ${str(cond("cond")).replace("{E}", e)}"
         check(query, cond("rows"))
         // A left join with the distinct keys, which keeps every outer row once
         joinKinds(query) shouldBe Seq(JoinKind.Left)
@@ -260,6 +260,7 @@ class DecorrelateConformanceTest extends UniTest:
         if c("trueConstant") == JSONBoolean(true) then
           hasFilter(p) shouldBe false
         else
+          // The model moves every such conjunct into the outer input; check the engine does too
           str(c("place")) shouldBe "left"
           hasFilter(b) shouldBe true
           val j = nodes(p)
