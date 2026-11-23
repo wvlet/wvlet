@@ -14,6 +14,8 @@ Wvlet Shell (`wv` command) launches an interactive query editor for the console.
 Line editing, history, and completion need Java 22 or later. On older JVMs, or when the input is not a terminal, `wv` reads input line by line without editing.
 :::
 
+Queries run on the in-process [wvlet engine](wvlet-engine.md) by default. Start the shell with `wv -t duckdb` to run on DuckDB instead (needed for `sql"..."` / `execute` statements and `.duckdb` files), or with `wv --profile <name>` to use a [profile](cli-reference.md#profile-configuration).
+
 ## Commands
 
 By typing `help` in the shell, you can see the list of available commands:

@@ -136,6 +136,15 @@ object Profile extends LogSupport:
     connectors = Seq(ConnectorConfig(name = "generic", `type` = "generic"))
   )
 
+  /**
+    * The profile used when neither `-t` nor `--profile` is given: one `wvlet` connector without a
+    * host, which runs queries on the in-process engine
+    */
+  def defaultWvletProfile = Profile(
+    name = "local",
+    connectors = Seq(ConnectorConfig(name = "wvlet", `type` = "wvlet"))
+  )
+
   def defaultDuckDBProfile = Profile(
     name = "local",
     connectors = Seq(
@@ -152,6 +161,8 @@ object Profile extends LogSupport:
     dbType match
       case DBType.DuckDB =>
         defaultDuckDBProfile
+      case DBType.Wvlet =>
+        defaultWvletProfile
       case other =>
         val tpe = other.toString.toLowerCase
         Profile(name = "local", connectors = Seq(ConnectorConfig(name = tpe, `type` = tpe)))

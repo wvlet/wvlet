@@ -50,7 +50,10 @@ class WvletCompiler(
     opts: WvletGlobalOption,
     compilerOption: WvletCompilerOption,
     workEnv: WorkEnv,
-    dbConnectorProvider: ConnectorProvider
+    dbConnectorProvider: ConnectorProvider,
+    // The profile used when neither -t nor --profile is given. Compiling to SQL defaults to the
+    // DuckDB dialect (catalog `memory`); running a query defaults to the in-process wvlet engine
+    defaultProfile: Profile = Profile.defaultDuckDBProfile
 ) extends LogSupport
     with AutoCloseable:
 
@@ -66,15 +69,15 @@ class WvletCompiler(
         debug(s"Using syntax for ${resolvedDBType}")
         Profile.defaultProfileFor(resolvedDBType)
       case _ =>
-        // Default to the DuckDB profile, matching the wv REPL and the actual default execution
-        // engine. The generic profile carries no catalog, which silently breaks catalog-dependent
-        // lowering (keyed append needs the target's columns; append auto-creation needs table
-        // existence). A dialect-neutral compile is still available with `-t generic`
+        // Default to a profile with a catalog (DuckDB for compile, the wvlet engine for run). The
+        // generic profile carries no catalog, which silently breaks catalog-dependent lowering
+        // (keyed append needs the target's columns; append auto-creation needs table existence).
+        // A dialect-neutral compile is still available with `-t generic`
         Profile.getProfile(
           compilerOption.profile,
           compilerOption.catalog,
           compilerOption.schema,
-          default = Profile.defaultDuckDBProfile
+          default = defaultProfile
         )
 
   // Closing the provider closes every cached connector, including the default engine and the

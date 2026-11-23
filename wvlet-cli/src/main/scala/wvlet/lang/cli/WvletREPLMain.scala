@@ -13,6 +13,7 @@ import wvlet.lang.cli.terminal.HeadlessTerminal
 import wvlet.lang.cli.terminal.UniTerminal
 import wvlet.uni.cli.TerminalIO
 import wvlet.lang.cli.terminal.REPLTerminal
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.QueryExecutorConfig
@@ -51,6 +52,11 @@ object WvletREPLMain extends LogSupport:
 case class WvletREPLOption(
     @option(prefix = "--profile", description = "Profile to use")
     profile: Option[String] = None,
+    @option(
+      prefix = "-t,--target",
+      description = "Engine to use without a profile (wvlet (default), duckdb, ...)"
+    )
+    targetDBType: Option[String] = None,
     @option(prefix = "-c", description = "Run a command and exit")
     commands: List[String] = Nil,
     @option(prefix = "-f,--file", description = "Run commands in a file and exit")
@@ -93,12 +99,24 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
     * with `TerminalIO.inMemory(...)`.
     */
   private[cli] def replDesign(isInteractive: Boolean): Design =
-    val currentProfile: Profile = Profile.getProfile(
-      replOpts.profile,
-      replOpts.catalog,
-      replOpts.schema,
-      Profile.defaultDuckDBProfile
-    )
+    val currentProfile: Profile =
+      replOpts.targetDBType match
+        case Some(target) =>
+          if replOpts.profile.isDefined then
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException("Specify either -t (--target) or --profile")
+          Profile
+            .defaultProfileFor(DBType.fromString(target))
+            .withEngineOverrides(replOpts.catalog, replOpts.schema)
+        case None =>
+          // Without a profile, the REPL runs on the in-process wvlet engine
+          Profile.getProfile(
+            replOpts.profile,
+            replOpts.catalog,
+            replOpts.schema,
+            Profile.defaultWvletProfile
+          )
 
     val selectedCatalog = currentProfile.defaultEngine.catalog
     val selectedSchema  = currentProfile.defaultEngine.schema

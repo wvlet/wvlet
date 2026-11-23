@@ -113,6 +113,16 @@ class QueryExecutor(
     else
       None
 
+  // The in-process engine session for local file reads on engines that can't read local files
+  private def localEngineSession: WvletEngineSession =
+    dbConnectorProvider.getConnector(Profile.defaultWvletProfile.defaultEngine) match
+      case w: WvletEngineConnector =>
+        w.session
+      case other =>
+        throw StatusCode
+          .UNEXPECTED_STATE
+          .newException(s"Expected the wvlet engine connector, but got ${other.connectorType}")
+
   // Resolve a profile connector name to a live connector, for per-stage `on <connector>` in
   // flows and cross-connector staging
   private def profileEngineResolver(name: String): Connector = defaultProfile
@@ -741,9 +751,10 @@ class QueryExecutor(
         // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
         // summary tables
         val q = runEmbeddedToolCalls(runEmbeddedFlows(q0))
-        // Decide whether to auto-switch to DuckDB for simple local file reads
+        // A query reading only local files runs on the in-process wvlet engine when the active
+        // engine (e.g. Trino, Snowflake) can't see local files. DuckDB reads them itself
         def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
-        def prefersDuckDBForLocalRead(r: Relation): Boolean =
+        def readsOnlyLocalFiles(r: Relation): Boolean =
           var hasLocalFile    = false
           var hasNonFileInput = false
           r.traverse {
@@ -758,19 +769,19 @@ class QueryExecutor(
           }
           hasLocalFile && !hasNonFileInput
 
-        val useDuck      = prefersDuckDBForLocalRead(q)
+        val readsLocalFilesOnly = readsOnlyLocalFiles(q)
+        activeEngine.dbType match
+          case DBType.DuckDB | DBType.Generic =>
+          case _ if readsLocalFilesOnly       =>
+            workEnv.info("Auto-switched to the wvlet engine for local file read.")
+            return localEngineSession.execute(q, config.rowLimit)
+          case _ =>
         val generatedSQL = GenSQL.generateSQLFromRelation(q)
-        if useDuck then
-          workEnv.info("Auto-switched to DuckDB for local file read.")
         workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           given monitor: QueryProgressMonitor = context.queryProgressMonitor
-          val connector                       =
-            if useDuck then
-              dbConnectorProvider.getConnector(DBType.DuckDB, None)
-            else
-              activeDBConnector
+          val connector                       = activeDBConnector
 
           val result =
             connector.sqlConnector match

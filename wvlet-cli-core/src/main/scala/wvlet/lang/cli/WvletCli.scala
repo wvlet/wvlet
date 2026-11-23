@@ -64,12 +64,13 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
   private def executeAgainst(opt: WvletCliRunOption): QueryResult =
     val profile = opt.profile.flatMap(Profile.getProfile)
     val engine  = profile.map(_.defaultEngine)
-    // Effective backend: --target wins, then the profile's default engine type, then "duckdb".
+    // Effective backend: --target wins, then the profile's default engine type, then the
+    // in-process wvlet engine
     val backend = opt
       .targetDBType
       .orElse(engine.map(_.`type`))
       .map(_.toLowerCase)
-      .getOrElse("duckdb")
+      .getOrElse("wvlet")
     if backend == "wvlet" && opt.host.orElse(engine.flatMap(_.host)).isDefined then
       // Remote execution: the server compiles and runs the ORIGINAL wvlet text with its own
       // profile, catalogs, and credentials — no local engine or compilation involved

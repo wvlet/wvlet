@@ -6,6 +6,7 @@ import wvlet.uni.cli.launcher.option
 import wvlet.uni.design.Design
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.catalog.Profile
 import wvlet.lang.cli.WvletMain.isInSbt
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.ConnectorProvider
@@ -73,16 +74,25 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
           System.exit(1)
         throw e
 
-  private def design(compilerOptions: WvletCompilerOption): Design =
+  private def design(compilerOptions: WvletCompilerOption, defaultProfile: Profile): Design =
     val workEnv = WorkEnv(compilerOptions.workFolder, opts.logLevel)
     Design
       .newSilentDesign
-      .bindInstance(WvletCompiler(opts, compilerOptions, workEnv, ConnectorProvider(workEnv)))
+      .bindInstance(
+        WvletCompiler(opts, compilerOptions, workEnv, ConnectorProvider(workEnv), defaultProfile)
+      )
 
-  private def withCompiler[A](compilerOption: WvletCompilerOption)(f: WvletCompiler => A): A =
-    design(compilerOption).run[WvletCompiler, A] { compiler =>
+  /**
+    * Run `f` with a compiler for the options. `defaultProfile` applies when neither -t nor
+    * --profile is given: DuckDB SQL for compile / to_wvlet, the in-process wvlet engine for run
+    */
+  private def withCompiler[A](
+      compilerOption: WvletCompilerOption,
+      defaultProfile: Profile = Profile.defaultDuckDBProfile
+  )(f: WvletCompiler => A): A = design(compilerOption, defaultProfile).run[WvletCompiler, A] {
+    compiler =>
       f(compiler)
-    }
+  }
 
   @command(description = "Compile .wv files")
   def compile(compilerOption: WvletCompilerOption): Unit = handleError {
@@ -94,7 +104,7 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
 
   @command(description = "Run a query")
   def run(compilerOption: WvletCompilerOption): Unit = handleError {
-    withCompiler(compilerOption) { compiler =>
+    withCompiler(compilerOption, Profile.defaultWvletProfile) { compiler =>
       compiler.run()
     }
   }
