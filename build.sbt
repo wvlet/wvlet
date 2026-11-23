@@ -229,11 +229,15 @@ def generateSkillBundle(skillDir: File, packageName: String, className: String):
     // Constant strings in a class file are limited to 64 KB
     require(content.getBytes("UTF-8").length < 60000, s"${name} is too large to embed")
     // Raw triple-quoted string; a literal triple quote is spliced in as a separate string
-    val literal = content.split(q3, -1).map(part => s"${q3}${part}${q3}").mkString(" + \"\\\"\\\"\\\"\" + ")
+    val literal = content
+      .split(q3, -1)
+      .map(part => s"${q3}${part}${q3}")
+      .mkString(" + \"\\\"\\\"\\\"\" + ")
     s"""    "${name}" -> (${literal})"""
   }
   // Embedded content is appended after stripMargin, which would otherwise strip Markdown table rows
-  val header = s"""package ${packageName}
+  val header =
+    s"""package ${packageName}
      |
      |import scala.collection.immutable.ListMap
      |
@@ -549,7 +553,7 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.xerial" % "sqlite-jdbc" % "3.54.1.0",
         // Postgres-backed flow run store (shared across machines: concurrency claims,
         // scheduler catch-up, and the web UI observe runs from any process)
-        "org.postgresql" % "postgresql" % "42.7.14",
+        "org.postgresql" % "postgresql" % "42.7.15",
         // In-process real PostgreSQL for run-store tests (no Docker needed), mirroring the
         // TestingTrinoServer pattern below. Binaries are resolved as jar dependencies per
         // platform, so tests run offline after the first sbt update
@@ -565,7 +569,9 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
           .exclude("io.trino" % "trino-tpch")
           .exclude("io.trino" % "trino-exchange-filesystem"),
         ("io.trino" % "trino-exchange-filesystem" % TRINO_VERSION % Test).jar(),
-        ("io.trino" % "trino-memory" % TRINO_VERSION % Test).exclude("io.trino" % "trino-tpch").jar()
+        ("io.trino" % "trino-memory"              % TRINO_VERSION % Test)
+          .exclude("io.trino" % "trino-tpch")
+          .jar()
         //        // Add Spark as a reference impl (Scala 2)
         //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
         //          // exclude sbt-parser-combinators as it conflicts with Scala 3
