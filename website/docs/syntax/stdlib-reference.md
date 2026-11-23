@@ -230,6 +230,7 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `regexp_extract(pattern: string)` | string | all | Extract the first substring matching the regular expression |
 | `regexp_extract(pattern: string, group_index: int)` | string | all |  |
 | `starts_with(prefix: string)` | boolean | all |  |
+| `translate(source: string, target: string)` | string | all | Replace each character of `source` with the character at the same position in `target`; characters of `source` with no counterpart in `target` are removed |
 | `in(v: any*)` | boolean | all |  |
 | `not_in(expr: any*)` | boolean | all |  |
 | `regexp_like(pattern: string)` | boolean | duckdb, trino, hive, snowflake, bigquery | Snowflake's REGEXP_LIKE matches the entire string, so use REGEXP_INSTR for the partial-match semantics of the other engines |
@@ -244,6 +245,15 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `from_base64` | string | duckdb, trino, hive, snowflake, bigquery |  |
 | `to_hex` | string | duckdb, trino, hive, snowflake, bigquery |  |
 | `from_hex` | string | duckdb, trino, hive, snowflake, bigquery |  |
+| `octet_length` | int | duckdb, trino, hive, snowflake, bigquery | Number of bytes in the UTF-8 encoding of the string |
+| `normalize` | string | duckdb, trino, bigquery | Unicode NFC normalization |
+| `regexp_extract_all(pattern: string)` | array[string] | duckdb, trino, snowflake | All matches of the regular expression (the whole match, or the given capture group) |
+| `regexp_extract_all(pattern: string, group_index: int)` | array[string] | duckdb, trino, snowflake |  |
+| `regexp_split(pattern: string)` | array[string] | duckdb, trino | Split the string around matches of the regular expression, keeping empty strings |
+| `url_encode` | string | duckdb, trino | Percent-encode the UTF-8 bytes except A-Z a-z 0-9 - _ . ~ (a space becomes %20), and decode it |
+| `url_decode` | string | duckdb, trino |  |
+| `hamming_distance(other: string)` | int | duckdb, trino | Number of positions with different characters; the strings must have the same length |
+| `jaro_winkler_similarity(other: string)` | double | duckdb | Jaro-Winkler similarity from 0 (different) to 1 (equal); case-sensitive |
 | `levenshtein(other: string)` | int | duckdb, trino, hive, snowflake, bigquery | Edit distance between two strings |
 | `json_extract(path: string)` | json | duckdb, trino, hive, snowflake, bigquery | Extract a JSON value from a string holding JSON text |
 | `json_extract_string(path: string)` | string | duckdb, trino, hive, snowflake, bigquery |  |

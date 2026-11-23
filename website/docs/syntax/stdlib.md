@@ -66,6 +66,14 @@ Available on all values:
 | `s.regexp_replace(pattern, replacement)` | Replace every regex match |
 | `s.split(separator)` | Split into an `array[string]` |
 | `s.levenshtein(other)` | Edit distance |
+| `s.hamming_distance(other)` | Number of positions with different characters (same length required) |
+| `s.jaro_winkler_similarity(other)` | Jaro-Winkler similarity from 0 to 1, case-sensitive (DuckDB) |
+| `s.translate(source, target)` | Replace characters of `source` with those of `target` at the same position; remove the rest |
+| `s.normalize` | Unicode NFC normalization |
+| `s.octet_length` | Number of bytes in UTF-8 |
+| `s.regexp_extract_all(pattern)` / `(pattern, group)` | Every regex match (or capture group) as an `array[string]` |
+| `s.regexp_split(pattern)` | Split around regex matches, keeping empty strings |
+| `s.url_encode` / `s.url_decode` | Percent-encoding of UTF-8 bytes (a space is `%20`), and its inverse |
 | `s.md5` / `s.sha1` / `s.sha256` | Lowercase hex digest of the UTF-8 bytes |
 | `s.to_base64` / `s.from_base64` | Base64 encoding of the UTF-8 bytes, and its inverse |
 | `s.to_hex` / `s.from_hex` | Lowercase hex of the UTF-8 bytes, and its inverse (either case) |

@@ -52,7 +52,8 @@ object ScalarFunctions:
     */
   private def stringArg(name: String, e: VExpr): VExpr =
     e.ptype match
-      case PType.Str | PType.Null =>
+      // AnyT holds e.g. elements of a non-constant list, which are strings here at run time
+      case PType.Str | PType.Null | PType.AnyT =>
         str(e)
       case other =>
         throw StatusCode
@@ -555,7 +556,7 @@ object ScalarFunctions:
     def reg(names: String*)(b: Builder): Unit = names.foreach(n => m += n -> b)
 
     // ---- strings ----
-    reg("length", "char_length", "character_length", "len", "strlen") { args =>
+    reg("length", "char_length", "character_length", "len") { args =>
       arity("length", args, 1)
       args.head.ptype match
         case PType.AnyT =>
@@ -788,6 +789,82 @@ object ScalarFunctions:
     }
     reg("md5") { args =>
       fn("md5", Seq(str(args.head)), PType.Str)(a => MD5.hex(a(0).asInstanceOf[String]))
+    }
+    // DuckDB's strlen counts UTF-8 bytes, unlike length
+    reg("strlen") { args =>
+      arity("strlen", args, 1)
+      fn("strlen", Seq(stringArg("strlen", args.head)), PType.Int64)(a =>
+        TextFunctions.octetLength(a(0).asInstanceOf[String])
+      )
+    }
+    reg("translate") { args =>
+      arity("translate", args, 3)
+      (args(1), args(2)) match
+        case (Const(f: String, _), Const(t: String, _)) =>
+          // Constant character sets: build the mapping once, not per row
+          val m = TextFunctions.translation(f, t)
+          fn("translate", Seq(str(args(0))), PType.Str)(a =>
+            TextFunctions.translate(a(0).asInstanceOf[String], m)
+          )
+        case _ =>
+          fn("translate", args.map(str), PType.Str)(a =>
+            TextFunctions.translate(
+              a(0).asInstanceOf[String],
+              TextFunctions.translation(a(1).asInstanceOf[String], a(2).asInstanceOf[String])
+            )
+          )
+    }
+    reg("nfc_normalize") { args =>
+      arity("nfc_normalize", args, 1)
+      fn("nfc_normalize", Seq(stringArg("nfc_normalize", args.head)), PType.Str)(a =>
+        TextFunctions.nfcNormalize(a(0).asInstanceOf[String])
+      )
+    }
+    reg("url_encode") { args =>
+      arity("url_encode", args, 1)
+      fn("url_encode", Seq(stringArg("url_encode", args.head)), PType.Str)(a =>
+        TextFunctions.urlEncode(a(0).asInstanceOf[String])
+      )
+    }
+    reg("url_decode") { args =>
+      arity("url_decode", args, 1)
+      fn("url_decode", Seq(stringArg("url_decode", args.head)), PType.Str)(a =>
+        TextFunctions.urlDecode(a(0).asInstanceOf[String])
+      )
+    }
+    reg("hamming") { args =>
+      arity("hamming", args, 2)
+      fn("hamming", args.map(str), PType.Int64)(a =>
+        TextFunctions.hamming(a(0).asInstanceOf[String], a(1).asInstanceOf[String])
+      )
+    }
+    reg("jaro_winkler_similarity") { args =>
+      arity("jaro_winkler_similarity", args, 2)
+      fn("jaro_winkler_similarity", args.map(str), PType.Float64)(a =>
+        TextFunctions.jaroWinkler(a(0).asInstanceOf[String], a(1).asInstanceOf[String])
+      )
+    }
+    reg("regexp_extract_all") { args =>
+      arity("regexp_extract_all", args, 2, 3)
+      val in = Seq(str(args(0)), str(args(1))) ++ args.drop(2).map(toLong)
+      fn("regexp_extract_all", in, PType.AnyT) { a =>
+        val group =
+          if a.length > 2 then
+            a(2).asInstanceOf[Long].toInt
+          else
+            0
+        TextFunctions.regexpExtractAll(
+          a(0).asInstanceOf[String],
+          cachedRegex(a(1).asInstanceOf[String]),
+          group
+        )
+      }
+    }
+    reg("regexp_split_to_array") { args =>
+      arity("regexp_split_to_array", args, 2)
+      fn("regexp_split_to_array", args.map(str), PType.AnyT)(a =>
+        TextFunctions.regexpSplit(a(0).asInstanceOf[String], cachedRegex(a(1).asInstanceOf[String]))
+      )
     }
     reg("sha1") { args =>
       arity("sha1", args, 1)
