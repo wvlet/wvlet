@@ -186,6 +186,18 @@ class EngineDecorrelateTest extends UniTest:
     sameRows(query).nonEmpty shouldBe true
   }
 
+  test("keep IN over a much larger subquery above the ordered tree") {
+    // The semi join would build on the input; over the tree, the joins reduce it first
+    val query =
+      """select n_name, r_name from nation, region
+        |where n_regionkey = r_regionkey
+        |  and r_regionkey in (select l_suppkey from lineitem)""".stripMargin
+    val p = runtimePlan(query)
+    joinKinds(p).headOption shouldBe Some(JoinKind.Semi)
+    joinAboveSemi(p) shouldBe None
+    sameRows(query).nonEmpty shouldBe true
+  }
+
   test("keep IN above the ordered tree with place_semi_joins disabled") {
     val query =
       """select n_name, r_name from nation, region
