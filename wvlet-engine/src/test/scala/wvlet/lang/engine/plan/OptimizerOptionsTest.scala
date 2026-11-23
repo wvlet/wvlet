@@ -62,7 +62,8 @@ class OptimizerOptionsTest extends UniTest:
         "runtime_join_filters",
         "presize_aggregates",
         "parallelize",
-        "late_gather"
+        "late_gather",
+        "concurrent_shared_ctes"
       )
   }
 

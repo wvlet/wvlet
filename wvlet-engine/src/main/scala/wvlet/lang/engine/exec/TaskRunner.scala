@@ -24,6 +24,13 @@ trait TaskRunner:
 
   def submit[A](task: () => A): TaskRunner.Handle[A]
 
+  /**
+    * Run a task that may itself wait for tasks of this runner (e.g. drain a plan with parallel
+    * operators), on a coordinator thread outside the pool, so that pool threads never wait for pool
+    * tasks. Runs the task when it is submitted, on the calling thread, where there are no threads
+    */
+  def coordinate[A](task: () => A): TaskRunner.Handle[A] = TaskRunner.Sequential.submit(task)
+
 object TaskRunner extends TaskRunnerCompatImpl:
 
   /** A submitted task */
@@ -71,3 +78,9 @@ end TaskRunner
 /** The platform's default task runner */
 trait TaskRunnerCompat:
   def default: TaskRunner
+
+  /**
+    * Wait on `lock`'s monitor (held by the caller) until another thread notifies it. Scala.js has a
+    * single thread, so there is never another thread to wait for
+    */
+  def awaitNotify(lock: AnyRef): Unit
