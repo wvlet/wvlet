@@ -29,6 +29,7 @@ import wvlet.lang.engine.plan.VExprs
 import wvlet.lang.engine.vector.PType
 
 import scala.collection.mutable
+import scala.util.control.NonFatal
 
 /**
   * Pushes filter conjuncts down the plan, in one top-down walk after [[Normalize]] and before
@@ -72,9 +73,9 @@ object PushDownFilters extends Pass:
 
   /**
     * Rows of p for which the conditions are true: pushed down p as far as they go, or a filter over
-    * p when the pass is disabled. With `throughFilters`, they also move below the filters in p
-    * along with the filters' own conjuncts (for a plan already optimized, such as a shared CTE
-    * body), instead of staying above them
+    * p when the pass is disabled. With `throughFilters`, they also move below the filters directly
+    * over aggregations in p (HAVING), along with those filters' own conjuncts (for a plan already
+    * optimized, such as a shared CTE body), instead of staying above them
     */
   def filter(
       p: RuntimePlan,
@@ -104,7 +105,9 @@ object PushDownFilters extends Pass:
             val own = conjuncts(cond.expr).map(Conjunct(_, counts))
             if !own.forall(c => isDeterministic(c.expr)) then
               filter(f.copy(child = push(child, Nil)), conds)
-            else if throughFilters && conds.nonEmpty then
+            else if throughFilters && conds.nonEmpty && child.isInstanceOf[Aggregate] then
+              // A HAVING filter: the conditions read the grouping keys, which every input row of
+              // a group shares, so they can't fail on rows the filter would have dropped
               moved(conds)
               push(child, own ++ conds)
             else
@@ -363,8 +366,15 @@ object PushDownFilters extends Pass:
 
   end inferred
 
+  /** Whether a row-independent conjunct is true; one that fails to evaluate is kept as a filter */
   private def isTrue(e: VExpr): Boolean =
-    e.isConstant && isDeterministic(e) && Kernels.scalarOf(e).contains(true)
+    e.isConstant && isDeterministic(e) && (
+      try
+        Kernels.scalarOf(e).contains(true)
+      catch
+        case NonFatal(_) =>
+          false
+    )
 
   /**
     * The conditions implied by every one of `filters`, the conditions of the readers of a shared
