@@ -373,6 +373,28 @@ class EngineRuntimePlanTest extends UniTest:
     rowsOf(engine, query) shouldBe expected
   }
 
+  test("bind a USING join as a join under a projection merging its keys") {
+    val left  = "from [[1, 'a'], [2, 'b'], [null, 'c']] as l(id, x)"
+    val right = "{ from [[1, 'p'], [3, 'q'], [null, 'r']] as r(id, y) }"
+    for kind <- Seq("", "left ", "right ", "full ") do
+      val query =
+        s"""${left}
+          |${kind}join ${right} on id
+          |where y is null or id != 2
+          |select id, x, y
+          |order by id, x, y""".stripMargin
+      val p = runtimePlan(query)
+      debug(p.explain)
+      legacyLeafCount(p) shouldBe 0
+      val js = joins(p)
+      js.size shouldBe 1
+      js.head.leftKeys.size shouldBe 1
+      PlanValidator.violations(p) shouldBe Nil
+      val expected = rowsOf(legacy, query)
+      expected.nonEmpty shouldBe true
+      rowsOf(engine, query) shouldBe expected
+  }
+
   test("bind an inner join tree with its filters to joins over scans") {
     val p = runtimePlan("""from nation, region
         |where n_regionkey = r_regionkey and r_name = 'ASIA'

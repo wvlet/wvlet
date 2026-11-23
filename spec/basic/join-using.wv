@@ -1,0 +1,56 @@
+-- Joins on same-named columns (USING): one merged key column per key
+from [[1, 'a'], [2, 'b'], [null, 'c']] as l(id, x)
+join {
+  from [[1, 'p'], [3, 'q'], [null, 'r']] as r(id, y)
+}
+on id
+select id, x, y
+order by id
+
+test _.rows should be [
+  [1, 'a', 'p'],
+]
+
+from [[1, 'a'], [2, 'b'], [null, 'c']] as l(id, x)
+left join {
+  from [[1, 'p'], [3, 'q'], [null, 'r']] as r(id, y)
+}
+on id
+select id, x, y
+order by x
+
+test _.rows should be [
+  [1, 'a', 'p'],
+  [2, 'b', null],
+  [null, 'c', null],
+]
+
+from [[1, 'a'], [2, 'b'], [null, 'c']] as l(id, x)
+right join {
+  from [[1, 'p'], [3, 'q'], [null, 'r']] as r(id, y)
+}
+on id
+select id, x, y
+order by y
+
+test _.rows should be [
+  [1, 'a', 'p'],
+  [3, null, 'q'],
+  [null, null, 'r'],
+]
+
+-- FULL joins coalesce the keys of both sides
+from [[1, 'a'], [2, 'b'], [null, 'c']] as l(id, x)
+full join {
+  from [[1, 'p'], [3, 'q'], [null, 'r']] as r(id, y)
+}
+on id
+where id is not null
+select id, x, y
+order by id
+
+test _.rows should be [
+  [1, 'a', 'p'],
+  [2, 'b', null],
+  [3, null, 'q'],
+]

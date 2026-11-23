@@ -3002,17 +3002,26 @@ class Planner(
     val kind  = joinKind(j)
     if j.asof then
       return planAsOfJoin(j, left, right, kind)
-    j.cond match
-      case u: JoinOnTheSameColumns =>
-        val names = u.columns.map(_.leafName)
-        usingJoin(left, right, names, kind)
-      case _: NaturalJoin =>
-        val names = left.schema.names.filter(n => right.schema.names.exists(_.equalsIgnoreCase(n)))
-        usingJoin(left, right, names.toList, kind)
-      case _ =>
+    usingKeys(j, left.schema, right.schema) match
+      case Some(names) =>
+        usingJoin(left, right, names, kind, operatorPlans)
+      case None =>
         joinOn(j, kind, left, right, operatorPlans)
 
   end planOuterJoin
+
+  /**
+    * The key names of a USING or NATURAL join of inputs with these schemas: the listed columns, or
+    * the left columns the right input also has. None for other joins
+    */
+  private[engine] def usingKeys(j: Join, left: Schema, right: Schema): Option[List[String]] =
+    j.cond match
+      case u: JoinOnTheSameColumns =>
+        Some(u.columns.map(_.leafName))
+      case _: NaturalJoin =>
+        Some(left.names.filter(n => right.names.exists(_.equalsIgnoreCase(n))).toList)
+      case _ =>
+        None
 
   /**
     * A join of planned inputs on its ON condition (or none): equalities between the inputs become
@@ -3076,31 +3085,6 @@ class Planner(
   end joinOn
 
   /**
-    * An outer hash join, building on the smaller input: when the right (build) input is estimated
-    * to be much larger than the left one, the inputs swap sides (LEFT becomes RIGHT and back) and a
-    * projection restores the left-then-right column order. The larger input then becomes the probe
-    * side, which runs in parallel parts, and the hash table holds the smaller one
-    */
-  private def outerHashJoin(
-      left: Operator,
-      right: Operator,
-      lk: IndexedSeq[VExpr],
-      rk: IndexedSeq[VExpr],
-      kind: JoinKind,
-      residual: Option[VExpr],
-      combined: Schema
-  ): Operator = JoinOrderOptimizer.joinOp(
-    left,
-    right,
-    kind,
-    lk,
-    rk,
-    residual,
-    swapsOuterBuild(kind, left, right),
-    combined
-  )
-
-  /**
     * Whether an outer hash join builds on its left input, as the right (build) input is estimated
     * to be much larger
     */
@@ -3111,23 +3095,37 @@ class Planner(
       case _ =>
         false
 
-  /** JOIN ... USING (cols): one output column per key (coalesced for outer joins) */
-  private def usingJoin(
-      left: Operator,
-      right: Operator,
+  /**
+    * JOIN ... USING (cols) of planned inputs: a hash join on the keys (building on the smaller
+    * input for outer joins), then one output column per key (the right key for RIGHT joins,
+    * coalesced for FULL joins), followed by the other left and right columns
+    */
+  private[engine] def usingJoin[P](
+      leftPlan: P,
+      rightPlan: P,
       names: List[String],
-      kind: JoinKind
-  ): Operator =
+      kind: JoinKind,
+      builder: JoinTreeBuilder[P] & AggPlanBuilder[P]
+  ): P =
+    val left  = builder.op(leftPlan)
+    val right = builder.op(rightPlan)
     val lb    = Binder(this, BindScope(left.schema))
     val rb    = Binder(this, BindScope(right.schema))
     val pairs = names.map(n =>
       (UnquotedIdentifier(n, NoSpan): Expression, UnquotedIdentifier(n, NoSpan): Expression)
     )
     val (lk, rk) = joinKeys(lb, rb, pairs)
-    val combined = left.schema ++ right.schema
-    val join     = outerHashJoin(left, right, lk, rk, kind, None, combined)
-    val lw       = left.schema.size
-    val keyIdx   = names.map { n =>
+    val join     = builder.join(
+      leftPlan,
+      rightPlan,
+      kind,
+      lk,
+      rk,
+      None,
+      buildLeft = swapsOuterBuild(kind, left, right)
+    )
+    val lw     = left.schema.size
+    val keyIdx = names.map { n =>
       (
         left.schema.names.indexWhere(_.equalsIgnoreCase(n)),
         right.schema.names.indexWhere(_.equalsIgnoreCase(n))
@@ -3160,7 +3158,7 @@ class Planner(
       keyExprs ++ leftRest.map(i => ColRef(i, left.schema(i).ptype, left.schema(i).name)) ++
         rightRest.map(i => ColRef(lw + i, right.schema(i).ptype, right.schema(i).name))
     val fields = keyFields ++ leftRest.map(left.schema(_)) ++ rightRest.map(right.schema(_))
-    ProjectOp(join, exprs.toIndexedSeq, Schema(fields.toIndexedSeq))
+    builder.project(join, exprs.toIndexedSeq, Schema(fields.toIndexedSeq))
 
   end usingJoin
 
