@@ -712,10 +712,9 @@ class RuntimeBinder(planner: Planner):
       val cte = planner.sharedInput(label, body, op)
       () => Lowered(RuntimePlan.CTERef(cte, columnsOf(schema)), cte.reader(schema))
 
-    override def values(schema: Schema, rows: Batch): Lowered = Lowered(
-      RuntimePlan.Values(columnsOf(schema), rows),
-      BatchesOp(schema, Seq(rows))
-    )
+    override def values(schema: Schema, rows: Batch): Lowered =
+      val p = RuntimePlan.Values(columnsOf(schema), rows)
+      Lowered(p, Lowering(p))
 
     override def union(inputs: IndexedSeq[Lowered], schema: Schema): Lowered = Lowered(
       RuntimePlan.Union(inputs.map(_.plan), columnsOf(schema)),
