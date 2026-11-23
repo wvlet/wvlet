@@ -19,7 +19,7 @@
 - `Stats.rows(CTERef)` returns the recorded count, and the CTE's table source reports it as `estimatedRows`, so `CardinalityEstimator` over the lowered scan reads the same number (keeps the two estimators in step). Without a count, both still say 1e6.
 - The root's bound plan is optimized again with the same passes; when the optimized plan differs, it is lowered and physically optimized again, and that operator replaces the first one. Otherwise the first operator is kept.
 - Re-lowering creates new CTE readers after the body was filtered. That is allowed only when the new reader's filter equals a filter some reader already reported, since then it implies the conditions pushed into the body; anything else still fails with UNEXPECTED_STATE.
-- Join order shouldn't change which columns a reader reads, but this is checked rather than assumed: if a new reader's scan reads a column the result dropped, the first operator is kept.
+- Join order shouldn't change which columns a reader reads, but this is checked rather than assumed: if a new reader's scan reads a column the result dropped, or a reader is refused, the first operator is kept (tests, which validate plans, raise the error instead).
 - The second run uses its own optimizer, so `firedRules` counts each rule of the root plan once.
 - A new toggle `replan_materialized_ctes` turns the step off. Off, the plans and the time when CTEs run are as before.
 - Plan-time effect: `explain` now runs the shared CTEs that joins read, as it already runs uncorrelated scalar subqueries. A CTE that execution would only partly read (under a LIMIT, behind an empty build side) is now computed in full. An error in such a CTE body now shows up during planning, not during execution.

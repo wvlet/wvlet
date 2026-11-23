@@ -10,7 +10,7 @@ A shared CTE (read more than once) is computed once and read from memory. Its bo
 
 - After the outermost plan finalizes its shared CTEs, the planner looks in the root's bound runtime plan for the joins `ReorderJoins` still decides: `InnerJoins` graphs, and outer hash joins, whose build side it picks. If a `CTERef` sits below one of them, the planner computes those CTEs and records their exact row counts. `Stats.rows(CTERef)` and the CTE table's `estimatedRows` (read by `CardinalityEstimator`) both return the count.
 - The logical passes run again over the root's bound plan, with an optimizer of their own so that `firedRules` counts each rule once. When the result differs from the first optimized plan, it is lowered again and replaces the first operator.
-- The CTE is computed before its readers are planned a second time, so they can't change what the result keeps. A new reader is allowed after the body was filtered when its filter equals one a reader already reported, since that filter implies the pushed conditions. If a new reader's scan reads a column the result dropped, the planner keeps the first operator.
+- The CTE is computed before its readers are planned a second time, so they can't change what the result keeps. A new reader is allowed after the body was filtered when its filter equals one a reader already reported, since that filter implies the pushed conditions. If a new reader's scan reads a column the result dropped, or a reader is refused, the planner keeps the first operator; with `validatePlans` (tests) it raises the error instead.
 - `replan_materialized_ctes` turns it off. With the toggle off, plans are identical to those before the change and CTEs run at execution, as before.
 
 ## Consequences
