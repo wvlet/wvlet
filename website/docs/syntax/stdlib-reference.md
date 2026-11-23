@@ -388,6 +388,18 @@ A column reference after `group by` also has an array type, so aggregation funct
 | `stddev_samp` | A | all |  |
 | `var_pop` | A | all |  |
 | `var_samp` | A | all |  |
+| `corr(x: sql)` | double | all | Correlation and covariance of (this, x) pairs, skipping pairs with a NULL |
+| `covar_pop(x: sql)` | double | all |  |
+| `covar_samp(x: sql)` | double | all |  |
+| `regr_slope(x: sql)` | double | duckdb, trino, hive, snowflake | Least-squares line of this (dependent) over x (independent), skipping pairs with a NULL |
+| `regr_intercept(x: sql)` | double | duckdb, trino, hive, snowflake |  |
+| `regr_r2(x: sql)` | double | duckdb, hive, snowflake | Coefficient of determination of the line, and the number of non-NULL pairs |
+| `regr_count(x: sql)` | long | duckdb, hive, snowflake |  |
+| `kurtosis` | double | duckdb, trino, snowflake | Sample excess kurtosis (NULL for fewer than 4 values) and sample skewness (fewer than 3) |
+| `skewness` | double | duckdb, trino, snowflake | Trino's skewness is the population form: apply the sample correction |
+| `bit_and` | A | duckdb, trino, snowflake, bigquery | Bitwise AND / OR / XOR of the integer values |
+| `bit_or` | A | duckdb, trino, snowflake, bigquery |  |
+| `bit_xor` | A | duckdb, trino, snowflake, bigquery |  |
 | `approx_quantile(pos: double)` | A | trino, duckdb, hive, snowflake, bigquery |  |
 
 ## Map Values
