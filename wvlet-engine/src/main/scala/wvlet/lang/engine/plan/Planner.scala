@@ -28,7 +28,6 @@ import wvlet.lang.engine.runtime.RuntimeBinder
 import wvlet.lang.engine.runtime.Lowering
 import wvlet.lang.engine.runtime.Optimizer
 import wvlet.lang.engine.runtime.PlanValidator
-import wvlet.lang.engine.runtime.PruneColumns
 import wvlet.lang.engine.runtime.RuntimePlan
 import wvlet.lang.engine.runtime.SharedCTE
 import wvlet.lang.engine.vector.*
@@ -525,26 +524,24 @@ class Planner(
     val key = name.toLowerCase
     sharedCTE(name) match
       case Some(c) =>
+        // With the runtime planner: a reader of the deferred CTE that runtime plans read too
         c.reader(c.body.schema)
       case None =>
-        planTableOrCTE(key, name, fullName)
-
-  private def planTableOrCTE(key: String, name: String, fullName: String): Operator =
-    cteDefs.get(key) match
-      case Some(d) if enabled(Optimization.ShareCTEs) && cteRefCounts.getOrElse(key, 0) > 1 =>
-        val shared =
-          cteTables.get(key) match
-            case Some((defn, r)) if defn eq d =>
-              r
-            case _ =>
-              val r = SharedResult(optimizePhysical(planAliased(d)))
-              cteTables(key) = (d, r)
-              r
-        shared.newReader(s"CTE[${name}]")
-      case Some(d) =>
-        planAliased(d)
-      case None =>
-        scanOp(tableSource(name, fullName), Some(name))
+        cteDefs.get(key) match
+          case Some(d) if enabled(Optimization.ShareCTEs) && cteRefCounts.getOrElse(key, 0) > 1 =>
+            val shared =
+              cteTables.get(key) match
+                case Some((defn, r)) if defn eq d =>
+                  r
+                case _ =>
+                  val r = SharedResult(optimizePhysical(planAliased(d)))
+                  cteTables(key) = (d, r)
+                  r
+            shared.newReader(s"CTE[${name}]")
+          case Some(d) =>
+            planAliased(d)
+          case None =>
+            scanOp(tableSource(name, fullName), Some(name))
 
   /** The source of a catalog table (not a CTE) */
   private[engine] def tableSource(name: String, fullName: String): TableSource = catalog
@@ -1198,12 +1195,7 @@ class Planner(
         // A scan of the result as a table whose parts are its batches, so that the Parallelizer
         // runs the filters, join probes, and aggregations over a reader in parallel, as over a
         // Parquet scan (scans select columns by name, so names must be unique)
-        ScanOp(
-          SharedTable(label, op.schema, () => batches, sharedPlan, this),
-          op.schema,
-          None,
-          None
-        )
+        ScanOp(SharedTable(label, op.schema, this), op.schema, None, None)
       else
         SharedReader(this, op.schema, label)
 
@@ -1215,16 +1207,11 @@ class Planner(
     override protected def extraInputs(indent: Int): Seq[String] = shared.sharedPlan(indent).toSeq
 
   /** Batches computed on first read, scanned as a table whose parts are the batches */
-  private class SharedTable(
-      val name: String,
-      val schema: Schema,
-      batches: () => Seq[Batch],
-      plan: Int => Option[String],
-      val shared: SharedResult
-  ) extends TableSource:
+  private class SharedTable(val name: String, val schema: Schema, val shared: SharedResult)
+      extends TableSource:
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = selector(spec)
-      batches().iterator.map(sel)
+      shared.batches.iterator.map(sel)
 
     /** Selects the requested columns of a batch; the positions are looked up once per scan */
     private def selector(spec: ScanSpec): Batch => Batch =
@@ -1238,14 +1225,14 @@ class Planner(
     override def canSplit: Boolean = true
 
     override def scanSplits(spec: ScanSpec): Option[ScanSplits] =
-      val bs = batches().filter(_.size > 0)
+      val bs = shared.batches.filter(_.size > 0)
       if bs.size <= 1 then
         None
       else
         val sel = selector(spec)
         Some(ScanSplits(bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))), () => ()))
 
-    override def explainDetail(indent: Int): Option[String] = plan(indent)
+    override def explainDetail(indent: Int): Option[String] = shared.sharedPlan(indent)
 
   end SharedTable
 
