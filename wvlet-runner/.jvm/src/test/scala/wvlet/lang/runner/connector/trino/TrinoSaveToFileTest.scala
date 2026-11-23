@@ -100,4 +100,14 @@ class TrinoSaveToFileTest extends UniTest:
     Files.readString(saveTo("out.txt", " with format: 'csv'")) shouldContain "id,name"
   }
 
+  test("should reject a local Iceberg table") {
+    val path = dir.resolve("tbl")
+    val unit = CompilationUnit.fromWvletString(
+      s"from [[1]] as t(id) | save to '${path}' with format: 'iceberg'"
+    )
+    val result = compiler.compileSingleUnit(unit)
+    val e      = intercept[Exception](executor.executeSingle(unit, result.context))
+    e.getMessage shouldContain "Iceberg"
+  }
+
 end TrinoSaveToFileTest

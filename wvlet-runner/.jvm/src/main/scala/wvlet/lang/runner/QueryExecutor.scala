@@ -42,6 +42,7 @@ import wvlet.lang.runner.activity.ItemStore
 import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.connector.LocalFileExport
+import wvlet.lang.engine.catalog.DataFileFormat
 import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.engine.WvletEngineConnector
@@ -400,14 +401,20 @@ class QueryExecutor(
         .newException(
           s"Saving to a remote path is not supported on ${context.dbType}: ${targetPath}"
         )
+    val options = localEngineSession.saveOptionsOf(save)
+    // The Iceberg writer collects every row before committing, so it can't stream a remote result
+    if DataFileFormat.of(targetPath, options.get("format").map(_.toString)) ==
+        DataFileFormat.Iceberg
+    then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"Saving to a local Iceberg table is not supported on ${context.dbType}; " +
+            "save to a Parquet, CSV, TSV, or JSON file instead"
+        )
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
-    val n                               = LocalFileExport.write(
-      activeDBConnector,
-      baseSQL.sql,
-      targetPath,
-      localEngineSession.saveOptionsOf(save)
-    )
+    val n = LocalFileExport.write(activeDBConnector, baseSQL.sql, targetPath, options)
     workEnv.info(s"Saved ${n} rows to ${targetPath}")
     QueryResult.empty
 
