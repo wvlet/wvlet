@@ -1000,9 +1000,9 @@ class RuntimeBinder(planner: Planner):
     RuntimePlan.Project(u, out.map(BExpr.ref), out.map(c => newColumn(c.toField)))
 
   /**
-    * An item without unnest, which the binder evaluates in a projection. Subqueries in items are
-    * uncorrelated and bind as plan-time constants (`Planner.bindScalarSubquery`, `bindInSubquery`,
-    * `bindExists`), as the planner binds them
+    * An item without unnest, which the binder evaluates in a projection. Uncorrelated subqueries in
+    * items bind as plan-time constants (`Planner.bindScalarSubquery`, `bindInSubquery`,
+    * `bindExists`), and correlated ones fail, as on the planner
     */
   private def isPlainItem(i: Attribute): Boolean = planner.unnestArg(i).isEmpty
 
