@@ -613,6 +613,9 @@ trait SharedCTE:
   /** The bound and optimized body, whose output the readers read */
   def body: RuntimePlan
 
+  /** The exact rows of the result, once it is computed for planning (None before) */
+  def rows: Option[Long] = None
+
   /**
     * An operator reading the result, with the output columns of the body under `schema`. `filter`
     * is the condition the reader applies right above it, over the body's column ids: when every

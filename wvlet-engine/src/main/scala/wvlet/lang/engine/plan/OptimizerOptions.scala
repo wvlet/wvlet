@@ -68,6 +68,12 @@ enum Optimization(val name: String):
     */
   case PushDownCTEFilters extends Optimization("push_down_cte_filters")
 
+  /**
+    * Compute the shared CTEs that joins of the query read once they are planned, and order those
+    * joins again with the exact row counts
+    */
+  case ReplanMaterializedCTEs extends Optimization("replan_materialized_ctes")
+
   /** Read and pass only the columns the operators above use */
   case PruneColumns extends Optimization("prune_columns")
 

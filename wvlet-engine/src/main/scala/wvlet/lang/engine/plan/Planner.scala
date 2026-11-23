@@ -101,12 +101,108 @@ class Planner(
     try
       if enabled(Optimization.PrefetchScalarSubqueries) then
         prefetchScalarSubqueries(r)
-      val op = optimizePhysical(planRelation(r))
       if planDepth == 1 then
-        finalizeCTEs(op)
-      op
+        planRoot(r)
+      else
+        optimizePhysical(planRelation(r))
     finally
       planDepth -= 1
+
+  /**
+    * Plan the outermost relation: lower it, then the shared CTE bodies for the columns and rows its
+    * readers read. When joins read a shared CTE, compute it and order the joins again with its
+    * exact row count ([[replanJoinedCTEs]])
+    */
+  private def planRoot(r: Relation): Operator =
+    val bound     = runtimeBinder.bind(r)
+    val optimized = optimizeRuntime(bound)
+    val op        = optimizePhysical(Lowering(optimized))
+    finalizeCTEs(op)
+    if enabled(Optimization.ReplanMaterializedCTEs) then
+      replanJoinedCTEs(bound, optimized).getOrElse(op)
+    else
+      op
+
+  /**
+    * Compute the shared CTEs that joins of `bound` read (inner join graphs, and outer hash joins,
+    * whose build side depends on the rows), and run the logical passes over `bound` again, which
+    * now read their exact row counts. The re-optimized plan, lowered, if it differs from
+    * `optimized`.
+    *
+    * A CTE's readers read the same columns and filters in any join order, so the second plan reads
+    * the result the first plan's readers finalized ([[DeferredCTE.reader]]); if it can't, the first
+    * plan is kept (with `validatePlans`, the error is raised). The CTE bodies keep the join order
+    * chosen when they were bound
+    */
+  private def replanJoinedCTEs(bound: RuntimePlan, optimized: RuntimePlan): Option[Operator] =
+    import RuntimePlan.*
+    val joined                                            = mutable.LinkedHashSet.empty[DeferredCTE]
+    def collect(p: RuntimePlan, underJoin: Boolean): Unit =
+      p match
+        case CTERef(cte: DeferredCTE, _) if underJoin =>
+          joined += cte
+        case _ =>
+          val below =
+            underJoin || (
+              p match
+                case _: InnerJoins =>
+                  true
+                case j: Join =>
+                  j.leftKeys.nonEmpty &&
+                  (j.kind == JoinKind.Left || j.kind == JoinKind.Right || j.kind == JoinKind.Full)
+                case _ =>
+                  false
+            )
+          p.children.foreach(collect(_, below))
+    collect(bound, underJoin = false)
+    if joined.isEmpty then
+      None
+    else
+      joined.foreach(_.materialize())
+      // A separate run, so that firedRules counts the rules of the plan once
+      val replanned = Optimizer.default(options).run(bound)
+      if replanned == optimized then
+        None
+      else
+        try
+          val op = optimizePhysical(Lowering(replanned))
+          if !readsKeptColumns(op) then
+            throw StatusCode
+              .UNEXPECTED_STATE
+              .newException("A re-planned shared CTE reader reads a column its result dropped")
+          Some(op)
+        catch
+          case e: WvletLangException
+              if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
+            warn(s"Keeping the first plan: ${e.getMessage}")
+            None
+
+  end replanJoinedCTEs
+
+  /**
+    * Whether every scan of a finalized shared CTE in `root` reads only columns its result keeps; a
+    * plan lowered again after finalization must, or it would fail when it runs
+    */
+  private def readsKeptColumns(root: Operator): Boolean =
+    val visited                      = java.util.IdentityHashMap[AnyRef, Unit]()
+    def check(op: Operator): Boolean =
+      visited.containsKey(op) || {
+        visited.put(op, ())
+        val ok =
+          op match
+            case s: ScanOp =>
+              s.source match
+                case t: CTETable =>
+                  t.cte.keeps(s.columns)
+                case t: SharedTable =>
+                  check(t.shared.op)
+                case _ =>
+                  true
+            case _ =>
+              true
+        ok && (op.children ++ op.sharedInputs).forall(check)
+      }
+    check(root)
 
   /**
     * Evaluate uncorrelated scalar subqueries that aggregate the same input (e.g. the count, avg,
@@ -965,7 +1061,9 @@ class Planner(
     // The filter each reader applies right above it, in creation order (None: none or unknown)
     private val readerFilters = mutable.ArrayBuffer.empty[Option[JoinCondition]]
     // Whether the result keeps only the rows the readers' filters agree on
-    private var filtered          = false
+    private var filtered = false
+    // The exact rows of the result, once materialized for planning
+    private var rowCount          = Option.empty[Long]
     private lazy val label        = s"CTE[${name}]"
     private lazy val uniqueNames  = body.schema.names.distinct.size == body.schema.size
     private lazy val bodyPosition = body.schema.names.zipWithIndex.toMap
@@ -975,8 +1073,17 @@ class Planner(
     /** Record that a reader reads these body output positions */
     def need(positions: Iterable[Int]): Unit = needed ++= positions
 
+    override def rows: Option[Long] = rowCount
+
+    /** Compute the result now, and record its exact row count for planning */
+    def materialize(): Unit =
+      if rowCount.isEmpty then
+        rowCount = Some(batches.map(_.size.toLong).sum)
+
     override def reader(schema: Schema, filter: Option[JoinCondition]): Operator =
-      if filtered then
+      // A reader with the filter of an earlier reader (a plan lowered again) keeps the rows that
+      // the result keeps for that reader
+      if filtered && !filter.exists(f => readerFilters.contains(Some(f))) then
         throw StatusCode
           .UNEXPECTED_STATE
           .newException(s"${label} is read after its result was filtered for its other readers")
@@ -1052,6 +1159,11 @@ class Planner(
     /** The result operator, once finalized */
     def resultOp: Option[Operator] = finalized.map(_._2.op)
 
+    /** Whether the result keeps the columns of a scan (body output positions; None: all) */
+    def keeps(columns: Option[IndexedSeq[Int]]): Boolean = finalized.forall { (keep, _) =>
+      columns.getOrElse(body.output.indices).forall(keep.contains)
+    }
+
     /** Selects the columns of a scan (body column names) from the result batches */
     def selector(columns: Option[Seq[String]]): Batch => Batch =
       val (keep, _) = result
@@ -1083,6 +1195,8 @@ class Planner(
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = cte.selector(spec.columns)
       cte.batches.iterator.map(sel)
+
+    override def estimatedRows: Option[Long] = cte.rows
 
     override def canSplit: Boolean = true
 
