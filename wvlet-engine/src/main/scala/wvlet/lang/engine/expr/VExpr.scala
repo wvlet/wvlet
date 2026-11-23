@@ -297,38 +297,187 @@ case class CaseWhen(whens: Seq[(VExpr, VExpr)], elseExpr: Option[VExpr], ptype: 
     s"case(${whens.map((c, r) => s"${c.sig}->${r.sig}").mkString(",")};${elseExpr.map(_.sig)})"
 
   def eval(b: Batch): Vec =
-    val n       = b.size
-    val chosen  = Vec.filledInts(n, -1)
+    val n = b.size
+    val m = whens.size
+    // The branch each row takes; m is the ELSE branch
+    val chosen  = Vec.filledInts(n, m)
+    val picked  = new Array[Boolean](m + 1)
     var pending = n
-    val conds   = whens.map(_._1)
     var k       = 0
-    while k < conds.size && pending > 0 do
-      val c = Kernels.asBool(conds(k).eval(b))
-      var i = 0
+    while k < m && pending > 0 do
+      val c  = Kernels.asBool(whens(k)._1.eval(b))
+      val cv = c.values
+      val cn = c.nulls
+      var i  = 0
       while i < n do
-        if chosen(i) < 0 && c.values(i) && !c.isNull(i) then
+        if chosen(i) == m && cv(i) && (cn == null || !cn(i)) then
           chosen(i) = k
           pending -= 1
+          picked(k) = true
         i += 1
       k += 1
-    val results = whens.map(w => Kernels.castTo(w._2.eval(b), ptype))
-    val elseVec = elseExpr.map(e => Kernels.castTo(e.eval(b), ptype))
-    val out     = VecBuilder(ptype, n)
-    var i       = 0
-    while i < n do
-      val c = chosen(i)
-      if c >= 0 then
-        out.add(results(c).get(i))
-      else
-        elseVec match
-          case Some(e) =>
-            out.add(e.get(i))
-          case None =>
-            out.addNull()
-      i += 1
-    out.result()
+    picked(m) = pending > 0
+    // Only the branches some row takes are evaluated. A null source yields NULL (no ELSE)
+    val srcs = new Array[Vec](m + 1)
+    k = 0
+    while k < m do
+      if picked(k) then
+        srcs(k) = Kernels.castTo(whens(k)._2.eval(b), ptype)
+      k += 1
+    if picked(m) then
+      elseExpr.foreach(e => srcs(m) = Kernels.castTo(e.eval(b), ptype))
+    CaseWhen.fill(ptype, n, chosen, srcs, picked)
 
   end eval
+
+end CaseWhen
+
+object CaseWhen:
+  /**
+    * The output of a CASE WHEN: row i is row i of `srcs(chosen(i))`. Values are copied between
+    * arrays of the same physical type, without boxing, when every taken source has the output
+    * layout; other layouts (wide decimals, nested values) go through a row-wise builder
+    */
+  private[expr] def fill(
+      ptype: PType,
+      n: Int,
+      chosen: Array[Int],
+      srcs: Array[Vec],
+      picked: Array[Boolean]
+  ): Vec =
+    var first: Vec = null
+    var nullable   = false
+    var typed      = true
+    var k          = 0
+    while k < srcs.length do
+      if picked(k) then
+        val s = srcs(k)
+        if s == null then
+          nullable = true
+        else
+          if first == null then
+            first = s
+          if s.nulls != null then
+            nullable = true
+          typed = typed && hasLayout(s, ptype)
+      k += 1
+    if first == null then
+      Vec.nullVec(ptype, n)
+    else if !typed then
+      rowFill(ptype, n, chosen, srcs)
+    else
+      val nulls =
+        if nullable then
+          fillNulls(n, chosen, srcs)
+        else
+          null
+      // The value slot of a NULL row is unspecified, so a missing source reads any taken one
+      def src(j: Int): Vec =
+        if srcs(j) == null then
+          first
+        else
+          srcs(j)
+      first match
+        case _: BoolVec =>
+          val vs  = Array.tabulate(srcs.length)(src(_).asInstanceOf[BoolVec].values)
+          val out = new Array[Boolean](n)
+          var i   = 0
+          while i < n do
+            out(i) = vs(chosen(i))(i)
+            i += 1
+          BoolVec(out, nulls)
+        case _: IntVec =>
+          val vs  = Array.tabulate(srcs.length)(src(_).asInstanceOf[IntVec].values)
+          val out = new Array[Int](n)
+          var i   = 0
+          while i < n do
+            out(i) = vs(chosen(i))(i)
+            i += 1
+          IntVec(ptype, out, nulls)
+        case _: LongVec =>
+          val vs  = Array.tabulate(srcs.length)(src(_).asInstanceOf[LongVec].values)
+          val out = new Array[Long](n)
+          var i   = 0
+          while i < n do
+            out(i) = vs(chosen(i))(i)
+            i += 1
+          LongVec(ptype, out, nulls)
+        case _: DoubleVec =>
+          val vs  = Array.tabulate(srcs.length)(src(_).asInstanceOf[DoubleVec].values)
+          val out = new Array[Double](n)
+          var i   = 0
+          while i < n do
+            out(i) = vs(chosen(i))(i)
+            i += 1
+          DoubleVec(out, nulls)
+        case _: StrVec =>
+          val vs  = Array.tabulate(srcs.length)(src(_).asInstanceOf[StrVec].values)
+          val out = new Array[String](n)
+          var i   = 0
+          while i < n do
+            out(i) = vs(chosen(i))(i)
+            i += 1
+          StrVec(out, nulls)
+        case _ =>
+          rowFill(ptype, n, chosen, srcs)
+      end match
+    end if
+
+  end fill
+
+  /** True when the vector stores values in the typed array of the output type */
+  private def hasLayout(v: Vec, ptype: PType): Boolean =
+    v match
+      case _: BoolVec =>
+        ptype == PType.Bool
+      case i: IntVec =>
+        i.ptype == ptype
+      // Long-backed decimals hold unscaled values at the output scale only for the same type
+      case l: LongVec =>
+        l.ptype == ptype
+      case _: DoubleVec =>
+        ptype == PType.Float64
+      case _: StrVec =>
+        ptype == PType.Str
+      case _ =>
+        false
+
+  private def fillNulls(n: Int, chosen: Array[Int], srcs: Array[Vec]): Array[Boolean] =
+    val nullArrs = new Array[Array[Boolean]](srcs.length)
+    val missing  = new Array[Boolean](srcs.length)
+    var k        = 0
+    while k < srcs.length do
+      if srcs(k) == null then
+        missing(k) = true
+      else
+        nullArrs(k) = srcs(k).nulls
+      k += 1
+    val out = new Array[Boolean](n)
+    var any = false
+    var i   = 0
+    while i < n do
+      val c      = chosen(i)
+      val ns     = nullArrs(c)
+      val isNull = missing(c) || (ns != null && ns(i))
+      out(i) = isNull
+      any = any | isNull
+      i += 1
+    if any then
+      out
+    else
+      null
+
+  private def rowFill(ptype: PType, n: Int, chosen: Array[Int], srcs: Array[Vec]): Vec =
+    val out = VecBuilder(ptype, n)
+    var i   = 0
+    while i < n do
+      val s = srcs(chosen(i))
+      if s == null then
+        out.addNull()
+      else
+        out.add(s.get(i))
+      i += 1
+    out.result()
 
 end CaseWhen
 
@@ -446,7 +595,8 @@ object Kernels:
   private val DivContext = MathContext(38, RoundingMode.HALF_UP)
 
   def orNulls(a: Array[Boolean], b: Array[Boolean], n: Int): Array[Boolean] =
-    if a == null then
+    // Null arrays are immutable, so a shared one (x op x, or two compares of one column) is reused
+    if a == null || (a eq b) then
       b
     else if b == null then
       a
@@ -1022,34 +1172,96 @@ object Kernels:
   end compare
 
   /** Three-valued AND */
-  def and(l: Vec, r: Vec): Vec =
-    val a = asBool(l)
-    val b = asBool(r)
-    val n = a.size
-    val o = new Array[Boolean](n)
-    if a.nulls == null && b.nulls == null then
-      var i = 0
-      while i < n do
-        o(i) = a.values(i) && b.values(i)
-        i += 1
+  def and(l: Vec, r: Vec): Vec = logical(asBool(l), asBool(r), isAnd = true)
+
+  /** Three-valued OR */
+  def or(l: Vec, r: Vec): Vec = logical(asBool(l), asBool(r), isAnd = false)
+
+  /**
+    * Three-valued AND / OR over raw arrays. The value slot of a NULL row is unspecified, so values
+    * are masked by their null arrays. A result row is NULL only when no known operand decides it (a
+    * known false for AND, a known true for OR) and an operand is NULL
+    */
+  private def logical(a: BoolVec, b: BoolVec, isAnd: Boolean): BoolVec =
+    val n  = a.size
+    val av = a.values
+    val bv = b.values
+    val an = a.nulls
+    val bn = b.nulls
+    val o  = new Array[Boolean](n)
+    var i  = 0
+    if an == null && bn == null then
+      if isAnd then
+        while i < n do
+          o(i) = av(i) & bv(i)
+          i += 1
+      else
+        while i < n do
+          o(i) = av(i) | bv(i)
+          i += 1
       BoolVec(o, null)
+    else if an eq bn then
+      // One shared null array (e.g., BETWEEN on one column): a row is NULL exactly when both
+      // operands are, so the null array is reused as is
+      if isAnd then
+        while i < n do
+          o(i) = av(i) & bv(i)
+          i += 1
+      else
+        while i < n do
+          o(i) = av(i) | bv(i)
+          i += 1
+      BoolVec(o, an)
     else
       val nulls = new Array[Boolean](n)
       var any   = false
-      var i     = 0
-      while i < n do
-        val an = a.isNull(i)
-        val bn = b.isNull(i)
-        val av = a.values(i)
-        val bv = b.values(i)
-        if (!an && !av) || (!bn && !bv) then
-          o(i) = false
-        else if an || bn then
-          nulls(i) = true
-          any = true
+      if an == null || bn == null then
+        // x: the operand without nulls, y (with nulls ny): the other
+        val (xv, yv, ny) =
+          if an == null then
+            (av, bv, bn)
+          else
+            (bv, av, an)
+        if isAnd then
+          while i < n do
+            val yNull = ny(i)
+            val x     = xv(i)
+            o(i) = x & yv(i) & !yNull
+            val isNull = x & yNull
+            nulls(i) = isNull
+            any = any | isNull
+            i += 1
         else
-          o(i) = true
-        i += 1
+          while i < n do
+            val yNull = ny(i)
+            val x     = xv(i)
+            o(i) = x | (yv(i) & !yNull)
+            val isNull = !x & yNull
+            nulls(i) = isNull
+            any = any | isNull
+            i += 1
+      else if isAnd then
+        while i < n do
+          val aN     = an(i)
+          val bN     = bn(i)
+          val aFalse = !av(i) & !aN
+          val bFalse = !bv(i) & !bN
+          o(i) = av(i) & !aN & bv(i) & !bN
+          val isNull = !(aFalse | bFalse) & (aN | bN)
+          nulls(i) = isNull
+          any = any | isNull
+          i += 1
+      else
+        while i < n do
+          val aN = an(i)
+          val bN = bn(i)
+          val t  = (av(i) & !aN) | (bv(i) & !bN)
+          o(i) = t
+          val isNull = !t & (aN | bN)
+          nulls(i) = isNull
+          any = any | isNull
+          i += 1
+      end if
       BoolVec(
         o,
         if any then
@@ -1059,44 +1271,7 @@ object Kernels:
       )
     end if
 
-  end and
-
-  /** Three-valued OR */
-  def or(l: Vec, r: Vec): Vec =
-    val a = asBool(l)
-    val b = asBool(r)
-    val n = a.size
-    val o = new Array[Boolean](n)
-    if a.nulls == null && b.nulls == null then
-      var i = 0
-      while i < n do
-        o(i) = a.values(i) || b.values(i)
-        i += 1
-      BoolVec(o, null)
-    else
-      val nulls = new Array[Boolean](n)
-      var any   = false
-      var i     = 0
-      while i < n do
-        val an = a.isNull(i)
-        val bn = b.isNull(i)
-        val av = a.values(i)
-        val bv = b.values(i)
-        if (!an && av) || (!bn && bv) then
-          o(i) = true
-        else if an || bn then
-          nulls(i) = true
-          any = true
-        i += 1
-      BoolVec(
-        o,
-        if any then
-          nulls
-        else
-          null
-      )
-
-  end or
+  end logical
 
   /** Rows where a boolean vector is true (NULL counts as false) */
   def trueMask(v: Vec): Array[Boolean] =
