@@ -39,6 +39,9 @@ trait DuckDBCompat:
 
   def canExecute: Boolean = DuckDBApi.instance.isDefined
 
+  /** Why libduckdb could not be loaded, with how to install it or point `WVLET_LIBDUCKDB` at it. */
+  def notAvailableMessage: String = DuckDBApi.notAvailableMessage
+
   /**
     * Run `sql` against a fresh in-memory DuckDB and return all rows as strings via the chunk/vector
     * API — one query, no SQL rewriting. The result's `duckdb_column_type` tells us each column's

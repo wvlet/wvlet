@@ -1,23 +1,18 @@
 package wvlet.lang.compiler.analyzer.duckdb
 
 import scala.scalanative.unsafe.*
+import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.unsigned.*
 
 /**
-  * Minimal Scala Native bindings to DuckDB's C API (`duckdb.h`).
+  * Minimal Scala Native bindings to DuckDB's C API (`duckdb.h`), loaded at runtime.
   *
-  * Just enough to back `DuckDBCompat.schemaOf` — open an in-memory database, run a `SELECT ...
-  * LIMIT 0` against a file path, read column names and types, then dispose of everything. The full
-  * C API is much larger; we add bindings as we need them.
-  *
-  * @link("duckdb")
-  *   inserts `-lduckdb` into the Scala Native link command. Builds therefore require libduckdb to
-  *   be discoverable by the linker (e.g. installed via Homebrew at
-  *   `/opt/homebrew/lib/libduckdb.dylib`); see the `wvc` build settings for the include/library
-  *   search path.
+  * wvlet's native binaries do not link libduckdb, so commands that never touch DuckDB start on
+  * machines without it. The C loader in `wvlet_duckdb_loader.c` opens libduckdb with `dlopen`
+  * (`LoadLibrary` on Windows) and each binding below calls its `wvlet_duckdb_*` forwarding wrapper.
+  * Call [[DuckDBLoader.isLoaded]] before any other binding.
   */
 @extern
-@link("duckdb")
 private[duckdb] object DuckDBApi:
   // Opaque handles. C: `typedef struct _duckdb_database *duckdb_database;` — we treat them as
   // opaque pointers (Ptr[Byte]) for binding ergonomics.
@@ -38,47 +33,133 @@ private[duckdb] object DuckDBApi:
   // char* error message, then internal_data.
   type duckdb_result = CStruct6[idx_t, idx_t, idx_t, Ptr[Byte], CString, Ptr[Byte]]
 
+  /** Open libduckdb at `path` and resolve its functions. Returns 0 on success. */
+  def wvlet_duckdb_load(path: CString): CInt = extern
+
+  /** Why the last failed [[wvlet_duckdb_load]] call failed. */
+  def wvlet_duckdb_load_error(): CString = extern
+
+  @name("wvlet_duckdb_open")
   def duckdb_open(path: CString, out_database: Ptr[duckdb_database]): duckdb_state = extern
-  def duckdb_close(database: Ptr[duckdb_database]): Unit                           = extern
+
+  @name("wvlet_duckdb_close")
+  def duckdb_close(database: Ptr[duckdb_database]): Unit = extern
+
+  @name("wvlet_duckdb_connect")
   def duckdb_connect(
       database: duckdb_database,
       out_connection: Ptr[duckdb_connection]
   ): duckdb_state = extern
 
+  @name("wvlet_duckdb_disconnect")
   def duckdb_disconnect(connection: Ptr[duckdb_connection]): Unit = extern
+
+  @name("wvlet_duckdb_query")
   def duckdb_query(
       connection: duckdb_connection,
       query: CString,
       out_result: Ptr[duckdb_result]
   ): duckdb_state = extern
 
-  def duckdb_destroy_result(result: Ptr[duckdb_result]): Unit                 = extern
-  def duckdb_column_count(result: Ptr[duckdb_result]): idx_t                  = extern
-  def duckdb_column_name(result: Ptr[duckdb_result], col: idx_t): CString     = extern
+  @name("wvlet_duckdb_destroy_result")
+  def duckdb_destroy_result(result: Ptr[duckdb_result]): Unit = extern
+
+  @name("wvlet_duckdb_column_count")
+  def duckdb_column_count(result: Ptr[duckdb_result]): idx_t = extern
+
+  @name("wvlet_duckdb_column_name")
+  def duckdb_column_name(result: Ptr[duckdb_result], col: idx_t): CString = extern
+
+  @name("wvlet_duckdb_column_type")
   def duckdb_column_type(result: Ptr[duckdb_result], col: idx_t): duckdb_type = extern
-  def duckdb_result_error(result: Ptr[duckdb_result]): CString                = extern
+
+  @name("wvlet_duckdb_result_error")
+  def duckdb_result_error(result: Ptr[duckdb_result]): CString = extern
 
   // Chunk / vector API for row iteration. The deprecated `duckdb_value_*` row-API was
   // neutered in DuckDB 1.5.2 (returns null/0), so the chunk API is the only working path.
   type duckdb_data_chunk = Ptr[Byte]
   type duckdb_vector     = Ptr[Byte]
 
-  def duckdb_destroy_data_chunk(chunk: Ptr[duckdb_data_chunk]): Unit                    = extern
-  def duckdb_data_chunk_get_size(chunk: duckdb_data_chunk): idx_t                       = extern
-  def duckdb_data_chunk_get_column_count(chunk: duckdb_data_chunk): idx_t               = extern
-  def duckdb_data_chunk_get_vector(chunk: duckdb_data_chunk, col: idx_t): duckdb_vector = extern
-  def duckdb_vector_get_data(vector: duckdb_vector): Ptr[Byte]                          = extern
-  def duckdb_vector_get_validity(vector: duckdb_vector): Ptr[ULong]                     = extern
-  def duckdb_validity_row_is_valid(validity: Ptr[ULong], row: idx_t): CBool             = extern
+  @name("wvlet_duckdb_destroy_data_chunk")
+  def duckdb_destroy_data_chunk(chunk: Ptr[duckdb_data_chunk]): Unit = extern
 
-  // C wrappers in wvlet_duckdb_helpers.c. The DuckDB C API takes `duckdb_result` and
-  // `duckdb_string_t` BY VALUE, which Scala Native's @extern ABI doesn't currently emit
-  // correctly for these struct sizes. The wrappers take a pointer and forward by-value
-  // internally on the C side.
+  @name("wvlet_duckdb_data_chunk_get_size")
+  def duckdb_data_chunk_get_size(chunk: duckdb_data_chunk): idx_t = extern
+
+  @name("wvlet_duckdb_data_chunk_get_vector")
+  def duckdb_data_chunk_get_vector(chunk: duckdb_data_chunk, col: idx_t): duckdb_vector = extern
+
+  @name("wvlet_duckdb_vector_get_data")
+  def duckdb_vector_get_data(vector: duckdb_vector): Ptr[Byte] = extern
+
+  @name("wvlet_duckdb_vector_get_validity")
+  def duckdb_vector_get_validity(vector: duckdb_vector): Ptr[ULong] = extern
+
+  @name("wvlet_duckdb_validity_row_is_valid")
+  def duckdb_validity_row_is_valid(validity: Ptr[ULong], row: idx_t): CBool = extern
+
+  // The C API's `duckdb_fetch_chunk` takes `duckdb_result` BY VALUE, which Scala Native's
+  // @extern ABI doesn't emit correctly for a 48-byte struct; the wrapper takes a pointer and
+  // forwards by value on the C side.
   def wvlet_duckdb_fetch_chunk(result: Ptr[duckdb_result]): duckdb_data_chunk = extern
-  def wvlet_duckdb_string_t_length(string_ptr: Ptr[Byte]): CInt               = extern
 
 end DuckDBApi
+
+/**
+  * Finds and loads libduckdb once per process. Resolution order matches the Scala.js backend:
+  *   1. `WVLET_LIBDUCKDB` env var (explicit override)
+  *   2. The bare library name, so the OS loader searches `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH` /
+  *      `PATH` and its default directories
+  *   3. Well-known install paths for the current platform (Homebrew, /usr/local, …)
+  */
+private[duckdb] object DuckDBLoader:
+
+  /**
+    * The error from the first failed candidate: `WVLET_LIBDUCKDB` when set, since that is the
+    * library the user asked for, else the loader's own search
+    */
+  private var firstError: Option[String] = None
+
+  /** True when libduckdb was found and every binding in [[DuckDBApi]] resolved. */
+  lazy val isLoaded: Boolean = candidatePaths.exists(tryLoad)
+
+  def notAvailableMessage: String =
+    val reason = firstError.map(e => s" (${e})").getOrElse("")
+    "libduckdb is not available. Install DuckDB (e.g. `brew install duckdb`) or set " +
+      s"WVLET_LIBDUCKDB to the absolute path of libduckdb${reason}"
+
+  private def tryLoad(path: String): Boolean = Zone {
+    if DuckDBApi.wvlet_duckdb_load(toCString(path)) == 0 then
+      true
+    else
+      if firstError.isEmpty then
+        firstError = Some(fromCString(DuckDBApi.wvlet_duckdb_load_error()))
+      false
+  }
+
+  private def candidatePaths: List[String] =
+    val envPath     = sys.env.get("WVLET_LIBDUCKDB").map(_.trim).filter(_.nonEmpty).toList
+    val systemPaths =
+      if LinktimeInfo.isMac then
+        List(
+          "libduckdb.dylib",
+          "/opt/homebrew/lib/libduckdb.dylib",
+          "/usr/local/lib/libduckdb.dylib"
+        )
+      else if LinktimeInfo.isWindows then
+        List("duckdb.dll", "C:\\Program Files\\duckdb\\duckdb.dll")
+      else
+        List(
+          "libduckdb.so",
+          "/usr/local/lib/libduckdb.so",
+          "/usr/lib/libduckdb.so",
+          "/usr/lib/x86_64-linux-gnu/libduckdb.so",
+          "/usr/lib/aarch64-linux-gnu/libduckdb.so"
+        )
+    envPath ++ systemPaths
+
+end DuckDBLoader
 
 /**
   * Mirror of `enum DUCKDB_TYPE` from `duckdb.h`. Only the codes we map to wvlet types are named;

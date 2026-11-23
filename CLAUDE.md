@@ -25,11 +25,11 @@ sbt:wvlet> wvc/nativeLink
 
 Note: The `wv` command is implemented in WvletREPLMain, while `wvlet` is implemented in WvletMain.
 
-Native builds also need DuckDB's C API: `duckdb.h` on the include path and libduckdb on the
-library path (`brew install duckdb`, or set `CPATH` / `LIBRARY_PATH` for non-standard
-locations). Built binaries embed `/opt/homebrew/lib` and `/usr/local/lib` as rpath entries for
-locating libduckdb at runtime; set `WVLET_NATIVE_LIB_PATH=<dir>` at build time to embed an
-additional lookup directory (see `nativeLibRpathLinking` in build.sbt).
+Native binaries do not link libduckdb: `wvlet_duckdb_loader.c` in wvlet-lang loads it at runtime,
+so building needs no DuckDB headers. DuckDB-backed features (file schema inference, the duckdb
+connector) work when libduckdb is installed (`brew install duckdb`, the standard
+`/usr/local/lib` or Homebrew paths, the loader's search path, or `WVLET_LIBDUCKDB=<path>`), and
+report "libduckdb is not available" otherwise.
 
 ### Code Formatting
 
