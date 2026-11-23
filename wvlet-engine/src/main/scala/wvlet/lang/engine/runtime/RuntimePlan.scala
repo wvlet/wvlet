@@ -27,6 +27,7 @@ import wvlet.lang.engine.vector.Batch
 import wvlet.lang.engine.vector.Field
 import wvlet.lang.engine.vector.PType
 import wvlet.lang.engine.vector.Schema
+import wvlet.uni.parquet.ParquetFilter
 
 import scala.collection.mutable
 
@@ -221,8 +222,17 @@ object WindowFunction:
   * build (non-exhaustive matches are errors in wvlet-engine) until every pass handles it.
   */
 enum RuntimePlan:
-  /** Read a table source; `columns` are the source columns, possibly renamed or requalified */
-  case Scan(source: TableSource, columns: IndexedSeq[Column])
+  /**
+    * Read a table source. `columns` are the source columns at the positions `read` (every source
+    * column when None), possibly renamed or requalified. `filter` lets the source skip row groups
+    * that can't match the filter over this scan ([[PushScanFilters]])
+    */
+  case Scan(
+      source: TableSource,
+      columns: IndexedSeq[Column],
+      read: Option[IndexedSeq[Int]] = None,
+      filter: Option[ParquetFilter] = None
+  )
 
   /** Rows evaluated at plan time */
   case Values(columns: IndexedSeq[Column], rows: Batch)
@@ -315,7 +325,7 @@ enum RuntimePlan:
   /** The output columns, in order */
   def output: IndexedSeq[Column] =
     this match
-      case Scan(_, columns) =>
+      case Scan(_, columns, _, _) =>
         columns
       case Values(columns, _) =>
         columns
@@ -348,7 +358,7 @@ enum RuntimePlan:
 
   def children: Seq[RuntimePlan] =
     this match
-      case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
+      case Scan(_, _, _, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
         Nil
       case Filter(child, _, _) =>
         Seq(child)
@@ -384,7 +394,7 @@ enum RuntimePlan:
       this
     else
       this match
-        case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
+        case Scan(_, _, _, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
           this
         case f: Filter =>
           f.copy(child = cs(0))
@@ -437,8 +447,8 @@ enum RuntimePlan:
 
   private def nodeText: String =
     this match
-      case Scan(source, _) =>
-        s"Scan[${source.name}]"
+      case Scan(source, _, _, filter) =>
+        s"Scan[${source.name}]${filter.map(f => s"(filter=${f})").getOrElse("")}"
       case Values(_, rows) =>
         s"Values(rows=${rows.size})"
       case Filter(_, cond, _) =>
@@ -490,6 +500,20 @@ enum RuntimePlan:
         s"CTERef[${cte.name}]"
 
 end RuntimePlan
+
+object RuntimePlan:
+  extension (s: Scan)
+    /** The source position of output column i */
+    def sourcePosition(i: Int): Int = s.read.map(_(i)).getOrElse(i)
+
+    /** The source column name of output column i */
+    def sourceColumnName(i: Int): String = s.source.schema(sourcePosition(i)).name
+
+    /** The scan reading only its output columns at positions `idx` */
+    def project(idx: IndexedSeq[Int]): Scan = s.copy(
+      columns = idx.map(s.columns),
+      read = Some(idx.map(sourcePosition))
+    )
 
 /**
   * A CTE that several relations read, computed once for all of them. Its body is a bound runtime

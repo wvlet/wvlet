@@ -18,10 +18,10 @@ import wvlet.lang.engine.plan.Optimization
 /**
   * Drops the columns no node above needs, by column id, in one top-down walk after
   * [[ReorderJoins]]. A node's needs are the columns its parent needs plus those its own expressions
-  * read; projections drop the expressions nobody needs. Aggregations and windows keep their calls,
-  * and leaves (scans, VALUES, CTE reads, `Legacy`) keep their columns: the physical pruning after
-  * lowering narrows scans together with their row-group filters, as it does for `Legacy` subtrees.
-  * The root keeps its output.
+  * read; projections drop the expressions nobody needs and scans read only the needed columns.
+  * Aggregations and windows keep their calls, and the other leaves (VALUES, CTE reads, `Legacy`)
+  * keep their columns: the physical pruning after lowering narrows `Legacy` subtrees. The root
+  * keeps its output.
   *
   * The planner also runs it over a shared CTE body with the columns its readers read, so that the
   * body computes only those ([[prune]]).
@@ -43,7 +43,20 @@ object PruneColumns extends Pass:
     */
   def prune(p: RuntimePlan, needed: Set[ColumnId], ctx: OptimizerContext): RuntimePlan =
     p match
-      case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
+      case s @ Scan(_, columns, _, _) =>
+        val keep = columns.indices.filter(i => needed.contains(columns(i).id))
+        if keep.size == columns.size then
+          p
+        else
+          ctx.fired(name)
+          // Keep at least one column, so that the scan still carries the row count
+          s.project(
+            if keep.isEmpty then
+              IndexedSeq(0)
+            else
+              keep
+          )
+      case Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
         p
       case Filter(child, cond, _) =>
         p.withChildren(Seq(prune(child, needed ++ cond.refs, ctx)))

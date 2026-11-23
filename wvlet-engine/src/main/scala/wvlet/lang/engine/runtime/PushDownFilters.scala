@@ -216,7 +216,7 @@ object PushDownFilters extends Pass:
           val (in, out) = conds.partition(_.refs.subsetOf(keys))
           moved(in)
           filter(withChild(w, push(child, in)), out)
-        case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) | Sort(_, _, _) |
+        case Scan(_, _, _, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) | Sort(_, _, _) |
             Limit(_, _, _) | Aggregate(_, _, _, _) =>
           filter(p.withChildren(p.children.map(push(_, Nil))), conds)
 

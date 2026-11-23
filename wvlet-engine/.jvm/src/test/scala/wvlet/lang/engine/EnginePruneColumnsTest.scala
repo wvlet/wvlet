@@ -101,10 +101,12 @@ class EnginePruneColumnsTest extends UniTest:
     val (p, o) = pruned(bound("""from lineitem
               |select l_orderkey, l_quantity + 1 as q
               |select l_orderkey""".stripMargin))
-    p shouldMatch { case Project(Project(_: Scan, exprs, _), _, _) =>
+    p shouldMatch { case Project(Project(s: Scan, exprs, _), _, _) =>
       exprs.size shouldBe 1
+      s.columns.map(_.name) shouldBe IndexedSeq("l_orderkey")
     }
-    o.firedRules shouldBe Map("prune_columns" -> 1)
+    // The projection and the scan
+    o.firedRules shouldBe Map("prune_columns" -> 2)
   }
 
   test("keep the calls of an aggregation") {
@@ -122,7 +124,7 @@ class EnginePruneColumnsTest extends UniTest:
   }
 
   test("leave a plan unchanged when every column is read") {
-    val p      = bound("from nation select n_nationkey, n_name")
+    val p      = bound("from nation select n_nationkey, n_name, n_regionkey, n_comment")
     val (q, o) = pruned(p)
     q shouldBe p
     o.firedRules shouldBe Map.empty

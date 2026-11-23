@@ -69,7 +69,7 @@ class EngineRuntimePlanTest extends UniTest:
 
   test("show column ids in the plan text") {
     val p = runtimePlan("from nation select n_name")
-    p.explain.linesIterator.toSeq.head shouldMatch { case s"Scan[nation] -> [n_nationkey#$_" =>
+    p.explain.linesIterator.toSeq.head shouldMatch { case s"Scan[nation] -> [n_name#$_" =>
     }
     p.explain shouldContain "Project(#"
   }

@@ -97,7 +97,8 @@ object ColumnPruner:
         VExprs.collectRefs(f.cond, need)
         val input =
           f.child match
-            case s: ScanOp if mode.scanFilters && s.source.supportsFilter =>
+            // A scan of the runtime plan has its filter already (PushScanFilters)
+            case s: ScanOp if mode.scanFilters && s.source.supportsFilter && s.filter.isEmpty =>
               ScanFilters
                 .toParquet(f.cond, i => Some(s.sourceColumnName(i)).filter(s.source.canFilterOn))
                 .map(s.withFilter)
