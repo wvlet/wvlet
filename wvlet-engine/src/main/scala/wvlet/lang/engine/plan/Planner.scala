@@ -143,8 +143,8 @@ class Planner(
     *
     * A CTE's readers read the same columns and filters in any join order, so the second plan reads
     * the result the first plan's readers finalized ([[DeferredCTE.reader]]); if it can't, the first
-    * plan is kept (with `validatePlans`, the error is raised). The CTE bodies keep the join order
-    * chosen when they were bound
+    * plan is kept (with `validatePlans`, the error is raised). The CTE bodies that join other
+    * shared CTEs are re-planned before this ([[replanCTEBodies]])
     */
   private def replanJoinedCTEs(bound: RuntimePlan, optimized: RuntimePlan): Option[Operator] =
     replanRuntime(bound, optimized).flatMap { replanned =>
@@ -1384,8 +1384,7 @@ class Planner(
           ready
       next.foreach { c =>
         c.finalizeBody(pushFilters = true)
-        if !finalizeOrder.contains(c) then
-          finalizeOrder += c
+        finalizeOrder += c
         c.resultOp.foreach(collect)
       }
       pending = pending.filterNot(next.contains)
