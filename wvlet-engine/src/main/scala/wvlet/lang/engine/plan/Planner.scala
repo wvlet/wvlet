@@ -24,6 +24,7 @@ import wvlet.lang.engine.catalog.*
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.runtime.RuntimeBinder
+import wvlet.lang.engine.runtime.BExpr
 import wvlet.lang.engine.runtime.JoinCondition
 import wvlet.lang.engine.runtime.Lowering
 import wvlet.lang.engine.runtime.Optimizer
@@ -114,20 +115,25 @@ class Planner(
     * exact row count ([[replanJoinedCTEs]])
     */
   private def planRoot(r: Relation): Operator =
-    val bound     = runtimeBinder.bind(r)
-    val optimized = optimizeRuntime(bound)
-    val op        = optimizePhysical(Lowering(optimized))
-    finalizeCTEs(op)
-    if enabled(Optimization.ReplanMaterializedCTEs) then
-      replanJoinedCTEs(bound, optimized).getOrElse(op)
-    else
-      op
+    try
+      val bound     = runtimeBinder.bind(r)
+      val optimized = optimizeRuntime(bound)
+      val op        = optimizePhysical(Lowering(optimized))
+      finalizeCTEs(op)
+      if enabled(Optimization.ReplanMaterializedCTEs) then
+        replanJoinedCTEs(bound, optimized).getOrElse(op)
+      else
+        op
+    finally
+      runtimeBinder.clearBoundInputs()
 
   /**
     * Compute the shared CTEs that joins of `bound` read (inner join graphs, and outer hash joins,
     * whose build side depends on the rows), and run the logical passes over `bound` again, which
     * now read their exact row counts. The re-optimized plan, lowered, if it differs from
-    * `optimized`.
+    * `optimized`. Inputs the binder optimized while binding (aggregation, pivot, and subquery
+    * inputs, whose joins are ordered in `bound`) are optimized again from their bound plans when
+    * they read such a CTE (`replan_bound_cte_joins`).
     *
     * A CTE's readers read the same columns and filters in any join order, so the second plan reads
     * the result the first plan's readers finalized ([[DeferredCTE.reader]]); if it can't, the first
@@ -136,31 +142,76 @@ class Planner(
     */
   private def replanJoinedCTEs(bound: RuntimePlan, optimized: RuntimePlan): Option[Operator] =
     import RuntimePlan.*
+    val boundInputs = enabled(Optimization.ReplanBoundCTEJoins)
+    // An input the binder optimized while binding is read in its bound form, with unordered joins.
+    // An optimized input may be a node of its own bound plan (e.g. `Filter(p, true)` optimizes to
+    // `p`), so an input being expanded reads as itself
+    val expanding = java.util.IdentityHashMap[RuntimePlan, Unit]()
+    def boundInput(p: RuntimePlan): Option[RuntimePlan] =
+      if boundInputs && !expanding.containsKey(p) then
+        runtimeBinder.boundInput(p)
+      else
+        None
+    def expand[A](p: RuntimePlan)(f: => A): A =
+      expanding.put(p, ())
+      try f
+      finally expanding.remove(p)
     val joined                                            = mutable.LinkedHashSet.empty[DeferredCTE]
     def collect(p: RuntimePlan, underJoin: Boolean): Unit =
       p match
         case CTERef(cte: DeferredCTE, _) if underJoin =>
           joined += cte
         case _ =>
-          val below =
-            underJoin || (
-              p match
-                case _: InnerJoins =>
-                  true
-                case j: Join =>
-                  j.leftKeys.nonEmpty &&
-                  (j.kind == JoinKind.Left || j.kind == JoinKind.Right || j.kind == JoinKind.Full)
-                case _ =>
-                  false
-            )
-          p.children.foreach(collect(_, below))
+          boundInput(p) match
+            case Some(input) =>
+              expand(p)(collect(input, underJoin))
+            case None =>
+              collectChildren(p, underJoin)
+    def collectChildren(p: RuntimePlan, underJoin: Boolean): Unit =
+      val below =
+        underJoin || (
+          p match
+            case _: InnerJoins =>
+              true
+            case j: Join =>
+              j.leftKeys.nonEmpty &&
+              (j.kind == JoinKind.Left || j.kind == JoinKind.Right || j.kind == JoinKind.Full)
+            case _ =>
+              false
+        )
+      p.children.foreach(collect(_, below))
     collect(bound, underJoin = false)
     if joined.isEmpty then
       None
     else
       joined.foreach(_.materialize())
       // A separate run, so that firedRules counts the rules of the plan once
-      val replanned = Optimizer.default(options).run(bound)
+      val optimizer                            = Optimizer.default(options)
+      def readsJoined(p: RuntimePlan): Boolean =
+        p match
+          case CTERef(cte: DeferredCTE, _) =>
+            joined.contains(cte)
+          case _ =>
+            p.children.exists(readsJoined)
+      // Optimize again, from the bottom up, the bound inputs that read a computed CTE
+      def refresh(p: RuntimePlan): RuntimePlan =
+        boundInput(p) match
+          case Some(input) if readsJoined(input) =>
+            val o = optimizer.run(expand(p)(refresh(input)))
+            if o.output == p.output then
+              o
+            else if o.output.map(_.id).toSet == p.output.map(_.id).toSet then
+              // Joins output columns in join order: restore the first order, which a parent may
+              // read by position (e.g. a union)
+              Project(o, p.output.map(BExpr.ref), p.output)
+            else
+              p
+          case _ =>
+            p.withChildren(p.children.map(refresh))
+      val rebound = refresh(bound)
+      if options.validatePlans then
+        PlanValidator.validate(rebound)
+      val replanned = optimizer.run(rebound)
       if replanned == optimized then
         None
       else
@@ -176,6 +227,7 @@ class Planner(
               if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
             warn(s"Keeping the first plan: ${e.getMessage}")
             None
+    end if
 
   end replanJoinedCTEs
 

@@ -74,6 +74,12 @@ enum Optimization(val name: String):
     */
   case ReplanMaterializedCTEs extends Optimization("replan_materialized_ctes")
 
+  /**
+    * With `replan_materialized_ctes`, also order again the joins the binder ordered while binding
+    * (aggregation, pivot, and subquery inputs) when they read a computed shared CTE
+    */
+  case ReplanBoundCTEJoins extends Optimization("replan_bound_cte_joins")
+
   /** Read and pass only the columns the operators above use */
   case PruneColumns extends Optimization("prune_columns")
 
