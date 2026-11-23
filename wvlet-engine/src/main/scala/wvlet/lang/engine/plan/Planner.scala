@@ -143,32 +143,43 @@ class Planner(
   private def replanJoinedCTEs(bound: RuntimePlan, optimized: RuntimePlan): Option[Operator] =
     import RuntimePlan.*
     val boundInputs = enabled(Optimization.ReplanBoundCTEJoins)
-    // An input the binder optimized while binding is read in its bound form, with unordered joins
+    // An input the binder optimized while binding is read in its bound form, with unordered joins.
+    // An optimized input may be a node of its own bound plan (e.g. `Filter(p, true)` optimizes to
+    // `p`), so an input being expanded reads as itself
+    val expanding = java.util.IdentityHashMap[RuntimePlan, Unit]()
     def boundInput(p: RuntimePlan): Option[RuntimePlan] =
-      if boundInputs then
+      if boundInputs && !expanding.containsKey(p) then
         runtimeBinder.boundInput(p)
       else
         None
+    def expand[A](p: RuntimePlan)(f: => A): A =
+      expanding.put(p, ())
+      try f
+      finally expanding.remove(p)
     val joined                                            = mutable.LinkedHashSet.empty[DeferredCTE]
     def collect(p: RuntimePlan, underJoin: Boolean): Unit =
       p match
         case CTERef(cte: DeferredCTE, _) if underJoin =>
           joined += cte
-        case _ if boundInput(p).isDefined =>
-          collect(boundInput(p).get, underJoin)
         case _ =>
-          val below =
-            underJoin || (
-              p match
-                case _: InnerJoins =>
-                  true
-                case j: Join =>
-                  j.leftKeys.nonEmpty &&
-                  (j.kind == JoinKind.Left || j.kind == JoinKind.Right || j.kind == JoinKind.Full)
-                case _ =>
-                  false
-            )
-          p.children.foreach(collect(_, below))
+          boundInput(p) match
+            case Some(input) =>
+              expand(p)(collect(input, underJoin))
+            case None =>
+              collectChildren(p, underJoin)
+    def collectChildren(p: RuntimePlan, underJoin: Boolean): Unit =
+      val below =
+        underJoin || (
+          p match
+            case _: InnerJoins =>
+              true
+            case j: Join =>
+              j.leftKeys.nonEmpty &&
+              (j.kind == JoinKind.Left || j.kind == JoinKind.Right || j.kind == JoinKind.Full)
+            case _ =>
+              false
+        )
+      p.children.foreach(collect(_, below))
     collect(bound, underJoin = false)
     if joined.isEmpty then
       None
@@ -186,7 +197,7 @@ class Planner(
       def refresh(p: RuntimePlan): RuntimePlan =
         boundInput(p) match
           case Some(input) if readsJoined(input) =>
-            val o = optimizer.run(refresh(input))
+            val o = optimizer.run(expand(p)(refresh(input)))
             if o.output == p.output then
               o
             else if o.output.map(_.id).toSet == p.output.map(_.id).toSet then

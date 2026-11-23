@@ -678,7 +678,8 @@ class RuntimeBinder(planner: Planner):
   private def lowered(p: RuntimePlan): Lowered =
     val o = planner.optimizeRuntime(p)
     if o ne p then
-      boundInputs.put(o, p)
+      // The first (innermost) bound plan, when an outer input optimizes to the same plan
+      boundInputs.putIfAbsent(o, p)
     Lowered(o, Lowering(o))
 
   // Inputs optimized while binding: the optimized plan -> the bound plan it came from
