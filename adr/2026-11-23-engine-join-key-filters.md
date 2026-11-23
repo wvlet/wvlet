@@ -18,6 +18,7 @@ At SF1, TPC-DS q78 ran 11× slower than DuckDB (444 ms vs 40 ms), the largest ab
 
 ## Consequences
 
-- q78's three `date_dim` scans read only `d_year = 2000`, and the `ss_sold_year` filter above the joins disappears. Golden plans q04, q11, q31, q39, q64, q74, q75, q78 (TPC-DS) and q16 (TPC-H) change, the same set at SF1. Most move a year or month filter from above an ordered join onto `date_dim`.
-- When a filter leaves the top of a join, that join no longer fuses the column pruning that the filter's `keep=` did, so the operators above it pass a few more columns (q39, q16).
+- q78's three `date_dim` scans read only `d_year = 2000`, and the `ss_sold_year` filter above the joins disappears. Golden plans q04, q11, q31, q39, q64, q74, q75, q78 (TPC-DS) change, the same set at SF1. Most move a year or month filter from above an ordered join onto `date_dim`.
+- When a filter leaves the top of a join, that join no longer fuses the column pruning that the filter's `keep=` did, so the operators above it pass a few more columns (q39).
+- At SF1 (toggle A/B, engine min over 6 alternating rounds), q78 runs 0.51× and the changed set 0.78× (geomean), against 1.02 for the unchanged-plan queries.
 - FULL joins carry nothing, as before: no conjunct passes through them.
