@@ -407,14 +407,8 @@ class RuntimeBinder(planner: Planner):
 
   private def nonLateralJoin(j: Join, filters: List[Expression]): RuntimePlan =
     if j.asof then
-      val p = asOfJoin(j)
-      if filters.isEmpty then
-        p
-      else if filters.exists(planner.hasSubquery) then
-        plans.conjuncts(lowered(p), planner.factorOrs(filters)).plan
-      else
-        // Common conjuncts of `or`s are factored by the Normalize pass
-        filterOver(p, filters.flatMap(planner.splitConjuncts))
+      // Not an inner join tree, so it takes no filters: those over it bind above it
+      asOfJoin(j)
     else if !planner.isJoinOn(j) then
       // Filters over a USING or NATURAL join bind above it (only inner join trees take them)
       usingJoin(j)
