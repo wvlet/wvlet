@@ -87,16 +87,21 @@ object PushDownFilters extends Pass:
       p match
         case f @ Filter(child, cond, counts) =>
           if enabled then
-            // The filter's own conjuncts move down from here; those from above stay above it
-            val own    = conjuncts(cond.expr).map(Conjunct(_, counts))
-            val pushed =
-              push(child, own) match
-                case Filter(c, rest, _) if conjuncts(rest.expr) == own.map(_.expr) =>
-                  // Every conjunct stayed: keep the filter as it was
-                  f.copy(child = c)
-                case other =>
-                  other
-            filter(pushed, conds)
+            // The filter's own conjuncts move down from here; those from above stay above it.
+            // A non-deterministic conjunct (random()) stays, since moving it changes which rows
+            // it sees
+            val own = conjuncts(cond.expr).map(Conjunct(_, counts))
+            if !own.forall(c => isDeterministic(c.expr)) then
+              filter(f.copy(child = push(child, Nil)), conds)
+            else
+              val pushed =
+                push(child, own) match
+                  case Filter(c, rest, _) if conjuncts(rest.expr) == own.map(_.expr) =>
+                    // Every conjunct stayed: keep the filter as it was
+                    f.copy(child = c)
+                  case other =>
+                    other
+              filter(pushed, conds)
           else
             filter(f.copy(child = push(child, Nil)), conds)
         case pr @ Project(child, exprs, columns) =>
@@ -113,7 +118,7 @@ object PushDownFilters extends Pass:
         case a @ Aggregate(child, keys, _, columns) if keys.nonEmpty =>
           // Group key columns come first
           val byId      = keys.indices.map(i => columns(i).id -> keys(i).expr).toMap
-          val (in, out) = conds.partition(_.refs.forall(byId.contains))
+          val (in, out) = conds.partition(_.refs.forall(id => byId.get(id).exists(isDeterministic)))
           moved(in)
           val pushed = in.map(_.substitute(r => byId(ColumnId(r.index))))
           filter(withChild(a, push(child, pushed)), out)
@@ -304,18 +309,8 @@ object PushDownFilters extends Pass:
       case other =>
         other.children.forall(isDeterministic)
 
-  /**
-    * The conjuncts of a condition, as [[FactorOr]] splits them: a bound `between` stays one
-    * conjunct
-    */
-  private def conjuncts(e: VExpr): List[VExpr] =
-    e match
-      case AndExpr(Compare(CmpOp.Ge, x, _), Compare(CmpOp.Le, y, _)) if x.sig == y.sig =>
-        List(e)
-      case AndExpr(l, r) =>
-        conjuncts(l) ++ conjuncts(r)
-      case other =>
-        List(other)
+  /** The conjuncts of a condition, as [[FactorOr]] splits them */
+  private def conjuncts(e: VExpr): List[VExpr] = FactorOr.conjuncts(e)
 
   /**
     * The literal counts of a rewritten condition: the counts of `from`'s `and`/`or` sub-conditions,

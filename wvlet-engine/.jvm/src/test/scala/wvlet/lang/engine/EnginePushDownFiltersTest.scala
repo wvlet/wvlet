@@ -108,6 +108,19 @@ class EnginePushDownFiltersTest extends UniTest:
     sameRows(query)
   }
 
+  test("keep a filter with a non-deterministic conjunct in place") {
+    val query =
+      """from lineitem
+        |group by l_returnflag
+        |agg _.count as n
+        |where l_returnflag = 'R' and random() < 2.0""".stripMargin
+    val (p, o) = pushed(bound(query))
+    find(p) { case Aggregate(_: Filter, _, _, _) =>
+      ()
+    } shouldBe None
+    o.firedRules shouldBe Map.empty
+  }
+
   test("push conjuncts over the preserved input of a left join, and extract its keys") {
     val query =
       """from orders

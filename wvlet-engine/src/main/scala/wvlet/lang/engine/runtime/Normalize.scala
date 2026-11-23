@@ -43,22 +43,10 @@ object FactorOr extends Rule:
   override def apply(p: RuntimePlan): Option[RuntimePlan] =
     p match
       case f: RuntimePlan.Filter =>
-        val conds    = conjuncts(f.cond.expr)
-        val factored = conds.map(factor)
-        if factored.forall(_.isEmpty) then
-          None
-        else
-          val all = conds.zip(factored).flatMap((c, fc) => fc.getOrElse(List(c)))
-          Some(f.copy(cond = BExpr(and(all))))
+        factorConjuncts(f.cond).map(c => f.copy(cond = c))
       case j: RuntimePlan.Join if j.residual.nonEmpty =>
         // An outer join's ON condition, before PushDownFilters turns its equalities into keys
-        val conds    = conjuncts(j.residual.get.expr)
-        val factored = conds.map(factor)
-        if factored.forall(_.isEmpty) then
-          None
-        else
-          val all = conds.zip(factored).flatMap((c, fc) => fc.getOrElse(List(c)))
-          Some(j.copy(residual = Some(BExpr(and(all)))))
+        factorConjuncts(j.residual.get).map(c => j.copy(residual = Some(c)))
       case j: RuntimePlan.InnerJoins =>
         // Each condition is one conjunct: it is replaced in place by its factored conjuncts
         val factored = j.conds.map(c => factor(c.cond.expr))
@@ -79,7 +67,7 @@ object FactorOr extends Rule:
     * reduces a filter's bound conjuncts with `and` from the left, so reducing them again gives the
     * same expression
     */
-  private def conjuncts(e: VExpr): List[VExpr] =
+  private[runtime] def conjuncts(e: VExpr): List[VExpr] =
     e match
       case AndExpr(Compare(CmpOp.Ge, x, _), Compare(CmpOp.Le, y, _)) if x.sig == y.sig =>
         List(e)
@@ -87,6 +75,15 @@ object FactorOr extends Rule:
         conjuncts(l) ++ conjuncts(r)
       case other =>
         List(other)
+
+  /** The condition with each of its conjuncts factored, or None when none is */
+  private def factorConjuncts(cond: BExpr): Option[BExpr] =
+    val conds    = conjuncts(cond.expr)
+    val factored = conds.map(factor)
+    if factored.forall(_.isEmpty) then
+      None
+    else
+      Some(BExpr(and(conds.zip(factored).flatMap((c, fc) => fc.getOrElse(List(c))))))
 
   private def disjuncts(e: VExpr): List[VExpr] =
     e match
