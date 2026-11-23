@@ -328,18 +328,21 @@ object PushDownFilters extends Pass:
       */
     private def filter(p: RuntimePlan, conds: List[Conjunct]): RuntimePlan =
       // A deterministic conjunct the filter p already applies, or that comes twice, is dropped: a
-      // conjunct carried across join keys may repeat one. Two random() conjuncts both stay
-      val applied =
-        p match
-          case Filter(_, cond, _) if enabled =>
-            conjuncts(cond.expr).map(_.sig).toSet
-          case _ =>
-            Set.empty[String]
-      val seen = mutable.Set.empty[String]
+      // conjunct carried across join keys may repeat one. Two random() conjuncts both stay. The
+      // comparison is structural, since a signature omits what a RowFn closes over (tuple_in)
+      val seen = mutable.ListBuffer.empty[VExpr]
+      p match
+        case Filter(_, cond, _) if enabled =>
+          seen ++= conjuncts(cond.expr)
+        case _ =>
       val kept = conds.filterNot { c =>
         val repeated =
-          enabled && isDeterministic(c.expr) &&
-            (applied.contains(c.expr.sig) || !seen.add(c.expr.sig))
+          enabled && isDeterministic(c.expr) && {
+            val r = seen.contains(c.expr)
+            if !r then
+              seen += c.expr
+            r
+          }
         (enabled && isTrue(c.expr)) || repeated
       }
       if kept.isEmpty then

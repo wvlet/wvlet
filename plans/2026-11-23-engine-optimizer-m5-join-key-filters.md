@@ -24,7 +24,7 @@
   - It applies only to key pairs that are plain columns of the same type, and not to float/double keys, where key equality and `=` can disagree (`-0.0`, NaN).
 - **Ordered inner joins.** A conjunct over one input of an ordered `Join[Inner]` / cross join goes into that input. A conjunct over the key columns of one input is also carried to the other input, as above.
 - For q78, `ws_sold_year = 2000` then passes through the two projections and the `HashAgg` group key (`d_year`) to the `date_dim` scan of `ws`. The `ss` filter reaches its `date_dim` scan too.
-- **Lean model.** A new `formal/WvletFormal/Engine/` model of bag joins with 3VL predicates (inner, left, right, semi, anti) proves that filtering the other input by the carried conjunct keeps the filtered join's rows. `lake exe join-key-filter-traces` exports cases. A conformance test runs each case as an engine query with the toggle on and off, and checks the rows and where the copy lands.
+- **Lean model.** A new `formal/WvletFormal/JoinKeyFilter/` model of bag joins with 3VL predicates (inner, left, right, semi, anti) proves that filtering the other input by the carried conjunct keeps the filtered join's rows. `lake exe join-key-filter-traces` exports cases. A conformance test runs each case as an engine query with the toggle on and off, and checks the rows and where the copy lands.
 - Golden plans are regenerated, and any plan that changes is listed in the PR. TPC-DS 99/99 conformance passes. SF1 A/B through the toggle, with unchanged-plan queries as controls. An ADR records the rule.
 
 ## Alternatives and Why Not?
