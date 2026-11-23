@@ -662,11 +662,12 @@ class RuntimeBinder(planner: Planner):
           Lowered(legacyOp(op), op)
 
     /**
-      * Conjuncts over p as `Planner.applyConjuncts` applies them, when each is plain (uncorrelated
-      * scalar subqueries are constants in it) or [NOT] EXISTS / [NOT] IN over a subquery
-      * (uncorrelated, or correlated with [[Optimization.DecorrelateCorrelated]]), and one is the
-      * latter: the subqueries become semi and anti joins in conjunct order, then the plain
-      * conjuncts filter their result
+      * Conjuncts over p as `Planner.applyConjuncts` applies them, when one holds a subquery: [NOT]
+      * EXISTS / [NOT] IN conjuncts become semi and anti joins in conjunct order (correlated ones
+      * with [[Optimization.DecorrelateCorrelated]]), then the other conjuncts filter their result,
+      * their correlated scalar subqueries and EXISTS under OR / NOT / CASE joined as the planner
+      * joins them (with [[Optimization.DecorrelateScalar]]). Uncorrelated subqueries inside them
+      * are constants
       */
     private def subqueryJoins(p: Lowered, conds: List[Expression]): Option[Lowered] =
       val subs  = conds.map(planner.subqueryConjunct)
@@ -675,8 +676,10 @@ class RuntimeBinder(planner: Planner):
         .collect { case (c, None) =>
           c
         }
-      if !planner.enabled(Optimization.Decorrelate) || subs.forall(_.isEmpty) ||
-        plain.exists(c => planner.hasSubquery(planner.withoutScalarSubqueries(c))) ||
+      val nested = plain.exists(c => planner.hasSubquery(planner.withoutScalarSubqueries(c)))
+      if !planner.enabled(Optimization.Decorrelate) ||
+        (subs.forall(_.isEmpty) && !nested) ||
+        (nested && !planner.enabled(Optimization.DecorrelateScalar)) ||
         subs
           .flatten
           .exists {
@@ -695,8 +698,37 @@ class RuntimeBinder(planner: Planner):
         if plain.isEmpty then
           Some(joined)
         else
-          val b = Binder(planner, BindScope(joined.op.schema))
-          Some(filter(joined, plain.map(b.bind).reduce((a, b) => AndExpr(a, b))))
+          // Scalar subqueries and EXISTS marks extend the input, so bind every conjunct after
+          // them; earlier conjuncts bound to the narrower input keep their positions
+          var current = joined
+          val bound   = plain.map { c =>
+            val (extended, e) = planner.bindWithSubqueries(
+              this,
+              current,
+              c,
+              r => lowered(bind(r)),
+              f => lowered(bind(f))
+            )
+            current = extended
+            e
+          }
+          val filtered = filter(current, bound.reduce((a, b) => AndExpr(a, b)))
+          val width    = p.op.schema.size
+          val schema   = filtered.op.schema
+          if schema.size == width then
+            Some(filtered)
+          else
+            Some(
+              project(
+                filtered,
+                (0 until width).map(i => ColRef(i, schema(i).ptype, schema(i).name)),
+                Schema(schema.fields.take(width))
+              )
+            )
+        end if
+      end if
+
+    end subqueryJoins
 
     /** Rows of p for which an EXISTS / NOT EXISTS / IN / NOT IN is true */
     private def subqueryJoin(p: Lowered, s: SubqueryConjunct): Lowered =

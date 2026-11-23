@@ -329,4 +329,85 @@ class EngineDecorrelateTest extends UniTest:
     rows(off, query).size shouldBe 5
   }
 
+  private def leftJoins(p: RuntimePlan): Int = joinKinds(p).count(_ == JoinKind.Left)
+
+  test("bind a correlated scalar subquery as a left join with the grouped body") {
+    val query =
+      """select s_name from supplier s1
+        |where s_acctbal > (
+        |  select avg(s_acctbal) from supplier s2 where s2.s_nationkey = s1.s_nationkey
+        |)""".stripMargin
+    val p = runtimePlan(query)
+    leftJoins(p) shouldBe 1
+    nodes(p).exists(_.isInstanceOf[Aggregate]) shouldBe true
+    hasLegacy(p) shouldBe false
+    sameRows(query).size shouldBe 48
+  }
+
+  test("give count of a correlated group without rows as 0") {
+    val query =
+      """select n_name from nation
+        |where (
+        |  select count(*) from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
+        |) = 0""".stripMargin
+    hasLegacy(runtimePlan(query)) shouldBe false
+    sameRows(query).size shouldBe 24
+    val filtered =
+      """select n_name from nation
+        |where n_regionkey = 1 and (
+        |  select count(*) from supplier where s_nationkey = n_nationkey and s_acctbal > 9000
+        |) = 0""".stripMargin
+    sameRows(filtered).size shouldBe 2
+  }
+
+  test("keep a NULL value of a matched correlated group when its empty value is not NULL") {
+    val query =
+      """select n_name from nation
+        |where (
+        |  select case when count(*) > 0 then null else 1 end
+        |  from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
+        |) is null""".stripMargin
+    sameRows(query).size shouldBe 1
+  }
+
+  test("bind correlated EXISTS under OR as a left join with the distinct keys") {
+    val query =
+      """select n_name from nation
+        |where n_nationkey < 3 or exists (
+        |  select 1 from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
+        |)""".stripMargin
+    val p = runtimePlan(query)
+    leftJoins(p) shouldBe 1
+    hasLegacy(p) shouldBe false
+    sameRows(query).size shouldBe 4
+  }
+
+  test("bind correlated EXISTS under NOT and CASE") {
+    val negated =
+      """select n_name from nation
+        |where not (n_nationkey < 3 or exists (
+        |  select 1 from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
+        |))""".stripMargin
+    hasLegacy(runtimePlan(negated)) shouldBe false
+    sameRows(negated).size shouldBe 21
+    val cased =
+      """select n_name from nation
+        |where (case when exists (
+        |  select 1 from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
+        |) then 1 else 0 end) = 0""".stripMargin
+    hasLegacy(runtimePlan(cased)) shouldBe false
+    sameRows(cased).size shouldBe 24
+  }
+
+  test("keep correlated scalar subqueries legacy with decorrelate_scalar disabled") {
+    val query =
+      """select n_name from nation
+        |where (
+        |  select count(*) from supplier where s_nationkey = n_nationkey and s_acctbal > 9900
+        |) = 0""".stripMargin
+    val off = engine.withOptimizer(options.withDisabled(Optimization.DecorrelateScalar))
+    hasLegacy(withQuery(query)(off.runtimePlan(_))) shouldBe true
+    rows(off, query).size shouldBe 24
+  }
+
 end EngineDecorrelateTest
