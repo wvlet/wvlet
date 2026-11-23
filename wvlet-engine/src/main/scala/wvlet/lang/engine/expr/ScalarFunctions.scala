@@ -412,10 +412,21 @@ object ScalarFunctions:
     regexCache.getOrElseUpdate(p, regex(p))
   }
 
+  private def outOfRange(name: String) = StatusCode
+    .INVALID_ARGUMENT
+    .newException(s"${name} value is out of range")
+
+  /** |x|, failing for Long.MinValue, whose absolute value is not a long */
+  private def absExact(name: String, x: Long): Long =
+    if x == Long.MinValue then
+      throw outOfRange(name)
+    else
+      math.abs(x)
+
   /** Greatest common divisor, non-negative (0 for gcd(0, 0)) */
   private def gcd(x: Long, y: Long): Long =
-    var a = math.abs(x)
-    var b = math.abs(y)
+    var a = absExact("gcd", x)
+    var b = absExact("gcd", y)
     while b != 0 do
       val t = a % b
       a = b
@@ -427,6 +438,42 @@ object ScalarFunctions:
     * type, integers round to tens and hundreds with negative digits, and doubles round their exact
     * binary value (2.675 is 2.67499..., so it rounds to 2.67)
     */
+  /**
+    * asinh without cancellation for negative inputs, precision loss near 0, or overflow when huge
+    */
+  private def asinh(d: Double): Double =
+    val a = math.abs(d)
+    val r =
+      if a > 1e8 then
+        math.log(a) + math.log(2)
+      else
+        math.log1p(a + a * a / (1 + math.sqrt(1 + a * a)))
+    if d < 0 then
+      -r
+    else
+      r
+
+  /** acosh, NaN below 1, computed without squaring the input */
+  private def acosh(d: Double): Double =
+    if d > 1e8 then
+      math.log(d) + math.log(2)
+    else
+      math.log(d + math.sqrt(d - 1) * math.sqrt(d + 1))
+
+  /**
+    * Round a finite double to `digits` decimal places as its exact binary value would round. Away
+    * from ties, the scaled value rounds the same way, so only near-ties take the exact BigDecimal
+    * path
+    */
+  private def roundDouble(v: Double, digits: Int, mode: RoundingMode): Double =
+    if digits >= 0 && digits <= 15 then
+      val p      = math.pow(10, digits)
+      val scaled = v * p
+      val frac   = math.abs(scaled - math.floor(scaled))
+      if math.abs(scaled) < 1e15 && math.abs(frac - 0.5) > 1e-6 then
+        return math.rint(scaled) / p
+    JBigDecimal(v).setScale(digits, mode).doubleValue()
+
   private def numericRound(name: String, args: Seq[VExpr], mode: RoundingMode): VExpr =
     val x      = args.head
     val digits =
@@ -442,17 +489,27 @@ object ScalarFunctions:
     x.ptype match
       case d: PType.Decimal =>
         val outType = PType.decimal(d.precision, math.max(0, math.min(d.scale, digits)))
-        fn(name, Seq(x), outType)(a => a(0).asInstanceOf[JBigDecimal].setScale(digits, mode))
+        // Rounded to `digits`, then shown at the output scale (exact: no digits are dropped)
+        fn(name, Seq(x), outType)(a =>
+          a(0).asInstanceOf[JBigDecimal].setScale(digits, mode).setScale(outType.scale)
+        )
       case PType.Int32 | PType.Int64 if digits >= 0 =>
         x
       case t @ (PType.Int32 | PType.Int64) =>
         // Negative digits round integers to tens, hundreds, ...: round(25, -1) = 30
         fn(name, Seq(x), t) { a =>
-          val r = JBigDecimal.valueOf(ValueOps.toLong(a(0))).setScale(digits, mode).longValueExact()
-          if t == PType.Int32 then
-            r.toInt
-          else
-            r
+          try
+            val r = JBigDecimal
+              .valueOf(ValueOps.toLong(a(0)))
+              .setScale(digits, mode)
+              .longValueExact()
+            if t == PType.Int32 then
+              Math.toIntExact(r)
+            else
+              r
+          catch
+            case _: ArithmeticException =>
+              throw outOfRange(name)
         }
       case _ =>
         fn(name, Seq(toDouble(x)), PType.Float64) { a =>
@@ -460,8 +517,9 @@ object ScalarFunctions:
           if v.isNaN || v.isInfinite then
             v
           else
-            JBigDecimal(v).setScale(digits, mode).doubleValue()
+            roundDouble(v, digits, mode)
         }
+    end match
 
   end numericRound
 
@@ -805,9 +863,9 @@ object ScalarFunctions:
     dbl("sinh")(math.sinh)
     dbl("cosh")(math.cosh)
     dbl("tanh")(math.tanh)
-    dbl("asinh")(d => math.signum(d) * math.log(math.abs(d) + math.sqrt(d * d + 1)))
-    dbl("acosh")(d => math.log(d + math.sqrt(d * d - 1)))
-    dbl("atanh")(d => 0.5 * math.log((1 + d) / (1 - d)))
+    dbl("asinh")(asinh)
+    dbl("acosh")(acosh)
+    dbl("atanh")(d => 0.5 * math.log1p(2 * d / (1 - d)))
     dbl("cot")(d => 1 / math.tan(d))
     reg("gcd") { args =>
       arity("gcd", args, 2)
@@ -824,10 +882,10 @@ object ScalarFunctions:
           0L
         else
           try
-            math.abs(Math.multiplyExact(x / gcd(x, y), y))
+            absExact("lcm", Math.multiplyExact(x / gcd(x, y), y))
           catch
             case _: ArithmeticException =>
-              throw StatusCode.INVALID_ARGUMENT.newException("lcm value is out of range")
+              throw outOfRange("lcm")
       }
     }
     reg("factorial") { args =>

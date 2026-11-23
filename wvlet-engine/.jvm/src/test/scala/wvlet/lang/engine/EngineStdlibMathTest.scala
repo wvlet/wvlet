@@ -36,6 +36,13 @@ class EngineStdlibMathTest extends UniTest:
     check(s"${doubles}\nselect x, x.asinh as a, x.acosh as b, x.atanh as c, x.cot as d")
   }
 
+  test("inverse hyperbolic functions stay precise for tiny and huge inputs") {
+    check(
+      "from [['1e-20'], ['-1e-20'], ['1e200'], ['-1e8'], ['0.999999']] as t(s)\n" +
+        "select s.to_double as x\nselect x, x.asinh as a, x.acosh as b, x.atanh as c"
+    )
+  }
+
   test("hyperbolic functions apply to integers") {
     check("from [[0], [3], [-2], [null]] as t(i)\nselect i, i.sinh as s, i.asinh as a, i.cot as c")
   }
@@ -50,7 +57,10 @@ class EngineStdlibMathTest extends UniTest:
   }
 
   test("round_half_even matches DuckDB on decimals") {
-    check("from [[1.25], [1.35], [-1.25]] as t(d)\nselect d, d.round_half_even(1) as r")
+    check(
+      "from [[1.25], [1.35], [-1.25], [26.75]] as t(d)\n" +
+        "select d, d.round_half_even(1) as r, d.round_half_even(-1) as n, d.round(-1) as h"
+    )
   }
 
   test("rounding integers with negative digits matches DuckDB") {

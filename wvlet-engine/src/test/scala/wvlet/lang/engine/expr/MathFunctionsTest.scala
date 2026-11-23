@@ -43,9 +43,15 @@ class MathFunctionsTest extends UniTest:
     call("lcm", 0L, 5L) shouldBe 0L
   }
 
-  test("should fail on an lcm out of the long range") {
+  test("should fail on gcd and lcm results out of the long range") {
     intercept[WvletLangException] {
       call("lcm", Long.MaxValue, 2L)
+    }.getMessage shouldContain "out of range"
+    intercept[WvletLangException] {
+      call("lcm", Long.MinValue, 1L)
+    }.getMessage shouldContain "out of range"
+    intercept[WvletLangException] {
+      call("gcd", Long.MinValue, 0L)
     }.getMessage shouldContain "out of range"
   }
 
@@ -75,6 +81,19 @@ class MathFunctionsTest extends UniTest:
     call("round", 25L, -1) shouldBe 30L
     call("round_even", 25L, -1) shouldBe 20L
     call("round_even", 35, -1) shouldBe 40
+    intercept[WvletLangException] {
+      call("round", Int.MaxValue, -1)
+    }.getMessage shouldContain "out of range"
+  }
+
+  test("should keep inverse hyperbolic functions precise for tiny and huge inputs") {
+    call("asinh", 1e-20) shouldBe 1e-20
+    call("asinh", -1e-20) shouldBe -1e-20
+    call("atanh", 1e-20) shouldBe 1e-20
+    val big = call("asinh", 1e200).asInstanceOf[Double]
+    math.abs(big - 461.2101657793691) < 1e-9 shouldBe true
+    call("asinh", -1e8).asInstanceOf[Double] < -19.0 shouldBe true
+    math.abs(call("acosh", 1e200).asInstanceOf[Double] - 461.2101657793691) < 1e-9 shouldBe true
   }
 
   test("should return NaN outside the domain of inverse hyperbolic functions") {

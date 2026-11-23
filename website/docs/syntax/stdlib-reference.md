@@ -56,12 +56,12 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `sinh` | double | all | Hyperbolic sine, cosine, and tangent |
 | `cosh` | double | all |  |
 | `tanh` | double | all |  |
-| `asinh` | double | all | Inverse hyperbolic sine, cosine (NaN below 1), and tangent (NaN outside -1..1) |
-| `acosh` | double | all |  |
-| `atanh` | double | all |  |
+| `asinh` | double | all | Inverse hyperbolic sine, cosine (NaN below 1), and tangent (NaN outside -1..1, infinite at -1 and 1) |
+| `acosh` | double | duckdb, trino, snowflake, bigquery |  |
+| `atanh` | double | duckdb, trino, snowflake, bigquery |  |
 | `cot` | double | all | Cotangent (1 / tan) |
-| `round_half_even` | double | duckdb, hive, snowflake | Round to an integer, or to the given number of decimal places, rounding ties to the even neighbor (banker's rounding) |
-| `round_half_even(decimal: int)` | double | duckdb, hive, snowflake |  |
+| `round_half_even` | double | duckdb, hive | Round to an integer, or to the given number of decimal places, rounding ties to the even neighbor (banker's rounding) |
+| `round_half_even(decimal: int)` | double | duckdb, hive |  |
 | `in(v: any*)` | boolean | all |  |
 | `not_in(v: any*)` | boolean | all |  |
 
@@ -82,7 +82,7 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `mod(divisor: int)` | int | all |  |
 | `gcd(other: long)` | long | duckdb | Greatest common divisor and least common multiple (non-negative; 0 when both are 0) |
 | `lcm(other: long)` | long | duckdb |  |
-| `factorial` | long | duckdb, snowflake | n! for n in 0..20 (an error for negative n or when the result exceeds a long) |
+| `factorial` | long | duckdb | n! for n in 0..20 (an error for negative n or when the result exceeds a long) |
 | `from_unixtime` | timestamp | duckdb, trino, hive, snowflake, bigquery | Interpret this value as a unix epoch second (in UTC) |
 | `between(l: int, r: int)` | boolean | all |  |
 
@@ -103,7 +103,7 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `mod(divisor: long)` | long | all |  |
 | `gcd(other: long)` | long | duckdb | Greatest common divisor and least common multiple (non-negative; 0 when both are 0) |
 | `lcm(other: long)` | long | duckdb |  |
-| `factorial` | long | duckdb, snowflake | n! for n in 0..20 (an error for negative n or when the result exceeds a long) |
+| `factorial` | long | duckdb | n! for n in 0..20 (an error for negative n or when the result exceeds a long) |
 | `from_unixtime` | timestamp | duckdb, trino, hive, snowflake, bigquery | Interpret this value as a unix epoch second (in UTC) |
 | `between(l: long, r: long)` | boolean | all |  |
 | `within(duration: string)` | boolean | td_trino |  |

@@ -27,7 +27,6 @@ trait long = {
   def lcm(other:long) in duckdb: long = sql"lcm(${this},${other})"
   -- n! for n in 0..20 (an error for negative n or when the result exceeds a long)
   def factorial in duckdb: long = sql"cast(factorial(cast(${this} as integer)) as bigint)"
-  def factorial in snowflake: long = sql"factorial(${this})"
 
   -- Interpret this value as a unix epoch second (in UTC)
   def from_unixtime in duckdb: timestamp = sql"make_timestamp(cast(${this} as bigint) * 1000000)"
