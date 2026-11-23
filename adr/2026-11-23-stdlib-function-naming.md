@@ -1,6 +1,6 @@
 # ADR: Stdlib function names are Wvlet's engine-neutral contract
 
-Date: 2026-11-23 · PR #TBD
+Date: 2026-11-23 · PR #2322
 
 ## Context
 
