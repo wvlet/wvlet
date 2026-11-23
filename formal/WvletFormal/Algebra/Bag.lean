@@ -9,6 +9,9 @@ duplicates (a bag) and an order that the rules never rely on. A condition evalua
 (Kleene logic), and a filter keeps only the rows where it is TRUE: FALSE and unknown (NULL) both
 drop the row.
 
+`a IN (v1, ..., vn)` over constants (`Cond.inList`, the engine's `InList`) has the value of
+`inTri` below, so a NULL among the constants makes a non-matching row unknown.
+
 Joins take the column ids of their left input (`L`) and a general ON condition, evaluated on the
 joined row, so equality keys are a special case. A joined row reads `L` from the left row and
 every other column from the right row; outer joins pad the missing side with `Row.null`, a row
@@ -45,7 +48,7 @@ def Row.merge (L : List Col) (x y : Row) : Row := fun c => if c ∈ L then x c e
 inductive Term where
   | col (c : Col)
   | lit (v : Value)
-  deriving Repr
+  deriving DecidableEq, Repr
 
 def Term.eval (x : Row) : Term → Value
   | .col c => x c
@@ -55,15 +58,17 @@ def Term.reads : Term → List Col
   | .col c => [c]
   | .lit _ => []
 
-/-- Conditions: comparisons, NULL tests, and the Kleene connectives. -/
+/-- Conditions: comparisons, NULL tests, IN over constants, and the Kleene connectives. -/
 inductive Cond where
   | eq (a b : Term)
   | lt (a b : Term)
   | isNull (a : Term)
+  /-- `a IN (v1, ..., vn)` over constants, NULL among them (the engine's `InList`) -/
+  | inList (a : Term) (vs : List Value)
   | not (p : Cond)
   | and (p q : Cond)
   | or (p q : Cond)
-  deriving Repr
+  deriving DecidableEq, Repr
 
 /-- `=`: unknown when either side is NULL. -/
 def eqTri : Value → Value → Tri
@@ -77,10 +82,14 @@ def ltTri : Value → Value → Tri
   | .int a, .int b => if a < b then .true else .false
   | _, _ => .unknown
 
+/-- `v IN (vs)`: the Kleene OR of `v = y`; FALSE for no values. -/
+def inTri (v : Value) (vs : List Value) : Tri := vs.foldr (fun y acc => (eqTri v y).or acc) .false
+
 def Cond.eval (x : Row) : Cond → Tri
   | .eq a b => eqTri (a.eval x) (b.eval x)
   | .lt a b => ltTri (a.eval x) (b.eval x)
   | .isNull a => if a.eval x = .null then .true else .false
+  | .inList a vs => inTri (a.eval x) vs
   | .not p => (p.eval x).not
   | .and p q => (p.eval x).and (q.eval x)
   | .or p q => (p.eval x).or (q.eval x)
@@ -90,6 +99,7 @@ def Cond.reads : Cond → List Col
   | .eq a b => a.reads ++ b.reads
   | .lt a b => a.reads ++ b.reads
   | .isNull a => a.reads
+  | .inList a _ => a.reads
   | .not p => p.reads
   | .and p q => p.reads ++ q.reads
   | .or p q => p.reads ++ q.reads
@@ -114,6 +124,8 @@ theorem Cond.eval_congr {x y : Row} (p : Cond) (h : ∀ c ∈ p.reads, x c = y c
     simp only [Cond.eval, Term.eval_congr a (fun c hc => h c (Or.inl hc)),
       Term.eval_congr b (fun c hc => h c (Or.inr hc))]
   | isNull a =>
+    simp only [Cond.eval, Term.eval_congr a h]
+  | inList a vs =>
     simp only [Cond.eval, Term.eval_congr a h]
   | not p ih => simp only [Cond.eval, ih h]
   | and p q ihp ihq =>
@@ -192,9 +204,6 @@ def join (k : JoinKind) (L : List Col) (on : Cond) (ls rs : Rel) : Rel :=
   | .anti => antiJoin L on ls rs
 
 /-! ### IN and NOT IN over a subquery -/
-
-/-- `v IN (vs)`: the Kleene OR of `v = y`; FALSE for no values. -/
-def inTri (v : Value) (vs : List Value) : Tri := vs.foldr (fun y acc => (eqTri v y).or acc) .false
 
 /-- `x NOT IN (subquery)` as a WHERE: the left rows for which it is TRUE, the subquery's values
 being column `c` of `rs`. -/

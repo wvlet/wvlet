@@ -26,6 +26,9 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
 - Carrying filters across hash join keys (`join_key_filters` in the engine's `PushDownFilters`):
   which joins let a conjunct over one input's keys filter the other input, with three-valued
   conjuncts and NULL keys.
+- OR factoring (wvlet-engine's `Normalize`: `FactorOr`): taking the conjuncts common to every
+  branch out of an `or` keeps the condition's value under three-valued logic, provided conjuncts
+  with the same signature have the same value.
 
 See
 [adr/2026-11-18-lean-formal-verification.md](../adr/2026-11-18-lean-formal-verification.md) for
@@ -50,6 +53,7 @@ lake exe name-lookup-traces # regenerate the name lookup conformance fixture
 lake exe pushdown-filter-traces # regenerate the filter pushdown conformance fixture
 lake exe not-in-traces      # regenerate the NOT IN conformance fixture
 lake exe join-key-filter-traces # regenerate the join-key filter conformance fixture
+lake exe factor-or-traces   # regenerate the OR factoring conformance fixture
 ```
 
 ## Layout
@@ -95,6 +99,10 @@ lake exe join-key-filter-traces # regenerate the join-key filter conformance fix
 | `WvletFormal/JoinKeyFilter/Sound.lean` | — | `sound_left`, `sound_right`, `sound_inner_right`: a conjunct over the preserved input's key above the join gives the same rows as filtering both inputs by it over their own keys (`join_key_filters` in the engine's `PushDownFilters`) |
 | `WvletFormal/JoinKeyFilter/Findings.lean` | — | `carry_from_null_supplying_side_unsound`: carrying a conjunct from the NULL-supplying input of a LEFT join changes the result |
 | `WvletFormal/JoinKeyFilter/Traces.lean`, `JoinKeyFilterTraces.lean` | — | exports the join-key filter conformance fixture |
+| `WvletFormal/Algebra/Bag.lean` (`inList`) | `a IN (v1, ..., vn)` over constants, NULL among them, valued by `inTri` | — |
+| `WvletFormal/FactorOr/Rule.lean` | `factor`: the conjuncts common to every branch of an `or` (matched by a key, taken from the first branch), then the `or` of the other conjuncts, or nothing more when a branch has no other conjunct; `factorConjuncts`: each conjunct of a filter condition replaced by its factored conjuncts | `factor_sound`, `factorConjuncts_sound`: the factored condition has the value of the original on every row where conjuncts with the same key have the same value (`FaithfulOn`), NULLs included, by distributivity and absorption in Kleene logic; `filter_sound_id`: with the condition itself as the key, a WHERE keeps its rows |
+| `WvletFormal/FactorOr/Necessity.lean` | `oldSig`: `InList.sig` before the fix (non-NULL values joined with commas) | `oldSig_drops_null_value`, `oldSig_joins_values`: the old signature factors `a not in (1, 3)` with `a not in (1, 3, null)`, and `s in ('x,y')` with `s in ('x', 'y')`, and keeps rows SQL drops; `complement_unsound`: `(p and q) or (not p and q) = q` holds in two-valued logic only; `not_common_unsound`: a conjunct of one branch cannot be taken out |
+| `WvletFormal/FactorOr/Traces.lean`, `FactorOrTraces.lean` | — | exports the OR factoring conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -163,11 +171,21 @@ behavior as traces:
   join and the value set), the select items in Wvlet and SQL, compares rows with the model and
   DuckDB, and checks the uncorrelated plan: no join over an empty subquery or one with a NULL,
   an anti join otherwise.
+- `lake exe factor-or-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/factor-or-traces.json`: 13 WHERE
+  conditions that are an `or` (a common conjunct, absorption, no common conjunct, three branches,
+  duplicate and reordered conjuncts, a complement, IN lists with and without a NULL value, and
+  `'x,y'` against `'x', 'y'`) over an inline table with NULLs in every column, with whether the
+  model factors each one, into how many conjuncts, the factored condition, and the rows.
+  `FactorOrConformanceTest` (engineJVM) runs `Normalize` on each bound condition to check that it
+  factors as the model does, and runs the condition (FactorOr on and off) and its factored form
+  to compare rows with the model and DuckDB.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator
 typing rule in `TyperRules`, the build
-ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, a name-lookup rule, where `PushDownFilters` moves a conjunct over a join, or how the engine binds NOT IN, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
+ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, a name-lookup rule, where `PushDownFilters` moves a conjunct over a join, how the engine binds NOT IN, or how
+`FactorOr` factors an `or` (or a `sig` it compares conjuncts by), update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
 conformance test passes.
 
 ## Known gaps of the typer model
@@ -265,3 +283,19 @@ The model proves today's behavior. These are left for follow-ups:
   proof.
 - The uncorrelated binding's plan-time evaluation of the subquery is trusted: the model starts
   from the subquery's rows.
+
+## Known gaps of the OR factoring model
+
+- The engine's key is `VExpr.sig`, a string; the model trusts that conditions with the same
+  signature have the same value (`FaithfulOn`). The fixture replays the two collisions found in
+  `InList.sig` (a NULL value, and values joined with commas); other signatures that print user
+  text (string literals, `like` patterns) are not checked for collisions.
+- Expressions are deterministic and total in the model: a volatile function (`random()`) under
+  two branches would share a signature but not a value, and the model has no errors (division by
+  zero, failed casts) whose evaluation order factoring could change.
+- The binder factors conditions it hands to the shared planner code (with subqueries, or over a
+  left join's preserved input) on compiler expressions, keyed by `exprName`
+  (`Planner.factorOr`); that copy of the rule is the same `factor` but its key is not replayed.
+- The engine keeps a bound `between` as one conjunct; the model splits every `and`, which has the
+  same value. Outer join ON conditions and inner join conditions are factored by the same
+  `factor`, but the replay covers WHERE only.

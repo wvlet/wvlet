@@ -249,14 +249,17 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
     extends VExpr:
   override def children: Seq[VExpr] = Seq(child)
   def ptype: PType                  = PType.Bool
-  // A NULL in the list changes the value where no value matches, so the signature marks it
+  // Passes match conditions by signature (FactorOr, PushDownFilters), so a NULL in the list is
+  // marked (it changes the value where no value matches), and values that could read as another
+  // list are quoted: `in (1)` vs `in (1, null)`, and `in ('x,y')` vs `in ('x', 'y')`
   def sig: String =
-    val nullValue =
+    val nullMarker =
       if hasNullValue then
-        ",null"
+        Iterator("null")
       else
-        ""
-    s"in(${child.sig},${values.mkString(",")}${nullValue},${negate})"
+        Iterator.empty
+    val vs = values.iterator.map(InList.valueSig) ++ nullMarker
+    s"in(${child.sig},${vs.mkString(",")},${negate})"
 
   def eval(b: Batch): Vec =
     val v                     = child.eval(b)
@@ -285,6 +288,20 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
     BoolVec(o, nulls)
 
 end InList
+
+object InList:
+  /**
+    * A value in [[InList.sig]]: as text, or quoted SQL-style when the text could read as the NULL
+    * marker, an empty value, or a different list of values
+    */
+  private def valueSig(v: Any): String =
+    v match
+      case s: String
+          if s.isEmpty || s == "null" ||
+            s.exists(ch => ch == ',' || ch == '\'' || ch == '(' || ch == ')') =>
+        s"'${s.replace("'", "''")}'"
+      case other =>
+        other.toString
 
 /** `x IN (exprs...)` for non-constant lists: an OR of equalities */
 case class InExprs(child: VExpr, list: Seq[VExpr], negate: Boolean) extends VExpr:

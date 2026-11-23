@@ -49,6 +49,7 @@ def condWv : Cond → String
   | .lt a b => s!"{termWv a} < {termWv b}"
   | .isNull a => s!"{termWv a} is null"
   | .not (.isNull a) => s!"{termWv a} is not null"
+  | .inList a vs => s!"{termWv a} in ({", ".intercalate (vs.map jvalue)})"
   | .not p => s!"not ({condWv p})"
   | .and p q => s!"({condWv p}) and ({condWv q})"
   | .or p q => s!"({condWv p}) or ({condWv q})"
