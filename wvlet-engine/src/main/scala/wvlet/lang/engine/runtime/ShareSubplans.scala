@@ -32,9 +32,9 @@ object ShareSubplans:
     *
     * Equality is conservative. Expressions compare as values after renumbering (floating-point
     * constants by their bits), so a row function compares its function by reference. Literal
-    * counts, which only steer join order estimates, are left out. A plan with a `Legacy` leaf,
-    * `Values` rows, or a `CTERef`, whose operators, batches, and CTEs only compare by reference, or
-    * one reading a column it doesn't define (an outer reference), has no key.
+    * counts, which only steer join order estimates, are left out. A plan with `Values` rows or a
+    * `CTERef`, whose batches and CTEs only compare by reference, or one reading a column it doesn't
+    * define (an outer reference), has no key.
     */
   def key(p: RuntimePlan): Option[Any] =
     val ids = mutable.HashMap.empty[Int, Int]
@@ -86,8 +86,7 @@ object ShareSubplans:
       p match
         case RuntimePlan.Scan(source, cols, read, filter) =>
           ("scan", source.key, read, filter, define(cols))
-        case RuntimePlan.Values(_, _) | RuntimePlan.Legacy(_, _) | RuntimePlan.CTERef(_, _) |
-            RuntimePlan.Sample(_, _) =>
+        case RuntimePlan.Values(_, _) | RuntimePlan.CTERef(_, _) | RuntimePlan.Sample(_, _) =>
           // A sample draws its own random numbers, so two of them aren't shared
           throw NoKey()
         case RuntimePlan.Filter(child, cond, _) =>

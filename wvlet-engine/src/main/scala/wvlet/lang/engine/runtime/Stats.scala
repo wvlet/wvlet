@@ -27,7 +27,7 @@ import wvlet.lang.engine.plan.JoinOrderOptimizer
 /**
   * Row and distinct-count estimates of [[RuntimePlan]] nodes, read from source statistics. They
   * follow [[CardinalityEstimator]] over the lowered operators rule for rule, so that join order is
-  * the same on both planners, and read a [[RuntimePlan.Legacy]] leaf through it
+  * the same on both planners
   */
 object Stats:
   import RuntimePlan.*
@@ -66,8 +66,6 @@ object Stats:
         rows(left)
       case InnerJoins(inputs, _) =>
         rows(inputs.head)
-      case Legacy(op, _) =>
-        CardinalityEstimator.rows(op)
       case CTERef(_, _) =>
         // As for a scan of a shared result: its rows are unknown until it is computed
         1e6
@@ -125,9 +123,6 @@ object Stats:
           distinct(left, id)
         else
           distinct(right, id)
-      case Legacy(op, columns) =>
-        val i = columns.indexWhere(_.id == id)
-        Option.when(i >= 0)(i).flatMap(CardinalityEstimator.columnDistinct(op, _))
       case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
           InnerJoins(_, _) | CTERef(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) |
           Window(_, _, _) | Unnest(_, _, _, _, _) | AsOfJoin(_, _, _, _, _, _, _, _) =>

@@ -19,9 +19,8 @@ import wvlet.lang.engine.plan.Optimization
   * Drops the columns no node above needs, by column id, in one top-down walk after
   * [[ReorderJoins]]. A node's needs are the columns its parent needs plus those its own expressions
   * read; projections drop the expressions nobody needs and scans read only the needed columns.
-  * Aggregations and windows keep their calls, and the other leaves (VALUES, CTE reads, `Legacy`)
-  * keep their columns: the physical pruning after lowering narrows `Legacy` subtrees. The root
-  * keeps its output.
+  * Aggregations and windows keep their calls, and the other leaves (VALUES, CTE reads) keep their
+  * columns. The root keeps its output.
   *
   * The planner also runs it over a shared CTE body with the columns its readers read, so that the
   * body computes only those ([[prune]]).
@@ -56,7 +55,7 @@ object PruneColumns extends Pass:
             else
               keep
           )
-      case Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
+      case Values(_, _) | CTERef(_, _) =>
         p
       case Filter(child, cond, _) =>
         p.withChildren(Seq(prune(child, needed ++ cond.refs, ctx)))

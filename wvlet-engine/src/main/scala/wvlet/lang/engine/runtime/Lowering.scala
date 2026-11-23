@@ -107,8 +107,6 @@ object Lowering:
       case Unnest(child, lists, keepInput, outer, _) =>
         val pos = positions(child)
         UnnestOp(apply(child), lists.map(_.lower(pos)), keepInput, p.schema, outer)
-      case Legacy(op, _) =>
-        op
       case CTERef(cte, _) =>
         cte.reader(p.schema)
 

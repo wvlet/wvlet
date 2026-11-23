@@ -100,9 +100,6 @@ object PlanValidator:
           if columns.size != lists.size then
             b += s"Unnest has ${columns.size} columns for ${lists.size} lists"
           checkExprs(b, "Unnest", lists, child.output)
-        case Legacy(op, columns) =>
-          if columns.map(_.ptype) != op.schema.types then
-            b += s"Legacy[${op.name}] columns ${columns.mkString(", ")} differ from ${op.schema}"
         case CTERef(cte, columns) =>
           if columns.map(_.ptype) != cte.body.output.map(_.ptype) then
             b +=

@@ -23,8 +23,6 @@ import wvlet.lang.engine.plan.ScanFilters
   * moved the conjuncts over the scans, and after [[PruneColumns]]; the scan's filter is recomputed
   * from the condition over it, so running the pass again (after pushing more conjuncts into a
   * shared CTE body) replaces it.
-  *
-  * Scans inside `Legacy` leaves get theirs from the physical pruning after lowering.
   */
 object PushScanFilters extends Pass:
   import RuntimePlan.*

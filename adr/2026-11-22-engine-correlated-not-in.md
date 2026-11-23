@@ -16,4 +16,4 @@ The engine decorrelates a filter conjunct `x NOT IN (select y from t where t.k =
 ## Consequences
 
 - Correlated NOT IN loses `x` as a hash key, so a large correlation group is checked row by row in the residual. No TPC query uses correlated NOT IN. A null-aware anti join (tracking NULLs per group) could restore the key and is recorded as a follow-up.
-- `decorrelate_correlated` off sends correlated conjuncts back through the planner. That reproduces main's golden plans byte for byte, but correlated NOT IN stays exact, since the planner shares the function.
+- `decorrelate_correlated` off sends correlated conjuncts back through the planner. That reproduces main's golden plans byte for byte, but correlated NOT IN stays exact, since the planner shares the function. (Amended 2026-11-23: M4b removed the `decorrelate_correlated` toggle, whose only off state was this fallback; correlated conjuncts always bind on the runtime plan.)

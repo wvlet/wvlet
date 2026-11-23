@@ -14,7 +14,6 @@
 package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.catalog.MemTable
-import wvlet.lang.engine.exec.BatchesOp
 import wvlet.lang.engine.expr.CmpOp
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.Compare
@@ -68,12 +67,7 @@ class ShareSubplansTest extends UniTest:
     ShareSubplans.key(project(0.0)) shouldNotBe ShareSubplans.key(project(-0.0))
   }
 
-  test("give no key to plans with legacy leaves or outer references") {
-    val legacy = RuntimePlan.Legacy(
-      BatchesOp(schema, Nil),
-      IndexedSeq(Column(ColumnId(1), "a", PType.Int64), Column(ColumnId(2), "b", PType.Int64))
-    )
-    ShareSubplans.key(legacy) shouldBe None
+  test("give no key to plans with outer references") {
     val scan  = RuntimePlan.Scan(t, IndexedSeq(Column(ColumnId(1), "a", PType.Int64)))
     val outer = BExpr(Compare(CmpOp.Gt, ColRef(1, PType.Int64, "a"), ColRef(99, PType.Int64, "x")))
     ShareSubplans.key(RuntimePlan.Filter(scan, outer)) shouldBe None

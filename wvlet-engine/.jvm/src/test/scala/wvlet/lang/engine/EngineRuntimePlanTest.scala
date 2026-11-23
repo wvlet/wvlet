@@ -75,26 +75,9 @@ class EngineRuntimePlanTest extends UniTest:
     p.explain shouldContain "Project(#"
   }
 
-  test("keep relations the binder doesn't cover as legacy leaves") {
-    // A correlated subquery filter with decorrelate_correlated off, the last legacy form
-    val off = engine.withOptimizer(runtime.withDisabled(Optimization.DecorrelateCorrelated))
-    val p   =
-      withQuery(
-        """from nation
-        |where exists { from region where r_regionkey = n_regionkey and r_name = 'ASIA' }"""
-          .stripMargin
-      )(off.runtimePlan(_))
-    debug(p.explain)
-    val leaves = nodes(p).collect { case l: RuntimePlan.Legacy =>
-      l
-    }
-    leaves.nonEmpty shouldBe true
-    leaves.foreach(l => l.columns.map(_.name) shouldBe l.op.schema.names)
-  }
-
   test("raise the planner's errors for column edits with aggregates or unnest") {
     // These forms fail in the shared Binder on both planners; the runtime binder raises the same
-    // error itself, without a legacy leaf
+    // error itself
     def errorOf(f: => Any): String = intercept[wvlet.lang.api.WvletLangException](f).getMessage
     Seq(
       "from nation add count(*) as n"             -> "Aggregate function count is not allowed here",
@@ -116,7 +99,6 @@ class EngineRuntimePlanTest extends UniTest:
     def check(query: String): RuntimePlan =
       val p = runtimePlan(query)
       debug(p.explain)
-      legacyLeafCount(p) shouldBe 0
       nodes(p).exists(_.isInstanceOf[RuntimePlan.Sort]) shouldBe true
       PlanValidator.violations(p) shouldBe Nil
       val expected = rowsOf(legacy, query)
@@ -207,18 +189,10 @@ class EngineRuntimePlanTest extends UniTest:
       u
   }
 
-  private def legacyLeafCount(p: RuntimePlan): Int = nodes(p).count {
-    case _: RuntimePlan.Legacy =>
-      true
-    case _ =>
-      false
-  }
-
   test("bind unnest as a relation over one row") {
     val query = "from unnest([1, 2, 3]) as t(number)"
     val p     = runtimePlan(query)
     debug(p.explain)
-    legacyLeafCount(p) shouldBe 0
     unnests(p) shouldMatch {
       case Seq(RuntimePlan.Unnest(RuntimePlan.Values(cols, _), _, false, false, _)) =>
         cols shouldBe IndexedSeq.empty
@@ -237,7 +211,6 @@ class EngineRuntimePlanTest extends UniTest:
         |select id, x""".stripMargin
     val p = runtimePlan(query)
     debug(p.explain)
-    legacyLeafCount(p) shouldBe 0
     val Seq(u) = unnests(p)
     u.keepInput shouldBe true
     u.outer shouldBe false
@@ -262,7 +235,6 @@ class EngineRuntimePlanTest extends UniTest:
         |order by id""".stripMargin
     val l = runtimePlan(left)
     unnests(l).map(_.outer) shouldBe Seq(true)
-    legacyLeafCount(l) shouldBe 0
     PlanValidator.violations(l) shouldBe Nil
     rowsOf(engine, left) shouldBe Seq(Seq(2L, null), Seq(3L, null))
     rowsOf(engine, left) shouldBe rowsOf(legacy, left)
@@ -276,7 +248,6 @@ class EngineRuntimePlanTest extends UniTest:
         |order by id, x""".stripMargin
     val j = runtimePlan(tree)
     debug(j.explain)
-    legacyLeafCount(j) shouldBe 0
     unnests(j).size shouldBe 1
     PlanValidator.violations(j) shouldBe Nil
     rowsOf(engine, tree).size shouldBe 3
@@ -291,7 +262,6 @@ class EngineRuntimePlanTest extends UniTest:
         |order by n_nationkey, v""".stripMargin
     val p = runtimePlan(query)
     debug(p.explain)
-    legacyLeafCount(p) shouldBe 0
     nodes(p).exists {
       case RuntimePlan.Project(
             RuntimePlan.Unnest(_: RuntimePlan.Project, _, true, false, _),
@@ -321,13 +291,6 @@ class EngineRuntimePlanTest extends UniTest:
         |limit 3""".stripMargin
     val p = runtimePlan(query)
     debug(p.explain)
-    def legacyLeaves(p: RuntimePlan): Int =
-      p match
-        case RuntimePlan.Legacy(_, _) =>
-          1
-        case _ =>
-          p.children.map(legacyLeaves).sum
-    legacyLeaves(p) shouldBe 0
     p.output.map(_.name) shouldBe IndexedSeq("k", "r10", "id", "n_name", "n_regionkey")
     PlanValidator.violations(p) shouldBe Nil
     val expected = rowsOf(legacy, query)
@@ -379,11 +342,6 @@ class EngineRuntimePlanTest extends UniTest:
     queries.foreach { query =>
       val p = runtimePlan(query)
       debug(p.explain)
-      nodes(p)
-        .collect { case l: RuntimePlan.Legacy =>
-          l
-        }
-        .isEmpty shouldBe true
       PlanValidator.violations(p) shouldBe Nil
       val expected = rowsOf(legacy, query)
       expected.size > 0 shouldBe true
@@ -411,8 +369,6 @@ class EngineRuntimePlanTest extends UniTest:
     p match
       case j: RuntimePlan.Join =>
         j +: p.children.flatMap(joins)
-      case RuntimePlan.Legacy(_, _) =>
-        Nil
       case _ =>
         p.children.flatMap(joins)
 
@@ -420,7 +376,6 @@ class EngineRuntimePlanTest extends UniTest:
     val query = "from nation pivot on n_regionkey in (0, 1) agg _.count"
     val p     = runtimePlan(query)
     debug(p.explain)
-    legacyLeafCount(p) shouldBe 0
     p shouldMatch { case RuntimePlan.Aggregate(_: RuntimePlan.Scan, _, calls, cols) =>
       // One count per value, filtered to it
       calls.map(_.filter.isDefined) shouldBe IndexedSeq(true, true)
@@ -434,7 +389,6 @@ class EngineRuntimePlanTest extends UniTest:
     val query = "from nation pivot on n_regionkey group by n_name"
     val p     = runtimePlan(query)
     debug(p.explain)
-    legacyLeafCount(p) shouldBe 0
     p shouldMatch { case RuntimePlan.Aggregate(v: RuntimePlan.Values, _, calls, _) =>
       // The values of n_regionkey come from the input rows, which the aggregation reads
       v.rows.size shouldBe 25
@@ -454,7 +408,6 @@ class EngineRuntimePlanTest extends UniTest:
         |where v > 400000.0""".stripMargin
     val p = runtimePlan(query)
     debug(p.explain)
-    legacyLeafCount(p) shouldBe 0
     p shouldMatch { case RuntimePlan.Union(branches, cols) =>
       cols.map(_.name) shouldBe IndexedSeq("o_orderkey", "col", "v")
       branches.size shouldBe 2
@@ -480,7 +433,6 @@ class EngineRuntimePlanTest extends UniTest:
     def check(e: WvletEngine, query: String)(f: RuntimePlan => Unit): Unit =
       val p = withQuery(query)(e.runtimePlan(_))
       debug(p.explain)
-      legacyLeafCount(p) shouldBe 0
       PlanValidator.violations(p) shouldBe Nil
       f(p)
       val expected = rowsOf(legacy, query)
@@ -511,7 +463,6 @@ class EngineRuntimePlanTest extends UniTest:
       val refs = cteRefs(p)
       refs.size shouldBe 2
       refs.map(_.cte).distinct.size shouldBe 1
-      legacyLeafCount(refs.head.cte.body) shouldBe 0
       // The readers' columns are fresh ids, so that the join keys tell them apart
       refs(0).output.map(_.id).intersect(refs(1).output.map(_.id)) shouldBe Nil
     }
@@ -539,7 +490,6 @@ class EngineRuntimePlanTest extends UniTest:
           |order by id, x, y""".stripMargin
       val p = runtimePlan(query)
       debug(p.explain)
-      legacyLeafCount(p) shouldBe 0
       val js = joins(p)
       js.size shouldBe 1
       js.head.leftKeys.size shouldBe 1
@@ -571,7 +521,6 @@ class EngineRuntimePlanTest extends UniTest:
           |order by k, t, tag""".stripMargin
       val p = runtimePlan(query)
       debug(p.explain)
-      legacyLeafCount(p) shouldBe 0
       val js = asOfJoins(p)
       js.size shouldBe 1
       js.head.leftKeys.size shouldBe 1
@@ -593,7 +542,6 @@ class EngineRuntimePlanTest extends UniTest:
         |select o_orderkey, l_linenumber
         |order by o_orderkey""".stripMargin
     val p = runtimePlan(query)
-    legacyLeafCount(p) shouldBe 0
     asOfJoins(p).size shouldBe 1
     PlanValidator.violations(p) shouldBe Nil
     rowsOf(engine, query) shouldBe rowsOf(legacy, query)
@@ -717,7 +665,6 @@ class EngineRuntimePlanTest extends UniTest:
         } shouldBe IndexedSeq(2, 1, 0)
       case other =>
         fail(s"Unexpected plan:\n${other.explain}")
-    p.explain shouldNotContain "Legacy["
     PlanValidator.violations(p) shouldBe Nil
   }
 
@@ -728,7 +675,6 @@ class EngineRuntimePlanTest extends UniTest:
         |select n_name""".stripMargin)
     debug(p.explain)
     p.explain shouldContain "Join[Semi]"
-    p.explain shouldNotContain "Legacy["
     PlanValidator.violations(p) shouldBe Nil
   }
 

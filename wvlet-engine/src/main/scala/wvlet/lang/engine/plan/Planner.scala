@@ -204,9 +204,8 @@ class Planner(
   private lazy val runtimeOptimizer = Optimizer.default(options)
 
   /**
-    * Plan a relation into operators: through the runtime plan (`wvlet.engine.planner=runtime`),
-    * whose relations it doesn't cover yet are planned by [[planLegacy]], or directly by
-    * [[planLegacy]]
+    * Plan a relation into operators: through the runtime plan (`wvlet.engine.planner=runtime`), or
+    * directly by [[planLegacy]]
     */
   private[engine] def planRelation(r: Relation): Operator =
     options.planner match
@@ -215,10 +214,7 @@ class Planner(
       case PlannerMode.Legacy =>
         planLegacy(r)
 
-  /**
-    * The optimized runtime plan of a relation, whose relations the runtime binder doesn't cover are
-    * planned
-    */
+  /** The optimized runtime plan of a relation */
   def runtimePlan(r: Relation): RuntimePlan = optimizeRuntime(runtimeBinder.bind(r))
 
   /** Run the logical passes over a bound runtime plan (and validate it, with `validatePlans`) */
