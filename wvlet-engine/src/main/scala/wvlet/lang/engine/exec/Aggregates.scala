@@ -957,6 +957,7 @@ object Aggregates:
     * Online co-moments of (y, x) pairs, skipping pairs with a NULL, for correlation, covariance,
     * and linear regression. The results follow DuckDB: NaN where a variance is zero (corr,
     * regr_slope), NULL for regr_intercept and regr_r2 when x is constant, and regr_r2 = 1 when y is
+    * constant
     */
   final class CoMoments(kind: Int) extends Accumulator:
     private var n: Array[Long]       = new Array[Long](0)

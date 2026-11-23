@@ -173,11 +173,12 @@ trait array[A of numeric] = {
 
   -- Sample excess kurtosis (NULL for fewer than 4 values) and sample skewness (fewer than 3)
   def kurtosis in duckdb: double = sql"kurtosis(${this})"
-  def kurtosis in trino: double = sql"kurtosis(${this})"
+  -- NULL for equal values, as DuckDB (Trino's 0 / 0 would be NaN)
+  def kurtosis in trino: double = sql"if(stddev_pop(${this}) > 0, kurtosis(${this}))"
   def kurtosis in snowflake: double = sql"kurtosis(${this})"
   def skewness in duckdb: double = sql"skewness(${this})"
   -- Trino's skewness is the population form: apply the sample correction
-  def skewness in trino: double = sql"if(count(${this}) > 2, skewness(${this}) * sqrt(count(${this}) * (count(${this}) - 1.0)) / (count(${this}) - 2))"
+  def skewness in trino: double = sql"if(count(${this}) > 2 and stddev_pop(${this}) > 0, skewness(${this}) * sqrt(count(${this}) * (count(${this}) - 1.0)) / (count(${this}) - 2))"
   def skewness in snowflake: double = sql"skew(${this})"
 
   -- Bitwise AND / OR / XOR of the integer values
