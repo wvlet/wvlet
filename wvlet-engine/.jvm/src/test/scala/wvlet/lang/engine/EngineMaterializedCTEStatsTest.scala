@@ -42,6 +42,10 @@ class EngineMaterializedCTEStatsTest extends UniTest:
 
   private val rootBodies = engine.withOptimizer(options.withDisabled(Optimization.ReplanCTEBodies))
 
+  private val noSharedInputs = engine.withOptimizer(
+    options.withDisabled(Optimization.ReplanSharedInputs)
+  )
+
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -169,6 +173,24 @@ class EngineMaterializedCTEStatsTest extends UniTest:
          |where o_orderstatus in (select s from t) and o_orderstatus in (select s from t where c > 0)
          |""".stripMargin
     explain(boundBuilds, query) shouldContain "HashJoin[RightSemi]"
+    val plan = explain(engine, query)
+    plan shouldNotContain "HashJoin[RightSemi]"
+    plan shouldContain "HashJoin[Semi]"
+    val r = rows(engine, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(disabled, query)
+  }
+
+  test("build semi joins in a grouping-sets input on a small shared CTE") {
+    // The rollup input is shared by the grouping sets; its IN semi joins build on t once t's two
+    // rows are known, as in TPC-DS q14
+    val query =
+      s"""${cte}select o_orderstatus, o_orderpriority, count(*) from orders
+         |where o_orderstatus in (select s from t) and o_orderstatus in (select s from t where c > 0)
+         |group by rollup(o_orderstatus, o_orderpriority)""".stripMargin
+    val before = explain(noSharedInputs, query)
+    before shouldContain "GroupingSetInput"
+    before shouldContain "HashJoin[RightSemi]"
     val plan = explain(engine, query)
     plan shouldNotContain "HashJoin[RightSemi]"
     plan shouldContain "HashJoin[Semi]"

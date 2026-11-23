@@ -140,7 +140,9 @@ class Planner(
     * (`replan_semi_join_builds`). The re-optimized plan, lowered, if it differs from `optimized`.
     * Inputs the binder optimized while binding (aggregation, pivot, and subquery inputs, whose
     * joins are ordered in `bound`) are optimized again from their bound plans when they read such a
-    * CTE (`replan_bound_cte_joins`).
+    * CTE (`replan_bound_cte_joins`). The shared input of grouping sets or unpivot is followed into
+    * its body, which is refreshed the same way and lowered again as a new shared input when it
+    * changes (`replan_shared_inputs`).
     *
     * A CTE's readers read the same columns and filters in any join order, so the second plan reads
     * the result the first plan's readers finalized ([[DeferredCTE.reader]]); if it can't, the first
@@ -169,8 +171,9 @@ class Planner(
     */
   private def replanRuntime(bound: RuntimePlan, optimized: RuntimePlan): Option[RuntimePlan] =
     import RuntimePlan.*
-    val boundInputs = enabled(Optimization.ReplanBoundCTEJoins)
-    val semiJoins   = enabled(Optimization.ReplanSemiJoinBuilds)
+    val boundInputs  = enabled(Optimization.ReplanBoundCTEJoins)
+    val semiJoins    = enabled(Optimization.ReplanSemiJoinBuilds)
+    val sharedInputs = enabled(Optimization.ReplanSharedInputs)
     // An input the binder optimized while binding is read in its bound form, with unordered joins.
     // An optimized input may be a node of its own bound plan (e.g. `Filter(p, true)` optimizes to
     // `p`), so an input being expanded reads as itself
@@ -184,11 +187,19 @@ class Planner(
       expanding.put(p, ())
       try f
       finally expanding.remove(p)
-    val joined                                            = mutable.LinkedHashSet.empty[DeferredCTE]
+    val joined = mutable.LinkedHashSet.empty[DeferredCTE]
+    // The shared inputs of grouping sets or unpivot (read by several readers) whose bodies were
+    // visited
+    val visited = java.util.IdentityHashMap[SharedInput, Unit]()
     def collect(p: RuntimePlan, underJoin: Boolean): Unit =
       p match
         case CTERef(cte: DeferredCTE, _) if underJoin =>
           joined += cte
+        case CTERef(s: SharedInput, _) if sharedInputs =>
+          // Its readers are not joins: only the joins in its body decide what it collects
+          if !visited.containsKey(s) then
+            visited.put(s, ())
+            collect(s.body, underJoin = false)
         case _ =>
           boundInput(p) match
             case Some(input) =>
@@ -218,27 +229,66 @@ class Planner(
       joined.foreach(_.materialize())
       // A separate run, so that firedRules counts the rules of the plan once
       val optimizer                            = Optimizer.default(options, semiJoins)
+      val sharedReadsJoined                    = java.util.IdentityHashMap[SharedInput, Boolean]()
       def readsJoined(p: RuntimePlan): Boolean =
         p match
           case CTERef(cte: DeferredCTE, _) =>
             joined.contains(cte)
+          case CTERef(s: SharedInput, _) if sharedInputs =>
+            // Each reader of a shared input reads the same body: walk it once
+            if !sharedReadsJoined.containsKey(s) then
+              sharedReadsJoined.put(s, readsJoined(s.body))
+            sharedReadsJoined.get(s)
           case _ =>
             p.children.exists(readsJoined)
+      // Shared inputs refreshed so far: every reader of one reads the same new input
+      val refreshed = java.util.IdentityHashMap[SharedInput, SharedInput]()
+      def refreshShared(s: SharedInput): SharedInput =
+        if refreshed.containsKey(s) then
+          refreshed.get(s)
+        else
+          val r =
+            if !readsJoined(s.body) then
+              s
+            else
+              val body = keepOutput(s.body, refresh(s.body))
+              if body == s.body then
+                s
+              else
+                try
+                  SharedInput(s.name, body, Lowering(body))
+                catch
+                  case e: WvletLangException
+                      if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
+                    warn(s"Keeping the first plan of ${s.name}: ${e.getMessage}")
+                    s
+          refreshed.put(s, r)
+          r
+      // `o`, optimized from `p`, outputting p's columns in p's order; p if o outputs other columns
+      def keepOutput(p: RuntimePlan, o: RuntimePlan): RuntimePlan =
+        if o.output == p.output then
+          o
+        else if o.output.map(_.id).toSet == p.output.map(_.id).toSet then
+          // Joins output columns in join order: restore the first order, which a parent may
+          // read by position (e.g. a union)
+          Project(o, p.output.map(BExpr.ref), p.output)
+        else
+          p
       // Optimize again, from the bottom up, the bound inputs that read a computed CTE
       def refresh(p: RuntimePlan): RuntimePlan =
         boundInput(p) match
           case Some(input) if readsJoined(input) =>
-            val o = optimizer.run(expand(p)(refresh(input)))
-            if o.output == p.output then
-              o
-            else if o.output.map(_.id).toSet == p.output.map(_.id).toSet then
-              // Joins output columns in join order: restore the first order, which a parent may
-              // read by position (e.g. a union)
-              Project(o, p.output.map(BExpr.ref), p.output)
-            else
-              p
+            keepOutput(p, optimizer.run(expand(p)(refresh(input))))
           case _ =>
-            p.withChildren(p.children.map(refresh))
+            p match
+              case CTERef(s: SharedInput, columns) if sharedInputs =>
+                val r = refreshShared(s)
+                if r eq s then
+                  p
+                else
+                  CTERef(r, columns)
+              case _ =>
+                p.withChildren(p.children.map(refresh))
       val rebound = refresh(bound)
       if options.validatePlans then
         PlanValidator.validate(rebound)
