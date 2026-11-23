@@ -135,3 +135,8 @@ jobs:
           lake exe decorrelate-traces
           git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/decorrelate-traces.json \
             || (echo "::error::The decorrelation conformance fixture is stale. Run 'cd formal && lake exe decorrelate-traces' and commit the result." && exit 1)
+      - name: Check scalar subquery conformance fixture freshness
+        run: |
+          lake exe scalar-subquery-traces
+          git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/scalar-subquery-traces.json \
+            || (echo "::error::The scalar subquery conformance fixture is stale. Run 'cd formal && lake exe scalar-subquery-traces' and commit the result." && exit 1)

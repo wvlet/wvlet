@@ -42,3 +42,6 @@ import WvletFormal.FactorOr.Traces
 import WvletFormal.Decorrelate.Rule
 import WvletFormal.Decorrelate.Necessity
 import WvletFormal.Decorrelate.Traces
+import WvletFormal.Scalar.Rule
+import WvletFormal.Scalar.Necessity
+import WvletFormal.Scalar.Traces

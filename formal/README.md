@@ -33,6 +33,9 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
   `Planner.decorrelateExists`): the semi and anti joins of correlated `[NOT] EXISTS` and `IN`
   conjuncts, and the EXISTS mark (a left join with the distinct correlation keys) under OR and
   NOT, return SQL's rows, NULLs and duplicates included.
+- Correlated scalar subqueries (wvlet-engine's `Planner.decorrelateScalar`): the body grouped by
+  the correlation keys, left-joined to the outer input, with the value over no rows (`count` = 0)
+  for the unmatched outer rows, gives every outer row SQL's value, NULL keys included.
 
 See
 [adr/2026-11-18-lean-formal-verification.md](../adr/2026-11-18-lean-formal-verification.md) for
@@ -110,6 +113,9 @@ lake exe factor-or-traces   # regenerate the OR factoring conformance fixture
 | `WvletFormal/Decorrelate/Rule.lean` | SQL's `[NOT] EXISTS` and `IN` over a correlated subquery (`existsSql`, `inSql`); `planCorrelated`'s split of the subquery's WHERE (`locals` filter the body, `corrs` go on the join); `planExists` and `planIn`: the semi and anti joins of `correlatedJoin`; `markJoin`: `decorrelateExists`' left join with the distinct correlation keys and its `key is not null` flag | `planExists_sound`, `planIn_sound`: the joins return SQL's rows of the WHERE conjunct, for every pair of inputs and conjunct list, NULLs and duplicates included; `markJoin_sound`: the mark join keeps every outer row once, flagged by SQL's EXISTS (never unknown), when the correlated conditions are key equalities; `markFilter_sound`: so any condition over the flag (EXISTS under OR, NOT, or CASE) keeps SQL's rows |
 | `WvletFormal/Decorrelate/Necessity.lean` | — | EXISTS as an inner join duplicates outer rows, and removing the duplicates also removes duplicate outer rows SQL keeps; the mark's left join over the body instead of its distinct keys duplicates outer rows; a semi join under OR drops rows; NOT EXISTS is not NOT IN (a NULL outer key, a NULL inner key) |
 | `WvletFormal/Decorrelate/Traces.lean`, `DecorrelateTraces.lean` | — | exports the decorrelation conformance fixture, with the pushdown model's semi and anti join cases |
+| `WvletFormal/Scalar/Rule.lean` | SQL's value of a correlated scalar subquery (`scalarSql`: an aggregate, any function of its rows, over the inner rows that make the WHERE TRUE); `planScalar`: `decorrelateScalar`'s GROUP BY of the filtered body by the inner keys (NULL keys form a group), the left join on the keys, and the `CASE WHEN key IS NULL THEN empty` projection, skipped when the value over no rows is NULL | `planScalar_sound`: the plan keeps every outer row once, in order, with SQL's value, for every aggregate, NULL keys, duplicate outer rows, and groups without rows included; `scalarFilter_sound`: so any condition over the value keeps SQL's rows |
+| `WvletFormal/Scalar/Necessity.lean` | — | without the projection, `count` of an outer row without a group is NULL, not 0; an inner join drops those rows; telling unmatched rows by a NULL value (`coalesce`) replaces a matched group's NULL (`nullif(count(*), 1)`); matching NULL keys as GROUP BY groups them gives a NULL outer key the NULL group's count |
+| `WvletFormal/Scalar/Traces.lean`, `ScalarSubqueryTraces.lean` | — | exports the scalar subquery conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -200,13 +206,24 @@ behavior as traces:
   query, compares rows with the model and DuckDB, checks the join kinds (a semi or anti join per
   conjunct, a left join per mark), and runs `Normalize` and `PushDownFilters` on the pushdown
   cases to check that the conjunct moved into the outer input.
+- `lake exe scalar-subquery-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/scalar-subquery-traces.json`: an
+  outer table with a NULL key, duplicate rows, and a key without a group against an inner table
+  with NULL keys, a group whose values are all NULL, and duplicate rows, with the value per outer
+  row of 7 aggregates (`count(*)`, `count(d)`, `sum`, `max`, `count(*) + 1`,
+  `coalesce(sum(d), 0)`, and a CASE over `count(*)` that is NULL on matched groups) over 4
+  correlations (a key, a key with a local filter on NULLs or on values, and two keys).
+  `ScalarSubqueryConformanceTest` (engineJVM) reads each row's value back through WHERE conditions
+  (`is null`, `= v`, and one under OR), with decorrelation on and off, compares rows with the model
+  and DuckDB, and checks the plan: one left join over an aggregation, with the
+  `CASE WHEN key IS NULL` above it exactly when the value over no rows is not NULL.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator
 typing rule in `TyperRules`, the build
 ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, a name-lookup rule, where `PushDownFilters` moves a conjunct over a join, how the engine binds NOT IN, how
 `FactorOr` factors an `or` (or a `sig` it compares conjuncts by), or how the engine decorrelates
-EXISTS and IN, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
+EXISTS, IN, and scalar subqueries, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
 conformance test passes.
 
 ## Known gaps of the typer model
@@ -323,9 +340,7 @@ The model proves today's behavior. These are left for follow-ups:
 
 ## Known gaps of the decorrelation model
 
-- Correlated scalar subqueries (`Planner.decorrelateScalar`: an aggregation by the correlation
-  keys left-joined to the outer input, with the empty-group value such as `count` = 0) are not
-  modeled.
+- Correlated scalar subqueries have their own model (below).
 - The subquery is `from rs where ...` (with `select c` for IN): `planCorrelated` rejects other
   shapes, and the model has no projections, so an IN value is an inner column, and casts to a
   common key type are trusted.
@@ -338,3 +353,17 @@ The model proves today's behavior. These are left for follow-ups:
   WHERE conditions only.
 - Uncorrelated EXISTS is decided at plan time and uncorrelated IN is the same semi join; one
   uncorrelated IN is replayed, and the NOT IN model covers the plan-time value sets.
+
+## Known gaps of the scalar subquery model
+
+- The engine binds a correlated scalar subquery in a condition only (`bindWithSubqueries`); as a
+  select item it fails to bind (`ColumnNotFound`), so the fixture reads values back through WHERE
+  conditions.
+- The aggregate is a function of the group's rows, so the model trusts the engine's aggregate
+  functions and `emptyGroupValue`'s plan-time evaluation over no rows; the fixture replays seven
+  aggregates and expressions.
+- The correlations are `outer = inner` equalities on columns; the planner rejects other
+  correlations, and the model does not replay the rejection. Casts to a common key type are
+  trusted.
+- The local/correlated split of the subquery's WHERE is `Decorrelate.holds_split`'s; the model
+  starts from the key pairs and the local conjuncts.
