@@ -25,6 +25,7 @@ Lane: Express. This is an internal performance change with no change in results,
   - Each partial aggregation reports its group count to the sizer when it finishes.
 - No hint when the query estimate is 0, which covers the `presize_aggregates` toggle being off and keys without statistics. The toggle then gives the same plan as origin/main, for the A/B. No new toggle.
 - The sequential fallback (a source with a single part) keeps the query estimate, as a single-phase aggregation does.
+- The tail pipeline of right and full joins gets no hint. Its input holds only the unmatched build rows, so neither the estimate nor a part's row count applies.
 - Tests: a `MorselOp` / two-phase case where parts report group counts and later parts get the observed size, plus the standard gates (TPC-H 22/22, TPC-DS 99/99, spec/basic conformance, the golden plans, the toggle test, and engine JS/Native compile). The PR reports an SF1 A/B with the toggle on q23a, q23b, q78, q97, and q67.
 
 ## Alternatives and Why Not?
