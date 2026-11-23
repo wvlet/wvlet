@@ -214,15 +214,30 @@ class EngineRuntimePlanTest extends UniTest:
     rows(engine) shouldBe expected
   }
 
-  test("keep grouping sets as a legacy node over the bound input") {
+  test("bind grouping sets as a union of aggregations over a shared input") {
     val p = runtimePlan("""from lineitem
         |group by rollup(l_returnflag, l_linestatus)
         |select l_returnflag, l_linestatus, count(*)""".stripMargin)
     debug(p.explain)
     p match
-      case RuntimePlan.Project(RuntimePlan.Legacy(_, _), _, _) =>
-      case other                                               =>
+      case RuntimePlan.Project(RuntimePlan.Union(sets, _), _, _) =>
+        sets.size shouldBe 3
+        // Each set groups by its non-constant keys over a reader of the shared input; the grand
+        // total is a global aggregation
+        sets.map {
+          case RuntimePlan.Project(
+                RuntimePlan.Aggregate(r: RuntimePlan.CTERef, keys, _, _),
+                _,
+                _
+              ) =>
+            r.cte.name shouldBe "GroupingSetInput"
+            keys.size
+          case other =>
+            fail(s"Unexpected grouping set:\n${other.explain}")
+        } shouldBe IndexedSeq(2, 1, 0)
+      case other =>
         fail(s"Unexpected plan:\n${other.explain}")
+    p.explain shouldNotContain "Legacy["
     PlanValidator.violations(p) shouldBe Nil
   }
 

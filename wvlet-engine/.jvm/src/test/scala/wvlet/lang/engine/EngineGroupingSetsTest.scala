@@ -14,22 +14,34 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
+import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.plan.PlannerMode
 import wvlet.uni.test.UniTest
 
-/** ROLLUP / CUBE / grouping() queries on the engine must return the same rows as DuckDB */
+/**
+  * ROLLUP / CUBE / grouping() queries on the engine must return the same rows as DuckDB, on both
+  * planners
+  */
 class EngineGroupingSetsTest extends UniTest:
-  private val conformance = EngineConformance(
-    "wvlet-engine/.jvm/src/test/resources/engine-spec/grouping-sets",
-    Nil,
-    _ => ()
-  )
+  private val conformances = Seq(PlannerMode.Runtime, PlannerMode.Legacy).map { planner =>
+    planner ->
+      EngineConformance(
+        "wvlet-engine/.jvm/src/test/resources/engine-spec/grouping-sets",
+        Nil,
+        _ => (),
+        OptimizerOptions().withPlanner(planner).withValidatePlans(planner == PlannerMode.Runtime)
+      )
+  }
 
-  override def afterAll: Unit = conformance.close()
+  override def afterAll: Unit = conformances.foreach(_._2.close())
 
-  for unit <- conformance.units do
-    test(unit.sourceFile.fileName) {
+  for
+    (planner, conformance) <- conformances
+    unit                   <- conformance.units
+  do
+    test(s"${unit.sourceFile.fileName} (${planner.name} planner)") {
       val results = conformance.run(unit)
-      results.size shouldBe 4
+      results.size shouldBe 8
       results.foreach { r =>
         debug(s"${r.name}: ${r.message}")
         if !r.matched || r.message.startsWith("skipped") then

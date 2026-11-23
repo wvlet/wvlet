@@ -1278,6 +1278,22 @@ class Planner(
   end SharedTable
 
   /**
+    * A result read by several runtime-plan readers (`CTERef`s), such as the input of grouping sets:
+    * `op`, the operator of `body`, is physically optimized and computed on first read
+    */
+  private class SharedInput(val name: String, val body: RuntimePlan, op: Operator)
+      extends SharedCTE:
+    private val shared = SharedResult(optimizePhysical(op))
+
+    override def reader(schema: Schema, filter: Option[JoinCondition]): Operator = shared.newReader(
+      name
+    )
+
+  /** A shared result of `op` (lowered from `body`) for runtime-plan readers */
+  private[engine] def sharedInput(name: String, body: RuntimePlan, op: Operator): SharedCTE =
+    SharedInput(name, body, op)
+
+  /**
     * A CTE read more than once, with the runtime planner. Its body is bound when it is first read,
     * and lowered once every reader is planned ([[finalizeCTEs]]), keeping only the columns the
     * readers read, and only the rows they keep when every reader reports its filter. A read before
@@ -1525,8 +1541,8 @@ class Planner(
 
   /**
     * Plan an aggregation of `input` (a GROUP BY, possibly with HAVING, or a global aggregation)
-    * selecting `items`, whose input is planned with `plan`. With grouping sets, the aggregation is
-    * an operator (`builder.fromOp`)
+    * selecting `items`, whose input is planned with `plan`. With grouping sets, one aggregation per
+    * set reads a shared evaluation of the input, and a union combines them
     */
   private[engine] def aggregation[P](
       input: Relation,
@@ -1677,34 +1693,35 @@ class Planner(
           val cols = refs.toIndexedSeq
           val m    = Array.fill(inOp.schema.size)(-1)
           cols.indices.foreach(i => m(cols(i)) = i)
-          val shared      = SharedResult(optimizePhysical(projectIndexes(inOp, cols)))
+          val reader      = builder.sharedInput(in, cols, "GroupingSetInput")
           val setKeyExprs = keys.map(VExprs.remap(_, m))
           val setCalls    = calls.map(c =>
             c.copy(args = c.args.map(VExprs.remap(_, m)), filter = c.filter.map(VExprs.remap(_, m)))
           )
-          val union = UnionAllOp(
-            sets.map { set =>
-              val gid     = (0 until n).filterNot(set.contains).map(k => 1L << k).sum
-              val setKeys = (0 until n).map(k =>
-                if set.contains(k) then
-                  setKeyExprs(k)
-                else
-                  Const(null, keys(k).ptype)
-              ) :+ Const(gid, PType.Int64)
-              val in = shared.newReader("GroupingSetInput")
-              // The grand total (no keys in the set) is a global aggregation, so empty input
-              // still yields one row
-              groupByVaryingKeys(
-                in,
-                setKeys.toIndexedSeq,
-                setCalls,
-                aggCtx.outputSchema,
-                allowGlobal = set.isEmpty
-              )
-            },
+          builder.union(
+            sets
+              .map { set =>
+                val gid     = (0 until n).filterNot(set.contains).map(k => 1L << k).sum
+                val setKeys = (0 until n).map(k =>
+                  if set.contains(k) then
+                    setKeyExprs(k)
+                  else
+                    Const(null, keys(k).ptype)
+                ) :+ Const(gid, PType.Int64)
+                // The grand total (no keys in the set) is a global aggregation, so empty input
+                // still yields one row
+                groupByVaryingKeys(
+                  reader(),
+                  setKeys.toIndexedSeq,
+                  setCalls,
+                  aggCtx.outputSchema,
+                  builder,
+                  allowGlobal = set.isEmpty
+                )
+              }
+              .toIndexedSeq,
             aggCtx.outputSchema
           )
-          builder.fromOp(union)
       end match
     end aggOp
     val filtered = havingExpr.map(h => builder.filter(aggOp, h)).getOrElse(aggOp)
@@ -1729,21 +1746,22 @@ class Planner(
     * and a projection puts them back. Output: the keys, then the aggregates, as in `out`. With
     * `allowGlobal`, all-constant keys make a global aggregation (a grouping set's grand total)
     */
-  private def groupByVaryingKeys(
-      input: Operator,
+  private def groupByVaryingKeys[P](
+      input: P,
       keys: IndexedSeq[VExpr],
       calls: IndexedSeq[AggCall],
       out: Schema,
-      allowGlobal: Boolean = false
-  ): Operator =
+      builder: AggPlanBuilder[P],
+      allowGlobal: Boolean
+  ): P =
     val varying = keys.indices.filterNot(k => keys(k).isInstanceOf[Const])
     // Without varying keys, the aggregation becomes global (one row even for empty input), which
     // only the caller can allow
     if varying.size == keys.size || (varying.isEmpty && !allowGlobal) then
-      HashAggOp(input, keys, calls, out)
+      builder.aggregate(input, keys, calls, out)
     else
       val nk  = keys.size
-      val agg = HashAggOp(
+      val agg = builder.aggregate(
         input,
         varying.map(keys),
         calls,
@@ -1759,7 +1777,7 @@ class Planner(
       val callExprs = (nk until out.size).map(c =>
         ColRef(varying.size + c - nk, out(c).ptype, out(c).name)
       )
-      ProjectOp(agg, keyExprs ++ callExprs, out)
+      builder.project(agg, keyExprs ++ callExprs, out)
 
   end groupByVaryingKeys
 
@@ -2731,7 +2749,15 @@ class Planner(
       extends JoinPlanBuilder[Operator]
       with AggPlanBuilder[Operator]
       with OperatorTreeBuilder:
-    override def fromOp(op: Operator): Operator = op
+    override def sharedInput(in: Operator, cols: IndexedSeq[Int], label: String): () => Operator =
+      val shared = SharedResult(optimizePhysical(projectIndexes(in, cols)))
+      () => shared.newReader(label)
+
+    override def union(inputs: IndexedSeq[Operator], schema: Schema): Operator = UnionAllOp(
+      inputs,
+      schema
+    )
+
     override def aggregate(
         in: Operator,
         keys: IndexedSeq[VExpr],
@@ -2749,6 +2775,8 @@ class Planner(
       p,
       conds
     )
+
+  end operatorPlans
 
   /**
     * Plan a tree of inner joins (without a lateral unnest on top) and filter conditions together:
@@ -3157,8 +3185,14 @@ private[engine] trait AggPlanBuilder[P]:
   /** The operator form of a plan */
   def op(p: P): Operator
 
-  /** A plan of an operator built by the planner */
-  def fromOp(op: Operator): P
+  /**
+    * Readers of one evaluation of `in` reduced to the columns at `cols`, computed on first read
+    * (the input of grouping sets)
+    */
+  def sharedInput(in: P, cols: IndexedSeq[Int], label: String): () => P
+
+  /** The rows of every input, whose columns are `schema` */
+  def union(inputs: IndexedSeq[P], schema: Schema): P
 
   /** Group `in` by `keys`, outputting the keys then the aggregates (`schema`) */
   def aggregate(in: P, keys: IndexedSeq[VExpr], calls: IndexedSeq[AggCall], schema: Schema): P

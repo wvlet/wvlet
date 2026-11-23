@@ -24,6 +24,7 @@ import wvlet.lang.engine.exec.ProjectOp
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.ScanOp
+import wvlet.lang.engine.exec.UnionAllOp
 import wvlet.lang.engine.exec.WindowCall
 import wvlet.lang.engine.exec.WindowOp
 import wvlet.lang.engine.expr.AndExpr
@@ -573,7 +574,7 @@ class RuntimeBinder(planner: Planner):
 
   /**
     * Builds runtime-plan joins, aggregations, filters, and projections, and legacy nodes for what
-    * the planner builds as operators (subquery conditions, grouping sets, windows over aggregates)
+    * the planner builds as operators (subquery conditions it doesn't bind)
     */
   private object plans extends JoinPlanBuilder[Lowered] with AggPlanBuilder[Lowered]:
     override def op(p: Lowered): Operator = p.op
@@ -613,7 +614,21 @@ class RuntimeBinder(planner: Planner):
 
     end join
 
-    override def fromOp(op: Operator): Lowered = Lowered(legacyOp(op), op)
+    def fromOp(op: Operator): Lowered = Lowered(legacyOp(op), op)
+
+    override def sharedInput(in: Lowered, cols: IndexedSeq[Int], label: String): () => Lowered =
+      val out    = in.plan.output
+      val schema = Schema(cols.map(out(_).toField))
+      val body   = RuntimePlan.Project(in.plan, cols.map(i => BExpr.ref(out(i))), columnsOf(schema))
+      // The operator over the input's own operators, so that its plan is lowered only once
+      val op  = ProjectOp(in.op, cols.map(i => ColRef(i, out(i).ptype, out(i).name)), schema)
+      val cte = planner.sharedInput(label, body, op)
+      () => Lowered(RuntimePlan.CTERef(cte, columnsOf(schema)), cte.reader(schema))
+
+    override def union(inputs: IndexedSeq[Lowered], schema: Schema): Lowered = Lowered(
+      RuntimePlan.Union(inputs.map(_.plan), columnsOf(schema)),
+      UnionAllOp(inputs.map(_.op), schema)
+    )
 
     override def aggregate(
         in: Lowered,

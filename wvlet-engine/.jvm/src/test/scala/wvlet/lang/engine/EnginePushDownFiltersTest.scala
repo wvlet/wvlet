@@ -110,6 +110,32 @@ class EnginePushDownFiltersTest extends UniTest:
     sameRows(query)
   }
 
+  test("push a key conjunct into the grouping sets that keep the key") {
+    val query =
+      """from lineitem
+        |group by rollup(l_returnflag, l_linestatus)
+        |select l_returnflag, l_linestatus, n = _.count
+        |where l_returnflag = 'R'""".stripMargin
+    val (p, _) = pushed(bound(query))
+    // The sets grouping by l_returnflag filter their reader of the shared input; the grand total
+    // sees the key as NULL and keeps the (constant) condition above its global aggregation
+    var readers                     = 0
+    def visit(q: RuntimePlan): Unit =
+      q match
+        case Filter(_: CTERef, cond, _) =>
+          cond.toString shouldContain "lit(R"
+          readers += 1
+        case _ =>
+          q.children.foreach(visit)
+    visit(p)
+    readers shouldBe 2
+    find(p) {
+      case Filter(Aggregate(_: CTERef, keys, _, _), _, _) if keys.isEmpty =>
+        ()
+    } shouldNotBe None
+    sameRows(query)
+  }
+
   test("keep a filter with a non-deterministic conjunct in place") {
     val query =
       """from lineitem
