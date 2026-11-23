@@ -12,4 +12,5 @@ Scan[lineitem](columns=l_suppkey,l_extendedprice,l_discount,l_shipdate filter=An
   ↓ Morsel[parallelism=N] -> [s_suppkey:long, s_name:string, s_address:string, s_phone:string]
 ↙ HashJoin[Inner](#0 = #0) -> [supplier_no:long, total_revenue:decimal(38,4), s_suppkey:long, s_name:string, s_address:string, s_phone:string]
 ↓ Project(#2, #3, #4, #5, #1) -> [s_suppkey:long, s_name:string, s_address:string, s_phone:string, total_revenue:decimal(38,4)]
+↓ Project(#0, #1, #2, #3, #4) -> [s_suppkey:long, s_name:string, s_address:string, s_phone:string, total_revenue:decimal(38,4)]
 ↓ Sort[parallelism=N](#0) -> [s_suppkey:long, s_name:string, s_address:string, s_phone:string, total_revenue:decimal(38,4)]
