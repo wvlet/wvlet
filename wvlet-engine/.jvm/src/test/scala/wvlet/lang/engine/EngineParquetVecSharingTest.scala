@@ -42,8 +42,7 @@ class EngineParquetVecSharingTest extends UniTest:
     val conn = DriverManager.getConnection("jdbc:duckdb:")
     try
       val st = conn.createStatement()
-      try st.execute(
-          s"""copy (
+      try st.execute(s"""copy (
              |  select
              |    range::integer as i,
              |    case when range % 3 = 0 then null else range::integer end as ni,
@@ -54,8 +53,7 @@ class EngineParquetVecSharingTest extends UniTest:
              |    case when range % 3 = 0 then null else range % 2 = 0 end as nb,
              |    case when range % 3 = 0 then null else 'v' || (range % 7) end as ns
              |  from range(${numRows})
-             |) to '${path}' (format parquet)""".stripMargin
-        )
+             |) to '${path}' (format parquet)""".stripMargin)
       finally st.close()
     finally
       conn.close()
@@ -114,7 +112,7 @@ class EngineParquetVecSharingTest extends UniTest:
   }
 
   test("should keep null rows and skip a null mask for columns without nulls") {
-    val all = batches.map(_._2)
+    val all                            = batches.map(_._2)
     def column(name: String): Seq[Any] =
       val k = cols.indexOf(name)
       all.flatMap(b => (0 until b.size).map(b.columns(k).get))

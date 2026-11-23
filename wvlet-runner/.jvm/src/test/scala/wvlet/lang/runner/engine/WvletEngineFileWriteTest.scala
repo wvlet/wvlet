@@ -120,7 +120,8 @@ class WvletEngineFileWriteTest extends UniTest:
   test("write timestamps to Parquet without a UTC adjustment") {
     run("""select '2024-01-02 03:04:05'::timestamp as ts
           |save to 'out/ts.parquet'""".stripMargin).getError.foreach(e => throw e)
-    val field = wvlet.uni.cloud.parquet.Parquet.open(s"${workDir}/out/ts.parquet").schema.columns.head
+    val field =
+      wvlet.uni.cloud.parquet.Parquet.open(s"${workDir}/out/ts.parquet").schema.columns.head
     field.logicalType.toString shouldContain "false"
     val result = run("""from 'out/ts.parquet'
                        |test _.rows should be [['2024-01-02 03:04:05']]""".stripMargin)

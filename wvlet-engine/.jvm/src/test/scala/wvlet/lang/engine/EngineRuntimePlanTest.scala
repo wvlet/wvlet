@@ -145,7 +145,8 @@ class EngineRuntimePlanTest extends UniTest:
     p shouldMatch { case RuntimePlan.Project(w: RuntimePlan.Window, _, cols) =>
       cols.map(_.name) shouldBe IndexedSeq("n_name", "rn")
       w.calls.map(_.name) shouldBe IndexedSeq("row_number")
-      w.calls.head.partitionColumns shouldBe Set(w.child.output(2).id)
+      w.calls.head.partitionColumns shouldBe
+        Set(w.child.output.find(_.name == "n_regionkey").get.id)
     }
     PlanValidator.violations(p) shouldBe Nil
   }
