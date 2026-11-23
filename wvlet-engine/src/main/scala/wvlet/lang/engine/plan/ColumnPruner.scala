@@ -152,7 +152,7 @@ object ColumnPruner:
           .map(c =>
             c.copy(args = c.args.map(VExprs.remap(_, m)), filter = c.filter.map(VExprs.remap(_, m)))
           )
-        identity(HashAggOp(child, keys, aggs, a.schema))
+        identity(HashAggOp(child, keys, aggs, a.schema, a.expectedGroups))
 
       case d: DistinctOp =>
         val (child, _) = prune(d.child, all(d.child))

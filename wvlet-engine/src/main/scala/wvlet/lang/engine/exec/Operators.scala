@@ -609,13 +609,17 @@ end SortOp
 
 /**
   * Hash aggregation. Output columns: grouping keys, then one column per aggregate. Without keys,
-  * exactly one row is produced, even for an empty input
+  * exactly one row is produced, even for an empty input.
+  *
+  * `expectedGroups` (0 when unknown) pre-sizes the group table and the aggregate state, so they
+  * grow less often; it never changes the result
   */
 class HashAggOp(
     val child: Operator,
     val keys: IndexedSeq[VExpr],
     val aggs: IndexedSeq[AggCall],
-    val schema: Schema
+    val schema: Schema,
+    val expectedGroups: Int = 0
 ) extends Operator:
   private var done                     = false
   override def children: Seq[Operator] = Seq(child)
@@ -626,13 +630,26 @@ class HashAggOp(
     if done then
       return null
     done = true
-    val table = GroupTable(keys.map(_.ptype))
+    val presize =
+      if keys.isEmpty then
+        0
+      else
+        expectedGroups
+    val table = GroupTable(keys.map(_.ptype), presize)
     val accs  = aggs.map(_.newAccumulator())
-    var b     = child.next()
+    if presize > 0 then
+      accs.foreach(_.ensureGroups(presize))
+    // Scratch arrays reused across batches: accumulators read group ids only during update
+    var zeros: Array[Int] = Array.emptyIntArray
+    var idx: Array[Int]   = Array.emptyIntArray
+    var gs: Array[Int]    = Array.emptyIntArray
+    var b                 = child.next()
     while b != null do
       val groups =
         if keys.isEmpty then
-          new Array[Int](b.size)
+          if zeros.length < b.size then
+            zeros = new Array[Int](b.size)
+          zeros
         else
           table.groupIds(keys.map(_.eval(b)).toArray, b.size)
       val numGroups =
@@ -655,9 +672,10 @@ class HashAggOp(
               if mask(i) then
                 cnt += 1
               i += 1
-            val idx = new Array[Int](cnt)
-            val gs  = new Array[Int](cnt)
-            var j   = 0
+            if idx.length < cnt then
+              idx = new Array[Int](cnt)
+              gs = new Array[Int](cnt)
+            var j = 0
             i = 0
             while i < b.size do
               if mask(i) then
@@ -903,30 +921,44 @@ final class JoinBuild(
     chain = Vec.filledInts(build.size, -1)
     if runner.parallelism > 1 && nv >= JoinBuild.MinParallelRows then
       parts = GroupTable.partitionCount(runner.parallelism)
-    // Rows of each partition, in input order
-    val rowsOf: Array[Array[Int]] =
+    // Rows of each partition, in input order, and (with several partitions) their key hashes, so
+    // that partition tables do not hash the keys again
+    var hashesOf: Array[Array[Int]] = null
+    val rowsOf: Array[Array[Int]]   =
       if parts == 1 then
         Array(java.util.Arrays.copyOf(valid, nv))
       else
         hasher = GroupTable(types)
         val h     = hasher.keyHashes(keyVecs.map(_.gather(valid, nv)), nv)
         val byPos = GroupTable.partitionRows(h, nv, parts)
+        hashesOf = new Array[Array[Int]](parts)
         // Positions among the valid rows -> build rows (a loop: Array.map would box every Int)
-        byPos.foreach { r =>
-          var j = 0
+        var p = 0
+        while p < parts do
+          val r  = byPos(p)
+          val ph = new Array[Int](r.length)
+          var j  = 0
           while j < r.length do
+            ph(j) = h(r(j))
             r(j) = valid(r(j))
             j += 1
-        }
+          hashesOf(p) = ph
+          p += 1
         byPos
     tables = new Array[GroupTable](parts)
     heads = new Array[Array[Int]](parts)
     def buildPart(p: Int): Unit =
-      val rows  = rowsOf(p)
-      val n     = rows.length
-      val table = GroupTable(types)
-      val ids   = table.groupIds(keyVecs.map(_.gather(rows, n)), n)
-      val head  = Vec.filledInts(table.numGroups, -1)
+      val rows = rowsOf(p)
+      val n    = rows.length
+      // A partition has at most one group per row
+      val table   = GroupTable(types, n)
+      val partKey = keyVecs.map(_.gather(rows, n))
+      val ids     =
+        if hashesOf == null then
+          table.groupIds(partKey, n)
+        else
+          table.groupIds(partKey, n, hashesOf(p))
+      val head = Vec.filledInts(table.numGroups, -1)
       // Insert in reverse so chains enumerate rows in input order. Partitions hold disjoint rows,
       // so they write disjoint chain entries
       var j = n - 1

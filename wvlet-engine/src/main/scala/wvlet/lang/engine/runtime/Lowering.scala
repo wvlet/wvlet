@@ -36,9 +36,28 @@ object Lowering:
     * Lower `p`. With `joinFilters`, hash joins whose unmatched probe rows are dropped give the
     * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]])
     */
-  def apply(p: RuntimePlan, joinFilters: Boolean = false): Operator = Lower(joinFilters).lower(p)
+  def apply(p: RuntimePlan, joinFilters: Boolean = false, presizeAggs: Boolean = false): Operator =
+    Lower(joinFilters, presizeAggs).lower(p)
 
-  private class Lower(joinFilters: Boolean):
+  /**
+    * Aggregations pre-size their tables to at most this many groups: group estimates ignore filter
+    * selectivity, and an overestimate costs this much zero-filled memory at most
+    */
+  inline val MaxPresizeGroups = 1 << 18
+
+  /**
+    * The group table size of an aggregation of p by `keys`, from [[Stats.groups]]: 0 when unknown
+    */
+  def expectedGroups(p: RuntimePlan, keys: Seq[BExpr]): Int =
+    if keys.isEmpty then
+      0
+    else
+      Stats
+        .groups(p, keys.map(_.expr))
+        .map(g => math.min(g, MaxPresizeGroups.toDouble).toInt)
+        .getOrElse(0)
+
+  private class Lower(joinFilters: Boolean, presizeAggs: Boolean):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
 
@@ -102,7 +121,16 @@ object Lowering:
           )
         case Aggregate(child, keys, calls, _) =>
           val pos = positions(child)
-          HashAggOp(lower(child), keys.map(_.lower(pos)), calls.map(_.lower(pos)), p.schema)
+          HashAggOp(
+            lower(child),
+            keys.map(_.lower(pos)),
+            calls.map(_.lower(pos)),
+            p.schema,
+            if presizeAggs then
+              expectedGroups(child, keys)
+            else
+              0
+          )
         case _: InnerJoins =>
           throw StatusCode
             .UNEXPECTED_STATE

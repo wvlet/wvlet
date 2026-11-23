@@ -36,6 +36,30 @@ class GroupTableTest extends UniTest:
       Seq((1L, "a"), (2L, "a"), (1L, "b"))
   }
 
+  test("should give the same ids with a pre-sized table, beyond or below its expected groups") {
+    val n    = 5000
+    val keys = Array(
+      longs((0 until n).map(i => (i % 1000).toLong)*),
+      strs((0 until n).map(i => s"k${i % 3}")*)
+    )
+    val plain = GroupTable(IndexedSeq(PType.Int64, PType.Str)).groupIds(keys, n).toSeq
+    Seq(10, 1000, 3000, 100000).foreach { expected =>
+      val t = GroupTable(IndexedSeq(PType.Int64, PType.Str), expected)
+      t.groupIds(keys, n).toSeq shouldBe plain
+      t.numGroups shouldBe 3000
+      t.lookup(keys, n).toSeq shouldBe plain
+    }
+  }
+
+  test("should hash every batch afresh when reusing its hash buffer") {
+    val t = GroupTable(IndexedSeq(PType.Int64))
+    t.groupIds(Array(longs(1, 2, 3, 4)), 4).toSeq shouldBe Seq(0, 1, 2, 3)
+    // A shorter batch, then a longer one: stale hashes of the previous batch must not leak
+    t.groupIds(Array(longs(4, 1)), 2).toSeq shouldBe Seq(3, 0)
+    t.groupIds(Array(longs(5, 3, 2, 1, 6)), 5).toSeq shouldBe Seq(4, 2, 1, 0, 5)
+    t.numGroups shouldBe 6
+  }
+
   test("should group NULL keys together but never match them in lookups") {
     val t = GroupTable(IndexedSeq(PType.Str))
     t.groupIds(Array(strs("x", null, null, "x")), 4).toSeq shouldBe Seq(0, 1, 1, 0)

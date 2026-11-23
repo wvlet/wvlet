@@ -58,7 +58,8 @@ class Planner(
   /** Lower a runtime plan into operators, with runtime join filters when enabled */
   private[engine] def lower(p: RuntimePlan): Operator = Lowering(
     p,
-    joinFilters = enabled(Optimization.RuntimeJoinFilters)
+    joinFilters = enabled(Optimization.RuntimeJoinFilters),
+    presizeAggs = enabled(Optimization.PresizeAggregates)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */
