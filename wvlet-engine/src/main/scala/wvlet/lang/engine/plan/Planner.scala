@@ -84,6 +84,8 @@ class Planner(
   // Shared CTEs by name, and every one created, in order
   private val cteRefs      = mutable.HashMap.empty[String, (AliasedRelation, DeferredCTE)]
   private val deferredCTEs = mutable.ArrayBuffer.empty[DeferredCTE]
+  // The shared CTEs in the order their bodies were finalized (readers' bodies first)
+  private val finalizeOrder = mutable.ArrayBuffer.empty[DeferredCTE]
   // The shared CTEs whose bodies are being bound, innermost first
   private var bindingCTEs = List.empty[DeferredCTE]
   // Nesting of plan(): subqueries are planned by this planner too
@@ -121,6 +123,8 @@ class Planner(
       val op        = optimizePhysical(Lowering(optimized))
       finalizeCTEs(op)
       if enabled(Optimization.ReplanMaterializedCTEs) then
+        if enabled(Optimization.ReplanCTEBodies) then
+          replanCTEBodies()
         replanJoinedCTEs(bound, optimized).getOrElse(op)
       else
         op
@@ -143,6 +147,26 @@ class Planner(
     * chosen when they were bound
     */
   private def replanJoinedCTEs(bound: RuntimePlan, optimized: RuntimePlan): Option[Operator] =
+    replanRuntime(bound, optimized).flatMap { replanned =>
+      try
+        val op = optimizePhysical(Lowering(replanned))
+        if !readsKeptColumns(op) then
+          throw StatusCode
+            .UNEXPECTED_STATE
+            .newException("A re-planned shared CTE reader reads a column its result dropped")
+        Some(op)
+      catch
+        case e: WvletLangException
+            if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
+          warn(s"Keeping the first plan: ${e.getMessage}")
+          None
+    }
+
+  /**
+    * The logical plan of `bound` optimized again once the shared CTEs that its joins read are
+    * computed ([[replanJoinedCTEs]]), if it differs from `optimized`
+    */
+  private def replanRuntime(bound: RuntimePlan, optimized: RuntimePlan): Option[RuntimePlan] =
     import RuntimePlan.*
     val boundInputs = enabled(Optimization.ReplanBoundCTEJoins)
     val semiJoins   = enabled(Optimization.ReplanSemiJoinBuilds)
@@ -221,21 +245,30 @@ class Planner(
       if replanned == optimized then
         None
       else
-        try
-          val op = optimizePhysical(Lowering(replanned))
-          if !readsKeptColumns(op) then
-            throw StatusCode
-              .UNEXPECTED_STATE
-              .newException("A re-planned shared CTE reader reads a column its result dropped")
-          Some(op)
-        catch
-          case e: WvletLangException
-              if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
-            warn(s"Keeping the first plan: ${e.getMessage}")
-            None
+        Some(replanned)
     end if
 
-  end replanJoinedCTEs
+  end replanRuntime
+
+  /**
+    * Order the joins of the shared CTE bodies that read other shared CTEs again, once those are
+    * computed: bodies are finalized before the CTEs they read (whose columns and rows their readers
+    * decide), so the inner CTEs are computed and each body re-planned afterwards, innermost first,
+    * keeping the columns and rows its result keeps for its own readers
+    */
+  private def replanCTEBodies(): Unit = finalizeOrder
+    .reverse
+    .foreach { c =>
+      if c.reads.nonEmpty && c.canReplan then
+        replanRuntime(c.bound, c.body).foreach { replanned =>
+          try
+            c.replan(replanned)
+          catch
+            case e: WvletLangException
+                if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
+              warn(s"Keeping the first plan of CTE[${c.name}]: ${e.getMessage}")
+        }
+    }
 
   /**
     * Whether every scan of a finalized shared CTE in `root` reads only columns its result keeps; a
@@ -393,8 +426,11 @@ class Planner(
               cteRefs(key) = (d, c)
               deferredCTEs += c
               bindingCTEs = c :: bindingCTEs
-              try c.body = runtimePlan(d)
-              finally bindingCTEs = bindingCTEs.tail
+              try
+                c.bound = runtimeBinder.bind(d)
+                c.body = optimizeRuntime(c.bound)
+              finally
+                bindingCTEs = bindingCTEs.tail
               c
         bindingCTEs.headOption.foreach(_.reads += cte)
         Some(cte)
@@ -1022,9 +1058,14 @@ class Planner(
     * CTE referenced more than once, or the input of grouping sets)
     */
   private class SharedResult(val op: Operator):
+    private var computed         = false
     lazy val batches: Seq[Batch] =
       debug(s"Materializing a shared result:\n${op.explain()}")
+      computed = true
       op.drain()
+
+    /** Whether the batches are computed (or being computed) */
+    def isComputed: Boolean = computed
 
     private var explained = false
 
@@ -1107,8 +1148,9 @@ class Planner(
     * at plan time) computes every column and row
     */
   private class DeferredCTE(val name: String) extends SharedCTE:
-    // Set right after binding: the body can't read its own CTE
-    var body: RuntimePlan = null
+    // Set right after binding: the body can't read its own CTE. `body` is `bound` optimized
+    var bound: RuntimePlan = null
+    var body: RuntimePlan  = null
     // The CTEs that the body reads, which are finalized after this one
     val reads = mutable.LinkedHashSet.empty[DeferredCTE]
 
@@ -1120,6 +1162,8 @@ class Planner(
     private val readerFilters = mutable.ArrayBuffer.empty[Option[JoinCondition]]
     // Whether the result keeps only the rows the readers' filters agree on
     private var filtered = false
+    // The reader filters pushed into the body
+    private var pushed = Seq.empty[JoinCondition]
     // The exact rows of the result, once materialized for planning
     private var rowCount          = Option.empty[Long]
     private lazy val label        = s"CTE[${name}]"
@@ -1190,29 +1234,65 @@ class Planner(
           else
             runtimeOptimizer.pushFilters(this.body, agreed)
         filtered = agreed.nonEmpty
-        val out  = body.output
+        pushed = agreed
         val keep =
           if needsAll || needed.isEmpty || !enabled(Optimization.PruneColumns) then
-            out.indices
+            body.output.indices
           else
             needed.toIndexedSeq.sorted
-        val pruned =
-          if keep.size == out.size then
-            body
-          else
-            runtimeOptimizer.pruneColumns(body, keep.map(out(_).id).toSet)
-        val op       = Lowering(runtimeOptimizer.pushScanFilters(pruned))
-        val pos      = pruned.output.map(_.id).zipWithIndex.toMap
-        val selected =
-          if pruned.output.size == keep.size then
-            op
-          else
-            ProjectOp(
-              op,
-              keep.map(i => ColRef(pos(out(i).id), out(i).ptype, out(i).name)),
-              Schema(keep.map(i => body.schema(i)))
-            )
-        finalized = Some((keep, SharedResult(optimizePhysical(selected))))
+        finalized = Some((keep, SharedResult(lower(body, keep))))
+
+    /** The result operator of a body (filters pushed) for the body output positions `keep` */
+    private def lower(body: RuntimePlan, keep: IndexedSeq[Int]): Operator =
+      val out    = body.output
+      val pruned =
+        if keep.size == out.size then
+          body
+        else
+          runtimeOptimizer.pruneColumns(body, keep.map(out(_).id).toSet)
+      val op       = Lowering(runtimeOptimizer.pushScanFilters(pruned))
+      val pos      = pruned.output.map(_.id).zipWithIndex.toMap
+      val selected =
+        if pruned.output.size == keep.size then
+          op
+        else
+          ProjectOp(
+            op,
+            keep.map(i => ColRef(pos(out(i).id), out(i).ptype, out(i).name)),
+            Schema(keep.map(i => body.schema(i)))
+          )
+      optimizePhysical(selected)
+
+    /** Whether the body can be planned again: finalized, and not computed yet */
+    def canReplan: Boolean = bound != null && finalized.exists(!_._2.isComputed)
+
+    /**
+      * Replace the result with the plan of `replanned` (the body optimized again, with the same
+      * output columns), keeping the columns and rows the result keeps for the readers
+      */
+    def replan(replanned: RuntimePlan): Unit = finalized.foreach { (keep, _) =>
+      // Joins output columns in join order: restore the body's order, which keep refers to
+      val ordered =
+        if replanned.output == body.output then
+          replanned
+        else if replanned.output.map(_.id).toSet != body.output.map(_.id).toSet then
+          throw StatusCode
+            .UNEXPECTED_STATE
+            .newException(s"${label} re-planned outputs other columns")
+        else
+          RuntimePlan.Project(replanned, body.output.map(BExpr.ref), body.output)
+      val filteredBody =
+        if pushed.isEmpty then
+          ordered
+        else
+          runtimeOptimizer.pushFilters(ordered, pushed)
+      val op = lower(filteredBody, keep)
+      if !readsKeptColumns(op) then
+        throw StatusCode
+          .UNEXPECTED_STATE
+          .newException(s"${label} re-planned reads a column a CTE result dropped")
+      finalized = Some((keep, SharedResult(op)))
+    }
 
     /** The result operator, once finalized */
     def resultOp: Option[Operator] = finalized.map(_._2.op)
@@ -1304,6 +1384,8 @@ class Planner(
           ready
       next.foreach { c =>
         c.finalizeBody(pushFilters = true)
+        if !finalizeOrder.contains(c) then
+          finalizeOrder += c
         c.resultOp.foreach(collect)
       }
       pending = pending.filterNot(next.contains)

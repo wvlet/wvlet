@@ -76,6 +76,9 @@ class EngineOptimizerToggleTest extends UniTest:
       if o == Optimization.PrefetchScalarSubqueries then
         // The subqueries become the same constants either way, one query per group or per subquery
         ignore("Changes how scalar subqueries are evaluated while planning, not the plan")
+      if o == Optimization.ReplanCTEBodies then
+        // EngineMaterializedCTEStatsTest checks that the flag changes the plan
+        ignore("No TPC-H or TPC-DS shared CTE body reads another shared CTE")
       val changed = EnginePlanGolden
         .suites
         .zip(baselinePlans)

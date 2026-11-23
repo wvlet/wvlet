@@ -36,6 +36,8 @@ class EngineMaterializedCTEStatsTest extends UniTest:
     options.withDisabled(Optimization.ReplanSemiJoinBuilds)
   )
 
+  private val rootBodies = engine.withOptimizer(options.withDisabled(Optimization.ReplanCTEBodies))
+
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -160,6 +162,46 @@ class EngineMaterializedCTEStatsTest extends UniTest:
     val plan = explain(engine, query)
     plan shouldNotContain "HashJoin[RightAnti]"
     plan shouldContain "HashJoin[Anti]"
+    val r = rows(engine, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(disabled, query)
+  }
+
+  test("re-plan the joins of a shared CTE body that reads a small shared CTE") {
+    // u, read twice, joins t twice in its body, which is finalized before t
+    val query =
+      s"""${cte}, u as (
+         |  select o.o_orderkey as k, a.c as c from orders o
+         |  join t a on o.o_orderstatus = a.s join t b on a.s = b.s
+         |)
+         |select x.k, x.c, y.c from u x join u y on x.k = y.k""".stripMargin
+    // The probe side of the body's join: the first scan of u's body (t's body, which reads
+    // lineitem, is printed under t's first reader)
+    def bodyScan(plan: String): String = plan
+      .linesIterator
+      .map(_.trim.stripPrefix("↙ "))
+      .find(l => l.startsWith("Scan[") && !l.startsWith("Scan[lineitem]"))
+      .getOrElse("")
+      .takeWhile(_ != '(')
+    // With the 1e6 estimate, the reads of t are the probe side; with two rows, orders is
+    bodyScan(explain(rootBodies, query)) shouldBe "Scan[CTE[t]]"
+    bodyScan(explain(engine, query)) shouldBe "Scan[orders]"
+    val r = rows(engine, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(disabled, query)
+  }
+
+  test("re-plan a shared CTE body whose readers' filters were pushed into it") {
+    // The filters of u's readers are pushed into u's body, and those of t's readers into t's
+    val query =
+      s"""${cte}, u as (
+         |  select o.o_orderkey as k, o.o_totalprice as p, a.c as c from orders o
+         |  join t a on o.o_orderstatus = a.s join t b on a.s = b.s
+         |  where a.s = 'F' and b.s in ('F', 'O')
+         |)
+         |select x.k, x.c, y.c from u x join u y on x.k = y.k
+         |where x.p > 1000 and y.p > 1000""".stripMargin
+    explain(engine, query) shouldNotBe explain(rootBodies, query)
     val r = rows(engine, query)
     r.nonEmpty shouldBe true
     r shouldBe rows(disabled, query)
