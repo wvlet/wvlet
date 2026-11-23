@@ -348,9 +348,11 @@ object CaseWhen:
     var first: Vec = null
     var nullable   = false
     var typed      = true
+    var taken      = 0
     var k          = 0
     while k < srcs.length do
       if picked(k) then
+        taken += 1
         val s = srcs(k)
         if s == null then
           nullable = true
@@ -363,6 +365,9 @@ object CaseWhen:
       k += 1
     if first == null then
       Vec.nullVec(ptype, n)
+    else if taken == 1 then
+      // Every row takes one branch: its vector (already cast to ptype) is the result
+      first
     else if !typed then
       rowFill(ptype, n, chosen, srcs)
     else

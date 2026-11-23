@@ -105,6 +105,16 @@ class CaseWhenTest extends UniTest:
     evaluated shouldBe 0
   }
 
+  test("should return the branch vector itself when every row takes it") {
+    val d = DoubleVec(Array(0.5, 1.5, 2.5, 3.5), null)
+    val e = CaseWhen(
+      Seq(is(9) -> Const(1.0, PType.Float64)),
+      Some(ColRef(1, PType.Float64, "d")),
+      PType.Float64
+    )
+    eval(e, sel, d) shouldBeTheSameInstanceAs d
+  }
+
   test("should return all NULLs when every taken branch is NULL") {
     val e = CaseWhen(Seq(is(5) -> Const(1, PType.Int32)), None, PType.Int32)
     rows(eval(e, sel)) shouldBe Seq(null, null, null, null)
