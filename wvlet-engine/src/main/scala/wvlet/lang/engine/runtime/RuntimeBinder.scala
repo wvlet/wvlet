@@ -14,6 +14,7 @@
 package wvlet.lang.engine.runtime
 
 import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.engine.exec.AggCall
 import wvlet.lang.engine.exec.BatchesOp
@@ -376,8 +377,8 @@ class RuntimeBinder(planner: Planner):
     )
 
   /**
-    * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them. ASOF,
-    * USING, and NATURAL joins stay legacy
+    * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them. ASOF joins
+    * stay legacy
     */
   private def join(j: Join, filters: List[Expression]): RuntimePlan =
     planner.lateralUnnest(j) match
@@ -406,8 +407,11 @@ class RuntimeBinder(planner: Planner):
       filterOver(p, conds.flatMap(planner.splitConjuncts))
 
   private def nonLateralJoin(j: Join, filters: List[Expression]): RuntimePlan =
-    if !(planner.isInnerJoin(j) || planner.isJoinOn(j)) then
+    if j.asof then
       legacyOp(planner.planJoinTree(j, planner.factorOrs(filters)))
+    else if !planner.isJoinOn(j) then
+      // Filters over a USING or NATURAL join bind above it (only inner join trees take them)
+      usingJoin(j)
     else if planner.isInnerJoin(j) then
       innerJoins(j, filters)
     else if isOuterJoinOn(j) && filters.isEmpty then
@@ -416,6 +420,18 @@ class RuntimeBinder(planner: Planner):
       val left  = lowered(bind(j.left))
       val right = lowered(bind(j.right))
       plans.conjuncts(planner.joinOn(j, planner.joinKind(j), left, right, plans), filters).plan
+
+  /**
+    * A USING or NATURAL join: a [[RuntimePlan.Join]] on the keys under a [[RuntimePlan.Project]]
+    * merging them, as `Planner.usingJoin` plans it
+    */
+  private def usingJoin(j: Join): RuntimePlan =
+    val left  = lowered(bind(j.left))
+    val right = lowered(bind(j.right))
+    val names = planner
+      .usingKeys(j, left.op.schema, right.op.schema)
+      .getOrElse(throw StatusCode.UNEXPECTED_STATE.newException(s"Not a USING join: ${j.cond}"))
+    planner.usingJoin(left, right, names, planner.joinKind(j), plans).plan
 
   /**
     * Whether a join is a LEFT, RIGHT, or FULL join on an ON condition (or none) without subqueries,
