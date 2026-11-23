@@ -23,6 +23,8 @@ import wvlet.lang.engine.exec.ProjectOp
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.ScanOp
+import wvlet.lang.engine.exec.WindowCall
+import wvlet.lang.engine.exec.WindowOp
 import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.OrExpr
@@ -154,6 +156,8 @@ class RuntimeBinder(planner: Planner):
         project(p)
       case p: Project if planner.isAggregation(p.child, p.selectItems) =>
         aggregation(p.child, Some(p.selectItems), defaultItems = false)
+      case p: Project if isWindowProjection(p) =>
+        windowProject(p)
       case s: SQLSelect =>
         bind(planner.desugarSQLSelect(s))
       case j: Join =>
@@ -171,7 +175,7 @@ class RuntimeBinder(planner: Planner):
       case e: Except =>
         setOp(e.left, e.right, intersect = false, all = !e.isDistinct)
       case other =>
-        // Column edits, samples, a Project that evaluates windows or unnest, ...
+        // Column edits, samples, a Project that evaluates unnest or subqueries, ...
         legacy(other)
 
   end bind
@@ -522,6 +526,9 @@ class RuntimeBinder(planner: Planner):
       ProjectOp(p.op, exprs, schema)
     )
 
+    override def window(p: Lowered, calls: IndexedSeq[WindowCall], schema: Schema): Lowered =
+      Lowered(windowOver(p.plan, calls, schema), WindowOp(p.op, calls, schema))
+
     override def filter(p: Lowered, cond: VExpr): Lowered = Lowered(
       RuntimePlan.Filter(p.plan, BExpr.of(cond, p.plan.output)),
       FilterOp(p.op, cond)
@@ -551,6 +558,33 @@ class RuntimeBinder(planner: Planner):
           !Binder.containsAggregate(i) && planner.unnestArg(i).isEmpty &&
           !Binder.containsWindow(i) && !planner.hasSubquery(Binder.expandTemplates(i))
         }
+
+  /** A projection evaluating window functions, without aggregates, unnest, or subqueries */
+  private def isWindowProjection(p: Project): Boolean =
+    p.selectItems.exists(i => Binder.containsWindow(i)) &&
+      p.selectItems
+        .forall { i =>
+          planner.unnestArg(i).isEmpty && !planner.hasSubquery(Binder.expandTemplates(i))
+        }
+
+  /** The window calls over `in`, whose output is the window `schema` (input columns first) */
+  private def windowOver(
+      in: RuntimePlan,
+      calls: IndexedSeq[WindowCall],
+      schema: Schema
+  ): RuntimePlan.Window = RuntimePlan.Window(
+    in,
+    calls.map(WindowFunction.of(_, in.output)),
+    columnsOf(Schema(schema.fields.drop(in.output.size)))
+  )
+
+  /** A projection over the window calls of its items, as `Planner.planProject` plans it */
+  private def windowProject(p: Project): RuntimePlan =
+    val in                       = bind(p.child)
+    val (calls, (exprs, fields)) =
+      planner.bindWithWindows(in.schema, p.selectItems)(planner.bindItems(_, p.selectItems))
+    val w = calls.map(c => windowOver(in, c.windowCalls, c.schema)).getOrElse(in)
+    RuntimePlan.Project(w, exprs.map(BExpr.of(_, w.output)), fields.map(newColumn))
 
   private def project(p: Project): RuntimePlan =
     val in              = bind(p.child)

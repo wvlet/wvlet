@@ -75,14 +75,25 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    val p = runtimePlan(
-      "from nation select n_name, row_number() over (partition by n_regionkey) as rn"
-    )
+    // A column edit
+    val p = runtimePlan("from nation add n_nationkey + 1 as k")
     p match
       case RuntimePlan.Legacy(op, cols) =>
         cols.map(_.name) shouldBe op.schema.names
       case other =>
         fail(s"Unexpected plan:\n${other.explain}")
+  }
+
+  test("bind a projection with windows as a window under a projection") {
+    val p = runtimePlan(
+      "from nation select n_name, row_number() over (partition by n_regionkey) as rn"
+    )
+    p shouldMatch { case RuntimePlan.Project(w: RuntimePlan.Window, _, cols) =>
+      cols.map(_.name) shouldBe IndexedSeq("n_name", "rn")
+      w.calls.map(_.name) shouldBe IndexedSeq("row_number")
+      w.calls.head.partitionColumns shouldBe Set(w.child.output(2).id)
+    }
+    PlanValidator.violations(p) shouldBe Nil
   }
 
   test("bind set operations and distinct as runtime-plan nodes") {

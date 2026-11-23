@@ -15,8 +15,11 @@ package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.exec.AggCall
+import wvlet.lang.engine.exec.FrameSpec
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
+import wvlet.lang.engine.exec.SortKey
+import wvlet.lang.engine.exec.WindowCall
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.VExprs
@@ -132,7 +135,81 @@ case class JoinCondition(cond: BExpr, literalCounts: Map[String, Int] = Map.empt
   override def toString: String = cond.toString
 
 /** A sort key of a [[RuntimePlan.Sort]] */
-case class OrderKey(expr: BExpr, ascending: Boolean, nullsFirst: Boolean)
+case class OrderKey(expr: BExpr, ascending: Boolean, nullsFirst: Boolean):
+  /** The executable key over an input whose column of id `i` is at `position(i)` */
+  def lower(position: Array[Int]): SortKey = SortKey(expr.lower(position), ascending, nullsFirst)
+
+object OrderKey:
+  /** Bind a sort key over input positions to the ids of the columns at those positions */
+  def of(k: SortKey, input: IndexedSeq[Column]): OrderKey = OrderKey(
+    BExpr.of(k.expr, input),
+    k.ascending,
+    k.nullsFirst
+  )
+
+/** A window function call of a [[RuntimePlan.Window]], over the ids of its input */
+case class WindowFunction(
+    name: String,
+    args: Seq[BExpr],
+    partitionBy: Seq[BExpr],
+    orderBy: Seq[OrderKey],
+    frame: Option[FrameSpec],
+    ignoreNulls: Boolean,
+    ptype: PType
+):
+  /** The expressions the call reads */
+  def exprs: Seq[BExpr] = args ++ partitionBy ++ orderBy.map(_.expr)
+
+  /** The columns the call partitions by, as plain column references */
+  def partitionColumns: Set[ColumnId] =
+    partitionBy
+      .collect { case BExpr(c: ColRef) =>
+        ColumnId(c.index)
+      }
+      .toSet
+
+  /** The executable call over an input whose column of id `i` is at `position(i)` */
+  def lower(position: Array[Int]): WindowCall = WindowCall(
+    name,
+    args.map(_.lower(position)),
+    partitionBy.map(_.lower(position)),
+    orderBy.map(_.lower(position)),
+    frame,
+    ignoreNulls,
+    ptype
+  )
+
+  override def toString: String =
+    val over =
+      Seq(
+        Option.when(partitionBy.nonEmpty)(s"partition by ${partitionBy.mkString(", ")}"),
+        Option.when(orderBy.nonEmpty)(
+          s"order by ${orderBy
+              .map { k =>
+                if k.ascending then
+                  k.expr.toString
+                else
+                  s"${k.expr} desc"
+              }
+              .mkString(", ")}"
+        ),
+        frame.map(_.toString)
+      ).flatten
+    s"${name}(${args.mkString(", ")}) over (${over.mkString(" ")})"
+
+end WindowFunction
+
+object WindowFunction:
+  /** Bind a window call over input positions to the ids of the columns at those positions */
+  def of(c: WindowCall, input: IndexedSeq[Column]): WindowFunction = WindowFunction(
+    c.name,
+    c.args.map(BExpr.of(_, input)),
+    c.partitionBy.map(BExpr.of(_, input)),
+    c.orderBy.map(OrderKey.of(_, input)),
+    c.frame,
+    c.ignoreNulls,
+    c.ptype
+  )
 
 /**
   * The engine's runtime plan: relations over identified columns ([[ColumnId]]) and bound
@@ -220,6 +297,12 @@ enum RuntimePlan:
   /** The distinct rows of `child` */
   case Distinct(child: RuntimePlan)
 
+  /**
+    * Window functions over `child`: its columns, then one column per call (`columns`), computed
+    * over the call's partition of the input rows
+    */
+  case Window(child: RuntimePlan, calls: IndexedSeq[WindowFunction], columns: IndexedSeq[Column])
+
   /** A relation planned by the recursive planner, whose operator schema gives the columns */
   case Legacy(op: Operator, columns: IndexedSeq[Column])
 
@@ -256,6 +339,8 @@ enum RuntimePlan:
         columns
       case Distinct(child) =>
         child.output
+      case Window(child, _, columns) =>
+        child.output ++ columns
       case Legacy(_, columns) =>
         columns
       case CTERef(_, columns) =>
@@ -284,6 +369,8 @@ enum RuntimePlan:
       case SetOp(left, right, _, _, _) =>
         Seq(left, right)
       case Distinct(child) =>
+        Seq(child)
+      case Window(child, _, _) =>
         Seq(child)
 
   /**
@@ -319,6 +406,10 @@ enum RuntimePlan:
           s.copy(left = cs(0), right = cs(1))
         case d: Distinct =>
           d.copy(child = cs(0))
+        case w: Window =>
+          w.copy(child = cs(0))
+
+  end withChildren
 
   /** The output as an operator schema */
   def schema: Schema = Schema(output.map(_.toField))
@@ -391,6 +482,8 @@ enum RuntimePlan:
         s"${op}${a}"
       case Distinct(_) =>
         "Distinct"
+      case Window(_, calls, _) =>
+        s"Window(${calls.mkString(", ")})"
       case Legacy(op, _) =>
         s"Legacy[${op.name}]"
       case CTERef(cte, _) =>

@@ -82,6 +82,8 @@ object Stats:
         rows(left)
       case Distinct(child) =>
         rows(child)
+      case Window(child, _, _) =>
+        rows(child)
 
   /** Distinct values of column `id` of p from source statistics, if traceable */
   def distinct(p: RuntimePlan, id: ColumnId): Option[Double] =
@@ -113,7 +115,9 @@ object Stats:
         val i = columns.indexWhere(_.id == id)
         Option.when(i >= 0)(i).flatMap(CardinalityEstimator.columnDistinct(op, _))
       case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
-          InnerJoins(_, _) | CTERef(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) =>
+          InnerJoins(_, _) | CTERef(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) |
+          Window(_, _, _) =>
+        // As CardinalityEstimator does over operators
         None
 
   /** Distinct values of an expression over p: a column, possibly cast */
