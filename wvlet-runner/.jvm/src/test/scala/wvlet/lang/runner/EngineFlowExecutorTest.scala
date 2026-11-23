@@ -25,6 +25,8 @@ import wvlet.lang.runner.engine.WvletEngineConnector
 import wvlet.uni.test.UniTest
 
 import java.nio.file.Files
+import scala.collection.mutable.ListBuffer
+import scala.jdk.CollectionConverters.*
 
 /**
   * Flows and `wvlet build` on the in-process wvlet engine: stages run as Wvlet plans, with no SQL
@@ -147,15 +149,64 @@ class EngineFlowExecutorTest extends UniTest:
     rows.map(_("attempts")).toSet shouldBe Set(1)
   }
 
-  test("report activations as not supported on the engine yet") {
+  /** A sink recording the request and the JSON rows of the delivered table */
+  private class RecordingSink(override val name: String) extends ActivationSink:
+    val delivered = ListBuffer.empty[(ActivationRequest, List[String])]
+    override def activate(request: ActivationRequest): Unit =
+      delivered += request -> request.jsonRows(10)
+
+  test("deliver activated stage outputs to a sink on the engine") {
+    val sink        = RecordingSink("collector")
     val (flow, ctx) = compileFlow("""flow EngineActivateFlow = {
-        |  stage src = from [[1]] as t(id) | activate('webhook', url: 'http://localhost:1')
+        |  stage src = from [[1, 'a'], [2, 'b']] as t(id, name)
+        |  stage send = from src | activate('collector', channel: 'sales')
         |}""".stripMargin)
     given Context = ctx
-    val result    = FlowExecutor(engine, workEnv).execute(flow)
-    result.hasError shouldBe true
-    result.stageResult("src").get.error.get.getMessage shouldContain
-      "activate is not supported on the wvlet engine yet"
+    val result    = FlowExecutor(engine, workEnv, activationSinks = List(sink)).execute(flow)
+    result.isSuccess shouldBe true
+    sink.delivered.size shouldBe 1
+    val (request, rows) = sink.delivered.head
+    request.params shouldBe Map("channel" -> "sales")
+    request.sqlConnector.isEmpty shouldBe true
+    rows.toSet shouldBe Set("""{"id":1,"name":"a"}""", """{"id":2,"name":"b"}""")
+  }
+
+  test("export activated stage outputs to files on the engine") {
+    val dir         = Files.createTempDirectory("wv-engine-activate")
+    val csv         = dir.resolve("out.csv")
+    val json        = dir.resolve("out.json")
+    val (flow, ctx) = compileFlow(s"""flow EngineFileFlow = {
+        |  stage src = from [[1, 'a'], [2, 'b']] as t(id, name)
+        |  stage to_csv = from src | activate('file', path: '${csv}')
+        |  stage to_json = from src | activate('file', path: '${json}')
+        |}""".stripMargin)
+    given Context = ctx
+    val result    = FlowExecutor(
+      engine,
+      workEnv,
+      activationSinks = FlowExecutor.defaultActivationSinks
+    ).execute(flow)
+    result.isSuccess shouldBe true
+    Files.readAllLines(csv).asScala.toList shouldBe List("id,name", "1,a", "2,b")
+    Files.readAllLines(json).asScala.toList shouldBe
+      List("""{"id":1,"name":"a"}""", """{"id":2,"name":"b"}""")
+  }
+
+  test("deliver run notifications on the engine") {
+    val sink        = RecordingSink("test_notify")
+    val (flow, ctx) = compileFlow(
+      """flow EngineNotifyFlow with { on_finish: activate('test_notify') } = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin
+    )
+    given Context = ctx
+    val result    = FlowExecutor(engine, workEnv, activationSinks = List(sink)).execute(flow)
+    result.isSuccess shouldBe true
+    sink.delivered.size shouldBe 1
+    val rows = sink.delivered.head._2
+    rows.size shouldBe 1
+    rows.head shouldContain "\"stage\":\"src\""
+    rows.head shouldContain "\"state\":\"success\""
   }
 
   test("drop run tables on the engine") {
@@ -248,8 +299,9 @@ class EngineFlowExecutorTest extends UniTest:
           |""".stripMargin)
     val (_, result) = buildOn(Profile.defaultWvletProfile, dir)
     result.hasError shouldBe true
-    result.stageResult("v").get.error.get.getMessage shouldContain
-      "not supported by the wvlet engine"
+    val message = result.stageResult("v").get.error.get.getMessage
+    message shouldContain "not supported by the wvlet engine"
+    message shouldContain "-t duckdb"
   }
 
 end EngineFlowExecutorTest

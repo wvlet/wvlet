@@ -115,7 +115,8 @@ class TrinoFlowExecutorTest extends UniTest:
         override def activate(request: ActivationRequest): Unit =
           recorded +=
             request
-              .connector
+              .sqlConnector
+              .get
               .queryJsonRows(
                 s"""select "stage", "state" from "${request.table}" order by "stage""""
               )

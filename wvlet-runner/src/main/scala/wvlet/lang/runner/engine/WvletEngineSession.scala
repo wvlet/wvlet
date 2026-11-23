@@ -314,6 +314,13 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
           )
         case d: Delete if d.isForTable =>
           registerSchema(writer.delete(tableName(d), d.child))
+        case v: CreateView =>
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(
+              s"Views are not supported by the wvlet engine yet (${v.targetName}): use " +
+                "materialized: 'table', or run on a SQL engine (e.g. -t duckdb)"
+            )
         case other =>
           throw StatusCode
             .NOT_IMPLEMENTED
@@ -324,6 +331,19 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     }
 
   end save
+
+  /**
+    * Write every row of a table to a local data file. `options` are the file writer options
+    * (`format`, `header`, ...), as for `save to '<path>'`
+    */
+  def exportToFile(name: String, path: String, options: Map[String, Any])(using Context): Unit =
+    guarded {
+      writer.saveToFile(
+        path,
+        TableRef(DoubleQuotedIdentifier(name, Span.NoSpan), Span.NoSpan),
+        options
+      )
+    }
 
   /** Whether a table of this name is registered (in memory, in the warehouse, or from files) */
   def hasTable(name: String): Boolean = engine.catalog.find(tableKey(name)).isDefined

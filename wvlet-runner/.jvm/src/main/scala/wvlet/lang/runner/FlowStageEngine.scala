@@ -18,22 +18,32 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.connector.CancellableStatement
 import wvlet.lang.connector.Connector
 import wvlet.lang.connector.DBConnector
 import wvlet.lang.model.DataType
+import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.expr.DoubleQuotedIdentifier
 import wvlet.lang.model.plan.Relation
 import wvlet.lang.model.plan.Save
 import wvlet.lang.model.plan.TableRef
+import wvlet.lang.runner.connector.LocalFileExport
+import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.lang.runner.engine.WvletEngineConnector
 import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.json.JSON
+import wvlet.uni.json.JSON.JSONArray
+import wvlet.uni.json.JSON.JSONBoolean
+import wvlet.uni.json.JSON.JSONDouble
+import wvlet.uni.json.JSON.JSONLong
 import wvlet.uni.json.JSON.JSONNull
 import wvlet.uni.json.JSON.JSONObject
 import wvlet.uni.json.JSON.JSONString
+import wvlet.uni.json.JSON.JSONValue
 import wvlet.uni.log.LogSupport
 
+import scala.util.Using
 import scala.util.control.NonFatal
 
 /**
@@ -53,8 +63,8 @@ private[runner] case class StatementHooks(
 private[runner] trait FlowStageEngine:
   def dbType: DBType
 
-  /** The SQL connector of this engine, if it runs SQL */
-  def sqlConnector: Option[DBConnector]
+  /** Read access to this engine's tables, for activation sinks */
+  def activationSource(using Context): ActivationSource
 
   /** Create or replace the table with the rows of the query */
   def createTableAs(table: String, query: Relation, hooks: StatementHooks)(using Context): Unit
@@ -81,6 +91,18 @@ private[runner] trait FlowStageEngine:
 
   /** Whether the table exists and is readable */
   def tableExists(table: String): Boolean
+
+  /**
+    * Copy the table `qualifiedName` of another connector into `stagingTable` on this engine, with
+    * the compile-time columns `schemaFields`. Returns the number of staged rows
+    */
+  def stageForeignTable(
+      source: Connector,
+      qualifiedName: List[String],
+      stagingTable: String,
+      schemaFields: Seq[NamedType],
+      engineName: String
+  ): Long
 
 end FlowStageEngine
 
@@ -121,12 +143,21 @@ private[runner] object FlowStageEngine:
           "(e.g. -t duckdb)"
       )
 
+  /** File writer options of an `activate('file')` format */
+  private[runner] def fileWriterOptions(format: String): Map[String, Any] =
+    format match
+      case "csv" =>
+        Map("format" -> "csv", "header" -> true)
+      case other =>
+        Map("format" -> other)
+
 end FlowStageEngine
 
 /** Stages as SQL statements on a [[DBConnector]] */
 private[runner] class SqlStageEngine(db: DBConnector) extends FlowStageEngine with LogSupport:
-  override def dbType: DBType                    = db.dbType
-  override def sqlConnector: Option[DBConnector] = Some(db)
+  override def dbType: DBType = db.dbType
+
+  override def activationSource(using Context): ActivationSource = SqlActivationSource(db)
 
   private def quoted(table: String): String = s""""${table}""""
 
@@ -236,7 +267,57 @@ private[runner] class SqlStageEngine(db: DBConnector) extends FlowStageEngine wi
         debug(s"${table} is not readable: ${e.getMessage}")
         false
 
+  override def stageForeignTable(
+      source: Connector,
+      qualifiedName: List[String],
+      stagingTable: String,
+      schemaFields: Seq[NamedType],
+      engineName: String
+  ): Long = SourceTableStaging.stageTable(
+    source,
+    qualifiedName,
+    db,
+    engineName,
+    stagingTable,
+    schemaFields
+  )
+
 end SqlStageEngine
+
+/** Tables of a SQL engine, read with SQL */
+private[runner] class SqlActivationSource(db: DBConnector) extends ActivationSource:
+  override def sqlConnector: Option[DBConnector] = Some(db)
+
+  override def jsonRows(table: String, limit: Int): List[String] = db.queryJsonRows(
+    s"""select * from "${table}" limit ${limit}"""
+  )
+
+  // Engines with native `COPY TO` (DuckDB) write the file directly; others (e.g. Trino) stream
+  // the rows page by page into the wvlet engine's file writers
+  override def exportToFile(table: String, path: String, format: String): Unit =
+    if db.dbType.supportSaveAsFile then
+      val formatClause =
+        format match
+          case "csv" =>
+            "(format csv, header)"
+          case other =>
+            s"(format ${other})"
+      val escapedPath = path.replaceAll("'", "''")
+      db.withSession { conn =>
+        Using.resource(conn.createStatement()) { stmt =>
+          stmt.execute(s"""copy (select * from "${table}") to '${escapedPath}' ${formatClause}""")
+        }
+      }
+    else
+      given QueryProgressMonitor = QueryProgressMonitor.noOp
+      LocalFileExport.write(
+        db,
+        s"""select * from "${table}"""",
+        path,
+        FlowStageEngine.fileWriterOptions(format)
+      )
+
+end SqlActivationSource
 
 /**
   * Stages as Wvlet plans on the in-process wvlet engine. Statements run one at a time on the
@@ -246,8 +327,7 @@ private[runner] class WvletStageEngine(engineConnector: WvletEngineConnector)
     extends FlowStageEngine:
   private def session: WvletEngineSession = engineConnector.session
 
-  override def dbType: DBType                    = DBType.Wvlet
-  override def sqlConnector: Option[DBConnector] = None
+  override def dbType: DBType = DBType.Wvlet
 
   // Parallel stages share one session; its catalog and writer aren't made for concurrent writes
   private def locked[A](body: => A): A = session.synchronized(body)
@@ -294,4 +374,67 @@ private[runner] class WvletStageEngine(engineConnector: WvletEngineConnector)
 
   override def tableExists(table: String): Boolean = locked(session.hasTable(table))
 
+  override def stageForeignTable(
+      source: Connector,
+      qualifiedName: List[String],
+      stagingTable: String,
+      schemaFields: Seq[NamedType],
+      engineName: String
+  ): Long = locked(
+    SourceTableStaging.stageTableOnEngine(
+      source,
+      qualifiedName,
+      session,
+      stagingTable,
+      schemaFields
+    )
+  )
+
+  override def activationSource(using ctx: Context): ActivationSource =
+    new ActivationSource:
+      override def sqlConnector: Option[DBConnector] = None
+
+      override def jsonRows(table: String, limit: Int): List[String] = locked(
+        session
+          .execute(tableRef(table), rowLimit = limit)
+          .rows
+          .map(row =>
+            JSONObject(row.toSeq.map((k, v) => k -> WvletStageEngine.jsonValueOf(v))).toJSON
+          )
+          .toList
+      )
+
+      override def exportToFile(table: String, path: String, format: String): Unit = locked(
+        session.exportToFile(table, path, FlowStageEngine.fileWriterOptions(format))
+      )
+
 end WvletStageEngine
+
+private[runner] object WvletStageEngine:
+  /** A value of an engine result row as JSON: numbers and booleans as such, others as text */
+  def jsonValueOf(v: Any): JSONValue =
+    v match
+      case null =>
+        JSONNull()
+      case b: Boolean =>
+        JSONBoolean(b)
+      case n: Byte =>
+        JSONLong(n.toLong)
+      case n: Short =>
+        JSONLong(n.toLong)
+      case n: Int =>
+        JSONLong(n.toLong)
+      case n: Long =>
+        JSONLong(n)
+      case f: Float =>
+        JSONDouble(f.toDouble)
+      case d: Double =>
+        JSONDouble(d)
+      case s: Seq[?] =>
+        JSONArray(s.map(jsonValueOf).toIndexedSeq)
+      case a: Array[?] =>
+        JSONArray(a.toIndexedSeq.map(jsonValueOf))
+      case m: Map[?, ?] =>
+        JSONObject(m.toSeq.map((k, x) => k.toString -> jsonValueOf(x)))
+      case other =>
+        JSONString(other.toString)

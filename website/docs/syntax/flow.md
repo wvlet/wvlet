@@ -400,7 +400,7 @@ external target. Two sinks are built in:
 
 - `activate('file', path: 'out.csv')` exports to a local file. The format comes from the
   path extension or a `format:` parameter (csv, parquet, or json). On DuckDB the file is
-  written directly with `COPY TO`; on engines without local file output (e.g. Trino) the
+  written directly with `COPY TO`, and the wvlet engine writes it with its file writers; on engines without local file output (e.g. Trino) the
   stage output is streamed page by page into the wvlet engine's file writers, so large
   results export without holding all rows in memory
 - `activate('webhook', url: 'https://...')` posts the rows to an HTTP endpoint as a JSON
@@ -595,9 +595,10 @@ Flows are triggered explicitly with the `run flow` statement or the `wvlet flow`
 
 Flows run on DuckDB (the default) and on Trino, selected with `--profile` like regular
 queries. `-t <engine>` selects an engine without a profile file: `wvlet flow run F -t wvlet` runs
-the stages as plans on the in-process [wvlet engine](../usage/wvlet-engine.md). The engine doesn't
-support activations, `on_failure` / `on_success` notifications, or reading tables of another
-connector yet, and its statements can't be stopped mid-run (a timeout still fails the stage). Stage materialization adapts to the engine automatically (e.g. Trino catalogs
+the stages as plans on the in-process [wvlet engine](../usage/wvlet-engine.md), with activations,
+notifications, and tables of other connectors. The engine has no views yet (`materialized: 'view'`
+models need a SQL engine such as `-t duckdb`), and its statements can't be stopped mid-run (a
+timeout still fails the stage). Stage materialization adapts to the engine automatically (e.g. Trino catalogs
 without `create or replace table` get an explicit drop-and-create), and stage timeouts and
 cancellation stop the running query server-side on both engines. Run-scoped
 `__wv_flow_*` tables are created in the `catalog`/`schema` of the profile's default engine
@@ -620,8 +621,8 @@ flow daily = {
 
 When a stage's body references a table on a different connector (e.g. a `local` stage reading
 `td.www_access`), the rows are staged automatically: the source table is copied into a
-run-scoped staging table on the stage's engine before the stage materializes. Staging currently
-lands on DuckDB engines; staging into other engines is planned.
+run-scoped staging table on the stage's engine before the stage materializes. Staging lands on
+DuckDB and on the wvlet engine (as an in-memory table); staging into other engines is planned.
 
 A stage that reads another stage's output must run on the same engine as that stage (stage
 outputs are materialized on the engine that produced them).
