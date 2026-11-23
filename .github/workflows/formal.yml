@@ -28,6 +28,7 @@ on:
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/RuntimeBinder.scala'
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/expr/VExpr.scala'
       - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/**'
+      - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/join-key-filter-traces.json'
   push:
     branches:
       - main
@@ -41,6 +42,7 @@ on:
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/transform/**'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/**'
       - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/**'
+      - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/join-key-filter-traces.json'
   workflow_dispatch:
 
 jobs:
@@ -116,3 +118,7 @@ jobs:
           lake exe not-in-traces
           git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/not-in-traces.json \
             || (echo "::error::The NOT IN conformance fixture is stale. Run 'cd formal && lake exe not-in-traces' and commit the result." && exit 1)
+      - name: Check join-key filter conformance fixture freshness
+          lake exe join-key-filter-traces
+          git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/join-key-filter-traces.json \
+            || (echo "::error::The join-key filter conformance fixture is stale. Run 'cd formal && lake exe join-key-filter-traces' and commit the result." && exit 1)
