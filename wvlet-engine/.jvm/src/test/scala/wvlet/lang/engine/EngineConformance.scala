@@ -365,7 +365,8 @@ class EngineConformance(
       case _ =>
         (numeric(x), numeric(y)) match
           case (Some(a), Some(b)) =>
-            a == b || math.abs(a - b) <= 1e-9 * math.max(math.abs(a), math.abs(b)) ||
+            a == b ||
+            (a.isNaN && b.isNaN) || math.abs(a - b) <= 1e-9 * math.max(math.abs(a), math.abs(b)) ||
             math.abs(a - b) < 1e-12
           case _ =>
             x.toString == y.toString
