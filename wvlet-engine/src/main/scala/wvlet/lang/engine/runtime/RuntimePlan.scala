@@ -264,10 +264,12 @@ enum RuntimePlan:
   )
 
   /**
-    * A join whose output is the columns of `left`, then those of `right`. With keys it is a hash
-    * join on `leftKeys` (over `left`) = `rightKeys` (over `right`), building on `right`, or on
-    * `left` when `buildLeft` is set; without keys it is a nested loop join. The residual reads the
-    * columns of both inputs
+    * A join whose output is the columns of `left`, then those of `right`; a semi or anti join
+    * (`JoinKind.Semi` / `JoinKind.Anti`) outputs only those of `left`. With keys it is a hash join
+    * on `leftKeys` (over `left`) = `rightKeys` (over `right`), building on `right`, or on `left`
+    * when `buildLeft` is set (for a semi or anti join, a RIGHT SEMI / RIGHT ANTI join over swapped
+    * inputs); without keys it is a nested loop join. The residual reads the columns of both inputs
+    * ([[Join.inputs]])
     */
   case Join(
       left: RuntimePlan,
@@ -337,8 +339,11 @@ enum RuntimePlan:
         child.output
       case Limit(child, _, _) =>
         child.output
-      case Join(left, right, _, _, _, _, _) =>
-        left.output ++ right.output
+      case j: Join =>
+        if j.isSemi then
+          j.left.output
+        else
+          j.inputs
       case Aggregate(_, _, _, columns) =>
         columns
       case InnerJoins(inputs, _) =>
@@ -502,6 +507,13 @@ enum RuntimePlan:
 end RuntimePlan
 
 object RuntimePlan:
+  extension (j: Join)
+    /** Whether the join is a semi or anti join, which outputs only the columns of its left input */
+    def isSemi: Boolean = j.kind == JoinKind.Semi || j.kind == JoinKind.Anti
+
+    /** The columns of both inputs, which the residual reads */
+    def inputs: IndexedSeq[Column] = j.left.output ++ j.right.output
+
   extension (s: Scan)
     /** The source position of output column i */
     def sourcePosition(i: Int): Int = s.read.map(_(i)).getOrElse(i)

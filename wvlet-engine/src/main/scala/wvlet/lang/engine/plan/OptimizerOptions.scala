@@ -24,6 +24,12 @@ enum Optimization(val name: String):
   case FactorOr extends Optimization("factor_or")
 
   /**
+    * Bind [NOT] EXISTS / [NOT] IN filter conjuncts over uncorrelated subqueries as semi and anti
+    * joins on the runtime plan; disabled, the recursive planner joins them over the planned input
+    */
+  case Decorrelate extends Optimization("decorrelate")
+
+  /**
     * Push filter conjuncts down the runtime plan: through projections, aggregates (grouping keys
     * only), and sorts, into the preserved side of outer joins and into inner join trees, with
     * equalities to constants inferred transitively there

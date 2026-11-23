@@ -51,14 +51,11 @@ class Planner(
 )(using ctx: Context)
     extends LogSupport:
 
-  private def enabled(o: Optimization): Boolean = options.isEnabled(o)
+  private[engine] def enabled(o: Optimization): Boolean = options.isEnabled(o)
 
   /** Whether a join builds on the other input, as this one has much more rows than that */
-  private def swapBuild(rows: Double, otherRows: Double): Boolean = JoinOrderOptimizer.swapBuild(
-    options,
-    rows,
-    otherRows
-  )
+  private[engine] def swapBuild(rows: Double, otherRows: Double): Boolean = JoinOrderOptimizer
+    .swapBuild(options, rows, otherRows)
 
   /** The physical passes over a lowered plan: column pruning (with scan filters), parallelism */
   private def optimizePhysical(op: Operator): Operator =
@@ -2068,6 +2065,28 @@ class Planner(
       case _ =>
         None
 
+  /**
+    * A filter conjunct that is EXISTS, NOT EXISTS, IN, or NOT IN over a subquery, as
+    * [[rewriteSubqueryConjunct]] matches it (without checking whether the subquery is correlated)
+    */
+  private[engine] def subqueryConjunct(c: Expression): Option[SubqueryConjunct] =
+    c match
+      case e: Exists =>
+        Some(SubqueryConjunct.Exists(subqueryRelation(e.child), negate = false))
+      case Not(e: Exists, _) =>
+        Some(SubqueryConjunct.Exists(subqueryRelation(e.child), negate = true))
+      case in: InRelation if !hasSubquery(in.a) =>
+        Some(SubqueryConjunct.In(in.a, in.in, negate = false))
+      case in: NotInRelation if !hasSubquery(in.a) =>
+        Some(SubqueryConjunct.In(in.a, in.in, negate = true))
+      case Not(in: InRelation, _) if !hasSubquery(in.a) =>
+        Some(SubqueryConjunct.In(in.a, in.in, negate = true))
+      case _ =>
+        None
+
+  /** Whether a subquery reads no column of an enclosing relation */
+  private[engine] def isUncorrelated(sub: Relation): Boolean = !isCorrelated(sub, Schema.empty)
+
   private def subqueryRelation(e: Expression): Relation =
     e match
       case s: SubQueryExpression =>
@@ -2234,28 +2253,15 @@ class Planner(
       rk: IndexedSeq[VExpr],
       kind: JoinKind,
       residual: Option[VExpr]
-  ): Operator =
-    if swapBuild(CardinalityEstimator.rows(inner), CardinalityEstimator.rows(op)) then
-      val lw = op.schema.size
-      val rw = inner.schema.size
-      // Position of each op ++ inner column in inner ++ op
-      val toSwapped =
-        Array.tabulate(lw + rw)(i =>
-          if i < lw then
-            rw + i
-          else
-            i - lw
-        )
-      val swapped =
-        if kind == JoinKind.Semi then
-          JoinKind.RightSemi
-        else
-          JoinKind.RightAnti
-      HashJoinOp(inner, op, rk, lk, swapped, residual.map(VExprs.remap(_, toSwapped)), op.schema)
-    else
-      HashJoinOp(op, inner, lk, rk, kind, residual, op.schema)
-
-  end semiJoin
+  ): Operator = JoinOrderOptimizer.semiJoinOp(
+    op,
+    inner,
+    lk,
+    rk,
+    kind,
+    residual,
+    buildLeft = swapBuild(CardinalityEstimator.rows(inner), CardinalityEstimator.rows(op))
+  )
 
   private def inJoin(
       op: Operator,
@@ -3040,6 +3046,13 @@ private[engine] trait AggPlanBuilder[P]:
 
   /** The columns of `p`, then one column per window call over them (`schema`) */
   def window(p: P, calls: IndexedSeq[WindowCall], schema: Schema): P
+
+/** A filter conjunct over a subquery: [NOT] EXISTS (sub), or target [NOT] IN (sub) */
+private[engine] enum SubqueryConjunct:
+  case Exists(sub: Relation, negate: Boolean)
+  case In(target: Expression, sub: Relation, negate: Boolean)
+
+  def sub: Relation
 
 object Planner:
   /** A planner for a subquery: shares the catalog, sources, and CTE definitions */
