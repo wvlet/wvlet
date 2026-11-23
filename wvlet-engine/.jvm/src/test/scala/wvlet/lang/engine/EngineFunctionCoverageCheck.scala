@@ -35,7 +35,7 @@ class EngineFunctionCoverageCheck extends UniTest:
   private val catalogPath = Path.of("wvlet-stdlib/module/standard/duckdb/functions.wv")
 
   /** Covered catalog functions must not drop below this count */
-  private val minCovered = 153
+  private val minCovered = 164
 
   /** Function families out of scope for the engine: collations, spatial, DuckDB-specific types */
   private val excludedPrefixes: Seq[String] = Seq(
@@ -142,7 +142,10 @@ class EngineFunctionCoverageCheck extends UniTest:
       .toSeq
       .sortBy((f, names) => (-names.size, f))
       .map((f, names) => s"  ${f} (${names.size}): ${names.mkString(", ")}")
-    val report = (Seq(summary, s"missing (${missing.size}):") ++ byFamily).mkString("\n")
+    val report = (
+      Seq(summary, s"missing (${missing.size}):") ++ byFamily ++
+        Seq(s"covered (${covered.size}): ${covered.mkString(", ")}")
+    ).mkString("\n")
     info(report)
     val out = Path.of("target/engine-function-coverage.txt")
     Files.createDirectories(out.getParent)

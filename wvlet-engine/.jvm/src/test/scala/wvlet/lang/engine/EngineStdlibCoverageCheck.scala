@@ -13,8 +13,6 @@
  */
 package wvlet.lang.engine
 
-import wvlet.lang.compiler.*
-import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.lsp.StdLibFunctionDoc
 import wvlet.lang.compiler.lsp.StdLibIndex
 import wvlet.uni.test.UniTest
@@ -35,12 +33,10 @@ import java.nio.file.Path
 class EngineStdlibCoverageCheck extends UniTest:
 
   /** Stdlib functions that run on the engine and match DuckDB must not drop below this count */
-  private val minCovered = 241
+  private val minCovered = 256
 
   private val conformance     = EngineConformance(".", Nil, _ => ())
   override def afterAll: Unit = conformance.close()
-
-  private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
   private enum Outcome:
     case Covered,
@@ -155,31 +151,21 @@ class EngineStdlibCoverageCheck extends UniTest:
 
   end probesOf
 
-  /** Run one probe query; None when DuckDB or the compiler rejects the probe itself */
-  private def runQuery(name: String, q: String): Either[String, (Outcome, String)] =
-    val unit = CompilationUnit.fromWvletString(q)
-    val r    = compiler.compileSingleUnit(unit)
-    if r.hasFailures then
-      Left(s"compile error: ${r.failureReport.map(_._2).mkString.take(120)}")
+  /** Run one probe query; Left when DuckDB or the compiler rejects the probe itself */
+  private def runQuery(q: String): Either[String, (Outcome, String)] =
+    val res = conformance.compareQuery(q)
+    if res.message.startsWith("compile error") || res.message.startsWith("skipped") then
+      Left(res.message)
+    else if res.matched then
+      Right((Outcome.Covered, ""))
+    else if res.message.contains("Unsupported function") ||
+      res.message.contains("Unsupported aggregate")
+    then
+      Right((Outcome.Unsupported, res.message))
+    else if res.message.startsWith("engine error") then
+      Right((Outcome.EngineError, res.message))
     else
-      given Context = r.context
-      EngineTPCHBench.queryOf(unit) match
-        case None =>
-          Left("no query")
-        case Some(rel) =>
-          val res = conformance.compare(name, GenSQL.expand(rel, summon[Context]))
-          if res.message.startsWith("skipped") then
-            Left(res.message)
-          else if res.matched then
-            Right((Outcome.Covered, ""))
-          else if res.message.contains("Unsupported function") ||
-            res.message.contains("Unsupported aggregate")
-          then
-            Right((Outcome.Unsupported, res.message))
-          else if res.message.startsWith("engine error") then
-            Right((Outcome.EngineError, res.message))
-          else
-            Right((Outcome.Mismatch, s"${res.message} (query: ${q.replace('\n', ' ')})"))
+      Right((Outcome.Mismatch, s"${res.message} (query: ${q.replace('\n', ' ')})"))
 
   private def run(fn: StdLibFunctionDoc): (Outcome, String) =
     val probes = probesOf(fn)
@@ -187,7 +173,7 @@ class EngineStdlibCoverageCheck extends UniTest:
       (Outcome.NotProbed, "no sample for the owner or an argument type")
     else
       // The first covered probe wins; otherwise report the first probe DuckDB accepted
-      val results = probes.iterator.map(q => runQuery(fn.signature, q)).toSeq
+      val results = probes.iterator.map(q => runQuery(q)).toSeq
       results
         .collectFirst { case Right(r @ (Outcome.Covered, _)) =>
           r
@@ -225,9 +211,9 @@ class EngineStdlibCoverageCheck extends UniTest:
           .filter(_ != Outcome.Covered)
           .map(o => s"${o}: ${count(o)}")
           .mkString(", ")})"
-    val details = Outcome
-      .values
-      .filter(_ != Outcome.Covered)
+    // Covered functions last, so the gaps stay at the top of the report
+    val details = (Outcome.values.filter(_ != Outcome.Covered) :+ Outcome.Covered)
+      .toSeq
       .flatMap { o =>
         byOutcome
           .get(o)

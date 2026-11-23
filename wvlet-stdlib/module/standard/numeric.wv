@@ -21,6 +21,36 @@ trait numeric = {
   def power(exponent:double): double = sql"power(${this},${exponent})"
   def sign: int = sql"sign(${this})"
 
+  -- Hyperbolic sine, cosine, and tangent
+  def sinh: double = sql"sinh(${this})"
+  def sinh in hive: double = sql"((exp(cast(${this} as double)) - exp(-cast(${this} as double))) / 2)"
+  def cosh: double = sql"cosh(${this})"
+  def cosh in hive: double = sql"((exp(cast(${this} as double)) + exp(-cast(${this} as double))) / 2)"
+  def tanh: double = sql"tanh(${this})"
+  def tanh in hive: double = sql"(1 - 2 / (exp(2 * cast(${this} as double)) + 1))"
+  -- Inverse hyperbolic sine, cosine (NaN below 1), and tangent (NaN outside -1..1, infinite at -1 and 1)
+  def asinh: double = sql"asinh(${this})"
+  def asinh in trino: double = sql"(sign(cast(${this} as double)) * ln(abs(cast(${this} as double)) + sqrt(cast(${this} as double) * cast(${this} as double) + 1)))"
+  def asinh in hive: double = sql"(sign(cast(${this} as double)) * ln(abs(cast(${this} as double)) + sqrt(cast(${this} as double) * cast(${this} as double) + 1)))"
+  def acosh in duckdb: double = sql"acosh(${this})"
+  def acosh in trino: double = sql"ln(cast(${this} as double) + sqrt(cast(${this} as double) - 1) * sqrt(cast(${this} as double) + 1))"
+  def acosh in snowflake: double = sql"acosh(${this})"
+  def acosh in bigquery: double = sql"acosh(${this})"
+  def atanh in duckdb: double = sql"atanh(${this})"
+  def atanh in trino: double = sql"(0.5 * ln((1 + cast(${this} as double)) / (1 - cast(${this} as double))))"
+  def atanh in snowflake: double = sql"atanh(${this})"
+  def atanh in bigquery: double = sql"atanh(${this})"
+  -- Cotangent (1 / tan)
+  def cot: double = sql"cot(${this})"
+  def cot in trino: double = sql"(1 / tan(${this}))"
+  def cot in hive: double = sql"(1 / tan(${this}))"
+
+  -- Round to an integer, or to the given number of decimal places, rounding ties to the even neighbor (banker's rounding)
+  def round_half_even in duckdb: double = sql"round_even(${this},0)"
+  def round_half_even in hive: double = sql"bround(${this},0)"
+  def round_half_even(decimal:int) in duckdb: double = sql"round_even(${this},${decimal})"
+  def round_half_even(decimal:int) in hive: double = sql"bround(${this},${decimal})"
+
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
 }

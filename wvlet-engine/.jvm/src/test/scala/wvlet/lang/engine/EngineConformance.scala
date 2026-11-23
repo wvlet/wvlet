@@ -127,6 +127,32 @@ class EngineConformance(
     }
     d
 
+  private lazy val queryCompiler = Compiler(
+    CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(specPath))
+  )
+
+  /**
+    * Compile one Wvlet query string and compare its rows on the engine with DuckDB's, as
+    * [[compare]] does. A query that does not compile is reported as unmatched, with a message
+    * starting with "compile error"
+    */
+  def compareQuery(query: String, ordered: Boolean = false): ConformanceResult =
+    val unit = CompilationUnit.fromWvletString(query)
+    val r    = queryCompiler.compileSingleUnit(unit)
+    if r.hasFailures then
+      ConformanceResult(
+        query,
+        matched = false,
+        s"compile error: ${r.failureReport.map(_._2).mkString.take(200)}"
+      )
+    else
+      given Context = r.context
+      EngineTPCHBench.queryOf(unit) match
+        case None =>
+          ConformanceResult(query, matched = false, "compile error: no query")
+        case Some(rel) =>
+          compare(query, GenSQL.expand(rel, summon[Context]), ordered = ordered)
+
   /**
     * Compare one query's rows on `target` (this conformance's engine by default) with DuckDB's, as
     * multisets, or in order with `ordered` (for queries whose ORDER BY keys are a total order). A
@@ -225,6 +251,7 @@ class EngineConformance(
   end compare
 
   private def runDuckDB(sql: String): (Seq[String], Seq[Seq[Any]]) =
+    debug(s"DuckDB SQL:\n${sql}")
     val st = conn.createStatement()
     try
       val rs   = st.executeQuery(sql)
