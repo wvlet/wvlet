@@ -83,6 +83,22 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
     run(off, q)._1 shouldBe rows
   }
 
+  test("filter each input scan of a union all on the probe side") {
+    val q =
+      """select u.k, u.n from (
+        |  select l_partkey k, l_linenumber n from lineitem
+        |  union all
+        |  select ps_partkey k, ps_suppkey n from partsupp
+        |) u join part on u.k = p_partkey
+        |where p_name like 'forest%' order by 1, 2""".stripMargin
+    val (rows, filters) = run(engine, q)
+    debug(filters)
+    filters("lineitem") shouldContain "Compare(l_partkey,GtEq,"
+    filters("partsupp") shouldContain "Compare(ps_partkey,GtEq,"
+    rows.nonEmpty shouldBe true
+    run(off, q)._1 shouldBe rows
+  }
+
   test("leave the probe side of joins that keep unmatched probe rows unfiltered") {
     val q =
       """select l_orderkey, l_linenumber, o_orderkey from lineitem
