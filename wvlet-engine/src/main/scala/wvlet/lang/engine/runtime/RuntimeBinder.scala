@@ -167,8 +167,12 @@ class RuntimeBinder(planner: Planner):
 
   private def table(r: Relation, name: String, fullName: String): RuntimePlan =
     if planner.isCTE(name) then
-      // The planner inlines or shares CTEs
-      legacy(r)
+      planner.sharedCTE(name) match
+        case Some(cte) =>
+          RuntimePlan.CTERef(cte, columnsOf(cte.body.schema))
+        case None =>
+          // The planner inlines a CTE read once
+          legacy(r)
     else
       scan(planner.tableSource(name, fullName), Some(name))
 
@@ -211,6 +215,8 @@ class RuntimeBinder(planner: Planner):
         RuntimePlan.Scan(src, fields.map(newColumn))
       case RuntimePlan.Legacy(s: ScanOp, _) =>
         legacyOp(s.withSchema(Schema(fields)))
+      case RuntimePlan.CTERef(cte, _) =>
+        RuntimePlan.CTERef(cte, fields.map(newColumn))
       case _ =>
         renamed(child, fields.map(newColumn))
 

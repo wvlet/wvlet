@@ -28,7 +28,9 @@ import wvlet.lang.engine.runtime.RuntimeBinder
 import wvlet.lang.engine.runtime.Lowering
 import wvlet.lang.engine.runtime.Optimizer
 import wvlet.lang.engine.runtime.PlanValidator
+import wvlet.lang.engine.runtime.PruneColumns
 import wvlet.lang.engine.runtime.RuntimePlan
+import wvlet.lang.engine.runtime.SharedCTE
 import wvlet.lang.engine.vector.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -81,6 +83,13 @@ class Planner(
   // CTEs referenced more than once are computed once and scanned from memory afterwards
   private val cteRefCounts = mutable.HashMap.empty[String, Int]
   private val cteTables    = mutable.HashMap.empty[String, (AliasedRelation, SharedResult)]
+  // Shared CTEs of the runtime planner by name, and every one created, in order
+  private val cteRefs      = mutable.HashMap.empty[String, (AliasedRelation, DeferredCTE)]
+  private val deferredCTEs = mutable.ArrayBuffer.empty[DeferredCTE]
+  // The shared CTEs whose bodies are being bound, innermost first
+  private var bindingCTEs = List.empty[DeferredCTE]
+  // Nesting of plan(): subqueries are planned by this planner too
+  private var planDepth = 0
   // Uncorrelated scalar subqueries are evaluated once per query
   private val scalarResults = java.util.IdentityHashMap[Relation, VExpr]()
   // Scalar subqueries prefetchScalarSubqueries has considered, so nested plans don't retry them
@@ -91,9 +100,16 @@ class Planner(
 
   /** Plan a relation, then drop columns no operator needs so that scans read fewer columns */
   def plan(r: Relation): Operator =
-    if enabled(Optimization.PrefetchScalarSubqueries) then
-      prefetchScalarSubqueries(r)
-    optimizePhysical(planRelation(r))
+    planDepth += 1
+    try
+      if enabled(Optimization.PrefetchScalarSubqueries) then
+        prefetchScalarSubqueries(r)
+      val op = optimizePhysical(planRelation(r))
+      if planDepth == 1 then
+        finalizeCTEs(op)
+      op
+    finally
+      planDepth -= 1
 
   /**
     * Evaluate uncorrelated scalar subqueries that aggregate the same input (same FROM and WHERE,
@@ -201,6 +217,33 @@ class Planner(
   private[engine] def registerCTEs(w: WithQuery): Unit =
     w.queryDefs.foreach(d => cteDefs(d.alias.leafName.toLowerCase) = d)
     countCTERefs(w)
+
+  /**
+    * The shared CTE a table name refers to, with the runtime planner: a CTE read more than once,
+    * whose body is bound on the first read
+    */
+  private[engine] def sharedCTE(name: String): Option[SharedCTE] =
+    val key = name.toLowerCase
+    cteDefs.get(key) match
+      case Some(d)
+          if options.planner == PlannerMode.Runtime && enabled(Optimization.ShareCTEs) &&
+            cteRefCounts.getOrElse(key, 0) > 1 =>
+        val cte =
+          cteRefs.get(key) match
+            case Some((defn, c)) if defn eq d =>
+              c
+            case _ =>
+              val c = DeferredCTE(name)
+              cteRefs(key) = (d, c)
+              deferredCTEs += c
+              bindingCTEs = c :: bindingCTEs
+              try c.body = runtimePlan(d)
+              finally bindingCTEs = bindingCTEs.tail
+              c
+        bindingCTEs.headOption.foreach(_.reads += cte)
+        Some(cte)
+      case _ =>
+        None
 
   /** Whether a table name refers to a CTE in scope */
   private[engine] def isCTE(name: String): Boolean = cteDefs.contains(name.toLowerCase)
@@ -480,6 +523,13 @@ class Planner(
 
   private def planTable(name: String, fullName: String): Operator =
     val key = name.toLowerCase
+    sharedCTE(name) match
+      case Some(c) =>
+        c.reader(c.body.schema)
+      case None =>
+        planTableOrCTE(key, name, fullName)
+
+  private def planTableOrCTE(key: String, name: String, fullName: String): Operator =
     cteDefs.get(key) match
       case Some(d) if enabled(Optimization.ShareCTEs) && cteRefCounts.getOrElse(key, 0) > 1 =>
         val shared =
@@ -1127,8 +1177,8 @@ class Planner(
     * The rows of an operator, computed once on first read and shared by several readers (e.g., a
     * CTE referenced more than once, or the input of grouping sets)
     */
-  private class SharedResult(op: Operator):
-    private lazy val batches: Seq[Batch] =
+  private class SharedResult(val op: Operator):
+    lazy val batches: Seq[Batch] =
       debug(s"Materializing a shared result:\n${op.explain()}")
       op.drain()
 
@@ -1136,7 +1186,7 @@ class Planner(
 
     // The first reader shows the shared plan once (it is not a child: readers must not close it)
     /** The plan, shown under the first reader only */
-    private def sharedPlan(indent: Int): Option[String] =
+    def sharedPlan(indent: Int): Option[String] =
       if explained then
         None
       else
@@ -1148,19 +1198,29 @@ class Planner(
         // A scan of the result as a table whose parts are its batches, so that the Parallelizer
         // runs the filters, join probes, and aggregations over a reader in parallel, as over a
         // Parquet scan (scans select columns by name, so names must be unique)
-        ScanOp(SharedTable(label, op.schema, () => batches, sharedPlan), op.schema, None, None)
+        ScanOp(
+          SharedTable(label, op.schema, () => batches, sharedPlan, this),
+          op.schema,
+          None,
+          None
+        )
       else
-        new IteratorOp(op.schema, () => batches.iterator, label):
-          override protected def extraInputs(indent: Int): Seq[String] = sharedPlan(indent).toSeq
+        SharedReader(this, op.schema, label)
 
   end SharedResult
+
+  /** A reader of a shared result over duplicate column names, which a scan can't select by name */
+  private class SharedReader(val shared: SharedResult, schema: Schema, label: String)
+      extends IteratorOp(schema, () => shared.batches.iterator, label):
+    override protected def extraInputs(indent: Int): Seq[String] = shared.sharedPlan(indent).toSeq
 
   /** Batches computed on first read, scanned as a table whose parts are the batches */
   private class SharedTable(
       val name: String,
       val schema: Schema,
       batches: () => Seq[Batch],
-      plan: Int => Option[String]
+      plan: Int => Option[String],
+      val shared: SharedResult
   ) extends TableSource:
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = selector(spec)
@@ -1188,6 +1248,169 @@ class Planner(
     override def explainDetail(indent: Int): Option[String] = plan(indent)
 
   end SharedTable
+
+  /**
+    * A CTE read more than once, with the runtime planner. Its body is bound when it is first read,
+    * and lowered once every reader is planned ([[finalizeCTEs]]), keeping only the columns the
+    * readers read. A read before then (a subquery evaluated at plan time) computes every column
+    */
+  private class DeferredCTE(val name: String) extends SharedCTE:
+    // Set right after binding: the body can't read its own CTE
+    var body: RuntimePlan = null
+    // The CTEs that the body reads, which are finalized after this one
+    val reads = mutable.LinkedHashSet.empty[DeferredCTE]
+
+    // Positions of the body output that readers read
+    private val needed            = mutable.BitSet.empty
+    private var needsAll          = false
+    private var finalized         = Option.empty[(IndexedSeq[Int], SharedResult)]
+    private lazy val label        = s"CTE[${name}]"
+    private lazy val uniqueNames  = body.schema.names.distinct.size == body.schema.size
+    private lazy val bodyPosition = body.schema.names.zipWithIndex.toMap
+
+    def isFinalized: Boolean = finalized.nonEmpty
+
+    /** Record that a reader reads these body output positions */
+    def need(positions: Iterable[Int]): Unit = needed ++= positions
+
+    override def reader(schema: Schema): Operator =
+      if uniqueNames then
+        ScanOp(CTETable(label, body.schema, this), schema, None, None)
+      else
+        // An iterator reads every column
+        needsAll = true
+        new IteratorOp(schema, () => result._2.batches.iterator, label):
+          override protected def extraInputs(indent: Int): Seq[String] =
+            result._2.sharedPlan(indent).toSeq
+
+    /** The body positions of the result columns, and the result */
+    private def result: (IndexedSeq[Int], SharedResult) =
+      if finalized.isEmpty then
+        needsAll = true
+        finalizeBody()
+      finalized.get
+
+    /** The plan of the body for the columns read so far, if not done yet */
+    def finalizeBody(): Unit =
+      if finalized.isEmpty then
+        val out  = body.output
+        val keep =
+          if needsAll || needed.isEmpty || !enabled(Optimization.PruneColumns) then
+            out.indices
+          else
+            needed.toIndexedSeq.sorted
+        val pruned =
+          if keep.size == out.size then
+            body
+          else
+            runtimeOptimizer.pruneColumns(body, keep.map(out(_).id).toSet)
+        val op       = Lowering(pruned)
+        val pos      = pruned.output.map(_.id).zipWithIndex.toMap
+        val selected =
+          if pruned.output.size == keep.size then
+            op
+          else
+            ProjectOp(
+              op,
+              keep.map(i => ColRef(pos(out(i).id), out(i).ptype, out(i).name)),
+              Schema(keep.map(i => body.schema(i)))
+            )
+        finalized = Some((keep, SharedResult(optimizePhysical(selected))))
+
+    /** The result operator, once finalized */
+    def resultOp: Option[Operator] = finalized.map(_._2.op)
+
+    /** Selects the columns of a scan (body column names) from the result batches */
+    def selector(columns: Option[Seq[String]]): Batch => Batch =
+      val (keep, _) = result
+      val idx = columns.getOrElse(body.schema.names).map(bodyPosition).map(keep.indexOf).toArray
+      if idx.contains(-1) then
+        throw StatusCode
+          .UNEXPECTED_STATE
+          .newException(
+            s"${label} reads ${columns
+                .getOrElse(Nil)
+                .mkString(", ")}, which its result doesn't keep"
+          )
+      if idx.sameElements(keep.indices) then
+        b => b
+      else
+        b => b.select(idx)
+
+    def batches: Seq[Batch]                     = result._2.batches
+    def sharedPlan(indent: Int): Option[String] = result._2.sharedPlan(indent)
+
+  end DeferredCTE
+
+  /**
+    * The result of a deferred CTE, scanned as a table whose parts are its batches. Its schema is
+    * the body's; readers rename the columns in their own schema
+    */
+  private class CTETable(val name: String, val schema: Schema, val cte: DeferredCTE)
+      extends TableSource:
+    def scan(spec: ScanSpec): Iterator[Batch] =
+      val sel = cte.selector(spec.columns)
+      cte.batches.iterator.map(sel)
+
+    override def canSplit: Boolean = true
+
+    override def scanSplits(spec: ScanSpec): Option[ScanSplits] =
+      val bs = cte.batches.filter(_.size > 0)
+      if bs.size <= 1 then
+        None
+      else
+        val sel = cte.selector(spec.columns)
+        Some(ScanSplits(bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))), () => ()))
+
+    override def explainDetail(indent: Int): Option[String] = cte.sharedPlan(indent)
+
+  end CTETable
+
+  /**
+    * Lower the bodies of the shared CTEs once every reader is planned: each keeps the columns its
+    * readers' scans read after physical pruning, in `root` and in the bodies of the CTEs that read
+    * it, which are finalized first
+    */
+  private def finalizeCTEs(root: Operator): Unit =
+    val visited                     = java.util.IdentityHashMap[AnyRef, Unit]()
+    def collect(op: Operator): Unit =
+      if !visited.containsKey(op) then
+        visited.put(op, ())
+        op match
+          case s: ScanOp =>
+            s.source match
+              case t: CTETable =>
+                val names = s.columns.map(_.map(t.schema(_).name)).getOrElse(t.schema.names)
+                t.cte.need(names.map(n => t.cte.body.schema.names.indexOf(n)))
+              case t: SharedTable =>
+                collectShared(t.shared)
+              case _ =>
+          case r: SharedReader =>
+            collectShared(r.shared)
+          case _ =>
+        op.children.foreach(collect)
+    def collectShared(r: SharedResult): Unit =
+      if !visited.containsKey(r) then
+        visited.put(r, ())
+        collect(r.op)
+
+    collect(root)
+    var pending = deferredCTEs.toList
+    while pending.nonEmpty do
+      // Not read by another pending CTE's body; CTEs aren't recursive, so one always is
+      val ready = pending.filterNot(c => pending.exists(_.reads.contains(c)))
+      val next  =
+        if ready.isEmpty then
+          pending
+        else
+          ready
+      next.foreach { c =>
+        c.finalizeBody()
+        c.resultOp.foreach(collect)
+      }
+      pending = pending.filterNot(next.contains)
+
+  end finalizeCTEs
 
   private[engine] def isAggregationInput(r: Relation): Boolean =
     r match
