@@ -37,6 +37,9 @@ object Stats:
     p match
       case Scan(source, _, _, _) =>
         source.estimatedRows.map(_.toDouble).getOrElse(1e6)
+      case Values(columns, rows) if columns.isEmpty && rows.size == 1 =>
+        // Lowered to a SingleRowOp, which CardinalityEstimator reads as a leaf without statistics
+        1e6
       case Values(_, _) =>
         1e3
       case Join(left, right, kind, lk, _, _, buildLeft) =>

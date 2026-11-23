@@ -846,17 +846,16 @@ class RuntimeBinder(planner: Planner):
     !planner.isAggregationInput(p.child) &&
       p.selectItems
         .forall { i =>
-          !Binder.containsAggregate(i) && planner.unnestArg(i).isEmpty &&
-          !Binder.containsWindow(i) && !planner.hasSubquery(Binder.expandTemplates(i))
+          !Binder.containsAggregate(i) && !Binder.containsWindow(i) && isPlainItem(i)
         }
 
   /** A projection evaluating window functions, without aggregates, unnest, or subqueries */
   private def isWindowProjection(p: Project): Boolean =
-    p.selectItems.exists(i => Binder.containsWindow(i)) &&
-      p.selectItems
-        .forall { i =>
-          planner.unnestArg(i).isEmpty && !planner.hasSubquery(Binder.expandTemplates(i))
-        }
+    p.selectItems.exists(i => Binder.containsWindow(i)) && p.selectItems.forall(isPlainItem)
+
+  /** An item without unnest or subqueries, which the binder evaluates in a projection */
+  private def isPlainItem(i: Attribute): Boolean =
+    planner.unnestArg(i).isEmpty && !planner.hasSubquery(Binder.expandTemplates(i))
 
   /** The window calls over `in`, whose output is the window `schema` (input columns first) */
   private def windowOver(
@@ -870,21 +869,18 @@ class RuntimeBinder(planner: Planner):
   )
 
   /** New columns without aggregates, unnest, or subqueries (window functions are evaluated) */
-  private def isPlainColumnEdit(items: List[Attribute]): Boolean = items.forall { i =>
-    !Binder.containsAggregate(i) && planner.unnestArg(i).isEmpty &&
-    !planner.hasSubquery(Binder.expandTemplates(i))
-  }
+  private def isPlainColumnEdit(items: List[Attribute]): Boolean = items.forall(i =>
+    !Binder.containsAggregate(i) && isPlainItem(i)
+  )
 
   /**
     * New columns added to (or, with `prepend`, prepended to) `child`, over the window calls of the
     * new columns, as `Planner.planColumnEdit` plans them
     */
   private def columnEdit(child: Relation, prepend: Boolean, items: List[Attribute]): RuntimePlan =
-    val in                       = bind(child)
-    val (calls, (exprs, fields)) =
-      planner.bindWithWindows(in.schema, items)(planner.bindItems(_, items))
-    val w   = calls.map(c => windowOver(in, c.windowCalls, c.schema)).getOrElse(in)
-    val all = planner.columnEditItems(in.schema, prepend, exprs, fields)
+    val in                 = bind(child)
+    val (w, exprs, fields) = withWindows(in, items)
+    val all                = planner.columnEditItems(in.schema, prepend, exprs, fields)
     RuntimePlan.Project(w, all.map(e => BExpr.of(e._1, w.output)), all.map(e => newColumn(e._2)))
 
   /** The input columns at positions `idx`, as a projection */
@@ -895,12 +891,21 @@ class RuntimeBinder(planner: Planner):
       idx.map(i => newColumn(in.output(i).toField))
     )
 
+  /**
+    * Bind `items` over `in`, evaluating their window calls first: the window over `in` (or `in`
+    * itself without window calls), and the items over its output (the input columns first)
+    */
+  private def withWindows(
+      in: RuntimePlan,
+      items: List[Attribute]
+  ): (RuntimePlan, IndexedSeq[VExpr], IndexedSeq[Field]) =
+    val (calls, (exprs, fields)) =
+      planner.bindWithWindows(in.schema, items)(planner.bindItems(_, items))
+    (calls.map(c => windowOver(in, c.windowCalls, c.schema)).getOrElse(in), exprs, fields)
+
   /** A projection over the window calls of its items, as `Planner.planProject` plans it */
   private def windowProject(p: Project): RuntimePlan =
-    val in                       = bind(p.child)
-    val (calls, (exprs, fields)) =
-      planner.bindWithWindows(in.schema, p.selectItems)(planner.bindItems(_, p.selectItems))
-    val w = calls.map(c => windowOver(in, c.windowCalls, c.schema)).getOrElse(in)
+    val (w, exprs, fields) = withWindows(bind(p.child), p.selectItems)
     RuntimePlan.Project(w, exprs.map(BExpr.of(_, w.output)), fields.map(newColumn))
 
   private def project(p: Project): RuntimePlan =
