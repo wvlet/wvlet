@@ -79,7 +79,7 @@ private[catalog] object TypeInference:
                 case s: String =>
                   s
                 case other =>
-                  JSON.format(toJSON(other))
+                  jsonText(other)
             )
           else
             b.add(v)
@@ -89,6 +89,9 @@ private[catalog] object TypeInference:
     (schema, Batch(cols.toArray, rows.size))
 
   end build
+
+  /** A nested value (list, map) as JSON text */
+  def jsonText(v: Any): String = JSON.format(toJSON(v))
 
   private def toJSON(v: Any): JSONValue =
     v match
@@ -111,34 +114,44 @@ private[catalog] object TypeInference:
 
 end TypeInference
 
-/** JSON array, JSON object, or JSON Lines file (optionally gzipped) */
-class JsonSource(val name: String, path: String) extends TableSource:
-  override def key: Any = ("json", path)
+/** Rows given as JSON objects, e.g. the rows a source connector streams */
+object JsonRows:
 
-  private lazy val loaded: (Schema, Batch) =
-    val bytes =
-      if path.endsWith(".gz") then
-        SourceIO.readGzipAsBytes(path)
-      else
-        SourceIO.readAsBytes(path)
-    val text                   = String(bytes, "UTF-8").trim
-    val values: Seq[JSONValue] =
-      if text.startsWith("[") then
-        JSON.parse(text) match
-          case a: JSONArray =>
-            a.v
-          case other =>
-            Seq(other)
-      else if text.startsWith("{") && !text.contains("\n{") then
-        Seq(JSON.parse(text))
-      else
-        text.split("\n").iterator.map(_.trim).filter(_.nonEmpty).map(JSON.parse).toSeq
-    val rows    = values.map(toRow)
-    val columns = mutable.LinkedHashSet.empty[String]
-    rows.foreach(r => columns ++= r.keys)
-    TypeInference.build(name, rows, columns.toSeq)
+  /**
+    * An in-memory table of JSON object `lines`. Columns follow `schema` when given (values are
+    * converted to its column types, and extra keys are ignored); otherwise names and types are
+    * inferred from the rows as for JSON files
+    */
+  def toMemTable(name: String, lines: Iterator[String], schema: Option[Schema] = None): MemTable =
+    val rows = lines.map(_.trim).filter(_.nonEmpty).map(l => toRow(JSON.parse(l))).toIndexedSeq
+    schema match
+      case Some(s) =>
+        val fields = s.fields.map(f => Field(f.name, f.ptype, List(name)))
+        val cols   = fields.map { f =>
+          val b = VecBuilder(f.ptype, rows.size)
+          rows.foreach { r =>
+            r.getOrElse(f.name, null) match
+              case null =>
+                b.addNull()
+              case v: String if f.ptype != PType.Str && f.ptype != PType.AnyT =>
+                b.add(ValueOps.cast(v, PType.Str, f.ptype))
+              case v if f.ptype == PType.Str && !v.isInstanceOf[String] =>
+                b.add(TypeInference.jsonText(v))
+              case v =>
+                b.add(v)
+          }
+          b.result()
+        }
+        MemTable(name, Schema(fields), Seq(Batch(cols.toArray, rows.size)))
+      case None =>
+        val columns = mutable.LinkedHashSet.empty[String]
+        rows.foreach(r => columns ++= r.keys)
+        val (s, b) = TypeInference.build(name, rows, columns.toSeq)
+        MemTable(name, s, Seq(b))
 
-  private def toRow(v: JSONValue): Map[String, Any] =
+  end toMemTable
+
+  private[catalog] def toRow(v: JSONValue): Map[String, Any] =
     v match
       case o: JSONObject =>
         ListMap.from(o.v.map((k, x) => k -> toValue(x)))
@@ -163,6 +176,35 @@ class JsonSource(val name: String, path: String) extends TableSource:
         ListMap.from(o.v.map((k, x) => k -> toValue(x)))
       case other =>
         other.toString
+
+end JsonRows
+
+/** JSON array, JSON object, or JSON Lines file (optionally gzipped) */
+class JsonSource(val name: String, path: String) extends TableSource:
+  override def key: Any = ("json", path)
+
+  private lazy val loaded: (Schema, Batch) =
+    val bytes =
+      if path.endsWith(".gz") then
+        SourceIO.readGzipAsBytes(path)
+      else
+        SourceIO.readAsBytes(path)
+    val text                   = String(bytes, "UTF-8").trim
+    val values: Seq[JSONValue] =
+      if text.startsWith("[") then
+        JSON.parse(text) match
+          case a: JSONArray =>
+            a.v
+          case other =>
+            Seq(other)
+      else if text.startsWith("{") && !text.contains("\n{") then
+        Seq(JSON.parse(text))
+      else
+        text.split("\n").iterator.map(_.trim).filter(_.nonEmpty).map(JSON.parse).toSeq
+    val rows    = values.map(JsonRows.toRow)
+    val columns = mutable.LinkedHashSet.empty[String]
+    rows.foreach(r => columns ++= r.keys)
+    TypeInference.build(name, rows, columns.toSeq)
 
   def schema: Schema = loaded._1
 

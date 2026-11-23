@@ -18,4 +18,5 @@ The CLI ran every query on DuckDB unless `-t` or `--profile` said otherwise, and
 
 - Everyday local queries (`wvlet run "from 'data.parquet' ..."`, `wv`) need no DuckDB.
 - Migration for DuckDB-only users: `sql"..."` / `execute` statements, `.duckdb` database files, DuckDB extensions, table functions such as `read_csv(...)`, and DuckDB functions the engine lacks need `-t duckdb` (or `wv -t duckdb`) or a profile with `"type": "duckdb"`. The engine reports such statements as errors that name the unsupported feature.
-- Parquet export, the activation sink handoff, and source table staging still use DuckDB as a utility, and the server UI and `wvlet catalog` still default to DuckDB; later steps move them before DuckDB leaves the distribution.
+- Local file export from engines that can't write files (`save to '<file>.parquet'` and `activate('file')` on Trino or Snowflake) streams rows into the engine's file writers, and source tables (e.g. Slack) are staged into the wvlet engine as in-memory tables, so neither needs DuckDB (2026-11-23). DuckDB keeps `COPY TO` and `read_json_auto` staging when it is the active engine.
+- Flow stage staging still accepts only DuckDB as its target, and the server UI and `wvlet catalog` still default to DuckDB; later steps move them before DuckDB leaves the distribution.
