@@ -20,6 +20,9 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
   [adr/2026-11-18-name-lookup-precedence.md](../adr/2026-11-18-name-lookup-precedence.md).
 - A bag algebra with SQL three-valued logic for the engine's optimizer rules, and the first rule
   on it: where `PushDownFilters` (wvlet-engine) moves a WHERE conjunct over a join.
+- NOT IN over a subquery as a null-aware anti join (wvlet-engine's `RuntimeBinder`,
+  `Planner.correlatedJoin`, and the `InList` value set): each binding returns SQL's rows of
+  `x NOT IN (subquery)`, NULLs on either side and an empty subquery included.
 
 See
 [adr/2026-11-18-lean-formal-verification.md](../adr/2026-11-18-lean-formal-verification.md) for
@@ -42,6 +45,7 @@ lake exe sql-fold-traces    # regenerate the SQL block folding conformance fixtu
 lake exe rewrite-expr-traces # regenerate the expression rewrite conformance fixture
 lake exe name-lookup-traces # regenerate the name lookup conformance fixture
 lake exe pushdown-filter-traces # regenerate the filter pushdown conformance fixture
+lake exe not-in-traces      # regenerate the NOT IN conformance fixture
 ```
 
 ## Layout
@@ -79,6 +83,10 @@ lake exe pushdown-filter-traces # regenerate the filter pushdown conformance fix
 | `WvletFormal/Pushdown/Rule.lean` | `place`: where `PushDownFilters` puts a conjunct over a join (the preserved input of a LEFT or RIGHT join and the left input of a semi or anti join when it reads only that input, the inner join's conditions, or above); `rewrite`: the plan it builds | `rewrite_sound`: every placement keeps the rows of the filter over the join, for every pair of inputs and ON condition, NULLs included; `inner_left`: pushing into one input of an inner join (as `ReorderJoins` may) keeps them too |
 | `WvletFormal/Pushdown/Necessity.lean` | — | for each refusal (the null-supplying input of a LEFT or RIGHT join, either input of a FULL join, the ON condition of a LEFT join), inputs where moving the conjunct anyway changes the rows, also for a conjunct that is never TRUE on NULLs |
 | `WvletFormal/Pushdown/Traces.lean`, `PushdownFilterTraces.lean` | — | exports the filter pushdown conformance fixture |
+| `WvletFormal/Algebra/Bag.lean` (IN and NOT IN) | `inTri`: `v IN (vs)`, the Kleene OR of `v = y`, FALSE over no values; `notIn`: SQL's rows of `x NOT IN (subquery)`; `nullAwareAntiJoin`: the left rows that every right row compares FALSE with | `notIn_tri_true`: NOT IN is TRUE exactly when every `v = y` is FALSE; `nullAwareAntiJoin_eq`: the null-aware anti join is NOT IN |
+| `WvletFormal/NotIn/Rule.lean` | `uncorrelated`: the plan of an uncorrelated NOT IN conjunct (every row over no values, none over a NULL value, else an anti join on `x = y` and `x is not null`); `correlated`: the anti join on the correlation and `x = y or x is null or y is null`; `inList`: the `InList` value set | `uncorrelated_sound`, `correlated_sound`, `inList_sound`: each equals SQL's NOT IN (or IN) |
+| `WvletFormal/NotIn/Necessity.lean` | — | inputs where a plain anti join on `x = y` keeps a NULL target or keeps rows over a NULL value, where `x is not null` without the NULL-value check keeps rows, and where dropping NULL targets over an empty subquery (the engine before this model) or an unknown NULL target over an empty set loses rows |
+| `WvletFormal/NotIn/Traces.lean`, `NotInTraces.lean` | — | exports the NOT IN conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -138,11 +146,20 @@ behavior as traces:
   `PushDownFiltersConformanceTest` (engineJVM) runs `Normalize` and `PushDownFilters` on each
   query's bound plan (`select` before `where`, so the conjunct is a filter there) to check
   where the conjunct went, and runs the query to compare rows.
+- `lake exe not-in-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/not-in-traces.json`: a left
+  table with NULL and duplicate targets against six subqueries (values without a NULL, with a
+  NULL, only a NULL, none, duplicates, and no match), with SQL's rows of `a not in` and `a in` as
+  WHERE conjuncts and the value of both per row, plus a NOT IN correlated by `k = b`.
+  `NotInConformanceTest` (engineJVM) runs each query with decorrelation on and off (the anti
+  join and the value set), the select items in Wvlet and SQL, compares rows with the model and
+  DuckDB, and checks the uncorrelated plan: no join over an empty subquery or one with a NULL,
+  an anti join otherwise.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator
 typing rule in `TyperRules`, the build
-ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, a name-lookup rule, or where `PushDownFilters` moves a conjunct over a join, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
+ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, a name-lookup rule, where `PushDownFilters` moves a conjunct over a join, or how the engine binds NOT IN, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
 conformance test passes.
 
 ## Known gaps of the typer model
@@ -228,3 +245,15 @@ The model proves today's behavior. These are left for follow-ups:
   for those cases the fixture checks that no filter is left; a FALSE one stays and is checked.
 - The binder binds a WHERE directly over an inner join into the join's conditions, so the
   fixture's queries project before filtering: every conjunct then reaches the pass as a filter.
+
+## Known gaps of the NOT IN model
+
+- The subquery's value is a column, and the target a term over the left input; the model has
+  no casts, so `inKeys`' common-type casts are trusted.
+- Tuple NOT IN (`(a, b) not in (subquery)`, `Planner.bindTupleInSubquery`) and NOT IN over a
+  value list (`a not in (1, null)`, which binds to the same `InList`) are not replayed.
+- The correlated case is replayed for one equality correlation only; the residual conditions
+  `Planner.correlatedJoin` adds for other correlated predicates are a general `corr` in the
+  proof.
+- The uncorrelated binding's plan-time evaluation of the subquery is trusted: the model starts
+  from the subquery's rows.

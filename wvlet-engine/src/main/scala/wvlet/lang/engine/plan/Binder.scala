@@ -1139,7 +1139,6 @@ class Binder(
           PType.decimalUnion(x, y)
 
   private def bindIn(a: Expression, list: List[Expression], negate: Boolean): VExpr =
-    val target = bind(a)
     // `${v}` placeholders bound to list expressions expand in place
     val items = list.flatMap {
       case i: Identifier if subst.contains(i.leafName) =>
@@ -1153,6 +1152,14 @@ class Binder(
       case other =>
         List(other)
     }
+    items.map(unwrapArg) match
+      case List(s: SubQueryExpression) =>
+        // x [NOT] IN (subquery) outside a filter conjunct: the subquery's values, not a scalar
+        planner.bindInSubquery(this, a, s.query, negate)
+      case _ =>
+        bindInItems(bind(a), items, negate)
+
+  private def bindInItems(target: VExpr, items: List[Expression], negate: Boolean): VExpr =
     val bound = items.map(bindExpr)
     val t     = bound.map(_.ptype).foldLeft(target.ptype)(PType.common)
     val tgt   = castTo(target, t)

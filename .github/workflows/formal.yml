@@ -25,6 +25,8 @@ on:
       - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/RelationRefResolver.scala'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/**'
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/PushDownFilters.scala'
+      - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/RuntimeBinder.scala'
+      - 'wvlet-engine/src/main/scala/wvlet/lang/engine/expr/VExpr.scala'
       - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/**'
   push:
     branches:
@@ -109,3 +111,8 @@ jobs:
           lake exe pushdown-filter-traces
           git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/ \
             || (echo "::error::The filter pushdown conformance fixture is stale. Run 'cd formal && lake exe pushdown-filter-traces' and commit the result." && exit 1)
+      - name: Check NOT IN conformance fixture freshness
+        run: |
+          lake exe not-in-traces
+          git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/not-in-traces.json \
+            || (echo "::error::The NOT IN conformance fixture is stale. Run 'cd formal && lake exe not-in-traces' and commit the result." && exit 1)

@@ -856,11 +856,14 @@ class RuntimeBinder(planner: Planner):
         case SubqueryConjunct.In(a, sub, false) =>
           inJoin(p, a, lowered(bind(sub)))
         case SubqueryConjunct.In(a, sub, true) =>
-          // NOT IN: no row passes when the subquery has a NULL, and NULL targets never pass. The
-          // subquery's values are a constant, decided at plan time
+          // NOT IN: every row passes over no values (NULL targets included), no row passes when
+          // the subquery has a NULL, and otherwise NULL targets never pass. The subquery's values
+          // are a constant, decided at plan time
           notInValues(sub) match
             case None =>
               none
+            case Some((_, rows)) if rows.size == 0 =>
+              p
             case Some((schema, rows)) =>
               // The value list as a Values leaf, which lowers to the planner's BatchesOp
               val target   = Binder(planner, BindScope(p.op.schema)).bind(a)
