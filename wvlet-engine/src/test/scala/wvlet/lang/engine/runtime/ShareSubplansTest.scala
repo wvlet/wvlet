@@ -57,6 +57,17 @@ class ShareSubplansTest extends UniTest:
     ShareSubplans.key(plan(100, source = u)) shouldNotBe k
   }
 
+  test("tell apart constants that compare equal as boxed values") {
+    def project(v: Double) =
+      val scan = RuntimePlan.Scan(t, IndexedSeq(Column(ColumnId(1), "a", PType.Int64)))
+      RuntimePlan.Project(
+        scan,
+        IndexedSeq(BExpr(Const(v, PType.Float64))),
+        IndexedSeq(Column(ColumnId(2), "v", PType.Float64))
+      )
+    ShareSubplans.key(project(0.0)) shouldNotBe ShareSubplans.key(project(-0.0))
+  }
+
   test("give no key to plans with legacy leaves or outer references") {
     val legacy = RuntimePlan.Legacy(
       BatchesOp(schema, Nil),

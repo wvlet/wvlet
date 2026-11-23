@@ -29,11 +29,11 @@ object ShareSubplans:
     * column ids: ids are renumbered in order of definition, children first. Column names, types,
     * and qualifiers are part of the key, so that names resolve alike over plans with equal keys.
     *
-    * Equality is conservative. Expressions compare as values after renumbering, so a row function
-    * compares its function by reference. Literal counts, which only steer join order estimates, are
-    * left out. A plan with a `Legacy` leaf, `Values` rows, or a `CTERef`, whose operators, batches,
-    * and CTEs only compare by reference, or one reading a column it doesn't define (an outer
-    * reference), has no key.
+    * Equality is conservative. Expressions compare as values after renumbering, and by their
+    * signatures, so a row function compares its function by reference. Literal counts, which only
+    * steer join order estimates, are left out. A plan with a `Legacy` leaf, `Values` rows, or a
+    * `CTERef`, whose operators, batches, and CTEs only compare by reference, or one reading a
+    * column it doesn't define (an outer reference), has no key.
     */
   def key(p: RuntimePlan): Option[Any] =
     val ids = mutable.HashMap.empty[Int, Int]
@@ -52,7 +52,12 @@ object ShareSubplans:
       (id, c.name, c.ptype, c.qualifiers)
     }
 
-    private def expr(e: BExpr): VExpr = VExprs.mapRefs(
+    // With its signature, since `==` on boxed values equates some distinct constants (0.0, -0.0)
+    private def expr(e: BExpr): Any =
+      val v = renumber(e)
+      (v, v.sig)
+
+    private def renumber(e: BExpr): VExpr = VExprs.mapRefs(
       e.expr,
       c =>
         ids.get(c.index) match
@@ -62,7 +67,7 @@ object ShareSubplans:
             throw NoKey()
     )
 
-    private def exprs(es: Seq[BExpr]): Seq[VExpr] = es.map(expr)
+    private def exprs(es: Seq[BExpr]): Seq[Any] = es.map(expr)
 
     private def order(k: OrderKey): Any = (expr(k.expr), k.ascending, k.nullsFirst)
 

@@ -130,11 +130,22 @@ class Planner(
           found = true
       }
       found
+    // Binding an input evaluates its subqueries, which the discarded key binding would run once
+    // more (and alone, before they are grouped): such inputs have no key
+    def hasSubqueries(rel: Relation): Boolean =
+      var found = false
+      rel.traverseExpressions {
+        case _: SubQueryExpression | _: Exists | _: InRelation | _: NotInRelation =>
+          found = true
+      }
+      found
     // The keys' bindings are discarded: restore the hidden-name counter so that names don't shift
     def inputKey(p: Project): Option[Any] =
       val seq = hiddenSeq
       try
-        ShareSubplans.key(runtimeBinder.bind(p.child))
+        Option
+          .unless(hasSubqueries(p.child))(runtimeBinder.bind(p.child))
+          .flatMap(ShareSubplans.key)
       catch
         case _: Exception =>
           // Correlated inputs fail on their outer names; they are evaluated on their own
