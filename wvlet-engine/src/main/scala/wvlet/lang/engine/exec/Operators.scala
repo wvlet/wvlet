@@ -951,13 +951,15 @@ final class JoinBuild(
       val rows = rowsOf(p)
       val n    = rows.length
       // A partition has at most one group per row
-      val table   = GroupTable(types, n)
+      val table   = GroupTable(types, math.min(n, GroupTable.MaxPresizeGroups))
       val partKey = keyVecs.map(_.gather(rows, n))
-      val ids     =
+      // Hashes passed in, so the table, which lives through the probes, keeps no hash buffer
+      val hashes =
         if hashesOf == null then
-          table.groupIds(partKey, n)
+          table.keyHashes(partKey, n)
         else
-          table.groupIds(partKey, n, hashesOf(p))
+          hashesOf(p)
+      val ids  = table.groupIds(partKey, n, hashes)
       val head = Vec.filledInts(table.numGroups, -1)
       // Insert in reverse so chains enumerate rows in input order. Partitions hold disjoint rows,
       // so they write disjoint chain entries

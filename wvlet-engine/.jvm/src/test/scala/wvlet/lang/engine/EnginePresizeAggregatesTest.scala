@@ -60,7 +60,7 @@ class EnginePresizeAggregatesTest extends UniTest:
     val (on, rows) = run(engine, query)
     debug(on)
     on.exists(_ > 0) shouldBe true
-    on.forall(_ <= runtime.Lowering.MaxPresizeGroups) shouldBe true
+    on.forall(_ <= GroupTable.MaxPresizeGroups) shouldBe true
     val (disabled, offRows) = run(off, query)
     disabled.forall(_ == 0) shouldBe true
     rows shouldBe offRows

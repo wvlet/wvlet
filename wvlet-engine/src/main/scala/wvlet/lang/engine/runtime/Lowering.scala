@@ -40,12 +40,6 @@ object Lowering:
     Lower(joinFilters, presizeAggs).lower(p)
 
   /**
-    * Aggregations pre-size their tables to at most this many groups: group estimates ignore filter
-    * selectivity, and an overestimate costs this much zero-filled memory at most
-    */
-  inline val MaxPresizeGroups = 1 << 18
-
-  /**
     * The group table size of an aggregation of p by `keys`, from [[Stats.groups]]: 0 when unknown
     */
   def expectedGroups(p: RuntimePlan, keys: Seq[BExpr]): Int =
@@ -54,7 +48,7 @@ object Lowering:
     else
       Stats
         .groups(p, keys.map(_.expr))
-        .map(g => math.min(g, MaxPresizeGroups.toDouble).toInt)
+        .map(g => math.min(g, GroupTable.MaxPresizeGroups.toDouble).toInt)
         .getOrElse(0)
 
   private class Lower(joinFilters: Boolean, presizeAggs: Boolean):

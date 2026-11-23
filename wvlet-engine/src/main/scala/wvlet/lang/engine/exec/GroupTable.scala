@@ -295,6 +295,12 @@ object GroupTable:
 
   private inline def entry(h: Int, g: Int): Long = (h.toLong << 32) | (g.toLong & 0xffffffffL)
 
+  /**
+    * Callers pre-size tables to at most this many groups: group estimates and row-count bounds can
+    * be far above the actual groups, and an overestimate costs this much zero-filled memory at most
+    */
+  inline val MaxPresizeGroups = 1 << 18
+
   /** Slots for n groups at most half full: a power of two of at least 1024 */
   private def slotCapacity(n: Int): Int =
     val want = math.max(1024L, n.toLong * 2)
