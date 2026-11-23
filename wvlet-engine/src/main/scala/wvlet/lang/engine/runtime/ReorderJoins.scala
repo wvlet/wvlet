@@ -93,7 +93,7 @@ object ReorderJoins extends Pass:
         // Pushed into the input as far as filters go, so that a second run of the passes over
         // the ordered tree (the binder optimizes some inputs before their parents) keeps it
         val p = PushDownFilters.filter(inputs(i), local, ctx)
-        (p, Stats.rows(inputs(i)) * local.map(Stats.selectivity(inputs(i), _)).product)
+        (p, Stats.filteredRows(inputs(i), local))
       }
     val edges =
       condRefs

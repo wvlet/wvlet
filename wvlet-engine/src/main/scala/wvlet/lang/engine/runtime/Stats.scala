@@ -13,16 +13,23 @@
  */
 package wvlet.lang.engine.runtime
 
+import wvlet.lang.engine.exec.GroupTable
 import wvlet.lang.engine.exec.JoinKind
+import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.CastExpr
 import wvlet.lang.engine.expr.CmpOp
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.expr.Const
 import wvlet.lang.engine.expr.InList
+import wvlet.lang.engine.expr.Kernels
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.CardinalityEstimator
 import wvlet.lang.engine.plan.JoinOrderOptimizer
+import wvlet.lang.engine.vector.Batch
+import wvlet.lang.engine.vector.PType
+
+import scala.util.control.NonFatal
 
 /**
   * Row and distinct-count estimates of [[RuntimePlan]] nodes, read from source statistics. They
@@ -123,9 +130,14 @@ object Stats:
           distinct(left, id)
         else
           distinct(right, id)
+      case CTERef(cte, columns) =>
+        // Counted from the result once it is computed, as the CTE table's `estimatedDistinct`
+        // returns it to CardinalityEstimator
+        val i = columns.indexWhere(_.id == id)
+        Option.when(i >= 0)(i).flatMap(cte.distinct)
       case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
-          InnerJoins(_, _) | CTERef(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) |
-          Window(_, _, _) | Unnest(_, _, _, _, _) | AsOfJoin(_, _, _, _, _, _, _, _) =>
+          InnerJoins(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) | Window(_, _, _) |
+          Unnest(_, _, _, _, _) | AsOfJoin(_, _, _, _, _, _, _, _) =>
         // As CardinalityEstimator does over operators
         None
 
@@ -138,6 +150,20 @@ object Stats:
         distinct(p, c.child)
       case _ =>
         None
+
+  /**
+    * Estimated rows of p passing all of `conds`: counted from the result for a read of a computed
+    * shared CTE, and rows(p) times each condition's [[selectivity]] otherwise
+    */
+  def filteredRows(p: RuntimePlan, conds: Seq[JoinCondition]): Double =
+    val counted =
+      p match
+        case CTERef(cte, columns) if conds.nonEmpty && cte.rows.isDefined =>
+          val all = conds.map(_.cond.expr).reduce(AndExpr(_, _))
+          cte.filteredRows(BExpr(cte.overBody(columns, all))).map(_.toDouble)
+        case _ =>
+          None
+    counted.getOrElse(rows(p) * conds.map(selectivity(p, _)).product)
 
   /**
     * Estimated fraction of the rows of p passing a condition: 1 / ndv for `x = literal` (n / ndv
@@ -160,5 +186,44 @@ object Stats:
         compared(c.cond.expr).flatMap(distinct(p, _)).filter(_ >= 1).map(d => math.min(1.0, n / d))
       }
       .getOrElse(CardinalityEstimator.DefaultSelectivity)
+
+  /**
+    * The distinct non-NULL values of column k of a computed result, grouped as DISTINCT groups them
+    * (where NULL is a group of its own)
+    */
+  def resultDistinct(batches: Seq[Batch], k: Int, ptype: PType): Long =
+    val groups  = GroupTable(IndexedSeq(ptype))
+    var hasNull = false
+    batches.foreach { b =>
+      if b.size > 0 then
+        val v = b.column(k)
+        groups.groupIds(Array(v), b.size)
+        if !hasNull && v.nulls != null then
+          hasNull = (0 until b.size).exists(v.isNull)
+    }
+    groups.numGroups - (
+      if hasNull then
+        1
+      else
+        0
+    )
+
+  /**
+    * The rows of a computed result for which `cond` (over the batch columns) is TRUE, as FilterOp
+    * keeps them: NULL and FALSE drop the row. None if the condition fails to evaluate, e.g. a cast
+    * failing on a row that a join would have dropped first
+    */
+  def resultRows(batches: Seq[Batch], cond: VExpr): Option[Long] =
+    try
+      Some(
+        batches
+          .iterator
+          .filter(_.size > 0)
+          .map(b => Kernels.trueMask(cond.eval(b)).iterator.take(b.size).count(identity).toLong)
+          .sum
+      )
+    catch
+      case NonFatal(_) =>
+        None
 
 end Stats

@@ -92,6 +92,12 @@ enum Optimization(val name: String):
     */
   case ReplanCTEBodies extends Optimization("replan_cte_bodies")
 
+  /**
+    * With `replan_materialized_ctes`, estimate the reads of a computed shared CTE from its result:
+    * the distinct values of its columns, and the rows passing a reader's own filter conditions
+    */
+  case CTEReaderStats extends Optimization("cte_reader_stats")
+
   /** Read and pass only the columns the operators above use */
   case PruneColumns extends Optimization("prune_columns")
 
