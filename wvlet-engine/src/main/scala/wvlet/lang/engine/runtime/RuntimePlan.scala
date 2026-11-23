@@ -28,7 +28,7 @@ import wvlet.lang.engine.vector.Batch
 import wvlet.lang.engine.vector.Field
 import wvlet.lang.engine.vector.PType
 import wvlet.lang.engine.vector.Schema
-import wvlet.uni.parquet.ParquetFilter
+import wvlet.uni.cloud.parquet.ParquetFilter
 
 import scala.collection.mutable
 

@@ -15,8 +15,8 @@ package wvlet.lang.engine.plan
 
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
-import wvlet.uni.parquet.ParquetFilter
-import wvlet.uni.parquet.ParquetFilter.col
+import wvlet.uni.cloud.parquet.ParquetFilter
+import wvlet.uni.cloud.parquet.ParquetFilter.col
 import wvlet.uni.test.UniTest
 
 import java.time.LocalDate

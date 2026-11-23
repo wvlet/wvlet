@@ -18,14 +18,15 @@ import wvlet.lang.engine.vector.*
 import wvlet.uni.io.FileSystem
 import wvlet.uni.io.IOPath
 import wvlet.uni.io.ListOptions
-import wvlet.uni.parquet.DatasetFile
-import wvlet.uni.parquet.IcebergTableChange
-import wvlet.uni.parquet.Parquet
-import wvlet.uni.parquet.ParquetColumn
-import wvlet.uni.parquet.format.Repetition
-import wvlet.uni.parquet.ParquetDataset
-import wvlet.uni.parquet.ParquetException
-import wvlet.uni.parquet.ParquetWriteMode
+import wvlet.uni.cloud.parquet.DatasetFile
+import wvlet.uni.cloud.iceberg.Iceberg
+import wvlet.uni.cloud.iceberg.IcebergTableChange
+import wvlet.uni.cloud.parquet.Parquet
+import wvlet.uni.cloud.parquet.ParquetColumn
+import wvlet.uni.cloud.parquet.format.Repetition
+import wvlet.uni.cloud.parquet.ParquetDataset
+import wvlet.uni.cloud.parquet.ParquetException
+import wvlet.uni.cloud.parquet.ParquetWriteMode
 import wvlet.uni.log.LogSupport
 
 import scala.util.control.NonFatal
@@ -234,7 +235,7 @@ class Warehouse(
   def alter(key: String, changes: Seq[IcebergTableChange]): ManagedTable =
     if changes.nonEmpty then
       try
-        Parquet.alterIcebergTable(pathOf(key), changes*)
+        Iceberg.alterTable(pathOf(key), changes*)
       catch
         case e: ParquetException =>
           throw StatusCode
@@ -250,7 +251,7 @@ class Warehouse(
   private def committed(key: String): ManagedTable =
     keepSnapshots.foreach { n =>
       try
-        Parquet.expireIcebergSnapshots(pathOf(key), n)
+        Iceberg.expireSnapshots(pathOf(key), n)
       catch
         case NonFatal(e) =>
           // Failing here would report a landed commit as failed, and a retry would apply it twice
@@ -267,7 +268,7 @@ class Warehouse(
     if !hasSchema(s) then
       throw StatusCode.SCHEMA_NOT_FOUND.newException(s"Schema not found: ${s}")
     try
-      Parquet.renameIcebergTable(pathOf(key), pathOf(to))
+      Iceberg.renameTable(pathOf(key), pathOf(to))
     catch
       case e: ParquetException =>
         throw StatusCode
@@ -278,7 +279,7 @@ class Warehouse(
   /** Deletes the table's folder */
   def drop(key: String): Unit =
     try
-      Parquet.dropIcebergTable(pathOf(key))
+      Iceberg.dropTable(pathOf(key))
     catch
       case e: ParquetException =>
         throw StatusCode

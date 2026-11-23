@@ -278,9 +278,10 @@ from 'warehouse/events/metadata/v1.metadata.json'
   wvlet engine and Hadoop-catalog writers create them); a table that a catalog owns, such as one
   written by pyiceberg or a REST catalog, is read-only. `append to` a folder that isn't an Iceberg
   table is an error, since `append to` can't name the format
-- Reads cover partitioned tables, v1 and v2 tables, and schema evolution (promoted, added,
-  dropped, and renamed columns, matched by Iceberg field ID). Tables with delete files, ORC data
-  files, or format version 3 aren't supported yet and report an error
+- Reads cover partitioned tables, format versions 1 to 3, and schema evolution (promoted, added,
+  dropped, and renamed columns, matched by Iceberg field ID). Position deletes, deletion vectors,
+  and equality deletes are applied, so rows deleted merge-on-read don't appear. Tables with ORC
+  data files or encryption aren't supported and report an error
 - The engine never deletes table files; a failed commit removes only the files it wrote
 
 ## Mixing with other connectors

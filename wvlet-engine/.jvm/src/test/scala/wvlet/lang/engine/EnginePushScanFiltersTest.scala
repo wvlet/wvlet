@@ -64,8 +64,8 @@ class EnginePushScanFiltersTest extends UniTest:
         |select l_orderkey""".stripMargin
     )
     p shouldMatch { case Project(Filter(s: Scan, _, _), _, _) =>
-      s.filter.map(_.toString) shouldBe
-        Some("And(Compare(l_shipdate,GtEq,1994-01-01),Compare(l_quantity,Lt,24))")
+      // l_quantity is a decimal column, which row-group filters don't compare yet
+      s.filter.map(_.toString) shouldBe Some("Compare(l_shipdate,GtEq,1994-01-01)")
       // The scan reads only the columns the filter and the projection read
       s.columns.map(_.name).toSet shouldBe Set("l_orderkey", "l_quantity", "l_shipdate")
     }

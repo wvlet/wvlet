@@ -15,10 +15,10 @@ package wvlet.lang.engine.catalog
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.vector.*
-import wvlet.uni.parquet.*
-import wvlet.uni.parquet.format.LogicalType
-import wvlet.uni.parquet.format.PhysicalType
-import wvlet.uni.parquet.format.TimeUnit
+import wvlet.uni.cloud.parquet.*
+import wvlet.uni.cloud.parquet.format.LogicalType
+import wvlet.uni.cloud.parquet.format.PhysicalType
+import wvlet.uni.cloud.parquet.format.TimeUnit
 
 import scala.collection.mutable
 
@@ -282,8 +282,8 @@ object ParquetSource:
 
   /**
     * A Parquet dataset (a folder of Parquet files, a Delta table, or an Iceberg table). What uni
-    * refuses to read of an Iceberg table (delete files, renamed columns, ORC data, format v3) is a
-    * NOT_IMPLEMENTED error naming the table
+    * refuses to read of an Iceberg table (ORC data files, encryption) is a NOT_IMPLEMENTED error
+    * naming the table
     */
   def openDataset(path: String): ParquetDataset =
     try

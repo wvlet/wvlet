@@ -14,7 +14,7 @@
 package wvlet.lang.engine.exec
 
 import wvlet.lang.engine.vector.*
-import wvlet.uni.parquet.ParquetFilter
+import wvlet.uni.cloud.parquet.ParquetFilter
 
 /**
   * A row-group filter that a hash join's build gives a scan on its probe side: the [min, max] range

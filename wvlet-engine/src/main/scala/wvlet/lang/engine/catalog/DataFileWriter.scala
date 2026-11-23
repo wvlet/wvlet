@@ -17,17 +17,17 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.vector.*
 import wvlet.uni.io.IO
 import wvlet.uni.log.LogSupport
-import wvlet.uni.parquet.ColumnBatch
-import wvlet.uni.parquet.ColumnVector
-import wvlet.uni.parquet.Parquet
-import wvlet.uni.parquet.ParquetField
-import wvlet.uni.parquet.ParquetSchema
-import wvlet.uni.parquet.ParquetType
-import wvlet.uni.parquet.ParquetWriteOptions
-import wvlet.uni.parquet.format.CompressionCodec
-import wvlet.uni.parquet.format.LogicalType
-import wvlet.uni.parquet.format.PhysicalType
-import wvlet.uni.parquet.format.TimeUnit
+import wvlet.uni.cloud.parquet.ColumnBatch
+import wvlet.uni.cloud.parquet.ColumnVector
+import wvlet.uni.cloud.parquet.Parquet
+import wvlet.uni.cloud.parquet.ParquetField
+import wvlet.uni.cloud.parquet.ParquetSchema
+import wvlet.uni.cloud.parquet.ParquetType
+import wvlet.uni.cloud.parquet.ParquetWriteOptions
+import wvlet.uni.cloud.parquet.format.CompressionCodec
+import wvlet.uni.cloud.parquet.format.LogicalType
+import wvlet.uni.cloud.parquet.format.PhysicalType
+import wvlet.uni.cloud.parquet.format.TimeUnit
 
 import java.math.BigDecimal as JBigDecimal
 import java.nio.charset.StandardCharsets

@@ -20,7 +20,7 @@ import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.plan.Planner
 import wvlet.lang.engine.plan.ScanFilters
 import wvlet.lang.engine.vector.PType
-import wvlet.uni.parquet.ParquetFilter
+import wvlet.uni.cloud.parquet.ParquetFilter
 
 import scala.collection.mutable
 

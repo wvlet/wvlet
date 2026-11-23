@@ -17,12 +17,12 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.engine.TableWriter
 import wvlet.lang.engine.vector.*
-import wvlet.uni.parquet.Parquet
-import wvlet.uni.parquet.ParquetDatasetWriteOptions
-import wvlet.uni.parquet.ParquetException
-import wvlet.uni.parquet.ParquetTableFormat
-import wvlet.uni.parquet.ParquetWriteMode
-import wvlet.uni.parquet.ParquetWriteOptions
+import wvlet.uni.cloud.parquet.Parquet
+import wvlet.uni.cloud.parquet.ParquetDatasetWriteOptions
+import wvlet.uni.cloud.parquet.ParquetException
+import wvlet.uni.cloud.parquet.ParquetTableFormat
+import wvlet.uni.cloud.parquet.ParquetWriteMode
+import wvlet.uni.cloud.parquet.ParquetWriteOptions
 
 /**
   * Writes engine batches to a local Apache Iceberg table through uni's dataset writer: Parquet data
@@ -123,7 +123,7 @@ object IcebergWriter:
       batches: Seq[Batch],
       mode: ParquetWriteMode,
       partitionBy: Seq[String] = Nil,
-      writeOptions: wvlet.uni.parquet.ParquetWriteOptions = ParquetWriteOptions.default,
+      writeOptions: wvlet.uni.cloud.parquet.ParquetWriteOptions = ParquetWriteOptions.default,
       replacedFiles: Seq[String] = Nil,
       properties: Map[String, String] = Map.empty
   ): Unit =
