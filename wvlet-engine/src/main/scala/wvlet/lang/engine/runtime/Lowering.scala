@@ -15,10 +15,8 @@ package wvlet.lang.engine.runtime
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.exec.*
-import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.plan.Planner
-import wvlet.lang.engine.plan.VExprs
 
 /**
   * Turns a [[RuntimePlan]] into physical operators: column ids become input positions. The physical
@@ -39,12 +37,7 @@ object Lowering:
         BatchesOp(p.schema, Seq(rows), "Values")
       case Filter(ref @ CTERef(cte, columns), cond, counts) =>
         // The reader reports its condition over the body's columns, which share positions
-        val body   = cte.body.output
-        val toBody = columns.indices.map(i => columns(i).id.value -> body(i)).toMap
-        val e      = VExprs.mapRefs(
-          cond.expr,
-          r => ColRef(toBody(r.index).id.value, r.ptype, toBody(r.index).name)
-        )
+        val e      = cte.overBody(columns, cond.expr)
         val filter = JoinCondition(BExpr(e), PushDownFilters.remapCounts(cond.expr, e, counts))
         FilterOp(cte.reader(ref.schema, Some(filter)), cond.lower(positions(ref)))
       case Filter(child, cond, _) =>

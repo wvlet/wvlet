@@ -36,6 +36,10 @@ class EngineMaterializedCTEStatsTest extends UniTest:
     options.withDisabled(Optimization.ReplanSemiJoinBuilds)
   )
 
+  private val noReaderStats = engine.withOptimizer(
+    options.withDisabled(Optimization.CTEReaderStats)
+  )
+
   private val rootBodies = engine.withOptimizer(options.withDisabled(Optimization.ReplanCTEBodies))
 
   EngineTPCHBench
@@ -89,6 +93,26 @@ class EngineMaterializedCTEStatsTest extends UniTest:
     // With the 1e6 estimate, the CTE reads are the probe side; with two rows, orders is
     firstScan(explain(disabled, query)) shouldBe "Scan[CTE[t]]"
     firstScan(explain(engine, query)) shouldBe "Scan[orders]"
+    val r = rows(engine, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(disabled, query)
+  }
+
+  test("order joins by the rows each CTE reader's filter keeps") {
+    // 2298 rows, one per customer and order status: `c > 0` keeps them all, `c > 20` one row
+    val query =
+      """with t as (
+        |  select o_custkey as k, o_orderstatus as s, count(*) as c from orders
+        |  group by o_custkey, o_orderstatus
+        |)
+        |select cu.c_name, a.c, b.c from customer cu
+        |join t a on cu.c_custkey = a.k join t b on a.k = b.k
+        |where a.c > 0 and b.c > 20""".stripMargin
+    // Both reads estimated at 0.3 of the rows: customer joins each in turn. With the counts, the
+    // read keeping one row joins the other read first, and customer probes their join
+    val readsJoined = "HashJoin[Inner](#0 = #0) -> [k:long, c:long, k:long, c:long]"
+    explain(noReaderStats, query) shouldNotContain readsJoined
+    explain(engine, query) shouldContain readsJoined
     val r = rows(engine, query)
     r.nonEmpty shouldBe true
     r shouldBe rows(disabled, query)

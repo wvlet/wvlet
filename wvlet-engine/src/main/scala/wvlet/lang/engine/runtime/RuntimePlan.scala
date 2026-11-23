@@ -617,8 +617,29 @@ trait SharedCTE:
   def rows: Option[Long] = None
 
   /**
+    * The distinct non-NULL values of the result column at body output `position`, once the result
+    * is computed for planning (None before, or if the result dropped the column)
+    */
+  def distinct(position: Int): Option[Double] = None
+
+  /**
+    * The rows of the result for which `cond` (over the body's column ids) is TRUE, once the result
+    * is computed for planning. None before, or if the condition reads a column the result dropped
+    * or fails to evaluate
+    */
+  def filteredRows(cond: BExpr): Option[Long] = None
+
+  /** An expression over the columns of a reader (`columns`, by position) over the body's ids */
+  def overBody(columns: IndexedSeq[Column], e: VExpr): VExpr =
+    val out    = body.output
+    val toBody = columns.indices.map(i => columns(i).id.value -> out(i)).toMap
+    VExprs.mapRefs(e, r => ColRef(toBody(r.index).id.value, r.ptype, toBody(r.index).name))
+
+  /**
     * An operator reading the result, with the output columns of the body under `schema`. `filter`
     * is the condition the reader applies right above it, over the body's column ids: when every
     * reader has one, the planner pushes what they share into the body ([[PushDownFilters.shared]])
     */
   def reader(schema: Schema, filter: Option[JoinCondition] = None): Operator
+
+end SharedCTE

@@ -24,6 +24,7 @@ import wvlet.lang.engine.catalog.*
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.runtime.RuntimeBinder
+import wvlet.lang.engine.runtime.Stats
 import wvlet.lang.engine.runtime.BExpr
 import wvlet.lang.engine.runtime.JoinCondition
 import wvlet.lang.engine.runtime.Lowering
@@ -1177,6 +1178,51 @@ class Planner(
 
     override def rows: Option[Long] = rowCount
 
+    // Statistics read from the computed result: distinct counts by body position, and the rows
+    // passing a condition by its signature
+    private val distinctCounts = mutable.Map.empty[Int, Option[Double]]
+    private val passingRows    = mutable.Map.empty[String, Option[Long]]
+
+    /**
+      * Whether statistics can be read from the result: computed for planning, enabled, and small
+      * enough that a pass over it costs little next to the query
+      */
+    private def hasResultStats: Boolean =
+      rowCount.exists(_ <= Planner.MaxResultStatsRows) && enabled(Optimization.CTEReaderStats)
+
+    override def distinct(position: Int): Option[Double] =
+      if !hasResultStats then
+        None
+      else
+        distinctCounts.getOrElseUpdate(
+          position, {
+            val k = finalized.get._1.indexOf(position)
+            Option
+              .when(k >= 0)(k)
+              .map { k =>
+                Stats.resultDistinct(batches, k, body.schema(position).ptype).toDouble
+              }
+          }
+        )
+
+    override def filteredRows(cond: BExpr): Option[Long] =
+      if !hasResultStats then
+        None
+      else
+        passingRows.getOrElseUpdate(
+          cond.expr.sig, {
+            // Body column id -> position in the result batches (-1 for a dropped column)
+            val keep = finalized.get._1
+            val out  = body.output
+            val pos  = Array.fill(out.map(_.id.value).max + 1)(-1)
+            out.indices.foreach(i => pos(out(i).id.value) = keep.indexOf(i))
+            if cond.refs.exists(r => r.value >= pos.length || pos(r.value) < 0) then
+              None
+            else
+              Stats.resultRows(batches, cond.lower(pos))
+          }
+        )
+
     /** Compute the result now, and record its exact row count for planning */
     def materialize(): Unit =
       if rowCount.isEmpty then
@@ -1335,6 +1381,13 @@ class Planner(
       cte.batches.iterator.map(sel)
 
     override def estimatedRows: Option[Long] = cte.rows
+
+    override def estimatedDistinct(column: String): Option[Double] =
+      val i = schema.names.indexOf(column)
+      if i < 0 then
+        None
+      else
+        cte.distinct(i)
 
     override def canSplit: Boolean = true
 
@@ -2837,6 +2890,13 @@ private[engine] enum SubqueryConjunct:
   def sub: Relation
 
 object Planner:
+
+  /**
+    * The most rows of a shared CTE result computed for planning that its reads take distinct counts
+    * and filtered rows from: a pass over 6.6M rows (TPC-DS q95's `ws_wh` at SF1) costs about 15 ms,
+    * which a larger result is estimated without
+    */
+  val MaxResultStatsRows: Long = 1L << 20
 
   /**
     * The keys and the inequality of an ASOF join, each bound over its input: a left row matches the
