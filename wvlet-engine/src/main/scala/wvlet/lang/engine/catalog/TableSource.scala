@@ -15,10 +15,10 @@ package wvlet.lang.engine.catalog
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.vector.*
-import wvlet.uni.parquet.*
-import wvlet.uni.parquet.format.LogicalType
-import wvlet.uni.parquet.format.PhysicalType
-import wvlet.uni.parquet.format.TimeUnit
+import wvlet.uni.cloud.parquet.*
+import wvlet.uni.cloud.parquet.format.LogicalType
+import wvlet.uni.cloud.parquet.format.PhysicalType
+import wvlet.uni.cloud.parquet.format.TimeUnit
 
 import scala.collection.mutable
 

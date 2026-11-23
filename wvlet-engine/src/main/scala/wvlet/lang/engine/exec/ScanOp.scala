@@ -15,7 +15,7 @@ package wvlet.lang.engine.exec
 
 import wvlet.lang.engine.catalog.*
 import wvlet.lang.engine.vector.*
-import wvlet.uni.parquet.ParquetFilter
+import wvlet.uni.cloud.parquet.ParquetFilter
 
 /**
   * Reads a table source. `schema` is the output schema (source columns, possibly renamed or

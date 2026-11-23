@@ -31,7 +31,7 @@ import wvlet.lang.engine.catalog.Warehouse
 import wvlet.lang.engine.plan.ScanFilters
 import wvlet.uni.json.JSON
 import wvlet.uni.json.JSON.*
-import wvlet.uni.parquet.IcebergTableChange
+import wvlet.uni.cloud.iceberg.IcebergTableChange
 import wvlet.lang.engine.vector.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -429,7 +429,7 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
                     Warehouse
                       .columnOf(Field(columns(i).name, ptype))
                       .tpe
-                      .asInstanceOf[wvlet.uni.parquet.ParquetType.Primitive]
+                      .asInstanceOf[wvlet.uni.cloud.parquet.ParquetType.Primitive]
                   )
               else
                 rewrite = true
