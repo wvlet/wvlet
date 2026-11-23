@@ -47,3 +47,7 @@ root = "NotInTraces"
 [[lean_exe]]
 name = "join-key-filter-traces"
 root = "JoinKeyFilterTraces"
+
+[[lean_exe]]
+name = "factor-or-traces"
+root = "FactorOrTraces"

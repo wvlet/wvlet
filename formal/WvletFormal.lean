@@ -36,3 +36,6 @@ import WvletFormal.JoinKeyFilter.Model
 import WvletFormal.JoinKeyFilter.Sound
 import WvletFormal.JoinKeyFilter.Findings
 import WvletFormal.JoinKeyFilter.Traces
+import WvletFormal.FactorOr.Rule
+import WvletFormal.FactorOr.Necessity
+import WvletFormal.FactorOr.Traces
