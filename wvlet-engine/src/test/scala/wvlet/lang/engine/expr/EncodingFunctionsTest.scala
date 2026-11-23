@@ -61,6 +61,9 @@ class EncodingFunctionsTest extends UniTest:
     intercept[WvletLangException] {
       call("unhex", "zz")
     }.getMessage shouldContain "Invalid hex"
+    intercept[WvletLangException] {
+      call("unhex", "\uff21\uff11")
+    }.getMessage shouldContain "Invalid hex"
   }
 
   test("should fail when the decoded bytes are not UTF-8") {

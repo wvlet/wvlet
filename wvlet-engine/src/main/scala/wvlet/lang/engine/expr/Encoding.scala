@@ -39,10 +39,15 @@ object Encoding:
     String(out)
 
   private def hexValue(c: Char, s: String): Int =
-    val v = Character.digit(c, 16)
-    if v < 0 then
+    // ASCII only: Character.digit also accepts e.g. fullwidth digits, which DuckDB rejects
+    if c >= '0' && c <= '9' then
+      c - '0'
+    else if c >= 'a' && c <= 'f' then
+      c - 'a' + 10
+    else if c >= 'A' && c <= 'F' then
+      c - 'A' + 10
+    else
       throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid hex string: '${s}'")
-    v
 
   /** Bytes of a hex string; either case. An odd length reads a leading 0, as DuckDB's unhex */
   def unhex(s: String): Array[Byte] =
@@ -132,15 +137,20 @@ object Encoding:
       var e = h(4)
       t = 0
       while t < 80 do
-        val (f, k) =
-          if t < 20 then
-            ((b & c) | (~b & d), 0x5a827999)
-          else if t < 40 then
-            (b ^ c ^ d, 0x6ed9eba1)
-          else if t < 60 then
-            ((b & c) | (b & d) | (c & d), 0x8f1bbcdc.toInt)
-          else
-            (b ^ c ^ d, 0xca62c1d6.toInt)
+        var f = 0
+        var k = 0
+        if t < 20 then
+          f = (b & c) | (~b & d)
+          k = 0x5a827999
+        else if t < 40 then
+          f = b ^ c ^ d
+          k = 0x6ed9eba1
+        else if t < 60 then
+          f = (b & c) | (b & d) | (c & d)
+          k = 0x8f1bbcdc
+        else
+          f = b ^ c ^ d
+          k = 0xca62c1d6
         val tmp = Integer.rotateLeft(a, 5) + f + e + k + w(t)
         e = d
         d = c

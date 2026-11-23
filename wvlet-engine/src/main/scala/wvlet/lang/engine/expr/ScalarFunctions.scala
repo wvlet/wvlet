@@ -803,10 +803,11 @@ object ScalarFunctions:
     }
     // The engine has no binary type: DuckDB's encode/decode (VARCHAR <-> BLOB) pass strings
     // through, and the decoders below return the decoded UTF-8 string
-    reg("encode", "decode") { args =>
-      arity("encode", args, 1)
-      stringArg("encode", args.head)
-    }
+    for name <- Seq("encode", "decode") do
+      reg(name) { args =>
+        arity(name, args, 1)
+        stringArg(name, args.head)
+      }
     reg("to_base64") { args =>
       arity("to_base64", args, 1)
       fn("to_base64", Seq(stringArg("to_base64", args.head)), PType.Str)(a =>

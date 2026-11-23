@@ -119,7 +119,7 @@ trait string in hive = {
   def sha256: string = sql"sha2(${this},256)"
   def sha1: string = sql"sha1(${this})"
   -- Base64 and lowercase hex encodings of the string's UTF-8 bytes, and their inverses
-  def to_base64: string = sql"base64(${this})"
+  def to_base64: string = sql"base64(cast(${this} as binary))"
   def from_base64: string = sql"cast(unbase64(${this}) as string)"
   def to_hex: string = sql"lower(hex(${this}))"
   def from_hex: string = sql"cast(unhex(${this}) as string)"
