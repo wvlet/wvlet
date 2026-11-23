@@ -240,7 +240,11 @@ case class IsNullExpr(child: VExpr, negate: Boolean) extends VExpr:
       i += 1
     BoolVec(o, null)
 
-/** `x IN (constants...)`, with SQL NULL semantics */
+/**
+  * `x IN (constants...)`, with SQL NULL semantics: unknown for a NULL `x`, or for a missing `x`
+  * when a value is NULL. Over no values at all (an empty subquery), IN is FALSE and NOT IN TRUE,
+  * NULL `x` included
+  */
 case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate: Boolean)
     extends VExpr:
   override def children: Seq[VExpr] = Seq(child)
@@ -250,13 +254,17 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
     val v                     = child.eval(b)
     val o                     = new Array[Boolean](b.size)
     var nulls: Array[Boolean] = null
+    val noValues              = values.isEmpty && !hasNullValue
     var i                     = 0
     while i < b.size do
       val x = v.get(i)
       if x == null then
-        if nulls == null then
-          nulls = new Array[Boolean](b.size)
-        nulls(i) = true
+        if noValues then
+          o(i) = negate
+        else
+          if nulls == null then
+            nulls = new Array[Boolean](b.size)
+          nulls(i) = true
       else
         val found = values.contains(x)
         if !found && hasNullValue then
@@ -267,6 +275,8 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
           o(i) = found != negate
       i += 1
     BoolVec(o, nulls)
+
+end InList
 
 /** `x IN (exprs...)` for non-constant lists: an OR of equalities */
 case class InExprs(child: VExpr, list: Seq[VExpr], negate: Boolean) extends VExpr:

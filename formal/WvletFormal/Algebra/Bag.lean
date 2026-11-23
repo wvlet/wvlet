@@ -14,6 +14,11 @@ joined row, so equality keys are a special case. A joined row reads `L` from the
 every other column from the right row; outer joins pad the missing side with `Row.null`, a row
 whose every column is NULL. Semi and anti joins keep left rows with (without) a TRUE match: the
 latter is `NOT EXISTS`, not the NULL-aware anti join of `NOT IN`.
+
+`x IN (subquery)` is the Kleene OR of `x = y` over the subquery's values (`inTri`), FALSE over no
+values. So `x NOT IN (subquery)` is TRUE only when every `x = y` is FALSE: a NULL on either side
+makes the condition unknown, and an empty subquery makes it TRUE, even for a NULL `x`. The
+null-aware anti join (`nullAwareAntiJoin`) keeps exactly those left rows (`nullAwareAntiJoin_eq`).
 -/
 import WvletFormal.Rewrite.Value
 
@@ -185,6 +190,73 @@ def join (k : JoinKind) (L : List Col) (on : Cond) (ls rs : Rel) : Rel :=
   | .full => fullJoin L on ls rs
   | .semi => semiJoin L on ls rs
   | .anti => antiJoin L on ls rs
+
+/-! ### IN and NOT IN over a subquery -/
+
+/-- `v IN (vs)`: the Kleene OR of `v = y`; FALSE for no values. -/
+def inTri (v : Value) (vs : List Value) : Tri := vs.foldr (fun y acc => (eqTri v y).or acc) .false
+
+/-- `x NOT IN (subquery)` as a WHERE: the left rows for which it is TRUE, the subquery's values
+being column `c` of `rs`. -/
+def notIn (t : Term) (c : Col) (ls rs : Rel) : Rel :=
+  ls.filter fun x => (inTri (t.eval x) (rs.map (· c))).not == .true
+
+/-- The null-aware anti join: the left rows for which `x = y` is FALSE for every right row. -/
+def nullAwareAntiJoin (t : Term) (c : Col) (ls rs : Rel) : Rel :=
+  ls.filter fun x => rs.all fun y => eqTri (t.eval x) (y c) == .false
+
+theorem Tri.or_eq_true (a b : Tri) : a.or b = .true ↔ a = .true ∨ b = .true := by
+  cases a <;> cases b <;> decide
+
+theorem Tri.or_eq_false (a b : Tri) : a.or b = .false ↔ a = .false ∧ b = .false := by
+  cases a <;> cases b <;> decide
+
+/-- IN is TRUE exactly when some `v = y` is TRUE. -/
+theorem inTri_eq_true (v : Value) (vs : List Value) :
+    inTri v vs = .true ↔ ∃ y ∈ vs, eqTri v y = .true := by
+  induction vs with
+  | nil => simp [inTri]
+  | cons y ys ih =>
+    simp only [inTri, List.foldr_cons] at ih ⊢
+    rw [Tri.or_eq_true, ih]
+    simp
+
+/-- IN is FALSE exactly when every `v = y` is FALSE. -/
+theorem inTri_eq_false (v : Value) (vs : List Value) :
+    inTri v vs = .false ↔ ∀ y ∈ vs, eqTri v y = .false := by
+  induction vs with
+  | nil => simp [inTri]
+  | cons y ys ih =>
+    simp only [inTri, List.foldr_cons] at ih ⊢
+    rw [Tri.or_eq_false, ih]
+    simp
+
+/-- NOT IN is TRUE exactly when every `v = y` is FALSE. -/
+theorem notIn_tri_true (v : Value) (vs : List Value) :
+    (inTri v vs).not = .true ↔ ∀ y ∈ vs, eqTri v y = .false := by
+  rw [← inTri_eq_false]
+  cases inTri v vs <;> decide
+
+/-- The null-aware anti join is `NOT IN`. -/
+theorem nullAwareAntiJoin_eq (t : Term) (c : Col) (ls rs : Rel) :
+    nullAwareAntiJoin t c ls rs = notIn t c ls rs := by
+  unfold nullAwareAntiJoin notIn
+  congr 1
+  funext x
+  have h := notIn_tri_true (t.eval x) (rs.map (· c))
+  apply Bool.eq_iff_iff.mpr
+  simp only [List.all_eq_true, beq_iff_eq, h, List.mem_map]
+  constructor
+  · rintro hall _ ⟨y, hy, rfl⟩; exact hall y hy
+  · intro hall y hy; exact hall _ ⟨y, hy, rfl⟩
+
+/-- `=` is TRUE only on equal non-NULL values. -/
+theorem eqTri_eq_true {a b : Value} : eqTri a b = .true ↔ a ≠ .null ∧ a = b := by
+  cases a <;> cases b <;> simp [eqTri] <;> split <;> simp_all
+
+/-- `=` is unknown exactly when a side is NULL. -/
+theorem eqTri_eq_unknown {a b : Value} : eqTri a b = .unknown ↔ a = .null ∨ b = .null := by
+  cases a <;> cases b <;> simp [eqTri] <;> split <;> simp
 
 /-- A joined row agrees with the left row on the left columns. -/
 theorem merge_left {L : List Col} {c : Col} (x y : Row) (h : c ∈ L) :

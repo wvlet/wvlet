@@ -1,6 +1,6 @@
 name = "wvlet-formal"
 version = "0.1.0"
-defaultTargets = ["WvletFormal", "activity-traces", "typer-traces", "model-build-traces", "sql-fold-traces", "rewrite-expr-traces", "name-lookup-traces", "operator-traces", "pushdown-filter-traces"]
+defaultTargets = ["WvletFormal", "activity-traces", "typer-traces", "model-build-traces", "sql-fold-traces", "rewrite-expr-traces", "name-lookup-traces", "operator-traces", "pushdown-filter-traces", "not-in-traces"]
 
 [leanOptions]
 autoImplicit = false
@@ -39,3 +39,7 @@ root = "OperatorTraces"
 [[lean_exe]]
 name = "pushdown-filter-traces"
 root = "PushdownFilterTraces"
+
+[[lean_exe]]
+name = "not-in-traces"
+root = "NotInTraces"
