@@ -15,6 +15,7 @@ package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.exec.AggCall
+import wvlet.lang.engine.exec.AsOfOp
 import wvlet.lang.engine.exec.FrameSpec
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
@@ -282,6 +283,23 @@ enum RuntimePlan:
   )
 
   /**
+    * An ASOF join, whose output is the columns of `left`, then those of `right`: each left row
+    * matches the right row with equal keys (`leftKeys` over `left` = `rightKeys` over `right`)
+    * closest to it under `leftValue op rightValue`. Rows with a NULL key or value never match.
+    * `kind` is Inner, or Left (unmatched left rows padded with NULLs)
+    */
+  case AsOfJoin(
+      left: RuntimePlan,
+      right: RuntimePlan,
+      kind: JoinKind,
+      leftKeys: IndexedSeq[BExpr],
+      rightKeys: IndexedSeq[BExpr],
+      leftValue: BExpr,
+      rightValue: BExpr,
+      op: AsOfOp
+  )
+
+  /**
     * Inner joins of `inputs` in no particular order: the rows of their product for which every
     * condition is true, with the columns of the inputs in order. [[ReorderJoins]] replaces it with
     * a tree of [[Join]]s, which outputs the same columns in its join order
@@ -364,6 +382,8 @@ enum RuntimePlan:
           j.left.output
         else
           j.inputs
+      case j: AsOfJoin =>
+        j.left.output ++ j.right.output
       case Aggregate(_, _, _, columns) =>
         columns
       case InnerJoins(inputs, _) =>
@@ -401,6 +421,8 @@ enum RuntimePlan:
       case Limit(child, _, _) =>
         Seq(child)
       case Join(left, right, _, _, _, _, _) =>
+        Seq(left, right)
+      case AsOfJoin(left, right, _, _, _, _, _, _) =>
         Seq(left, right)
       case Aggregate(child, _, _, _) =>
         Seq(child)
@@ -441,6 +463,8 @@ enum RuntimePlan:
         case l: Limit =>
           l.copy(child = cs(0))
         case j: Join =>
+          j.copy(left = cs(0), right = cs(1))
+        case j: AsOfJoin =>
           j.copy(left = cs(0), right = cs(1))
         case a: Aggregate =>
           a.copy(child = cs(0))
@@ -513,6 +537,19 @@ enum RuntimePlan:
         val args =
           keys ++ residual.map(r => s"residual=${r}") ++ Option.when(buildLeft)("build=left")
         s"Join[${kind}](${args.mkString(", ")})"
+      case AsOfJoin(_, _, kind, lk, rk, lv, rv, op) =>
+        val keys = lk.zip(rk).map((l, r) => s"${l} = ${r}")
+        val cmp  =
+          op match
+            case AsOfOp.Ge =>
+              ">="
+            case AsOfOp.Gt =>
+              ">"
+            case AsOfOp.Le =>
+              "<="
+            case AsOfOp.Lt =>
+              "<"
+        s"AsOfJoin[${kind}](${(keys :+ s"${lv} ${cmp} ${rv}").mkString(", ")})"
       case Aggregate(_, keys, calls, _) =>
         s"Aggregate(keys=[${keys.mkString(", ")}], ${calls.mkString(", ")})"
       case InnerJoins(_, conds) =>

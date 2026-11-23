@@ -14,6 +14,7 @@
 package wvlet.lang.engine.runtime
 
 import wvlet.lang.api.StatusCode
+import wvlet.lang.engine.exec.JoinKind
 
 /**
   * Checks the invariants of a [[RuntimePlan]] that passes and [[Lowering]] rely on: every column an
@@ -68,6 +69,13 @@ object PlanValidator:
           checkExprs(b, "Join", lk, left.output)
           checkExprs(b, "Join", rk, right.output)
           checkExprs(b, "Join", residual.toSeq, j.inputs)
+        case AsOfJoin(left, right, kind, lk, rk, lv, rv, _) =>
+          if lk.size != rk.size then
+            b += s"AsOfJoin has ${lk.size} left keys for ${rk.size} right keys"
+          if kind != JoinKind.Inner && kind != JoinKind.Left then
+            b += s"AsOfJoin[${kind}] is neither an inner nor a left join"
+          checkExprs(b, "AsOfJoin", lk :+ lv, left.output)
+          checkExprs(b, "AsOfJoin", rk :+ rv, right.output)
         case Aggregate(child, keys, calls, columns) =>
           if columns.size != keys.size + calls.size then
             b +=
