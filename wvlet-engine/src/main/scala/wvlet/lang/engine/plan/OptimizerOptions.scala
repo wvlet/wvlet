@@ -93,6 +93,12 @@ enum Optimization(val name: String):
   case ReplanCTEBodies extends Optimization("replan_cte_bodies")
 
   /**
+    * With `replan_materialized_ctes`, also compute the shared CTEs that joins in a shared input of
+    * grouping sets or unpivot read, and order that input's joins again with the exact row counts
+    */
+  case ReplanSharedInputs extends Optimization("replan_shared_inputs")
+
+  /**
     * With `replan_materialized_ctes`, estimate the reads of a computed shared CTE from its result:
     * the distinct values of its columns, and the rows passing a reader's own filter conditions
     */
