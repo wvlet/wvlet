@@ -76,15 +76,43 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // A sort key evaluating a scalar subquery
-    val p = runtimePlan(
-      "from nation order by n_regionkey = (from region select max(r_regionkey)) select n_name"
-    )
+    // A filter with a subquery when Decorrelate is off
+    val off = engine.withOptimizer(runtime.withDisabled(Optimization.Decorrelate))
+    val p   =
+      withQuery(
+        "from nation where n_regionkey in (from region where r_name = 'ASIA' select r_regionkey)"
+      )(off.runtimePlan(_))
     val leaves = nodes(p).collect { case l: RuntimePlan.Legacy =>
       l
     }
     leaves.nonEmpty shouldBe true
     leaves.foreach(l => l.columns.map(_.name) shouldBe l.op.schema.names)
+  }
+
+  test("bind sort keys with subqueries as plan-time constants") {
+    def check(query: String): Unit =
+      val p = runtimePlan(query)
+      debug(p.explain)
+      legacyLeafCount(p) shouldBe 0
+      nodes(p).exists(_.isInstanceOf[RuntimePlan.Sort]) shouldBe true
+      PlanValidator.violations(p) shouldBe Nil
+      val expected = rowsOf(legacy, query)
+      expected.size > 0 shouldBe true
+      rowsOf(engine, query) shouldBe expected
+
+    // A scalar subquery over the sort input
+    check("""from nation
+        |order by n_regionkey = (from region select max(r_regionkey)) desc, n_name
+        |select n_name""".stripMargin)
+    // IN (subquery) with a top-n limit
+    check("""from nation
+        |order by n_regionkey in (from region where r_name = 'ASIA' select r_regionkey) desc,
+        |  n_nationkey
+        |limit 5""".stripMargin)
+    // A key outside the select list, evaluated as a hidden select item
+    check("""from nation
+        |select n_name
+        |order by n_regionkey = (from region select min(r_regionkey)), n_name""".stripMargin)
   }
 
   test("bind a projection with windows as a window under a projection") {
