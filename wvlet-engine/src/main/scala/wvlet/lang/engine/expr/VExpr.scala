@@ -357,10 +357,10 @@ case class CaseWhen(whens: Seq[(VExpr, VExpr)], elseExpr: Option[VExpr], ptype: 
     k = 0
     while k < m do
       if picked(k) then
-        srcs(k) = Kernels.castTo(whens(k)._2.eval(b), ptype)
+        srcs(k) = CaseWhen.evalBranch(whens(k)._2, b, ptype)
       k += 1
     if picked(m) then
-      elseExpr.foreach(e => srcs(m) = Kernels.castTo(e.eval(b), ptype))
+      elseExpr.foreach(e => srcs(m) = CaseWhen.evalBranch(e, b, ptype))
     CaseWhen.fill(ptype, n, chosen, srcs, picked)
 
   end eval
@@ -368,6 +368,14 @@ case class CaseWhen(whens: Seq[(VExpr, VExpr)], elseExpr: Option[VExpr], ptype: 
 end CaseWhen
 
 object CaseWhen:
+  /** A branch's values cast to ptype, or null for a NULL literal (which yields NULL rows) */
+  private[expr] def evalBranch(e: VExpr, b: Batch, ptype: PType): Vec =
+    e match
+      case Const(null, _) =>
+        null
+      case _ =>
+        Kernels.castTo(e.eval(b), ptype)
+
   /**
     * The output of a CASE WHEN: row i is row i of `srcs(chosen(i))`. Values are copied between
     * arrays of the same physical type, without boxing, when every taken source has the output
@@ -524,23 +532,46 @@ end CaseWhen
 case class Coalesce(args: Seq[VExpr], ptype: PType) extends VExpr:
   override def children: Seq[VExpr] = args
   def sig: String                   = s"coalesce(${args.map(_.sig).mkString(",")})"
-  def eval(b: Batch): Vec           =
-    val vs  = args.map(a => Kernels.castTo(a.eval(b), ptype))
-    val out = VecBuilder(ptype, b.size)
-    var i   = 0
-    while i < b.size do
-      var j     = 0
-      var found = false
-      while !found && j < vs.size do
-        val v = vs(j).get(i)
-        if v != null then
-          out.add(v)
-          found = true
-        j += 1
-      if !found then
-        out.addNull()
-      i += 1
-    out.result()
+
+  // NULL literals never supply a value
+  private val inputs: Array[VExpr] =
+    args
+      .filter {
+        case Const(null, _) =>
+          false
+        case _ =>
+          true
+      }
+      .toArray
+
+  def eval(b: Batch): Vec =
+    val n = b.size
+    val m = inputs.length
+    // The argument each row takes; m means every argument is NULL
+    val chosen  = Vec.filledInts(n, m)
+    val picked  = new Array[Boolean](m + 1)
+    val srcs    = new Array[Vec](m + 1)
+    var pending = n
+    var k       = 0
+    // Later arguments are evaluated only while some rows are still NULL
+    while k < m && pending > 0 do
+      val v  = Kernels.castTo(inputs(k).eval(b), ptype)
+      val ns = v.nulls
+      srcs(k) = v
+      var i = 0
+      while i < n do
+        if chosen(i) == m && (ns == null || !ns(i)) then
+          chosen(i) = k
+          pending -= 1
+          picked(k) = true
+        i += 1
+      k += 1
+    picked(m) = pending > 0
+    CaseWhen.fill(ptype, n, chosen, srcs, picked)
+
+  end eval
+
+end Coalesce
 
 case class LikeExpr(
     child: VExpr,
@@ -784,6 +815,21 @@ object Kernels:
 
   def cast(v: Vec, to: PType, tryCast: Boolean): Vec =
     (v, to) match
+      // Every value of an untyped NULL vector is NULL
+      case _ if v.ptype == PType.Null =>
+        Vec.nullVec(to, v.size)
+      case (l: LongVec, d: PType.Decimal) if l.ptype.isDecimal && decimalScale(l) > d.scale =>
+        val u = scaleDown(l.values, decimalScale(l) - d.scale)
+        if u != null then
+          LongVec(d, u, l.nulls)
+        else
+          genericCast(v, to, tryCast)
+      case (l: LongVec, PType.Float64) if l.ptype.isDecimal =>
+        val o = decimalToDoubles(l.values, decimalScale(l))
+        if o != null then
+          DoubleVec(o, l.nulls)
+        else
+          genericCast(v, to, tryCast)
       case (i: IntVec, PType.Int64) if i.ptype == PType.Int32 =>
         LongVec(PType.Int64, asLongs(i), i.nulls)
       case (_: IntVec | _: LongVec, PType.Float64)
@@ -797,6 +843,63 @@ object Kernels:
           genericCast(v, to, tryCast)
       case _ =>
         genericCast(v, to, tryCast)
+
+  private def decimalScale(v: Vec): Int =
+    v.ptype match
+      case PType.Decimal(_, s) =>
+        s
+      case _ =>
+        0
+
+  /**
+    * Unscaled values divided by 10^diff, rounding half away from zero like `ValueOps.rescale`
+    * (HALF_UP), or null when 10^diff does not fit in a Long
+    */
+  private def scaleDown(values: Array[Long], diff: Int): Array[Long] =
+    if diff > 18 then
+      null
+    else
+      val m    = Pow10(diff)
+      val half = m / 2
+      val o    = new Array[Long](values.length)
+      var k    = 0
+      while k < o.length do
+        val x = values(k)
+        val q = x / m
+        val r = x % m
+        o(k) =
+          if r >= half then
+            q + 1
+          else if -r >= half then
+            q - 1
+          else
+            q
+        k += 1
+      o
+
+  // Powers of ten exactly representable as doubles (10^22 is the largest)
+  private val DoublePow10: Array[Double] = Array.tabulate(23)(i => s"1e${i}".toDouble)
+
+  /**
+    * Decimal values as doubles, or null when some |unscaled| exceeds 2^53. Below that bound both
+    * the unscaled value and 10^scale are exact doubles, so one division rounds the decimal value
+    * correctly, as `BigDecimal.doubleValue` does
+    */
+  private def decimalToDoubles(values: Array[Long], scale: Int): Array[Double] =
+    if scale > 22 then
+      null
+    else
+      val p     = DoublePow10(scale)
+      val limit = 1L << 53
+      val o     = new Array[Double](values.length)
+      var k     = 0
+      while k < o.length do
+        val x = values(k)
+        if x > limit || x < -limit then
+          return null
+        o(k) = x.toDouble / p
+        k += 1
+      o
 
   private def genericCast(v: Vec, to: PType, tryCast: Boolean): Vec =
     val b = VecBuilder(to, v.size)
@@ -940,13 +1043,7 @@ object Kernels:
       out: PType.Decimal,
       nulls: Array[Boolean]
   ): Vec =
-    val n                    = l.size
-    def scaleOf(v: Vec): Int =
-      v.ptype match
-        case PType.Decimal(_, s) =>
-          s
-        case _ =>
-          0
+    val n = l.size
     // Fast path on unscaled longs
     val fast: Vec =
       op match
@@ -959,28 +1056,34 @@ object Kernels:
             val o  = new Array[Long](n)
             var ok = true
             var i  = 0
-            while ok && i < n do
-              val x = a(i)
-              val y = b(i)
-              val z =
-                if op == ArithOp.Add then
-                  x + y
-                else
-                  x - y
-              // Overflow iff both operands have the same sign and the result's sign differs
-              if op == ArithOp.Add && ((x ^ z) & (y ^ z)) < 0 then
-                ok = false
-              else if op == ArithOp.Sub && ((x ^ y) & (x ^ z)) < 0 then
-                ok = false
-              o(i) = z
-              i += 1
+            // Decided once: comparing enum cases calls equals, which costs a call per row
+            if op == ArithOp.Add then
+              while ok && i < n do
+                val x = a(i)
+                val y = b(i)
+                val z = x + y
+                // Overflow iff both operands have the same sign and the result's sign differs
+                if ((x ^ z) & (y ^ z)) < 0 then
+                  ok = false
+                o(i) = z
+                i += 1
+            else
+              while ok && i < n do
+                val x = a(i)
+                val y = b(i)
+                val z = x - y
+                if ((x ^ y) & (x ^ z)) < 0 then
+                  ok = false
+                o(i) = z
+                i += 1
             if ok then
               LongVec(out, o, nulls)
             else
               null
-        case ArithOp.Mul if scaleOf(l) + scaleOf(r) == out.scale =>
-          val a = asUnscaled(l, scaleOf(l))
-          val b = asUnscaled(r, scaleOf(r))
+          end if
+        case ArithOp.Mul if decimalScale(l) + decimalScale(r) == out.scale =>
+          val a = asUnscaled(l, decimalScale(l))
+          val b = asUnscaled(r, decimalScale(r))
           if a == null || b == null then
             null
           else

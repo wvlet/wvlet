@@ -196,6 +196,18 @@ object Vec:
           val a = new Array[String](n)
           java.util.Arrays.fill(a.asInstanceOf[Array[AnyRef]], ValueOps.toStr(value))
           StrVec(a, null)
+        case d: PType.Decimal =>
+          val r = ValueOps.rescale(ValueOps.toBigDecimal(value), d.scale)
+          val u = r.unscaledValue()
+          // Same storage as DecimalBuilder: Long-backed when the unscaled value fits
+          if u.bitLength() < 64 then
+            val a = new Array[Long](n)
+            java.util.Arrays.fill(a, u.longValue())
+            LongVec(d, a, null)
+          else
+            val a = new Array[AnyRef](n)
+            java.util.Arrays.fill(a, r)
+            ObjVec(d, a, null)
         case _ =>
           val b = VecBuilder(ptype, n)
           var i = 0
