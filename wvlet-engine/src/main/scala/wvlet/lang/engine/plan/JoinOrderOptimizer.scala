@@ -294,6 +294,15 @@ object JoinOrderOptimizer:
   def swapBuild(options: OptimizerOptions, rows: Double, otherRows: Double): Boolean =
     options.isEnabled(Optimization.SwapBuildSide) && rows > SwapBuildRatio * otherRows
 
+  /** The position of each column of left ++ right (of widths lw, rw) in right ++ left */
+  private def swappedPositions(lw: Int, rw: Int): Array[Int] =
+    Array.tabulate(lw + rw)(i =>
+      if i < lw then
+        rw + i
+      else
+        i - lw
+    )
+
   /** The kind of a join whose inputs swap sides */
   def swappedKind(kind: JoinKind): JoinKind =
     kind match
@@ -301,6 +310,14 @@ object JoinOrderOptimizer:
         JoinKind.Right
       case JoinKind.Right =>
         JoinKind.Left
+      case JoinKind.Semi =>
+        JoinKind.RightSemi
+      case JoinKind.Anti =>
+        JoinKind.RightAnti
+      case JoinKind.RightSemi =>
+        JoinKind.Semi
+      case JoinKind.RightAnti =>
+        JoinKind.Anti
       case other =>
         other
 
@@ -319,12 +336,48 @@ object JoinOrderOptimizer:
       buildLeft: Boolean,
       combined: Schema
   ): Operator =
-    if lk.isEmpty then
+    if kind == JoinKind.Semi || kind == JoinKind.Anti then
+      semiJoinOp(left, right, lk, rk, kind, residual, buildLeft)
+    else if lk.isEmpty then
       NestedLoopJoinOp(left, right, residual, kind, combined)
     else if buildLeft then
       swappedHashJoin(left, right, lk, rk, swappedKind(kind), residual, combined)
     else
       HashJoinOp(left, right, lk, rk, kind, residual, combined)
+
+  /**
+    * A semi or anti join (`kind`) of left with right, outputting the columns of left; the residual
+    * reads left ++ right. Without keys it is a nested loop join. A hash join builds on right, or,
+    * with `buildLeft`, holds left's rows in the hash table while right is probed in parallel parts
+    * marking the matched rows (RIGHT SEMI / RIGHT ANTI), and left's matched (or unmatched) rows are
+    * emitted once at the end
+    */
+  def semiJoinOp(
+      left: Operator,
+      right: Operator,
+      lk: IndexedSeq[VExpr],
+      rk: IndexedSeq[VExpr],
+      kind: JoinKind,
+      residual: Option[VExpr],
+      buildLeft: Boolean
+  ): Operator =
+    if lk.isEmpty then
+      NestedLoopJoinOp(left, right, residual, kind, left.schema)
+    else if buildLeft then
+      val toSwapped = swappedPositions(left.schema.size, right.schema.size)
+      HashJoinOp(
+        right,
+        left,
+        rk,
+        lk,
+        swappedKind(kind),
+        residual.map(VExprs.remap(_, toSwapped)),
+        left.schema
+      )
+    else
+      HashJoinOp(left, right, lk, rk, kind, residual, left.schema)
+
+  end semiJoinOp
 
   /**
     * A hash join of left and right that probes with right and builds on left (`kind` is from
@@ -339,17 +392,8 @@ object JoinOrderOptimizer:
       residual: Option[VExpr],
       combined: Schema
   ): Operator =
-    val lw = left.schema.size
-    val rw = right.schema.size
-    // Position of each left ++ right column in right ++ left
-    val toSwapped =
-      Array.tabulate(lw + rw)(i =>
-        if i < lw then
-          rw + i
-        else
-          i - lw
-      )
-    val join = HashJoinOp(
+    val toSwapped = swappedPositions(left.schema.size, right.schema.size)
+    val join      = HashJoinOp(
       right,
       left,
       rk,

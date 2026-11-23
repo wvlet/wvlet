@@ -226,13 +226,14 @@ class EngineRuntimePlanTest extends UniTest:
     PlanValidator.violations(p) shouldBe Nil
   }
 
-  test("keep a join with a subquery condition as a legacy node over the joined inputs") {
+  test("apply a subquery condition over a join tree as a semi join over the ordered tree") {
     val p = runtimePlan("""from nation, region
         |where n_regionkey = r_regionkey
         |  and n_nationkey in (from supplier select s_nationkey)
         |select n_name""".stripMargin)
     debug(p.explain)
-    p.explain shouldContain "Legacy["
+    p.explain shouldContain "Join[Semi]"
+    p.explain shouldNotContain "Legacy["
     PlanValidator.violations(p) shouldBe Nil
   }
 

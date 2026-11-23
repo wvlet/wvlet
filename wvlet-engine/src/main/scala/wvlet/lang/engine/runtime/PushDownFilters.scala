@@ -38,7 +38,8 @@ import scala.util.control.NonFatal
   *   - through a projection, substituting the projected expressions (when they are deterministic),
   *     a sort without a limit, and an aggregation with grouping keys when the conjunct reads only
   *     the keys;
-  *   - into the preserved input of a LEFT or RIGHT join, when the conjunct reads only that input;
+  *   - into the preserved input of a LEFT or RIGHT join, when the conjunct reads only that input,
+  *     and into the left input of a semi or anti join;
   *   - into an inner join tree, as a condition that [[ReorderJoins]] places. There, `a = b` and
   *     `a = constant` add `b = constant` for columns `a` and `b` of the same type;
   *   - into every input of a UNION, INTERSECT, or EXCEPT, by position and cast to the output type,
@@ -143,7 +144,9 @@ object PushDownFilters extends Pass:
           val keyed = joinKeys(j)
           val side  =
             keyed.kind match
-              case JoinKind.Left =>
+              case JoinKind.Left | JoinKind.Semi | JoinKind.Anti =>
+                // A semi or anti join outputs its left input's columns, so every conjunct reads
+                // only them
                 Some(true)
               case JoinKind.Right =>
                 Some(false)

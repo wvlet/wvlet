@@ -67,7 +67,7 @@ object PlanValidator:
             b += s"Join has ${lk.size} left keys for ${rk.size} right keys"
           checkExprs(b, "Join", lk, left.output)
           checkExprs(b, "Join", rk, right.output)
-          checkExprs(b, "Join", residual.toSeq, j.output)
+          checkExprs(b, "Join", residual.toSeq, j.inputs)
         case Aggregate(child, keys, calls, columns) =>
           if columns.size != keys.size + calls.size then
             b +=

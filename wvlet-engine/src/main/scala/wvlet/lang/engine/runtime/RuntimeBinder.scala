@@ -16,6 +16,7 @@ package wvlet.lang.engine.runtime
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.engine.exec.AggCall
+import wvlet.lang.engine.exec.BatchesOp
 import wvlet.lang.engine.exec.Aggregates
 import wvlet.lang.engine.exec.FilterOp
 import wvlet.lang.engine.exec.HashAggOp
@@ -26,6 +27,8 @@ import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.exec.WindowCall
 import wvlet.lang.engine.exec.WindowOp
 import wvlet.lang.engine.expr.AndExpr
+import wvlet.lang.engine.expr.Const
+import wvlet.lang.engine.expr.IsNullExpr
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.VExpr
@@ -36,7 +39,10 @@ import wvlet.lang.engine.plan.Binder
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.plan.JoinPlanBuilder
 import wvlet.lang.engine.plan.ColumnNotFound
+import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.Planner
+import wvlet.lang.engine.plan.SubqueryConjunct
+import wvlet.lang.engine.vector.PType
 import wvlet.lang.engine.vector.Field
 import wvlet.lang.engine.vector.Schema
 import wvlet.lang.model.DataType
@@ -287,8 +293,12 @@ class RuntimeBinder(planner: Planner):
         // Common conjuncts of `or`s are factored by the Normalize pass
         val conds = planner.splitConjuncts(f.filterExpr)
         if conds.exists(planner.hasSubquery) then
-          // Subqueries become joins over the planned input
-          legacy(f)
+          if planner.enabled(Optimization.Decorrelate) then
+            // Subqueries become joins over the optimized input, factored as the planner does:
+            // semi and anti joins when they are uncorrelated, legacy nodes otherwise
+            plans.conjuncts(lowered(bind(child)), planner.conjuncts(f.filterExpr)).plan
+          else
+            legacy(f)
         else
           val in     = bind(child)
           val schema = in.schema
@@ -540,15 +550,129 @@ class RuntimeBinder(planner: Planner):
       if conds.isEmpty then
         p
       else
-        planner.applyConjuncts(p.op, conds) match
-          case f: FilterOp if (f.child eq p.op) && f.keep == null =>
-            // Plain conditions (uncorrelated scalar subqueries are constants in them)
-            Lowered(RuntimePlan.Filter(p.plan, BExpr.of(f.cond, p.plan.output)), f)
-          case op if op eq p.op =>
+        subqueryJoins(p, conds).getOrElse(legacyConjuncts(p, conds))
+
+    /** Conjuncts applied by the planner, as `Planner.applyConjuncts` applies them */
+    private def legacyConjuncts(p: Lowered, conds: List[Expression]): Lowered =
+      planner.applyConjuncts(p.op, conds) match
+        case f: FilterOp if (f.child eq p.op) && f.keep == null =>
+          // Plain conditions (uncorrelated scalar subqueries are constants in them)
+          Lowered(RuntimePlan.Filter(p.plan, BExpr.of(f.cond, p.plan.output)), f)
+        case op if op eq p.op =>
+          p
+        case op =>
+          // Subqueries became joins over the lowered input
+          Lowered(legacyOp(op), op)
+
+    /**
+      * Conjuncts over p as `Planner.applyConjuncts` applies them, when each is plain (uncorrelated
+      * scalar subqueries are constants in it) or [NOT] EXISTS / [NOT] IN over an uncorrelated
+      * subquery, and one is the latter: the subqueries become semi and anti joins in conjunct
+      * order, then the plain conjuncts filter their result
+      */
+    private def subqueryJoins(p: Lowered, conds: List[Expression]): Option[Lowered] =
+      val subs  = conds.map(planner.subqueryConjunct)
+      val plain = conds
+        .zip(subs)
+        .collect { case (c, None) =>
+          c
+        }
+      if !planner.enabled(Optimization.Decorrelate) || subs.forall(_.isEmpty) ||
+        plain.exists(c => planner.hasSubquery(planner.withoutScalarSubqueries(c))) ||
+        subs
+          .flatten
+          .exists {
+            case SubqueryConjunct.In(a, _, _) =>
+              planner.hasSubquery(a)
+            case _: SubqueryConjunct.Exists =>
+              false
+          } || !subs.flatten.forall(s => planner.isUncorrelated(s.sub))
+      then
+        None
+      else
+        val joined = subs.flatten.foldLeft(p)(subqueryJoin)
+        if plain.isEmpty then
+          Some(joined)
+        else
+          val b = Binder(planner, BindScope(joined.op.schema))
+          Some(filter(joined, plain.map(b.bind).reduce((a, b) => AndExpr(a, b))))
+
+    /** Rows of p for which an uncorrelated EXISTS / NOT EXISTS / IN / NOT IN is true */
+    private def subqueryJoin(p: Lowered, s: SubqueryConjunct): Lowered =
+      def none: Lowered = filter(p, Const(false, PType.Bool))
+      s match
+        case SubqueryConjunct.Exists(sub, negate) =>
+          // A constant condition, decided at plan time
+          val rows = Operator.materialize(planner.plan(sub)).size
+          if (rows > 0) != negate then
             p
-          case op =>
-            // Subqueries became joins over the lowered input
-            Lowered(legacyOp(op), op)
+          else
+            none
+        case SubqueryConjunct.In(a, sub, negate) =>
+          val target = Binder(planner, BindScope(p.op.schema)).bind(a)
+          // Semi or anti join on the compared value, the subquery's first column, cast to the
+          // common type
+          def keyed(inner: Lowered, kind: JoinKind, buildLeft: Boolean): Lowered =
+            val v = inner.op.schema(0)
+            val t = PType.common(target.ptype, v.ptype)
+            semiJoin(
+              p,
+              inner,
+              kind,
+              IndexedSeq(planner.castExpr(target, t)),
+              IndexedSeq(planner.castExpr(ColRef(0, v.ptype, v.name), t)),
+              buildLeft
+            )
+          if !negate then
+            val inner = lowered(bind(sub))
+            keyed(
+              inner,
+              JoinKind.Semi,
+              planner.swapBuild(
+                CardinalityEstimator.rows(inner.op),
+                CardinalityEstimator.rows(p.op)
+              )
+            )
+          else
+            // NOT IN: no row passes when the subquery has a NULL, and NULL targets never pass.
+            // The subquery's values are a constant, decided at plan time
+            val op      = planner.plan(sub)
+            val values  = Operator.materialize(op)
+            val v       = values.columns(0)
+            val hasNull = (0 until values.size).exists(v.isNull)
+            if hasNull then
+              none
+            else
+              val anti = keyed(
+                fromOp(BatchesOp(op.schema, Seq(values))),
+                JoinKind.Anti,
+                buildLeft = false
+              )
+              filter(anti, IsNullExpr(target, negate = true))
+      end match
+
+    end subqueryJoin
+
+    /** A semi or anti join of p with `inner`, on keys over each one's columns */
+    private def semiJoin(
+        p: Lowered,
+        inner: Lowered,
+        kind: JoinKind,
+        lk: IndexedSeq[VExpr],
+        rk: IndexedSeq[VExpr],
+        buildLeft: Boolean
+    ): Lowered = Lowered(
+      RuntimePlan.Join(
+        p.plan,
+        inner.plan,
+        kind,
+        lk.map(BExpr.of(_, p.plan.output)),
+        rk.map(BExpr.of(_, inner.plan.output)),
+        None,
+        buildLeft
+      ),
+      JoinOrderOptimizer.semiJoinOp(p.op, inner.op, lk, rk, kind, None, buildLeft)
+    )
 
   end plans
 

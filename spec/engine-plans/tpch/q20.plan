@@ -16,7 +16,6 @@ Scan[partsupp](columns=ps_partkey,ps_suppkey,ps_availqty) -> [ps_partkey:long, p
 ↓ Filter((cast(#2 as decimal(38,3))>#5), keep=1) -> [ps_suppkey:long]
 ↓ Project(#0) -> [ps_suppkey:long]
 ↓ Project(#0) -> [ps_suppkey:long]
-↓ Morsel[parallelism=N] -> [ps_suppkey:long]
   Scan[supplier](columns=s_suppkey,s_name,s_address,s_nationkey) -> [s_suppkey:long, s_name:string, s_address:string, s_nationkey:int]
     Scan[nation](columns=n_nationkey,n_name filter=Compare(n_name,Eq,CANADA)) -> [n_nationkey:int, n_name:string]
     ↓ Filter((#1=lit(CANADA:string)), keep=0) -> [n_nationkey:int]
@@ -25,4 +24,5 @@ Scan[partsupp](columns=ps_partkey,ps_suppkey,ps_availqty) -> [ps_partkey:long, p
   ↓ Morsel[parallelism=N] -> [s_suppkey:long, s_name:string, s_address:string, s_nationkey:int, n_nationkey:int]
 ↙ HashJoin[RightSemi](#0 = #0) -> [s_suppkey:long, s_name:string, s_address:string, s_nationkey:int, n_nationkey:int]
 ↓ Project(#1, #2) -> [s_name:string, s_address:string]
+↓ Morsel[parallelism=N] -> [s_name:string, s_address:string]
 ↓ Sort[parallelism=N](#0) -> [s_name:string, s_address:string]

@@ -41,6 +41,7 @@ class OptimizerOptionsTest extends UniTest:
     Optimization.values.map(_.name).toSeq shouldBe
       Seq(
         "factor_or",
+        "decorrelate",
         "push_down_filters",
         "reorder_joins",
         "exact_join_order",

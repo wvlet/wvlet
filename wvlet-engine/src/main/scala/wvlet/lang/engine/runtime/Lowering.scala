@@ -53,7 +53,7 @@ object Lowering:
         SortOp(apply(child), keys.map(_.lower(pos)), limit)
       case Limit(child, limit, offset) =>
         LimitOp(apply(child), limit, offset)
-      case Join(left, right, kind, lk, rk, residual, buildLeft) =>
+      case j @ Join(left, right, kind, lk, rk, residual, buildLeft) =>
         val lpos = positions(left)
         val rpos = positions(right)
         JoinOrderOptimizer.joinOp(
@@ -62,7 +62,7 @@ object Lowering:
           kind,
           lk.map(_.lower(lpos)),
           rk.map(_.lower(rpos)),
-          residual.map(_.lower(positions(p))),
+          residual.map(_.lower(positions(j.inputs))),
           buildLeft,
           p.schema
         )
@@ -90,8 +90,10 @@ object Lowering:
         cte.reader(p.schema)
 
   /** Column id -> position in the output of `p` (-1 for ids it doesn't output) */
-  private def positions(p: RuntimePlan): Array[Int] =
-    val out = p.output
+  private def positions(p: RuntimePlan): Array[Int] = positions(p.output)
+
+  /** Column id -> position in `out` (-1 for ids it doesn't have) */
+  private def positions(out: IndexedSeq[Column]): Array[Int] =
     val pos = Array.fill(out.map(_.id.value).maxOption.getOrElse(-1) + 1)(-1)
     out.indices.foreach(i => pos(out(i).id.value) = i)
     pos
