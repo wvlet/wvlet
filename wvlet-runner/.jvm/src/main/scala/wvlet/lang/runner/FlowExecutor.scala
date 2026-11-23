@@ -633,7 +633,6 @@ class FlowExecutor(
                   )
                   val interval = stageConfigs(ls.name).pollIntervalMillis.max(1L)
                   workEnv.info(s"Stage ${ls.name} waits until its sensor condition holds")
-                  debug(s"Sensor poll of stage ${ls.name}:\n${poll}")
                   beat(attemptKey)
                   reportPoll()
                   val sensorEngine = engineFor(ls)
@@ -1275,8 +1274,7 @@ class FlowExecutor(
   private def notifyRunResult(flow: FlowDef, result: FlowExecutionResult)(using Context): Unit =
     val hooks = FlowNotifyConfig.fromFlow(flow).hooksFor(result.hasError)
     if hooks.nonEmpty then
-      val summaryTable              = s"__wv_flow_notify_${result.runId.toLowerCase}"
-      def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
+      val summaryTable = s"__wv_flow_notify_${result.runId.toLowerCase}"
       try
         // Activation sinks read the summary table through SQL
         val sinkConnector = defaultEngine

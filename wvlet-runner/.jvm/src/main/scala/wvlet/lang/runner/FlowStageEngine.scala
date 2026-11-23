@@ -45,18 +45,12 @@ private[runner] case class StatementHooks(
     deregister: () => Unit
 )
 
-private[runner] object StatementHooks:
-  val none: StatementHooks = StatementHooks(_ => (), () => ())
-
 /**
   * The engine a flow stage runs on: the operations [[FlowExecutor]] needs to materialize stage
   * results, independent of whether the engine runs SQL text (a [[DBConnector]]) or Wvlet plans (the
   * in-process wvlet engine)
   */
 private[runner] trait FlowStageEngine:
-  /** The connector backing this engine */
-  def connector: Connector
-
   def dbType: DBType
 
   /** The SQL connector of this engine, if it runs SQL */
@@ -110,6 +104,14 @@ private[runner] object FlowStageEngine:
                 .connectorType}) is not a SQL engine and cannot run a stage"
           )
 
+  /** Whether stages can run on the connector (a SQL engine or the in-process wvlet engine) */
+  def canRunStages(connector: Connector): Boolean =
+    connector match
+      case _: DBConnector | _: WvletEngineConnector =>
+        true
+      case _ =>
+        false
+
   /** Fail when a feature is not available on the wvlet engine yet */
   def notOnEngine(feature: String): Nothing =
     throw StatusCode
@@ -123,7 +125,6 @@ end FlowStageEngine
 
 /** Stages as SQL statements on a [[DBConnector]] */
 private[runner] class SqlStageEngine(db: DBConnector) extends FlowStageEngine with LogSupport:
-  override def connector: Connector              = db
   override def dbType: DBType                    = db.dbType
   override def sqlConnector: Option[DBConnector] = Some(db)
 
@@ -176,7 +177,8 @@ private[runner] class SqlStageEngine(db: DBConnector) extends FlowStageEngine wi
           n.toString
         case other =>
           s"'${other.toString.replace("'", "''")}'"
-    val names = columns.map(_._1)
+    // Quoted: names such as state and error are reserved words on some engines
+    val names = columns.map((n, _) => s"\"${n}\"")
     // An empty table still produces the schema
     val values =
       if rows.isEmpty then
@@ -190,7 +192,13 @@ private[runner] class SqlStageEngine(db: DBConnector) extends FlowStageEngine wi
         ""
     // Built without stripMargin: values may contain margin characters
     val select = List(
-      "select " + columns.map((n, t) => s"cast(${n} as ${sqlTypeOf(t)}) as ${n}").mkString(", "),
+      "select " +
+        names
+          .zip(columns)
+          .map { case (n, (_, t)) =>
+            s"cast(${n} as ${sqlTypeOf(t)}) as ${n}"
+          }
+          .mkString(", "),
       s"from (values\n  ${values.mkString(",\n  ")}\n) as t(${names.mkString(", ")})${emptyFilter}"
     ).mkString("\n")
     db.execute(createOrReplaceDDL(table, select))
@@ -198,8 +206,10 @@ private[runner] class SqlStageEngine(db: DBConnector) extends FlowStageEngine wi
   end replaceTableWithRows
 
   override def hasRows(query: Relation)(using Context): Boolean =
-    val sql = GenSQL.generateSQLFromRelation(query, addHeader = false).sql
-    db.queryJsonRows(s"""select 1 from (\n${sql}\n) as "__wv_sensor" limit 1""").nonEmpty
+    val sql  = GenSQL.generateSQLFromRelation(query, addHeader = false).sql
+    val poll = s"""select 1 from (\n${sql}\n) as "__wv_sensor" limit 1"""
+    debug(s"Sensor poll:\n${poll}")
+    db.queryJsonRows(poll).nonEmpty
 
   override def columnValues(table: String, column: String)(using Context): List[Option[String]] = db
     .queryJsonRows(s"""select "${column}" from ${quoted(table)}""")
@@ -236,7 +246,6 @@ private[runner] class WvletStageEngine(engineConnector: WvletEngineConnector)
     extends FlowStageEngine:
   private def session: WvletEngineSession = engineConnector.session
 
-  override def connector: Connector              = engineConnector
   override def dbType: DBType                    = DBType.Wvlet
   override def sqlConnector: Option[DBConnector] = None
 
@@ -256,10 +265,11 @@ private[runner] class WvletStageEngine(engineConnector: WvletEngineConnector)
 
   override def createTableAs(table: String, query: Relation, hooks: StatementHooks)(using
       Context
-  ): Unit = withHooks(hooks)(locked(session.createTableAs(table, query)))
+  ): Unit = locked(withHooks(hooks)(session.createTableAs(table, query)))
 
-  override def save(save: Save, hooks: StatementHooks)(using Context): Unit =
-    withHooks(hooks)(locked(session.save(save)))
+  override def save(save: Save, hooks: StatementHooks)(using Context): Unit = locked(
+    withHooks(hooks)(session.save(save))
+  )
 
   override def dropTable(table: String): Unit = locked(session.dropTable(table))
 

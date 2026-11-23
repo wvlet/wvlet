@@ -34,8 +34,6 @@ import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.control.Control
 import wvlet.uni.log.LogSupport
 
-import scala.util.chaining.*
-
 /**
   * `wvlet build`: compiles the models of a work folder and builds the materialized ones in
   * dependency order on the flow executor
@@ -162,8 +160,9 @@ object ModelBuildLauncher extends LogSupport:
           m.spec
             .engine
             .flatMap(e => profile.connectors.find(_.name == e))
-            .getOrElse(profile.defaultEngine)
-            .pipe(provider.getConnector)
+            .map(provider.getConnector)
+            .filter(FlowStageEngine.canRunStages)
+            .getOrElse(provider.getConnector(profile.defaultEngine))
       )
     }
     FlowRunLauncher.executeFlowDef(
