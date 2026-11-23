@@ -65,7 +65,7 @@ Apply these rules in order:
   - `s.to_timestamp(format)` and `s.try_to_timestamp(format)`, which returns NULL on failure. These are format overloads of the existing `s.to_timestamp`, with strftime codes; `to_timestamp(s, fmt)` is the name PostgreSQL, Spark, and Snowflake share.
   - `current_date`, `current_timestamp`
 - **Casts:**
-  - `to_int` / `to_long` on a fractional value have one rounding rule on every engine (to decide; see Consequences).
+  - `to_int` / `to_long` on a fractional value truncate toward zero on every engine (2.5 → 2, -2.5 → -2), like Scala/Java `toLong` and Spark. `round` stays the way to round.
   - Numeric `to_boolean` means non-zero is true.
 
 Later families (JSON, lists, maps, structs) add their rows to this ADR in the PR that introduces them, each with a comparison row.
@@ -83,10 +83,7 @@ Later families (JSON, lists, maps, structs) add their rows to this ADR in the PR
 - Coverage is measured on the stdlib first (`EngineStdlibCoverageCheck`). The DuckDB-catalog count (`EngineFunctionCoverageCheck`) is a compatibility measure, not a target.
 - Each new function is a stdlib definition with dialect variants, an engine implementation of what the DuckDB variant expands to, and a conformance probe. The stdlib reference page and the engine catalogs regenerate as usual.
 - Existing definitions that break these rules are fixed in follow-ups, not renamed silently:
-  - The probe found that the engine's double `to_long` rounds 2.5 to 3, but DuckDB's gives 2. Wvlet picks one rule and every variant implements it. The candidates:
-    - truncation, like Scala/Java/Spark;
-    - half away from zero, like Trino/Snowflake/BigQuery and plain `round`;
-    - half even, like DuckDB/PostgreSQL.
+  - The probe found that the engine's double `to_long` rounds 2.5 to 3, but DuckDB's gives 2. Both change to truncation, as do the variants for engines that round: Trino, Snowflake, BigQuery, DuckDB, and PostgreSQL wrap the cast in `trunc`. The other candidates were half away from zero (Trino/Snowflake/BigQuery and plain `round`) and half even (DuckDB/PostgreSQL). Truncation was chosen to match Scala/Java `toLong`, which Wvlet's users expect, with `round` available when rounding is wanted.
   - `date.format(pattern)` passes engine-specific patterns through.
   - `type_of` returns engine type names (`INTEGER` on DuckDB, `int` on the engine).
 - The `wvlet` dialect context lands with the CLI default-engine switch: one PR that adds the context, generates the engine catalog from `EngineFunctions`, and keeps the `in duckdb` variants. Queries that call a DuckDB-only name on the engine then fail at compile time and must use the stdlib name or the DuckDB connector; the release notes list this.
