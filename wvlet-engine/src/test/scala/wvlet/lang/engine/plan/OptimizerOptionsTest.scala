@@ -47,6 +47,7 @@ class OptimizerOptionsTest extends UniTest:
         "swap_build_side",
         "prefetch_scalar_subqueries",
         "share_ctes",
+        "push_down_cte_filters",
         "prune_columns",
         "push_scan_filters",
         "parallelize"
