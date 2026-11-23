@@ -17,6 +17,7 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.runtime.*
+import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.plan.PlannerMode
 import wvlet.lang.engine.vector.PType
@@ -411,6 +412,56 @@ class EngineRuntimePlanTest extends UniTest:
     val expected = rowsOf(legacy, query)
     expected.size > 0 shouldBe true
     rowsOf(engine, query) shouldBe expected
+  }
+
+  test("bind a CTE read once in place and a CTE read twice as readers of one shared body") {
+    def cteRefs(p: RuntimePlan): Seq[RuntimePlan.CTERef] = nodes(p).collect {
+      case r: RuntimePlan.CTERef =>
+        r
+    }
+    def check(e: WvletEngine, query: String)(f: RuntimePlan => Unit): Unit =
+      val p = withQuery(query)(e.runtimePlan(_))
+      debug(p.explain)
+      legacyLeafCount(p) shouldBe 0
+      PlanValidator.violations(p) shouldBe Nil
+      f(p)
+      val expected = rowsOf(legacy, query)
+      expected.size > 0 shouldBe true
+      rowsOf(e, query) shouldBe expected
+
+    // Read once: the body binds in place, so the passes see through it
+    check(
+      engine,
+      """with t as { from nation where n_regionkey = 1 select n_name, n_regionkey }
+        |from t select n_name order by n_name""".stripMargin
+    ) { p =>
+      cteRefs(p) shouldBe Nil
+      nodes(p).collect { case s: RuntimePlan.Scan =>
+        s.source.name
+      } shouldBe Seq("nation")
+    }
+
+    // Read twice, under another alias too: both readers read one body bound once
+    val shared =
+      """with r as { from region where r_regionkey < 3 }
+        |from nation
+        |join r on n_regionkey = r.r_regionkey
+        |join r as r2 on n_regionkey = r2.r_regionkey
+        |select n_name, r.r_name, r2.r_name as r2_name
+        |order by n_name""".stripMargin
+    check(engine, shared) { p =>
+      val refs = cteRefs(p)
+      refs.size shouldBe 2
+      refs.map(_.cte).distinct.size shouldBe 1
+      legacyLeafCount(refs.head.cte.body) shouldBe 0
+      // The readers' columns are fresh ids, so that the join keys tell them apart
+      refs(0).output.map(_.id).intersect(refs(1).output.map(_.id)) shouldBe Nil
+    }
+
+    // With share_ctes off, each read binds the body in place
+    check(engine.withOptimizer(runtime.withDisabled(Optimization.ShareCTEs)), shared) { p =>
+      cteRefs(p) shouldBe Nil
+    }
   }
 
   test("bind a USING join as a join under a projection merging its keys") {
