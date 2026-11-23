@@ -75,13 +75,15 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // A pivot
-    val p = runtimePlan("from nation pivot on n_regionkey in (0, 1) agg _.count")
-    p match
-      case RuntimePlan.Legacy(op, cols) =>
-        cols.map(_.name) shouldBe op.schema.names
-      case other =>
-        fail(s"Unexpected plan:\n${other.explain}")
+    // An ASOF join
+    val p = runtimePlan("""from orders
+        |asof join lineitem on o_orderkey = l_orderkey and l_shipdate <= o_orderdate
+        |select o_orderkey""".stripMargin)
+    val leaves = nodes(p).collect { case l: RuntimePlan.Legacy =>
+      l
+    }
+    leaves.nonEmpty shouldBe true
+    leaves.foreach(l => l.columns.map(_.name) shouldBe l.op.schema.names)
   }
 
   test("bind a projection with windows as a window under a projection") {
@@ -314,6 +316,62 @@ class EngineRuntimePlanTest extends UniTest:
         Nil
       case _ =>
         p.children.flatMap(joins)
+
+  test("bind a pivot with listed values as an aggregation over its input") {
+    val query = "from nation pivot on n_regionkey in (0, 1) agg _.count"
+    val p     = runtimePlan(query)
+    debug(p.explain)
+    legacyLeafCount(p) shouldBe 0
+    p shouldMatch { case RuntimePlan.Aggregate(_: RuntimePlan.Scan, _, calls, cols) =>
+      // One count per value, filtered to it
+      calls.map(_.filter.isDefined) shouldBe IndexedSeq(true, true)
+      cols.map(_.name).takeRight(2) shouldBe IndexedSeq("0", "1")
+    }
+    PlanValidator.violations(p) shouldBe Nil
+    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+  }
+
+  test("bind a pivot without listed values as an aggregation over its rows") {
+    val query = "from nation pivot on n_regionkey group by n_name"
+    val p     = runtimePlan(query)
+    debug(p.explain)
+    legacyLeafCount(p) shouldBe 0
+    p shouldMatch { case RuntimePlan.Aggregate(v: RuntimePlan.Values, _, calls, _) =>
+      // The values of n_regionkey come from the input rows, which the aggregation reads
+      v.rows.size shouldBe 25
+      calls.size shouldBe 5
+    }
+    PlanValidator.violations(p) shouldBe Nil
+    val expected = rowsOf(legacy, query)
+    expected.size shouldBe 25
+    rowsOf(engine, query) shouldBe expected
+  }
+
+  test("bind an unpivot as a union of projections over a shared input") {
+    val query =
+      """from orders
+        |select o_orderkey, o_totalprice, o_shippriority
+        |unpivot v for col in (o_totalprice, o_shippriority)
+        |where v > 400000.0""".stripMargin
+    val p = runtimePlan(query)
+    debug(p.explain)
+    legacyLeafCount(p) shouldBe 0
+    p shouldMatch { case RuntimePlan.Union(branches, cols) =>
+      cols.map(_.name) shouldBe IndexedSeq("o_orderkey", "col", "v")
+      branches.size shouldBe 2
+      // The filter over the union moves into each branch, over a reader of the shared input
+      branches.foreach { b =>
+        nodes(b).collect { case r: RuntimePlan.CTERef =>
+          r.cte.name
+        } shouldBe Seq("UnpivotInput")
+        b.explain shouldContain "Filter"
+      }
+    }
+    PlanValidator.violations(p) shouldBe Nil
+    val expected = rowsOf(legacy, query)
+    expected.size > 0 shouldBe true
+    rowsOf(engine, query) shouldBe expected
+  }
 
   test("bind an inner join tree with its filters to joins over scans") {
     val p = runtimePlan("""from nation, region
