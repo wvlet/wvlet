@@ -29,7 +29,9 @@ Native binaries do not link libduckdb: `wvlet_duckdb_loader.c` in wvlet-lang loa
 so building needs no DuckDB headers. DuckDB-backed features (file schema inference, the duckdb
 connector) work when libduckdb is installed (`brew install duckdb`, the standard
 `/usr/local/lib` or Homebrew paths, the loader's search path, or `WVLET_LIBDUCKDB=<path>`), and
-report "libduckdb is not available" otherwise.
+report "libduckdb is not available" otherwise. CI's Scala Native job runs without libduckdb, so a
+shared test that needs DuckDB must skip itself with `if !DuckDB.canExecute then ignore(...)` (or
+`DuckDB.isAvailable` for schema inference); DuckDB is tested on the JVM and Scala.js jobs.
 
 ### Code Formatting
 

@@ -21,4 +21,4 @@ Date: 2026-11-23 · PR #2315
 
 - Native binaries start on machines without libduckdb; file schema inference falls back to the engine and the duckdb connector reports how to install libduckdb or set `WVLET_LIBDUCKDB`.
 - A new DuckDB C API call needs an entry in the loader's `WVLET_DUCKDB_FUNCTIONS` list, a wrapper, and a `@name` binding.
-- CI's Scala Native job removes libduckdb after the main test run and reruns `SqlConnectorProviderTest` to check the fallback.
+- CI's Scala Native job runs once without libduckdb, as the native CLI ships: DuckDB-backed native tests skip on `DuckDB.canExecute` / `DuckDB.isAvailable`, and the fallback tests run. DuckDB itself is tested on the JVM and Scala.js jobs. (PR #2315 first installed libduckdb and reran `SqlConnectorProviderTest` without it; that second pass cost about a minute on the slowest CI job.)

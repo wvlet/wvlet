@@ -66,6 +66,8 @@ Native binaries do not link [libduckdb](https://duckdb.org/docs/installation/), 
 
 Installing DuckDB with a package manager (e.g. `brew install duckdb` on macOS) is usually enough. Without libduckdb, everything else keeps working and DuckDB features report that libduckdb is not available.
 
+CI runs the Scala Native tests without libduckdb. Tests that need DuckDB skip themselves when `DuckDB.canExecute` (or `DuckDB.isAvailable`) is false; DuckDB itself is tested on the JVM and Scala.js jobs.
+
 To build libwvlet.so (Linux) or libwvlet.dylib (macOS), run the following command:
 
 ```bash
