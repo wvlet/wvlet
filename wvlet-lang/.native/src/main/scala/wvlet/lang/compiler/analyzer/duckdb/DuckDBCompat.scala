@@ -20,17 +20,23 @@ import scala.scalanative.unsigned.*
   * file schema inference (parquet, csv, …) — JSON is handled cross-platform by `JSONAnalyzer`
   * higher up.
   *
-  * Requires `libduckdb` to be installed at link time (`-lduckdb`); on macOS Homebrew puts it at
-  * `/opt/homebrew/lib/libduckdb.dylib` which the system linker finds by default.
+  * libduckdb is loaded at runtime by [[DuckDBLoader]], not linked. When it can't be found,
+  * [[isAvailable]] and [[canExecute]] report `false` and the other methods throw
+  * `UnsupportedOperationException`, like the Scala.js backend.
   */
 trait DuckDBCompat:
-  def isAvailable: Boolean = true
-  def canExecute: Boolean  = true
+  def isAvailable: Boolean = DuckDBLoader.isLoaded
+  def canExecute: Boolean  = DuckDBLoader.isLoaded
+
+  private def requireLoaded(): Unit =
+    if !DuckDBLoader.isLoaded then
+      throw new UnsupportedOperationException(DuckDBLoader.notAvailableMessage)
 
   def schemaOf(path: String): RelationType =
     if !Files.isRegularFile(Paths.get(path)) then
       EmptyRelationType
     else
+      requireLoaded()
       Zone {
         val db  = stackalloc[DuckDBApi.duckdb_database]()
         val con = stackalloc[DuckDBApi.duckdb_connection]()
@@ -87,7 +93,7 @@ trait DuckDBCompat:
     *
     * `duckdb_fetch_chunk` takes the 48-byte `duckdb_result` struct BY VALUE in C, which Scala
     * Native's `@extern` ABI for `CStruct6` doesn't emit correctly (chunk returns null). We use the
-    * small C wrapper `wvlet_duckdb_fetch_chunk(duckdb_result *)` from `wvlet_duckdb_helpers.c` to
+    * small C wrapper `wvlet_duckdb_fetch_chunk(duckdb_result *)` from `wvlet_duckdb_loader.c` to
     * forward by-value internally on the C side.
     */
   def execute(sql: String): QueryResult =
@@ -104,7 +110,11 @@ trait DuckDBCompat:
     * parameter slots used here; `close()` writes them back into fresh slots for `duckdb_disconnect`
     * / `duckdb_close`.
     */
-  def newSession(path: Option[String] = None): DuckDBSession = Zone {
+  def newSession(path: Option[String] = None): DuckDBSession =
+    requireLoaded()
+    openSession(path)
+
+  private def openSession(path: Option[String]): DuckDBSession = Zone {
     val db    = stackalloc[DuckDBApi.duckdb_database]()
     val con   = stackalloc[DuckDBApi.duckdb_connection]()
     val cPath = path.map(p => toCString(p)).getOrElse(null)

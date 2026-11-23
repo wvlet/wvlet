@@ -58,16 +58,13 @@ To build native libraries, you need to install `clang`, `llvm`, `libstdc++-12-de
 
 ### DuckDB Dependency
 
-Native binaries link [libduckdb](https://duckdb.org/docs/installation/) dynamically, so both `duckdb.h` and the libduckdb shared library must be visible to the C compiler and linker. Installing DuckDB with a package manager (e.g. `brew install duckdb` on macOS) is usually enough. If they are installed in a non-standard location, point the standard clang environment variables at them before building:
+Native binaries do not link [libduckdb](https://duckdb.org/docs/installation/), so building them needs neither `duckdb.h` nor the DuckDB library. They load libduckdb at runtime, the first time a DuckDB feature is used (schema inference for Parquet/CSV files, or the `duckdb` connector), and look for it in this order:
 
-```bash
-# Directory containing duckdb.h
-export CPATH=/path/to/duckdb/include
-# Directory containing libduckdb.dylib (macOS) or libduckdb.so (Linux)
-export LIBRARY_PATH=/path/to/duckdb/lib
-```
+1. The path in the `WVLET_LIBDUCKDB` environment variable
+2. The OS loader's search path (`DYLD_LIBRARY_PATH` on macOS, `LD_LIBRARY_PATH` on Linux, `PATH` on Windows, and the default directories)
+3. `/opt/homebrew/lib` and `/usr/local/lib` (macOS), or `/usr/local/lib` and `/usr/lib` (Linux)
 
-At runtime, the built binaries look up libduckdb in the standard loader locations plus `/opt/homebrew/lib` and `/usr/local/lib`, which are embedded as rpath entries. To run with a libduckdb installed elsewhere, either set `WVLET_NATIVE_LIB_PATH=/path/to/duckdb/lib` at **build time** (the directory is embedded as an additional `-L`/rpath entry), or set `DYLD_LIBRARY_PATH` (macOS) / `LD_LIBRARY_PATH` (Linux) when launching the binary.
+Installing DuckDB with a package manager (e.g. `brew install duckdb` on macOS) is usually enough. Without libduckdb, everything else keeps working and DuckDB features report that libduckdb is not available.
 
 To build libwvlet.so (Linux) or libwvlet.dylib (macOS), run the following command:
 

@@ -1,5 +1,7 @@
 package wvlet.lang.runner.connector
 
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.compiler.analyzer.duckdb.DuckDB
 import wvlet.lang.compiler.analyzer.trino.TrinoSqlConnector
@@ -71,6 +73,20 @@ class SqlConnectorProviderTest extends UniTest:
     intercept[IllegalStateException] {
       connector.execute("select 1")
     }
+  }
+
+  test("report a clear error for duckdb when libduckdb is not loadable") {
+    if DuckDB.canExecute then
+      ignore("libduckdb is available on this platform")
+    val provider = SqlConnectorProvider()
+    try
+      val e = intercept[WvletLangException] {
+        provider.getConnector(duckdbConfig())
+      }
+      e.statusCode shouldBe StatusCode.NOT_IMPLEMENTED
+      e.getMessage shouldContain "WVLET_LIBDUCKDB"
+    finally
+      provider.close()
   }
 
   test("build a Trino connector from host config") {
