@@ -68,7 +68,11 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '25'
-          cache: sbt
+          # Linux x64 runs on every PR, so it restores the shared cache built by sbt-cache.yml
+          # instead of saving its own; the other runners only run on main and keep setup-java's.
+          cache: ${{ matrix.os != 'ubuntu-latest' && 'sbt' || '' }}
+      - uses: ./.github/actions/sbt-cache
+        if: ${{ !matrix.skip && matrix.os == 'ubuntu-latest' }}
       - name: Install Nix
         if: ${{ !matrix.skip }}
         uses: cachix/install-nix-action@v31

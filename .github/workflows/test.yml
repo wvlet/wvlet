@@ -46,6 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/sbt-cache
       - name: scalafmt
         run: ./sbt scalafmtCheckAll
   test_scala_3:
@@ -59,7 +60,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '25'
-          cache: sbt
+      - uses: ./.github/actions/sbt-cache
       - name: Scala 3.x test
         run: ./sbt projectJVM/test
       - name: Publish Test Report
@@ -81,7 +82,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '25'
-          cache: sbt
+      - uses: ./.github/actions/sbt-cache
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -126,7 +127,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '25'
-          cache: sbt
+      - uses: ./.github/actions/sbt-cache
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -151,7 +152,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '25'
-          cache: sbt
+      - uses: ./.github/actions/sbt-cache
       - name: Install native dependencies
         # libcurl4-openssl-dev provides the unversioned libcurl.so symlink that the linker
         # needs when @link("curl") (via uni's CurlBindings) becomes reachable through the
