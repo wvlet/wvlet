@@ -25,9 +25,11 @@ import wvlet.lang.engine.catalog.*
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.runtime.RuntimeBinder
+import wvlet.lang.engine.runtime.JoinCondition
 import wvlet.lang.engine.runtime.Lowering
 import wvlet.lang.engine.runtime.Optimizer
 import wvlet.lang.engine.runtime.PlanValidator
+import wvlet.lang.engine.runtime.PushDownFilters
 import wvlet.lang.engine.runtime.RuntimePlan
 import wvlet.lang.engine.runtime.SharedCTE
 import wvlet.lang.engine.vector.*
@@ -528,7 +530,8 @@ class Planner(
     val key = name.toLowerCase
     sharedCTE(name) match
       case Some(c) =>
-        // With the runtime planner: a reader of the deferred CTE that runtime plans read too
+        // With the runtime planner: a reader of the deferred CTE that runtime plans read too. It
+        // reports no filter, so the body stays unfiltered
         c.reader(c.body.schema)
       case None =>
         cteDefs.get(key) match
@@ -1261,7 +1264,8 @@ class Planner(
   /**
     * A CTE read more than once, with the runtime planner. Its body is bound when it is first read,
     * and lowered once every reader is planned ([[finalizeCTEs]]), keeping only the columns the
-    * readers read. A read before then (a subquery evaluated at plan time) computes every column
+    * readers read, and only the rows they keep when every reader reports its filter. A read before
+    * then (a subquery evaluated at plan time) computes every column and row
     */
   private class DeferredCTE(val name: String) extends SharedCTE:
     // Set right after binding: the body can't read its own CTE
@@ -1270,9 +1274,13 @@ class Planner(
     val reads = mutable.LinkedHashSet.empty[DeferredCTE]
 
     // Positions of the body output that readers read
-    private val needed            = mutable.BitSet.empty
-    private var needsAll          = false
-    private var finalized         = Option.empty[(IndexedSeq[Int], SharedResult)]
+    private val needed    = mutable.BitSet.empty
+    private var needsAll  = false
+    private var finalized = Option.empty[(IndexedSeq[Int], SharedResult)]
+    // The filter each reader applies right above it, in creation order (None: none or unknown)
+    private val readerFilters = mutable.ArrayBuffer.empty[Option[JoinCondition]]
+    // Whether the result keeps only the rows the readers' filters agree on
+    private var filtered          = false
     private lazy val label        = s"CTE[${name}]"
     private lazy val uniqueNames  = body.schema.names.distinct.size == body.schema.size
     private lazy val bodyPosition = body.schema.names.zipWithIndex.toMap
@@ -1282,11 +1290,17 @@ class Planner(
     /** Record that a reader reads these body output positions */
     def need(positions: Iterable[Int]): Unit = needed ++= positions
 
-    override def reader(schema: Schema): Operator =
+    override def reader(schema: Schema, filter: Option[JoinCondition]): Operator =
+      if filtered then
+        throw StatusCode
+          .UNEXPECTED_STATE
+          .newException(s"${label} is read after its result was filtered for its other readers")
       if uniqueNames then
+        readerFilters += filter
         ScanOp(CTETable(label, body.schema, this), schema, None, None)
       else
-        // An iterator reads every column
+        // An iterator reads every column and row
+        readerFilters += None
         needsAll = true
         finalized.foreach { (keep, _) =>
           if keep.size != body.output.size then
@@ -1303,12 +1317,29 @@ class Planner(
     private def result: (IndexedSeq[Int], SharedResult) =
       if finalized.isEmpty then
         needsAll = true
-        finalizeBody()
+        finalizeBody(pushFilters = false)
       finalized.get
 
-    /** The plan of the body for the columns read so far, if not done yet */
-    def finalizeBody(): Unit =
+    /**
+      * The plan of the body for the columns read so far, if not done yet. With `pushFilters`, once
+      * every reader is planned, the body keeps only the rows the readers' filters agree on
+      */
+    def finalizeBody(pushFilters: Boolean): Unit =
       if finalized.isEmpty then
+        val agreed =
+          if pushFilters && !needsAll && readerFilters.nonEmpty &&
+            readerFilters.forall(_.nonEmpty) && enabled(Optimization.PushDownFilters) &&
+            enabled(Optimization.PushDownCTEFilters)
+          then
+            PushDownFilters.shared(readerFilters.flatten.toSeq)
+          else
+            Nil
+        val body =
+          if agreed.isEmpty then
+            this.body
+          else
+            runtimeOptimizer.pushFilters(this.body, agreed)
+        filtered = agreed.nonEmpty
         val out  = body.output
         val keep =
           if needsAll || needed.isEmpty || !enabled(Optimization.PruneColumns) then
@@ -1415,7 +1446,7 @@ class Planner(
         else
           ready
       next.foreach { c =>
-        c.finalizeBody()
+        c.finalizeBody(pushFilters = true)
         c.resultOp.foreach(collect)
       }
       pending = pending.filterNot(next.contains)

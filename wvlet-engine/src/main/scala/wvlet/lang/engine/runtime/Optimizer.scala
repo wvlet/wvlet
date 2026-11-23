@@ -123,6 +123,18 @@ class Optimizer(val passes: Seq[Pass], options: OptimizerOptions):
       PlanValidator.validate(next)
     next
 
+  /**
+    * The optimized plan with the conditions pushed into it, through its filters too
+    * ([[PushDownFilters.filter]])
+    */
+  def pushFilters(p: RuntimePlan, conds: Seq[JoinCondition]): RuntimePlan =
+    val next = PushDownFilters.filter(p, conds, ctx, throughFilters = true)
+    if options.validatePlans && (next ne p) then
+      PlanValidator.validate(next)
+    next
+
+end Optimizer
+
 object Optimizer:
   /** The passes, in order */
   val defaultPasses: Seq[Pass] = Seq(Normalize, PushDownFilters, ReorderJoins, PruneColumns)

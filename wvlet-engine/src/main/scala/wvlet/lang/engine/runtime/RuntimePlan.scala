@@ -503,5 +503,9 @@ trait SharedCTE:
   /** The bound and optimized body, whose output the readers read */
   def body: RuntimePlan
 
-  /** An operator reading the result, with the output columns of the body under `schema` */
-  def reader(schema: Schema): Operator
+  /**
+    * An operator reading the result, with the output columns of the body under `schema`. `filter`
+    * is the condition the reader applies right above it, over the body's column ids: when every
+    * reader has one, the planner pushes what they share into the body ([[PushDownFilters.shared]])
+    */
+  def reader(schema: Schema, filter: Option[JoinCondition] = None): Operator

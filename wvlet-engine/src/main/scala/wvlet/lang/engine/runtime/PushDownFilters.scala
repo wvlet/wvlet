@@ -20,6 +20,7 @@ import wvlet.lang.engine.expr.CmpOp
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.expr.Const
+import wvlet.lang.engine.expr.Kernels
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.RowFn
 import wvlet.lang.engine.expr.VExpr
@@ -71,20 +72,27 @@ object PushDownFilters extends Pass:
 
   /**
     * Rows of p for which the conditions are true: pushed down p as far as they go, or a filter over
-    * p when the pass is disabled
+    * p when the pass is disabled. With `throughFilters`, they also move below the filters in p
+    * along with the filters' own conjuncts (for a plan already optimized, such as a shared CTE
+    * body), instead of staying above them
     */
-  def filter(p: RuntimePlan, conds: Seq[JoinCondition], ctx: OptimizerContext): RuntimePlan =
+  def filter(
+      p: RuntimePlan,
+      conds: Seq[JoinCondition],
+      ctx: OptimizerContext,
+      throughFilters: Boolean = false
+  ): RuntimePlan =
     if conds.isEmpty then
       p
     else if ctx.options.isEnabled(Optimization.PushDownFilters) then
-      Walk(ctx, enabled = true).push(
+      Walk(ctx, enabled = true, throughFilters).push(
         p,
         conds.map(c => Conjunct(c.cond.expr, c.literalCounts)).toList
       )
     else
       Filter(p, BExpr(conds.map(_.cond.expr).reduce(AndExpr(_, _))))
 
-  private class Walk(ctx: OptimizerContext, enabled: Boolean):
+  private class Walk(ctx: OptimizerContext, enabled: Boolean, throughFilters: Boolean = false):
     /** Rows of p for which every conjunct is true, with the conjuncts pushed as far as they go */
     def push(p: RuntimePlan, conds: List[Conjunct]): RuntimePlan =
       p match
@@ -96,6 +104,9 @@ object PushDownFilters extends Pass:
             val own = conjuncts(cond.expr).map(Conjunct(_, counts))
             if !own.forall(c => isDeterministic(c.expr)) then
               filter(f.copy(child = push(child, Nil)), conds)
+            else if throughFilters && conds.nonEmpty then
+              moved(conds)
+              push(child, own ++ conds)
             else
               val pushed =
                 push(child, own) match
@@ -227,13 +238,17 @@ object PushDownFilters extends Pass:
       Seq(child)
     )
 
-    /** Rows of p for which the conjuncts are true */
+    /**
+      * Rows of p for which the conjuncts are true. A conjunct that is true whatever the row (a
+      * comparison of constants a projection substituted) is dropped
+      */
     private def filter(p: RuntimePlan, conds: List[Conjunct]): RuntimePlan =
-      if conds.isEmpty then
+      val kept = conds.filterNot(c => enabled && isTrue(c.expr))
+      if kept.isEmpty then
         p
       else
-        val counts = conds.foldLeft(Map.empty[String, Int])(_ ++ _.counts)
-        Filter(p, BExpr(conds.map(_.expr).reduce(AndExpr(_, _))), counts)
+        val counts = kept.foldLeft(Map.empty[String, Int])(_ ++ _.counts)
+        Filter(p, BExpr(kept.map(_.expr).reduce(AndExpr(_, _))), counts)
 
     /** Record that conjuncts moved down */
     private def moved(conds: List[Conjunct]): Unit =
@@ -348,6 +363,51 @@ object PushDownFilters extends Pass:
 
   end inferred
 
+  private def isTrue(e: VExpr): Boolean =
+    e.isConstant && isDeterministic(e) && Kernels.scalarOf(e).contains(true)
+
+  /**
+    * The conditions implied by every one of `filters`, the conditions of the readers of a shared
+    * CTE over its body's columns, which the body can apply for all of them:
+    *
+    *   - the conjuncts every filter has, and
+    *   - for each column, the `or` of each filter's conjuncts over that column alone, when every
+    *     filter has one (`d_year = 2001` and `d_year = 2002` give
+    *     `d_year = 2001 or d_year = 2002`).
+    *
+    * Conjuncts over several columns that not every filter has stay with their readers. Each reader
+    * keeps its own filter, so the body only needs to keep the rows some reader keeps.
+    */
+  def shared(filters: Seq[JoinCondition]): Seq[JoinCondition] =
+    if filters.isEmpty then
+      Nil
+    else
+      // Each filter's deterministic conjuncts, with their literal counts
+      val branches = filters.map { f =>
+        conjuncts(f.cond.expr)
+          .filter(isDeterministic)
+          .map(c => JoinCondition(BExpr(c), f.literalCounts))
+      }
+      val common    = branches.map(_.map(_.cond.expr.sig).toSet).reduce(_ intersect _)
+      val inAll     = branches.head.filter(c => common.contains(c.cond.expr.sig))
+      val columns   = branches.flatMap(_.flatMap(_.cond.refs)).distinct.sortBy(_.value)
+      val perColumn = columns.flatMap { col =>
+        val parts = branches.map(
+          _.filter(c => !common.contains(c.cond.expr.sig) && c.cond.refs == Set(col))
+        )
+        if parts.exists(_.isEmpty) then
+          None
+        else
+          // One disjunct per distinct conjunction, in reader order
+          val disjuncts = parts
+            .map(cs => cs.map(_.cond.expr).reduce(AndExpr(_, _)) -> cs)
+            .distinctBy(_._1.sig)
+          val e      = disjuncts.map(_._1).reduce(OrExpr(_, _))
+          val counts = disjuncts.flatMap(_._2.flatMap(_.literalCounts)).toMap
+          Some(JoinCondition(BExpr(e), counts))
+      }
+      inAll ++ perColumn
+
   private def isDeterministic(e: VExpr): Boolean =
     e match
       case f: RowFn if f.name == "random" =>
@@ -362,7 +422,11 @@ object PushDownFilters extends Pass:
     * The literal counts of a rewritten condition: the counts of `from`'s `and`/`or` sub-conditions,
     * keyed by the signatures of the matching sub-conditions of `to`
     */
-  private def remapCounts(from: VExpr, to: VExpr, counts: Map[String, Int]): Map[String, Int] =
+  private[runtime] def remapCounts(
+      from: VExpr,
+      to: VExpr,
+      counts: Map[String, Int]
+  ): Map[String, Int] =
     val b                                  = Map.newBuilder[String, Int]
     def loop(from: VExpr, to: VExpr): Unit =
       (from, to) match

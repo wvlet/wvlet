@@ -48,6 +48,12 @@ enum Optimization(val name: String):
   /** Compute a CTE referenced more than once only once */
   case ShareCTEs extends Optimization("share_ctes")
 
+  /**
+    * Filter a shared CTE's body by what its readers' filters agree on, when every reader reports
+    * one (with `push_down_filters`)
+    */
+  case PushDownCTEFilters extends Optimization("push_down_cte_filters")
+
   /** Read and pass only the columns the operators above use */
   case PruneColumns extends Optimization("prune_columns")
 
