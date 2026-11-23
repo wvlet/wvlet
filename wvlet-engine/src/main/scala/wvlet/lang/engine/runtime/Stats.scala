@@ -66,9 +66,9 @@ object Stats:
         rows(left)
       case InnerJoins(inputs, _) =>
         rows(inputs.head)
-      case CTERef(_, _) =>
+      case CTERef(cte, _) =>
         // As for a scan of a shared result: its rows are unknown until it is computed
-        1e6
+        cte.rows.map(_.toDouble).getOrElse(1e6)
       case Filter(child, _, _) =>
         rows(child)
       case Project(child, _, _) =>
