@@ -93,6 +93,17 @@ class EnginePushDownFiltersTest extends UniTest:
     sameRows(query)
   }
 
+  test("keep two tuple IN conjuncts over different subqueries") {
+    // Both are tuple_in(#a,#b) by signature; only their closures differ
+    val query =
+      """from nation
+        |where (n_nationkey, n_regionkey) in (from nation where n_regionkey = 1 select n_nationkey, n_regionkey)
+        |  and (n_nationkey, n_regionkey) in (from nation where n_nationkey < 10 select n_nationkey, n_regionkey)
+        |select n_name""".stripMargin
+    count(engine, query) shouldBe 3
+    sameRows(query)
+  }
+
   test("push only conjuncts over grouping keys below an aggregation") {
     val query =
       """from lineitem

@@ -32,3 +32,7 @@ import WvletFormal.Pushdown.Traces
 import WvletFormal.NotIn.Rule
 import WvletFormal.NotIn.Necessity
 import WvletFormal.NotIn.Traces
+import WvletFormal.JoinKeyFilter.Model
+import WvletFormal.JoinKeyFilter.Sound
+import WvletFormal.JoinKeyFilter.Findings
+import WvletFormal.JoinKeyFilter.Traces

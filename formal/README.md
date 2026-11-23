@@ -23,6 +23,9 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
 - NOT IN over a subquery as a null-aware anti join (wvlet-engine's `RuntimeBinder`,
   `Planner.correlatedJoin`, and the `InList` value set): each binding returns SQL's rows of
   `x NOT IN (subquery)`, NULLs on either side and an empty subquery included.
+- Carrying filters across hash join keys (`join_key_filters` in the engine's `PushDownFilters`):
+  which joins let a conjunct over one input's keys filter the other input, with three-valued
+  conjuncts and NULL keys.
 
 See
 [adr/2026-11-18-lean-formal-verification.md](../adr/2026-11-18-lean-formal-verification.md) for
@@ -46,6 +49,7 @@ lake exe rewrite-expr-traces # regenerate the expression rewrite conformance fix
 lake exe name-lookup-traces # regenerate the name lookup conformance fixture
 lake exe pushdown-filter-traces # regenerate the filter pushdown conformance fixture
 lake exe not-in-traces      # regenerate the NOT IN conformance fixture
+lake exe join-key-filter-traces # regenerate the join-key filter conformance fixture
 ```
 
 ## Layout
@@ -87,6 +91,10 @@ lake exe not-in-traces      # regenerate the NOT IN conformance fixture
 | `WvletFormal/NotIn/Rule.lean` | `uncorrelated`: the plan of an uncorrelated NOT IN conjunct (every row over no values, none over a NULL value, else an anti join on `x = y` and `x is not null`); `correlated`: the anti join on the correlation and `x = y or x is null or y is null`; `inList`: the `InList` value set | `uncorrelated_sound`, `correlated_sound`, `inList_sound`: each equals SQL's NOT IN (or IN) |
 | `WvletFormal/NotIn/Necessity.lean` | — | inputs where a plain anti join on `x = y` keeps a NULL target or keeps rows over a NULL value, where `x is not null` without the NULL-value check keeps rows, and where dropping NULL targets over an empty subquery (the engine before this model) or an unknown NULL target over an empty set loses rows |
 | `WvletFormal/NotIn/Traces.lean`, `NotInTraces.lean` | — | exports the NOT IN conformance fixture |
+| `WvletFormal/JoinKeyFilter/Model.lean` | hash joins over bags of rows with a nullable key and an arbitrary residual (inner, LEFT, RIGHT, semi, anti); filter conjuncts as three-valued functions of the key | — |
+| `WvletFormal/JoinKeyFilter/Sound.lean` | — | `sound_left`, `sound_right`, `sound_inner_right`: a conjunct over the preserved input's key above the join gives the same rows as filtering both inputs by it over their own keys (`join_key_filters` in the engine's `PushDownFilters`) |
+| `WvletFormal/JoinKeyFilter/Findings.lean` | — | `carry_from_null_supplying_side_unsound`: carrying a conjunct from the NULL-supplying input of a LEFT join changes the result |
+| `WvletFormal/JoinKeyFilter/Traces.lean`, `JoinKeyFilterTraces.lean` | — | exports the join-key filter conformance fixture |
 
 ## Keeping the model and the code in sync
 

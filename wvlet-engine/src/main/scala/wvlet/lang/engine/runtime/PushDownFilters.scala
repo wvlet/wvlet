@@ -20,6 +20,7 @@ import wvlet.lang.engine.expr.CmpOp
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.expr.Const
+import wvlet.lang.engine.expr.IsNullExpr
 import wvlet.lang.engine.expr.Kernels
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.RowFn
@@ -39,7 +40,10 @@ import scala.util.control.NonFatal
   *     a sort without a limit, and an aggregation with grouping keys when the conjunct reads only
   *     the keys;
   *   - into the preserved input of a LEFT or RIGHT join, when the conjunct reads only that input,
-  *     and into the left input of a semi or anti join;
+  *     and into the left input of a semi or anti join. With `join_key_filters`, a conjunct over
+  *     that input's hash join keys also filters the other input, over the matching keys there;
+  *   - with `join_key_filters`, into either input of an inner join the binder already ordered (an
+  *     aggregation or subquery input), and across its keys to the other input;
   *   - into an inner join tree, as a condition that [[ReorderJoins]] places. There, `a = b` and
   *     `a = constant` add `b = constant` for columns `a` and `b` of the same type;
   *   - into every input of a UNION, INTERSECT, or EXCEPT, by position and cast to the output type,
@@ -142,40 +146,53 @@ object PushDownFilters extends Pass:
           filter(withChild(a, push(child, pushed)), out)
         case j: Join =>
           val keyed = joinKeys(j)
-          val side  =
-            keyed.kind match
-              case JoinKind.Left | JoinKind.Semi | JoinKind.Anti =>
-                // A semi or anti join outputs its left input's columns, so every conjunct reads
-                // only them
-                Some(true)
-              case JoinKind.Right =>
-                Some(false)
-              case _ =>
-                None
-          side match
-            case Some(left) =>
-              val ids =
-                (
-                  if left then
-                    keyed.left
-                  else
-                    keyed.right
-                ).output.map(_.id).toSet
-              val (in, out) = conds.partition(_.refs.subsetOf(ids))
+          val ids   = (q: RuntimePlan) => q.output.map(_.id).toSet
+          keyed.kind match
+            case JoinKind.Left | JoinKind.Semi | JoinKind.Anti | JoinKind.Right =>
+              // A semi or anti join outputs its left input's columns, so every conjunct reads
+              // only them. The conjuncts over the preserved input's keys also filter the other
+              // input: a row there that fails one only matches preserved rows the conjunct drops
+              val left      = keyed.kind != JoinKind.Right
+              val (in, out) = conds.partition(
+                _.refs
+                  .subsetOf(
+                    ids(
+                      if left then
+                        keyed.left
+                      else
+                        keyed.right
+                    )
+                  )
+              )
               moved(in)
-              val l =
+              val carried = carry(in, keyed, fromLeft = left)
+              val l       = push(
+                keyed.left,
                 if left then
-                  push(keyed.left, in)
+                  in
                 else
-                  push(keyed.left, Nil)
-              val r =
+                  carried
+              )
+              val r = push(
+                keyed.right,
                 if left then
-                  push(keyed.right, Nil)
+                  carried
                 else
-                  push(keyed.right, in)
+                  in
+              )
               filter(keyed.withChildren(Seq(l, r)), out)
-            case None =>
+            case JoinKind.Inner | JoinKind.Cross if carryKeys =>
+              // A join the binder already ordered (an aggregation or subquery input): each
+              // conjunct over one input filters that input, and, over its keys, the other one
+              val (inL, rest) = conds.partition(_.refs.subsetOf(ids(keyed.left)))
+              val (inR, out)  = rest.partition(_.refs.subsetOf(ids(keyed.right)))
+              moved(inL ++ inR)
+              val l = push(keyed.left, inL ++ carry(inR, keyed, fromLeft = false))
+              val r = push(keyed.right, inR ++ carry(inL, keyed, fromLeft = true))
+              filter(keyed.withChildren(Seq(l, r)), out)
+            case _ =>
               filter(keyed.withChildren(keyed.children.map(push(_, Nil))), conds)
+          end match
         case j @ AsOfJoin(left, right, _, _, _, _, _, _) =>
           // Each left row matches the same right row whatever the other left rows are, so a
           // conjunct over left columns keeps the same rows below. A conjunct over right columns
@@ -259,6 +276,48 @@ object PushDownFilters extends Pass:
         castTo(ColRef(col.id.value, col.ptype, col.name), columns(pos(r.index)).ptype)
       }
 
+    /** Whether conjuncts carry across join keys (`join_key_filters`) */
+    private val carryKeys = enabled && ctx.options.isEnabled(Optimization.JoinKeyFilters)
+
+    /**
+      * The conjuncts among `conds` that read only key columns of one input of a hash join (the left
+      * one with `fromLeft`), over the matching key columns of the other input instead. A row of the
+      * other input matches a row of this one only when their keys are equal and not NULL, so the
+      * conjunct has the same value on both rows. Only key pairs of plain columns of the same type
+      * count, and not floating-point ones, whose key equality differs from `=` (`-0.0`, NaN)
+      */
+    private def carry(conds: List[Conjunct], j: Join, fromLeft: Boolean): List[Conjunct] =
+      if !carryKeys || conds.isEmpty then
+        Nil
+      else
+        val (from, to) =
+          if fromLeft then
+            (j.leftKeys, j.rightKeys)
+          else
+            (j.rightKeys, j.leftKeys)
+        val partner = mutable.Map.empty[Int, ColRef]
+        from
+          .lazyZip(to)
+          .foreach { (a, b) =>
+            (a.expr, b.expr) match
+              case (x: ColRef, y: ColRef)
+                  if x.ptype == y.ptype && carriesKey(x.ptype) && !partner.contains(x.index) =>
+                partner(x.index) = y
+              case _ =>
+          }
+        if partner.isEmpty then
+          Nil
+        else
+          val carried = conds
+            .filter(c =>
+              c.refs.nonEmpty && c.refs.forall(id => partner.contains(id.value)) &&
+                isDeterministic(c.expr) && !isNotNullKey(c.expr)
+            )
+            .map(_.substitute(r => partner(r.index)))
+          if carried.nonEmpty then
+            ctx.fired(Optimization.JoinKeyFilters.name)
+          carried
+
     private def withChild(p: RuntimePlan, child: RuntimePlan): RuntimePlan = p.withChildren(
       Seq(child)
     )
@@ -268,7 +327,24 @@ object PushDownFilters extends Pass:
       * comparison of constants a projection substituted) is dropped
       */
     private def filter(p: RuntimePlan, conds: List[Conjunct]): RuntimePlan =
-      val kept = conds.filterNot(c => enabled && isTrue(c.expr))
+      // A deterministic conjunct the filter p already applies, or that comes twice, is dropped: a
+      // conjunct carried across join keys may repeat one. Two random() conjuncts both stay. The
+      // comparison is structural, since a signature omits what a RowFn closes over (tuple_in)
+      val seen = mutable.ListBuffer.empty[VExpr]
+      p match
+        case Filter(_, cond, _) if enabled =>
+          seen ++= conjuncts(cond.expr)
+        case _ =>
+      val kept = conds.filterNot { c =>
+        val repeated =
+          enabled && isDeterministic(c.expr) && {
+            val r = seen.contains(c.expr)
+            if !r then
+              seen += c.expr
+            r
+          }
+        (enabled && isTrue(c.expr)) || repeated
+      }
       if kept.isEmpty then
         p
       else
@@ -321,6 +397,22 @@ object PushDownFilters extends Pass:
           )
       case _ =>
         j
+
+  /** `key is not null`, which a hash join already implies for both inputs' keys */
+  private def isNotNullKey(e: VExpr): Boolean =
+    e match
+      case IsNullExpr(_: ColRef, true) =>
+        true
+      case _ =>
+        false
+
+  /** Whether a join key of type t can carry conjuncts: equal keys are equal values under `=` */
+  private def carriesKey(t: PType): Boolean =
+    t match
+      case PType.Float64 | PType.AnyT | PType.Null =>
+        false
+      case _ =>
+        true
 
   private def castTo(e: VExpr, t: PType): VExpr =
     if e.ptype == t then

@@ -129,7 +129,7 @@ pnpm --filter website run build
 
 ### Formal Verification (Lean)
 
-`formal/` is a standalone Lean 4 project (not part of sbt) that models the activity item state machine (fencing and restart properties), the typer's common-type and coercion rules (`TypeInference`: least-upper-bound laws), `wvlet build` ordering (`ModelOrder`: selector closures, topological build order, cycle detection), SQL SELECT-block folding (`SQLBlock.accepts`: when an operator joins a SELECT block or opens a subquery), operator result typing (`TyperRules.arithmeticType` / `comparisonType` / `logicalType`), the expression rewrite rules (`RewriteExpr`: string `+`, `s"..."`, and `if(...)` keep their values on every engine, NULL included), name-lookup precedence (`Scope`, `GlobalSymbolIndex`, `findSymbolByName`, `identifierRules`, `resolveTableRef`), and a bag algebra with SQL three-valued logic for engine optimizer rules (`Algebra`), starting with where `PushDownFilters` moves a conjunct over a join (`Pushdown`) and NOT IN as a null-aware anti join (`NotIn`). Install the toolchain with [elan](https://github.com/leanprover/elan); `formal/lean-toolchain` pins the version. See `formal/README.md`.
+`formal/` is a standalone Lean 4 project (not part of sbt) that models the activity item state machine (fencing and restart properties), the typer's common-type and coercion rules (`TypeInference`: least-upper-bound laws), `wvlet build` ordering (`ModelOrder`: selector closures, topological build order, cycle detection), SQL SELECT-block folding (`SQLBlock.accepts`: when an operator joins a SELECT block or opens a subquery), operator result typing (`TyperRules.arithmeticType` / `comparisonType` / `logicalType`), the expression rewrite rules (`RewriteExpr`: string `+`, `s"..."`, and `if(...)` keep their values on every engine, NULL included), name-lookup precedence (`Scope`, `GlobalSymbolIndex`, `findSymbolByName`, `identifierRules`, `resolveTableRef`), and a bag algebra with SQL three-valued logic for engine optimizer rules (`Algebra`), starting with where `PushDownFilters` moves a conjunct over a join (`Pushdown`) and NOT IN as a null-aware anti join (`NotIn`), and the engine's filter carrying across hash join keys (`JoinKeyFilter`: a conjunct over the preserved input's keys also filters the other input). Install the toolchain with [elan](https://github.com/leanprover/elan); `formal/lean-toolchain` pins the version. See `formal/README.md`.
 
 ```bash
 # Check all proofs (warnings, including `sorry`, fail the build)
@@ -160,6 +160,9 @@ cd formal && lake exe pushdown-filter-traces
 
 # Regenerate the conformance fixture replayed by NotInConformanceTest
 cd formal && lake exe not-in-traces
+
+# Regenerate the conformance fixture replayed by JoinKeyFilterConformanceTest
+cd formal && lake exe join-key-filter-traces
 ```
 
 - When changing activity state transitions (`ItemStore`, `TaskQueue`, `BatchExecutor.recoverItems`), update the Lean model first, regenerate the fixture, and run `./sbt "runnerJVM/testOnly *ActivityModelConformanceTest"`. The `Formal` workflow fails on a stale fixture
@@ -171,6 +174,8 @@ cd formal && lake exe not-in-traces
 - When changing how a name resolves (`Scope` add/enter, `GlobalSymbolIndex.visibleEntries` or `findFirstAnywhere`, `Context.findSymbolByName`, the identifier rule in `TyperRules`, or `RelationRefResolver.resolveTableRef`), update `formal/WvletFormal/NameLookup/` and adr/2026-11-18-name-lookup-precedence.md first, run `lake exe name-lookup-traces`, and run `./sbt "langJVM/testOnly *NameLookupConformanceTest"`
 - When changing where `PushDownFilters` moves a conjunct over a join (the `Join` case of its walk), update `formal/WvletFormal/Pushdown/` first, run `lake exe pushdown-filter-traces`, and run `./sbt "engineJVM/testOnly *PushDownFiltersConformanceTest"`. New 3VL-sensitive engine rules (OR factoring, decorrelation) build their models on `formal/WvletFormal/Algebra/`
 - When changing how the engine binds NOT IN (the NOT IN conjunct in `RuntimeBinder`, the null-aware residual in `Planner.correlatedJoin`, `Binder.bindIn` over a subquery, or `InList`), update `formal/WvletFormal/NotIn/` first, run `lake exe not-in-traces`, and run `./sbt "engineJVM/testOnly *NotInConformanceTest"`
+- When changing where `PushDownFilters` moves a conjunct over a join (the `Join` case of its walk), update `formal/WvletFormal/Pushdown/` first, run `lake exe pushdown-filter-traces`, and run `./sbt "engineJVM/testOnly *PushDownFiltersConformanceTest"`. New 3VL-sensitive engine rules (NOT IN, OR factoring, decorrelation) build their models on `formal/WvletFormal/Algebra/`
+- When changing which joins carry conjuncts across their keys in the engine's `PushDownFilters` (`join_key_filters`), update `formal/WvletFormal/JoinKeyFilter/` first, run `lake exe join-key-filter-traces`, and run `./sbt "engineJVM/testOnly *JoinKeyFilterConformanceTest"`
 
 ## Architecture Overview
 

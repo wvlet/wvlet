@@ -44,6 +44,7 @@ class OptimizerOptionsTest extends UniTest:
         "decorrelate",
         "place_semi_joins",
         "push_down_filters",
+        "join_key_filters",
         "reorder_joins",
         "exact_join_order",
         "swap_build_side",

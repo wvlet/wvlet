@@ -44,6 +44,14 @@ enum Optimization(val name: String):
     */
   case PushDownFilters extends Optimization("push_down_filters")
 
+  /**
+    * With `push_down_filters`, carry a conjunct over the join keys of one input of a hash join to
+    * the other input, with the keys replaced by their partners: from the preserved input of a LEFT
+    * or RIGHT join, from the left input of a semi or anti join, and both ways for an inner join.
+    * Conjuncts also move into the inputs of inner joins the binder already ordered
+    */
+  case JoinKeyFilters extends Optimization("join_key_filters")
+
   /** Cost-based order of inner joins; disabled, the inputs are joined in written order */
   case ReorderJoins extends Optimization("reorder_joins")
 
