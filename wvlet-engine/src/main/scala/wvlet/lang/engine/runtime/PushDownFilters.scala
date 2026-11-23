@@ -198,7 +198,7 @@ object PushDownFilters extends Pass:
         case w @ Window(child, calls, _) =>
           // A conjunct over columns every call partitions by removes whole partitions, so the
           // window values of the other rows stay the same
-          val keys      = calls.map(_.partitionColumns).reduce(_ intersect _)
+          val keys = calls.map(_.partitionColumns).reduceOption(_ intersect _).getOrElse(Set.empty)
           val (in, out) = conds.partition(_.refs.subsetOf(keys))
           moved(in)
           filter(withChild(w, push(child, in)), out)
