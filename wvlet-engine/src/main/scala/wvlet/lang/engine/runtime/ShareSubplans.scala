@@ -86,7 +86,9 @@ object ShareSubplans:
       p match
         case RuntimePlan.Scan(source, cols, read, filter) =>
           ("scan", source.key, read, filter, define(cols))
-        case RuntimePlan.Values(_, _) | RuntimePlan.Legacy(_, _) | RuntimePlan.CTERef(_, _) =>
+        case RuntimePlan.Values(_, _) | RuntimePlan.Legacy(_, _) | RuntimePlan.CTERef(_, _) |
+            RuntimePlan.Sample(_, _) =>
+          // A sample draws its own random numbers, so two of them aren't shared
           throw NoKey()
         case RuntimePlan.Filter(child, cond, _) =>
           val c = canon(child)

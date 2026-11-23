@@ -72,6 +72,8 @@ object PruneColumns extends Pass:
         p.withChildren(Seq(prune(child, needed ++ keys.flatMap(_.expr.refs), ctx)))
       case Limit(child, _, _) =>
         p.withChildren(Seq(prune(child, needed, ctx)))
+      case Sample(child, _) =>
+        p.withChildren(Seq(prune(child, needed, ctx)))
       case Aggregate(child, keys, calls, _) =>
         val reads = (keys ++ calls.flatMap(_.exprs)).flatMap(_.refs).toSet
         p.withChildren(Seq(prune(child, reads, ctx)))

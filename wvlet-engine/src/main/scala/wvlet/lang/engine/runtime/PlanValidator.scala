@@ -81,7 +81,7 @@ object PlanValidator:
           inputs.foreach(i => checkWidth(b, "Union", i, columns))
         case SetOp(left, right, _, _, columns) =>
           Seq(left, right).foreach(i => checkWidth(b, "SetOp", i, columns))
-        case Distinct(_)                   =>
+        case Distinct(_) | Sample(_, _)    =>
         case Window(child, calls, columns) =>
           if columns.size != calls.size then
             b += s"Window has ${columns.size} columns for ${calls.size} calls"

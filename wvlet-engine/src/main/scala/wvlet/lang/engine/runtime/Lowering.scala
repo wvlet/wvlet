@@ -17,6 +17,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.plan.JoinOrderOptimizer
+import wvlet.lang.engine.plan.Planner
 import wvlet.lang.engine.plan.VExprs
 
 /**
@@ -84,6 +85,8 @@ object Lowering:
         SetOpOp(apply(left), apply(right), intersect, all, p.schema)
       case Distinct(child) =>
         DistinctOp(apply(child))
+      case Sample(child, percentage) =>
+        Planner.sampleFilter(apply(child), percentage)
       case Window(child, calls, _) =>
         val pos = positions(child)
         WindowOp(apply(child), calls.map(_.lower(pos)), p.schema)

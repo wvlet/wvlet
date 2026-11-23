@@ -310,6 +310,13 @@ enum RuntimePlan:
   case Distinct(child: RuntimePlan)
 
   /**
+    * About `percentage` percent of the rows of `child`, each kept with that probability by a random
+    * number generator seeded per lowering. Filters don't move through it, since doing so changes
+    * which rows the generator sees
+    */
+  case Sample(child: RuntimePlan, percentage: Double)
+
+  /**
     * Window functions over `child`: its columns, then one column per call (`columns`), computed
     * over the call's partition of the input rows
     */
@@ -354,6 +361,8 @@ enum RuntimePlan:
         columns
       case Distinct(child) =>
         child.output
+      case Sample(child, _) =>
+        child.output
       case Window(child, _, columns) =>
         child.output ++ columns
       case Legacy(_, columns) =>
@@ -384,6 +393,8 @@ enum RuntimePlan:
       case SetOp(left, right, _, _, _) =>
         Seq(left, right)
       case Distinct(child) =>
+        Seq(child)
+      case Sample(child, _) =>
         Seq(child)
       case Window(child, _, _) =>
         Seq(child)
@@ -421,8 +432,11 @@ enum RuntimePlan:
           s.copy(left = cs(0), right = cs(1))
         case d: Distinct =>
           d.copy(child = cs(0))
+        case s: Sample =>
+          s.copy(child = cs(0))
         case w: Window =>
           w.copy(child = cs(0))
+    end if
 
   end withChildren
 
@@ -497,6 +511,8 @@ enum RuntimePlan:
         s"${op}${a}"
       case Distinct(_) =>
         "Distinct"
+      case Sample(_, percentage) =>
+        s"Sample(${percentage}%)"
       case Window(_, calls, _) =>
         s"Window(${calls.mkString(", ")})"
       case Legacy(op, _) =>
