@@ -104,6 +104,21 @@ object Binder:
 
   val IntervalFunction = "__wv_interval"
 
+  /** List functions that take a lambda argument, bound by `bindLambdaCall` */
+  val LambdaFunctions: Set[String] = Set(
+    "list_transform",
+    "array_transform",
+    "list_apply",
+    "array_apply",
+    "apply",
+    "list_filter",
+    "array_filter",
+    "filter",
+    "list_reduce",
+    "array_reduce",
+    "reduce"
+  )
+
   private val IntervalPattern = """(?i)\binterval\s*\(([^()]*)\)\s*([a-z]+)""".r
 
   val ConcatFunction = "__wv_concat"
@@ -1421,9 +1436,7 @@ class Binder(
               PType.AnyT,
               a => intervalOf(unit, a(0).asInstanceOf[Double])
             )
-      case "list_transform" | "array_transform" | "list_apply" | "array_apply" | "apply" |
-          "list_filter" | "array_filter" | "filter" | "list_reduce" | "array_reduce" | "reduce"
-          if f.args.exists(_.value.isInstanceOf[LambdaExpr]) =>
+      case _ if LambdaFunctions.contains(name) && f.args.exists(_.value.isInstanceOf[LambdaExpr]) =>
         bindLambdaCall(name, f, receiverArgs)
       case "date_add" if args.size == 2 =>
         args(1) match
