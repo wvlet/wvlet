@@ -28,9 +28,12 @@ trait DuckDBCompat:
   def isAvailable: Boolean = DuckDBLoader.isLoaded
   def canExecute: Boolean  = DuckDBLoader.isLoaded
 
+  /** Why libduckdb could not be loaded, with how to install it or point `WVLET_LIBDUCKDB` at it. */
+  def notAvailableMessage: String = DuckDBLoader.notAvailableMessage
+
   private def requireLoaded(): Unit =
     if !DuckDBLoader.isLoaded then
-      throw new UnsupportedOperationException(DuckDBLoader.notAvailableMessage)
+      throw new UnsupportedOperationException(notAvailableMessage)
 
   def schemaOf(path: String): RelationType =
     if !Files.isRegularFile(Paths.get(path)) then
@@ -110,11 +113,8 @@ trait DuckDBCompat:
     * parameter slots used here; `close()` writes them back into fresh slots for `duckdb_disconnect`
     * / `duckdb_close`.
     */
-  def newSession(path: Option[String] = None): DuckDBSession =
+  def newSession(path: Option[String] = None): DuckDBSession = Zone {
     requireLoaded()
-    openSession(path)
-
-  private def openSession(path: Option[String]): DuckDBSession = Zone {
     val db    = stackalloc[DuckDBApi.duckdb_database]()
     val con   = stackalloc[DuckDBApi.duckdb_connection]()
     val cPath = path.map(p => toCString(p)).getOrElse(null)

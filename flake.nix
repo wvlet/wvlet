@@ -26,7 +26,7 @@
           # Required native libraries
           boehmgc
           curl       # libcurl for uni's NativeHttpChannel, reached via Trino client
-          duckdb     # libduckdb for wvc's @link("duckdb") schema inference
+          duckdb     # libduckdb, loaded at runtime for DuckDB-backed features (not linked)
           openssl
           zlib
           # Build tools

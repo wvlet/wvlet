@@ -55,12 +55,7 @@ class SqlConnectorProvider(profile: Profile = Profile.defaultDuckDBProfile)
     config.`type`.toLowerCase match
       case "duckdb" =>
         if !DuckDB.canExecute then
-          throw StatusCode
-            .NOT_IMPLEMENTED
-            .newException(
-              "DuckDB execution is not available on this platform. " +
-                "Ensure libduckdb is installed and discoverable, or set WVLET_LIBDUCKDB."
-            )
+          throw StatusCode.NOT_IMPLEMENTED.newException(DuckDB.notAvailableMessage)
         // A persistent session so temp tables and multi-statement scripts survive across
         // execute calls. The optional `path` property opens a file-backed database.
         DuckDBSqlConnector.withNewSession(config.properties.get("path").map(_.toString))

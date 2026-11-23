@@ -9,7 +9,7 @@ import scala.scalajs.js.annotation.JSImport
   * koffi ships prebuilt N-API addons for every major platform (darwin arm64/x64, linux
   * x64/arm64/musl, windows x64/arm64, freebsd, openbsd), so installing it via npm needs no build
   * toolchain. We use it to call `libduckdb`'s C API synchronously from Node — same 9-function
-  * surface we already bind from Scala Native via `@extern @link("duckdb")`.
+  * surface the Scala Native backend loads at runtime via `wvlet_duckdb_loader.c`.
   *
   * Only the bits we actually use are surfaced here; the full koffi API is much larger.
   */

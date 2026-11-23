@@ -115,14 +115,17 @@ end DuckDBApi
   */
 private[duckdb] object DuckDBLoader:
 
-  /** The error from the last failed candidate, when no candidate loaded. */
-  private var lastError: Option[String] = None
+  /**
+    * The error from the first failed candidate: `WVLET_LIBDUCKDB` when set, since that is the
+    * library the user asked for, else the loader's own search
+    */
+  private var firstError: Option[String] = None
 
   /** True when libduckdb was found and every binding in [[DuckDBApi]] resolved. */
   lazy val isLoaded: Boolean = candidatePaths.exists(tryLoad)
 
   def notAvailableMessage: String =
-    val reason = lastError.map(e => s" (${e})").getOrElse("")
+    val reason = firstError.map(e => s" (${e})").getOrElse("")
     "libduckdb is not available. Install DuckDB (e.g. `brew install duckdb`) or set " +
       s"WVLET_LIBDUCKDB to the absolute path of libduckdb${reason}"
 
@@ -130,7 +133,8 @@ private[duckdb] object DuckDBLoader:
     if DuckDBApi.wvlet_duckdb_load(toCString(path)) == 0 then
       true
     else
-      lastError = Some(fromCString(DuckDBApi.wvlet_duckdb_load_error()))
+      if firstError.isEmpty then
+        firstError = Some(fromCString(DuckDBApi.wvlet_duckdb_load_error()))
       false
   }
 

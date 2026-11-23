@@ -20,6 +20,9 @@ trait DuckDBCompat:
   def isAvailable: Boolean = true
   def canExecute: Boolean  = true
 
+  /** Why DuckDB is unavailable; the JVM always bundles DuckDB JDBC, so this is never reported. */
+  def notAvailableMessage: String = "DuckDB is not available"
+
   def schemaOf(path: String): RelationType =
     if !File(path).isFile then
       EmptyRelationType
