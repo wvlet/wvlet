@@ -389,7 +389,8 @@ class QueryExecutor(
 
   /**
     * `save to '<local file>'` on engines that can't write local files (e.g. Trino, Snowflake):
-    * stream the result from the active engine and write the file with the wvlet engine's writers
+    * stream the result from the active engine and write the file with the wvlet engine's writers,
+    * in any format they support (Parquet, CSV, TSV, JSON lines; by extension or `format:`)
     */
   private def executeSaveToLocalFile(save: SaveTo)(using context: Context): QueryResult =
     val targetPath = context.dataFilePath(save.targetName)
@@ -399,10 +400,6 @@ class QueryExecutor(
         .newException(
           s"Saving to a remote path is not supported on ${context.dbType}: ${targetPath}"
         )
-    if !targetPath.toLowerCase.endsWith(".parquet") then
-      throw StatusCode
-        .NOT_IMPLEMENTED
-        .newException(s"Only Parquet is supported for Trino local save. Given: ${targetPath}")
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
     val n                               = LocalFileExport.write(

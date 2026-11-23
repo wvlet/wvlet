@@ -228,6 +228,9 @@ read back by the next session:
 | `.csv`, `.tsv` | CSV / TSV with a header row |
 | `.json`, `.jsonl`, `.ndjson` | Newline-delimited JSON |
 
+The same writers serve `save to '<path>'` on engines that can't write local files (Trino,
+Snowflake): the result streams from the engine page by page into the file, in any format above.
+
 ```wvlet
 from 'data/orders.parquet'
 where o_orderstatus = 'F'
