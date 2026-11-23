@@ -28,6 +28,7 @@ on:
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/RuntimeBinder.scala'
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/Normalize.scala'
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/expr/VExpr.scala'
+      - 'wvlet-engine/src/main/scala/wvlet/lang/engine/plan/Planner.scala'
       - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/**'
       - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/join-key-filter-traces.json'
   push:
@@ -129,3 +130,8 @@ jobs:
           lake exe factor-or-traces
           git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/factor-or-traces.json \
             || (echo "::error::The FactorOr conformance fixture is stale. Run 'cd formal && lake exe factor-or-traces' and commit the result." && exit 1)
+      - name: Check decorrelation conformance fixture freshness
+        run: |
+          lake exe decorrelate-traces
+          git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/decorrelate-traces.json \
+            || (echo "::error::The decorrelation conformance fixture is stale. Run 'cd formal && lake exe decorrelate-traces' and commit the result." && exit 1)

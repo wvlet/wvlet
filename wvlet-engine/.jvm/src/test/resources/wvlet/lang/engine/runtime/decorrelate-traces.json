@@ -1,0 +1,46 @@
+{"left": [[1, 10], [1, 10], [2, null], [null, 30], [3, 40], [4, 5]], "right": [[1, 100], [1, null], [1, 100], [2, 5], [4, 5], [null, 30], [3, null], [5, 40]], "exists": [
+  {"where": "(c = a)", "existsRows": [[1, 10], [1, 10], [2, null], [3, 40], [4, 5]], "notExistsRows": [[null, 30]]},
+  {"where": "(c = a) and (b < d)", "existsRows": [[1, 10], [1, 10]], "notExistsRows": [[2, null], [null, 30], [3, 40], [4, 5]]},
+  {"where": "(c = a) and (d is not null)", "existsRows": [[1, 10], [1, 10], [2, null], [4, 5]], "notExistsRows": [[null, 30], [3, 40]]},
+  {"where": "(b < d)", "existsRows": [[1, 10], [1, 10], [null, 30], [3, 40], [4, 5]], "notExistsRows": [[2, null]]},
+  {"where": "(d = b)", "existsRows": [[null, 30], [3, 40], [4, 5]], "notExistsRows": [[1, 10], [1, 10], [2, null]]},
+  {"where": "(c = a) and (d = b)", "existsRows": [[4, 5]], "notExistsRows": [[1, 10], [1, 10], [2, null], [null, 30], [3, 40]]},
+  {"where": "(c = a) and (not (d = 100))", "existsRows": [[2, null], [4, 5]], "notExistsRows": [[1, 10], [1, 10], [null, 30], [3, 40]]},
+  {"where": "((c = a) or (d = b))", "existsRows": [[1, 10], [1, 10], [2, null], [null, 30], [3, 40], [4, 5]], "notExistsRows": []}
+], "in": [
+  {"target": "a", "value": "c", "where": "", "rows": [[1, 10], [1, 10], [2, null], [3, 40], [4, 5]]},
+  {"target": "a", "value": "c", "where": "(b < d)", "rows": [[1, 10], [1, 10]]},
+  {"target": "a", "value": "c", "where": "(d = b)", "rows": [[4, 5]]},
+  {"target": "b", "value": "d", "where": "(c = a)", "rows": [[4, 5]]},
+  {"target": "b", "value": "d", "where": "(c = a) and (d is not null)", "rows": [[4, 5]]}
+], "marks": [
+  {"where": "(c = a)", "conds": [{"cond": "b is null or E", "rows": [[1, 10], [1, 10], [2, null], [3, 40], [4, 5]]}, {"cond": "E or a = 2", "rows": [[1, 10], [1, 10], [2, null], [3, 40], [4, 5]]}, {"cond": "not (E or b is null)", "rows": [[null, 30]]}, {"cond": "not (E and a = 1)", "rows": [[2, null], [null, 30], [3, 40], [4, 5]]}]},
+  {"where": "(c = a) and (d is not null)", "conds": [{"cond": "b is null or E", "rows": [[1, 10], [1, 10], [2, null], [4, 5]]}, {"cond": "E or a = 2", "rows": [[1, 10], [1, 10], [2, null], [4, 5]]}, {"cond": "not (E or b is null)", "rows": [[null, 30], [3, 40]]}, {"cond": "not (E and a = 1)", "rows": [[2, null], [null, 30], [3, 40], [4, 5]]}]},
+  {"where": "(d = b)", "conds": [{"cond": "b is null or E", "rows": [[2, null], [null, 30], [3, 40], [4, 5]]}, {"cond": "E or a = 2", "rows": [[2, null], [null, 30], [3, 40], [4, 5]]}, {"cond": "not (E or b is null)", "rows": [[1, 10], [1, 10]]}, {"cond": "not (E and a = 1)", "rows": [[1, 10], [1, 10], [2, null], [3, 40], [4, 5]]}]},
+  {"where": "(c = a) and (d = b)", "conds": [{"cond": "b is null or E", "rows": [[2, null], [4, 5]]}, {"cond": "E or a = 2", "rows": [[2, null], [4, 5]]}, {"cond": "not (E or b is null)", "rows": [[1, 10], [1, 10], [null, 30], [3, 40]]}, {"cond": "not (E and a = 1)", "rows": [[1, 10], [1, 10], [2, null], [null, 30], [3, 40], [4, 5]]}]}
+], "pushdownLeft": [[1, 10], [1, 10], [2, null], [null, 30], [3, 40]], "pushdownRight": [[1, 100], [1, null], [null, 300], [4, 400], [2, 5]], "pushdown": [
+  {"kind": "semi", "on": "a = c", "where": "a = 1", "place": "left", "trueConstant": false, "rows": [[1, 10], [1, 10]]},
+  {"kind": "semi", "on": "a = c", "where": "b is null", "place": "left", "trueConstant": false, "rows": [[2, null]]},
+  {"kind": "semi", "on": "a = c", "where": "b is not null", "place": "left", "trueConstant": false, "rows": [[1, 10], [1, 10]]},
+  {"kind": "semi", "on": "a = c", "where": "(a = 2) or (a is null)", "place": "left", "trueConstant": false, "rows": [[2, null]]},
+  {"kind": "semi", "on": "a = c", "where": "1 < 2", "place": "left", "trueConstant": true, "rows": [[1, 10], [1, 10], [2, null]]},
+  {"kind": "semi", "on": "a = c", "where": "2 < 1", "place": "left", "trueConstant": false, "rows": []},
+  {"kind": "semi", "on": "(a = c) and (b < d)", "where": "a = 1", "place": "left", "trueConstant": false, "rows": [[1, 10], [1, 10]]},
+  {"kind": "semi", "on": "(a = c) and (b < d)", "where": "b is null", "place": "left", "trueConstant": false, "rows": []},
+  {"kind": "semi", "on": "(a = c) and (b < d)", "where": "b is not null", "place": "left", "trueConstant": false, "rows": [[1, 10], [1, 10]]},
+  {"kind": "semi", "on": "(a = c) and (b < d)", "where": "(a = 2) or (a is null)", "place": "left", "trueConstant": false, "rows": []},
+  {"kind": "semi", "on": "(a = c) and (b < d)", "where": "1 < 2", "place": "left", "trueConstant": true, "rows": [[1, 10], [1, 10]]},
+  {"kind": "semi", "on": "(a = c) and (b < d)", "where": "2 < 1", "place": "left", "trueConstant": false, "rows": []},
+  {"kind": "anti", "on": "a = c", "where": "a = 1", "place": "left", "trueConstant": false, "rows": []},
+  {"kind": "anti", "on": "a = c", "where": "b is null", "place": "left", "trueConstant": false, "rows": []},
+  {"kind": "anti", "on": "a = c", "where": "b is not null", "place": "left", "trueConstant": false, "rows": [[null, 30], [3, 40]]},
+  {"kind": "anti", "on": "a = c", "where": "(a = 2) or (a is null)", "place": "left", "trueConstant": false, "rows": [[null, 30]]},
+  {"kind": "anti", "on": "a = c", "where": "1 < 2", "place": "left", "trueConstant": true, "rows": [[null, 30], [3, 40]]},
+  {"kind": "anti", "on": "a = c", "where": "2 < 1", "place": "left", "trueConstant": false, "rows": []},
+  {"kind": "anti", "on": "(a = c) and (b < d)", "where": "a = 1", "place": "left", "trueConstant": false, "rows": []},
+  {"kind": "anti", "on": "(a = c) and (b < d)", "where": "b is null", "place": "left", "trueConstant": false, "rows": [[2, null]]},
+  {"kind": "anti", "on": "(a = c) and (b < d)", "where": "b is not null", "place": "left", "trueConstant": false, "rows": [[null, 30], [3, 40]]},
+  {"kind": "anti", "on": "(a = c) and (b < d)", "where": "(a = 2) or (a is null)", "place": "left", "trueConstant": false, "rows": [[2, null], [null, 30]]},
+  {"kind": "anti", "on": "(a = c) and (b < d)", "where": "1 < 2", "place": "left", "trueConstant": true, "rows": [[2, null], [null, 30], [3, 40]]},
+  {"kind": "anti", "on": "(a = c) and (b < d)", "where": "2 < 1", "place": "left", "trueConstant": false, "rows": []}
+]}

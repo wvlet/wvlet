@@ -39,3 +39,6 @@ import WvletFormal.JoinKeyFilter.Traces
 import WvletFormal.FactorOr.Rule
 import WvletFormal.FactorOr.Necessity
 import WvletFormal.FactorOr.Traces
+import WvletFormal.Decorrelate.Rule
+import WvletFormal.Decorrelate.Necessity
+import WvletFormal.Decorrelate.Traces

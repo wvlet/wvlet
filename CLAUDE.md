@@ -129,7 +129,7 @@ pnpm --filter website run build
 
 ### Formal Verification (Lean)
 
-`formal/` is a standalone Lean 4 project (not part of sbt) that models the activity item state machine (fencing and restart properties), the typer's common-type and coercion rules (`TypeInference`: least-upper-bound laws), `wvlet build` ordering (`ModelOrder`: selector closures, topological build order, cycle detection), SQL SELECT-block folding (`SQLBlock.accepts`: when an operator joins a SELECT block or opens a subquery), operator result typing (`TyperRules.arithmeticType` / `comparisonType` / `logicalType`), the expression rewrite rules (`RewriteExpr`: string `+`, `s"..."`, and `if(...)` keep their values on every engine, NULL included), name-lookup precedence (`Scope`, `GlobalSymbolIndex`, `findSymbolByName`, `identifierRules`, `resolveTableRef`), and a bag algebra with SQL three-valued logic for engine optimizer rules (`Algebra`), starting with where `PushDownFilters` moves a conjunct over a join (`Pushdown`), NOT IN as a null-aware anti join (`NotIn`), OR factoring under 3VL (`FactorOr`), and the engine's filter carrying across hash join keys (`JoinKeyFilter`: a conjunct over the preserved input's keys also filters the other input). Install the toolchain with [elan](https://github.com/leanprover/elan); `formal/lean-toolchain` pins the version. See `formal/README.md`.
+`formal/` is a standalone Lean 4 project (not part of sbt) that models the activity item state machine (fencing and restart properties), the typer's common-type and coercion rules (`TypeInference`: least-upper-bound laws), `wvlet build` ordering (`ModelOrder`: selector closures, topological build order, cycle detection), SQL SELECT-block folding (`SQLBlock.accepts`: when an operator joins a SELECT block or opens a subquery), operator result typing (`TyperRules.arithmeticType` / `comparisonType` / `logicalType`), the expression rewrite rules (`RewriteExpr`: string `+`, `s"..."`, and `if(...)` keep their values on every engine, NULL included), name-lookup precedence (`Scope`, `GlobalSymbolIndex`, `findSymbolByName`, `identifierRules`, `resolveTableRef`), and a bag algebra with SQL three-valued logic for engine optimizer rules (`Algebra`), starting with where `PushDownFilters` moves a conjunct over a join (`Pushdown`), NOT IN as a null-aware anti join (`NotIn`), OR factoring under 3VL (`FactorOr`), EXISTS / IN decorrelation into semi, anti, and mark joins (`Decorrelate`), and the engine's filter carrying across hash join keys (`JoinKeyFilter`: a conjunct over the preserved input's keys also filters the other input). Install the toolchain with [elan](https://github.com/leanprover/elan); `formal/lean-toolchain` pins the version. See `formal/README.md`.
 
 ```bash
 # Check all proofs (warnings, including `sorry`, fail the build)
@@ -166,6 +166,9 @@ cd formal && lake exe join-key-filter-traces
 
 # Regenerate the conformance fixture replayed by FactorOrConformanceTest
 cd formal && lake exe factor-or-traces
+
+# Regenerate the conformance fixture replayed by DecorrelateConformanceTest
+cd formal && lake exe decorrelate-traces
 ```
 
 - When changing activity state transitions (`ItemStore`, `TaskQueue`, `BatchExecutor.recoverItems`), update the Lean model first, regenerate the fixture, and run `./sbt "runnerJVM/testOnly *ActivityModelConformanceTest"`. The `Formal` workflow fails on a stale fixture
@@ -179,6 +182,7 @@ cd formal && lake exe factor-or-traces
 - When changing how the engine binds NOT IN (the NOT IN conjunct in `RuntimeBinder`, the null-aware residual in `Planner.correlatedJoin`, `Binder.bindIn` over a subquery, or `InList`), update `formal/WvletFormal/NotIn/` first, run `lake exe not-in-traces`, and run `./sbt "engineJVM/testOnly *NotInConformanceTest"`
 - When changing which joins carry conjuncts across their keys in the engine's `PushDownFilters` (`join_key_filters`), update `formal/WvletFormal/JoinKeyFilter/` first, run `lake exe join-key-filter-traces`, and run `./sbt "engineJVM/testOnly *JoinKeyFilterConformanceTest"`
 - When changing `FactorOr` (`Normalize`) or a `VExpr.sig` it matches conjuncts by, update `formal/WvletFormal/FactorOr/` first, run `lake exe factor-or-traces`, and run `./sbt "engineJVM/testOnly *FactorOrConformanceTest"`. Conditions with the same `sig` must have the same value
+- When changing how the engine decorrelates EXISTS / IN (`Planner.correlatedJoin` for EXISTS and IN, `planCorrelated`'s conjunct split, or `Planner.decorrelateExists`), update `formal/WvletFormal/Decorrelate/` first, run `lake exe decorrelate-traces`, and run `./sbt "engineJVM/testOnly *DecorrelateConformanceTest"`. Its fixture also replays the pushdown model's semi and anti join cases
 
 ## Architecture Overview
 

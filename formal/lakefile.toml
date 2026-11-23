@@ -1,6 +1,6 @@
 name = "wvlet-formal"
 version = "0.1.0"
-defaultTargets = ["WvletFormal", "activity-traces", "typer-traces", "model-build-traces", "sql-fold-traces", "rewrite-expr-traces", "name-lookup-traces", "operator-traces", "pushdown-filter-traces", "not-in-traces", "join-key-filter-traces"]
+defaultTargets = ["WvletFormal", "activity-traces", "typer-traces", "model-build-traces", "sql-fold-traces", "rewrite-expr-traces", "name-lookup-traces", "operator-traces", "pushdown-filter-traces", "not-in-traces", "join-key-filter-traces", "factor-or-traces", "decorrelate-traces"]
 
 [leanOptions]
 autoImplicit = false
@@ -51,3 +51,7 @@ root = "JoinKeyFilterTraces"
 [[lean_exe]]
 name = "factor-or-traces"
 root = "FactorOrTraces"
+
+[[lean_exe]]
+name = "decorrelate-traces"
+root = "DecorrelateTraces"

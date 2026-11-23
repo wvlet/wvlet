@@ -29,6 +29,10 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
 - OR factoring (wvlet-engine's `Normalize`: `FactorOr`): taking the conjuncts common to every
   branch out of an `or` keeps the condition's value under three-valued logic, provided conjuncts
   with the same signature have the same value.
+- EXISTS / IN decorrelation (wvlet-engine's `Planner.correlatedJoin` and
+  `Planner.decorrelateExists`): the semi and anti joins of correlated `[NOT] EXISTS` and `IN`
+  conjuncts, and the EXISTS mark (a left join with the distinct correlation keys) under OR and
+  NOT, return SQL's rows, NULLs and duplicates included.
 
 See
 [adr/2026-11-18-lean-formal-verification.md](../adr/2026-11-18-lean-formal-verification.md) for
@@ -103,6 +107,9 @@ lake exe factor-or-traces   # regenerate the OR factoring conformance fixture
 | `WvletFormal/FactorOr/Rule.lean` | `factor`: the conjuncts common to every branch of an `or` (matched by a key, taken from the first branch), then the `or` of the other conjuncts, or nothing more when a branch has no other conjunct; `factorConjuncts`: each conjunct of a filter condition replaced by its factored conjuncts | `factor_sound`, `factorConjuncts_sound`: the factored condition has the value of the original on every row where conjuncts with the same key have the same value (`FaithfulOn`), NULLs included, by distributivity and absorption in Kleene logic; `filter_sound_id`: with the condition itself as the key, a WHERE keeps its rows |
 | `WvletFormal/FactorOr/Necessity.lean` | `oldSig`: `InList.sig` before the fix (non-NULL values joined with commas) | `oldSig_drops_null_value`, `oldSig_joins_values`: the old signature factors `a not in (1, 3)` with `a not in (1, 3, null)`, and `s in ('x,y')` with `s in ('x', 'y')`, and keeps rows SQL drops; `complement_unsound`: `(p and q) or (not p and q) = q` holds in two-valued logic only; `not_common_unsound`: a conjunct of one branch cannot be taken out |
 | `WvletFormal/FactorOr/Traces.lean`, `FactorOrTraces.lean` | — | exports the OR factoring conformance fixture |
+| `WvletFormal/Decorrelate/Rule.lean` | SQL's `[NOT] EXISTS` and `IN` over a correlated subquery (`existsSql`, `inSql`); `planCorrelated`'s split of the subquery's WHERE (`locals` filter the body, `corrs` go on the join); `planExists` and `planIn`: the semi and anti joins of `correlatedJoin`; `markJoin`: `decorrelateExists`' left join with the distinct correlation keys and its `key is not null` flag | `planExists_sound`, `planIn_sound`: the joins return SQL's rows of the WHERE conjunct, for every pair of inputs and conjunct list, NULLs and duplicates included; `markJoin_sound`: the mark join keeps every outer row once, flagged by SQL's EXISTS (never unknown), when the correlated conditions are key equalities; `markFilter_sound`: so any condition over the flag (EXISTS under OR, NOT, or CASE) keeps SQL's rows |
+| `WvletFormal/Decorrelate/Necessity.lean` | — | EXISTS as an inner join duplicates outer rows, and removing the duplicates also removes duplicate outer rows SQL keeps; the mark's left join over the body instead of its distinct keys duplicates outer rows; a semi join under OR drops rows; NOT EXISTS is not NOT IN (a NULL outer key, a NULL inner key) |
+| `WvletFormal/Decorrelate/Traces.lean`, `DecorrelateTraces.lean` | — | exports the decorrelation conformance fixture, with the pushdown model's semi and anti join cases |
 
 ## Keeping the model and the code in sync
 
@@ -180,12 +187,26 @@ behavior as traces:
   `FactorOrConformanceTest` (engineJVM) runs `Normalize` on each bound condition to check that it
   factors as the model does, and runs the condition (FactorOr on and off) and its factored form
   to compare rows with the model and DuckDB.
+- `lake exe decorrelate-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/decorrelate-traces.json`: an
+  outer table with NULL and duplicate rows against an inner table with NULL keys and duplicate
+  matches, with the rows of `exists` and `not exists` over 8 subquery WHEREs (a key, a key and a
+  residual, a key and a local filter, only a residual, a key over another column, two keys, a
+  key and a negation, and an OR over outer columns), of 5 `in` subqueries (uncorrelated,
+  correlated by a residual, by a key, and with a local filter), and of 4 conditions with an
+  EXISTS under OR and NOT over 4 key correlations; plus the pushdown model's semi and anti join
+  cases (24: both ON conditions of the pushdown fixture with each conjunct over the outer input
+  or no column), with placement and rows. `DecorrelateConformanceTest` (engineJVM) runs each
+  query, compares rows with the model and DuckDB, checks the join kinds (a semi or anti join per
+  conjunct, a left join per mark), and runs `Normalize` and `PushDownFilters` on the pushdown
+  cases to check that the conjunct moved into the outer input.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator
 typing rule in `TyperRules`, the build
-ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, a name-lookup rule, where `PushDownFilters` moves a conjunct over a join, how the engine binds NOT IN, or how
-`FactorOr` factors an `or` (or a `sig` it compares conjuncts by), update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
+ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, a name-lookup rule, where `PushDownFilters` moves a conjunct over a join, how the engine binds NOT IN, how
+`FactorOr` factors an `or` (or a `sig` it compares conjuncts by), or how the engine decorrelates
+EXISTS and IN, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
 conformance test passes.
 
 ## Known gaps of the typer model
@@ -262,9 +283,9 @@ The model proves today's behavior. These are left for follow-ups:
 - The model treats an outer join's ON condition as one condition; the pass also moves its
   equalities between the inputs into hash keys. The row replay checks that NULL keys never
   match, but the key extraction itself is not proved.
-- Semi and anti joins are proved but not replayed, since queries reach them only through IN and
-  EXISTS subqueries; the replay comes with the decorrelation model. Right semi and anti joins,
-  the `Join` nodes `ReorderJoins` builds, and ASOF joins are out of scope.
+- Semi and anti joins are replayed by `DecorrelateConformanceTest`, since queries reach them only
+  through EXISTS subqueries. Right semi and anti joins, the `Join` nodes `ReorderJoins` builds,
+  and ASOF joins are out of scope.
 - The engine never turns an outer join into an inner join under a NULL-rejecting conjunct, so
   the model has no such rule.
 - A TRUE conjunct that reads no column is dropped (by the binder, or by the pass itself), so
@@ -299,3 +320,21 @@ The model proves today's behavior. These are left for follow-ups:
 - The engine keeps a bound `between` as one conjunct; the model splits every `and`, which has the
   same value. Outer join ON conditions and inner join conditions are factored by the same
   `factor`, but the replay covers WHERE only.
+
+## Known gaps of the decorrelation model
+
+- Correlated scalar subqueries (`Planner.decorrelateScalar`: an aggregation by the correlation
+  keys left-joined to the outer input, with the empty-group value such as `count` = 0) are not
+  modeled.
+- The subquery is `from rs where ...` (with `select c` for IN): `planCorrelated` rejects other
+  shapes, and the model has no projections, so an IN value is an inner column, and casts to a
+  common key type are trusted.
+- Which conjuncts are local is decided by the columns they read; the engine decides by binding
+  each conjunct over the subquery's input, with inner names resolving first. The fixture's
+  tables have distinct column names, so name shadowing is not replayed.
+- The mark needs every correlated condition to be an equality (the engine rejects others); the
+  model takes the keys as `outer = inner` pairs and does not replay the rejection.
+- EXISTS in a select item parses in neither Wvlet nor SQL, so the mark's flag is replayed through
+  WHERE conditions only.
+- Uncorrelated EXISTS is decided at plan time and uncorrelated IN is the same semi join; one
+  uncorrelated IN is replayed, and the NOT IN model covers the plan-time value sets.
