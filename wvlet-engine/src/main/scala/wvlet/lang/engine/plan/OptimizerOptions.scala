@@ -23,6 +23,13 @@ enum Optimization(val name: String):
   /** `(a and b) or (a and c)` => `a and (b or c)` */
   case FactorOr extends Optimization("factor_or")
 
+  /**
+    * Push filter conjuncts down the runtime plan: through projections, aggregates (grouping keys
+    * only), and sorts, into the preserved side of outer joins and into inner join trees, with
+    * equalities to constants inferred transitively there
+    */
+  case PushDownFilters extends Optimization("push_down_filters")
+
   /** Cost-based order of inner joins; disabled, the inputs are joined in written order */
   case ReorderJoins extends Optimization("reorder_joins")
 

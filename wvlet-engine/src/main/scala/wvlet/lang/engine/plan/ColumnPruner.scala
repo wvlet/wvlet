@@ -348,17 +348,24 @@ object VExprs:
         other.children.foreach(collectRefs(_, acc))
 
   /** Rewrite column positions through `m` (old -> new) */
-  def remap(e: VExpr, m: Array[Int]): VExpr =
-    def r(x: VExpr): VExpr = remap(x, m)
+  def remap(e: VExpr, m: Array[Int]): VExpr = mapRefs(
+    e,
+    c =>
+      val i = m(c.index)
+      if i < 0 then
+        throw IllegalStateException(s"Column ${c.name} (#${c.index}) was pruned")
+      if i == c.index then
+        c
+      else
+        c.copy(index = i)
+  )
+
+  /** Replace each column reference of an expression with `f` of it */
+  def mapRefs(e: VExpr, f: ColRef => VExpr): VExpr =
+    def r(x: VExpr): VExpr = mapRefs(x, f)
     e match
       case c: ColRef =>
-        val i = m(c.index)
-        if i < 0 then
-          throw IllegalStateException(s"Column ${c.name} (#${c.index}) was pruned")
-        if i == c.index then
-          c
-        else
-          c.copy(index = i)
+        f(c)
       case _ if e.children.isEmpty =>
         e
       case x: RowFn =>
@@ -395,6 +402,6 @@ object VExprs:
         throw IllegalStateException(s"Unsupported expression for column remapping: ${other}")
     end match
 
-  end remap
+  end mapRefs
 
 end VExprs

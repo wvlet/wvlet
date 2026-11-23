@@ -23,18 +23,19 @@ import wvlet.lang.engine.plan.Optimization
 /**
   * Rewrites conditions into the shape the later passes key on. It runs first.
   *
-  * The planner still factors the conditions that legacy join planning reads (outer-join ON
-  * conditions, conditions pushed below a left join, conditions with subqueries) on the compiler's
-  * expressions, before binding.
+  * The planner still factors the conditions that legacy join planning reads (conditions with
+  * subqueries, and joins the binder leaves to the planner) on the compiler's expressions, before
+  * binding.
   */
 object Normalize extends RuleBatch("normalize", Seq(FactorOr))
 
 /**
   * `(a and b) or (a and c)` => `a and (b or c)`, and `a or (a and b)` => `a`, over the conjuncts of
-  * a filter and the conditions of an inner join tree, before [[ReorderJoins]] reads them (a common
-  * equality becomes a join key). Conjuncts are matched by their bound signature, which names
-  * columns by id. Both rewrites keep the value under three-valued logic (and distributes over or,
-  * and absorption holds, with NULL as unknown)
+  * a filter, an outer join's ON condition, and the conditions of an inner join tree, before
+  * [[PushDownFilters]] and [[ReorderJoins]] read them (a common equality becomes a join key).
+  * Conjuncts are matched by their bound signature, which names columns by id. Both rewrites keep
+  * the value under three-valued logic (and distributes over or, and absorption holds, with NULL as
+  * unknown)
   */
 object FactorOr extends Rule:
   override def optimization: Optimization = Optimization.FactorOr
@@ -42,13 +43,10 @@ object FactorOr extends Rule:
   override def apply(p: RuntimePlan): Option[RuntimePlan] =
     p match
       case f: RuntimePlan.Filter =>
-        val conds    = conjuncts(f.cond.expr)
-        val factored = conds.map(factor)
-        if factored.forall(_.isEmpty) then
-          None
-        else
-          val all = conds.zip(factored).flatMap((c, fc) => fc.getOrElse(List(c)))
-          Some(f.copy(cond = BExpr(and(all))))
+        factorConjuncts(f.cond).map(c => f.copy(cond = c))
+      case j: RuntimePlan.Join if j.residual.nonEmpty =>
+        // An outer join's ON condition, before PushDownFilters turns its equalities into keys
+        factorConjuncts(j.residual.get).map(c => j.copy(residual = Some(c)))
       case j: RuntimePlan.InnerJoins =>
         // Each condition is one conjunct: it is replaced in place by its factored conjuncts
         val factored = j.conds.map(c => factor(c.cond.expr))
@@ -69,7 +67,7 @@ object FactorOr extends Rule:
     * reduces a filter's bound conjuncts with `and` from the left, so reducing them again gives the
     * same expression
     */
-  private def conjuncts(e: VExpr): List[VExpr] =
+  private[runtime] def conjuncts(e: VExpr): List[VExpr] =
     e match
       case AndExpr(Compare(CmpOp.Ge, x, _), Compare(CmpOp.Le, y, _)) if x.sig == y.sig =>
         List(e)
@@ -77,6 +75,15 @@ object FactorOr extends Rule:
         conjuncts(l) ++ conjuncts(r)
       case other =>
         List(other)
+
+  /** The condition with each of its conjuncts factored, or None when none is */
+  private def factorConjuncts(cond: BExpr): Option[BExpr] =
+    val conds    = conjuncts(cond.expr)
+    val factored = conds.map(factor)
+    if factored.forall(_.isEmpty) then
+      None
+    else
+      Some(BExpr(and(conds.zip(factored).flatMap((c, fc) => fc.getOrElse(List(c))))))
 
   private def disjuncts(e: VExpr): List[VExpr] =
     e match

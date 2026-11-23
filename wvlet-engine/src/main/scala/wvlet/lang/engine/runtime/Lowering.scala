@@ -31,7 +31,7 @@ object Lowering:
         ScanOp(source, p.schema, None, None)
       case Values(_, rows) =>
         BatchesOp(p.schema, Seq(rows), "Values")
-      case Filter(child, cond) =>
+      case Filter(child, cond, _) =>
         FilterOp(apply(child), cond.lower(positions(child)))
       case Project(child, exprs, _) =>
         val pos = positions(child)

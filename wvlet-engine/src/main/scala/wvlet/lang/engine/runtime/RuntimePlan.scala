@@ -150,8 +150,11 @@ enum RuntimePlan:
   /** Rows evaluated at plan time */
   case Values(columns: IndexedSeq[Column], rows: Batch)
 
-  /** Rows of `child` for which `cond` is true */
-  case Filter(child: RuntimePlan, cond: BExpr)
+  /**
+    * Rows of `child` for which `cond` is true. `literalCounts` keeps the literal counts of its
+    * conjuncts by bound signature, as [[JoinCondition]] does, for when they join an inner join tree
+    */
+  case Filter(child: RuntimePlan, cond: BExpr, literalCounts: Map[String, Int] = Map.empty)
 
   /** One output column per expression */
   case Project(child: RuntimePlan, exprs: IndexedSeq[BExpr], columns: IndexedSeq[Column])
@@ -206,7 +209,7 @@ enum RuntimePlan:
         columns
       case Values(columns, _) =>
         columns
-      case Filter(child, _) =>
+      case Filter(child, _, _) =>
         child.output
       case Project(_, _, columns) =>
         columns
@@ -227,7 +230,7 @@ enum RuntimePlan:
     this match
       case Scan(_, _) | Values(_, _) | Legacy(_, _) =>
         Nil
-      case Filter(child, _) =>
+      case Filter(child, _, _) =>
         Seq(child)
       case Project(child, _, _) =>
         Seq(child)
@@ -300,7 +303,7 @@ enum RuntimePlan:
         s"Scan[${source.name}]"
       case Values(_, rows) =>
         s"Values(rows=${rows.size})"
-      case Filter(_, cond) =>
+      case Filter(_, cond, _) =>
         s"Filter(${cond})"
       case Project(_, exprs, _) =>
         s"Project(${exprs.mkString(", ")})"

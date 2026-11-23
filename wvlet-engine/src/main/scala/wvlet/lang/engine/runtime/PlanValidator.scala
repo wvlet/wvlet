@@ -46,7 +46,7 @@ object PlanValidator:
         case Values(columns, rows) =>
           if columns.size != rows.columns.length then
             b += s"Values has ${columns.size} columns for ${rows.columns.length}"
-        case Filter(child, cond) =>
+        case Filter(child, cond, _) =>
           checkExprs(b, "Filter", Seq(cond), child.output)
         case Project(child, exprs, columns) =>
           if exprs.size != columns.size then
