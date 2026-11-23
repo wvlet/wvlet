@@ -45,13 +45,14 @@ jobs:
             !~/.sbt/*.lock
           key: sbt-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.sbt', 'project/build.properties', 'project/**.scala', 'SCALA_VERSION') }}
           lookup-only: true
-      - uses: ./.github/actions/sbt-cache
-        if: steps.probe.outputs.cache-hit != 'true'
+      # Resolve into an empty cache rather than restoring the previous one, so artifact versions
+      # dropped by a dependency bump don't carry over into every later cache.
       - name: Resolve dependencies of all projects
         if: steps.probe.outputs.cache-hit != 'true'
         # Test/compile also fetches the compiler bridge and the Scala.js / Scala Native compiler
-        # plugins, and scalafmtCheckAll fetches scalafmt-core, which `update` alone does not.
-        run: JVM_OPTS=-Xmx4g ./sbt "scalafmtCheckAll; projectJVM/Test/compile; projectJS/Test/compile; projectNative/Test/compile"
+        # plugins, scalafmtCheckAll fetches scalafmt-core, and linking one small Scala.js project
+        # fetches the Scala.js linker; `update` alone fetches none of these.
+        run: JVM_OPTS=-Xmx4g ./sbt "scalafmtCheckAll; projectJVM/Test/compile; projectJS/Test/compile; projectNative/Test/compile; apiJS/Test/fastLinkJS"
       - uses: ./.github/actions/sbt-cache
         if: steps.probe.outputs.cache-hit != 'true'
         with:
