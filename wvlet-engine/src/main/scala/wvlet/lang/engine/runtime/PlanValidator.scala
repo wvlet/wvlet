@@ -76,7 +76,13 @@ object PlanValidator:
           inputs.foreach(i => checkWidth(b, "Union", i, columns))
         case SetOp(left, right, _, _, columns) =>
           Seq(left, right).foreach(i => checkWidth(b, "SetOp", i, columns))
-        case Distinct(_)         =>
+        case Distinct(_)                   =>
+        case Window(child, calls, columns) =>
+          if columns.size != calls.size then
+            b += s"Window has ${columns.size} columns for ${calls.size} calls"
+          else if columns.map(_.ptype) != calls.map(_.ptype) then
+            b += s"Window columns ${columns.mkString(", ")} differ from the call types"
+          checkExprs(b, "Window", calls.flatMap(_.exprs), child.output)
         case Legacy(op, columns) =>
           if columns.map(_.ptype) != op.schema.types then
             b += s"Legacy[${op.name}] columns ${columns.mkString(", ")} differ from ${op.schema}"

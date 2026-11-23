@@ -22,24 +22,33 @@ import wvlet.lang.model.expr.*
 import scala.collection.mutable
 
 /**
-  * Collects the window function calls of a projection. The first binding pass registers calls;
-  * after [[build]], a frozen collector maps each call to its column of the window operator
+  * Collects the window function calls of a projection over an input of schema `input`. The first
+  * binding pass registers calls; a [[frozen]] collector maps each call to its column of the window
+  * output (the input columns, then one column per call, [[schema]])
   */
 class WindowCollector(
-    input: Operator,
-    frozenOp: Option[Operator] = None,
+    input: Schema,
+    isFrozen: Boolean = false,
     known: IndexedSeq[WindowCall] = IndexedSeq.empty
 ):
   private val calls = mutable.ArrayBuffer.from(known)
 
-  def frozen(op: Operator): WindowCollector = WindowCollector(input, Some(op), calls.toIndexedSeq)
+  /** The collector after the first pass: binding an unknown call fails */
+  def frozen: WindowCollector = WindowCollector(input, true, calls.toIndexedSeq)
 
   /** The collected calls over another input (e.g., the aggregation built after the first pass) */
-  def rebase(op: Operator): WindowCollector = WindowCollector(op, None, calls.toIndexedSeq)
+  def rebase(schema: Schema): WindowCollector = WindowCollector(schema, false, calls.toIndexedSeq)
 
-  def build(): Operator =
-    val fields = calls.zipWithIndex.map((c, i) => Field(s"__wv_win${i}", c.ptype))
-    WindowOp(input, calls.toIndexedSeq, Schema(input.schema.fields ++ fields))
+  /** The registered calls, in the order of their output columns */
+  def windowCalls: IndexedSeq[WindowCall] = calls.toIndexedSeq
+
+  /** The output of the windows: the input columns, then one column per call */
+  def schema: Schema = Schema(
+    input.fields ++ calls.zipWithIndex.map((c, i) => Field(s"__wv_win${i}", c.ptype))
+  )
+
+  /** The window operator over `op`, whose schema is the collector's input */
+  def build(op: Operator): Operator = WindowOp(op, calls.toIndexedSeq, schema)
 
   def ref(binder: Binder, e: Expression): VExpr =
     val call = toCall(binder, e)
@@ -47,14 +56,12 @@ class WindowCollector(
     val idx  =
       if i >= 0 then
         i
-      else if frozenOp.isDefined then
+      else if isFrozen then
         throw StatusCode.INVALID_ARGUMENT.newException(s"Unknown window call: ${call.sig}")
       else
         calls += call
         calls.size - 1
-    ColRef(input.schema.size + idx, call.ptype, s"__wv_win${idx}")
-
-  private def inputBinder(binder: Binder): Binder = binder
+    ColRef(input.size + idx, call.ptype, s"__wv_win${idx}")
 
   /** The function call of a window base, expanding `sql"..."` templates (e.g., stdlib rank()) */
   private def baseFunction(e: Expression): Option[FunctionApply] =
@@ -92,7 +99,7 @@ class WindowCollector(
       if binder.aggContext.isDefined then
         binder
       else
-        Binder(binder.plannerRef, BindScope(input.schema))
+        Binder(binder.plannerRef, BindScope(input))
     val name = Binder.functionName(f)
     val args = f
       .args

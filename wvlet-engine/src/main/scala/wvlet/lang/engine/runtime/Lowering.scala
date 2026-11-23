@@ -38,11 +38,7 @@ object Lowering:
         ProjectOp(apply(child), exprs.map(_.lower(pos)), p.schema)
       case Sort(child, keys, limit) =>
         val pos = positions(child)
-        SortOp(
-          apply(child),
-          keys.map(k => SortKey(k.expr.lower(pos), k.ascending, k.nullsFirst)),
-          limit
-        )
+        SortOp(apply(child), keys.map(_.lower(pos)), limit)
       case Limit(child, limit, offset) =>
         LimitOp(apply(child), limit, offset)
       case Join(left, right, kind, lk, rk, residual, buildLeft) =>
@@ -73,6 +69,9 @@ object Lowering:
         SetOpOp(apply(left), apply(right), intersect, all, p.schema)
       case Distinct(child) =>
         DistinctOp(apply(child))
+      case Window(child, calls, _) =>
+        val pos = positions(child)
+        WindowOp(apply(child), calls.map(_.lower(pos)), p.schema)
       case Legacy(op, _) =>
         op
       case CTERef(cte, _) =>

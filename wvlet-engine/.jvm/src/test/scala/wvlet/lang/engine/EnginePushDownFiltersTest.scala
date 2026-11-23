@@ -316,4 +316,74 @@ class EnginePushDownFiltersTest extends UniTest:
     sameRows(query)
   }
 
+  test("push conjuncts over partition keys below a window") {
+    val query =
+      """from lineitem
+        |select
+        |  l_returnflag,
+        |  l_linestatus,
+        |  l_quantity,
+        |  rank() over (partition by l_returnflag, l_linestatus order by l_quantity) as r
+        |where l_returnflag = 'R' and l_quantity < 10 and r < 3""".stripMargin
+    val (p, o) = pushed(bound(query))
+    // Only the partition key conjunct moves below the window
+    find(p) { case Window(Filter(_, cond, _), _, _) =>
+      cond.toString shouldContain "lit(R"
+      cond.toString shouldNotContain "lit(10"
+    } shouldNotBe None
+    // The others stay over the window, below the projection
+    find(p) { case Filter(_: Window, cond, _) =>
+      cond.toString shouldContain "lit(10"
+      cond.toString shouldContain "lit(3"
+    } shouldNotBe None
+    // Through the projection, then below the window
+    o.firedRules shouldBe Map("push_down_filters" -> 2)
+    sameRows(query)
+  }
+
+  test("push only conjuncts over keys every window partitions by") {
+    val query =
+      """from lineitem
+        |select
+        |  l_returnflag,
+        |  l_linestatus,
+        |  sum(l_quantity) over (partition by l_returnflag) as s,
+        |  count(*) over (partition by l_returnflag, l_linestatus) as n
+        |where l_returnflag = 'R' and l_linestatus = 'F'""".stripMargin
+    val (p, _) = pushed(bound(query))
+    find(p) { case Window(Filter(_, cond, _), _, _) =>
+      cond.toString shouldContain "lit(R"
+      cond.toString shouldNotContain "lit(F"
+    } shouldNotBe None
+    sameRows(query)
+  }
+
+  test("keep conjuncts above a window without partitions") {
+    val query =
+      """from lineitem
+        |select l_returnflag, row_number() over (order by l_orderkey) as rn
+        |where l_returnflag = 'R'""".stripMargin
+    val (p, o) = pushed(bound(query))
+    find(p) { case Window(_: Filter, _, _) =>
+      ()
+    } shouldBe None
+    o.firedRules shouldBe Map("push_down_filters" -> 1)
+    sameRows(query)
+  }
+
+  test("push conjuncts below windows over an aggregation to its keys") {
+    val query =
+      """from lineitem
+        |group by l_returnflag, l_linestatus
+        |agg
+        |  _.count as n,
+        |  rank() over (partition by l_returnflag order by _.count) as r
+        |where l_returnflag = 'R' and r = 1""".stripMargin
+    val (p, _) = pushed(bound(query))
+    find(p) { case Aggregate(Filter(_, cond, _), _, _, _) =>
+      cond.toString shouldContain "lit(R"
+    } shouldNotBe None
+    sameRows(query)
+  }
+
 end EnginePushDownFiltersTest

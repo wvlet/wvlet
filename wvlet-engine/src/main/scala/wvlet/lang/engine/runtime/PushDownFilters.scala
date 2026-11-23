@@ -40,7 +40,8 @@ import scala.collection.mutable
   *   - into an inner join tree, as a condition that [[ReorderJoins]] places. There, `a = b` and
   *     `a = constant` add `b = constant` for columns `a` and `b` of the same type;
   *   - into every input of a UNION, INTERSECT, or EXCEPT, by position and cast to the output type,
-  *     and below a DISTINCT.
+  *     and below a DISTINCT;
+  *   - below a window, when the conjunct reads only columns that every window call partitions by.
   *
   * It stops at filters (whose own conjuncts push down from there), limits, full joins, and
   * [[RuntimePlan.Legacy]] leaves. A conjunct keeps its literal count (selectivity) as it moves.
@@ -194,6 +195,13 @@ object PushDownFilters extends Pass:
         case d @ Distinct(child) =>
           moved(conds)
           withChild(d, push(child, conds))
+        case w @ Window(child, calls, _) =>
+          // A conjunct over columns every call partitions by removes whole partitions, so the
+          // window values of the other rows stay the same
+          val keys = calls.map(_.partitionColumns).reduceOption(_ intersect _).getOrElse(Set.empty)
+          val (in, out) = conds.partition(_.refs.subsetOf(keys))
+          moved(in)
+          filter(withChild(w, push(child, in)), out)
         case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) | Sort(_, _, _) |
             Limit(_, _, _) | Aggregate(_, _, _, _) =>
           filter(p.withChildren(p.children.map(push(_, Nil))), conds)

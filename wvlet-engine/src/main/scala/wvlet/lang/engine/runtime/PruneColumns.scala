@@ -18,10 +18,10 @@ import wvlet.lang.engine.plan.Optimization
 /**
   * Drops the columns no node above needs, by column id, in one top-down walk after
   * [[ReorderJoins]]. A node's needs are the columns its parent needs plus those its own expressions
-  * read; projections drop the expressions nobody needs. Aggregations keep their calls, and leaves
-  * (scans, VALUES, CTE reads, `Legacy`) keep their columns: the physical pruning after lowering
-  * narrows scans together with their row-group filters, as it does for `Legacy` subtrees. The root
-  * keeps its output.
+  * read; projections drop the expressions nobody needs. Aggregations and windows keep their calls,
+  * and leaves (scans, VALUES, CTE reads, `Legacy`) keep their columns: the physical pruning after
+  * lowering narrows scans together with their row-group filters, as it does for `Legacy` subtrees.
+  * The root keeps its output.
   *
   * The planner also runs it over a shared CTE body with the columns its readers read, so that the
   * body computes only those ([[prune]]).
@@ -68,6 +68,9 @@ object PruneColumns extends Pass:
       case InnerJoins(inputs, conds) =>
         val reads = needed ++ conds.flatMap(_.cond.refs)
         p.withChildren(inputs.map(prune(_, reads, ctx)))
+      case Window(child, calls, _) =>
+        // Every call is kept, as ColumnPruner does
+        p.withChildren(Seq(prune(child, needed ++ calls.flatMap(_.exprs).flatMap(_.refs), ctx)))
       case Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) =>
         // Set operations read whole rows of their inputs: the physical pruning narrows union
         // inputs by position after lowering

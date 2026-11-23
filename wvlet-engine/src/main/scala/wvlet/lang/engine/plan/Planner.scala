@@ -1086,20 +1086,37 @@ class Planner(
   private def withWindows[A](op: Operator, items: List[Expression])(
       bindAll: (Operator, Binder) => A
   ): (Operator, A) =
+    val (calls, a) = bindWithWindows(op.schema, items)(bindAll(op, _))
+    calls match
+      case Some(c) =>
+        (c.build(op), a)
+      case None =>
+        (op, a)
+
+  /**
+    * Bind expressions over an input of schema `schema`. When they contain window functions, the
+    * first pass registers the calls, and binding runs again over the window output (the input
+    * columns, then one column per call)
+    *
+    * @return
+    *   the collected window calls, if any, and the result of `bindAll`
+    */
+  private[engine] def bindWithWindows[A](schema: Schema, items: List[Expression])(
+      bindAll: Binder => A
+  ): (Option[WindowCollector], A) =
     if items.exists(i => Binder.containsWindow(i)) then
-      val collector = WindowCollector(op)
+      val collector = WindowCollector(schema)
       val saved     = windowCollector
       windowCollector = Some(collector)
       try
-        // First pass registers window calls; the window operator appends their results
-        bindAll(op, Binder(this, BindScope(op.schema)))
-        val winOp = collector.build()
-        windowCollector = Some(collector.frozen(winOp))
-        (winOp, bindAll(winOp, Binder(this, BindScope(winOp.schema))))
+        bindAll(Binder(this, BindScope(schema)))
+        val frozen = collector.frozen
+        windowCollector = Some(frozen)
+        (Some(frozen), bindAll(Binder(this, BindScope(frozen.schema))))
       finally
         windowCollector = saved
     else
-      (op, bindAll(op, Binder(this, BindScope(op.schema))))
+      (None, bindAll(Binder(this, BindScope(schema))))
 
   /**
     * Expand ROLLUP / CUBE / GROUPING SETS into the distinct grouping keys and the key indexes of
@@ -1461,8 +1478,8 @@ class Planner(
 
   /**
     * Plan an aggregation of `input` (a GROUP BY, possibly with HAVING, or a global aggregation)
-    * selecting `items`, whose input is planned with `plan`. With grouping sets or window functions
-    * over the aggregated rows, the aggregation (or the windows) are operators (`builder.fromOp`)
+    * selecting `items`, whose input is planned with `plan`. With grouping sets, the aggregation is
+    * an operator (`builder.fromOp`)
     */
   private[engine] def aggregation[P](
       input: Relation,
@@ -1570,7 +1587,7 @@ class Planner(
     val saved     = windowCollector
     // Window functions over aggregated rows: the first pass registers window calls (and the
     // aggregate calls inside them); the window operator then runs over the aggregation output
-    val collector = Option.when(hasWindow)(WindowCollector(inOp))
+    val collector = Option.when(hasWindow)(WindowCollector(inOp.schema))
     if hasWindow then
       windowCollector = collector
     val firstPass =
@@ -1646,13 +1663,13 @@ class Planner(
     val filtered = havingExpr.map(h => builder.filter(aggOp, h)).getOrElse(aggOp)
     collector match
       case Some(c) =>
-        val filteredOp = builder.op(filtered)
-        val winOp      = c.rebase(filteredOp).build()
-        windowCollector = Some(c.rebase(filteredOp).frozen(winOp))
+        val rebased = c.rebase(builder.op(filtered).schema).frozen
+        val win     = builder.window(filtered, rebased.windowCalls, rebased.schema)
+        windowCollector = Some(rebased)
         val items2 =
           try bindSelectItems() ++ extraItems
           finally windowCollector = saved
-        builder.fromOp(ProjectOp(winOp, items2.map(_._1), Schema(items2.map(_._2))))
+        builder.project(win, items2.map(_._1), Schema(items2.map(_._2)))
       case None =>
         val items2 = firstPass ++ extraItems
         builder.project(filtered, items2.map(_._1), Schema(items2.map(_._2)))
@@ -2563,6 +2580,9 @@ class Planner(
     override def project(p: Operator, exprs: IndexedSeq[VExpr], schema: Schema): Operator =
       ProjectOp(p, exprs, schema)
 
+    override def window(p: Operator, calls: IndexedSeq[WindowCall], schema: Schema): Operator =
+      WindowOp(p, calls, schema)
+
     override def conjuncts(p: Operator, conds: List[Expression]): Operator = applyConjuncts(
       p,
       conds
@@ -2986,6 +3006,9 @@ private[engine] trait AggPlanBuilder[P]:
 
   /** One output column per expression over `p` */
   def project(p: P, exprs: IndexedSeq[VExpr], schema: Schema): P
+
+  /** The columns of `p`, then one column per window call over them (`schema`) */
+  def window(p: P, calls: IndexedSeq[WindowCall], schema: Schema): P
 
 object Planner:
   /** A planner for a subquery: shares the catalog, sources, and CTE definitions */
