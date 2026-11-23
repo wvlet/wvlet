@@ -129,10 +129,10 @@ class Planner(
     * now read their exact row counts. The re-optimized plan, lowered, if it differs from
     * `optimized`.
     *
-    * The CTEs would be computed at execution anyway. A CTE's readers read the same columns and
-    * filters in any join order, so the second plan reads the result the first plan's readers
-    * finalized ([[DeferredCTE.reader]]). The CTE bodies keep the join order chosen when they were
-    * bound
+    * A CTE's readers read the same columns and filters in any join order, so the second plan reads
+    * the result the first plan's readers finalized ([[DeferredCTE.reader]]); if it can't, the first
+    * plan is kept (with `validatePlans`, the error is raised). The CTE bodies keep the join order
+    * chosen when they were bound
     */
   private def replanJoinedCTEs(bound: RuntimePlan, optimized: RuntimePlan): Option[Operator] =
     import RuntimePlan.*
@@ -161,9 +161,21 @@ class Planner(
       joined.foreach(_.materialize())
       // A separate run, so that firedRules counts the rules of the plan once
       val replanned = Optimizer.default(options).run(bound)
-      Option
-        .when(replanned != optimized)(optimizePhysical(Lowering(replanned)))
-        .filter(readsKeptColumns)
+      if replanned == optimized then
+        None
+      else
+        try
+          val op = optimizePhysical(Lowering(replanned))
+          if !readsKeptColumns(op) then
+            throw StatusCode
+              .UNEXPECTED_STATE
+              .newException("A re-planned shared CTE reader reads a column its result dropped")
+          Some(op)
+        catch
+          case e: WvletLangException
+              if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
+            warn(s"Keeping the first plan: ${e.getMessage}")
+            None
 
   end replanJoinedCTEs
 
