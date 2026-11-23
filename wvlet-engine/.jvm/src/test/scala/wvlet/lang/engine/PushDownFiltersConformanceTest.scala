@@ -17,6 +17,7 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.exec.JoinKind
+import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.plan.Planner
 import wvlet.lang.engine.plan.SourceResolver
@@ -41,8 +42,9 @@ import scala.util.Using
   * `lake exe pushdown-filter-traces`) against the shipped [[PushDownFilters]] pass. The model
   * proves that each placement keeps the rows of the filter over the join, for every input and ON
   * condition, NULLs included, and that the refused placements would not. This test checks, for each
-  * traced query, that the pass puts the WHERE conjunct where the model does, and that the engine
-  * returns the model's rows.
+  * traced query, that the pass puts the WHERE conjunct where the model does (with
+  * `join_key_filters` off, which copies a conjunct over join keys to the other input), and that the
+  * engine returns the model's rows.
   */
 class PushDownFiltersConformanceTest extends UniTest:
   import RuntimePlan.*
@@ -122,7 +124,10 @@ class PushDownFiltersConformanceTest extends UniTest:
         options
       )
       val bound = RuntimeBinder(planner).bind(r)
-      (bound, Optimizer(Seq(Normalize, PushDownFilters), options).run(bound))
+      // The model places the conjunct itself; copies over the other input's join keys
+      // (`join_key_filters`) have their own model and conformance test (JoinKeyFilterConformanceTest)
+      val placing = options.withDisabled(Optimization.JoinKeyFilters)
+      (bound, Optimizer(Seq(Normalize, PushDownFilters), placing).run(bound))
     }
 
   private def rowsOf(query: String): List[List[Option[Long]]] =
