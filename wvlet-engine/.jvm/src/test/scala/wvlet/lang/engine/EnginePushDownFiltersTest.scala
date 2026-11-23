@@ -30,9 +30,8 @@ import wvlet.uni.test.UniTest
 class EnginePushDownFiltersTest extends UniTest:
   import RuntimePlan.*
 
-  private val options  = OptimizerOptions().withValidatePlans(true)
-  private val engine   = WvletEngine(optimizer = options)
-  private val disabled = engine.withOptimizer(options.withDisabled(Optimization.PushDownFilters))
+  private val options = OptimizerOptions().withValidatePlans(true)
+  private val engine  = WvletEngine(optimizer = options)
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -47,7 +46,7 @@ class EnginePushDownFiltersTest extends UniTest:
     f(GenSQL.expand(q, summon[Context]))
 
   /** The plan as the binder builds it, before the passes */
-  private def bound(query: String): RuntimePlan =
+  private def bound(query: String, o: OptimizerOptions = options): RuntimePlan =
     withQuery(query) { r =>
       val planner = Planner(
         engine.catalog,
@@ -56,7 +55,7 @@ class EnginePushDownFiltersTest extends UniTest:
           override def fileSource(path: String): Option[TableSource]                    = None
           override def parseSql(r: RawSQL): Relation = fail("No SQL")
         ,
-        options
+        o
       )
       RuntimeBinder(planner).bind(r)
     }
@@ -76,7 +75,10 @@ class EnginePushDownFiltersTest extends UniTest:
     withQuery(query)(q => e.execute(q).batches.map(_.size.toLong).sum)
 
   /** The query returns the same rows with the pass and without it */
-  private def sameRows(query: String): Unit = count(engine, query) shouldBe count(disabled, query)
+  private def sameRows(query: String, o: OptimizerOptions = options): Unit =
+    val on = engine.withOptimizer(o)
+    count(on, query) shouldBe
+      count(on.withOptimizer(o.withDisabled(Optimization.PushDownFilters)), query)
 
   test("push a filter through a projection to the scan") {
     val query =
@@ -384,6 +386,83 @@ class EnginePushDownFiltersTest extends UniTest:
       cond.toString shouldContain "lit(R"
     } shouldNotBe None
     sameRows(query)
+  }
+
+  private def hasLegacy(p: RuntimePlan): Boolean =
+    find(p) { case l: Legacy =>
+      l
+    }.isDefined
+
+  test("push a filter into the body of a CTE read once, below its aggregation") {
+    val query =
+      """with t as {
+        |  from lineitem
+        |  group by l_returnflag
+        |  agg _.count as n
+        |}
+        |from t
+        |where l_returnflag = 'R'""".stripMargin
+    val b = bound(query)
+    // The body binds in place, not as a Legacy leaf
+    hasLegacy(b) shouldBe false
+    val (p, _) = pushed(b)
+    find(p) { case Aggregate(Filter(_, cond, _), _, _, _) =>
+      cond.toString shouldContain "lit(R"
+    } shouldNotBe None
+    sameRows(query)
+  }
+
+  test("push a filter into a nested CTE read once") {
+    val query =
+      """with t as {
+        |  from lineitem
+        |  select l_orderkey, l_quantity
+        |}
+        |with u as {
+        |  from t
+        |  select l_orderkey as k, l_quantity as q
+        |}
+        |from u
+        |where q > 49""".stripMargin
+    val b = bound(query)
+    hasLegacy(b) shouldBe false
+    val (p, _) = pushed(b)
+    find(p) { case Filter(_: Scan, cond, _) =>
+      cond.toString shouldContain "lit(49"
+    } shouldNotBe None
+    sameRows(query)
+  }
+
+  test("inline every read of a CTE with share_ctes off, and push into each") {
+    val query =
+      """with t as {
+        |  from lineitem
+        |  group by l_returnflag
+        |  agg _.count as n
+        |}
+        |from t
+        |where l_returnflag = 'R'
+        |concat {
+        |  from t
+        |  where l_returnflag = 'N'
+        |}""".stripMargin
+    val noShare = options.withDisabled(Optimization.ShareCTEs)
+    val b       = bound(query, noShare)
+    find(b) { case c: CTERef =>
+      c
+    } shouldBe None
+    hasLegacy(b) shouldBe false
+    val (p, _)                          = pushed(b, noShare)
+    def keyFilters(p: RuntimePlan): Int =
+      (
+        p match
+          case Aggregate(_: Filter, _, _, _) =>
+            1
+          case _ =>
+            0
+      ) + p.children.map(keyFilters).sum
+    keyFilters(p) shouldBe 2
+    sameRows(query, noShare)
   }
 
 end EnginePushDownFiltersTest

@@ -105,9 +105,9 @@ class RuntimeBinder(planner: Planner):
       case a: AliasedRelation =>
         aliased(a)
       case t: TableScan =>
-        table(t, t.name.name, t.name.fullName)
+        table(t.name.name, t.name.fullName)
       case t: TableRef =>
-        table(t, t.name.leafName, t.name.fullName)
+        table(t.name.leafName, t.name.fullName)
       case f: FileScan =>
         scan(planner.fileSource(f.filePath), None)
       case f: FileRef =>
@@ -198,16 +198,18 @@ class RuntimeBinder(planner: Planner):
     val schema = alias.map(a => src.schema.withQualifier(a)).getOrElse(src.schema)
     RuntimePlan.Scan(src, columnsOf(schema))
 
-  private def table(r: Relation, name: String, fullName: String): RuntimePlan =
-    if planner.isCTE(name) then
-      planner.sharedCTE(name) match
-        case Some(cte) =>
-          RuntimePlan.CTERef(cte, columnsOf(cte.body.schema))
-        case None =>
-          // The planner inlines a CTE read once
-          legacy(r)
-    else
-      scan(planner.tableSource(name, fullName), Some(name))
+  private def table(name: String, fullName: String): RuntimePlan =
+    planner.cteDef(name) match
+      case Some(d) =>
+        planner.sharedCTE(name) match
+          case Some(cte) =>
+            RuntimePlan.CTERef(cte, columnsOf(cte.body.schema))
+          case None =>
+            // A CTE read once (or every CTE, with share_ctes off) is inlined: its body binds in
+            // place, so that the passes see through it
+            aliased(d)
+      case None =>
+        scan(planner.tableSource(name, fullName), Some(name))
 
   private def values(v: Values, names: Option[List[DataType.NamedType]]): RuntimePlan =
     val (schema, batch) = planner.valuesBatch(v, names)

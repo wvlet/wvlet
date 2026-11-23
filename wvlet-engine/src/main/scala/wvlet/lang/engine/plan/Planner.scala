@@ -244,8 +244,8 @@ class Planner(
       case _ =>
         None
 
-  /** Whether a table name refers to a CTE in scope */
-  private[engine] def isCTE(name: String): Boolean = cteDefs.contains(name.toLowerCase)
+  /** The definition of a CTE in scope, by name */
+  private[engine] def cteDef(name: String): Option[AliasedRelation] = cteDefs.get(name.toLowerCase)
 
   private[engine] def parseSql(r: RawSQL): Relation = sources.parseSql(r)
 
