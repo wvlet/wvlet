@@ -1201,21 +1201,31 @@ class HashJoinOp(
       i += 1
     var lIdx = li.result()
     var rIdx = ri.result()
+    // The pairs the residual condition kept, reusing the columns it gathered (late_gather only)
+    var kept: Batch = null
     // Apply the residual condition on candidate pairs
     residual.foreach { cond =>
       if lIdx.nonEmpty then
         // Only the columns the condition reads are gathered
-        val mask = Kernels.trueMask(cond.eval(joined(probe, lIdx, rIdx)))
-        val keep = (0 until lIdx.length).filter(mask(_)).toArray
+        val candidates = joined(probe, lIdx, rIdx)
+        val mask       = Kernels.trueMask(cond.eval(candidates))
+        val keep       = (0 until lIdx.length).filter(mask(_)).toArray
         lIdx = keep.map(lIdx)
         rIdx = keep.map(rIdx)
+        if lateGather then
+          kept = candidates.take(keep, keep.length)
     }
+    def matchedPairs: Batch =
+      if kept != null then
+        kept
+      else
+        joined(probe, lIdx, rIdx)
     kind match
       case JoinKind.Inner | JoinKind.Cross =>
         if lIdx.isEmpty then
           null
         else
-          joined(probe, lIdx, rIdx)
+          matchedPairs
       case JoinKind.Left | JoinKind.Full | JoinKind.Right =>
         if buildMatched != null then
           rIdx.foreach(r => buildMatched(r) = true)
@@ -1223,7 +1233,7 @@ class HashJoinOp(
           if lIdx.isEmpty then
             null
           else
-            joined(probe, lIdx, rIdx)
+            matchedPairs
         else
           val matched = new Array[Boolean](probe.size)
           lIdx.foreach(l => matched(l) = true)
