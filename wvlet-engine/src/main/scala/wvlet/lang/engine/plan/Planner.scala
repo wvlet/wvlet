@@ -2014,17 +2014,32 @@ class Planner(
     * extended) input and the bound condition
     */
   private def bindWithSubqueries(input: Operator, cond: Expression): (Operator, VExpr) =
-    var op                                 = input
+    bindWithSubqueries(operatorPlans, input, cond, planRelation, planFilter)
+
+  /**
+    * Bind one conjunct over `input`, whose correlated scalar subqueries ([[decorrelateScalar]]) and
+    * EXISTS under OR / NOT / CASE ([[decorrelateExists]]) become left joins extending it, with
+    * their bodies planned by `plan` and `filtered` as in [[planCorrelated]]. Returns the extended
+    * input and the condition bound over it
+    */
+  private[engine] def bindWithSubqueries[P](
+      b: JoinPlanBuilder[P] & AggPlanBuilder[P],
+      input: P,
+      cond: Expression,
+      plan: Relation => P,
+      filtered: Filter => P
+  ): (P, VExpr) =
+    var p                                  = input
     def rewrite(e: Expression): Expression =
       e match
-        case s: SubQueryExpression if isCorrelated(s.query, op.schema) =>
-          val (joined, column) = decorrelateScalar(op, s.query)
-          op = joined
+        case s: SubQueryExpression if isCorrelated(s.query, b.op(p).schema) =>
+          val (joined, column) = decorrelateScalar(b, p, s.query, plan, filtered)
+          p = joined
           UnquotedIdentifier(column, NoSpan)
-        case ex: Exists if isCorrelated(subqueryRelation(ex.child), op.schema) =>
+        case ex: Exists if isCorrelated(subqueryRelation(ex.child), b.op(p).schema) =>
           // EXISTS under OR / NOT / CASE: a match flag column
-          val (joined, column) = decorrelateExists(op, subqueryRelation(ex.child))
-          op = joined
+          val (joined, column) = decorrelateExists(b, p, subqueryRelation(ex.child), plan, filtered)
+          p = joined
           UnquotedIdentifier(column, NoSpan)
         case _: SubQueryExpression | _: Exists | _: InRelation | _: NotInRelation =>
           e
@@ -2032,7 +2047,9 @@ class Planner(
           // Top-down, so that subqueries are rewritten as a whole, not from their insides
           other.mapChildExpressions(rewrite)
     val rewritten = rewrite(cond)
-    (op, Binder(this, BindScope(op.schema)).bind(rewritten))
+    (p, Binder(this, BindScope(b.op(p).schema)).bind(rewritten))
+
+  end bindWithSubqueries
 
   /** Whether a subquery references columns of the enclosing schema */
   private def isCorrelated(sub: Relation, outer: Schema): Boolean =
@@ -2101,10 +2118,6 @@ class Planner(
         stripWrappers(s.child)
       case other =>
         other
-
-  /** [[planCorrelated]] into the planner's operators */
-  private def planCorrelated(sub: Relation): (Operator, List[Expression], Option[List[Attribute]]) =
-    planCorrelated(sub, planRelation, planFilter)
 
   /**
     * Plan a correlated subquery body `[Project] Filter(child, cond)`: conjuncts referencing only
@@ -2357,26 +2370,37 @@ class Planner(
 
   /**
     * A correlated scalar subquery `[Project(agg)] Filter(child, k_inner = k_outer and ...)` as an
-    * aggregation grouped by the inner keys, left-joined to the outer input. Returns the joined
-    * operator and the name of the column holding the subquery value
+    * aggregation grouped by the inner keys, left-joined to the outer input. Returns the joined plan
+    * and the name of the column holding the subquery value.
+    *
+    * An outer row without a group gets the subquery's value over no rows: NULL for most aggregates,
+    * but 0 for `count`. When that value is not NULL, it is projected for the rows whose (never NULL
+    * when matched) joined key is NULL
     */
-  private def decorrelateScalar(outer: Operator, sub: Relation): (Operator, String) =
-    val (inner, correlated, items) = planCorrelated(sub)
-    val (pairs, rest)              = correlationKeys(correlated, inner.schema, outer.schema)
+  private def decorrelateScalar[P](
+      b: JoinPlanBuilder[P] & AggPlanBuilder[P],
+      outer: P,
+      sub: Relation,
+      plan: Relation => P,
+      filtered: Filter => P
+  ): (P, String) =
+    val outerSchema                = b.op(outer).schema
+    val (inner, correlated, items) = planCorrelated(sub, plan, filtered)
+    val innerSchema                = b.op(inner).schema
+    val (pairs, rest)              = correlationKeys(correlated, innerSchema, outerSchema)
     if rest.nonEmpty || pairs.isEmpty then
       throw StatusCode
         .NOT_IMPLEMENTED
         .newException(
           s"Unsupported correlated scalar subquery: only equality correlations are supported: ${rest
               .map(_.toString)
-              .mkString(", ")} (outer: ${outer.schema.names.mkString(",")}; inner: ${inner
-              .schema
+              .mkString(", ")} (outer: ${outerSchema.names.mkString(",")}; inner: ${innerSchema
               .names
               .mkString(",")})"
         )
-    val innerScope = BindScope(inner.schema)
+    val innerScope = BindScope(innerSchema)
     val ib         = Binder(this, innerScope)
-    val ob         = Binder(this, BindScope(outer.schema))
+    val ob         = Binder(this, BindScope(outerSchema))
     val keyNames   = pairs.indices.map(_ => hiddenName("k"))
     val innerKeys  = pairs.map(p => ib.bind(p._1)).toIndexedSeq
     val aggCtx     = AggContext(innerScope, keyNames, innerKeys)
@@ -2386,9 +2410,10 @@ class Planner(
         throw StatusCode.NOT_IMPLEMENTED.newException("A scalar subquery needs a select item")
       }
     val value     = Binder(this, BindScope(aggCtx.outputSchema), Some(aggCtx)).bind(item)
-    val agg       = HashAggOp(inner, innerKeys, aggCtx.calls.toIndexedSeq, aggCtx.outputSchema)
+    val calls     = aggCtx.calls.toIndexedSeq
+    val agg       = b.aggregate(inner, innerKeys, calls, aggCtx.outputSchema)
     val valueName = hiddenName("sq")
-    val proj      = ProjectOp(
+    val proj      = b.project(
       agg,
       innerKeys.indices.map(i => aggCtx.keyRef(i)).toIndexedSeq :+ value,
       Schema(
@@ -2401,18 +2426,82 @@ class Planner(
     val rk = innerKeys
       .indices
       .map(i => castExpr(aggCtx.keyRef(i), PType.common(outerKeys(i).ptype, innerKeys(i).ptype)))
-    val joined = HashJoinOp(outer, proj, lk, rk, JoinKind.Left, None, outer.schema ++ proj.schema)
-    (joined, valueName)
+    val joined = b.join(outer, proj, JoinKind.Left, lk, rk, None, buildLeft = false)
+    emptyGroupValue(innerSchema, innerKeys, calls, aggCtx.outputSchema, value) match
+      case None =>
+        (joined, valueName)
+      case Some(empty) =>
+        val js        = b.op(joined).schema
+        val keyIdx    = outerSchema.size
+        val valueIdx  = keyIdx + innerKeys.size
+        val unmatched = IsNullExpr(
+          ColRef(keyIdx, js(keyIdx).ptype, js(keyIdx).name),
+          negate = false
+        )
+        val v     = ColRef(valueIdx, js(valueIdx).ptype, js(valueIdx).name)
+        val exact = CaseWhen(Seq(unmatched -> empty), Some(v), v.ptype)
+        val exprs = js
+          .fields
+          .indices
+          .map(i =>
+            if i == valueIdx then
+              exact
+            else
+              ColRef(i, js(i).ptype, js(i).name)
+          )
+        (b.project(joined, exprs, js), valueName)
 
   end decorrelateScalar
 
   /**
-    * A correlated EXISTS as a boolean column: left join `outer` with the distinct correlation keys
-    * of the subquery and flag the matched rows
+    * The value of a scalar subquery over a group without rows, computed at plan time: None when it
+    * is NULL
     */
-  private def decorrelateExists(outer: Operator, sub: Relation): (Operator, String) =
-    val (inner, correlated, _) = planCorrelated(sub)
-    val (pairs, rest)          = correlationKeys(correlated, inner.schema, outer.schema)
+  private def emptyGroupValue(
+      inputSchema: Schema,
+      keys: IndexedSeq[VExpr],
+      calls: IndexedSeq[AggCall],
+      aggSchema: Schema,
+      value: VExpr
+  ): Option[VExpr] =
+    val callFields = aggSchema.fields.drop(keys.size)
+    val global     = HashAggOp(
+      BatchesOp(inputSchema, Seq.empty),
+      IndexedSeq.empty,
+      calls,
+      Schema(callFields)
+    )
+    // The aggregation's layout (keys, then calls), with NULL keys
+    val row = ProjectOp(
+      global,
+      keys.map(k => Const(null, k.ptype)) ++
+        callFields.indices.map(i => ColRef(i, callFields(i).ptype, callFields(i).name)),
+      aggSchema
+    )
+    val result = Operator.materialize(
+      ProjectOp(row, IndexedSeq(value), Schema(IndexedSeq(Field("v", value.ptype))))
+    )
+    val v = result.columns(0)
+    if result.size == 0 || v.isNull(0) then
+      None
+    else
+      Some(Const(v.get(0), value.ptype))
+
+  /**
+    * A correlated EXISTS as a boolean column: left join `outer` with the distinct correlation keys
+    * of the subquery and flag the matched rows (never NULL)
+    */
+  private def decorrelateExists[P](
+      b: JoinPlanBuilder[P] & AggPlanBuilder[P],
+      outer: P,
+      sub: Relation,
+      plan: Relation => P,
+      filtered: Filter => P
+  ): (P, String) =
+    val outerSchema            = b.op(outer).schema
+    val (inner, correlated, _) = planCorrelated(sub, plan, filtered)
+    val innerSchema            = b.op(inner).schema
+    val (pairs, rest)          = correlationKeys(correlated, innerSchema, outerSchema)
     if rest.nonEmpty || pairs.isEmpty then
       throw StatusCode
         .NOT_IMPLEMENTED
@@ -2421,32 +2510,20 @@ class Planner(
               .mkString(", ")}"
         )
     val (lk, rk) = joinKeys(
-      Binder(this, BindScope(outer.schema)),
-      Binder(this, BindScope(inner.schema)),
+      Binder(this, BindScope(outerSchema)),
+      Binder(this, BindScope(innerSchema)),
       pairs.map(p => (p._2, p._1))
     )
     val keyFields = rk.map(k => Field(hiddenName("k"), k.ptype))
-    val distinct  = HashAggOp(inner, rk, IndexedSeq.empty, Schema(keyFields))
+    val distinct  = b.aggregate(inner, rk, IndexedSeq.empty, Schema(keyFields))
     val keyRefs   = keyFields.indices.map(i => ColRef(i, keyFields(i).ptype, keyFields(i).name))
-    val joined    = HashJoinOp(
-      outer,
-      distinct,
-      lk,
-      keyRefs,
-      JoinKind.Left,
-      None,
-      outer.schema ++ distinct.schema
-    )
-    val markName = hiddenName("exists")
-    val marked   = ProjectOp(
+    val joined    = b.join(outer, distinct, JoinKind.Left, lk, keyRefs, None, buildLeft = false)
+    val markName  = hiddenName("exists")
+    val marked    = b.project(
       joined,
-      outer
-        .schema
-        .fields
-        .indices
-        .map(i => ColRef(i, outer.schema(i).ptype, outer.schema(i).name)) :+
-        IsNullExpr(ColRef(outer.schema.size, keyFields(0).ptype, keyFields(0).name), negate = true),
-      Schema(outer.schema.fields :+ Field(markName, PType.Bool))
+      outerSchema.fields.indices.map(i => ColRef(i, outerSchema(i).ptype, outerSchema(i).name)) :+
+        IsNullExpr(ColRef(outerSchema.size, keyFields(0).ptype, keyFields(0).name), negate = true),
+      Schema(outerSchema.fields :+ Field(markName, PType.Bool))
     )
     (marked, markName)
 
