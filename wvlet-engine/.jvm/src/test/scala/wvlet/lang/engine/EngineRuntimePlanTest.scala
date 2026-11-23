@@ -28,7 +28,7 @@ import wvlet.uni.test.UniTest
 class EngineRuntimePlanTest extends UniTest:
   private val runtime = OptimizerOptions().withPlanner(PlannerMode.Runtime).withValidatePlans(true)
   private val engine  = WvletEngine(optimizer = runtime)
-  private val legacy  = engine.withOptimizer(OptimizerOptions())
+  private val legacy  = engine.withOptimizer(OptimizerOptions().withPlanner(PlannerMode.Legacy))
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -90,7 +90,7 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("bind sort keys with subqueries as plan-time constants") {
-    def check(query: String): Unit =
+    def check(query: String): RuntimePlan =
       val p = runtimePlan(query)
       debug(p.explain)
       legacyLeafCount(p) shouldBe 0
@@ -99,6 +99,7 @@ class EngineRuntimePlanTest extends UniTest:
       val expected = rowsOf(legacy, query)
       expected.size > 0 shouldBe true
       rowsOf(engine, query) shouldBe expected
+      p
 
     // A scalar subquery over the sort input
     check("""from nation
@@ -110,9 +111,15 @@ class EngineRuntimePlanTest extends UniTest:
         |  n_nationkey
         |limit 5""".stripMargin)
     // A key outside the select list, evaluated as a hidden select item
-    check("""from nation
+    val hidden = check("""from nation
         |select n_name
         |order by n_regionkey = (from region select min(r_regionkey)), n_name""".stripMargin)
+    // The hidden key column is projected away above the sort
+    hidden shouldMatch {
+      case RuntimePlan.Project(RuntimePlan.Sort(inner: RuntimePlan.Project, _, _), _, cols) =>
+        cols.map(_.name) shouldBe IndexedSeq("n_name")
+        inner.columns.size shouldBe 2
+    }
   }
 
   test("bind a projection with windows as a window under a projection") {
