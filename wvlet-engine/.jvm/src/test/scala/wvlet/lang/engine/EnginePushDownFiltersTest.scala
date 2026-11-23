@@ -47,7 +47,7 @@ class EnginePushDownFiltersTest extends UniTest:
     f(GenSQL.expand(q, summon[Context]))
 
   /** The plan as the binder builds it, before the passes */
-  private def bound(query: String): RuntimePlan =
+  private def bound(query: String, o: OptimizerOptions = options): RuntimePlan =
     withQuery(query) { r =>
       val planner = Planner(
         engine.catalog,
@@ -56,7 +56,7 @@ class EnginePushDownFiltersTest extends UniTest:
           override def fileSource(path: String): Option[TableSource]                    = None
           override def parseSql(r: RawSQL): Relation = fail("No SQL")
         ,
-        options
+        o
       )
       RuntimeBinder(planner).bind(r)
     }
@@ -383,6 +383,83 @@ class EnginePushDownFiltersTest extends UniTest:
     find(p) { case Aggregate(Filter(_, cond, _), _, _, _) =>
       cond.toString shouldContain "lit(R"
     } shouldNotBe None
+    sameRows(query)
+  }
+
+  private def hasLegacy(p: RuntimePlan): Boolean =
+    find(p) { case l: Legacy =>
+      l
+    }.isDefined
+
+  test("push a filter into the body of a CTE read once, below its aggregation") {
+    val query =
+      """with t as {
+        |  from lineitem
+        |  group by l_returnflag
+        |  agg _.count as n
+        |}
+        |from t
+        |where l_returnflag = 'R'""".stripMargin
+    val b = bound(query)
+    // The body binds in place, not as a Legacy leaf
+    hasLegacy(b) shouldBe false
+    val (p, _) = pushed(b)
+    find(p) { case Aggregate(Filter(_, cond, _), _, _, _) =>
+      cond.toString shouldContain "lit(R"
+    } shouldNotBe None
+    sameRows(query)
+  }
+
+  test("push a filter into a nested CTE read once") {
+    val query =
+      """with t as {
+        |  from lineitem
+        |  select l_orderkey, l_quantity
+        |}
+        |with u as {
+        |  from t
+        |  select l_orderkey as k, l_quantity as q
+        |}
+        |from u
+        |where q > 49""".stripMargin
+    val b = bound(query)
+    hasLegacy(b) shouldBe false
+    val (p, _) = pushed(b)
+    find(p) { case Filter(_: Scan, cond, _) =>
+      cond.toString shouldContain "lit(49"
+    } shouldNotBe None
+    sameRows(query)
+  }
+
+  test("inline every read of a CTE with share_ctes off, and push into each") {
+    val query =
+      """with t as {
+        |  from lineitem
+        |  group by l_returnflag
+        |  agg _.count as n
+        |}
+        |from t
+        |where l_returnflag = 'R'
+        |concat {
+        |  from t
+        |  where l_returnflag = 'N'
+        |}""".stripMargin
+    val noShare = options.withDisabled(Optimization.ShareCTEs)
+    val b       = bound(query, noShare)
+    find(b) { case c: CTERef =>
+      c
+    } shouldBe None
+    hasLegacy(b) shouldBe false
+    val (p, _)                          = pushed(b, noShare)
+    def keyFilters(p: RuntimePlan): Int =
+      (
+        p match
+          case Aggregate(_: Filter, _, _, _) =>
+            1
+          case _ =>
+            0
+      ) + p.children.map(keyFilters).sum
+    keyFilters(p) shouldBe 2
     sameRows(query)
   }
 
