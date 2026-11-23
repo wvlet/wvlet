@@ -184,26 +184,26 @@ class FactorOrConformanceTest extends UniTest:
         withQuery(q)(conformance.assertMatches(q, _))
   }
 
-  // Collisions outside the model's conditions (functions, LIKE): the first branch's conjunct
-  // printed like the second's before the signature audit, so FactorOr took it out of both
+  // Conditions outside the model's (functions, LIKE), with whether FactorOr should factor them.
+  // Before the signature audit, the first and third cases' conjuncts printed alike, so FactorOr
+  // took the first branch's conjunct out of both; the second is a real common conjunct
   private val unmodeled = Seq(
     // A literal whose text reads as two arguments
-    "(coalesce(s, 'x:string),lit(y') = 'x' and b) or (coalesce(s, 'x', 'y') = 'x' and c)",
-    // A literal whose text reads as a list of values
-    "(coalesce(s, 'x,y') = 'x,y' and b) or (coalesce(s, 'x,y') = 'x,y' and c)",
+    "(coalesce(s, 'x:string),lit(y') = 'x' and b) or (coalesce(s, 'x', 'y') = 'x' and c)" -> false,
+    // A literal with a comma, common to both branches
+    "(coalesce(s, 'x,y') = 'x,y' and b) or (coalesce(s, 'x,y') = 'x,y' and c)" -> true,
     // An escape character: `'x%' escape 'x'` matches `%` only
-    "(s like 'x%' escape 'x' and b) or (s like 'x%' and c)"
+    "(s like 'x%' escape 'x' and b) or (s like 'x%' and c)" -> false
   )
 
   test("tell conditions apart whose literals print like other expressions") {
-    for where <- unmodeled do
+    for (where, factors) <- unmodeled do
       val q = query(where)
       debug(q)
       val p = withQuery(q)(unfactored.runtimePlan(_))
       val o = Optimizer.only(Normalize, options)
       o.run(p)
-      // Only the second case has a common conjunct
-      o.firedRules.contains("factor_or") shouldBe where.contains("'x,y') = 'x,y' and c")
+      o.firedRules.contains("factor_or") shouldBe factors
       val rows = sorted(rowsOf(engine, q))
       sorted(rowsOf(unfactored, q)) shouldBe rows
       withQuery(q)(conformance.assertMatches(q, _))

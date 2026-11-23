@@ -59,6 +59,7 @@ def valuesWv (vs : List Value) : String := "(" ++ ", ".intercalate (vs.map value
 def condWv : Cond → String
   -- An untyped `= null` is `is null` in Wvlet: type the NULL as the column, as SQL's `= NULL`
   | .eq (.col c) (.lit .null) => s!"{colName c} = null::{colType c}"
+  | .eq (.lit .null) (.col c) => s!"null::{colType c} = {colName c}"
   | .eq a b => s!"{termWv a} = {termWv b}"
   | .lt a b => s!"{termWv a} < {termWv b}"
   | .isNull a => s!"{termWv a} is null"
