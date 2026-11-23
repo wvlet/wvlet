@@ -322,6 +322,19 @@ enum RuntimePlan:
     */
   case Window(child: RuntimePlan, calls: IndexedSeq[WindowFunction], columns: IndexedSeq[Column])
 
+  /**
+    * One row per element of the lists of each `child` row (the longest list, the others padded with
+    * NULL): with `keepInput`, the row's columns, then one element column per list (`columns`). A
+    * row whose lists are empty or NULL gives no rows, or with `outer` one row of NULL elements
+    */
+  case Unnest(
+      child: RuntimePlan,
+      lists: IndexedSeq[BExpr],
+      keepInput: Boolean,
+      outer: Boolean,
+      columns: IndexedSeq[Column]
+  )
+
   /** A relation planned by the recursive planner, whose operator schema gives the columns */
   case Legacy(op: Operator, columns: IndexedSeq[Column])
 
@@ -365,6 +378,11 @@ enum RuntimePlan:
         child.output
       case Window(child, _, columns) =>
         child.output ++ columns
+      case u: Unnest =>
+        if u.keepInput then
+          u.child.output ++ u.columns
+        else
+          u.columns
       case Legacy(_, columns) =>
         columns
       case CTERef(_, columns) =>
@@ -397,6 +415,8 @@ enum RuntimePlan:
       case Sample(child, _) =>
         Seq(child)
       case Window(child, _, _) =>
+        Seq(child)
+      case Unnest(child, _, _, _, _) =>
         Seq(child)
 
   /**
@@ -436,6 +456,8 @@ enum RuntimePlan:
           s.copy(child = cs(0))
         case w: Window =>
           w.copy(child = cs(0))
+        case u: Unnest =>
+          u.copy(child = cs(0))
     end if
 
   end withChildren
@@ -515,6 +537,13 @@ enum RuntimePlan:
         s"Sample(${percentage}%)"
       case Window(_, calls, _) =>
         s"Window(${calls.mkString(", ")})"
+      case Unnest(_, lists, _, outer, _) =>
+        val o =
+          if outer then
+            ", outer"
+          else
+            ""
+        s"Unnest(${lists.mkString(", ")}${o})"
       case Legacy(op, _) =>
         s"Legacy[${op.name}]"
       case CTERef(cte, _) =>

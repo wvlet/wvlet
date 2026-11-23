@@ -86,6 +86,9 @@ object PruneColumns extends Pass:
       case Window(child, calls, _) =>
         // Every call is kept, as ColumnPruner does
         p.withChildren(Seq(prune(child, needed ++ calls.flatMap(_.exprs).flatMap(_.refs), ctx)))
+      case Unnest(child, lists, _, _, _) =>
+        // Every list is kept: dropping one changes the rows
+        p.withChildren(Seq(prune(child, needed ++ lists.flatMap(_.refs), ctx)))
       case Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) =>
         // Set operations read whole rows of their inputs: the physical pruning narrows union
         // inputs by position after lowering

@@ -88,6 +88,10 @@ object PlanValidator:
           else if columns.map(_.ptype) != calls.map(_.ptype) then
             b += s"Window columns ${columns.mkString(", ")} differ from the call types"
           checkExprs(b, "Window", calls.flatMap(_.exprs), child.output)
+        case Unnest(child, lists, _, _, columns) =>
+          if columns.size != lists.size then
+            b += s"Unnest has ${columns.size} columns for ${lists.size} lists"
+          checkExprs(b, "Unnest", lists, child.output)
         case Legacy(op, columns) =>
           if columns.map(_.ptype) != op.schema.types then
             b += s"Legacy[${op.name}] columns ${columns.mkString(", ")} differ from ${op.schema}"

@@ -219,6 +219,17 @@ object PushDownFilters extends Pass:
           val (in, out) = conds.partition(_.refs.subsetOf(keys))
           moved(in)
           filter(withChild(w, push(child, in)), out)
+        case u @ Unnest(child, _, keepInput, _, _) =>
+          // Each row of the child repeats its columns in every row it unnests to (one, for an
+          // outer unnest without elements), so a conjunct over them keeps the same rows below
+          val ids =
+            if keepInput then
+              child.output.map(_.id).toSet
+            else
+              Set.empty[ColumnId]
+          val (in, out) = conds.partition(_.refs.subsetOf(ids))
+          moved(in)
+          filter(withChild(u, push(child, in)), out)
         case Scan(_, _, _, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) | Sort(_, _, _) |
             Limit(_, _, _) | Aggregate(_, _, _, _) | Sample(_, _) =>
           filter(p.withChildren(p.children.map(push(_, Nil))), conds)

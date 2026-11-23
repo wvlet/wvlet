@@ -90,6 +90,9 @@ object Stats:
         rows(child)
       case Window(child, _, _) =>
         rows(child)
+      case Unnest(child, _, _, _, _) =>
+        // As CardinalityEstimator does for UnnestOp: the rows of its input
+        rows(child)
 
   /** Distinct values of column `id` of p from source statistics, if traceable */
   def distinct(p: RuntimePlan, id: ColumnId): Option[Double] =
@@ -124,7 +127,7 @@ object Stats:
         Option.when(i >= 0)(i).flatMap(CardinalityEstimator.columnDistinct(op, _))
       case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
           InnerJoins(_, _) | CTERef(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) |
-          Window(_, _, _) =>
+          Window(_, _, _) | Unnest(_, _, _, _, _) =>
         // As CardinalityEstimator does over operators
         None
 

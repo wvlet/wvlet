@@ -137,6 +137,9 @@ object ShareSubplans:
             )
           )
           ("window", c, ws, define(cols))
+        case RuntimePlan.Unnest(child, lists, keepInput, outer, cols) =>
+          val c = canon(child)
+          ("unnest", c, exprs(lists), keepInput, outer, define(cols))
       end match
     end canon
 

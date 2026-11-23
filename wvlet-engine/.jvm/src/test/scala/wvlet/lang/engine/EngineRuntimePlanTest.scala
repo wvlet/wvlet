@@ -139,6 +139,115 @@ class EngineRuntimePlanTest extends UniTest:
     rowsOf(engine, query) shouldBe expected
   }
 
+  private def nodes(p: RuntimePlan): Seq[RuntimePlan] = p +: p.children.flatMap(nodes)
+
+  private def unnests(p: RuntimePlan): Seq[RuntimePlan.Unnest] = nodes(p).collect {
+    case u: RuntimePlan.Unnest =>
+      u
+  }
+
+  private def legacyLeafCount(p: RuntimePlan): Int = nodes(p).count {
+    case _: RuntimePlan.Legacy =>
+      true
+    case _ =>
+      false
+  }
+
+  test("bind unnest as a relation over one row") {
+    val query = "from unnest([1, 2, 3]) as t(number)"
+    val p     = runtimePlan(query)
+    debug(p.explain)
+    legacyLeafCount(p) shouldBe 0
+    unnests(p) shouldMatch {
+      case Seq(RuntimePlan.Unnest(RuntimePlan.Values(cols, _), _, false, false, _)) =>
+        cols shouldBe IndexedSeq.empty
+    }
+    p.output.map(_.name) shouldBe IndexedSeq("number")
+    PlanValidator.violations(p) shouldBe Nil
+    rowsOf(engine, query) shouldBe Seq(Seq(1L), Seq(2L), Seq(3L))
+    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+  }
+
+  test("bind a lateral unnest and move filters on its input below it") {
+    val query =
+      """from [[1, [10, 20]], [2, [30, 40]], [3, null]] as t(id, xs)
+        |cross join unnest(xs) as u(x)
+        |where id >= 2 and x > 30
+        |select id, x""".stripMargin
+    val p = runtimePlan(query)
+    debug(p.explain)
+    legacyLeafCount(p) shouldBe 0
+    val Seq(u) = unnests(p)
+    u.keepInput shouldBe true
+    u.outer shouldBe false
+    // id >= 2 reads only the input, and filters it; x > 30 stays above the unnest
+    nodes(u.child).exists(_.isInstanceOf[RuntimePlan.Filter]) shouldBe true
+    nodes(p).exists {
+      case RuntimePlan.Filter(_: RuntimePlan.Unnest, _, _) =>
+        true
+      case _ =>
+        false
+    } shouldBe true
+    PlanValidator.violations(p) shouldBe Nil
+    rowsOf(engine, query) shouldBe Seq(Seq(2L, 40L))
+    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+
+    // LEFT JOIN ... ON true keeps rows without elements
+    val left =
+      """from [[1, [1, 2]], [2, []], [3, null]] as t(id, xs)
+        |left join unnest(xs) as u(x) on true
+        |where id > 1
+        |select id, x
+        |order by id""".stripMargin
+    val l = runtimePlan(left)
+    unnests(l).map(_.outer) shouldBe Seq(true)
+    legacyLeafCount(l) shouldBe 0
+    PlanValidator.violations(l) shouldBe Nil
+    rowsOf(engine, left) shouldBe Seq(Seq(2L, null), Seq(3L, null))
+    rowsOf(engine, left) shouldBe rowsOf(legacy, left)
+
+    // Inside a join tree, with a condition between the unnest and another input
+    val tree =
+      """from [[1, [10, 20]], [2, [30]]] as t(id, xs)
+        |cross join unnest(xs) as u(x)
+        |join nation on n_nationkey = t.id
+        |select id, x, n_name
+        |order by id, x""".stripMargin
+    val j = runtimePlan(tree)
+    debug(j.explain)
+    legacyLeafCount(j) shouldBe 0
+    unnests(j).size shouldBe 1
+    PlanValidator.violations(j) shouldBe Nil
+    rowsOf(engine, tree).size shouldBe 3
+    rowsOf(engine, tree) shouldBe rowsOf(legacy, tree)
+  }
+
+  test("bind unnest select items as a projection over an unnest") {
+    val query =
+      """from nation
+        |where n_nationkey < 3
+        |select *, unnest([n_regionkey, n_nationkey * 10]) as v
+        |order by n_nationkey, v""".stripMargin
+    val p = runtimePlan(query)
+    debug(p.explain)
+    legacyLeafCount(p) shouldBe 0
+    nodes(p).exists {
+      case RuntimePlan.Project(
+            RuntimePlan.Unnest(_: RuntimePlan.Project, _, true, false, _),
+            _,
+            _
+          ) =>
+        true
+      case _ =>
+        false
+    } shouldBe true
+    p.output.map(_.name).last shouldBe "v"
+    PlanValidator.violations(p) shouldBe Nil
+    val expected = rowsOf(legacy, query)
+    expected.size shouldBe 6
+    rowsOf(engine, query) shouldBe expected
+  }
+
   test("bind column edits as projections over their input") {
     val query =
       """from nation

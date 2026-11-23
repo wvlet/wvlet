@@ -980,15 +980,16 @@ class Planner(
       case _ =>
         None
 
-  /** unnest(list, ...) as a relation; over `left` (a lateral join) when given */
-  private def planUnnest(
-      left: Option[Operator],
+  /**
+    * The lists of unnest(list, ...) bound over `schema`, and their element fields, named by the
+    * alias's column names and qualified by its name
+    */
+  private[engine] def unnestLists(
+      schema: Schema,
       call: TableFunctionCall,
-      alias: Option[AliasedRelation],
-      outer: Boolean = false
-  ): Operator =
-    val input  = left.getOrElse(SingleRowOp())
-    val binder = Binder(this, BindScope(input.schema))
+      alias: Option[AliasedRelation]
+  ): (IndexedSeq[VExpr], IndexedSeq[Field]) =
+    val binder = Binder(this, BindScope(schema))
     val lists  = call.args.map(a => binder.bind(a.value)).toIndexedSeq
     val names  = alias.flatMap(_.columnNames).map(_.map(_.name.name)).getOrElse(Nil)
     val q      = alias.map(_.alias.leafName).toList
@@ -997,15 +998,33 @@ class Planner(
       .map { i =>
         Field(names.lift(i).getOrElse("unnest"), Binder.listElementType(lists(i)), q)
       }
-    val inputFields =
+    (lists, fields)
+
+  /** unnest(list, ...) as a relation; over `left` (a lateral join) when given */
+  private def planUnnest(
+      left: Option[Operator],
+      call: TableFunctionCall,
+      alias: Option[AliasedRelation],
+      outer: Boolean = false
+  ): Operator =
+    val input           = left.getOrElse(SingleRowOp())
+    val (lists, fields) = unnestLists(input.schema, call, alias)
+    val inputFields     =
       if left.isDefined then
         input.schema.fields
       else
         IndexedSeq.empty
     UnnestOp(input, lists, keepInput = left.isDefined, Schema(inputFields ++ fields), outer)
 
-  /** select ..., unnest(list), ...: the row repeats per list element */
-  private def projectWithUnnest(op: Operator, items: List[Attribute]): Operator =
+  /**
+    * Select items with `unnest(list)` items bound over `schema`, each as its list: the expressions,
+    * their fields, and the positions of the list items. Items bind one by one, since `*` expands to
+    * several fields
+    */
+  private[engine] def bindUnnestItems(
+      schema: Schema,
+      items: List[Attribute]
+  ): (IndexedSeq[VExpr], IndexedSeq[Field], IndexedSeq[Int]) =
     val replaced = items.map { i =>
       unnestArg(i) match
         case Some(arg) =>
@@ -1013,8 +1032,7 @@ class Planner(
         case None =>
           i
     }
-    val binder = Binder(this, BindScope(op.schema))
-    // Bind items one by one: `*` expands to several fields, so item and field indexes differ
+    val binder = Binder(this, BindScope(schema))
     val bound  = replaced.map(r => bindItems(binder, List(r)))
     val exprs  = bound.flatMap(_._1).toIndexedSeq
     val fields = bound.flatMap(_._2).toIndexedSeq
@@ -1023,10 +1041,21 @@ class Planner(
         .zip(bound)
         .flatMap((item, b) => Seq.fill(b._2.size)(unnestArg(item).isDefined))
         .toIndexedSeq
-    val proj       = ProjectOp(op, exprs, Schema(fields))
-    val listIdx    = fields.indices.filter(isList)
-    val elemFields = listIdx.map(i => fields(i).copy(ptype = Binder.listElementType(exprs(i))))
-    val unnest     = UnnestOp(
+    (exprs, fields, fields.indices.filter(isList))
+
+  /** The element field of the list item at position i of [[bindUnnestItems]] */
+  private[engine] def unnestElementField(
+      exprs: IndexedSeq[VExpr],
+      fields: IndexedSeq[Field],
+      i: Int
+  ): Field = fields(i).copy(ptype = Binder.listElementType(exprs(i)))
+
+  /** select ..., unnest(list), ...: the row repeats per list element */
+  private def projectWithUnnest(op: Operator, items: List[Attribute]): Operator =
+    val (exprs, fields, listIdx) = bindUnnestItems(op.schema, items)
+    val proj                     = ProjectOp(op, exprs, Schema(fields))
+    val elemFields               = listIdx.map(unnestElementField(exprs, fields, _))
+    val unnest                   = UnnestOp(
       proj,
       listIdx.map(i => ColRef(i, fields(i).ptype, fields(i).name): VExpr),
       keepInput = true,
@@ -2715,38 +2744,47 @@ class Planner(
         (List(other), Nil)
 
   /**
+    * A lateral unnest on the right of `j` (join ... unnest(left.column)): its call and alias,
+    * whether it keeps left rows without elements (LEFT JOIN ... ON true), and its ON conjuncts
+    */
+  private[engine] def lateralUnnest(j: Join): Option[Planner.LateralUnnest] = unnestCall(j.right)
+    .map { (call, alias) =>
+      val conds =
+        (
+          j.cond match
+            case JoinOn(e, _) =>
+              conjuncts(e)
+            case JoinOnEq(keys, _) =>
+              conjuncts(Expression.concatWithEq(keys))
+            case _ =>
+              Nil
+        ).filterNot(isTrueLiteral)
+      val outer =
+        j.joinType match
+          case JoinType.LeftOuterJoin =>
+            if conds.nonEmpty then
+              throw StatusCode
+                .NOT_IMPLEMENTED
+                .newException("LEFT JOIN unnest(...) supports only ON true in the engine")
+            true
+          case JoinType.InnerJoin | JoinType.ImplicitJoin | JoinType.CrossJoin =>
+            false
+          case other =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"${other} with unnest(...) is not supported by the engine")
+      Planner.LateralUnnest(call, alias, outer, conds)
+    }
+
+  /**
     * Plan inner joins and filter conditions together: single-input conditions are pushed to their
     * inputs, equalities between inputs become hash join keys, and inputs are joined greedily,
     * building on the smaller side
     */
   private[engine] def planJoinTree(j: Join, filters: List[Expression]): Operator =
-    unnestCall(j.right) match
-      case Some((call, alias)) =>
+    lateralUnnest(j) match
+      case Some(Planner.LateralUnnest(call, alias, outer, conds)) =>
         // A lateral unnest over the left input: join ... unnest(left.column)
-        val conds =
-          (
-            j.cond match
-              case JoinOn(e, _) =>
-                conjuncts(e)
-              case JoinOnEq(keys, _) =>
-                conjuncts(Expression.concatWithEq(keys))
-              case _ =>
-                Nil
-          ).filterNot(isTrueLiteral)
-        val outer =
-          j.joinType match
-            case JoinType.LeftOuterJoin =>
-              if conds.nonEmpty then
-                throw StatusCode
-                  .NOT_IMPLEMENTED
-                  .newException("LEFT JOIN unnest(...) supports only ON true in the engine")
-              true
-            case JoinType.InnerJoin | JoinType.ImplicitJoin | JoinType.CrossJoin =>
-              false
-            case other =>
-              throw StatusCode
-                .NOT_IMPLEMENTED
-                .newException(s"${other} with unnest(...) is not supported by the engine")
         val op = planUnnest(Some(planRelation(j.left)), call, alias, outer)
         return applyConjuncts(op, conds ++ filters)
       case None =>
@@ -3227,6 +3265,17 @@ private[engine] enum SubqueryConjunct:
   def sub: Relation
 
 object Planner:
+
+  /**
+    * A lateral unnest (join ... unnest(left.column)): the call and its alias, whether rows without
+    * elements are kept (LEFT JOIN ... ON true), and the ON conjuncts
+    */
+  case class LateralUnnest(
+      call: TableFunctionCall,
+      alias: Option[AliasedRelation],
+      outer: Boolean,
+      conds: List[Expression]
+  )
 
   /**
     * About `percentage` percent of the rows of `op`: a filter keeping each row with that
