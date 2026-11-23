@@ -22,6 +22,13 @@ trait long = {
   def floor: long = sql"floor(${this})"
   def mod(divisor:long): long = sql"mod(${this},${divisor})"
 
+  -- Greatest common divisor and least common multiple (non-negative; 0 when both are 0)
+  def gcd(other:long) in duckdb: long = sql"gcd(${this},${other})"
+  def lcm(other:long) in duckdb: long = sql"lcm(${this},${other})"
+  -- n! for n in 0..20 (an error for negative n or when the result exceeds a long)
+  def factorial in duckdb: long = sql"cast(factorial(cast(${this} as integer)) as bigint)"
+  def factorial in snowflake: long = sql"factorial(${this})"
+
   -- Interpret this value as a unix epoch second (in UTC)
   def from_unixtime in duckdb: timestamp = sql"make_timestamp(cast(${this} as bigint) * 1000000)"
   def from_unixtime in trino: timestamp = sql"cast(from_unixtime(${this}) AT TIME ZONE 'UTC' as timestamp)"

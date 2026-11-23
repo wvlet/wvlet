@@ -78,19 +78,23 @@ Available on numeric values (int, long, float, double, decimal):
 |----------|-------------|
 | `x.abs` | Absolute value |
 | `x.ceil` / `x.floor` | Round up / down |
-| `x.round(digits)` | Round to the given number of digits |
+| `x.round(digits)` | Round to the given number of digits (ties away from zero) |
+| `x.round_half_even` / `x.round_half_even(digits)` | Round ties to the even neighbor (banker's rounding: 2.5 → 2, 3.5 → 4) |
 | `x.truncate` | Drop the fractional part |
 | `x.sqrt` / `x.cbrt` | Square/cube root |
 | `x.exp` / `x.ln` / `x.log10` / `x.log2` | Exponential and logarithms |
 | `x.power(exponent)` | Raise to a power |
 | `x.mod(divisor)` | Modulo |
 | `x.sign` | -1, 0, or 1 |
+| `x.sinh` / `x.cosh` / `x.tanh` | Hyperbolic functions |
+| `x.asinh` / `x.acosh` / `x.atanh` | Inverse hyperbolic functions (NaN outside their domain) |
+| `x.cot` | Cotangent |
 | `x.between(low, high)` | Range test |
 | `x.in(v1, v2, ...)` / `x.not_in(...)` | Set membership |
 
 On float/double values: `x.is_nan`, `x.is_finite`, `x.is_infinite`, and trigonometric functions (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `degrees`, `radians`).
 
-On integer values: `x.from_unixtime` interprets the number as unix epoch seconds and returns a timestamp.
+On integer values: `x.from_unixtime` interprets the number as unix epoch seconds and returns a timestamp. `x.gcd(y)` / `x.lcm(y)` give the greatest common divisor and least common multiple, and `n.factorial` gives n! for n from 0 to 20; these three are available on DuckDB and the wvlet engine (`factorial` also on Snowflake).
 
 ## Date and Timestamp Functions
 

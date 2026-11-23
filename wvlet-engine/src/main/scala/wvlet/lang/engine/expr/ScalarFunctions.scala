@@ -100,11 +100,6 @@ object ScalarFunctions:
       val ei = s.offsetByCodePoints(bi, (e - b).toInt)
       s.substring(bi, ei)
 
-  private def roundDecimal(v: JBigDecimal, digits: Int): JBigDecimal = v.setScale(
-    digits,
-    RoundingMode.HALF_UP
-  )
-
   private def datePart(part: String, ptype: PType, v: Any): Long =
     val micros: Long =
       ptype match
@@ -417,10 +412,22 @@ object ScalarFunctions:
     regexCache.getOrElseUpdate(p, regex(p))
   }
 
-  private def numericRound(name: String, args: Seq[VExpr])(
-      f: Double => Double,
-      big: (JBigDecimal, Int) => JBigDecimal
-  ): VExpr =
+  /** Greatest common divisor, non-negative (0 for gcd(0, 0)) */
+  private def gcd(x: Long, y: Long): Long =
+    var a = math.abs(x)
+    var b = math.abs(y)
+    while b != 0 do
+      val t = a % b
+      a = b
+      b = t
+    a
+
+  /**
+    * Round to `digits` decimal places with the given rounding mode, as DuckDB: decimals keep their
+    * type, integers round to tens and hundreds with negative digits, and doubles round their exact
+    * binary value (2.675 is 2.67499..., so it rounds to 2.67)
+    */
+  private def numericRound(name: String, args: Seq[VExpr], mode: RoundingMode): VExpr =
     val x      = args.head
     val digits =
       args.lift(1) match
@@ -435,12 +442,28 @@ object ScalarFunctions:
     x.ptype match
       case d: PType.Decimal =>
         val outType = PType.decimal(d.precision, math.max(0, math.min(d.scale, digits)))
-        fn(name, Seq(x), outType)(a => big(a(0).asInstanceOf[JBigDecimal], digits))
-      case PType.Int32 | PType.Int64 =>
+        fn(name, Seq(x), outType)(a => a(0).asInstanceOf[JBigDecimal].setScale(digits, mode))
+      case PType.Int32 | PType.Int64 if digits >= 0 =>
         x
+      case t @ (PType.Int32 | PType.Int64) =>
+        // Negative digits round integers to tens, hundreds, ...: round(25, -1) = 30
+        fn(name, Seq(x), t) { a =>
+          val r = JBigDecimal.valueOf(ValueOps.toLong(a(0))).setScale(digits, mode).longValueExact()
+          if t == PType.Int32 then
+            r.toInt
+          else
+            r
+        }
       case _ =>
-        val m = math.pow(10, digits)
-        fn(name, Seq(toDouble(x)), PType.Float64)(a => f(a(0).asInstanceOf[Double] * m) / m)
+        fn(name, Seq(toDouble(x)), PType.Float64) { a =>
+          val v = a(0).asInstanceOf[Double]
+          if v.isNaN || v.isInfinite then
+            v
+          else
+            JBigDecimal(v).setScale(digits, mode).doubleValue()
+        }
+
+  end numericRound
 
   private val registry: Map[String, Builder] =
     val m                                     = Map.newBuilder[String, Builder]
@@ -713,15 +736,11 @@ object ScalarFunctions:
       }
     }
     reg("round") { args =>
-      numericRound("round", args)(
-        d =>
-          if d >= 0 then
-            math.floor(d + 0.5)
-          else
-            math.ceil(d - 0.5)
-        ,
-        (b, s) => roundDecimal(b, s)
-      )
+      numericRound("round", args, RoundingMode.HALF_UP)
+    }
+    // Banker's rounding (ties to the even neighbor), as DuckDB's round_even
+    reg("round_even") { args =>
+      numericRound("round_even", args, RoundingMode.HALF_EVEN)
     }
     reg("floor") { args =>
       args.head.ptype match
@@ -783,6 +802,50 @@ object ScalarFunctions:
     dbl("acos")(math.acos)
     dbl("atan")(math.atan)
     dbl("degrees")(math.toDegrees)
+    dbl("sinh")(math.sinh)
+    dbl("cosh")(math.cosh)
+    dbl("tanh")(math.tanh)
+    dbl("asinh")(d => math.signum(d) * math.log(math.abs(d) + math.sqrt(d * d + 1)))
+    dbl("acosh")(d => math.log(d + math.sqrt(d * d - 1)))
+    dbl("atanh")(d => 0.5 * math.log((1 + d) / (1 - d)))
+    dbl("cot")(d => 1 / math.tan(d))
+    reg("gcd") { args =>
+      arity("gcd", args, 2)
+      fn("gcd", args.map(toLong), PType.Int64)(a =>
+        gcd(a(0).asInstanceOf[Long], a(1).asInstanceOf[Long])
+      )
+    }
+    reg("lcm") { args =>
+      arity("lcm", args, 2)
+      fn("lcm", args.map(toLong), PType.Int64) { a =>
+        val x = a(0).asInstanceOf[Long]
+        val y = a(1).asInstanceOf[Long]
+        if x == 0 || y == 0 then
+          0L
+        else
+          try
+            math.abs(Math.multiplyExact(x / gcd(x, y), y))
+          catch
+            case _: ArithmeticException =>
+              throw StatusCode.INVALID_ARGUMENT.newException("lcm value is out of range")
+      }
+    }
+    reg("factorial") { args =>
+      arity("factorial", args, 1)
+      fn("factorial", Seq(toLong(args.head)), PType.Int64) { a =>
+        val n = a(0).asInstanceOf[Long]
+        if n < 0 then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException("factorial of a negative number is undefined")
+        else if n > 20 then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(s"factorial(${n}) is out of range for a long")
+        else
+          (2L to n).product
+      }
+    }
     dbl("radians")(math.toRadians)
     reg("log") { args =>
       if args.size == 1 then

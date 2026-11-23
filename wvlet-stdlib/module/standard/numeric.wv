@@ -21,6 +21,36 @@ trait numeric = {
   def power(exponent:double): double = sql"power(${this},${exponent})"
   def sign: int = sql"sign(${this})"
 
+  -- Hyperbolic sine, cosine, and tangent
+  def sinh: double = sql"sinh(${this})"
+  def sinh in hive: double = sql"((exp(${this}) - exp(-(${this}))) / 2)"
+  def cosh: double = sql"cosh(${this})"
+  def cosh in hive: double = sql"((exp(${this}) + exp(-(${this}))) / 2)"
+  def tanh: double = sql"tanh(${this})"
+  def tanh in hive: double = sql"((exp(2 * (${this})) - 1) / (exp(2 * (${this})) + 1))"
+  -- Inverse hyperbolic sine, cosine (NaN below 1), and tangent (NaN outside -1..1)
+  def asinh: double = sql"asinh(${this})"
+  def asinh in trino: double = sql"ln((${this}) + sqrt((${this}) * (${this}) + 1))"
+  def asinh in hive: double = sql"ln((${this}) + sqrt((${this}) * (${this}) + 1))"
+  def acosh: double = sql"acosh(${this})"
+  def acosh in trino: double = sql"ln((${this}) + sqrt((${this}) * (${this}) - 1))"
+  def acosh in hive: double = sql"ln((${this}) + sqrt((${this}) * (${this}) - 1))"
+  def atanh: double = sql"atanh(${this})"
+  def atanh in trino: double = sql"(0.5 * ln((1 + (${this})) / (1 - (${this}))))"
+  def atanh in hive: double = sql"(0.5 * ln((1 + (${this})) / (1 - (${this}))))"
+  -- Cotangent (1 / tan)
+  def cot: double = sql"cot(${this})"
+  def cot in trino: double = sql"(1 / tan(${this}))"
+  def cot in hive: double = sql"(1 / tan(${this}))"
+
+  -- Round to an integer, or to the given number of decimal places, rounding ties to the even neighbor (banker's rounding)
+  def round_half_even in duckdb: double = sql"round_even(${this},0)"
+  def round_half_even in hive: double = sql"bround(${this},0)"
+  def round_half_even in snowflake: double = sql"round(${this},0,'HALF_TO_EVEN')"
+  def round_half_even(decimal:int) in duckdb: double = sql"round_even(${this},${decimal})"
+  def round_half_even(decimal:int) in hive: double = sql"bround(${this},${decimal})"
+  def round_half_even(decimal:int) in snowflake: double = sql"round(${this},${decimal},'HALF_TO_EVEN')"
+
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
 }
