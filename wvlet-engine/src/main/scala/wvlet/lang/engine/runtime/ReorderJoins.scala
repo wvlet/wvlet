@@ -107,6 +107,11 @@ object ReorderJoins extends Pass:
     override def keys(current: RuntimePlan, next: RuntimePlan, pairs: Seq[(BExpr, BExpr)]): Keys =
       (pairs.map(_._1).toIndexedSeq, pairs.map(_._2).toIndexedSeq)
 
+    override def distinct(input: RuntimePlan, side: BExpr): Option[Double] = Stats.distinct(
+      input,
+      side.expr
+    )
+
     override def outputRows(
         current: RuntimePlan,
         currentRows: Double,

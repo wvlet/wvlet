@@ -13,6 +13,7 @@
   ↓ Morsel[parallelism=N] -> [wr_order_number:long]
 ↙ HashJoin[Inner](#0 = #0) -> [ws_order_number:long, wr_order_number:long]
 ↓ Project(#1) -> [wr_order_number:long]
+↓ Project(#0) -> [wr_order_number:long]
 ↓ Morsel[parallelism=N] -> [wr_order_number:long]
   Scan[CTE[ws_wh]](columns=ws_order_number) -> [ws_order_number:long]
   ↓ Project(#0) -> [ws_order_number:long]
