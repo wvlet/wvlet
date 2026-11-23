@@ -400,26 +400,25 @@ class RuntimeBinder(planner: Planner):
     val (withSubqueries, conds) = all.partition((_, e) => planner.hasSubquery(e))
     val output                  = inputs.flatMap(_.output)
     val schemas                 = inputs.map(_.schema).toList
-    // Uncorrelated [NOT] IN conditions reading one input join that input when the join streams
-    // it: NOT IN, and IN building on the subquery. An IN that would build on the input (the
-    // subquery is much larger) joins the ordered tree instead, whose joins may have reduced the
-    // input's rows, as without placement. The other conditions with subqueries apply over the
-    // ordered tree
-    val placed = List.newBuilder[(Int, SubqueryConjunct.In, Option[Lowered])]
+    // An uncorrelated IN condition reading one input joins that input when its subquery is
+    // estimated no larger than the input: the semi join then builds on the subquery and filters
+    // the input as it streams. Over a larger subquery (e.g., a CTE of unknown size), it joins the
+    // ordered tree instead, whose joins may have reduced the input's rows, as without placement.
+    // The other conditions with subqueries (NOT IN, which rarely removes many rows, among them)
+    // apply over the ordered tree
+    val placed = List.newBuilder[(Int, SubqueryConjunct.In, Lowered)]
     val lifted = List.newBuilder[(SubqueryConjunct.In, Lowered)]
     val above  = List.newBuilder[Expression]
     withSubqueries
       .map(_._1)
       .foreach { c =>
         singleInputIn(c, schemas) match
-          case Some((i, in)) if in.negate =>
-            placed += ((i, in, None))
           case Some((i, in)) =>
             val inner = lowered(bind(in.sub))
-            if planner.swapBuild(CardinalityEstimator.rows(inner.op), Stats.rows(inputs(i))) then
-              lifted += in -> inner
+            if CardinalityEstimator.rows(inner.op) <= Stats.rows(inputs(i)) then
+              placed += ((i, in, inner))
             else
-              placed += ((i, in, Some(inner)))
+              lifted += in -> inner
           case None =>
             above += c
       }
@@ -461,7 +460,7 @@ class RuntimeBinder(planner: Planner):
   end innerJoins
 
   /**
-    * The input of an inner join tree that an uncorrelated [NOT] IN condition reads alone, with the
+    * The input of an inner join tree that an uncorrelated IN condition reads alone, with the
     * condition, when [[Optimization.PlaceSemiJoins]] (and [[Optimization.Decorrelate]]) is on
     */
   private def singleInputIn(
@@ -474,7 +473,7 @@ class RuntimeBinder(planner: Planner):
     else
       planner.subqueryConjunct(c) match
         case Some(in: SubqueryConjunct.In)
-            if !planner.hasSubquery(in.target) && planner.isUncorrelated(in.sub) =>
+            if !in.negate && !planner.hasSubquery(in.target) && planner.isUncorrelated(in.sub) =>
           schemas.indices.filter(planner.referencesInput(in.target, schemas, _)) match
             case Seq(i) =>
               Some(i -> in)
@@ -484,37 +483,21 @@ class RuntimeBinder(planner: Planner):
           None
 
   /**
-    * Rows of an inner join tree input for which an uncorrelated IN / NOT IN is true, as
-    * `plans.subqueryJoin` joins them over a lowered input: IN with its lowered subquery `inner`,
-    * building on it; NOT IN with its values, decided at plan time
+    * Rows of an inner join tree input for which an uncorrelated IN is true: a semi join with the
+    * lowered subquery `inner`, building on it
     */
-  private def placedSemiJoin(
-      p: RuntimePlan,
-      in: SubqueryConjunct.In,
-      inner: Option[Lowered]
-  ): RuntimePlan =
-    val target = Binder(planner, BindScope(p.schema)).bind(in.target)
-    def keyed(inner: RuntimePlan, kind: JoinKind, buildLeft: Boolean): RuntimePlan =
-      val (lk, rk) = inKeys(target, inner.schema(0))
-      RuntimePlan.Join(
-        p,
-        inner,
-        kind,
-        IndexedSeq(BExpr.of(lk, p.output)),
-        IndexedSeq(BExpr.of(rk, inner.output)),
-        None,
-        buildLeft
-      )
-    inner match
-      case Some(sub) =>
-        keyed(sub.plan, JoinKind.Semi, buildLeft = false)
-      case None =>
-        notInValues(in.sub) match
-          case None =>
-            RuntimePlan.Filter(p, BExpr(Const(false, PType.Bool)))
-          case Some(values) =>
-            val anti = keyed(legacyOp(values), JoinKind.Anti, buildLeft = false)
-            RuntimePlan.Filter(anti, BExpr.of(IsNullExpr(target, negate = true), p.output))
+  private def placedSemiJoin(p: RuntimePlan, in: SubqueryConjunct.In, inner: Lowered): RuntimePlan =
+    val target   = Binder(planner, BindScope(p.schema)).bind(in.target)
+    val (lk, rk) = inKeys(target, inner.op.schema(0))
+    RuntimePlan.Join(
+      p,
+      inner.plan,
+      JoinKind.Semi,
+      IndexedSeq(BExpr.of(lk, p.output)),
+      IndexedSeq(BExpr.of(rk, inner.plan.output)),
+      None,
+      buildLeft = false
+    )
 
   /**
     * The keys of a semi or anti join of `target in (subquery)`: the target and the subquery's first

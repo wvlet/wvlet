@@ -140,10 +140,9 @@ class EngineDecorrelateTest extends UniTest:
 
   test("join IN over one input of a join tree onto that input") {
     val query =
-      """select n_name, r_name from nation, region
-        |where n_regionkey = r_regionkey
-        |  and n_nationkey in (select s_nationkey from supplier where s_acctbal > 9000)"""
-        .stripMargin
+      """select s_name, n_name from supplier, nation
+        |where s_nationkey = n_nationkey
+        |  and n_regionkey in (select r_regionkey from region where r_name = 'ASIA')""".stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldContain JoinKind.Semi
     hasLegacy(p) shouldBe false
@@ -152,7 +151,7 @@ class EngineDecorrelateTest extends UniTest:
     sameRows(query).nonEmpty shouldBe true
   }
 
-  test("join NOT IN over one input of a join tree onto that input") {
+  test("keep NOT IN over one input of a join tree above the ordered tree") {
     val query =
       """select n_name, r_name from nation, region
         |where n_regionkey = r_regionkey
@@ -160,7 +159,7 @@ class EngineDecorrelateTest extends UniTest:
         .stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldContain JoinKind.Anti
-    joinAboveSemi(p).isDefined shouldBe true
+    joinAboveSemi(p) shouldBe None
     sameRows(query).nonEmpty shouldBe true
   }
 
@@ -200,10 +199,9 @@ class EngineDecorrelateTest extends UniTest:
 
   test("keep IN above the ordered tree with place_semi_joins disabled") {
     val query =
-      """select n_name, r_name from nation, region
-        |where n_regionkey = r_regionkey
-        |  and n_nationkey in (select s_nationkey from supplier where s_acctbal > 9000)"""
-        .stripMargin
+      """select s_name, n_name from supplier, nation
+        |where s_nationkey = n_nationkey
+        |  and n_regionkey in (select r_regionkey from region where r_name = 'ASIA')""".stripMargin
     val off = engine.withOptimizer(options.withDisabled(Optimization.PlaceSemiJoins))
     val p   = withQuery(query)(off.runtimePlan(_))
     joinKinds(p).headOption shouldBe Some(JoinKind.Semi)
