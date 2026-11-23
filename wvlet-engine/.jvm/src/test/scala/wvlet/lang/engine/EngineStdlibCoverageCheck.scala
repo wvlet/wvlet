@@ -35,7 +35,7 @@ import java.nio.file.Path
 class EngineStdlibCoverageCheck extends UniTest:
 
   /** Stdlib functions that run on the engine and match DuckDB must not drop below this count */
-  private val minCovered = 248
+  private val minCovered = 241
 
   private val conformance     = EngineConformance(".", Nil, _ => ())
   override def afterAll: Unit = conformance.close()
@@ -92,8 +92,6 @@ class EngineStdlibCoverageCheck extends UniTest:
         Seq("'2024-03-15 10:20:30'.to_timestamp")
       case "json" =>
         Seq("""'{"a": [1, 2]}'.to_json""")
-      case "null" =>
-        Seq("null")
       case "any" =>
         Seq("3", "'2024-03-15'")
       case "map" =>
@@ -118,15 +116,16 @@ class EngineStdlibCoverageCheck extends UniTest:
         .findAllMatchIn(fn.signature.dropWhile(_ != '('))
         .map(m => samples(m.group(2), m.group(1)))
         .toList
-    if args.exists(_.isEmpty) then
+    // No owner sample for `null`: its members return NULL on both engines, a vacuous match
+    val receivers =
+      fn.ownerType match
+        case "" | "array" =>
+          Seq("")
+        case owner =>
+          samples(owner)
+    if receivers.isEmpty || args.exists(_.isEmpty) then
       Nil
     else
-      val receivers =
-        fn.ownerType match
-          case "" | "array" =>
-            Seq("")
-          case owner =>
-            samples(owner)
       val n = (receivers +: args).map(_.size).max
       (0 until n).flatMap { i =>
         def pick(c: Seq[String]): String = c(math.min(i, c.size - 1))
@@ -185,19 +184,30 @@ class EngineStdlibCoverageCheck extends UniTest:
   private def run(fn: StdLibFunctionDoc): (Outcome, String) =
     val probes = probesOf(fn)
     if probes.isEmpty then
-      (Outcome.NotProbed, "no sample for an argument type")
+      (Outcome.NotProbed, "no sample for the owner or an argument type")
     else
-      val it                        = probes.iterator
-      var result: (Outcome, String) = (Outcome.NotProbed, "")
-      var done                      = false
-      while !done && it.hasNext do
-        runQuery(fn.signature, it.next()) match
-          case Right(r) =>
-            result = r
-            done = true
-          case Left(msg) =>
-            result = (Outcome.NotProbed, msg)
-      result
+      // The first covered probe wins; otherwise report the first probe DuckDB accepted
+      val results = probes.iterator.map(q => runQuery(fn.signature, q)).toSeq
+      results
+        .collectFirst { case Right(r @ (Outcome.Covered, _)) =>
+          r
+        }
+        .orElse(
+          results.collectFirst { case Right(r) =>
+            r
+          }
+        )
+        .getOrElse(
+          (
+            Outcome.NotProbed,
+            results
+              .collect { case Left(m) =>
+                m
+              }
+              .lastOption
+              .getOrElse("")
+          )
+        )
 
   /** Stdlib functions the engine's dialect sees: dialect-neutral ones and DuckDB variants */
   private lazy val engineFunctions: Seq[StdLibFunctionDoc] = StdLibIndex
