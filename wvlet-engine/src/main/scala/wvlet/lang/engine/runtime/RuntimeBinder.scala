@@ -27,7 +27,6 @@ import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.exec.WindowCall
 import wvlet.lang.engine.exec.WindowOp
 import wvlet.lang.engine.expr.AndExpr
-import wvlet.lang.engine.expr.CastExpr
 import wvlet.lang.engine.expr.Const
 import wvlet.lang.engine.expr.IsNullExpr
 import wvlet.lang.engine.expr.ColRef
@@ -294,9 +293,12 @@ class RuntimeBinder(planner: Planner):
         // Common conjuncts of `or`s are factored by the Normalize pass
         val conds = planner.splitConjuncts(f.filterExpr)
         if conds.exists(planner.hasSubquery) then
-          // Subqueries become joins over the optimized input, factored as the planner does:
-          // semi and anti joins when they are uncorrelated, legacy nodes otherwise
-          plans.conjuncts(lowered(bind(child)), planner.conjuncts(f.filterExpr)).plan
+          if planner.enabled(Optimization.Decorrelate) then
+            // Subqueries become joins over the optimized input, factored as the planner does:
+            // semi and anti joins when they are uncorrelated, legacy nodes otherwise
+            plans.conjuncts(lowered(bind(child)), planner.conjuncts(f.filterExpr)).plan
+          else
+            legacy(f)
         else
           val in     = bind(child)
           val schema = in.schema
@@ -577,7 +579,14 @@ class RuntimeBinder(planner: Planner):
         }
       if !planner.enabled(Optimization.Decorrelate) || subs.forall(_.isEmpty) ||
         plain.exists(c => planner.hasSubquery(planner.withoutScalarSubqueries(c))) ||
-        !subs.flatten.forall(s => planner.isUncorrelated(s.sub))
+        subs
+          .flatten
+          .exists {
+            case SubqueryConjunct.In(a, _, _) =>
+              planner.hasSubquery(a)
+            case _: SubqueryConjunct.Exists =>
+              false
+          } || !subs.flatten.forall(s => planner.isUncorrelated(s.sub))
       then
         None
       else
@@ -610,8 +619,8 @@ class RuntimeBinder(planner: Planner):
               p,
               inner,
               kind,
-              IndexedSeq(cast(target, t)),
-              IndexedSeq(cast(ColRef(0, v.ptype, v.name), t)),
+              IndexedSeq(planner.castExpr(target, t)),
+              IndexedSeq(planner.castExpr(ColRef(0, v.ptype, v.name), t)),
               buildLeft
             )
           if !negate then
@@ -664,12 +673,6 @@ class RuntimeBinder(planner: Planner):
       ),
       JoinOrderOptimizer.semiJoinOp(p.op, inner.op, lk, rk, kind, None, buildLeft)
     )
-
-    private def cast(e: VExpr, t: PType): VExpr =
-      if e.ptype == t then
-        e
-      else
-        CastExpr(e, t)
 
   end plans
 

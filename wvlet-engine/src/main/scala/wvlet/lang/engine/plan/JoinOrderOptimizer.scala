@@ -294,6 +294,15 @@ object JoinOrderOptimizer:
   def swapBuild(options: OptimizerOptions, rows: Double, otherRows: Double): Boolean =
     options.isEnabled(Optimization.SwapBuildSide) && rows > SwapBuildRatio * otherRows
 
+  /** The position of each column of left ++ right (of widths lw, rw) in right ++ left */
+  private def swappedPositions(lw: Int, rw: Int): Array[Int] =
+    Array.tabulate(lw + rw)(i =>
+      if i < lw then
+        rw + i
+      else
+        i - lw
+    )
+
   /** The kind of a join whose inputs swap sides */
   def swappedKind(kind: JoinKind): JoinKind =
     kind match
@@ -355,27 +364,13 @@ object JoinOrderOptimizer:
     if lk.isEmpty then
       NestedLoopJoinOp(left, right, residual, kind, left.schema)
     else if buildLeft then
-      val lw = left.schema.size
-      val rw = right.schema.size
-      // Position of each left ++ right column in right ++ left
-      val toSwapped =
-        Array.tabulate(lw + rw)(i =>
-          if i < lw then
-            rw + i
-          else
-            i - lw
-        )
-      val swapped =
-        if kind == JoinKind.Semi then
-          JoinKind.RightSemi
-        else
-          JoinKind.RightAnti
+      val toSwapped = swappedPositions(left.schema.size, right.schema.size)
       HashJoinOp(
         right,
         left,
         rk,
         lk,
-        swapped,
+        swappedKind(kind),
         residual.map(VExprs.remap(_, toSwapped)),
         left.schema
       )
@@ -397,17 +392,8 @@ object JoinOrderOptimizer:
       residual: Option[VExpr],
       combined: Schema
   ): Operator =
-    val lw = left.schema.size
-    val rw = right.schema.size
-    // Position of each left ++ right column in right ++ left
-    val toSwapped =
-      Array.tabulate(lw + rw)(i =>
-        if i < lw then
-          rw + i
-        else
-          i - lw
-      )
-    val join = HashJoinOp(
+    val toSwapped = swappedPositions(left.schema.size, right.schema.size)
+    val join      = HashJoinOp(
       right,
       left,
       rk,

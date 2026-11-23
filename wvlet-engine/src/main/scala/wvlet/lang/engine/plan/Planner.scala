@@ -2050,24 +2050,16 @@ class Planner(
   private def rewriteSubqueryConjunct(
       op: Operator,
       c: Expression
-  ): Option[(Operator, Option[Expression])] =
-    c match
-      case e: Exists =>
-        existsJoin(op, e, negate = false)
-      case Not(e: Exists, _) =>
-        existsJoin(op, e, negate = true)
-      case in: InRelation =>
-        inJoin(op, in.a, in.in, negate = false)
-      case in: NotInRelation =>
-        inJoin(op, in.a, in.in, negate = true)
-      case Not(in: InRelation, _) =>
-        inJoin(op, in.a, in.in, negate = true)
-      case _ =>
-        None
+  ): Option[(Operator, Option[Expression])] = subqueryConjunct(c).flatMap {
+    case SubqueryConjunct.Exists(sub, negate) =>
+      existsJoin(op, sub, negate)
+    case SubqueryConjunct.In(a, sub, negate) =>
+      inJoin(op, a, sub, negate)
+  }
 
   /**
-    * A filter conjunct that is EXISTS, NOT EXISTS, IN, or NOT IN over a subquery, as
-    * [[rewriteSubqueryConjunct]] matches it (without checking whether the subquery is correlated)
+    * A filter conjunct that is EXISTS, NOT EXISTS, IN, or NOT IN over a subquery (correlated or
+    * not), which [[rewriteSubqueryConjunct]] turns into a join
     */
   private[engine] def subqueryConjunct(c: Expression): Option[SubqueryConjunct] =
     c match
@@ -2075,11 +2067,11 @@ class Planner(
         Some(SubqueryConjunct.Exists(subqueryRelation(e.child), negate = false))
       case Not(e: Exists, _) =>
         Some(SubqueryConjunct.Exists(subqueryRelation(e.child), negate = true))
-      case in: InRelation if !hasSubquery(in.a) =>
+      case in: InRelation =>
         Some(SubqueryConjunct.In(in.a, in.in, negate = false))
-      case in: NotInRelation if !hasSubquery(in.a) =>
+      case in: NotInRelation =>
         Some(SubqueryConjunct.In(in.a, in.in, negate = true))
-      case Not(in: InRelation, _) if !hasSubquery(in.a) =>
+      case Not(in: InRelation, _) =>
         Some(SubqueryConjunct.In(in.a, in.in, negate = true))
       case _ =>
         None
@@ -2184,7 +2176,7 @@ class Planner(
     }
     (bound.map(_._1).toIndexedSeq, bound.map(_._2).toIndexedSeq)
 
-  private def castExpr(e: VExpr, t: PType): VExpr =
+  private[engine] def castExpr(e: VExpr, t: PType): VExpr =
     if e.ptype == t then
       e
     else
@@ -2198,10 +2190,9 @@ class Planner(
 
   private def existsJoin(
       op: Operator,
-      e: Exists,
+      sub: Relation,
       negate: Boolean
   ): Option[(Operator, Option[Expression])] =
-    val sub = subqueryRelation(e.child)
     if !isCorrelated(sub, op.schema) then
       // Uncorrelated: a constant condition
       val rows = Operator.materialize(Planner.nested(this).plan(sub)).size
