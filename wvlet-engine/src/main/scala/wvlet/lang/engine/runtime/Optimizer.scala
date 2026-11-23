@@ -118,7 +118,7 @@ class Optimizer(val passes: Seq[Pass], options: OptimizerOptions):
 
 object Optimizer:
   /** The passes, in order */
-  val defaultPasses: Seq[Pass] = Seq(Normalize, ReorderJoins)
+  val defaultPasses: Seq[Pass] = Seq(Normalize, PushDownFilters, ReorderJoins)
 
   /** The default passes */
   def default(options: OptimizerOptions): Optimizer = Optimizer(defaultPasses, options)

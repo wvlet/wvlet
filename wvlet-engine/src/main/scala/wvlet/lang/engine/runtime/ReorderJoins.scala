@@ -44,14 +44,23 @@ object ReorderJoins extends Pass:
       case j: InnerJoins =>
         if ctx.options.isEnabled(Optimization.ReorderJoins) then
           ctx.fired(name)
-        order(j, ctx.options)
+        order(j, ctx)
+      case j @ Join(left, right, JoinKind.Left | JoinKind.Right | JoinKind.Full, lk, _, _, false)
+          if lk.nonEmpty =>
+        // An outer hash join builds on its left input when the right one is much larger, as
+        // `Planner.joinOn` decides it
+        if JoinOrderOptimizer.swapBuild(ctx.options, Stats.rows(right), Stats.rows(left)) then
+          j.copy(buildLeft = true)
+        else
+          j
       case other =>
         other
 
   /** The join tree of an [[RuntimePlan.InnerJoins]] node */
-  def order(j: InnerJoins, options: OptimizerOptions): RuntimePlan =
-    val inputs = j.inputs
-    val owner  = inputs.indices.flatMap(i => inputs(i).output.map(_.id -> i)).toMap
+  def order(j: InnerJoins, ctx: OptimizerContext): RuntimePlan =
+    val options = ctx.options
+    val inputs  = j.inputs
+    val owner   = inputs.indices.flatMap(i => inputs(i).output.map(_.id -> i)).toMap
     def refs(e: BExpr): Set[Int] = e.refs.map(owner)
     val condRefs                 = j.conds.map(c => (c, refs(c.cond)))
     val pushed                   = inputs
@@ -61,12 +70,10 @@ object ReorderJoins extends Pass:
           case (c, r) if r == Set(i) =>
             c
         }
-        val p =
-          if local.isEmpty then
-            inputs(i)
-          else
-            Filter(inputs(i), and(local.map(_.cond)))
-        (p, Stats.rows(p) * local.map(Stats.selectivity(inputs(i), _)).product)
+        // Pushed into the input as far as filters go, so that a second run of the passes over
+        // the ordered tree (the binder optimizes some inputs before their parents) keeps it
+        val p = PushDownFilters.filter(inputs(i), local, ctx)
+        (p, Stats.rows(inputs(i)) * local.map(Stats.selectivity(inputs(i), _)).product)
       }
     val edges =
       condRefs

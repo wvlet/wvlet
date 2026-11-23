@@ -32,7 +32,7 @@ Scan[date_dim](columns=d_date_sk,d_date,d_month_seq filter=Compare(d_month_seq,G
 ↓ Project(#0, #1, #2, #3) -> [item_sk:long, d_date:date, web_sales:decimal(38,2), store_sales:decimal(38,2)]
 ↓ Window[parallelism=N](win:max(#2) over(#0;#1;Some(FrameSpec(true,None,Some(0)))), win:max(#3) over(#0;#1;Some(FrameSpec(true,None,Some(0))))) -> [item_sk:long, d_date:date, web_sales:decimal(38,2), store_sales:decimal(38,2), __wv_win0:decimal(38,2), __wv_win1:decimal(38,2)]
 ↓ Project(#0, #1, #2, #3, #4, #5) -> [item_sk:long, d_date:date, web_sales:decimal(38,2), store_sales:decimal(38,2), web_cumulative:decimal(38,2), store_cumulative:decimal(38,2)]
-↓ Project(#0, #1, #2, #3, #4, #5) -> [item_sk:long, d_date:date, web_sales:decimal(38,2), store_sales:decimal(38,2), web_cumulative:decimal(38,2), store_cumulative:decimal(38,2)]
 ↓ Filter((#4>#5)) -> [item_sk:long, d_date:date, web_sales:decimal(38,2), store_sales:decimal(38,2), web_cumulative:decimal(38,2), store_cumulative:decimal(38,2)]
+↓ Project(#0, #1, #2, #3, #4, #5) -> [item_sk:long, d_date:date, web_sales:decimal(38,2), store_sales:decimal(38,2), web_cumulative:decimal(38,2), store_cumulative:decimal(38,2)]
 ↓ Project(#0, #1, #2, #3, #4, #5) -> [item_sk:long, d_date:date, web_sales:decimal(38,2), store_sales:decimal(38,2), web_cumulative:decimal(38,2), store_cumulative:decimal(38,2)]
 ↓ Sort[parallelism=N](#0, #1, limit=100) -> [item_sk:long, d_date:date, web_sales:decimal(38,2), store_sales:decimal(38,2), web_cumulative:decimal(38,2), store_cumulative:decimal(38,2)]

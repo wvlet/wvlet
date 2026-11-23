@@ -62,7 +62,7 @@ object Stats:
         rows(inputs.head)
       case Legacy(op, _) =>
         CardinalityEstimator.rows(op)
-      case Filter(child, _) =>
+      case Filter(child, _, _) =>
         rows(child)
       case Project(child, _, _) =>
         rows(child)
@@ -79,7 +79,7 @@ object Stats:
       case Scan(source, columns) =>
         val i = columns.indexWhere(_.id == id)
         Option.when(i >= 0)(i).flatMap(i => source.estimatedDistinct(source.schema(i).name))
-      case Filter(child, _) =>
+      case Filter(child, _, _) =>
         distinct(child, id)
       case Project(child, exprs, columns) =>
         val i = columns.indexWhere(_.id == id)

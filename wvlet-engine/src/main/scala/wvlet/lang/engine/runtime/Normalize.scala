@@ -23,18 +23,19 @@ import wvlet.lang.engine.plan.Optimization
 /**
   * Rewrites conditions into the shape the later passes key on. It runs first.
   *
-  * The planner still factors the conditions that legacy join planning reads (outer-join ON
-  * conditions, conditions pushed below a left join, conditions with subqueries) on the compiler's
-  * expressions, before binding.
+  * The planner still factors the conditions that legacy join planning reads (conditions with
+  * subqueries, and joins the binder leaves to the planner) on the compiler's expressions, before
+  * binding.
   */
 object Normalize extends RuleBatch("normalize", Seq(FactorOr))
 
 /**
   * `(a and b) or (a and c)` => `a and (b or c)`, and `a or (a and b)` => `a`, over the conjuncts of
-  * a filter and the conditions of an inner join tree, before [[ReorderJoins]] reads them (a common
-  * equality becomes a join key). Conjuncts are matched by their bound signature, which names
-  * columns by id. Both rewrites keep the value under three-valued logic (and distributes over or,
-  * and absorption holds, with NULL as unknown)
+  * a filter, an outer join's ON condition, and the conditions of an inner join tree, before
+  * [[PushDownFilters]] and [[ReorderJoins]] read them (a common equality becomes a join key).
+  * Conjuncts are matched by their bound signature, which names columns by id. Both rewrites keep
+  * the value under three-valued logic (and distributes over or, and absorption holds, with NULL as
+  * unknown)
   */
 object FactorOr extends Rule:
   override def optimization: Optimization = Optimization.FactorOr
@@ -49,6 +50,15 @@ object FactorOr extends Rule:
         else
           val all = conds.zip(factored).flatMap((c, fc) => fc.getOrElse(List(c)))
           Some(f.copy(cond = BExpr(and(all))))
+      case j: RuntimePlan.Join if j.residual.nonEmpty =>
+        // An outer join's ON condition, before PushDownFilters turns its equalities into keys
+        val conds    = conjuncts(j.residual.get.expr)
+        val factored = conds.map(factor)
+        if factored.forall(_.isEmpty) then
+          None
+        else
+          val all = conds.zip(factored).flatMap((c, fc) => fc.getOrElse(List(c)))
+          Some(j.copy(residual = Some(BExpr(and(all)))))
       case j: RuntimePlan.InnerJoins =>
         // Each condition is one conjunct: it is replaced in place by its factored conjuncts
         val factored = j.conds.map(c => factor(c.cond.expr))

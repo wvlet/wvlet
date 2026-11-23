@@ -223,10 +223,15 @@ class RuntimeBinder(planner: Planner):
         // The join tree takes the conditions for its join order and pushdown. Common conjuncts
         // of `or`s are factored by the Normalize pass
         join(j, planner.splitConjuncts(f.filterExpr))
-      case j: Join if j.joinType == JoinType.LeftOuterJoin && !j.asof =>
+      case j: Join
+          if j.joinType == JoinType.LeftOuterJoin && !j.asof && !(
+            isOuterJoinOn(j) && !planner.splitConjuncts(f.filterExpr).exists(planner.hasSubquery)
+          ) =>
         // Conditions on the preserved (left) side filter before the join, so that an inner join
         // tree under left joins can use them for its join order and pushdown. As the planner
-        // does, the left input is bound once for its schema, then again under the filter
+        // does, the left input is bound once for its schema, then again under the filter. A
+        // filter without subqueries over a join on an ON condition binds as a filter over the
+        // join instead, and PushDownFilters moves those conditions
         val conds          = planner.conjuncts(f.filterExpr)
         val leftSchema     = bind(j.left).schema
         val (pushed, rest) = conds.partition(c =>
@@ -246,8 +251,14 @@ class RuntimeBinder(planner: Planner):
         else
           val in     = bind(child)
           val schema = in.schema
-          val bound  = conds.map(c => Binder(planner, BindScope(schema)).bind(c))
-          RuntimePlan.Filter(in, BExpr.of(bound.reduce((a, b) => AndExpr(a, b)), in.output))
+          val bound  = conds.map(c =>
+            BExpr.of(Binder(planner, BindScope(schema)).bind(c), in.output)
+          )
+          RuntimePlan.Filter(
+            in,
+            BExpr(bound.map(_.expr).reduce((a, b) => AndExpr(a, b))),
+            conds.zip(bound).map((c, b) => literalCounts(c, b.expr)).reduce(_ ++ _)
+          )
 
   /**
     * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them. ASOF,
@@ -259,10 +270,54 @@ class RuntimeBinder(planner: Planner):
       legacyOp(planner.planJoinTree(j, planner.factorOrs(filters)))
     else if planner.isInnerJoin(j) then
       innerJoins(j, filters)
+    else if isOuterJoinOn(j) && filters.isEmpty then
+      outerJoin(j)
     else
       val left  = lowered(bind(j.left))
       val right = lowered(bind(j.right))
       plans.conjuncts(planner.joinOn(j, planner.joinKind(j), left, right, plans), filters).plan
+
+  /**
+    * Whether a join is a LEFT, RIGHT, or FULL join on an ON condition (or none) without subqueries,
+    * which binds as a [[RuntimePlan.Join]] over unoptimized inputs
+    */
+  private def isOuterJoinOn(j: Join): Boolean =
+    !planner.isInnerJoin(j) && planner.isJoinOn(j) && planner.unnestCall(j.right).isEmpty &&
+      onCondition(j).forall(e => !planner.hasSubquery(e))
+
+  private def onCondition(j: Join): Option[Expression] =
+    j.cond match
+      case JoinOn(e, _) =>
+        Some(e)
+      case JoinOnEq(keys, _) =>
+        Some(Expression.concatWithEq(keys))
+      case _ =>
+        None
+
+  /**
+    * An outer join on its ON condition, with the condition bound unfactored as the residual: the
+    * Normalize pass factors its `or`s, PushDownFilters turns the equalities between the inputs into
+    * hash join keys, and ReorderJoins chooses the build side, as `Planner.joinOn` does
+    */
+  private def outerJoin(j: Join): RuntimePlan =
+    val left     = bind(j.left)
+    val right    = bind(j.right)
+    val residual = onCondition(j).map { e =>
+      val out = left.output ++ right.output
+      val b   = Binder(planner, BindScope(Schema(out.map(_.toField)))).bind(
+        planner.splitConjuncts(e).reduce((a, b) => And(a, b, NoSpan))
+      )
+      BExpr.of(b, out)
+    }
+    RuntimePlan.Join(
+      left,
+      right,
+      planner.joinKind(j),
+      IndexedSeq.empty,
+      IndexedSeq.empty,
+      residual,
+      buildLeft = false
+    )
 
   /**
     * A tree of inner joins (without a lateral unnest on top) and filter conditions over it, as one

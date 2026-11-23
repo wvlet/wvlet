@@ -52,7 +52,7 @@ class EngineRuntimePlanTest extends UniTest:
     debug(p.explain)
     p match
       case RuntimePlan.Sort(
-            RuntimePlan.Project(RuntimePlan.Filter(s: RuntimePlan.Scan, _), _, cols),
+            RuntimePlan.Project(RuntimePlan.Filter(s: RuntimePlan.Scan, _, _), _, cols),
             keys,
             limit
           ) =>
@@ -150,7 +150,7 @@ class EngineRuntimePlanTest extends UniTest:
         |select l_returnflag, sum(l_quantity)""".stripMargin)
     debug(p.explain)
     p match
-      case RuntimePlan.Project(RuntimePlan.Filter(a: RuntimePlan.Aggregate, cond), _, _) =>
+      case RuntimePlan.Project(RuntimePlan.Filter(a: RuntimePlan.Aggregate, cond, _), _, _) =>
         // The condition reads an aggregate of the aggregation's output
         cond.refs.subsetOf(a.output.map(_.id).toSet) shouldBe true
         a.calls.map(_.name).toSet shouldBe Set("count_star", "sum")
