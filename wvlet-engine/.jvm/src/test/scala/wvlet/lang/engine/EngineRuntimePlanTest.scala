@@ -461,6 +461,11 @@ class EngineRuntimePlanTest extends UniTest:
     // With share_ctes off, each read binds the body in place
     check(engine.withOptimizer(runtime.withDisabled(Optimization.ShareCTEs)), shared) { p =>
       cteRefs(p) shouldBe Nil
+      nodes(p)
+        .collect { case s: RuntimePlan.Scan =>
+          s.source.name
+        }
+        .sorted shouldBe Seq("nation", "region", "region")
     }
   }
 
