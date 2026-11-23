@@ -78,7 +78,10 @@ class FactorOrConformanceTest extends UniTest:
       case other =>
         fail(s"Expected a string: ${other.toJSON}")
 
-  /** A cell as text: an integer, a boolean, a string, or NULL */
+  /**
+    * A cell as a Wvlet literal: an integer, a boolean, a quoted string (so that the text `'null'`
+    * is not NULL), or NULL
+    */
   private def cell(v: JSONValue): String =
     v match
       case JSONLong(n) =>
@@ -86,24 +89,16 @@ class FactorOrConformanceTest extends UniTest:
       case JSONBoolean(b) =>
         b.toString
       case JSONString(s) =>
-        s
+        s"'${s}'"
       case _: JSONNull =>
         "null"
       case other =>
         fail(s"Unexpected cell: ${other.toJSON}")
 
-  /** A cell as a Wvlet literal */
-  private def literal(v: JSONValue): String =
-    v match
-      case JSONString(s) =>
-        s"'${s}'"
-      case other =>
-        cell(other)
-
   private def sorted(rs: Seq[List[String]]): List[String] = rs.map(_.mkString("|")).sorted.toList
 
   private val table = arr(fixture("table"))
-    .map(r => arr(r).map(literal).mkString("[", ", ", "]"))
+    .map(r => arr(r).map(cell).mkString("[", ", ", "]"))
     .mkString("[", ", ", "]")
 
   private val cases = arr(fixture("cases")).map(obj)
@@ -140,6 +135,8 @@ class FactorOrConformanceTest extends UniTest:
                   "null"
                 case n: Number =>
                   n.longValue().toString
+                case s: String =>
+                  s"'${s}'"
                 case other =>
                   other.toString
               }
@@ -164,7 +161,7 @@ class FactorOrConformanceTest extends UniTest:
         List(other)
 
   test("factor each traced condition as the model does") {
-    cases.size shouldBe 13
+    cases.size shouldBe 15
     for c <- cases do
       val where = str(c("where"))
       debug(where)
@@ -185,6 +182,31 @@ class FactorOrConformanceTest extends UniTest:
         for e <- Seq(engine, unfactored) do
           sorted(rowsOf(e, q)) shouldBe want
         withQuery(q)(conformance.assertMatches(q, _))
+  }
+
+  // Collisions outside the model's conditions (functions, LIKE): the first branch's conjunct
+  // printed like the second's before the signature audit, so FactorOr took it out of both
+  private val unmodeled = Seq(
+    // A literal whose text reads as two arguments
+    "(coalesce(s, 'x:string),lit(y') = 'x' and b) or (coalesce(s, 'x', 'y') = 'x' and c)",
+    // A literal whose text reads as a list of values
+    "(coalesce(s, 'x,y') = 'x,y' and b) or (coalesce(s, 'x,y') = 'x,y' and c)",
+    // An escape character: `'x%' escape 'x'` matches `%` only
+    "(s like 'x%' escape 'x' and b) or (s like 'x%' and c)"
+  )
+
+  test("tell conditions apart whose literals print like other expressions") {
+    for where <- unmodeled do
+      val q = query(where)
+      debug(q)
+      val p = withQuery(q)(unfactored.runtimePlan(_))
+      val o = Optimizer.only(Normalize, options)
+      o.run(p)
+      // Only the second case has a common conjunct
+      o.firedRules.contains("factor_or") shouldBe where.contains("'x,y') = 'x,y' and c")
+      val rows = sorted(rowsOf(engine, q))
+      sorted(rowsOf(unfactored, q)) shouldBe rows
+      withQuery(q)(conformance.assertMatches(q, _))
   }
 
 end FactorOrConformanceTest

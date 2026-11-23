@@ -2,7 +2,8 @@
 Licensed under the Apache License, Version 2.0.
 
 Why factoring needs a faithful key and only the laws it uses: inputs where a key that identifies
-different conditions (`InList.sig` before this model), or a rewrite that is a law of two-valued
+different conditions (`InList.sig` before this model, and `Const.sig` before the signature audit),
+or a rewrite that is a law of two-valued
 logic but not of SQL's three-valued logic, returns rows other than SQL's. Columns: `a` (0), `b`
 (1), `c` (2), `s` (3).
 -/
@@ -60,6 +61,34 @@ theorem oldSig_joins_values :
       (factoredRows oldSig commaCase
         [row [.null, .bool false, .bool true, .str "x,y"]]).length = 1 ∧
       (filter commaCase [row [.null, .bool false, .bool true, .str "x,y"]]).length = 0 := by
+  decide
+
+/-- `Const.sig` before the signature audit: a string printed as is, so the text `'null'` reads as
+a NULL literal (both were `lit(null:string)`). Other conditions keep their structure. -/
+def oldLitTerm : Term → Term
+  | .lit (.str "null") => .lit .null
+  | t => t
+
+def oldLitSig : Cond → Cond
+  | .eq x y => .eq (oldLitTerm x) (oldLitTerm y)
+  | .lt x y => .lt (oldLitTerm x) (oldLitTerm y)
+  | .not p => .not (oldLitSig p)
+  | .and p q => .and (oldLitSig p) (oldLitSig q)
+  | .or p q => .or (oldLitSig p) (oldLitSig q)
+  | c => c
+
+/-- `(s = 'null' and b) or (s = null and c)`, the NULL typed as a string. -/
+def nullTextCase : Cond :=
+  .or (.and (.eq s (.lit (.str "null"))) (isTrue b)) (.and (.eq s (.lit .null)) (isTrue c))
+
+/-- The old literal signature treats `s = 'null'` and `s = null` as one conjunct, so it factors
+`s = 'null' and (b or c)`, which keeps `s = 'null', c` where SQL's condition is unknown (a
+comparison with NULL is never TRUE). -/
+theorem oldLitSig_reads_text_as_null :
+    factorConjuncts (K := Cond) id nullTextCase = none ∧
+      (factoredRows oldLitSig nullTextCase
+        [row [.null, .bool false, .bool true, .str "null"]]).length = 1 ∧
+      (filter nullTextCase [row [.null, .bool false, .bool true, .str "null"]]).length = 0 := by
   decide
 
 /-- Dropping a conjunct with its negation, `(p and q) or (not p and q) = q`, is a law of

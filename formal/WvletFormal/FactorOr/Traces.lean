@@ -4,8 +4,9 @@ Licensed under the Apache License, Version 2.0.
 Conformance traces for `FactorOr`, exported as JSON so that a Scala test can replay them against
 the engine. One inline table with NULLs in every column meets WHERE conditions that are an `or` of
 branches: a conjunct common to every branch, absorption, no common conjunct, three branches,
-duplicate and reordered conjuncts, and the conditions the old `InList.sig` confused (a NULL
-among IN values; `'x,y'` against `'x', 'y'`). Each case gives the condition, whether it factors
+duplicate and reordered conjuncts, the conditions the old `InList.sig` confused (a NULL
+among IN values; `'x,y'` against `'x', 'y'`), and the ones the old `Const.sig` confused (`'null'`
+against a NULL string). Each case gives the condition, whether it factors
 with the condition itself as the key and into how many conjuncts, the factored condition, and the
 rows. Factoring is proved to keep them (`Rule.lean`).
 
@@ -42,6 +43,12 @@ def valueWv : Value → String
   | .str s => "'" ++ s ++ "'"
   | v => jvalue v
 
+/-- A column's type, for a typed NULL literal. -/
+def colType : Col → String
+  | 0 => "int"
+  | 3 => "string"
+  | _ => "boolean"
+
 def termWv : Term → String
   | .col c => colName c
   | .lit v => valueWv v
@@ -50,6 +57,8 @@ def valuesWv (vs : List Value) : String := "(" ++ ", ".intercalate (vs.map value
 
 /-- The condition in Wvlet syntax. -/
 def condWv : Cond → String
+  -- An untyped `= null` is `is null` in Wvlet: type the NULL as the column, as SQL's `= NULL`
+  | .eq (.col c) (.lit .null) => s!"{colName c} = null::{colType c}"
   | .eq a b => s!"{termWv a} = {termWv b}"
   | .lt a b => s!"{termWv a} < {termWv b}"
   | .isNull a => s!"{termWv a} is null"
@@ -76,6 +85,8 @@ def notIn13Null : Cond := .not (.inList a [int 1, int 3, .null])
 def sXY : Cond := .inList s [.str "x,y"]
 def sX_Y : Cond := .inList s [.str "x", .str "y"]
 def sX : Cond := .inList s [.str "x"]
+def sNullText : Cond := .eq s (.lit (.str "null"))
+def sNull : Cond := .eq s (.lit .null)
 
 /-- Rows `(a, b, c, s)`, with NULLs in every column and a duplicate row. -/
 def tableRows : List (List Value) :=
@@ -87,6 +98,8 @@ def tableRows : List (List Value) :=
   , [int 3, .bool true, .null, .str "z"]
   , [.null, .bool true, .bool true, .str "x"]
   , [.null, .bool false, .null, .str "x,y"]
+  , [.null, .bool false, .bool true, .str "null"]
+  , [int 3, .bool true, .bool false, .str "null"]
   , [int 1, .bool true, .bool false, .str "x,y"] ]
 
 def mkRow (vs : List Value) : Row := fun i => vs.getD i .null
@@ -107,7 +120,9 @@ def cases : List (List (List Cond)) :=
   , [[notIn13, bT], [notIn13Null, cT]]
   , [[notIn13Null, bT], [notIn13Null, cT]]
   , [[sXY, bT], [sX_Y, cT]]
-  , [[sX_Y, bT], [sX_Y, cT], [sX_Y]] ]
+  , [[sX_Y, bT], [sX_Y, cT], [sX_Y]]
+  , [[sNullText, bT], [sNull, cT]]
+  , [[sNullText, bT], [sNullText, cT]] ]
 
 def jrow (x : Row) : String := jarr ([0, 1, 2, 3].map fun i => jvalue (x i))
 
