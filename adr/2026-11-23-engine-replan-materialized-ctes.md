@@ -1,6 +1,6 @@
 # ADR: Joins over shared CTEs are ordered again with the CTEs' exact row counts
 
-Date: 2026-11-23 · PRs (M5, PR 1 wvlet/wvlet#2300, PR 2 wvlet/wvlet#2301, PR 3)
+Date: 2026-11-23 · PRs (M5, PR 1 wvlet/wvlet#2300, PR 2 wvlet/wvlet#2301, PR 3 wvlet/wvlet#2302, PR 4)
 
 ## Context
 
@@ -13,6 +13,7 @@ A shared CTE (read more than once) is computed once and read from memory. Its bo
 - The CTE is computed before its readers are planned a second time, so they can't change what the result keeps. A new reader is allowed after the body was filtered when its filter equals one a reader already reported, since that filter implies the pushed conditions. If a new reader's scan reads a column the result dropped, or a reader is refused, the planner keeps the first operator; with `validatePlans` (tests) it raises the error instead.
 - Inputs the binder optimizes while binding (aggregation, pivot, and subquery inputs) already hold ordered joins in the bound plan. The binder records each one's bound plan; the step follows those to find CTEs below their joins, and optimizes such an input again from its bound plan before the root passes run (PR 2, toggle `replan_bound_cte_joins`). A re-ordered input outputs its columns in its new join order, so it is wrapped in a projection that restores the first order, which a parent such as a union reads by position.
 - Semi and anti joins the binder builds itself (IN, EXISTS, NOT EXISTS) chose their build side while the CTE was estimated at 1e6. The step also computes the CTEs read below them, and in the re-plan run only, `ReorderJoins` chooses such a join's build side again when one of its inputs reads a computed CTE, by the binder's rule (PR 3, toggle `replan_semi_join_builds`). Both build sides give the same rows: NULL keys never match, and an unmatched build row of a `RightAnti` join is still emitted.
+- A shared CTE body that joins other shared CTEs is lowered before them, since their columns and rows come from its readers. After the CTEs are finalized, such bodies are re-planned innermost first by the same step: the CTEs their joins read are computed, and the bound body is optimized again, keeping the columns and pushed reader filters its result keeps (PR 4, toggle `replan_cte_bodies`). A body already computed at plan time is kept.
 - `replan_materialized_ctes` turns it off. With the toggle off, plans are identical to those before the change and CTEs run at execution, as before.
 
 ## Consequences
@@ -20,4 +21,4 @@ A shared CTE (read more than once) is computed once and read from memory. Its bo
 - `explain` computes the shared CTEs that such joins read, as it already computes uncorrelated scalar subqueries. A CTE that execution would read only in part (under a LIMIT, or behind an empty build side) is computed in full, and an error in its body is raised while planning.
 - 3 TPC-DS golden plans changed (q02, q31, q59), where a small CTE result (one row per week, or per county and quarter) becomes the build side. TPC-H plans are unchanged.
 - With PR 3, TPC-DS q95's two IN semi joins build on the CTE side at SF0.1; SF1 plans are unchanged. TPC-DS q14's semi joins sit under a grouping-sets input, which the step doesn't follow yet.
-- Some joins don't get the exact counts yet: where the binder places an IN semi join (on one input or over the ordered tree), joins below grouping-sets inputs, joins inside CTE bodies that read other shared CTEs, and per-reader statistics such as rows after the reader's filter or the distinct counts of join keys. These are M5 follow-ups.
+- Some joins don't get the exact counts yet: where the binder places an IN semi join (on one input or over the ordered tree), joins below grouping-sets inputs, and per-reader statistics such as rows after the reader's filter or the distinct counts of join keys. These are M5 follow-ups. No TPC-H or TPC-DS query has a shared CTE body that reads another shared CTE, so PR 4 changes no golden plan.
