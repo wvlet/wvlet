@@ -31,6 +31,9 @@ object Lowering:
     p match
       case Scan(source, _, read, filter) =>
         ScanOp(source, p.schema, read, filter)
+      case Values(columns, rows) if columns.isEmpty && rows.size == 1 =>
+        // One row without columns (a query without FROM), as the planner plans it
+        SingleRowOp()
       case Values(_, rows) =>
         BatchesOp(p.schema, Seq(rows), "Values")
       case Filter(ref @ CTERef(cte, columns), cond, counts) =>

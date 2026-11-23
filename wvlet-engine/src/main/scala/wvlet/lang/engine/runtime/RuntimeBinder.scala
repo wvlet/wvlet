@@ -43,6 +43,7 @@ import wvlet.lang.engine.plan.ColumnNotFound
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.Planner
 import wvlet.lang.engine.plan.SubqueryConjunct
+import wvlet.lang.engine.vector.Batch
 import wvlet.lang.engine.vector.PType
 import wvlet.lang.engine.vector.Field
 import wvlet.lang.engine.vector.Schema
@@ -92,7 +93,9 @@ class RuntimeBinder(planner: Planner):
       case d: Debug =>
         bind(d.child)
       case d: Describe =>
-        legacy(d)
+        // The child binds for its columns only, as the planner plans it
+        val (schema, batch) = planner.describeRows(bind(d.child).schema)
+        RuntimePlan.Values(columnsOf(schema), batch)
       case r: RelationInspector =>
         bind(r.child)
       case p: PartitioningHint =>
@@ -100,7 +103,8 @@ class RuntimeBinder(planner: Planner):
       case n: NamedRelation =>
         requalify(bind(n.child), n.name.leafName)
       case e: EmptyRelation =>
-        legacy(e)
+        // One row without columns
+        RuntimePlan.Values(IndexedSeq.empty, Batch.ofRows(1))
       case v: Values =>
         val p = values(v, None)
         v.relationType match
@@ -167,6 +171,19 @@ class RuntimeBinder(planner: Planner):
         windowProject(p)
       case s: SQLSelect =>
         bind(planner.desugarSQLSelect(s))
+      case a: AddColumnsToRelation if isPlainColumnEdit(a.newColumns) =>
+        columnEdit(a.child, prepend = false, a.newColumns)
+      case a: PrependColumnsToRelation if isPlainColumnEdit(a.newColumns) =>
+        columnEdit(a.child, prepend = true, a.newColumns)
+      case e: ExcludeColumnsFromRelation =>
+        val in = bind(e.child)
+        projectIndexes(in, planner.excludeIndexes(in.schema, e))
+      case r: RenameColumnsFromRelation =>
+        val in = bind(r.child)
+        renamed(in, planner.renameSchema(in.schema, r).fields.map(newColumn))
+      case s: ShiftColumns =>
+        val in = bind(s.child)
+        projectIndexes(in, planner.shiftIndexes(in.schema, s))
       case j: Join =>
         join(j, Nil)
       case u: Union =>
@@ -182,7 +199,7 @@ class RuntimeBinder(planner: Planner):
       case e: Except =>
         setOp(e.left, e.right, intersect = false, all = !e.isDistinct)
       case other =>
-        // Column edits, samples, a Project that evaluates unnest or subqueries, ...
+        // Samples, a Project or column edit that evaluates unnest or subqueries, ...
         legacy(other)
 
   end bind
@@ -829,17 +846,16 @@ class RuntimeBinder(planner: Planner):
     !planner.isAggregationInput(p.child) &&
       p.selectItems
         .forall { i =>
-          !Binder.containsAggregate(i) && planner.unnestArg(i).isEmpty &&
-          !Binder.containsWindow(i) && !planner.hasSubquery(Binder.expandTemplates(i))
+          !Binder.containsAggregate(i) && !Binder.containsWindow(i) && isPlainItem(i)
         }
 
   /** A projection evaluating window functions, without aggregates, unnest, or subqueries */
   private def isWindowProjection(p: Project): Boolean =
-    p.selectItems.exists(i => Binder.containsWindow(i)) &&
-      p.selectItems
-        .forall { i =>
-          planner.unnestArg(i).isEmpty && !planner.hasSubquery(Binder.expandTemplates(i))
-        }
+    p.selectItems.exists(i => Binder.containsWindow(i)) && p.selectItems.forall(isPlainItem)
+
+  /** An item without unnest or subqueries, which the binder evaluates in a projection */
+  private def isPlainItem(i: Attribute): Boolean =
+    planner.unnestArg(i).isEmpty && !planner.hasSubquery(Binder.expandTemplates(i))
 
   /** The window calls over `in`, whose output is the window `schema` (input columns first) */
   private def windowOver(
@@ -852,12 +868,44 @@ class RuntimeBinder(planner: Planner):
     columnsOf(Schema(schema.fields.drop(in.output.size)))
   )
 
+  /** New columns without aggregates, unnest, or subqueries (window functions are evaluated) */
+  private def isPlainColumnEdit(items: List[Attribute]): Boolean = items.forall(i =>
+    !Binder.containsAggregate(i) && isPlainItem(i)
+  )
+
+  /**
+    * New columns added to (or, with `prepend`, prepended to) `child`, over the window calls of the
+    * new columns, as `Planner.planColumnEdit` plans them
+    */
+  private def columnEdit(child: Relation, prepend: Boolean, items: List[Attribute]): RuntimePlan =
+    val in                 = bind(child)
+    val (w, exprs, fields) = withWindows(in, items)
+    val all                = planner.columnEditItems(in.schema, prepend, exprs, fields)
+    RuntimePlan.Project(w, all.map(e => BExpr.of(e._1, w.output)), all.map(e => newColumn(e._2)))
+
+  /** The input columns at positions `idx`, as a projection */
+  private def projectIndexes(in: RuntimePlan, idx: IndexedSeq[Int]): RuntimePlan = RuntimePlan
+    .Project(
+      in,
+      idx.map(i => BExpr(ColRef(in.output(i).id.value, in.output(i).ptype, in.output(i).name))),
+      idx.map(i => newColumn(in.output(i).toField))
+    )
+
+  /**
+    * Bind `items` over `in`, evaluating their window calls first: the window over `in` (or `in`
+    * itself without window calls), and the items over its output (the input columns first)
+    */
+  private def withWindows(
+      in: RuntimePlan,
+      items: List[Attribute]
+  ): (RuntimePlan, IndexedSeq[VExpr], IndexedSeq[Field]) =
+    val (calls, (exprs, fields)) =
+      planner.bindWithWindows(in.schema, items)(planner.bindItems(_, items))
+    (calls.map(c => windowOver(in, c.windowCalls, c.schema)).getOrElse(in), exprs, fields)
+
   /** A projection over the window calls of its items, as `Planner.planProject` plans it */
   private def windowProject(p: Project): RuntimePlan =
-    val in                       = bind(p.child)
-    val (calls, (exprs, fields)) =
-      planner.bindWithWindows(in.schema, p.selectItems)(planner.bindItems(_, p.selectItems))
-    val w = calls.map(c => windowOver(in, c.windowCalls, c.schema)).getOrElse(in)
+    val (w, exprs, fields) = withWindows(bind(p.child), p.selectItems)
     RuntimePlan.Project(w, exprs.map(BExpr.of(_, w.output)), fields.map(newColumn))
 
   private def project(p: Project): RuntimePlan =

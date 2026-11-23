@@ -75,8 +75,8 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // A column edit
-    val p = runtimePlan("from nation add n_nationkey + 1 as k")
+    // A sample
+    val p = runtimePlan("from nation sample 5")
     p match
       case RuntimePlan.Legacy(op, cols) =>
         cols.map(_.name) shouldBe op.schema.names
@@ -108,6 +108,70 @@ class EngineRuntimePlanTest extends UniTest:
       u.columns.map(_.name) shouldBe IndexedSeq("n_regionkey")
     }
     PlanValidator.violations(p) shouldBe Nil
+  }
+
+  private def rowsOf(e: WvletEngine, query: String): Seq[Seq[Any]] =
+    withQuery(query) { q =>
+      val r = e.execute(q)
+      r.batches.flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).toSeq))
+    }
+
+  test("bind column edits as projections over their input") {
+    val query =
+      """from nation
+        |add n_nationkey + 1 as k, upper(n_name) as n_name
+        |prepend n_regionkey * 10 as r10
+        |exclude n_comment
+        |rename n_nationkey as id
+        |shift k
+        |order by id
+        |limit 3""".stripMargin
+    val p = runtimePlan(query)
+    debug(p.explain)
+    def legacyLeaves(p: RuntimePlan): Int =
+      p match
+        case RuntimePlan.Legacy(_, _) =>
+          1
+        case _ =>
+          p.children.map(legacyLeaves).sum
+    legacyLeaves(p) shouldBe 0
+    p.output.map(_.name) shouldBe IndexedSeq("k", "r10", "id", "n_name", "n_regionkey")
+    PlanValidator.violations(p) shouldBe Nil
+    val expected = rowsOf(legacy, query)
+    expected.size shouldBe 3
+    rowsOf(engine, query) shouldBe expected
+  }
+
+  test("bind a column edit with window functions over a window") {
+    val query =
+      """from nation
+        |add row_number() over (partition by n_regionkey order by n_nationkey) as rn
+        |order by n_nationkey
+        |limit 5""".stripMargin
+    val p = runtimePlan(query)
+    p shouldMatch {
+      case RuntimePlan.Sort(RuntimePlan.Project(w: RuntimePlan.Window, _, cols), _, _) =>
+        cols.map(_.name).last shouldBe "rn"
+        w.calls.map(_.name) shouldBe IndexedSeq("row_number")
+    }
+    PlanValidator.violations(p) shouldBe Nil
+    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+  }
+
+  test("bind describe and a query without from as values") {
+    val d = runtimePlan("from nation describe")
+    d shouldMatch { case RuntimePlan.Values(cols, rows) =>
+      cols.map(_.name) shouldBe IndexedSeq("column_name", "column_type")
+      rows.size shouldBe 4
+    }
+    rowsOf(engine, "from nation describe") shouldBe rowsOf(legacy, "from nation describe")
+
+    val one = runtimePlan("select 1 + 2 as x")
+    one shouldMatch { case RuntimePlan.Project(RuntimePlan.Values(cols, rows), _, _) =>
+      cols shouldBe IndexedSeq.empty
+      rows.size shouldBe 1
+    }
+    rowsOf(engine, "select 1 + 2 as x") shouldBe Seq(Seq(3L))
   }
 
   private def joins(p: RuntimePlan): Seq[RuntimePlan.Join] =

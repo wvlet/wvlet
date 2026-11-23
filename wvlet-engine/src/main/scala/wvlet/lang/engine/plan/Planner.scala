@@ -284,16 +284,8 @@ class Planner(
       case d: Debug =>
         planRelation(d.child)
       case d: Describe =>
-        val op   = planRelation(d.child)
-        val rows = op
-          .schema
-          .fields
-          .filterNot(isHidden)
-          .map(f => Seq[Any](f.name, f.ptype.toDataType.typeDescription))
-        val schema = Schema(
-          IndexedSeq(Field("column_name", PType.Str), Field("column_type", PType.Str))
-        )
-        BatchesOp(schema, Seq(batchOf(schema, rows)))
+        val (schema, batch) = describeRows(planRelation(d.child).schema)
+        BatchesOp(schema, Seq(batch))
       case r: RelationInspector =>
         planRelation(r.child)
       case p: PartitioningHint =>
@@ -382,51 +374,18 @@ class Planner(
       case a: PrependColumnsToRelation =>
         planColumnEdit(a.child, prepend = true, a.newColumns)
       case e: ExcludeColumnsFromRelation =>
-        val op    = planRelation(e.child)
-        val drops = e.columnNames.map(_.leafName.toLowerCase).toSet
-        val keep  = op
-          .schema
-          .fields
-          .indices
-          .filter(i => !drops.contains(op.schema(i).name.toLowerCase))
-        projectIndexes(op, keep)
+        val op = planRelation(e.child)
+        projectIndexes(op, excludeIndexes(op.schema, e))
       case r: RenameColumnsFromRelation =>
-        val op      = planRelation(r.child)
-        val renames =
-          r.columnAliases
-            .map { a =>
-              val from =
-                a.expr match
-                  case i: Identifier =>
-                    i.leafName
-                  case d: DotRef =>
-                    d.name.leafName
-                  case other =>
-                    other.toString
-              from.toLowerCase -> a.nameExpr.leafName
-            }
-            .toMap
-        val schema = op
-          .schema
-          .mapFields(f => renames.get(f.name.toLowerCase).map(f.withName).getOrElse(f))
+        val op = planRelation(r.child)
         ProjectOp(
           op,
           op.schema.fields.indices.map(i => ColRef(i, op.schema(i).ptype, op.schema(i).name)),
-          schema
+          renameSchema(op.schema, r)
         )
       case s: ShiftColumns =>
-        val op            = planRelation(s.child)
-        val names         = s.shiftItems.map(_.leafName.toLowerCase)
-        val idx           = op.schema.fields.indices
-        val (moved, rest) = idx.partition(i => names.contains(op.schema(i).name.toLowerCase))
-        val ordered       = names.flatMap(n => moved.find(i => op.schema(i).name.toLowerCase == n))
-        projectIndexes(
-          op,
-          if s.isLeftShift then
-            ordered ++ rest
-          else
-            rest ++ ordered
-        )
+        val op = planRelation(s.child)
+        projectIndexes(op, shiftIndexes(op.schema, s))
       case j: Join =>
         planJoinTree(j, Nil)
       case u: Union =>
@@ -1505,13 +1464,25 @@ class Planner(
       withWindows(input, newColumns) { (op, binder) =>
         bindItems(binder, newColumns)
       }
-    // A new column with an existing name replaces it in place
+    val all = columnEditItems(input.schema, prepend, exprs, fields)
+    ProjectOp(op, all.map(_._1), Schema(all.map(_._2)))
+
+  /**
+    * The output of adding (or, with `prepend`, prepending) the bound new columns `exprs` / `fields`
+    * to an input of schema `input`: a new column with an existing name replaces it in place, and
+    * input columns are read at their positions (which a window evaluation keeps)
+    */
+  private[engine] def columnEditItems(
+      input: Schema,
+      prepend: Boolean,
+      exprs: IndexedSeq[VExpr],
+      fields: IndexedSeq[Field]
+  ): IndexedSeq[(VExpr, Field)] =
     val existing = input
-      .schema
       .fields
       .indices
       .map { i =>
-        val f = input.schema(i)
+        val f = input(i)
         val k = fields.indexWhere(_.name.equalsIgnoreCase(f.name))
         if k >= 0 then
           (exprs(k), fields(k))
@@ -1520,16 +1491,62 @@ class Planner(
       }
     val added = fields
       .indices
-      .filterNot(k => input.schema.fields.exists(_.name.equalsIgnoreCase(fields(k).name)))
+      .filterNot(k => input.fields.exists(_.name.equalsIgnoreCase(fields(k).name)))
       .map(k => (exprs(k), fields(k)))
-    val all =
-      if prepend then
-        added ++ existing
-      else
-        existing ++ added
-    ProjectOp(op, all.map(_._1), Schema(all.map(_._2)))
+    if prepend then
+      added ++ existing
+    else
+      existing ++ added
 
-  end planColumnEdit
+  end columnEditItems
+
+  /** The positions of the input columns that `e` keeps */
+  private[engine] def excludeIndexes(
+      input: Schema,
+      e: ExcludeColumnsFromRelation
+  ): IndexedSeq[Int] =
+    val drops = e.columnNames.map(_.leafName.toLowerCase).toSet
+    input.fields.indices.filter(i => !drops.contains(input(i).name.toLowerCase))
+
+  /** The input columns of `r` under their new names */
+  private[engine] def renameSchema(input: Schema, r: RenameColumnsFromRelation): Schema =
+    val renames =
+      r.columnAliases
+        .map { a =>
+          val from =
+            a.expr match
+              case i: Identifier =>
+                i.leafName
+              case d: DotRef =>
+                d.name.leafName
+              case other =>
+                other.toString
+          from.toLowerCase -> a.nameExpr.leafName
+        }
+        .toMap
+    input.mapFields(f => renames.get(f.name.toLowerCase).map(f.withName).getOrElse(f))
+
+  /** The positions of the input columns in the order `s` shifts them to */
+  private[engine] def shiftIndexes(input: Schema, s: ShiftColumns): IndexedSeq[Int] =
+    val names         = s.shiftItems.map(_.leafName.toLowerCase)
+    val idx           = input.fields.indices
+    val (moved, rest) = idx.partition(i => names.contains(input(i).name.toLowerCase))
+    val ordered       = names.flatMap(n => moved.find(i => input(i).name.toLowerCase == n))
+    if s.isLeftShift then
+      ordered.toIndexedSeq ++ rest
+    else
+      rest ++ ordered
+
+  /** The rows of DESCRIBE over a relation of schema `input`: the name and type of each column */
+  private[engine] def describeRows(input: Schema): (Schema, Batch) =
+    val rows = input
+      .fields
+      .filterNot(isHidden)
+      .map(f => Seq[Any](f.name, f.ptype.toDataType.typeDescription))
+    val schema = Schema(
+      IndexedSeq(Field("column_name", PType.Str), Field("column_type", PType.Str))
+    )
+    (schema, batchOf(schema, rows))
 
   // --- aggregation ----------------------------------------------------------------------
 
