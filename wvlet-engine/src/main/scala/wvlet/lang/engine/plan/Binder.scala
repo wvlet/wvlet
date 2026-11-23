@@ -1448,7 +1448,7 @@ class Binder(
         ScalarFunctions.lookup(name, args) match
           case Some(x) =>
             if args.nonEmpty && args.forall(_.isConstant) && x.isInstanceOf[RowFn] &&
-              name != "random"
+              !ScalarFunctions.volatileFunctions.contains(name)
             then
               // Fold constant calls
               val v = x.eval(Batch.ofRows(1))

@@ -38,7 +38,7 @@ Apply these rules in order:
   - Day and month names are full English names.
   - `diff_*` counts unit boundaries crossed, as the DuckDB, Snowflake, and BigQuery `DATE_DIFF` variants do today. Hive's `months_between`-based variants truncate to complete months and are a follow-up.
   - `url_encode` encodes a space as `%20`. Trino and Spark encode it as `+`, so their variants wrap it.
-  - Hex digests are lowercase hex strings, like the existing `md5` and `sha256`.
+  - Hex output is lowercase: digests (`md5`, `sha1`, `sha256`) and `to_hex`. `from_hex` accepts either case. Encoding functions work on a string's UTF-8 bytes, and decoders return a string (PR #2325).
   - NULL in gives NULL out unless the doc says otherwise. String concatenation is the existing exception (ADR 2026-11-18-string-concat-null).
   - Format patterns for parsing and formatting dates use strftime `%` codes. Variants for engines with Java- or Oracle-style patterns translate them. Today's `date.format(pattern)` passes the pattern through unchanged and is the first follow-up.
 - Engine-only capabilities with no shared name (`mad`, `kahan_sum`, `damerau_levenshtein`, `list_grade_up`, `json_merge_patch`, ...) are added only on request, through the same rules.

@@ -33,7 +33,7 @@ import java.nio.file.Path
 class EngineStdlibCoverageCheck extends UniTest:
 
   /** Stdlib functions that run on the engine and match DuckDB must not drop below this count */
-  private val minCovered = 256
+  private val minCovered = 262
 
   private val conformance     = EngineConformance(".", Nil, _ => ())
   override def afterAll: Unit = conformance.close()
@@ -117,6 +117,9 @@ class EngineStdlibCoverageCheck extends UniTest:
       fn.ownerType match
         case "" | "array" =>
           Seq("")
+        case "string" if fn.name == "from_base64" =>
+          // Generic string samples are not valid base64 of UTF-8 text
+          Seq("'d3ZsZXQ='")
         case owner =>
           samples(owner)
     if receivers.isEmpty || args.exists(_.isEmpty) then

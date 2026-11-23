@@ -239,6 +239,11 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `split(separator: string)` | array[string] | duckdb, trino, hive, snowflake, bigquery | Split the string by the separator into an array of strings |
 | `md5` | string | duckdb, trino, hive, snowflake, bigquery | Hex-encoded digest strings |
 | `sha256` | string | duckdb, trino, hive, snowflake, bigquery |  |
+| `sha1` | string | duckdb, trino, hive, snowflake, bigquery |  |
+| `to_base64` | string | duckdb, trino, hive, snowflake, bigquery | Base64 and lowercase hex encodings of the string's UTF-8 bytes, and their inverses |
+| `from_base64` | string | duckdb, trino, hive, snowflake, bigquery |  |
+| `to_hex` | string | duckdb, trino, hive, snowflake, bigquery |  |
+| `from_hex` | string | duckdb, trino, hive, snowflake, bigquery |  |
 | `levenshtein(other: string)` | int | duckdb, trino, hive, snowflake, bigquery | Edit distance between two strings |
 | `json_extract(path: string)` | json | duckdb, trino, hive, snowflake, bigquery | Extract a JSON value from a string holding JSON text |
 | `json_extract_string(path: string)` | string | duckdb, trino, hive, snowflake, bigquery |  |
@@ -394,6 +399,7 @@ Called without a receiver value (window functions require an `over(...)` clause)
 | `range(start: long, stop: long)` | array[long] | duckdb, trino | Integers from start (inclusive) to stop (exclusive), e.g. range(1, 4) = [1, 2, 3]. An empty array when stop \<= start. Trino limits a range to 10000 elements |
 | `range(start: long, stop: long, step: long)` | array[long] | duckdb, trino | Integers from start (inclusive) to stop (exclusive) in increments of step, e.g. range(0, 10, 3) = [0, 3, 6, 9] and range(3, 0, -1) = [3, 2, 1]. A step of 0 is an error on DuckDB and yields an empty array on Trino |
 | `ulid_string` | string | all | Generate a new ULID |
+| `uuid` | string | duckdb, trino, snowflake, bigquery | uuid(): a random version-4 UUID as a lowercase string, e.g. 'f47ac10b-58cc-4372-a567-0e02b2c3d479'. A new value for every row |
 | `row_number` | long | all | Sequential row number within the window (1, 2, 3, ...) |
 | `rank` | long | all | Rank with gaps after ties (1, 1, 3, ...) |
 | `dense_rank` | long | all | Rank without gaps after ties (1, 1, 2, ...) |

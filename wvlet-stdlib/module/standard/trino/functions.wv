@@ -255,7 +255,6 @@ def url_extract_path(a1: any) in trino: varchar[$x] = native
 def url_extract_port(a1: any) in trino: long = native
 def url_extract_protocol(a1: any) in trino: varchar[$x] = native
 def url_extract_query(a1: any) in trino: varchar[$x] = native
-def uuid in trino: uuid = native
 def value_at_quantile(a1: any, a2: any) in trino: any = native
 def values_at_quantiles(a1: any, a2: any) in trino: any = native
 def var_pop(a1: any) in trino: double = native

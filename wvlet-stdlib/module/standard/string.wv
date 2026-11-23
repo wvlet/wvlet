@@ -65,6 +65,12 @@ trait string in duckdb = {
   -- Hex-encoded digest strings
   def md5: string = sql"md5(${this})"
   def sha256: string = sql"sha256(${this})"
+  def sha1: string = sql"sha1(${this})"
+  -- Base64 and lowercase hex encodings of the string's UTF-8 bytes, and their inverses
+  def to_base64: string = sql"to_base64(encode(${this}))"
+  def from_base64: string = sql"decode(from_base64(${this}))"
+  def to_hex: string = sql"lower(hex(${this}))"
+  def from_hex: string = sql"decode(unhex(${this}))"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"levenshtein(${this},${other})"
   -- Extract a JSON value from a string holding JSON text
@@ -83,6 +89,12 @@ trait string in trino = {
   -- Hex-encoded digest strings
   def md5: string = sql"lower(to_hex(md5(to_utf8(${this}))))"
   def sha256: string = sql"lower(to_hex(sha256(to_utf8(${this}))))"
+  def sha1: string = sql"lower(to_hex(sha1(to_utf8(${this}))))"
+  -- Base64 and lowercase hex encodings of the string's UTF-8 bytes, and their inverses
+  def to_base64: string = sql"to_base64(to_utf8(${this}))"
+  def from_base64: string = sql"from_utf8(from_base64(${this}))"
+  def to_hex: string = sql"lower(to_hex(to_utf8(${this})))"
+  def from_hex: string = sql"from_utf8(from_hex(${this}))"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"levenshtein_distance(${this},${other})"
   -- Extract a JSON value from a string holding JSON text
@@ -105,6 +117,12 @@ trait string in hive = {
   -- Hex-encoded digest strings
   def md5: string = sql"md5(${this})"
   def sha256: string = sql"sha2(${this},256)"
+  def sha1: string = sql"sha1(${this})"
+  -- Base64 and lowercase hex encodings of the string's UTF-8 bytes, and their inverses
+  def to_base64: string = sql"base64(cast(${this} as binary))"
+  def from_base64: string = sql"cast(unbase64(${this}) as string)"
+  def to_hex: string = sql"lower(hex(${this}))"
+  def from_hex: string = sql"cast(unhex(${this}) as string)"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"levenshtein(${this},${other})"
   -- Extract a JSON value from a string holding JSON text (JSONPath, e.g. '$.a.b')
@@ -131,6 +149,12 @@ trait string in snowflake = {
   -- Hex-encoded digest strings
   def md5: string = sql"md5(${this})"
   def sha256: string = sql"sha2(${this},256)"
+  def sha1: string = sql"sha1(${this})"
+  -- Base64 and lowercase hex encodings of the string's UTF-8 bytes, and their inverses
+  def to_base64: string = sql"base64_encode(${this})"
+  def from_base64: string = sql"base64_decode_string(${this})"
+  def to_hex: string = sql"hex_encode(${this},0)"
+  def from_hex: string = sql"hex_decode_string(${this})"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"editdistance(${this},${other})"
   -- Extract a JSON value from a string holding JSON text. Note: Snowflake paths omit the
@@ -157,9 +181,22 @@ trait string in bigquery = {
   -- Hex-encoded digest strings (BigQuery digests return BYTES)
   def md5: string = sql"lower(to_hex(md5(${this})))"
   def sha256: string = sql"lower(to_hex(sha256(${this})))"
+  def sha1: string = sql"lower(to_hex(sha1(${this})))"
+  -- Base64 and lowercase hex encodings of the string's UTF-8 bytes, and their inverses
+  def to_base64: string = sql"to_base64(cast(${this} as bytes))"
+  def from_base64: string = sql"cast(from_base64(${this}) as string)"
+  def to_hex: string = sql"to_hex(cast(${this} as bytes))"
+  def from_hex: string = sql"cast(from_hex(${this}) as string)"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"edit_distance(${this},${other})"
   -- Extract a JSON value from a string holding JSON text (JSONPath, e.g. '$.a.b')
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
   def json_extract_string(path:string): string = sql"json_extract_scalar(${this},${path})"
 }
+
+-- uuid(): a random version-4 UUID as a lowercase string, e.g.
+-- 'f47ac10b-58cc-4372-a567-0e02b2c3d479'. A new value for every row
+def uuid in duckdb: string = sql"cast(uuid() as varchar)"
+def uuid in trino: string = sql"cast(uuid() as varchar)"
+def uuid in snowflake: string = sql"uuid_string()"
+def uuid in bigquery: string = sql"generate_uuid()"

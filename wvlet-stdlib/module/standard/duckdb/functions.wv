@@ -758,7 +758,6 @@ def union_value in duckdb: union = native
 def unpivot_list in duckdb: list = native
 def url_decode(a1: string) in duckdb: string = native
 def url_encode(a1: string) in duckdb: string = native
-def uuid in duckdb: uuid = native
 def uuid_extract_timestamp(a1: uuid) in duckdb: timestamp = native
 def uuid_extract_version(a1: uuid) in duckdb: uinteger = native
 def uuidv4 in duckdb: uuid = native
