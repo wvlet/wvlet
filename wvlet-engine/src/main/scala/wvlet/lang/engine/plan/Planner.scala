@@ -194,6 +194,8 @@ class Planner(
               s.source match
                 case t: CTETable =>
                   t.cte.keeps(s.columns)
+                case t: SharedTable =>
+                  check(t.shared.op)
                 case _ =>
                   true
             case _ =>
