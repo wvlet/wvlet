@@ -16,6 +16,7 @@ package wvlet.lang.engine
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.JoinKind
+import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.plan.PlannerMode
 import wvlet.lang.engine.runtime.*
@@ -128,16 +129,83 @@ class EngineDecorrelateTest extends UniTest:
     sameRows(query) shouldBe Seq("ALGERIA", "ARGENTINA")
   }
 
-  test("bind IN over a join tree as a semi join over the ordered tree") {
+  /** The inner join directly above the first semi or anti join, if any */
+  private def joinAboveSemi(p: RuntimePlan): Option[Join] = nodes(p).collectFirst {
+    case j @ Join(l, r, JoinKind.Inner, _, _, _, _)
+        if Seq(l, r).exists(c =>
+          joinKinds(c).headOption.exists(k => k == JoinKind.Semi || k == JoinKind.Anti)
+        ) =>
+      j
+  }
+
+  test("join IN over one input of a join tree onto that input") {
     val query =
-      """select n_name, r_name from nation, region
-        |where n_regionkey = r_regionkey
-        |  and n_nationkey in (select s_nationkey from supplier where s_acctbal > 9000)"""
-        .stripMargin
+      """select s_name, n_name from supplier, nation
+        |where s_nationkey = n_nationkey
+        |  and n_regionkey in (select r_regionkey from region where r_name = 'ASIA')""".stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldContain JoinKind.Semi
     hasLegacy(p) shouldBe false
+    // The semi join is below the inner join
+    joinAboveSemi(p).isDefined shouldBe true
     sameRows(query).nonEmpty shouldBe true
+  }
+
+  test("keep NOT IN over one input of a join tree above the ordered tree") {
+    val query =
+      """select n_name, r_name from nation, region
+        |where n_regionkey = r_regionkey
+        |  and n_nationkey not in (select s_nationkey from supplier where s_acctbal > 9000)"""
+        .stripMargin
+    val p = runtimePlan(query)
+    joinKinds(p) shouldContain JoinKind.Anti
+    joinAboveSemi(p) shouldBe None
+    sameRows(query).nonEmpty shouldBe true
+  }
+
+  test("return no rows for NOT IN over a join tree input when the subquery has a NULL") {
+    val query =
+      """select n_name, r_name from nation, region
+        |where n_regionkey = r_regionkey
+        |  and n_regionkey not in (
+        |    select case when r_name = 'ASIA' then null else r_regionkey end from region
+        |  )""".stripMargin
+    joinKinds(runtimePlan(query)) shouldNotContain JoinKind.Anti
+    sameRows(query) shouldBe Nil
+  }
+
+  test("keep IN over several inputs of a join tree above the ordered tree") {
+    val query =
+      """select n_name, r_name from nation, region
+        |where n_regionkey = r_regionkey
+        |  and n_nationkey + r_regionkey in (select s_nationkey from supplier)""".stripMargin
+    val p = runtimePlan(query)
+    joinKinds(p).headOption shouldBe Some(JoinKind.Semi)
+    joinAboveSemi(p) shouldBe None
+    sameRows(query).nonEmpty shouldBe true
+  }
+
+  test("keep IN over a much larger subquery above the ordered tree") {
+    // The semi join would build on the input; over the tree, the joins reduce it first
+    val query =
+      """select n_name, r_name from nation, region
+        |where n_regionkey = r_regionkey
+        |  and r_regionkey in (select l_suppkey from lineitem)""".stripMargin
+    val p = runtimePlan(query)
+    joinKinds(p).headOption shouldBe Some(JoinKind.Semi)
+    joinAboveSemi(p) shouldBe None
+    sameRows(query).nonEmpty shouldBe true
+  }
+
+  test("keep IN above the ordered tree with place_semi_joins disabled") {
+    val query =
+      """select s_name, n_name from supplier, nation
+        |where s_nationkey = n_nationkey
+        |  and n_regionkey in (select r_regionkey from region where r_name = 'ASIA')""".stripMargin
+    val off = engine.withOptimizer(options.withDisabled(Optimization.PlaceSemiJoins))
+    val p   = withQuery(query)(off.runtimePlan(_))
+    joinKinds(p).headOption shouldBe Some(JoinKind.Semi)
+    joinAboveSemi(p) shouldBe None
   }
 
   test("keep correlated EXISTS as a legacy node") {

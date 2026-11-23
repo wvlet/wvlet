@@ -42,6 +42,7 @@ class OptimizerOptionsTest extends UniTest:
       Seq(
         "factor_or",
         "decorrelate",
+        "place_semi_joins",
         "push_down_filters",
         "reorder_joins",
         "exact_join_order",
