@@ -30,6 +30,12 @@ enum Optimization(val name: String):
   case Decorrelate extends Optimization("decorrelate")
 
   /**
+    * Join an uncorrelated [NOT] IN conjunct over an inner join tree that reads one input onto that
+    * input, before join order, instead of over the ordered tree (with `decorrelate`)
+    */
+  case PlaceSemiJoins extends Optimization("place_semi_joins")
+
+  /**
     * Push filter conjuncts down the runtime plan: through projections, aggregates (grouping keys
     * only), and sorts, into the preserved side of outer joins and into inner join trees, with
     * equalities to constants inferred transitively there

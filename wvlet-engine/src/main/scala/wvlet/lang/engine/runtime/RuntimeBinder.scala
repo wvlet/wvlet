@@ -374,7 +374,8 @@ class RuntimeBinder(planner: Planner):
     * A tree of inner joins (without a lateral unnest on top) and filter conditions over it, as one
     * [[RuntimePlan.InnerJoins]] node that [[ReorderJoins]] orders. Conditions with subqueries apply
     * over the ordered tree, through the planner, except for uncorrelated scalar subqueries, which
-    * are constants (e.g., d_month_seq = (select ... from date_dim)).
+    * are constants (e.g., d_month_seq = (select ... from date_dim)), and uncorrelated [NOT] IN
+    * conditions reading one input, which join that input ([[placedSemiJoin]]).
     *
     * Conditions bind in the planner's order, as they may evaluate scalar subqueries: the
     * single-input ones input by input, then the others. They bind unfactored: the Normalize pass
@@ -398,6 +399,27 @@ class RuntimeBinder(planner: Planner):
     val (withSubqueries, conds) = all.partition((_, e) => planner.hasSubquery(e))
     val output                  = inputs.flatMap(_.output)
     val schemas                 = inputs.map(_.schema).toList
+    // Uncorrelated [NOT] IN conditions reading one input, by input, and the other conditions with
+    // subqueries, which apply over the ordered tree
+    val (placed, above) =
+      if planner.enabled(Optimization.Decorrelate) && planner.enabled(Optimization.PlaceSemiJoins)
+      then
+        withSubqueries
+          .map(_._1)
+          .partitionMap { c =>
+            planner.subqueryConjunct(c) match
+              case Some(in: SubqueryConjunct.In)
+                  if !planner.hasSubquery(in.target) && planner.isUncorrelated(in.sub) =>
+                schemas.indices.filter(planner.referencesInput(in.target, schemas, _)) match
+                  case Seq(i) =>
+                    Left(i -> in)
+                  case _ =>
+                    Right(c)
+              case _ =>
+                Right(c)
+          }
+      else
+        (Nil, withSubqueries.map(_._1))
     // The inputs each condition reads, without evaluating its scalar subqueries
     val refs  = conds.map((_, e) => schemas.indices.filter(planner.referencesInput(e, schemas, _)))
     val bound = Array.ofDim[BExpr](conds.size)
@@ -410,16 +432,78 @@ class RuntimeBinder(planner: Planner):
       .indices
       .foreach(i => conds.indices.filter(refs(_) == Seq(i)).foreach(bindAt(_, inputs(i).output)))
     conds.indices.filter(bound(_) == null).foreach(bindAt(_, output))
+    // Semi and anti joins output their input's columns, so the conditions keep their bindings
+    val joined = inputs
+      .indices
+      .map(i =>
+        placed
+          .collect { case (`i`, in) =>
+            in
+          }
+          .foldLeft(inputs(i))(placedSemiJoin)
+      )
     val node = RuntimePlan.InnerJoins(
-      inputs,
+      joined,
       conds.indices.map(k => JoinCondition(bound(k), literalCounts(conds(k)._1, bound(k).expr)))
     )
-    if withSubqueries.isEmpty then
+    if above.isEmpty then
       node
     else
-      plans.conjuncts(lowered(node), withSubqueries.map(_._1)).plan
+      plans.conjuncts(lowered(node), above).plan
 
   end innerJoins
+
+  /**
+    * Rows of an inner join tree input for which an uncorrelated IN / NOT IN is true, as
+    * `plans.subqueryJoin` joins them over a lowered input. IN builds on the subquery unless it is
+    * much larger than the input (estimated over the input as bound: lowering it first would order a
+    * join tree in it before its parent's filters reach it)
+    */
+  private def placedSemiJoin(p: RuntimePlan, in: SubqueryConjunct.In): RuntimePlan =
+    val target = Binder(planner, BindScope(p.schema)).bind(in.target)
+    def keyed(inner: RuntimePlan, kind: JoinKind, buildLeft: Boolean): RuntimePlan =
+      val (lk, rk) = inKeys(target, inner.schema(0))
+      RuntimePlan.Join(
+        p,
+        inner,
+        kind,
+        IndexedSeq(BExpr.of(lk, p.output)),
+        IndexedSeq(BExpr.of(rk, inner.output)),
+        None,
+        buildLeft
+      )
+    if !in.negate then
+      val inner = lowered(bind(in.sub))
+      keyed(
+        inner.plan,
+        JoinKind.Semi,
+        planner.swapBuild(CardinalityEstimator.rows(inner.op), Stats.rows(p))
+      )
+    else
+      notInValues(in.sub) match
+        case None =>
+          RuntimePlan.Filter(p, BExpr(Const(false, PType.Bool)))
+        case Some(values) =>
+          val anti = keyed(legacyOp(values), JoinKind.Anti, buildLeft = false)
+          RuntimePlan.Filter(anti, BExpr.of(IsNullExpr(target, negate = true), p.output))
+
+  /**
+    * The keys of a semi or anti join of `target in (subquery)`: the target and the subquery's first
+    * column `v`, cast to their common type
+    */
+  private def inKeys(target: VExpr, v: Field): (VExpr, VExpr) =
+    val t = PType.common(target.ptype, v.ptype)
+    (planner.castExpr(target, t), planner.castExpr(ColRef(0, v.ptype, v.name), t))
+
+  /**
+    * The values of a NOT IN subquery, a constant decided at plan time, or None when one is NULL (no
+    * row passes then)
+    */
+  private def notInValues(sub: Relation): Option[Operator] =
+    val op     = planner.plan(sub)
+    val values = Operator.materialize(op)
+    val v      = values.columns(0)
+    Option.unless((0 until values.size).exists(v.isNull))(BatchesOp(op.schema, Seq(values)))
 
   /**
     * The literal counts of a condition and its `and`/`or` sub-conditions
@@ -613,16 +697,8 @@ class RuntimeBinder(planner: Planner):
           // Semi or anti join on the compared value, the subquery's first column, cast to the
           // common type
           def keyed(inner: Lowered, kind: JoinKind, buildLeft: Boolean): Lowered =
-            val v = inner.op.schema(0)
-            val t = PType.common(target.ptype, v.ptype)
-            semiJoin(
-              p,
-              inner,
-              kind,
-              IndexedSeq(planner.castExpr(target, t)),
-              IndexedSeq(planner.castExpr(ColRef(0, v.ptype, v.name), t)),
-              buildLeft
-            )
+            val (lk, rk) = inKeys(target, inner.op.schema(0))
+            semiJoin(p, inner, kind, IndexedSeq(lk), IndexedSeq(rk), buildLeft)
           if !negate then
             val inner = lowered(bind(sub))
             keyed(
@@ -636,19 +712,12 @@ class RuntimeBinder(planner: Planner):
           else
             // NOT IN: no row passes when the subquery has a NULL, and NULL targets never pass.
             // The subquery's values are a constant, decided at plan time
-            val op      = planner.plan(sub)
-            val values  = Operator.materialize(op)
-            val v       = values.columns(0)
-            val hasNull = (0 until values.size).exists(v.isNull)
-            if hasNull then
-              none
-            else
-              val anti = keyed(
-                fromOp(BatchesOp(op.schema, Seq(values))),
-                JoinKind.Anti,
-                buildLeft = false
-              )
-              filter(anti, IsNullExpr(target, negate = true))
+            notInValues(sub) match
+              case None =>
+                none
+              case Some(values) =>
+                val anti = keyed(fromOp(values), JoinKind.Anti, buildLeft = false)
+                filter(anti, IsNullExpr(target, negate = true))
       end match
 
     end subqueryJoin
