@@ -1195,19 +1195,9 @@ object Kernels:
     val bn = b.nulls
     val o  = new Array[Boolean](n)
     var i  = 0
-    if an == null && bn == null then
-      if isAnd then
-        while i < n do
-          o(i) = av(i) & bv(i)
-          i += 1
-      else
-        while i < n do
-          o(i) = av(i) | bv(i)
-          i += 1
-      BoolVec(o, null)
-    else if an eq bn then
-      // One shared null array (e.g., BETWEEN on one column): a row is NULL exactly when both
-      // operands are, so the null array is reused as is
+    if an eq bn then
+      // No nulls on either side, or one shared null array (e.g., BETWEEN on one column): a row is
+      // NULL exactly when both operands are, so the null array is reused as is
       if isAnd then
         while i < n do
           o(i) = av(i) & bv(i)
