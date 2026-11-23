@@ -21,8 +21,8 @@ import wvlet.lang.connector.DBConnector
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.engine.catalog.JsonRows
+import wvlet.lang.engine.catalog.StringRows
 import wvlet.lang.engine.vector.Field
-import wvlet.lang.engine.vector.PType
 import wvlet.lang.engine.vector.Schema
 import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.log.LogSupport
@@ -94,7 +94,7 @@ object SourceTableStaging extends LogSupport:
     val schema =
       Option.when(schemaFields.nonEmpty)(
         Schema(
-          schemaFields.map(f => Field(f.name.name, PType.fromDataType(f.dataType))).toIndexedSeq
+          schemaFields.map(f => Field(f.name.name, StringRows.ptypeOf(f.dataType))).toIndexedSeq
         )
       )
     streamTableAsJsonRows(source, qualifiedName) { rows =>

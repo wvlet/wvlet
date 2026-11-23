@@ -35,7 +35,11 @@ object StringRows:
       .toIndexedSeq
   )
 
-  private def ptypeOf(dataType: DataType): PType =
+  /**
+    * The engine type holding text values of a source column of `dataType`: scalar types the engine
+    * parses, and Str for the rest
+    */
+  def ptypeOf(dataType: DataType): PType =
     dataType match
       case t: DataType.TimestampType if t.withTimeZone =>
         // Zone names (e.g. `2026-01-01 00:00:00 UTC`) are not parsed by the engine's timestamps

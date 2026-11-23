@@ -22,6 +22,8 @@ import wvlet.lang.engine.vector.Schema
 import wvlet.lang.model.DataType
 
 import java.sql.ResultSet
+import java.sql.ResultSetMetaData
+import java.sql.Types
 import scala.util.Try
 
 /**
@@ -75,10 +77,33 @@ object LocalFileExport:
     val md = rs.getMetaData
     StringRows.schemaOf(
       (1 to md.getColumnCount).map { i =>
-        val dataType = Try(DataType.parse(md.getColumnTypeName(i))).getOrElse(DataType.AnyType)
-        md.getColumnName(i) -> dataType
+        md.getColumnName(i) -> jdbcTypeOf(md, i)
       }
     )
+
+  // Scalar types by their JDBC type code (vendor type names such as Snowflake's NUMBER don't parse
+  // as wvlet types); other types by their type name, and text when the name doesn't parse
+  private def jdbcTypeOf(md: ResultSetMetaData, i: Int): DataType =
+    md.getColumnType(i) match
+      case Types.TINYINT | Types.SMALLINT | Types.INTEGER =>
+        DataType.IntType
+      case Types.BIGINT =>
+        DataType.LongType
+      case Types.REAL | Types.FLOAT | Types.DOUBLE =>
+        DataType.DoubleType
+      case Types.DECIMAL | Types.NUMERIC if md.getPrecision(i) > 0 =>
+        DataType.DecimalType(
+          DataType.IntConstant(md.getPrecision(i)),
+          DataType.IntConstant(md.getScale(i).max(0))
+        )
+      case Types.BOOLEAN | Types.BIT =>
+        DataType.BooleanType
+      case Types.DATE =>
+        DataType.DateType
+      case Types.CHAR | Types.VARCHAR | Types.LONGVARCHAR | Types.NCHAR | Types.NVARCHAR =>
+        DataType.StringType
+      case _ =>
+        Try(DataType.parse(md.getColumnTypeName(i))).getOrElse(DataType.AnyType)
 
   private def batchesOf(rs: ResultSet, schema: Schema): Iterator[Batch] =
     val n = schema.size
