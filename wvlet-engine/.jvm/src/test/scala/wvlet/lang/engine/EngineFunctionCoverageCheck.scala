@@ -21,9 +21,11 @@ import java.nio.file.Path
 import scala.jdk.CollectionConverters.*
 
 /**
-  * Coverage gate for DuckDB functions in the engine: reads the generated DuckDB catalog and counts
-  * the names the engine binds ([[EngineFunctions.isSupported]]). Out-of-scope functions are
-  * excluded explicitly.
+  * Compatibility gate for DuckDB function names in the engine: reads the generated DuckDB catalog
+  * and counts the names the engine binds ([[EngineFunctions.isSupported]]). Out-of-scope functions
+  * are excluded explicitly. The primary measure is [[EngineStdlibCoverageCheck]]: the stdlib is
+  * Wvlet's engine-neutral function contract, and DuckDB names are only what its DuckDB variants
+  * expand to.
   *
   * `minCovered` pins the current count. Raise it when porting functions; never lower it. The full
   * report is written to target/engine-function-coverage.txt.
