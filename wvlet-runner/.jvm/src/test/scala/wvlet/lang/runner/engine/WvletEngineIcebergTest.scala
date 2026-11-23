@@ -13,7 +13,6 @@
  */
 package wvlet.lang.runner.engine
 
-import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
@@ -27,6 +26,8 @@ import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.runner.PlanExecutor
 import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.connector.SqlConnectorProvider
+import wvlet.uni.cloud.iceberg.Iceberg
+import wvlet.uni.cloud.parquet.ParquetFilter
 import wvlet.uni.log.LogLevel
 import wvlet.uni.test.UniTest
 
@@ -202,11 +203,18 @@ class WvletEngineIcebergTest extends UniTest:
              |test _.rows should be [[1, 10, null], [2, 20, 'y']]""".stripMargin)
   }
 
-  test("refuse a table with delete files with a clear error") {
-    val e = failure(s"""from '${fixture("deletes")}'""")
-    e.statusCode shouldBe StatusCode.NOT_IMPLEMENTED
-    e.getMessage shouldContain "can't read the Iceberg table"
-    e.getMessage shouldContain "delete files"
+  test("read a table with merge-on-read deletes without the deleted rows") {
+    check("""from [[1, 'a'], [2, 'b'], [3, 'c'], [4, 'd']] as t(id, name)
+            |save to 'out/mor' with format: 'iceberg'""".stripMargin)
+    val root = Path.of(workDir, "out/mor").toString
+    // Position-delete files (format v2); the data file stays as it is
+    Iceberg.deleteRows(root, ParquetFilter.col("id") === 2L) shouldBe 1L
+    check("""from 'out/mor'
+            |order by id
+            |test _.rows should be [[1, 'a'], [3, 'c'], [4, 'd']]""".stripMargin)
+    check("""from 'out/mor'
+            |agg _.count
+            |test _.rows should be [[3]]""".stripMargin)
   }
 
   test("refuse append to a table that a catalog owns, keeping its files") {

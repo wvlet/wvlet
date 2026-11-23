@@ -282,8 +282,8 @@ object ParquetSource:
 
   /**
     * A Parquet dataset (a folder of Parquet files, a Delta table, or an Iceberg table). What uni
-    * refuses to read of an Iceberg table (delete files, renamed columns, ORC data, format v3) is a
-    * NOT_IMPLEMENTED error naming the table
+    * refuses to read of an Iceberg table (ORC data files, encryption) is a NOT_IMPLEMENTED error
+    * naming the table
     */
   def openDataset(path: String): ParquetDataset =
     try
