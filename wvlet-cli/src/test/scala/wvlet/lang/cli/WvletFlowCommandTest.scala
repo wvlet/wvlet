@@ -67,6 +67,31 @@ class WvletFlowCommandTest extends UniTest:
     e.getMessage shouldContain "target_name"
   }
 
+  test("run a flow on the wvlet engine with -t wvlet") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    val dir = Files.createTempDirectory("wvlet-flow-engine")
+    Files.writeString(
+      dir.resolve("pipeline.wv"),
+      """flow EnginePipeline = {
+        |  stage src = from [[1, 'a'], [2, 'b']] as t(id, name)
+        |  stage filtered = from src | where name = 'a'
+        |}
+        |""".stripMargin
+    )
+    WvletMain.main(s"flow run EnginePipeline -t wvlet -w ${dir}")
+    val runs = FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list()
+    runs.map(_.state) shouldBe List("success")
+    runs.head.stages.map(_.state) shouldBe List("success", "success")
+  }
+
+  test("reject -t together with --profile") {
+    val e = intercept[WvletLangException] {
+      WvletMain.main(s"flow run SamplePipeline -t wvlet --profile local -w ${flowDir}")
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+  }
+
   test("backfill a scheduled flow with one run per schedule window") {
     import wvlet.lang.compiler.WorkEnv
     import wvlet.lang.runner.FlowRunRegistry

@@ -11,7 +11,7 @@ The CLI ran every query on DuckDB unless `-t` or `--profile` said otherwise, and
 - With neither `-t` nor `--profile`, `wvlet run` (JVM, npm, and native) and the `wv` REPL use `Profile.defaultWvletProfile`: one `wvlet` connector without a host. `wv` gains `-t` / `--target` so `wv -t duckdb` opts back in without a profile file.
 - `-t duckdb` and profiles with `type: duckdb` behave as before. Nothing is translated or retried: a query that the engine can't run fails with the engine's error (`NOT_IMPLEMENTED` for SQL statements), so users see where they need DuckDB instead of getting a silent fallback.
 - `wvlet compile` and `to_wvlet` keep the DuckDB SQL dialect as their default. They print SQL for an external engine and never execute it, so the default output should be SQL that DuckDB, the most common target, runs as is.
-- `wvlet build` and `wvlet flow` keep DuckDB for now: `FlowExecutor` runs stages on a SQL connector (`DBConnector`), which the engine isn't. Moving flows onto the engine is a later step of the same goal.
+- `wvlet build` and `wvlet flow` keep DuckDB for now: `FlowExecutor` runs stages on a SQL connector (`DBConnector`), which the engine isn't. Moving flows onto the engine is a later step of the same goal. Update (#TBD): `wvlet build -t wvlet` and `wvlet flow ... -t wvlet` run stages as plans on the engine (no activations, notifications, or view models yet). The defaults switch once Step 2 lets activation sinks read engine tables.
 - The local-file switch now targets the engine: on a profile whose engine is not DuckDB (or the generic DuckDB fallback), a query whose only inputs are local files runs on the in-process engine. A DuckDB profile reads local files on DuckDB itself.
 
 ## Consequences

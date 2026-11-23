@@ -118,7 +118,8 @@ object FlowRunLauncher extends LogSupport:
       itemStore: Option[ItemStore] = None
   ): FlowExecutionResult =
     Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
-      val connector = dbConnectorProvider.getConnector(profile)
+      // A SQL connector, or the in-process wvlet engine, which runs stages as plans
+      val connector = dbConnectorProvider.getConnector(profile.defaultEngine)
 
       given ctx: Context = compileResult
         .context

@@ -24,6 +24,7 @@ import wvlet.lang.compiler.CompileResult
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.parser.ParserPhase
@@ -54,6 +55,11 @@ case class WvletFlowOption(
     workFolder: String = ".",
     @option(prefix = "--profile", description = "Profile to use")
     profile: Option[String] = None,
+    @option(
+      prefix = "-t,--target",
+      description = "Engine to use without a profile (duckdb (default), wvlet, ...)"
+    )
+    targetDBType: Option[String] = None,
     @option(prefix = "--catalog", description = "Context database catalog to use")
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
@@ -64,7 +70,23 @@ case class WvletFlowOption(
         "Flow run store type: file (default), sqlite, or postgres (connection via WVLET_FLOW_STORE_PG_* env)"
     )
     runStore: Option[String] = None
-)
+):
+  /**
+    * The profile of a flow or build run: `--profile`, or with `-t` the default profile of that
+    * engine (e.g. `-t wvlet` runs on the in-process wvlet engine)
+    */
+  def resolveProfile: Profile =
+    targetDBType match
+      case Some(target) =>
+        if profile.isDefined then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException("Specify either -t (--target) or --profile")
+        Profile.defaultProfileFor(DBType.fromString(target)).withEngineOverrides(catalog, schema)
+      case None =>
+        Profile.getProfile(profile, catalog, schema)
+
+end WvletFlowOption
 
 /**
   * `wvlet flow` subcommands for managing and running flows from the CLI
@@ -114,7 +136,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
   ): Unit =
     val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
     val loaded  = FlowRunLauncher.loadFlows(flowOption.workFolder, workEnv)
-    val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+    val profile = flowOption.resolveProfile
     // System.exit is deferred until the resource block releases the run store
     var failed = false
     withRunStores(flowOption, workEnv) { (store, itemStore) =>
@@ -144,7 +166,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       dryRun: Boolean
   ): Unit =
     val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
-    val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+    val profile = flowOption.resolveProfile
     // Selectors are comma-split by ModelGraph.select
     val plan = ModelBuildLauncher.plan(
       flowOption.workFolder,
@@ -252,11 +274,11 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           s"Backfilling ${flowName}: ${runTimes.size} run(s) from ${runTimes.head} to ${runTimes
               .last}"
         )
-        val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+        val profile = flowOption.resolveProfile
         // System.exit is deferred until the resource blocks release the connector and run store
         var failed = false
         Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
-          val connector = dbConnectorProvider.getConnector(profile)
+          val connector = dbConnectorProvider.getConnector(profile.defaultEngine)
 
           given ctx: Context = compileResult
             .context
@@ -482,13 +504,9 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           // (their process died mid-run and left the record in the running state)
           val now         = System.currentTimeMillis()
           val cleanedRuns = registry.list().filter(r => r.isTerminal || (stale && r.isStaleAt(now)))
-          val profile     = Profile.getProfile(
-            flowOption.profile,
-            flowOption.catalog,
-            flowOption.schema
-          )
+          val profile     = flowOption.resolveProfile
           Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
-            val connector = dbConnectorProvider.getConnector(profile)
+            val connector = dbConnectorProvider.getConnector(profile.defaultEngine)
             cleanedRuns.foreach { r =>
               FlowExecutor.dropRunTables(connector, r.runId, r.stages.map(_.name))
               registry.delete(r.runId)
@@ -538,9 +556,9 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
     if scheduled.isEmpty then
       println("No flows with a schedule: config were found")
     else
-      val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+      val profile = flowOption.resolveProfile
       Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
-        val connector = dbConnectorProvider.getConnector(profile)
+        val connector = dbConnectorProvider.getConnector(profile.defaultEngine)
         withRunStores(flowOption, workEnv) { (store, itemStore) =>
           // The compile result and defining unit of each scheduled flow, replaced on reload
           val compiled = java

@@ -27,14 +27,14 @@ import wvlet.lang.compiler.pipeline.BuildModel
 import wvlet.lang.compiler.pipeline.ModelBuildPlanner
 import wvlet.lang.compiler.pipeline.ModelGraph
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.connector.DBConnector
+import wvlet.lang.connector.Connector
 import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.model.plan.ModelDef
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.control.Control
 import wvlet.uni.log.LogSupport
 
-import scala.util.control.NonFatal
+import scala.util.chaining.*
 
 /**
   * `wvlet build`: compiles the models of a work folder and builds the materialized ones in
@@ -132,20 +132,12 @@ object ModelBuildLauncher extends LogSupport:
 
   /**
     * Fail when the selection reads a materialized model that is neither selected nor readable on
-    * the connector (i.e., not built yet)
+    * its engine (i.e., not built yet)
     */
-  def checkUpstreamsBuilt(plan: BuildPlan, connectorFor: BuildModel => DBConnector): Unit =
+  def checkUpstreamsBuilt(plan: BuildPlan, connectorFor: BuildModel => Connector): Unit =
     val missing = plan
       .unselectedUpstreams
-      .filterNot { m =>
-        try
-          connectorFor(m).execute(s"select 1 from ${m.targetName} limit 0")
-          true
-        catch
-          case NonFatal(e) =>
-            debug(s"Upstream model ${m.name} is not readable: ${e.getMessage}")
-            false
-      }
+      .filterNot(m => FlowStageEngine.of(connectorFor(m)).tableExists(m.targetName))
     if missing.nonEmpty then
       throw StatusCode
         .MODEL_NOT_FOUND
@@ -170,11 +162,8 @@ object ModelBuildLauncher extends LogSupport:
           m.spec
             .engine
             .flatMap(e => profile.connectors.find(_.name == e))
-            .map(provider.getConnector)
-            .collect { case db: DBConnector =>
-              db
-            }
-            .getOrElse(provider.getConnector(profile))
+            .getOrElse(profile.defaultEngine)
+            .pipe(provider.getConnector)
       )
     }
     FlowRunLauncher.executeFlowDef(

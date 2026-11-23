@@ -594,7 +594,10 @@ Flows are triggered explicitly with the `run flow` statement or the `wvlet flow`
 ### Engine Support
 
 Flows run on DuckDB (the default) and on Trino, selected with `--profile` like regular
-queries. Stage materialization adapts to the engine automatically (e.g. Trino catalogs
+queries. `-t <engine>` selects an engine without a profile file: `wvlet flow run F -t wvlet` runs
+the stages as plans on the in-process [wvlet engine](../usage/wvlet-engine.md). The engine doesn't
+support activations, `on_failure` / `on_success` notifications, or reading tables of another
+connector yet, and its statements can't be stopped mid-run (a timeout still fails the stage). Stage materialization adapts to the engine automatically (e.g. Trino catalogs
 without `create or replace table` get an explicit drop-and-create), and stage timeouts and
 cancellation stop the running query server-side on both engines. Run-scoped
 `__wv_flow_*` tables are created in the `catalog`/`schema` of the profile's default engine

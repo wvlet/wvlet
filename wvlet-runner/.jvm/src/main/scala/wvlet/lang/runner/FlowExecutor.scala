@@ -21,7 +21,6 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.transform.FlowParams
 import wvlet.lang.model.DataType
@@ -39,10 +38,6 @@ import wvlet.lang.runner.activity.ItemStore
 import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.activity.TaskQueueActivityExecutor
 import wvlet.lang.runner.connector.SourceTableStaging
-import wvlet.uni.json.JSON
-import wvlet.uni.json.JSON.JSONNull
-import wvlet.uni.json.JSON.JSONObject
-import wvlet.uni.json.JSON.JSONString
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
 
@@ -283,7 +278,7 @@ trait FlowStageRunner:
   *   Store of activity items; defaults to the task queue's store, else an in-memory store
   */
 class FlowExecutor(
-    connector: DBConnector,
+    connector: Connector,
     workEnv: WorkEnv,
     config: FlowExecutorConfig = FlowExecutorConfig(),
     stageRunner: Option[FlowStageRunner] = None,
@@ -320,6 +315,9 @@ class FlowExecutor(
         )
     )
 
+  // The engine of the flow's default connector: SQL, or the in-process wvlet engine
+  private val defaultEngine: FlowStageEngine = FlowStageEngine.of(connector)
+
   private def resolveConnector(name: String): Connector =
     if name == defaultEngineName then
       connector
@@ -334,24 +332,18 @@ class FlowExecutor(
             )
         )
 
-  private def resolveEngine(name: String): DBConnector =
-    resolveConnector(name) match
-      case db: DBConnector =>
-        db
-      case other =>
-        throw StatusCode
-          .INVALID_ARGUMENT
-          .newException(
-            s"Connector '${name}' (${other
-                .connectorType}) is not a SQL engine and cannot run a stage"
-          )
+  private def resolveEngine(name: String): FlowStageEngine =
+    if name == defaultEngineName then
+      defaultEngine
+    else
+      FlowStageEngine.of(resolveConnector(name))
 
   /** The engine a stage runs on: its `on <connector>` selection, or the flow's engine */
-  private def connectorFor(ls: FlowLowering.LoweredStage): DBConnector = ls
+  private def engineFor(ls: FlowLowering.LoweredStage): FlowStageEngine = ls
     .stage
     .engine
     .map(e => resolveEngine(e.leafName))
-    .getOrElse(connector)
+    .getOrElse(defaultEngine)
 
   private def engineNameFor(ls: FlowLowering.LoweredStage): String = ls
     .stage
@@ -632,7 +624,7 @@ class FlowExecutor(
               )
               ls.waitUntil
                 .foreach { sensor =>
-                  val pollSql = FlowExecutor.sensorPollSql(
+                  val poll = FlowExecutor.sensorPollRelation(
                     sensor,
                     stageNames,
                     tableFor,
@@ -641,11 +633,11 @@ class FlowExecutor(
                   )
                   val interval = stageConfigs(ls.name).pollIntervalMillis.max(1L)
                   workEnv.info(s"Stage ${ls.name} waits until its sensor condition holds")
-                  debug(s"Sensor poll of stage ${ls.name}:\n${pollSql}")
+                  debug(s"Sensor poll of stage ${ls.name}:\n${poll}")
                   beat(attemptKey)
                   reportPoll()
-                  val sensorConnector = connectorFor(ls)
-                  while sensorConnector.queryJsonRows(pollSql).isEmpty do
+                  val sensorEngine = engineFor(ls)
+                  while !sensorEngine.hasRows(poll) do
                     sleepWithHeartbeat(interval)
                     beat(attemptKey)
                     reportPoll()
@@ -695,8 +687,11 @@ class FlowExecutor(
                       s"[activate] stage ${ls
                           .name}: delivering materialized output ${table} to '${spec.target}'"
                     )
+                    val sinkConnector = defaultEngine
+                      .sqlConnector
+                      .getOrElse(FlowStageEngine.notOnEngine("activate"))
                     sink.activate(
-                      ActivationRequest(spec.target, spec.params, ls.name, table, connector)
+                      ActivationRequest(spec.target, spec.params, ls.name, table, sinkConnector)
                     )
                   case None =>
                     workEnv.info(
@@ -1228,7 +1223,7 @@ class FlowExecutor(
         .filter(_.stage.engine.isDefined)
         .foreach { ls =>
           try
-            connectorFor(ls).execute(s"""drop table if exists "${tableFor(ls.name)}"""")
+            engineFor(ls).dropTable(tableFor(ls.name))
           catch
             case NonFatal(e) =>
               debug(s"Failed to drop run table of stage ${ls.name}: ${e.getMessage}")
@@ -1277,31 +1272,41 @@ class FlowExecutor(
     * a short-lived table so that the regular activation sinks (file, webhook, ServiceLoader) can
     * deliver it like a stage output; any failure here is logged and never changes the run result
     */
-  private def notifyRunResult(flow: FlowDef, result: FlowExecutionResult): Unit =
+  private def notifyRunResult(flow: FlowDef, result: FlowExecutionResult)(using Context): Unit =
     val hooks = FlowNotifyConfig.fromFlow(flow).hooksFor(result.hasError)
     if hooks.nonEmpty then
       val summaryTable              = s"__wv_flow_notify_${result.runId.toLowerCase}"
       def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
       try
-        val summaryColumns =
-          """("flow" varchar, "run_id" varchar, "stage" varchar, "state" varchar, "attempts" bigint, "error" varchar)"""
-        if connector.dbType.supportCreateOrReplace then
-          connector.execute(s"""create or replace table "${summaryTable}" ${summaryColumns}""")
-        else
-          connector.execute(s"""drop table if exists "${summaryTable}"""")
-          connector.execute(s"""create table "${summaryTable}" ${summaryColumns}""")
-        if result.stageResults.nonEmpty then
-          val rows = result
+        // Activation sinks read the summary table through SQL
+        val sinkConnector = defaultEngine
+          .sqlConnector
+          .getOrElse(FlowStageEngine.notOnEngine("Flow notification (on_failure / on_success)"))
+        defaultEngine.replaceTableWithRows(
+          summaryTable,
+          List(
+            "flow"     -> DataType.StringType,
+            "run_id"   -> DataType.StringType,
+            "stage"    -> DataType.StringType,
+            "state"    -> DataType.StringType,
+            "attempts" -> DataType.LongType,
+            "error"    -> DataType.StringType
+          ),
+          result
             .stageResults
             .map { s =>
               // Exceptions like NullPointerException may carry a null message
-              val err = s.error.flatMap(e => Option(e.getMessage)).map(sqlLit).getOrElse("null")
-              s"(${sqlLit(result.flowName)}, ${sqlLit(result.runId)}, ${sqlLit(s.name)}, ${sqlLit(
-                  s.state.stateName
-                )}, ${s.attempts}, ${err})"
+              List(
+                result.flowName,
+                result.runId,
+                s.name,
+                s.state.stateName,
+                s.attempts.toLong,
+                s.error.flatMap(e => Option(e.getMessage)).orNull
+              )
             }
-            .mkString(", ")
-          connector.execute(s"""insert into "${summaryTable}" values ${rows}""")
+            .toList
+        )
         hooks.foreach { spec =>
           try
             activationSinks.find(_.name == spec.target) match
@@ -1316,7 +1321,7 @@ class FlowExecutor(
                     spec.params,
                     result.flowName,
                     summaryTable,
-                    connector
+                    sinkConnector
                   )
                 )
               case None =>
@@ -1338,7 +1343,7 @@ class FlowExecutor(
           )
       finally
         try
-          connector.execute(s"""drop table if exists "${summaryTable}"""")
+          defaultEngine.dropTable(summaryTable)
         catch
           case NonFatal(_) =>
         end try
@@ -1390,21 +1395,7 @@ class FlowExecutor(
               )
             }
           materialize(ls.copy(body = keys))
-          connectorFor(ls)
-            .queryJsonRows(s"""select "${itemColumn}" from "${table}"""")
-            .flatMap { row =>
-              JSON.parse(row) match
-                case o: JSONObject =>
-                  o.get(itemColumn) match
-                    case Some(JSONString(s)) =>
-                      Some(s)
-                    case Some(JSONNull) | None =>
-                      None
-                    case Some(other) =>
-                      Some(other.toJSON)
-                case _ =>
-                  None
-            }
+          engineFor(ls).columnValues(table, itemColumn).flatten
         case None =>
           // A single invocation: the input is evaluated (and must succeed), not shipped
           materialize(ls)
@@ -1437,7 +1428,7 @@ class FlowExecutor(
           baseInput = Map("run_id" -> runId, "stage" -> ls.name)
         )
       finally activeBatches.remove(attemptKey)
-    materializeActivityResult(connectorFor(ls), table, result)
+    materializeActivityResult(engineFor(ls), table, result)
 
     if result.hasErrors || result.cancelled then
       val summary = result
@@ -1455,51 +1446,23 @@ class FlowExecutor(
 
   /** Replace the stage table with one row per activity item */
   private def materializeActivityResult(
-      stageConnector: DBConnector,
+      stageEngine: FlowStageEngine,
       table: String,
       result: BatchResult
-  ): Unit =
-    def lit(v: Option[String]): String = v.map(s => s"'${s.replace("'", "''")}'").getOrElse("null")
-    // An empty batch still produces the result schema
-    val rows =
-      if result.items.isEmpty then
-        List("(null, null, null, null, null)")
-      else
-        result
-          .items
-          .map { r =>
-            List(
-              lit(Some(r.itemKey)),
-              lit(Some(r.state)),
-              r.attempts.toString,
-              lit(r.output),
-              lit(r.error)
-            ).mkString("(", ", ", ")")
-          }
-    val emptyFilter =
-      if result.items.isEmpty then
-        "\nwhere 1 = 0"
-      else
-        ""
-    // Built without stripMargin: item values may contain margin characters
-    val select = List(
-      "select cast(item_key as varchar) as item_key, cast(state as varchar) as state,",
-      "  cast(attempts as integer) as attempts, cast(output as varchar) as output,",
-      "  cast(error as varchar) as error",
-      s"from (values\n  ${rows.mkString(
-          ",\n  "
-        )}\n) as t(item_key, state, attempts, output, error)${emptyFilter}"
-    ).mkString("\n")
-    val target = s""""${table}""""
-    val ddl    =
-      if stageConnector.dbType.supportCreateOrReplace then
-        s"create or replace table ${target} as\n${select}"
-      else
-        stageConnector.execute(s"drop table if exists ${target}")
-        s"create table ${target} as\n${select}"
-    stageConnector.execute(ddl)
-
-  end materializeActivityResult
+  )(using Context): Unit = stageEngine.replaceTableWithRows(
+    table,
+    List(
+      "item_key" -> DataType.StringType,
+      "state"    -> DataType.StringType,
+      "attempts" -> DataType.IntType,
+      "output"   -> DataType.StringType,
+      "error"    -> DataType.StringType
+    ),
+    result
+      .items
+      .map(r => List(r.itemKey, r.state, r.attempts, r.output.orNull, r.error.orNull))
+      .toList
+  )
 
   private def materializeStage(
       ls: FlowLowering.LoweredStage,
@@ -1515,8 +1478,9 @@ class FlowExecutor(
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Stage ${ls.name} has no executable body")
       )
 
-    val stageConnector = connectorFor(ls)
-    val engineName     = engineNameFor(ls)
+    val stageEngine = engineFor(ls)
+    val engineName  = engineNameFor(ls)
+    val hooks       = StatementHooks(registerStatement, deregisterStatement)
 
     val executable = FlowExecutor.rewriteStageRefs(
       body,
@@ -1531,7 +1495,7 @@ class FlowExecutor(
     val (staged, stagingTables) = stageForeignTables(
       executable,
       engineName,
-      stageConnector,
+      stageEngine,
       tableFor,
       ls.name
     )
@@ -1541,67 +1505,28 @@ class FlowExecutor(
         // A stage whose body persists its result (`save to t`, `save as view v`, as in the
         // stages `wvlet build` plans for materialized models) writes to its own target instead
         // of a run-scoped stage table
-        try GenSQL
-            .generateSaveSQL(save, ctx)
-            .foreach { stmt =>
-              debug(s"Saving stage ${ls.name}:\n${stmt}")
-              stageConnector.executeCancellable(stmt, registerStatement, deregisterStatement)
-            }
-        finally dropStagingTables(stageConnector, stagingTables)
+        debug(s"Saving stage ${ls.name}")
+        try stageEngine.save(save, hooks)
+        finally dropStagingTables(stageEngine, stagingTables)
       case _ =>
-        createStageTable(
-          ls,
-          staged,
-          stageConnector,
-          tableFor,
-          stagingTables,
-          registerStatement,
-          deregisterStatement
-        )
+        // A regular (non-temp) table: parallel stages materialize on separate sessions, and temp
+        // tables are session-scoped. The registered handle lets the scheduler stop the statement
+        // on a timeout or cancellation while it is executing
+        try stageEngine.createTableAs(tableFor(ls.name), staged, hooks)
+        finally dropStagingTables(stageEngine, stagingTables)
 
   end materializeStage
 
-  private def dropStagingTables(stageConnector: DBConnector, stagingTables: List[String]): Unit =
+  private def dropStagingTables(stageEngine: FlowStageEngine, stagingTables: List[String]): Unit =
     // Staging tables only feed the stage statement; drop them immediately (a retried attempt
     // re-stages from the source)
     stagingTables.foreach { staging =>
       try
-        stageConnector.execute(s"""drop table if exists "${staging}"""")
+        stageEngine.dropTable(staging)
       catch
         case NonFatal(e) =>
           debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
     }
-
-  private def createStageTable(
-      ls: FlowLowering.LoweredStage,
-      staged: Relation,
-      stageConnector: DBConnector,
-      tableFor: String => String,
-      stagingTables: List[String],
-      registerStatement: CancellableStatement => Unit,
-      deregisterStatement: () => Unit
-  )(using ctx: Context): Unit =
-    val sql = GenSQL.generateSQLFromRelation(staged, addHeader = false).sql
-
-    // Quote the table name: it contains a ULID and stage names may collide with SQL keywords.
-    // The table is a regular (non-temp) table because parallel stages materialize on separate
-    // sessions, and temp tables are session-scoped. Engines without `create or replace table`
-    // (e.g. Trino) get an explicit drop first: the run-scoped name is unique per run, so the
-    // drop only matters for re-executed attempts of this stage
-    val target = s""""${tableFor(ls.name)}""""
-    val ddl    =
-      if stageConnector.dbType.supportCreateOrReplace then
-        s"""create or replace table ${target} as\n${sql}"""
-      else
-        stageConnector.execute(s"drop table if exists ${target}")
-        s"""create table ${target} as\n${sql}"""
-    debug(s"Materializing stage ${ls.name}:\n${ddl}")
-    // The registered handle lets the scheduler stop the statement server-side on a timeout
-    // or cancellation while it is executing
-    try stageConnector.executeCancellable(ddl, registerStatement, deregisterStatement)
-    finally dropStagingTables(stageConnector, stagingTables)
-
-  end createStageTable
 
   /**
     * Replace TableScans that were resolved through a different connector with run-scoped staging
@@ -1612,7 +1537,7 @@ class FlowExecutor(
   private def stageForeignTables(
       body: Relation,
       engineName: String,
-      engine: DBConnector,
+      engine: FlowStageEngine,
       tableFor: String => String,
       stageName: String
   ): (Relation, List[String]) =
@@ -1636,7 +1561,8 @@ class FlowExecutor(
               val source = resolveConnector(sourceName)
               stagedCount += 1
               val staging = tableFor(s"${stageName}__src${stagedCount}")
-              materializeForeignTable(source, t, staging, engine, engineName)
+              // Only DuckDB (a SQL engine) reaches here
+              materializeForeignTable(source, t, staging, engine.sqlConnector.get, engineName)
               staging
             }
           )
@@ -1748,25 +1674,19 @@ object FlowExecutor:
     * The polling query of a `wait until` sensor: selects one row from the sensor's input filtered
     * by the condition, so a non-empty result means the condition holds for at least one row
     */
-  private[runner] def sensorPollSql(
+  /** The relation a sensor polls: rows of the stage input that satisfy the sensor condition */
+  private[runner] def sensorPollRelation(
       sensor: FlowLowering.SensorSpec,
       stageNames: Set[String],
       tableFor: String => String,
       routeFilters: Map[(String, String), Expression],
       readerStage: String
-  )(using ctx: Context): String =
+  ): Relation =
     val input = rewriteStageRefs(sensor.input, readerStage, stageNames, tableFor, routeFilters)
     // The braced input forces a subquery boundary, so a condition over an aggregated input
     // (e.g. `select count(*) as cnt | wait until _.cnt > 0`) filters the aggregate's result
     // instead of being merged into its where clause
-    val sql =
-      GenSQL
-        .generateSQLFromRelation(
-          Filter(BracedRelation(input, Span.NoSpan), sensor.condition, Span.NoSpan),
-          addHeader = false
-        )
-        .sql
-    s"""select 1 from (\n${sql}\n) as "__wv_sensor" limit 1"""
+    Filter(BracedRelation(input, Span.NoSpan), sensor.condition, Span.NoSpan)
 
   private val runTimeFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
   private val runDateFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
@@ -1834,10 +1754,11 @@ object FlowExecutor:
     s"__wv_flow_${runId.toLowerCase}_${stageName}"
 
   /** Drop the run-scoped tables of the given stages (best-effort cleanup) */
-  def dropRunTables(connector: DBConnector, runId: String, stageNames: Seq[String]): Unit =
+  def dropRunTables(connector: Connector, runId: String, stageNames: Seq[String]): Unit =
+    val engine = FlowStageEngine.of(connector)
     stageNames.foreach { name =>
       try
-        connector.execute(s"""drop table if exists "${stageTableName(runId, name)}"""")
+        engine.dropTable(stageTableName(runId, name))
       catch
         case NonFatal(e) =>
       // best-effort cleanup

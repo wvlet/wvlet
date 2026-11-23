@@ -9,7 +9,7 @@ Select DuckDB's in-memory database (catalog: memory, schema: main) with `-t duck
 (`wv -t duckdb`) or a profile with `"type": "duckdb"`. DuckDB is needed for `sql"..."` and
 `execute` statements, `.duckdb` database files, DuckDB extensions, and table functions such as
 `read_csv(...)`. `wvlet compile` generates DuckDB SQL by default, and `wvlet build` and
-`wvlet flow` run on DuckDB.
+`wvlet flow` run on DuckDB unless `-t wvlet` is given.
 
 
 ## Usage Examples

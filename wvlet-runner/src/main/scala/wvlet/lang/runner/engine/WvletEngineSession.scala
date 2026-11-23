@@ -13,6 +13,7 @@
  */
 package wvlet.lang.runner.engine
 
+import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.ConnectorConfig
@@ -314,6 +315,49 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     }
 
   end save
+
+  /** Whether a table of this name is registered (in memory, in the warehouse, or from files) */
+  def hasTable(name: String): Boolean = engine.catalog.find(tableKey(name)).isDefined
+
+  /** Create or replace the table with the rows of the query (`create or replace table t as q`) */
+  def createTableAs(name: String, query: Relation)(using Context): Unit = guarded {
+    registerSchema(writer.saveTo(tableKey(name), query))
+  }
+
+  /** Drop the table if it exists */
+  def dropTable(name: String): Unit = writer.dropTable(tableKey(name), ifExists = true)
+
+  /**
+    * Create or replace the table with the given columns and rows. Each row has one value (a String,
+    * an Int, a Long, or null) per column, cast to the column type
+    */
+  def replaceTableWithRows(name: String, columns: Seq[(String, DataType)], rows: Seq[Seq[Any]])(
+      using Context
+  ): Unit = guarded {
+    val key  = tableKey(name)
+    val spec = TableWriter.TableSpec(
+      columns.map((n, t) => TableWriter.ColumnSpec(n, PType.fromDataType(t)))
+    )
+    writer.createTable(key, spec, replace = true).foreach(registerSchema)
+    if rows.nonEmpty then
+      def literal(v: Any): Expression =
+        v match
+          case null =>
+            NullLiteral(Span.NoSpan)
+          case s: String =>
+            SingleQuoteString(s, Span.NoSpan)
+          case n: Int =>
+            LongLiteral(n.toLong, n.toString, Span.NoSpan)
+          case n: Long =>
+            LongLiteral(n, n.toString, Span.NoSpan)
+          case other =>
+            SingleQuoteString(other.toString, Span.NoSpan)
+      val values = Values(
+        rows.map(r => RowConstructor(r.map(literal).toList, Span.NoSpan)).toList,
+        span = Span.NoSpan
+      )
+      registerSchema(writer.appendTo(key, values))
+  }
 
   /**
     * The engine catalog key of a table name: the name relative to this session's catalog and
