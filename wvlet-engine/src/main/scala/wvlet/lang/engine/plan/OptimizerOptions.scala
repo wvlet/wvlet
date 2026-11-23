@@ -25,20 +25,23 @@ enum Optimization(val name: String):
 
   /**
     * Bind [NOT] EXISTS / [NOT] IN filter conjuncts over uncorrelated subqueries as semi and anti
-    * joins on the runtime plan; disabled, the recursive planner joins them over the planned input
+    * joins on the runtime plan; disabled, they are plan-time constants in a filter (a value set for
+    * [NOT] IN), evaluated with SQL NULL semantics
     */
   case Decorrelate extends Optimization("decorrelate")
 
   /**
     * Bind [NOT] EXISTS / [NOT] IN filter conjuncts over correlated subqueries as semi and anti
-    * joins on the runtime plan, with the subquery body on it (with `decorrelate`)
+    * joins on the runtime plan, with the subquery body on it; disabled, the recursive planner joins
+    * them over the planned input
     */
   case DecorrelateCorrelated extends Optimization("decorrelate_correlated")
 
   /**
     * Bind filter conjuncts holding correlated scalar subqueries or EXISTS under OR / NOT / CASE on
-    * the runtime plan, as left joins with the decorrelated body grouped by its correlation keys
-    * (with `decorrelate`)
+    * the runtime plan, as left joins with the decorrelated body grouped by its correlation keys;
+    * disabled, the recursive planner joins them over the planned input (with `decorrelate` also
+    * disabled, uncorrelated [NOT] IN / EXISTS conjuncts too)
     */
   case DecorrelateScalar extends Optimization("decorrelate_scalar")
 

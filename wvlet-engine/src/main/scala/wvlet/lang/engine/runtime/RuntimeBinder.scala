@@ -17,7 +17,6 @@ import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.engine.exec.AggCall
-import wvlet.lang.engine.exec.BatchesOp
 import wvlet.lang.engine.exec.Aggregates
 import wvlet.lang.engine.exec.FilterOp
 import wvlet.lang.engine.exec.HashAggOp
@@ -336,13 +335,11 @@ class RuntimeBinder(planner: Planner):
         // Common conjuncts of `or`s are factored by the Normalize pass
         val conds = planner.splitConjuncts(f.filterExpr)
         if conds.exists(planner.hasSubquery) then
-          if planner.enabled(Optimization.Decorrelate) then
-            // Subqueries become joins over the optimized input, factored as the planner does:
-            // semi and anti joins for [NOT] EXISTS / [NOT] IN conjuncts, legacy nodes for other
-            // subquery forms (under OR / NOT / CASE, correlated scalar subqueries)
-            plans.conjuncts(lowered(bind(child)), planner.conjuncts(f.filterExpr)).plan
-          else
-            legacy(f)
+          // Subqueries become joins over the optimized input, factored as the planner does:
+          // semi and anti joins for [NOT] EXISTS / [NOT] IN conjuncts (plan-time constants for
+          // uncorrelated ones with Decorrelate off), left joins for correlated scalar subqueries
+          // and EXISTS under OR / NOT / CASE
+          plans.conjuncts(lowered(bind(child)), planner.conjuncts(f.filterExpr)).plan
         else
           filterOver(bind(child), conds)
 
@@ -635,11 +632,11 @@ class RuntimeBinder(planner: Planner):
     * The values of a NOT IN subquery, a constant decided at plan time, or None when one is NULL (no
     * row passes then)
     */
-  private def notInValues(sub: Relation): Option[Operator] =
+  private def notInValues(sub: Relation): Option[(Schema, Batch)] =
     val op     = planner.plan(sub)
     val values = Operator.materialize(op)
     val v      = values.columns(0)
-    Option.unless((0 until values.size).exists(v.isNull))(BatchesOp(op.schema, Seq(values)))
+    Option.unless((0 until values.size).exists(v.isNull))((op.schema, values))
 
   /**
     * The literal counts of a condition and its `and`/`or` sub-conditions
@@ -696,7 +693,8 @@ class RuntimeBinder(planner: Planner):
 
   /**
     * Builds runtime-plan joins, aggregations, filters, and projections, and legacy nodes for what
-    * the planner builds as operators (subquery conditions it doesn't bind)
+    * the planner builds as operators (subquery conditions with decorrelate_correlated or
+    * decorrelate_scalar disabled)
     */
   private object plans extends JoinPlanBuilder[Lowered] with AggPlanBuilder[Lowered]:
     override def op(p: Lowered): Operator = p.op
@@ -735,8 +733,6 @@ class RuntimeBinder(planner: Planner):
       )
 
     end join
-
-    def fromOp(op: Operator): Lowered = Lowered(legacyOp(op), op)
 
     override def sharedInput(in: Lowered, cols: IndexedSeq[Int], label: String): () => Lowered =
       val out    = in.plan.output
@@ -811,24 +807,20 @@ class RuntimeBinder(planner: Planner):
       * are constants
       */
     private def subqueryJoins(p: Lowered, conds: List[Expression]): Option[Lowered] =
-      val subs  = conds.map(planner.subqueryConjunct)
+      // With Decorrelate off, uncorrelated conjuncts are plain conditions, whose subqueries the
+      // binder evaluates as plan-time constants (a value set for [NOT] IN)
+      val decorrelate = planner.enabled(Optimization.Decorrelate)
+      val subs        = conds.map(c =>
+        planner.subqueryConjunct(c).filter(s => decorrelate || !planner.isUncorrelated(s.sub))
+      )
       val plain = conds
         .zip(subs)
         .collect { case (c, None) =>
           c
         }
       val nested = plain.exists(c => planner.hasSubquery(planner.withoutScalarSubqueries(c)))
-      if !planner.enabled(Optimization.Decorrelate) ||
-        (subs.forall(_.isEmpty) && !nested) ||
-        (nested && !planner.enabled(Optimization.DecorrelateScalar)) ||
-        subs
-          .flatten
-          .exists {
-            case SubqueryConjunct.In(a, _, _) =>
-              planner.hasSubquery(a)
-            case _: SubqueryConjunct.Exists =>
-              false
-          } || (
+      if (subs.forall(_.isEmpty) && !nested) ||
+        (nested && !planner.enabled(Optimization.DecorrelateScalar)) || (
           !planner.enabled(Optimization.DecorrelateCorrelated) &&
             !subs.flatten.forall(s => planner.isUncorrelated(s.sub))
         )
@@ -893,9 +885,10 @@ class RuntimeBinder(planner: Planner):
           notInValues(sub) match
             case None =>
               none
-            case Some(values) =>
+            case Some((schema, rows)) =>
+              // The value list as a Values leaf, which lowers to the planner's BatchesOp
               val target   = Binder(planner, BindScope(p.op.schema)).bind(a)
-              val inner    = fromOp(values)
+              val inner    = values(schema, rows)
               val (lk, rk) = inKeys(target, inner.op.schema(0))
               val anti     = semiJoin(
                 p,
