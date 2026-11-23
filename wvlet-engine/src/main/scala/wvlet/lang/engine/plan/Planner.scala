@@ -1179,9 +1179,10 @@ class Planner(
     override def rows: Option[Long] = rowCount
 
     // Statistics read from the computed result: distinct counts by body position, and the rows
-    // passing a condition by its signature
+    // passing a condition (over the body's ids, so shared by readers). Keyed by the expression, as
+    // signatures don't quote literals (`in ('a,b')` and `in ('a', 'b')` share one)
     private val distinctCounts = mutable.Map.empty[Int, Option[Double]]
-    private val passingRows    = mutable.Map.empty[String, Option[Long]]
+    private val passingRows    = mutable.Map.empty[VExpr, Option[Long]]
 
     /**
       * Whether statistics can be read from the result: computed for planning, enabled, and small
@@ -1210,7 +1211,7 @@ class Planner(
         None
       else
         passingRows.getOrElseUpdate(
-          cond.expr.sig, {
+          cond.expr, {
             // Body column id -> position in the result batches (-1 for a dropped column)
             val keep = finalized.get._1
             val out  = body.output

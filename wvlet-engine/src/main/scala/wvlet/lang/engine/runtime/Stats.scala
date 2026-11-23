@@ -29,6 +29,8 @@ import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.vector.Batch
 import wvlet.lang.engine.vector.PType
 
+import scala.util.control.NonFatal
+
 /**
   * Row and distinct-count estimates of [[RuntimePlan]] nodes, read from source statistics. They
   * follow [[CardinalityEstimator]] over the lowered operators rule for rule, so that join order
@@ -221,7 +223,7 @@ object Stats:
           .sum
       )
     catch
-      case _: Exception =>
+      case NonFatal(_) =>
         None
 
 end Stats
