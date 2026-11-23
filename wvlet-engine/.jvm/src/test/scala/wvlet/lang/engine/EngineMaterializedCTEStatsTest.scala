@@ -28,6 +28,10 @@ class EngineMaterializedCTEStatsTest extends UniTest:
     options.withDisabled(Optimization.ReplanMaterializedCTEs)
   )
 
+  private val rootOnly = engine.withOptimizer(
+    options.withDisabled(Optimization.ReplanBoundCTEJoins)
+  )
+
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -99,6 +103,33 @@ class EngineMaterializedCTEStatsTest extends UniTest:
     val query = s"""${cte}select a.s, a.c, b.c from t a join t b on a.s = b.s""".stripMargin
     explain(engine, query) shouldBe explain(disabled, query)
     rows(engine, query) shouldBe rows(disabled, query)
+  }
+
+  test("re-plan joins of an aggregation input with the CTE's exact rows") {
+    // The binder orders the aggregation input's joins before the CTE is computed
+    val query =
+      s"""${cte}select a.s, count(*) as n, sum(b.c) as m
+         |from orders o join t a on o.o_orderstatus = a.s join t b on a.s = b.s
+         |group by a.s""".stripMargin
+    firstScan(explain(rootOnly, query)) shouldBe "Scan[CTE[t]]"
+    firstScan(explain(engine, query)) shouldBe "Scan[orders]"
+    val r = rows(engine, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(disabled, query)
+  }
+
+  test("keep the column order of a re-planned input read by position") {
+    val query =
+      s"""${cte}select * from (
+         |  select o.o_orderkey, a.c from orders o join t a on o.o_orderstatus = a.s
+         |  join t b on a.s = b.s group by o.o_orderkey, a.c
+         |  union all
+         |  select 0, c from t
+         |)""".stripMargin
+    explain(engine, query) shouldNotBe explain(rootOnly, query)
+    val r = rows(engine, query)
+    r.nonEmpty shouldBe true
+    r shouldBe rows(disabled, query)
   }
 
 end EngineMaterializedCTEStatsTest

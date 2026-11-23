@@ -677,7 +677,23 @@ class RuntimeBinder(planner: Planner):
     */
   private def lowered(p: RuntimePlan): Lowered =
     val o = planner.optimizeRuntime(p)
+    if o ne p then
+      boundInputs.put(o, p)
     Lowered(o, Lowering(o))
+
+  // Inputs optimized while binding: the optimized plan -> the bound plan it came from
+  private val boundInputs = java.util.IdentityHashMap[RuntimePlan, RuntimePlan]()
+
+  /**
+    * The bound plan of an input the binder optimized while binding (an aggregation, pivot, or
+    * subquery input), whose joins are already ordered in `optimized`
+    */
+  private[engine] def boundInput(optimized: RuntimePlan): Option[RuntimePlan] = Option(
+    boundInputs.get(optimized)
+  )
+
+  /** Forget the inputs recorded for [[boundInput]], once the root plan is done */
+  private[engine] def clearBoundInputs(): Unit = boundInputs.clear()
 
   /** Builds runtime-plan joins, aggregations, filters, and projections for the shared helpers */
   private object plans extends JoinPlanBuilder[Lowered] with AggPlanBuilder[Lowered]:
