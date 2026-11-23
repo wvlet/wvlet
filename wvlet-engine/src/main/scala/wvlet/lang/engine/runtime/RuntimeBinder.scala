@@ -374,8 +374,8 @@ class RuntimeBinder(planner: Planner):
     * A tree of inner joins (without a lateral unnest on top) and filter conditions over it, as one
     * [[RuntimePlan.InnerJoins]] node that [[ReorderJoins]] orders. Conditions with subqueries apply
     * over the ordered tree, through the planner, except for uncorrelated scalar subqueries, which
-    * are constants (e.g., d_month_seq = (select ... from date_dim)), and uncorrelated [NOT] IN
-    * conditions reading one input, which join that input when the join streams it
+    * are constants (e.g., d_month_seq = (select ... from date_dim)), and uncorrelated IN conditions
+    * reading one input over a subquery no larger than it, which join that input
     * ([[placedSemiJoin]]).
     *
     * Conditions bind in the planner's order, as they may evaluate scalar subqueries: the
@@ -400,9 +400,21 @@ class RuntimeBinder(planner: Planner):
     val (withSubqueries, conds) = all.partition((_, e) => planner.hasSubquery(e))
     val output                  = inputs.flatMap(_.output)
     val schemas                 = inputs.map(_.schema).toList
-    // An uncorrelated IN condition reading one input joins that input when its subquery is
-    // estimated no larger than the input: the semi join then builds on the subquery and filters
-    // the input as it streams. Over a larger subquery (e.g., a CTE of unknown size), it joins the
+    // The inputs each condition reads, without evaluating its scalar subqueries
+    val refs  = conds.map((_, e) => schemas.indices.filter(planner.referencesInput(e, schemas, _)))
+    val bound = Array.ofDim[BExpr](conds.size)
+    def bindAt(k: Int, over: IndexedSeq[Column]): Unit =
+      val b = Binder(planner, BindScope(Schema(over.map(_.toField)))).bind(conds(k)._1)
+      bound(k) = BExpr.of(b, over)
+    // Single-input conditions first, input by input and over their input alone, as the planner
+    // pushes them; then the others over every input
+    inputs
+      .indices
+      .foreach(i => conds.indices.filter(refs(_) == Seq(i)).foreach(bindAt(_, inputs(i).output)))
+    conds.indices.filter(bound(_) == null).foreach(bindAt(_, output))
+    // Then the subqueries, in condition order. An uncorrelated IN condition reading one input
+    // joins that input when its subquery is estimated no larger than the input: the semi join
+    // then builds on the subquery and filters the input as it streams. Over a larger subquery (e.g., a CTE of unknown size), it joins the
     // ordered tree instead, whose joins may have reduced the input's rows, as without placement.
     // The other conditions with subqueries (NOT IN, which rarely removes many rows, among them)
     // apply over the ordered tree
@@ -422,18 +434,6 @@ class RuntimeBinder(planner: Planner):
           case None =>
             above += c
       }
-    // The inputs each condition reads, without evaluating its scalar subqueries
-    val refs  = conds.map((_, e) => schemas.indices.filter(planner.referencesInput(e, schemas, _)))
-    val bound = Array.ofDim[BExpr](conds.size)
-    def bindAt(k: Int, over: IndexedSeq[Column]): Unit =
-      val b = Binder(planner, BindScope(Schema(over.map(_.toField)))).bind(conds(k)._1)
-      bound(k) = BExpr.of(b, over)
-    // Single-input conditions first, input by input and over their input alone, as the planner
-    // pushes them; then the others over every input
-    inputs
-      .indices
-      .foreach(i => conds.indices.filter(refs(_) == Seq(i)).foreach(bindAt(_, inputs(i).output)))
-    conds.indices.filter(bound(_) == null).foreach(bindAt(_, output))
     // Semi and anti joins output their input's columns, so the conditions keep their bindings
     val onInputs = placed.result()
     val joined   = inputs
