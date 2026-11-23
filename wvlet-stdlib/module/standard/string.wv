@@ -49,6 +49,10 @@ trait string = {
 
   def starts_with(prefix:string): boolean = sql"starts_with(${this},${prefix})"
 
+  -- Replace each character of `source` with the character at the same position in `target`;
+  -- characters of `source` with no counterpart in `target` are removed
+  def translate(source:string, target:string): string = sql"translate(${this},${source},${target})"
+
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(expr:any*): boolean = sql"${this} not in (${expr})"
 }
@@ -71,6 +75,22 @@ trait string in duckdb = {
   def from_base64: string = sql"decode(from_base64(${this}))"
   def to_hex: string = sql"lower(hex(${this}))"
   def from_hex: string = sql"decode(unhex(${this}))"
+  -- Number of bytes in the UTF-8 encoding of the string
+  def octet_length: int = sql"strlen(${this})"
+  -- Unicode NFC normalization
+  def normalize: string = sql"nfc_normalize(${this})"
+  -- All matches of the regular expression (the whole match, or the given capture group)
+  def regexp_extract_all(pattern:string): array[string] = sql"regexp_extract_all(${this},${pattern})"
+  def regexp_extract_all(pattern:string, group_index:int): array[string] = sql"regexp_extract_all(${this},${pattern},${group_index})"
+  -- Split the string around matches of the regular expression, keeping empty strings
+  def regexp_split(pattern:string): array[string] = sql"regexp_split_to_array(${this},${pattern})"
+  -- Percent-encode the UTF-8 bytes except A-Z a-z 0-9 - _ . ~ (a space becomes %20), and decode it
+  def url_encode: string = sql"url_encode(${this})"
+  def url_decode: string = sql"url_decode(${this})"
+  -- Number of positions with different characters; the strings must have the same length
+  def hamming_distance(other:string): int = sql"hamming(${this},${other})"
+  -- Jaro-Winkler similarity from 0 (different) to 1 (equal); case-sensitive
+  def jaro_winkler_similarity(other:string): double = sql"jaro_winkler_similarity(${this},${other})"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"levenshtein(${this},${other})"
   -- Extract a JSON value from a string holding JSON text
@@ -95,6 +115,21 @@ trait string in trino = {
   def from_base64: string = sql"from_utf8(from_base64(${this}))"
   def to_hex: string = sql"lower(to_hex(to_utf8(${this})))"
   def from_hex: string = sql"from_utf8(from_hex(${this}))"
+  -- Number of bytes in the UTF-8 encoding of the string
+  def octet_length: int = sql"length(to_utf8(${this}))"
+  -- Unicode NFC normalization
+  def normalize: string = sql"normalize(${this})"
+  -- All matches of the regular expression (the whole match, or the given capture group)
+  def regexp_extract_all(pattern:string): array[string] = sql"regexp_extract_all(${this},${pattern})"
+  def regexp_extract_all(pattern:string, group_index:int): array[string] = sql"regexp_extract_all(${this},${pattern},${group_index})"
+  -- Split the string around matches of the regular expression, keeping empty strings
+  def regexp_split(pattern:string): array[string] = sql"regexp_split(${this},${pattern})"
+  -- Percent-encode the UTF-8 bytes except A-Z a-z 0-9 - _ . ~ (a space becomes %20), and decode it.
+  -- Trino encodes Java-style (a space as +, * kept, ~ encoded), so rewrite those
+  def url_encode: string = sql"replace(replace(replace(url_encode(${this}),'+','%20'),'*','%2A'),'%7E','~')"
+  def url_decode: string = sql"url_decode(replace(${this},'+','%2B'))"
+  -- Number of positions with different characters; the strings must have the same length
+  def hamming_distance(other:string): int = sql"hamming_distance(${this},${other})"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"levenshtein_distance(${this},${other})"
   -- Extract a JSON value from a string holding JSON text
@@ -123,6 +158,8 @@ trait string in hive = {
   def from_base64: string = sql"cast(unbase64(${this}) as string)"
   def to_hex: string = sql"lower(hex(${this}))"
   def from_hex: string = sql"cast(unhex(${this}) as string)"
+  -- Number of bytes in the UTF-8 encoding of the string
+  def octet_length: int = sql"octet_length(${this})"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"levenshtein(${this},${other})"
   -- Extract a JSON value from a string holding JSON text (JSONPath, e.g. '$.a.b')
@@ -155,6 +192,11 @@ trait string in snowflake = {
   def from_base64: string = sql"base64_decode_string(${this})"
   def to_hex: string = sql"hex_encode(${this},0)"
   def from_hex: string = sql"hex_decode_string(${this})"
+  -- Number of bytes in the UTF-8 encoding of the string
+  def octet_length: int = sql"octet_length(${this})"
+  -- All matches of the regular expression (the whole match, or the given capture group)
+  def regexp_extract_all(pattern:string): array[string] = sql"regexp_substr_all(${this},${pattern})"
+  def regexp_extract_all(pattern:string, group_index:int): array[string] = sql"regexp_substr_all(${this},${pattern},1,1,'c',${group_index})"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"editdistance(${this},${other})"
   -- Extract a JSON value from a string holding JSON text. Note: Snowflake paths omit the
@@ -187,6 +229,10 @@ trait string in bigquery = {
   def from_base64: string = sql"cast(from_base64(${this}) as string)"
   def to_hex: string = sql"to_hex(cast(${this} as bytes))"
   def from_hex: string = sql"cast(from_hex(${this}) as string)"
+  -- Number of bytes in the UTF-8 encoding of the string
+  def octet_length: int = sql"byte_length(${this})"
+  -- Unicode NFC normalization
+  def normalize: string = sql"normalize(${this})"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"edit_distance(${this},${other})"
   -- Extract a JSON value from a string holding JSON text (JSONPath, e.g. '$.a.b')
