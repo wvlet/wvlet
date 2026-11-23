@@ -128,12 +128,14 @@ class Planner(
       runtimeBinder.clearBoundInputs()
 
   /**
-    * Compute the shared CTEs that joins of `bound` read (inner join graphs, and outer hash joins,
-    * whose build side depends on the rows), and run the logical passes over `bound` again, which
-    * now read their exact row counts. The re-optimized plan, lowered, if it differs from
-    * `optimized`. Inputs the binder optimized while binding (aggregation, pivot, and subquery
-    * inputs, whose joins are ordered in `bound`) are optimized again from their bound plans when
-    * they read such a CTE (`replan_bound_cte_joins`).
+    * Compute the shared CTEs that joins of `bound` read (inner join graphs, and outer, semi, and
+    * anti hash joins, whose build side depends on the rows), and run the logical passes over
+    * `bound` again, which now read their exact row counts. Semi and anti joins, which the binder
+    * builds itself, choose their build side again when they read such a CTE
+    * (`replan_semi_join_builds`). The re-optimized plan, lowered, if it differs from `optimized`.
+    * Inputs the binder optimized while binding (aggregation, pivot, and subquery inputs, whose
+    * joins are ordered in `bound`) are optimized again from their bound plans when they read such a
+    * CTE (`replan_bound_cte_joins`).
     *
     * A CTE's readers read the same columns and filters in any join order, so the second plan reads
     * the result the first plan's readers finalized ([[DeferredCTE.reader]]); if it can't, the first
@@ -143,6 +145,7 @@ class Planner(
   private def replanJoinedCTEs(bound: RuntimePlan, optimized: RuntimePlan): Option[Operator] =
     import RuntimePlan.*
     val boundInputs = enabled(Optimization.ReplanBoundCTEJoins)
+    val semiJoins   = enabled(Optimization.ReplanSemiJoinBuilds)
     // An input the binder optimized while binding is read in its bound form, with unordered joins.
     // An optimized input may be a node of its own bound plan (e.g. `Filter(p, true)` optimizes to
     // `p`), so an input being expanded reads as itself
@@ -174,8 +177,11 @@ class Planner(
             case _: InnerJoins =>
               true
             case j: Join =>
-              j.leftKeys.nonEmpty &&
-              (j.kind == JoinKind.Left || j.kind == JoinKind.Right || j.kind == JoinKind.Full)
+              j.leftKeys.nonEmpty && (
+                j.kind == JoinKind.Left || j.kind == JoinKind.Right || j.kind == JoinKind.Full ||
+                  semiJoins &&
+                  (j.kind == JoinKind.Semi || j.kind == JoinKind.Anti)
+              )
             case _ =>
               false
         )
@@ -186,7 +192,7 @@ class Planner(
     else
       joined.foreach(_.materialize())
       // A separate run, so that firedRules counts the rules of the plan once
-      val optimizer                            = Optimizer.default(options)
+      val optimizer                            = Optimizer.default(options, semiJoins)
       def readsJoined(p: RuntimePlan): Boolean =
         p match
           case CTERef(cte: DeferredCTE, _) =>

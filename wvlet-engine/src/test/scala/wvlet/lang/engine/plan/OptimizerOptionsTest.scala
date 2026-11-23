@@ -52,6 +52,7 @@ class OptimizerOptionsTest extends UniTest:
         "push_down_cte_filters",
         "replan_materialized_ctes",
         "replan_bound_cte_joins",
+        "replan_semi_join_builds",
         "prune_columns",
         "push_scan_filters",
         "parallelize"

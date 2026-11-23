@@ -53,8 +53,28 @@ object ReorderJoins extends Pass:
           j.copy(buildLeft = true)
         else
           j
+      case j @ Join(left, right, JoinKind.Semi | JoinKind.Anti, lk, _, _, buildLeft)
+          if lk.nonEmpty && ctx.replanSemiJoinBuilds &&
+            (readsComputedCTE(left) || readsComputedCTE(right)) =>
+        // The binder chose the build side before the CTE was computed, building on the outer
+        // input when the other is much larger (`Planner.correlatedJoin`, `plans.inJoin`): choose
+        // it again with the CTE's exact rows. Either side gives the same rows, as NULL keys
+        // never match
+        val swap = JoinOrderOptimizer.swapBuild(ctx.options, Stats.rows(right), Stats.rows(left))
+        if swap == buildLeft then
+          j
+        else
+          j.copy(buildLeft = swap)
       case other =>
         other
+
+  /** Whether p reads a shared CTE whose rows are known */
+  private def readsComputedCTE(p: RuntimePlan): Boolean =
+    p match
+      case CTERef(cte, _) =>
+        cte.rows.isDefined
+      case _ =>
+        p.children.exists(readsComputedCTE)
 
   /** The join tree of an [[RuntimePlan.InnerJoins]] node */
   def order(j: InnerJoins, ctx: OptimizerContext): RuntimePlan =
