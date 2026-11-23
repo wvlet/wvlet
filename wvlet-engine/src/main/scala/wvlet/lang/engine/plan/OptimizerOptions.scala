@@ -33,6 +33,12 @@ enum Optimization(val name: String):
   /** Cost-based order of inner joins; disabled, the inputs are joined in written order */
   case ReorderJoins extends Optimization("reorder_joins")
 
+  /**
+    * Enumerate the join trees of small inner join graphs exactly, including bushy trees, instead of
+    * multi-start greedy search
+    */
+  case ExactJoinOrder extends Optimization("exact_join_order")
+
   /** Build the hash table on the smaller input of a join */
   case SwapBuildSide extends Optimization("swap_build_side")
 

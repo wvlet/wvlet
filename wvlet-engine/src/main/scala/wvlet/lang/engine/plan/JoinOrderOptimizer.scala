@@ -93,6 +93,9 @@ trait JoinSearch[P, C, K]:
   /** The keys of an equi-join of `current` and `next` on pairs of (current side, next side) */
   def keys(current: P, next: P, pairs: Seq[(C, C)]): K
 
+  /** Distinct values of a side of an equality that reads only `input`, if known */
+  def distinct(input: P, side: C): Option[Double]
+
   /** Estimated rows of an inner equi-join of `current` and `next` on `keys` */
   def outputRows(current: P, currentRows: Double, next: P, nextRows: Double, keys: K): Double
 
@@ -115,11 +118,24 @@ class JoinOrderOptimizer(options: OptimizerOptions):
   private def enabled(o: Optimization): Boolean = options.isEnabled(o)
 
   /**
+    * The cheapest join tree: of exact enumeration ([[JoinEnumerator]]) for graphs of at most
+    * [[JoinEnumerator.MaxInputs]] inputs, else of multi-start greedy search. Returns the tree and
+    * the conditions left to apply over it
+    */
+  def plan[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): (P, List[C]) =
+    val exact =
+      if enabled(Optimization.ReorderJoins) && enabled(Optimization.ExactJoinOrder) then
+        JoinEnumerator(options).plan(g, search)
+      else
+        None
+    exact.getOrElse(greedyPlan(g, search))
+
+  /**
     * The cheapest left-deep join tree of multi-start greedy search: every input is tried as the
     * start (ties: the largest start, whose scan then drives the parallel pipeline). Returns the
     * tree and the conditions left to apply over it
     */
-  def plan[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): (P, List[C]) =
+  def greedyPlan[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): (P, List[C]) =
     val bySize =
       if enabled(Optimization.ReorderJoins) then
         g.inputs.indices.sortBy(i => -g.rows(i))
@@ -222,6 +238,14 @@ object JoinOrderOptimizer:
     new JoinSearch[P, Expression, Keys]:
       override def keys(current: P, next: P, pairs: Seq[(Expression, Expression)]): Keys = binding
         .joinKeys(builder.op(current).schema, builder.op(next).schema, pairs)
+
+      override def distinct(input: P, side: Expression): Option[Double] =
+        val op = builder.op(input)
+        try
+          CardinalityEstimator.keyDistinct(op, binding.bind(op.schema, side))
+        catch
+          case _: Exception =>
+            None
 
       override def outputRows(
           current: P,

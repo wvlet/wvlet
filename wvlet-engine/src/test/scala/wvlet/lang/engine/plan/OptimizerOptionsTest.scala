@@ -43,6 +43,7 @@ class OptimizerOptionsTest extends UniTest:
         "factor_or",
         "push_down_filters",
         "reorder_joins",
+        "exact_join_order",
         "swap_build_side",
         "prefetch_scalar_subqueries",
         "share_ctes",
