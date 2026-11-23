@@ -131,7 +131,12 @@ object Vec:
     java.util.Arrays.fill(a, true)
     a
 
-  /** Gather positions may be -1 to produce NULL (outer join padding) */
+  /**
+    * Nulls of gathered rows: positions may be -1 to produce NULL (outer join padding). Bind the
+    * result to a local before passing it to a constructor: a loop inlined into constructor
+    * arguments runs with a non-empty operand stack, which HotSpot cannot enter by on-stack
+    * replacement, so after a deoptimization a long gather stays in the interpreter
+    */
   private[vector] inline def nullsWithPadding(
       nulls: Array[Boolean],
       idx: Array[Int],
@@ -223,7 +228,8 @@ final class BoolVec(val values: Array[Boolean], val nulls: Array[Boolean]) exten
       if k >= 0 then
         out(i) = values(k)
       i += 1
-    BoolVec(out, Vec.nullsWithPadding(nulls, idx, n))
+    val outNulls = Vec.nullsWithPadding(nulls, idx, n)
+    BoolVec(out, outNulls)
 
 final class IntVec(val ptype: PType, val values: Array[Int], val nulls: Array[Boolean]) extends Vec:
   def size: Int        = values.length
@@ -241,7 +247,8 @@ final class IntVec(val ptype: PType, val values: Array[Int], val nulls: Array[Bo
       if k >= 0 then
         out(i) = values(k)
       i += 1
-    IntVec(ptype, out, Vec.nullsWithPadding(nulls, idx, n))
+    val outNulls = Vec.nullsWithPadding(nulls, idx, n)
+    IntVec(ptype, out, outNulls)
 
 /** int64, timestamp (micros), and Long-backed decimal (unscaled) values */
 final class LongVec(val ptype: PType, val values: Array[Long], val nulls: Array[Boolean])
@@ -265,7 +272,8 @@ final class LongVec(val ptype: PType, val values: Array[Long], val nulls: Array[
       if k >= 0 then
         out(i) = values(k)
       i += 1
-    LongVec(ptype, out, Vec.nullsWithPadding(nulls, idx, n))
+    val outNulls = Vec.nullsWithPadding(nulls, idx, n)
+    LongVec(ptype, out, outNulls)
 
 final class DoubleVec(val values: Array[Double], val nulls: Array[Boolean]) extends Vec:
   def ptype: PType     = PType.Float64
@@ -284,7 +292,8 @@ final class DoubleVec(val values: Array[Double], val nulls: Array[Boolean]) exte
       if k >= 0 then
         out(i) = values(k)
       i += 1
-    DoubleVec(out, Vec.nullsWithPadding(nulls, idx, n))
+    val outNulls = Vec.nullsWithPadding(nulls, idx, n)
+    DoubleVec(out, outNulls)
 
 final class StrVec(val values: Array[String], val nulls: Array[Boolean]) extends Vec:
   def ptype: PType     = PType.Str
@@ -303,7 +312,8 @@ final class StrVec(val values: Array[String], val nulls: Array[Boolean]) extends
       if k >= 0 then
         out(i) = values(k)
       i += 1
-    StrVec(out, Vec.nullsWithPadding(nulls, idx, n))
+    val outNulls = Vec.nullsWithPadding(nulls, idx, n)
+    StrVec(out, outNulls)
 
 /** Boxed values: wide decimals (java.math.BigDecimal), and nested or untyped values */
 final class ObjVec(val ptype: PType, val values: Array[AnyRef], val nulls: Array[Boolean])
@@ -323,7 +333,8 @@ final class ObjVec(val ptype: PType, val values: Array[AnyRef], val nulls: Array
       if k >= 0 then
         out(i) = values(k)
       i += 1
-    ObjVec(ptype, out, Vec.nullsWithPadding(nulls, idx, n))
+    val outNulls = Vec.nullsWithPadding(nulls, idx, n)
+    ObjVec(ptype, out, outNulls)
 
 /**
   * Appends engine values of one type. Decimal builders start Long-backed and switch to BigDecimal
