@@ -15,7 +15,7 @@ including ASOF joins, aggregations, window functions, subqueries, `pivot`, `unne
 `show` commands, and TPC-H), plus `save to`, `append to`, and `delete` on in-memory tables and
 `save to` / `append to` Parquet, CSV, and JSON files and Iceberg tables, and `create table`, `drop table`,
 `truncate`, and `create` / `drop schema`. Features it doesn't support yet report an error:
-`alter table`, views, `update`, `execute`, flows, table functions such as `read_csv(...)`, and some
+`alter table`, views, `update`, `execute`, flow activations and notifications, table functions such as `read_csv(...)`, and some
 engine-specific functions. Map values run but can return results that
 differ from DuckDB.
 :::
@@ -32,6 +32,9 @@ wvlet run "from 'data/orders.parquet' where o_totalprice > 1000 limit 10"
 # Run a query file
 wvlet run -f report.wv
 ```
+
+`wvlet build -t wvlet` and `wvlet flow run <flow> -t wvlet` run model builds and flow stages on the
+engine as well; see [Engine Support](../syntax/flow.md#engine-support).
 
 Use `-t duckdb` (or a DuckDB profile) for the features listed above as unsupported. With a
 Trino or Snowflake profile, a query that reads only local files also runs on the engine.

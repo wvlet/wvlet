@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner
 
-import wvlet.lang.connector.DBConnector
+import wvlet.lang.connector.Connector
 import wvlet.uni.log.LogSupport
 
 import scala.util.control.NonFatal
@@ -48,7 +48,7 @@ object FlowRunRetention extends LogSupport:
     */
   def sweep(
       store: FlowRunStore,
-      connector: DBConnector,
+      connector: Connector,
       keepRunsOf: String => Option[Int] = _ => None,
       ttlMillis: Option[Long] = None,
       nowMillis: Long = System.currentTimeMillis()

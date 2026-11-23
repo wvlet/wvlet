@@ -32,7 +32,8 @@ Global options: `--profile <name>`, `-w <folder>` (working folder), `--catalog`,
   CSV, and Iceberg files (`from 'file.parquet'`) with no setup and no DuckDB.
 - `-t duckdb` (also `wv -t duckdb`) runs on DuckDB: needed for `sql"..."` / `execute`,
   `.duckdb` files, extensions, and `read_csv(...)`-style table functions. `wvlet compile` emits
-  DuckDB SQL by default; `wvlet build` and `wvlet flow` run on DuckDB.
+  DuckDB SQL by default; `wvlet build` and `wvlet flow` run on DuckDB (`-t wvlet` runs them on
+  the engine, without activations, notifications, or view models).
 - Trino, Snowflake, and other engines are profiles in `~/.wvlet/profiles.json`:
 
 ```json

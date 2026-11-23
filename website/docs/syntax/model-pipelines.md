@@ -90,7 +90,11 @@ directly or through ephemeral models. `wvlet build` reports such a cycle as a pa
 cycle.
 
 `wvlet build` uses the same options as [`wvlet flow`](flow.md#wvlet-flow-cli): `-w <folder>`,
-`--profile`, `--catalog`, `--schema`, and `--run-store`.
+`-t <engine>`, `--profile`, `--catalog`, `--schema`, and `--run-store`. Builds run on DuckDB by
+default. `wvlet build -t wvlet` builds `table` models on the in-process
+[wvlet engine](../usage/wvlet-engine.md). The tables live in memory unless the `wvlet` connector of
+a profile sets a `warehouse` folder, which keeps them as Iceberg tables across runs. The engine
+can't build `view` models yet.
 
 A build runs on the flow executor as a flow named `build`, with one stage per model:
 
