@@ -1,6 +1,6 @@
 -- q13#1
-Scan[customer_demographics](columns=cd_demo_sk,cd_marital_status,cd_education_status) -> [cd_demo_sk:long, cd_marital_status:string, cd_education_status:string]
-  Scan[store_sales](columns=ss_sold_date_sk,ss_cdemo_sk,ss_hdemo_sk,ss_addr_sk,ss_store_sk,ss_quantity,ss_sales_price,ss_ext_sales_price,ss_ext_wholesale_cost,ss_net_profit) -> [ss_sold_date_sk:long, ss_cdemo_sk:long, ss_hdemo_sk:long, ss_addr_sk:long, ss_store_sk:long, ss_quantity:long, ss_sales_price:decimal(7,2), ss_ext_sales_price:decimal(7,2), ss_ext_wholesale_cost:decimal(7,2), ss_net_profit:decimal(7,2)]
+Scan[customer_demographics](columns=cd_demo_sk,cd_marital_status,cd_education_status join_filter=cd_demo_sk) -> [cd_demo_sk:long, cd_marital_status:string, cd_education_status:string]
+  Scan[store_sales](columns=ss_sold_date_sk,ss_cdemo_sk,ss_hdemo_sk,ss_addr_sk,ss_store_sk,ss_quantity,ss_sales_price,ss_ext_sales_price,ss_ext_wholesale_cost,ss_net_profit join_filter=ss_sold_date_sk,ss_addr_sk) -> [ss_sold_date_sk:long, ss_cdemo_sk:long, ss_hdemo_sk:long, ss_addr_sk:long, ss_store_sk:long, ss_quantity:long, ss_sales_price:decimal(7,2), ss_ext_sales_price:decimal(7,2), ss_ext_wholesale_cost:decimal(7,2), ss_net_profit:decimal(7,2)]
     Scan[date_dim](columns=d_date_sk,d_year filter=Compare(d_year,Eq,2001)) -> [d_date_sk:long, d_year:long]
     ↓ Filter((#1=lit(2001:long)), keep=0) -> [d_date_sk:long]
     ↓ Morsel[parallelism=N] -> [d_date_sk:long]

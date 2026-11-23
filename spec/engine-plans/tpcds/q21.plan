@@ -1,5 +1,5 @@
 -- q21#1
-Scan[inventory]() -> [inv_date_sk:long, inv_item_sk:long, inv_warehouse_sk:long, inv_quantity_on_hand:int]
+Scan[inventory]( join_filter=inv_date_sk,inv_item_sk,inv_warehouse_sk) -> [inv_date_sk:long, inv_item_sk:long, inv_warehouse_sk:long, inv_quantity_on_hand:int]
   Scan[item](columns=i_item_sk,i_item_id,i_current_price) -> [i_item_sk:long, i_item_id:string, i_current_price:decimal(7,2)]
   ↓ Filter(((#2>=lit(0.99:decimal(7,2))) and (#2<=lit(1.49:decimal(7,2)))), keep=0,1) -> [i_item_sk:long, i_item_id:string]
   ↓ Morsel[parallelism=N] -> [i_item_sk:long, i_item_id:string]

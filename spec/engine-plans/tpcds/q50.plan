@@ -1,7 +1,7 @@
 -- q50#1
-Scan[date_dim](columns=d_date_sk) -> [d_date_sk:long]
-  Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk,ss_store_sk,ss_ticket_number) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long, ss_store_sk:long, ss_ticket_number:long]
-    Scan[store_returns](columns=sr_returned_date_sk,sr_item_sk,sr_customer_sk,sr_ticket_number) -> [sr_returned_date_sk:long, sr_item_sk:long, sr_customer_sk:long, sr_ticket_number:long]
+Scan[date_dim](columns=d_date_sk join_filter=d_date_sk) -> [d_date_sk:long]
+  Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk,ss_store_sk,ss_ticket_number join_filter=ss_item_sk,ss_customer_sk,ss_store_sk,ss_ticket_number) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long, ss_store_sk:long, ss_ticket_number:long]
+    Scan[store_returns](columns=sr_returned_date_sk,sr_item_sk,sr_customer_sk,sr_ticket_number join_filter=sr_returned_date_sk) -> [sr_returned_date_sk:long, sr_item_sk:long, sr_customer_sk:long, sr_ticket_number:long]
       Scan[date_dim](columns=d_date_sk,d_year,d_moy filter=And(Compare(d_year,Eq,2001),Compare(d_moy,Eq,8))) -> [d_date_sk:long, d_year:long, d_moy:long]
       ↓ Filter(((#1=lit(2001:long)) and (#2=lit(8:long))), keep=0) -> [d_date_sk:long]
       ↓ Morsel[parallelism=N] -> [d_date_sk:long]

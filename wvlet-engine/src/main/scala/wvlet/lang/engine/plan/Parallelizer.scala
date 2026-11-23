@@ -72,7 +72,8 @@ object Parallelizer:
             j.kind,
             j.residual,
             j.schema,
-            buildRunner = runner
+            buildRunner = runner,
+            runtimeFilters = j.runtimeFilters
           )
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
@@ -221,7 +222,8 @@ object Parallelizer:
               j.kind,
               j.residual,
               j.schema,
-              buildRunner = runner
+              buildRunner = runner,
+              runtimeFilters = j.runtimeFilters
             )
           case j: NestedLoopJoinOp =>
             NestedLoopJoinOp(r(j.left), r(j.right), j.cond, j.kind, j.schema)

@@ -1,5 +1,5 @@
 -- q10#1
-Scan[lineitem](columns=l_orderkey,l_extendedprice,l_discount,l_returnflag filter=Compare(l_returnflag,Eq,R)) -> [l_orderkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_returnflag:string]
+Scan[lineitem](columns=l_orderkey,l_extendedprice,l_discount,l_returnflag filter=Compare(l_returnflag,Eq,R) join_filter=l_orderkey) -> [l_orderkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_returnflag:string]
 ↓ Filter((#3=lit(R:string)), keep=0,1,2) -> [l_orderkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
   Scan[orders](columns=o_orderkey,o_custkey,o_orderdate filter=And(Compare(o_orderdate,GtEq,1993-10-01),Compare(o_orderdate,Lt,1994-01-01))) -> [o_orderkey:long, o_custkey:long, o_orderdate:date]
   ↓ Filter(((#2>=lit(8674:date)) and (#2<lit(8766:date))), keep=0,1) -> [o_orderkey:long, o_custkey:long]

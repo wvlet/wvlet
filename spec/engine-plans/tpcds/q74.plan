@@ -1,6 +1,6 @@
 -- q74#1
   (shared)
-    Scan[store_sales](columns=ss_sold_date_sk,ss_customer_sk,ss_net_paid) -> [ss_sold_date_sk:long, ss_customer_sk:long, ss_net_paid:decimal(7,2)]
+    Scan[store_sales](columns=ss_sold_date_sk,ss_customer_sk,ss_net_paid join_filter=ss_sold_date_sk,ss_customer_sk) -> [ss_sold_date_sk:long, ss_customer_sk:long, ss_net_paid:decimal(7,2)]
       Scan[date_dim](columns=d_date_sk,d_year) -> [d_date_sk:long, d_year:long]
       ↓ Filter(in_exprs(#1,lit(2001:long),(lit(2001:int)+lit(1:int)),false)) -> [d_date_sk:long, d_year:long]
       ↓ Morsel[parallelism=N] -> [d_date_sk:long, d_year:long]
@@ -15,7 +15,7 @@
     ↓ PartitionedAgg[parallelism=N](keys=[#0, #1, #2, #3], aggs=[agg:sum(#4)]) -> [c_customer_id:string, c_first_name:string, c_last_name:string, d_year:long, __final_0:decimal(38,2)]
     ↓ Project(#0, #1, #2, #3, #4) -> [c_customer_id:string, c_first_name:string, c_last_name:string, d_year:long, agg:sum(#38):decimal(38,2)]
     ↓ Project(#0, #1, #2, #3, #4, lit(s:string)) -> [customer_id:string, customer_first_name:string, customer_last_name:string, year_:long, year_total:decimal(38,2), sale_type:string]
-      Scan[web_sales](columns=ws_sold_date_sk,ws_bill_customer_sk,ws_net_paid) -> [ws_sold_date_sk:long, ws_bill_customer_sk:long, ws_net_paid:decimal(7,2)]
+      Scan[web_sales](columns=ws_sold_date_sk,ws_bill_customer_sk,ws_net_paid join_filter=ws_sold_date_sk,ws_bill_customer_sk) -> [ws_sold_date_sk:long, ws_bill_customer_sk:long, ws_net_paid:decimal(7,2)]
         Scan[date_dim](columns=d_date_sk,d_year) -> [d_date_sk:long, d_year:long]
         ↓ Filter(in_exprs(#1,lit(2001:long),(lit(2001:int)+lit(1:int)),false)) -> [d_date_sk:long, d_year:long]
         ↓ Morsel[parallelism=N] -> [d_date_sk:long, d_year:long]

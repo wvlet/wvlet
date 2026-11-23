@@ -1,5 +1,5 @@
 -- q99#1
-Scan[catalog_sales](columns=cs_sold_date_sk,cs_ship_date_sk,cs_call_center_sk,cs_ship_mode_sk,cs_warehouse_sk) -> [cs_sold_date_sk:long, cs_ship_date_sk:long, cs_call_center_sk:long, cs_ship_mode_sk:long, cs_warehouse_sk:long]
+Scan[catalog_sales](columns=cs_sold_date_sk,cs_ship_date_sk,cs_call_center_sk,cs_ship_mode_sk,cs_warehouse_sk join_filter=cs_ship_date_sk,cs_call_center_sk,cs_ship_mode_sk,cs_warehouse_sk) -> [cs_sold_date_sk:long, cs_ship_date_sk:long, cs_call_center_sk:long, cs_ship_mode_sk:long, cs_warehouse_sk:long]
   Scan[warehouse](columns=w_warehouse_sk,w_warehouse_name) -> [w_warehouse_sk:long, w_warehouse_name:string]
   ↓ Project(substring(#1,cast(lit(1:int) as long),cast(lit(20:int) as long)), #0) -> [w_substr:string, w_warehouse_sk:long]
   ↓ Project(#0, #1) -> [w_substr:string, w_warehouse_sk:long]

@@ -20,42 +20,53 @@ import wvlet.uni.parquet.ParquetFilter
 /**
   * Reads a table source. `schema` is the output schema (source columns, possibly renamed or
   * requalified); `columns` are the source column positions to read (all when None); `filter` lets
-  * the source skip data that can't match (see [[ScanSpec]])
+  * the source skip data that can't match (see [[ScanSpec]]), as do the `runtimeFilters` that hash
+  * joins above set once their builds are done
   */
 class ScanOp(
     val source: TableSource,
     val schema: Schema,
     val columns: Option[IndexedSeq[Int]],
-    val filter: Option[ParquetFilter]
+    val filter: Option[ParquetFilter],
+    val runtimeFilters: Seq[RuntimeFilter] = Nil
 ) extends Operator:
   override def name: String              = s"Scan[${source.name}]"
   override protected def details: String =
     s"(${columns
         .map(c => s"columns=${c.map(source.schema(_).name).mkString(",")}")
-        .getOrElse("")}${filter.map(f => s" filter=${f}").getOrElse("")})"
+        .getOrElse("")}${filter.map(f => s" filter=${f}").getOrElse("")}${
+        if runtimeFilters.isEmpty then
+          ""
+        else
+          s" join_filter=${runtimeFilters.map(_.column).distinct.mkString(",")}"
+      })"
 
   override protected def extraInputs(indent: Int): Seq[String] = source.explainDetail(indent).toSeq
 
   /** The scan request this operator sends to the source */
-  def spec: ScanSpec = ScanSpec(columns.map(_.map(source.schema(_).name)), filter)
+  def spec: ScanSpec = ScanSpec(
+    columns.map(_.map(source.schema(_).name)),
+    (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _)
+  )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
 
   /** The source column name of output position i */
   def sourceColumnName(i: Int): String = source.schema(columns.map(_(i)).getOrElse(i)).name
 
-  def withSchema(s: Schema): ScanOp = ScanOp(source, s, columns, filter)
+  def withSchema(s: Schema): ScanOp = ScanOp(source, s, columns, filter, runtimeFilters)
 
   /** Read only the given output positions */
   def project(idx: IndexedSeq[Int]): ScanOp =
     val base = columns.getOrElse(source.schema.fields.indices)
-    ScanOp(source, Schema(idx.map(schema(_))), Some(idx.map(base)), filter)
+    ScanOp(source, Schema(idx.map(schema(_))), Some(idx.map(base)), filter, runtimeFilters)
 
   def withFilter(f: ParquetFilter): ScanOp = ScanOp(
     source,
     schema,
     columns,
-    Some(filter.map(_ && f).getOrElse(f))
+    Some(filter.map(_ && f).getOrElse(f)),
+    runtimeFilters
   )
 
   def next(): Batch =

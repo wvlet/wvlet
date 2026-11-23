@@ -110,6 +110,12 @@ enum Optimization(val name: String):
   /** Skip Parquet row groups by the filters directly over a scan */
   case PushScanFilters extends Optimization("push_scan_filters")
 
+  /**
+    * Skip Parquet row groups on the probe side of a hash join by the [min, max] range of its build
+    * keys, once the build is done
+    */
+  case RuntimeJoinFilters extends Optimization("runtime_join_filters")
+
   /** Parallel scan pipelines and two-phase / partitioned aggregation */
   case Parallelize extends Optimization("parallelize")
 

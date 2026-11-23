@@ -1,5 +1,5 @@
 -- q65#1
-Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_sales_price) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
+Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_sales_price join_filter=ss_sold_date_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
   Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,GtEq,1176)) -> [d_date_sk:long, d_month_seq:long]
   ↓ Filter(((#1>=lit(1176:long)) and (#1<=(lit(1176:int)+lit(11:int)))), keep=0) -> [d_date_sk:long]
   ↓ Morsel[parallelism=N] -> [d_date_sk:long]
@@ -13,7 +13,7 @@ Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_sales_price)
 ↓ PartitionedAgg[parallelism=N](keys=[#0], aggs=[agg:avg(#1)]) -> [ss_store_sk:long, agg:avg(#2):double]
 ↓ Project(#0, #1) -> [ss_store_sk:long, ave:double]
 ↓ Project(#0, #1) -> [ss_store_sk:long, ave:double]
-  Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_sales_price) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
+  Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_sales_price join_filter=ss_sold_date_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
     Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,GtEq,1176)) -> [d_date_sk:long, d_month_seq:long]
     ↓ Filter(((#1>=lit(1176:long)) and (#1<=(lit(1176:int)+lit(11:int)))), keep=0) -> [d_date_sk:long]
     ↓ Morsel[parallelism=N] -> [d_date_sk:long]

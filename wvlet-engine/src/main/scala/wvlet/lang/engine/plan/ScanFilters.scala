@@ -80,12 +80,19 @@ object ScanFilters:
     else
       t match
         case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
-          for
-            lo <- compare(column, t, CmpOp.Ge, Const(values.minBy(ValueOps.toLong), t))
-            hi <- compare(column, t, CmpOp.Le, Const(values.maxBy(ValueOps.toLong), t))
-          yield lo && hi
+          range(column, t, values.minBy(ValueOps.toLong), values.maxBy(ValueOps.toLong))
         case _ =>
           equalities(column, t, values.toSeq.distinct)
+
+  /**
+    * `min <= column <= max` for an integer, date (`min` and `max` in epoch days), or timestamp
+    * (micros) column of type `t`, or None for other types
+    */
+  def range(column: String, t: PType, min: Any, max: Any): Option[ParquetFilter] =
+    for
+      lo <- compare(column, t, CmpOp.Ge, Const(min, t))
+      hi <- compare(column, t, CmpOp.Le, Const(max, t))
+    yield lo && hi
 
   /** `column = v1 or column = v2 ...` for up to 64 non-null values, when every one translates */
   private def equalities(column: String, t: PType, values: Seq[Any]): Option[ParquetFilter] =

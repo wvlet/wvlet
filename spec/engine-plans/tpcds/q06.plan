@@ -1,5 +1,5 @@
 -- q06#1
-Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long]
+Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk join_filter=ss_sold_date_sk,ss_item_sk,ss_customer_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long]
   Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,Eq,1212)) -> [d_date_sk:long, d_month_seq:long]
   ↓ Filter((#1=lit(1212:long)), keep=0) -> [d_date_sk:long]
   ↓ Morsel[parallelism=N] -> [d_date_sk:long]
@@ -7,7 +7,7 @@ Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk) -> [ss_sold
   Scan[item](columns=i_item_sk,i_current_price,i_category) -> [i_item_sk:long, i_current_price:decimal(7,2), i_category:string]
   ↓ Morsel[parallelism=N] -> [i_item_sk:long, i_current_price:decimal(7,2), i_category:string]
 ↙ HashJoin[Inner](#1 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long, d_date_sk:long, i_item_sk:long, i_current_price:decimal(7,2), i_category:string]
-  Scan[customer](columns=c_customer_sk,c_current_addr_sk) -> [c_customer_sk:long, c_current_addr_sk:long]
+  Scan[customer](columns=c_customer_sk,c_current_addr_sk join_filter=c_current_addr_sk) -> [c_customer_sk:long, c_current_addr_sk:long]
     Scan[customer_address](columns=ca_address_sk,ca_state) -> [ca_address_sk:long, ca_state:string]
     ↓ Morsel[parallelism=N] -> [ca_address_sk:long, ca_state:string]
   ↙ HashJoin[Inner](#1 = #0) -> [c_customer_sk:long, c_current_addr_sk:long, ca_address_sk:long, ca_state:string]

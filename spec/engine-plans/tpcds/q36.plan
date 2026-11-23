@@ -1,6 +1,6 @@
 -- q36#1
   (shared)
-    Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_ext_sales_price,ss_net_profit) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2), ss_net_profit:decimal(7,2)]
+    Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_ext_sales_price,ss_net_profit join_filter=ss_sold_date_sk,ss_item_sk,ss_store_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2), ss_net_profit:decimal(7,2)]
       Scan[date_dim](columns=d_date_sk,d_year filter=Compare(d_year,Eq,2001)) -> [d_date_sk:long, d_year:long]
       ↓ Filter((#1=lit(2001:long)), keep=0) -> [d_date_sk:long]
       ↓ Morsel[parallelism=N] -> [d_date_sk:long]

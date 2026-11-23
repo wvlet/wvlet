@@ -852,7 +852,8 @@ final class JoinBuild(
     right: Operator,
     rightKeys: IndexedSeq[VExpr],
     trackMatches: Boolean = false,
-    runner: TaskRunner = TaskRunner.Sequential
+    runner: TaskRunner = TaskRunner.Sequential,
+    filters: Seq[RuntimeFilter] = Nil
 ):
   @volatile
   private var built = false
@@ -898,6 +899,7 @@ final class JoinBuild(
         valid(nv) = i
         nv += 1
       i += 1
+    filters.foreach(f => f.set(keyVecs(f.key), valid, nv))
     chain = Vec.filledInts(build.size, -1)
     if runner.parallelism > 1 && nv >= JoinBuild.MinParallelRows then
       parts = GroupTable.partitionCount(runner.parallelism)
@@ -1024,7 +1026,8 @@ class HashJoinOp(
     val schema: Schema,
     shared: JoinBuild = null,
     outerMode: OuterMode = OuterMode.Own,
-    buildRunner: TaskRunner = TaskRunner.Sequential
+    buildRunner: TaskRunner = TaskRunner.Sequential,
+    val runtimeFilters: Seq[RuntimeFilter] = Nil
 ) extends Operator:
   override def children: Seq[Operator] = Seq(left, right)
   override def name: String            = s"HashJoin[${kind}]"
@@ -1038,7 +1041,13 @@ class HashJoinOp(
     if shared != null then
       shared
     else
-      JoinBuild(right, rightKeys, trackMatches = kind.tracksBuildMatches, runner = buildRunner)
+      JoinBuild(
+        right,
+        rightKeys,
+        trackMatches = kind.tracksBuildMatches,
+        runner = buildRunner,
+        filters = runtimeFilters
+      )
 
   /** The same join over another left input, sharing this join's build */
   def withLeft(newLeft: Operator, mode: OuterMode = OuterMode.Own): HashJoinOp = HashJoinOp(

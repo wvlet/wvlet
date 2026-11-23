@@ -1,5 +1,5 @@
 -- q14#1
-Scan[lineitem](columns=l_partkey,l_extendedprice,l_discount,l_shipdate filter=And(Compare(l_shipdate,GtEq,1995-09-01),Compare(l_shipdate,Lt,1995-10-01))) -> [l_partkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipdate:date]
+Scan[lineitem](columns=l_partkey,l_extendedprice,l_discount,l_shipdate filter=And(Compare(l_shipdate,GtEq,1995-09-01),Compare(l_shipdate,Lt,1995-10-01)) join_filter=l_partkey) -> [l_partkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipdate:date]
 ↓ Filter(((#3>=lit(9374:date)) and (#3<lit(9404:date))), keep=0,1,2) -> [l_partkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
   Scan[part](columns=p_partkey,p_type) -> [p_partkey:long, p_type:string]
   ↓ Morsel[parallelism=N] -> [p_partkey:long, p_type:string]

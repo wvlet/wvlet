@@ -333,16 +333,17 @@ object JoinOrderOptimizer:
       rk: IndexedSeq[VExpr],
       residual: Option[VExpr],
       buildLeft: Boolean,
-      combined: Schema
+      combined: Schema,
+      filters: Seq[RuntimeFilter] = Nil
   ): Operator =
     if kind == JoinKind.Semi || kind == JoinKind.Anti then
-      semiJoinOp(left, right, lk, rk, kind, residual, buildLeft)
+      semiJoinOp(left, right, lk, rk, kind, residual, buildLeft, filters)
     else if lk.isEmpty then
       NestedLoopJoinOp(left, right, residual, kind, combined)
     else if buildLeft then
-      swappedHashJoin(left, right, lk, rk, swappedKind(kind), residual, combined)
+      swappedHashJoin(left, right, lk, rk, swappedKind(kind), residual, combined, filters)
     else
-      HashJoinOp(left, right, lk, rk, kind, residual, combined)
+      HashJoinOp(left, right, lk, rk, kind, residual, combined, runtimeFilters = filters)
 
   /**
     * A semi or anti join (`kind`) of left with right, outputting the columns of left; the residual
@@ -358,7 +359,8 @@ object JoinOrderOptimizer:
       rk: IndexedSeq[VExpr],
       kind: JoinKind,
       residual: Option[VExpr],
-      buildLeft: Boolean
+      buildLeft: Boolean,
+      filters: Seq[RuntimeFilter] = Nil
   ): Operator =
     if lk.isEmpty then
       NestedLoopJoinOp(left, right, residual, kind, left.schema)
@@ -371,10 +373,11 @@ object JoinOrderOptimizer:
         lk,
         swappedKind(kind),
         residual.map(VExprs.remap(_, toSwapped)),
-        left.schema
+        left.schema,
+        runtimeFilters = filters
       )
     else
-      HashJoinOp(left, right, lk, rk, kind, residual, left.schema)
+      HashJoinOp(left, right, lk, rk, kind, residual, left.schema, runtimeFilters = filters)
 
   end semiJoinOp
 
@@ -389,7 +392,8 @@ object JoinOrderOptimizer:
       rk: IndexedSeq[VExpr],
       kind: JoinKind,
       residual: Option[VExpr],
-      combined: Schema
+      combined: Schema,
+      filters: Seq[RuntimeFilter] = Nil
   ): Operator =
     val toSwapped = swappedPositions(left.schema.size, right.schema.size)
     val join      = HashJoinOp(
@@ -399,7 +403,8 @@ object JoinOrderOptimizer:
       lk,
       kind,
       residual.map(VExprs.remap(_, toSwapped)),
-      right.schema ++ left.schema
+      right.schema ++ left.schema,
+      runtimeFilters = filters
     )
     ProjectOp(
       join,

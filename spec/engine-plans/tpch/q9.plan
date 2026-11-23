@@ -1,6 +1,6 @@
 -- q9#1
-Scan[orders](columns=o_orderkey,o_orderdate) -> [o_orderkey:long, o_orderdate:date]
-  Scan[lineitem](columns=l_orderkey,l_partkey,l_suppkey,l_quantity,l_extendedprice,l_discount) -> [l_orderkey:long, l_partkey:long, l_suppkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
+Scan[orders](columns=o_orderkey,o_orderdate join_filter=o_orderkey) -> [o_orderkey:long, o_orderdate:date]
+  Scan[lineitem](columns=l_orderkey,l_partkey,l_suppkey,l_quantity,l_extendedprice,l_discount join_filter=l_partkey,l_suppkey) -> [l_orderkey:long, l_partkey:long, l_suppkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
     Scan[partsupp](columns=ps_partkey,ps_suppkey,ps_supplycost) -> [ps_partkey:long, ps_suppkey:long, ps_supplycost:decimal(15,2)]
     ↓ Morsel[parallelism=N] -> [ps_partkey:long, ps_suppkey:long, ps_supplycost:decimal(15,2)]
   ↙ HashJoin[Inner](#2,#1 = #1,#0) -> [l_orderkey:long, l_partkey:long, l_suppkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2), ps_partkey:long, ps_suppkey:long, ps_supplycost:decimal(15,2)]
@@ -12,7 +12,7 @@ Scan[orders](columns=o_orderkey,o_orderdate) -> [o_orderkey:long, o_orderdate:da
   ↓ Morsel[parallelism=N] -> [l_orderkey:long, l_suppkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2), ps_supplycost:decimal(15,2)]
 ↙ HashJoin[Inner](#0 = #0) -> [o_orderkey:long, o_orderdate:date, l_orderkey:long, l_suppkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2), ps_supplycost:decimal(15,2)]
 ↓ Project(#3, #4, #5, #6, #7, #1) -> [l_suppkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2), ps_supplycost:decimal(15,2), o_orderdate:date]
-  Scan[supplier](columns=s_suppkey,s_nationkey) -> [s_suppkey:long, s_nationkey:int]
+  Scan[supplier](columns=s_suppkey,s_nationkey join_filter=s_nationkey) -> [s_suppkey:long, s_nationkey:int]
     Scan[nation](columns=n_nationkey,n_name) -> [n_nationkey:int, n_name:string]
     ↓ Morsel[parallelism=N] -> [n_nationkey:int, n_name:string]
   ↙ HashJoin[Inner](#1 = #0) -> [s_suppkey:long, s_nationkey:int, n_nationkey:int, n_name:string]

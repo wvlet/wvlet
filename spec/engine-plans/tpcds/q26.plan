@@ -1,6 +1,6 @@
 -- q26#1
-Scan[item](columns=i_item_sk,i_item_id) -> [i_item_sk:long, i_item_id:string]
-  Scan[catalog_sales](columns=cs_sold_date_sk,cs_bill_cdemo_sk,cs_item_sk,cs_promo_sk,cs_quantity,cs_list_price,cs_sales_price,cs_coupon_amt) -> [cs_sold_date_sk:long, cs_bill_cdemo_sk:long, cs_item_sk:long, cs_promo_sk:long, cs_quantity:long, cs_list_price:decimal(7,2), cs_sales_price:decimal(7,2), cs_coupon_amt:decimal(7,2)]
+Scan[item](columns=i_item_sk,i_item_id join_filter=i_item_sk) -> [i_item_sk:long, i_item_id:string]
+  Scan[catalog_sales](columns=cs_sold_date_sk,cs_bill_cdemo_sk,cs_item_sk,cs_promo_sk,cs_quantity,cs_list_price,cs_sales_price,cs_coupon_amt join_filter=cs_sold_date_sk,cs_bill_cdemo_sk,cs_promo_sk) -> [cs_sold_date_sk:long, cs_bill_cdemo_sk:long, cs_item_sk:long, cs_promo_sk:long, cs_quantity:long, cs_list_price:decimal(7,2), cs_sales_price:decimal(7,2), cs_coupon_amt:decimal(7,2)]
     Scan[customer_demographics](columns=cd_demo_sk,cd_gender,cd_marital_status,cd_education_status filter=And(And(Compare(cd_gender,Eq,M),Compare(cd_marital_status,Eq,S)),Compare(cd_education_status,Eq,College))) -> [cd_demo_sk:long, cd_gender:string, cd_marital_status:string, cd_education_status:string]
     ↓ Filter((((#1=lit(M:string)) and (#2=lit(S:string))) and (#3=lit(College:string))), keep=0) -> [cd_demo_sk:long]
     ↓ Morsel[parallelism=N] -> [cd_demo_sk:long]

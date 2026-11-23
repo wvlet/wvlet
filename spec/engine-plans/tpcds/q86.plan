@@ -1,6 +1,6 @@
 -- q86#1
   (shared)
-    Scan[web_sales](columns=ws_sold_date_sk,ws_item_sk,ws_net_paid) -> [ws_sold_date_sk:long, ws_item_sk:long, ws_net_paid:decimal(7,2)]
+    Scan[web_sales](columns=ws_sold_date_sk,ws_item_sk,ws_net_paid join_filter=ws_sold_date_sk,ws_item_sk) -> [ws_sold_date_sk:long, ws_item_sk:long, ws_net_paid:decimal(7,2)]
       Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,GtEq,1200)) -> [d_date_sk:long, d_month_seq:long]
       ↓ Filter(((#1>=lit(1200:long)) and (#1<=(lit(1200:int)+lit(11:int)))), keep=0) -> [d_date_sk:long]
       ↓ Morsel[parallelism=N] -> [d_date_sk:long]

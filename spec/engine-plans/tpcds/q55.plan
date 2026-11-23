@@ -1,5 +1,5 @@
 -- q55#1
-Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_ext_sales_price) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_ext_sales_price:decimal(7,2)]
+Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_ext_sales_price join_filter=ss_sold_date_sk,ss_item_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_ext_sales_price:decimal(7,2)]
   Scan[item](columns=i_item_sk,i_brand_id,i_brand,i_manager_id filter=Compare(i_manager_id,Eq,28)) -> [i_item_sk:long, i_brand_id:long, i_brand:string, i_manager_id:long]
   ↓ Filter((#3=lit(28:long)), keep=0,1,2) -> [i_item_sk:long, i_brand_id:long, i_brand:string]
   ↓ Morsel[parallelism=N] -> [i_item_sk:long, i_brand_id:long, i_brand:string]

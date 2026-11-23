@@ -1,5 +1,5 @@
 -- q13#1
-Scan[orders](columns=o_custkey,o_comment) -> [o_custkey:long, o_comment:string]
+Scan[orders](columns=o_custkey,o_comment join_filter=o_custkey) -> [o_custkey:long, o_comment:string]
   Scan[customer](columns=c_custkey) -> [c_custkey:long]
   ↓ Morsel[parallelism=N] -> [c_custkey:long]
 ↙ HashJoin[Right](#0 = #0, residual=not(like(#1,%special%requests%,false,false))) -> [o_custkey:long, o_comment:string, c_custkey:long]
