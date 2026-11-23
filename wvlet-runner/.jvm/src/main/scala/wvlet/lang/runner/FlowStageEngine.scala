@@ -33,16 +33,14 @@ import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.lang.runner.engine.WvletEngineConnector
 import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.json.JSON
-import wvlet.uni.json.JSON.JSONArray
-import wvlet.uni.json.JSON.JSONBoolean
-import wvlet.uni.json.JSON.JSONDouble
-import wvlet.uni.json.JSON.JSONLong
 import wvlet.uni.json.JSON.JSONNull
 import wvlet.uni.json.JSON.JSONObject
 import wvlet.uni.json.JSON.JSONString
-import wvlet.uni.json.JSON.JSONValue
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
+import scala.collection.immutable.ListMap
 import scala.util.Using
 import scala.util.control.NonFatal
 
@@ -133,15 +131,6 @@ private[runner] object FlowStageEngine:
         true
       case _ =>
         false
-
-  /** Fail when a feature is not available on the wvlet engine yet */
-  def notOnEngine(feature: String): Nothing =
-    throw StatusCode
-      .NOT_IMPLEMENTED
-      .newException(
-        s"${feature} is not supported on the wvlet engine yet: run the flow on a SQL engine " +
-          "(e.g. -t duckdb)"
-      )
 
   /** File writer options of an `activate('file')` format */
   private[runner] def fileWriterOptions(format: String): Map[String, Any] =
@@ -300,8 +289,12 @@ private[runner] class SqlActivationSource(db: DBConnector) extends ActivationSou
         format match
           case "csv" =>
             "(format csv, header)"
+          case "parquet" | "json" =>
+            s"(format ${format})"
           case other =>
-            s"(format ${other})"
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(s"Unsupported export format '${other}' (csv, parquet, or json)")
       val escapedPath = path.replaceAll("'", "''")
       db.withSession { conn =>
         Using.resource(conn.createStatement()) { stmt =>
@@ -380,7 +373,9 @@ private[runner] class WvletStageEngine(engineConnector: WvletEngineConnector)
       stagingTable: String,
       schemaFields: Seq[NamedType],
       engineName: String
-  ): Long = locked(
+  ): Long =
+    // Not locked: the fetch from the source can be long, and registering the staged table locks
+    // the session by itself
     SourceTableStaging.stageTableOnEngine(
       source,
       qualifiedName,
@@ -388,53 +383,22 @@ private[runner] class WvletStageEngine(engineConnector: WvletEngineConnector)
       stagingTable,
       schemaFields
     )
-  )
 
   override def activationSource(using ctx: Context): ActivationSource =
     new ActivationSource:
       override def sqlConnector: Option[DBConnector] = None
 
-      override def jsonRows(table: String, limit: Int): List[String] = locked(
-        session
-          .execute(tableRef(table), rowLimit = limit)
+      // The same JSON codec as DBConnector.queryJsonRows, so sinks get the same rows on every
+      // engine
+      override def jsonRows(table: String, limit: Int): List[String] =
+        val codec = summon[Weaver[ListMap[String, Any]]]
+        locked(session.execute(tableRef(table), rowLimit = limit))
           .rows
-          .map(row =>
-            JSONObject(row.toSeq.map((k, v) => k -> WvletStageEngine.jsonValueOf(v))).toJSON
-          )
+          .map(row => codec.toJson(row))
           .toList
-      )
 
       override def exportToFile(table: String, path: String, format: String): Unit = locked(
         session.exportToFile(table, path, FlowStageEngine.fileWriterOptions(format))
       )
 
 end WvletStageEngine
-
-private[runner] object WvletStageEngine:
-  /** A value of an engine result row as JSON: numbers and booleans as such, others as text */
-  def jsonValueOf(v: Any): JSONValue =
-    v match
-      case null =>
-        JSONNull()
-      case b: Boolean =>
-        JSONBoolean(b)
-      case n: Byte =>
-        JSONLong(n.toLong)
-      case n: Short =>
-        JSONLong(n.toLong)
-      case n: Int =>
-        JSONLong(n.toLong)
-      case n: Long =>
-        JSONLong(n)
-      case f: Float =>
-        JSONDouble(f.toDouble)
-      case d: Double =>
-        JSONDouble(d)
-      case s: Seq[?] =>
-        JSONArray(s.map(jsonValueOf).toIndexedSeq)
-      case a: Array[?] =>
-        JSONArray(a.toIndexedSeq.map(jsonValueOf))
-      case m: Map[?, ?] =>
-        JSONObject(m.toSeq.map((k, x) => k.toString -> jsonValueOf(x)))
-      case other =>
-        JSONString(other.toString)

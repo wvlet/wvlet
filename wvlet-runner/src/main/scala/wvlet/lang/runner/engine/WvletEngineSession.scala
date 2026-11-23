@@ -220,9 +220,10 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
 
   /**
     * Register a query-scoped table, e.g. rows staged from a source connector, without adding it to
-    * the compile-time catalog. Drop it with [[dropTemporary]] when the query finishes
+    * the compile-time catalog. Drop it with [[dropTemporary]] when the query finishes. Holds the
+    * session lock, so stages staging in parallel can register their tables
     */
-  def registerTemporary(table: MemTable): Unit = engine.catalog.register(table)
+  def registerTemporary(table: MemTable): Unit = synchronized(engine.catalog.register(table))
 
   /** Drop a table registered with [[registerTemporary]]; a missing table is ignored */
   def dropTemporary(name: String): Unit = writer.dropTable(name, ifExists = true)

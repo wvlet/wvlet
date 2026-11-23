@@ -45,6 +45,8 @@ import wvlet.lang.runner.connector.LocalFileExport
 import wvlet.lang.engine.catalog.DataFileFormat
 import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.lang.runner.connector.ConnectorCatalogs
+import wvlet.lang.engine.catalog.MemTable
+import wvlet.lang.engine.catalog.StringRows
 import wvlet.lang.runner.engine.WvletEngineConnector
 import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.json.JSON
@@ -607,8 +609,9 @@ class QueryExecutor(
   end runEmbeddedToolCalls
 
   /**
-    * Write a summary table (of `run flow` or a tool call) on the active engine: a temporary table
-    * on SQL engines, an in-memory table on the wvlet engine. Values are String, Long, or null
+    * Write a summary table (of `run flow` or a tool call) on the active engine as a temporary
+    * table: a temp table on SQL engines, an in-memory table (never in the warehouse) on the wvlet
+    * engine. Values are String, Long, or null
     */
   private def writeSummaryTable(
       table: String,
@@ -617,7 +620,9 @@ class QueryExecutor(
   )(using context: Context): Unit =
     activeEngineSession match
       case Some(session) =>
-        session.replaceTableWithRows(table, columns, rows)
+        val schema = StringRows.schemaOf(columns)
+        val batch  = StringRows.toBatch(schema, rows.map(_.map(v => Option(v).map(_.toString))))
+        session.registerTemporary(MemTable(table, schema, Seq(batch)))
       case None =>
         given QueryProgressMonitor = context.queryProgressMonitor
         def lit(v: Any): String    =
@@ -700,17 +705,19 @@ class QueryExecutor(
   private def executeQueryPlan(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")
-    (plan, activeEngineSession) match
-      case (q0: Relation, Some(session)) =>
-        // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
-        // summary tables
-        val q = runEmbeddedToolCalls(runEmbeddedFlows(q0))
+    // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
+    // summary tables
+    val rewritten =
+      plan match
+        case q: Relation =>
+          runEmbeddedToolCalls(runEmbeddedFlows(q))
+        case other =>
+          other
+    (rewritten, activeEngineSession) match
+      case (q: Relation, Some(session)) =>
         workEnv.info(s"Executing on the wvlet engine:\n${q.pp}")
         session.execute(q, config.rowLimit)
-      case (q0: Relation, None) =>
-        // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
-        // summary tables
-        val q = runEmbeddedToolCalls(runEmbeddedFlows(q0))
+      case (q: Relation, None) =>
         // A query reading only local files runs on the in-process wvlet engine when the active
         // engine (e.g. Trino, Snowflake) can't see local files. DuckDB reads them itself
         def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
