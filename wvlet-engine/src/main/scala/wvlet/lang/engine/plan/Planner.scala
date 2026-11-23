@@ -187,14 +187,9 @@ class Planner(
       expanding.put(p, ())
       try f
       finally expanding.remove(p)
-    // A shared input of grouping sets or unpivot, whose body is planned with the query
-    def sharedInput(p: RuntimePlan): Option[SharedInput] =
-      p match
-        case CTERef(s: SharedInput, _) if sharedInputs =>
-          Some(s)
-        case _ =>
-          None
-    val joined  = mutable.LinkedHashSet.empty[DeferredCTE]
+    val joined = mutable.LinkedHashSet.empty[DeferredCTE]
+    // The shared inputs of grouping sets or unpivot (read by several readers) whose bodies were
+    // visited
     val visited = java.util.IdentityHashMap[SharedInput, Unit]()
     def collect(p: RuntimePlan, underJoin: Boolean): Unit =
       p match
@@ -234,16 +229,18 @@ class Planner(
       joined.foreach(_.materialize())
       // A separate run, so that firedRules counts the rules of the plan once
       val optimizer                            = Optimizer.default(options, semiJoins)
+      val sharedReadsJoined                    = java.util.IdentityHashMap[SharedInput, Boolean]()
       def readsJoined(p: RuntimePlan): Boolean =
         p match
           case CTERef(cte: DeferredCTE, _) =>
             joined.contains(cte)
+          case CTERef(s: SharedInput, _) if sharedInputs =>
+            // Each reader of a shared input reads the same body: walk it once
+            if !sharedReadsJoined.containsKey(s) then
+              sharedReadsJoined.put(s, readsJoined(s.body))
+            sharedReadsJoined.get(s)
           case _ =>
-            sharedInput(p) match
-              case Some(s) =>
-                readsJoined(s.body)
-              case None =>
-                p.children.exists(readsJoined)
+            p.children.exists(readsJoined)
       // Shared inputs refreshed so far: every reader of one reads the same new input
       val refreshed = java.util.IdentityHashMap[SharedInput, SharedInput]()
       def refreshShared(s: SharedInput): SharedInput =
@@ -258,7 +255,13 @@ class Planner(
               if body == s.body then
                 s
               else
-                SharedInput(s.name, body, Lowering(body))
+                try
+                  SharedInput(s.name, body, Lowering(body))
+                catch
+                  case e: WvletLangException
+                      if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
+                    warn(s"Keeping the first plan of ${s.name}: ${e.getMessage}")
+                    s
           refreshed.put(s, r)
           r
       // `o`, optimized from `p`, outputting p's columns in p's order; p if o outputs other columns
