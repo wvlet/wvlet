@@ -52,7 +52,8 @@ object ScalarFunctions:
     */
   private def stringArg(name: String, e: VExpr): VExpr =
     e.ptype match
-      case PType.Str | PType.Null =>
+      // AnyT holds e.g. elements of a non-constant list, which are strings here at run time
+      case PType.Str | PType.Null | PType.AnyT =>
         str(e)
       case other =>
         throw StatusCode
@@ -798,13 +799,20 @@ object ScalarFunctions:
     }
     reg("translate") { args =>
       arity("translate", args, 3)
-      fn("translate", args.map(str), PType.Str)(a =>
-        TextFunctions.translate(
-          a(0).asInstanceOf[String],
-          a(1).asInstanceOf[String],
-          a(2).asInstanceOf[String]
-        )
-      )
+      (args(1), args(2)) match
+        case (Const(f: String, _), Const(t: String, _)) =>
+          // Constant character sets: build the mapping once, not per row
+          val m = TextFunctions.translation(f, t)
+          fn("translate", Seq(str(args(0))), PType.Str)(a =>
+            TextFunctions.translate(a(0).asInstanceOf[String], m)
+          )
+        case _ =>
+          fn("translate", args.map(str), PType.Str)(a =>
+            TextFunctions.translate(
+              a(0).asInstanceOf[String],
+              TextFunctions.translation(a(1).asInstanceOf[String], a(2).asInstanceOf[String])
+            )
+          )
     }
     reg("nfc_normalize") { args =>
       arity("nfc_normalize", args, 1)

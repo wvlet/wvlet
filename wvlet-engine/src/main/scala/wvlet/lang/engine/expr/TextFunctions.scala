@@ -37,27 +37,37 @@ object TextFunctions extends TextCompatImpl:
       i += Character.charCount(cp)
     out.result()
 
-  /** Replace each code point of `from` with the one at the same position in `to`; drop the rest */
-  def translate(s: String, from: String, to: String): String =
+  /**
+    * The code point mapping of translate(s, from, to): each code point of `from` maps to the one at
+    * the same position in `to`, or to -1 (removed) when `to` is shorter. The first occurrence in
+    * `from` wins
+    */
+  def translation(from: String, to: String): Map[Int, Int] =
     val f = codePoints(from)
     val t = codePoints(to)
-    // The first occurrence of a code point in `from` wins; -1 removes it
-    val map = scala.collection.mutable.HashMap.empty[Int, Int]
-    for
-      i <- f.indices
-      if !map.contains(f(i))
-    do
-      map(f(i)) =
-        if i < t.length then
-          t(i)
+    f.indices
+      .foldLeft(Map.empty[Int, Int]) { (m, i) =>
+        if m.contains(f(i)) then
+          m
         else
-          -1
+          m.updated(
+            f(i),
+            if i < t.length then
+              t(i)
+            else
+              -1
+          )
+      }
+
+  def translate(s: String, mapping: Map[Int, Int]): String =
     val sb = java.lang.StringBuilder()
     for cp <- codePoints(s) do
-      val c = map.getOrElse(cp, cp)
+      val c = mapping.getOrElse(cp, cp)
       if c >= 0 then
         sb.appendCodePoint(c)
     sb.toString
+
+  def translate(s: String, from: String, to: String): String = translate(s, translation(from, to))
 
   def octetLength(s: String): Long = s.getBytes(StandardCharsets.UTF_8).length.toLong
 

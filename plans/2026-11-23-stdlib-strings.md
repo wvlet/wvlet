@@ -12,7 +12,7 @@
 ## Design
 - Lane: Express. The names and their meaning come from the approved ADR, and nothing here touches an always-gate area.
 - Each function keeps one meaning on every engine. Variants wrap the engine's function where needed, and a function is left out on an engine that cannot match:
-  - `regexp_extract_all` defaults to the whole match (group 0). Spark gets an explicit `0`. BigQuery is left out because it cannot choose a group.
+  - `regexp_extract_all` defaults to the whole match (group 0). Hive has no `regexp_extract_all` (it is Spark-only), and BigQuery cannot choose a group, so both are left out.
   - `regexp_split` keeps empty strings, including trailing ones. Snowflake and BigQuery have no regex split, so they are left out.
   - `url_encode` follows RFC 3986: unreserved characters (`A-Z a-z 0-9 - _ . ~`) stay as they are, everything else becomes `%XX` of the UTF-8 bytes, and a space becomes `%20`. Trino's Java-style encoding is rewritten to match. Engines without URL functions are left out.
   - `normalize` is NFC. Hive and Snowflake have no NFC function, so they are left out.
