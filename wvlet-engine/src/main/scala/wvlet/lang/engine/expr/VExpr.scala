@@ -35,6 +35,24 @@ trait VExpr:
 
   override def toString: String = sig
 
+object VExpr:
+  /**
+    * A constant as signature text: as is, or quoted SQL-style when its text could read as NULL, an
+    * empty value, or more than one value or expression (`'x:string),lit(y'` against `'x', 'y'`).
+    * Passes match conditions by signature (FactorOr, PushDownFilters), so the text must tell
+    * different values apart. Lists and maps print their elements the same way
+    */
+  def valueSig(v: Any): String =
+    v match
+      case s: String if s.isEmpty || s == "null" || s.exists(ch => ",'()[]{}:".indexOf(ch) >= 0) =>
+        s"'${s.replace("'", "''")}'"
+      case xs: Seq[?] =>
+        xs.map(valueSig).mkString("[", ",", "]")
+      case m: Map[?, ?] =>
+        m.map((k, x) => s"${valueSig(k)}:${valueSig(x)}").mkString("{", ",", "}")
+      case other =>
+        String.valueOf(other)
+
 /** A reference to an input column */
 case class ColRef(index: Int, ptype: PType, name: String) extends VExpr:
   def eval(b: Batch): Vec          = b.column(index)
@@ -55,7 +73,7 @@ case class Const(value: Any, ptype: PType) extends VExpr:
       cached = v
       v
 
-  def sig: String                  = s"lit(${value}:${ptype})"
+  def sig: String                  = s"lit(${VExpr.valueSig(value)}:${ptype})"
   override def isConstant: Boolean = true
 
 /** Evaluate a row-wise function: the fallback path for functions without a vector kernel */
@@ -258,7 +276,7 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
         Iterator("null")
       else
         Iterator.empty
-    val vs = values.iterator.map(InList.valueSig) ++ nullMarker
+    val vs = values.iterator.map(VExpr.valueSig) ++ nullMarker
     s"in(${child.sig},${vs.mkString(",")},${negate})"
 
   def eval(b: Batch): Vec =
@@ -288,20 +306,6 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
     BoolVec(o, nulls)
 
 end InList
-
-object InList:
-  /**
-    * A value in [[InList.sig]]: as text, or quoted SQL-style when the text could read as the NULL
-    * marker, an empty value, or a different list of values
-    */
-  private def valueSig(v: Any): String =
-    v match
-      case s: String
-          if s.isEmpty || s == "null" ||
-            s.exists(ch => ch == ',' || ch == '\'' || ch == '(' || ch == ')') =>
-        s"'${s.replace("'", "''")}'"
-      case other =>
-        other.toString
 
 /** `x IN (exprs...)` for non-constant lists: an OR of equalities */
 case class InExprs(child: VExpr, list: Seq[VExpr], negate: Boolean) extends VExpr:
@@ -582,7 +586,11 @@ case class LikeExpr(
 ) extends VExpr:
   override def children: Seq[VExpr] = Seq(child)
   def ptype: PType                  = PType.Bool
-  def sig: String                   = s"like(${child.sig},${pattern},${negate},${caseInsensitive})"
+  // The escape character changes what the pattern matches: `'a!%' escape '!'` matches `a%` only
+  def sig: String =
+    val esc = escape.map(e => s",escape=${VExpr.valueSig(e.toString)}").getOrElse("")
+    s"like(${child.sig},${VExpr.valueSig(pattern)},${negate},${caseInsensitive}${esc})"
+
   private val matcher: String => Boolean = LikeMatcher.compile(pattern, caseInsensitive, escape)
   def eval(b: Batch): Vec                =
     val v = Kernels.asStrVec(child.eval(b))
