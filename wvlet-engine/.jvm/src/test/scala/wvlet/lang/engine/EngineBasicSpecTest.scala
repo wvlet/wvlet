@@ -14,14 +14,21 @@
 package wvlet.lang.engine
 
 import wvlet.lang.engine.plan.OptimizerOptions
-import wvlet.lang.engine.plan.PlannerMode
 import wvlet.uni.test.UniTest
 
-/** Queries in spec/basic on the engine must return the same rows as DuckDB */
-abstract class EngineBasicSpecBase(optimizer: OptimizerOptions) extends UniTest:
+/**
+  * Queries in spec/basic on the engine must return the same rows as DuckDB, with every runtime plan
+  * checked by the plan validator
+  */
+class EngineBasicSpecTest extends UniTest:
   import EngineBasicSpecTest.knownGaps
 
-  private val conformance = EngineConformance("spec/basic", Nil, _ => (), optimizer)
+  private val conformance = EngineConformance(
+    "spec/basic",
+    Nil,
+    _ => (),
+    OptimizerOptions().withValidatePlans(true)
+  )
 
   override def afterAll: Unit = conformance.close()
 
@@ -38,14 +45,7 @@ abstract class EngineBasicSpecBase(optimizer: OptimizerOptions) extends UniTest:
         }
     }
 
-end EngineBasicSpecBase
-
-/** spec/basic through the engine's runtime plan (the default), checked by the plan validator */
-class EngineBasicSpecTest extends EngineBasicSpecBase(OptimizerOptions().withValidatePlans(true))
-
-/** spec/basic through the recursive planner alone, until the runtime plan covers every relation */
-class EngineBasicSpecLegacyTest
-    extends EngineBasicSpecBase(OptimizerOptions().withPlanner(PlannerMode.Legacy))
+end EngineBasicSpecTest
 
 object EngineBasicSpecTest:
   /**

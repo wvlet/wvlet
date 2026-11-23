@@ -15,7 +15,6 @@ package wvlet.lang.engine
 
 import wvlet.lang.engine.exec.TaskRunner
 import wvlet.lang.engine.plan.OptimizerOptions
-import wvlet.lang.engine.plan.PlannerMode
 import wvlet.uni.test.UniTest
 
 import java.nio.file.Files
@@ -26,33 +25,25 @@ import scala.jdk.CollectionConverters.*
 /**
   * The engine's physical plans of the TPC-H and TPC-DS queries must match the golden files under
   * spec/engine-plans, so that a planner change shows its plan changes in the PR diff. Regenerate
-  * them with [[EnginePlanGolden.regenCommand]]. The files hold the runtime planner's plans. The
-  * recursive (legacy) planner is checked against the same files, except where its plan differs:
-  * those plans are under spec/engine-plans/legacy, so that a rule only the runtime planner has
-  * (e.g., PushDownFilters) shows which plans it changes
+  * them with [[EnginePlanGolden.regenCommand]]
   */
 class EnginePlanGoldenTest extends UniTest:
   import EnginePlanGolden.*
 
-  for
-    suite   <- suites
-    planner <- PlannerMode.values
-  do
-    test(s"${suite.name} plans match spec/engine-plans/${suite.name} (${planner.name} planner)") {
+  for suite <- suites do
+    test(s"${suite.name} plans match spec/engine-plans/${suite.name}") {
       if TaskRunner.default.parallelism <= 1 then
         ignore("The golden plans are parallel plans: run on a machine with 2 or more processors")
-      val generated = suite.generate(
-        OptimizerOptions().withPlanner(planner).withValidatePlans(planner == PlannerMode.Runtime)
-      )
-      val dir      = suite.dirOf(planner)
-      val existing =
+      val generated = suite.generate(OptimizerOptions().withValidatePlans(true))
+      val dir       = suite.dir
+      val existing  =
         if Files.isDirectory(dir) then
           planFiles(dir).map(_.getFileName.toString).toSet
         else
           Set.empty[String]
       val drift = Seq.newBuilder[String]
       generated.foreach { (file, plan) =>
-        val path = suite.goldenFile(planner, file)
+        val path = dir.resolve(file)
         if !Files.exists(path) then
           drift += s"missing: ${path}"
         else
@@ -66,16 +57,6 @@ class EnginePlanGoldenTest extends UniTest:
                  |  generated: ${p.lift(line).getOrElse("<missing line>")}""".stripMargin
       }
       (existing -- generated.keySet).foreach(f => drift += s"stale: ${dir.resolve(f)}")
-      if planner == PlannerMode.Legacy then
-        // A legacy plan that matches the runtime planner's is not kept separately
-        existing.foreach { f =>
-          val legacy = dir.resolve(f)
-          val shared = suite.dir.resolve(f)
-          if Files.exists(shared) &&
-            Files.readAllBytes(legacy).sameElements(Files.readAllBytes(shared))
-          then
-            drift += s"stale: ${legacy}"
-        }
       val d = drift.result()
       if d.nonEmpty then
         fail(s"""Engine plans changed for ${d.size} ${suite.name} file(s):
@@ -97,22 +78,6 @@ object EnginePlanGolden:
   /** A query set and the data it plans over */
   case class Suite(name: String, specPath: String, dataDir: () => (String, Seq[String])):
     def dir: Path = root.resolve(name)
-
-    /** The folder of the plans of a planner that differ from the runtime planner's */
-    def dirOf(planner: PlannerMode): Path =
-      planner match
-        case PlannerMode.Runtime =>
-          dir
-        case PlannerMode.Legacy =>
-          root.resolve("legacy").resolve(name)
-
-    /** The golden file of a plan of a planner: its own, or the runtime planner's */
-    def goldenFile(planner: PlannerMode, file: String): Path =
-      val own = dirOf(planner).resolve(file)
-      if planner == PlannerMode.Runtime || Files.exists(own) then
-        own
-      else
-        dir.resolve(file)
 
     /** Plan file name -> plan text, for every unit of the spec folder */
     def generate(optimizer: OptimizerOptions = OptimizerOptions()): Map[String, String] =
@@ -158,26 +123,13 @@ object EnginePlanGolden:
     .replaceAll("parallelism=\\d+", "parallelism=N")
 
   def main(args: Array[String]): Unit = suites.foreach { suite =>
-    val generated = suite.generate(OptimizerOptions().withPlanner(PlannerMode.Runtime))
+    val generated = suite.generate()
     Files.createDirectories(suite.dir)
     planFiles(suite.dir)
       .filterNot(p => generated.contains(p.getFileName.toString))
       .foreach(Files.delete)
     generated.foreach((file, plan) => Files.write(suite.dir.resolve(file), plan.getBytes))
     println(s"Wrote ${generated.size} plans to ${suite.dir}")
-    // The legacy planner's plans, where they differ
-    val legacyDir = suite.dirOf(PlannerMode.Legacy)
-    if Files.isDirectory(legacyDir) then
-      planFiles(legacyDir).foreach(Files.delete)
-    val differing = suite
-      .generate(OptimizerOptions().withPlanner(PlannerMode.Legacy))
-      .filter((file, plan) => !generated.get(file).contains(plan))
-    if differing.nonEmpty then
-      Files.createDirectories(legacyDir)
-      differing.foreach((file, plan) => Files.write(legacyDir.resolve(file), plan.getBytes))
-    else if Files.isDirectory(legacyDir) then
-      Files.delete(legacyDir)
-    println(s"Wrote ${differing.size} legacy plans to ${legacyDir}")
   }
 
 end EnginePlanGolden

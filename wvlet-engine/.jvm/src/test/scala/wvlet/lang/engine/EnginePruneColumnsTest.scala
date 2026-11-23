@@ -146,8 +146,7 @@ class EnginePruneColumnsTest extends UniTest:
     sameRows(query)
   }
 
-  test("include the columns read by readers the recursive planner plans") {
-    // The IN subquery is planned by the recursive planner
+  test("include the columns read by an IN subquery's reader") {
     val query =
       s"""${cte}select l_orderkey from t
          |where l_partkey in (select l_quantity from t)""".stripMargin

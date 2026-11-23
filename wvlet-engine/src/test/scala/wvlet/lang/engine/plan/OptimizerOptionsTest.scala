@@ -56,19 +56,4 @@ class OptimizerOptionsTest extends UniTest:
       )
   }
 
-  test("should plan through the runtime plan by default") {
-    OptimizerOptions().planner shouldBe PlannerMode.Runtime
-    OptimizerOptions().withPlanner(PlannerMode.Legacy).planner shouldBe PlannerMode.Legacy
-  }
-
-  test("should parse planner names") {
-    OptimizerOptions.parsePlanner(" Runtime ") shouldBe PlannerMode.Runtime
-    OptimizerOptions.parsePlanner("legacy") shouldBe PlannerMode.Legacy
-    val e = intercept[WvletLangException] {
-      OptimizerOptions.parsePlanner("cascades")
-    }
-    e.getMessage shouldContain "cascades"
-    e.getMessage shouldContain "legacy, runtime"
-  }
-
 end OptimizerOptionsTest

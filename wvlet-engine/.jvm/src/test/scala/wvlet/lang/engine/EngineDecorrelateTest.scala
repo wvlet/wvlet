@@ -18,7 +18,6 @@ import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
-import wvlet.lang.engine.plan.PlannerMode
 import wvlet.lang.engine.runtime.*
 import wvlet.lang.model.plan.Relation
 import wvlet.uni.test.UniTest
@@ -28,20 +27,24 @@ class EngineDecorrelateTest extends UniTest:
   import RuntimePlan.*
 
   private val options = OptimizerOptions().withValidatePlans(true)
-  private val engine  = WvletEngine(optimizer = options)
-  private val legacy  = engine.withOptimizer(options.withPlanner(PlannerMode.Legacy))
-  EngineTPCHBench
-    .tables
-    .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
+  // Rows are checked against DuckDB through generated SQL, over the same tables
+  private val conformance = EngineConformance.tpch(options)
+
+  private val engine = conformance.engine
+
+  override def afterAll: Unit = conformance.close()
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
-  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
+  /** The compiled query, as the engine receives it (before model expansion) */
+  private def compiled[A](query: String)(f: Context ?=> Relation => A): A =
     val unit      = CompilationUnit.fromSqlString(query)
     val r         = compiler.compileSingleUnit(unit)
     given Context = r.context
-    val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}"))
-    f(GenSQL.expand(q, summon[Context]))
+    f(EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}")))
+
+  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
+    compiled(query)(q => f(GenSQL.expand(q, summon[Context])))
 
   private def runtimePlan(query: String): RuntimePlan =
     val p = withQuery(query)(engine.runtimePlan(_))
@@ -62,11 +65,14 @@ class EngineDecorrelateTest extends UniTest:
         .sorted
     }
 
-  /** The rows of the query, the same on both planners */
+  /** The query must return the same rows on `e` as on DuckDB, which must accept its SQL */
+  private def matchesDuckDB(query: String, e: WvletEngine): Unit =
+    compiled(query)(conformance.assertMatches(query, _, e))
+
+  /** The rows of the query, the same as DuckDB's */
   private def sameRows(query: String): Seq[String] =
-    val r = rows(engine, query)
-    r shouldBe rows(legacy, query)
-    r
+    matchesDuckDB(query, engine)
+    rows(engine, query)
 
   test("bind IN over an uncorrelated subquery as a semi join") {
     val query =
@@ -217,13 +223,12 @@ class EngineDecorrelateTest extends UniTest:
 
   private val noDecorrelate = engine.withOptimizer(options.withDisabled(Optimization.Decorrelate))
 
-  /** The plan and rows with decorrelate disabled, checked against the legacy planner's rows */
+  /** The plan and rows with decorrelate disabled, checked against DuckDB's rows */
   private def withoutDecorrelate(query: String): (RuntimePlan, Seq[String]) =
     val p = withQuery(query)(noDecorrelate.runtimePlan(_))
     debug(p.explain)
-    val r = rows(noDecorrelate, query)
-    r shouldBe rows(legacy, query)
-    (p, r)
+    matchesDuckDB(query, noDecorrelate)
+    (p, rows(noDecorrelate, query))
 
   test("bind uncorrelated subquery conjuncts as plan-time constants with decorrelate disabled") {
     def constant(query: String): Seq[String] =

@@ -34,7 +34,7 @@ Accepted as proposed on 2026-11-22. See `plans/2026-11-22-engine-optimizer-frame
 ## Consequences
 
 - New rules go into one place with a known order, and they compare expressions by id rather than by text. A pass that misses a node kind no longer slows a query without warning: passes match the closed enum without a wildcard default and the engine build makes non-exhaustive-match warnings fatal, so the missing case fails the build.
-- Migration costs: the binder and Lowering duplicate parts of `Planner` until the legacy path is deleted (M4), and sessions editing `Planner` in the meantime will have to move their changes over.
+- Migration costs: the binder and Lowering duplicate parts of `Planner` until the legacy path is deleted (M4), and sessions editing `Planner` in the meantime will have to move their changes over. (Amended 2026-11-23: M4b deleted the legacy path; benchmark A/B now runs against an origin/main worktree or an `Optimization` toggle.)
 - Join planning time stays bounded: graphs larger than the threshold use the current greedy path.
 - Rules whose correctness depends on SQL's three-valued logic (pushdown through outer joins, NOT IN, OR factoring, decorrelation) become small enough to model in Lean with trace conformance, following the 2026-11-18 Lean ADR.
 - Rejected options, with reasons in the plan: growing the current planner, optimizing at the compiler `Relation` level, a Trino-style memo with a pattern library, Cascades/Volcano, e-graphs, rewriting physical operators only, and unbounded bushy DP.

@@ -19,30 +19,43 @@ import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.runtime.*
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
-import wvlet.lang.engine.plan.PlannerMode
 import wvlet.lang.engine.vector.PType
 import wvlet.lang.model.plan.Relation
 import wvlet.uni.test.UniTest
 
 /** The runtime binder, the plan validator, and lowering, over the TPC-H sample data */
 class EngineRuntimePlanTest extends UniTest:
-  private val runtime = OptimizerOptions().withPlanner(PlannerMode.Runtime).withValidatePlans(true)
-  private val engine  = WvletEngine(optimizer = runtime)
-  private val legacy  = engine.withOptimizer(OptimizerOptions().withPlanner(PlannerMode.Legacy))
-  EngineTPCHBench
-    .tables
-    .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
+  private val runtime = OptimizerOptions().withValidatePlans(true)
+  // Rows are checked against DuckDB through generated SQL, over the same tables
+  private val conformance = EngineConformance.tpch(runtime)
+
+  private val engine = conformance.engine
+
+  override def afterAll: Unit = conformance.close()
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
-  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
+  /** The compiled query, as the engine receives it (before model expansion) */
+  private def compiled[A](query: String)(f: Context ?=> Relation => A): A =
     val unit      = CompilationUnit.fromWvletString(query)
     val r         = compiler.compileSingleUnit(unit)
     given Context = r.context
-    val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}"))
-    f(GenSQL.expand(q, summon[Context]))
+    f(EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}")))
+
+  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
+    compiled(query)(q => f(GenSQL.expand(q, summon[Context])))
 
   private def runtimePlan(query: String): RuntimePlan = withQuery(query)(engine.runtimePlan(_))
+
+  /**
+    * The query must return the same rows on `e` as on DuckDB, which must accept its SQL; in order
+    * with `ordered`
+    */
+  private def matchesDuckDB(
+      query: String,
+      e: WvletEngine = engine,
+      ordered: Boolean = false
+  ): Unit = compiled(query)(conformance.assertMatches(query, _, e, ordered))
 
   test("bind a filter, projection, and top-n sort over a scan") {
     val p = runtimePlan("""from lineitem
@@ -76,8 +89,7 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("raise the planner's errors for column edits with aggregates or unnest") {
-    // These forms fail in the shared Binder on both planners; the runtime binder raises the same
-    // error itself
+    // These forms fail in the shared Binder, or the runtime binder raises the same error itself
     def errorOf(f: => Any): String = intercept[wvlet.lang.api.WvletLangException](f).getMessage
     Seq(
       "from nation add count(*) as n"             -> "Aggregate function count is not allowed here",
@@ -91,7 +103,6 @@ class EngineRuntimePlanTest extends UniTest:
     ).foreach { (query, message) =>
       errorOf(runtimePlan(query)) shouldContain message
       errorOf(rowsOf(engine, query)) shouldContain message
-      errorOf(rowsOf(legacy, query)) shouldContain message
     }
   }
 
@@ -101,9 +112,9 @@ class EngineRuntimePlanTest extends UniTest:
       debug(p.explain)
       nodes(p).exists(_.isInstanceOf[RuntimePlan.Sort]) shouldBe true
       PlanValidator.violations(p) shouldBe Nil
-      val expected = rowsOf(legacy, query)
-      expected.size > 0 shouldBe true
-      rowsOf(engine, query) shouldBe expected
+      rowsOf(engine, query).size > 0 shouldBe true
+      // The keys end with a unique column: compare in order
+      matchesDuckDB(query, ordered = true)
       p
 
     // A scalar subquery over the sort input
@@ -163,7 +174,10 @@ class EngineRuntimePlanTest extends UniTest:
     runtimePlan("from nation sample 5") shouldMatch {
       case RuntimePlan.Limit(_: RuntimePlan.Scan, 5L, 0L) =>
     }
-    rowsOf(engine, "from nation sample 5") shouldBe rowsOf(legacy, "from nation sample 5")
+    // DuckDB samples other rows, so compare the row count there and pin the engine's rows: the
+    // first rows of the scan
+    matchesDuckDB("from nation sample 5")
+    rowsOf(engine, "from nation sample 5 select n_nationkey") shouldBe (0L until 5L).map(Seq(_))
 
     // A filter over the sample stays above it: moving it changes which rows the generator sees
     val query =
@@ -177,9 +191,9 @@ class EngineRuntimePlanTest extends UniTest:
       case RuntimePlan.Project(RuntimePlan.Filter(RuntimePlan.Sample(_, 10.0), _, _), _, _) =>
     }
     PlanValidator.violations(p) shouldBe Nil
-    val expected = rowsOf(legacy, query)
-    expected.size > 0 shouldBe true
-    rowsOf(engine, query) shouldBe expected
+    // DuckDB draws other rows: pin the engine's draw (a seeded generator over the scan order)
+    rowsOf(engine, query).size shouldBe 4886
+    matchesDuckDB(query)
   }
 
   private def nodes(p: RuntimePlan): Seq[RuntimePlan] = p +: p.children.flatMap(nodes)
@@ -200,7 +214,7 @@ class EngineRuntimePlanTest extends UniTest:
     p.output.map(_.name) shouldBe IndexedSeq("number")
     PlanValidator.violations(p) shouldBe Nil
     rowsOf(engine, query) shouldBe Seq(Seq(1L), Seq(2L), Seq(3L))
-    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+    matchesDuckDB(query)
   }
 
   test("bind a lateral unnest and move filters on its input below it") {
@@ -224,7 +238,7 @@ class EngineRuntimePlanTest extends UniTest:
     } shouldBe true
     PlanValidator.violations(p) shouldBe Nil
     rowsOf(engine, query) shouldBe Seq(Seq(2L, 40L))
-    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+    matchesDuckDB(query)
 
     // LEFT JOIN ... ON true keeps rows without elements
     val left =
@@ -237,7 +251,7 @@ class EngineRuntimePlanTest extends UniTest:
     unnests(l).map(_.outer) shouldBe Seq(true)
     PlanValidator.violations(l) shouldBe Nil
     rowsOf(engine, left) shouldBe Seq(Seq(2L, null), Seq(3L, null))
-    rowsOf(engine, left) shouldBe rowsOf(legacy, left)
+    matchesDuckDB(left)
 
     // Inside a join tree, with a condition between the unnest and another input
     val tree =
@@ -251,7 +265,7 @@ class EngineRuntimePlanTest extends UniTest:
     unnests(j).size shouldBe 1
     PlanValidator.violations(j) shouldBe Nil
     rowsOf(engine, tree).size shouldBe 3
-    rowsOf(engine, tree) shouldBe rowsOf(legacy, tree)
+    matchesDuckDB(tree)
   }
 
   test("bind unnest select items as a projection over an unnest") {
@@ -274,9 +288,8 @@ class EngineRuntimePlanTest extends UniTest:
     } shouldBe true
     p.output.map(_.name).last shouldBe "v"
     PlanValidator.violations(p) shouldBe Nil
-    val expected = rowsOf(legacy, query)
-    expected.size shouldBe 6
-    rowsOf(engine, query) shouldBe expected
+    rowsOf(engine, query).size shouldBe 6
+    matchesDuckDB(query)
   }
 
   test("bind column edits as projections over their input") {
@@ -293,9 +306,13 @@ class EngineRuntimePlanTest extends UniTest:
     debug(p.explain)
     p.output.map(_.name) shouldBe IndexedSeq("k", "r10", "id", "n_name", "n_regionkey")
     PlanValidator.violations(p) shouldBe Nil
-    val expected = rowsOf(legacy, query)
-    expected.size shouldBe 3
-    rowsOf(engine, query) shouldBe expected
+    // The generated SQL orders by the renamed column, which DuckDB doesn't resolve: pin the rows
+    rowsOf(engine, query) shouldBe
+      Seq(
+        Seq(1L, 0L, 0L, "ALGERIA", 0L),
+        Seq(2L, 10L, 1L, "ARGENTINA", 1L),
+        Seq(3L, 10L, 2L, "BRAZIL", 1L)
+      )
   }
 
   test("bind a column edit with window functions over a window") {
@@ -311,7 +328,7 @@ class EngineRuntimePlanTest extends UniTest:
         w.calls.map(_.name) shouldBe IndexedSeq("row_number")
     }
     PlanValidator.violations(p) shouldBe Nil
-    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+    matchesDuckDB(query)
   }
 
   test("bind projections and column edits with subqueries as plan-time constants") {
@@ -343,9 +360,8 @@ class EngineRuntimePlanTest extends UniTest:
       val p = runtimePlan(query)
       debug(p.explain)
       PlanValidator.violations(p) shouldBe Nil
-      val expected = rowsOf(legacy, query)
-      expected.size > 0 shouldBe true
-      rowsOf(engine, query) shouldBe expected
+      rowsOf(engine, query).size > 0 shouldBe true
+      matchesDuckDB(query)
     }
   }
 
@@ -355,7 +371,14 @@ class EngineRuntimePlanTest extends UniTest:
       cols.map(_.name) shouldBe IndexedSeq("column_name", "column_type")
       rows.size shouldBe 4
     }
-    rowsOf(engine, "from nation describe") shouldBe rowsOf(legacy, "from nation describe")
+    // DuckDB returns no rows for the generated SQL: pin the rows
+    rowsOf(engine, "from nation describe") shouldBe
+      Seq(
+        Seq("n_nationkey", "int"),
+        Seq("n_name", "string"),
+        Seq("n_regionkey", "int"),
+        Seq("n_comment", "string")
+      )
 
     val one = runtimePlan("select 1 + 2 as x")
     one shouldMatch { case RuntimePlan.Project(RuntimePlan.Values(cols, rows), _, _) =>
@@ -382,7 +405,7 @@ class EngineRuntimePlanTest extends UniTest:
       cols.map(_.name).takeRight(2) shouldBe IndexedSeq("0", "1")
     }
     PlanValidator.violations(p) shouldBe Nil
-    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+    matchesDuckDB(query)
   }
 
   test("bind a pivot without listed values as an aggregation over its rows") {
@@ -395,9 +418,11 @@ class EngineRuntimePlanTest extends UniTest:
       calls.size shouldBe 5
     }
     PlanValidator.violations(p) shouldBe Nil
-    val expected = rowsOf(legacy, query)
-    expected.size shouldBe 25
-    rowsOf(engine, query) shouldBe expected
+    // DuckDB's PIVOT groups by every other column too: pin the rows
+    val rows = rowsOf(engine, query)
+    rows.size shouldBe 25
+    rows.find(_.head == "ALGERIA") shouldBe Some(Seq("ALGERIA", 1L, 0L, 0L, 0L, 0L))
+    rows.map(_.tail.map(_.asInstanceOf[Long]).sum).distinct shouldBe Seq(1L)
   }
 
   test("bind an unpivot as a union of projections over a shared input") {
@@ -420,9 +445,8 @@ class EngineRuntimePlanTest extends UniTest:
       }
     }
     PlanValidator.violations(p) shouldBe Nil
-    val expected = rowsOf(legacy, query)
-    expected.size > 0 shouldBe true
-    rowsOf(engine, query) shouldBe expected
+    rowsOf(engine, query).size > 0 shouldBe true
+    matchesDuckDB(query)
   }
 
   test("bind a CTE read once in place and a CTE read twice as readers of one shared body") {
@@ -435,9 +459,8 @@ class EngineRuntimePlanTest extends UniTest:
       debug(p.explain)
       PlanValidator.violations(p) shouldBe Nil
       f(p)
-      val expected = rowsOf(legacy, query)
-      expected.size > 0 shouldBe true
-      rowsOf(e, query) shouldBe expected
+      rowsOf(e, query).size > 0 shouldBe true
+      matchesDuckDB(query, e)
 
     // Read once: the body binds in place, so the passes see through it
     check(
@@ -494,9 +517,8 @@ class EngineRuntimePlanTest extends UniTest:
       js.size shouldBe 1
       js.head.leftKeys.size shouldBe 1
       PlanValidator.violations(p) shouldBe Nil
-      val expected = rowsOf(legacy, query)
-      expected.nonEmpty shouldBe true
-      rowsOf(engine, query) shouldBe expected
+      rowsOf(engine, query).nonEmpty shouldBe true
+      matchesDuckDB(query)
   }
 
   private def asOfJoins(p: RuntimePlan): Seq[RuntimePlan.AsOfJoin] = nodes(p).collect {
@@ -529,9 +551,8 @@ class EngineRuntimePlanTest extends UniTest:
       nodes(js.head.right).exists(_.isInstanceOf[RuntimePlan.Filter]) shouldBe false
       nodes(p).takeWhile(_ ne js.head).exists(_.isInstanceOf[RuntimePlan.Filter]) shouldBe true
       PlanValidator.violations(p) shouldBe Nil
-      val expected = rowsOf(legacy, query)
-      expected.nonEmpty shouldBe true
-      rowsOf(engine, query) shouldBe expected
+      rowsOf(engine, query).nonEmpty shouldBe true
+      matchesDuckDB(query)
     end for
 
     // Over TPC-H tables, with the inequality written right side first
@@ -544,7 +565,7 @@ class EngineRuntimePlanTest extends UniTest:
     val p = runtimePlan(query)
     asOfJoins(p).size shouldBe 1
     PlanValidator.violations(p) shouldBe Nil
-    rowsOf(engine, query) shouldBe rowsOf(legacy, query)
+    matchesDuckDB(query)
   }
 
   test("bind an inner join tree with its filters to joins over scans") {
@@ -632,14 +653,8 @@ class EngineRuntimePlanTest extends UniTest:
       case other =>
         fail(s"Unexpected plan:\n${other.explain}")
     PlanValidator.violations(p) shouldBe Nil
-    def rows(e: WvletEngine): Seq[Seq[Any]] =
-      withQuery(query) { q =>
-        val r = e.execute(q)
-        r.batches.flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).toSeq))
-      }
-    val expected = rows(legacy)
-    expected shouldBe Seq(Seq(4L))
-    rows(engine) shouldBe expected
+    rowsOf(engine, query) shouldBe Seq(Seq(4L))
+    matchesDuckDB(query)
   }
 
   test("bind grouping sets as a union of aggregations over a shared input") {
@@ -689,21 +704,15 @@ class EngineRuntimePlanTest extends UniTest:
         fail(s"Unexpected plan:\n${other.explain}")
   }
 
-  test("return the same rows as the recursive planner") {
+  test("return the same rows as DuckDB") {
     val query =
       """from orders
         |where o_totalprice > 100000
         |select o_orderkey, o_custkey, o_totalprice
         |order by o_totalprice desc, o_orderkey
         |limit 10""".stripMargin
-    def rows(e: WvletEngine): Seq[Seq[Any]] =
-      withQuery(query) { q =>
-        val r = e.execute(q)
-        r.batches.flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).toSeq))
-      }
-    val expected = rows(legacy)
-    expected.size shouldBe 10
-    rows(engine) shouldBe expected
+    rowsOf(engine, query).size shouldBe 10
+    matchesDuckDB(query, ordered = true)
   }
 
   test("report expressions that read columns their input doesn't output") {
