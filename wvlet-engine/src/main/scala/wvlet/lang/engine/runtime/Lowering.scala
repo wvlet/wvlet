@@ -67,6 +67,12 @@ object Lowering:
           .newException(
             s"InnerJoins must be ordered by ReorderJoins before lowering:\n${p.explain}"
           )
+      case Union(inputs, _) =>
+        UnionAllOp(inputs.map(apply), p.schema)
+      case SetOp(left, right, intersect, all, _) =>
+        SetOpOp(apply(left), apply(right), intersect, all, p.schema)
+      case Distinct(child) =>
+        DistinctOp(apply(child))
       case Legacy(op, _) =>
         op
       case CTERef(cte, _) =>

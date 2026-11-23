@@ -72,6 +72,11 @@ object PlanValidator:
           if inputs.size < 2 then
             b += s"InnerJoins has ${inputs.size} inputs"
           checkExprs(b, "InnerJoins", conds.map(_.cond), j.output)
+        case Union(inputs, columns) =>
+          inputs.foreach(i => checkWidth(b, "Union", i, columns))
+        case SetOp(left, right, _, _, columns) =>
+          Seq(left, right).foreach(i => checkWidth(b, "SetOp", i, columns))
+        case Distinct(_)         =>
         case Legacy(op, columns) =>
           if columns.map(_.ptype) != op.schema.types then
             b += s"Legacy[${op.name}] columns ${columns.mkString(", ")} differ from ${op.schema}"
@@ -88,6 +93,15 @@ object PlanValidator:
     b.result()
 
   end violations
+
+  private def checkWidth(
+      b: collection.mutable.Builder[String, Seq[String]],
+      node: String,
+      input: RuntimePlan,
+      columns: IndexedSeq[Column]
+  ): Unit =
+    if input.output.size != columns.size then
+      b += s"${node} has an input of ${input.output.size} columns for ${columns.size}"
 
   private def checkExprs(
       b: collection.mutable.Builder[String, Seq[String]],

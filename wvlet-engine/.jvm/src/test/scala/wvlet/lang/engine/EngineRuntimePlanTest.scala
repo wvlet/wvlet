@@ -75,12 +75,28 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    val p = runtimePlan("from nation select distinct n_regionkey")
+    val p = runtimePlan(
+      "from nation select n_name, row_number() over (partition by n_regionkey) as rn"
+    )
     p match
       case RuntimePlan.Legacy(op, cols) =>
         cols.map(_.name) shouldBe op.schema.names
       case other =>
         fail(s"Unexpected plan:\n${other.explain}")
+  }
+
+  test("bind set operations and distinct as runtime-plan nodes") {
+    val p = runtimePlan("""from nation
+        |select n_regionkey
+        |concat {
+        |  from region
+        |  select r_regionkey
+        |}
+        |dedup""".stripMargin)
+    p shouldMatch { case RuntimePlan.Distinct(u: RuntimePlan.Union) =>
+      u.columns.map(_.name) shouldBe IndexedSeq("n_regionkey")
+    }
+    PlanValidator.violations(p) shouldBe Nil
   }
 
   private def joins(p: RuntimePlan): Seq[RuntimePlan.Join] =

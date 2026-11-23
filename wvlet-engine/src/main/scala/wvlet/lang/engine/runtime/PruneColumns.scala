@@ -68,5 +68,9 @@ object PruneColumns extends Pass:
       case InnerJoins(inputs, conds) =>
         val reads = needed ++ conds.flatMap(_.cond.refs)
         p.withChildren(inputs.map(prune(_, reads, ctx)))
+      case Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) =>
+        // Set operations read whole rows of their inputs: the physical pruning narrows union
+        // inputs by position after lowering
+        p.withChildren(p.children.map(c => prune(c, c.output.map(_.id).toSet, ctx)))
 
 end PruneColumns

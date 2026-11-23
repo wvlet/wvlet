@@ -236,4 +236,84 @@ class EnginePushDownFiltersTest extends UniTest:
     } shouldNotBe None
   }
 
+  /** Whether every input of the set operation at the top of p filters its rows */
+  private def filtersEveryInput(p: RuntimePlan): Boolean =
+    def filtered(i: RuntimePlan): Boolean =
+      find(i) { case f: Filter =>
+        f
+      }.isDefined
+    find(p) {
+      case u: Union =>
+        u.inputs.forall(filtered)
+      case s: SetOp =>
+        filtered(s.left) && filtered(s.right)
+    }.getOrElse(false)
+
+  test("push a filter into every input of a concat, cast to the output type") {
+    // o_shippriority is an int, l_linenumber a bigint
+    val query =
+      """from lineitem
+        |select l_linenumber as n
+        |concat {
+        |  from orders
+        |  select o_shippriority as n
+        |}
+        |where n < 2""".stripMargin
+    val b      = bound(query)
+    val (p, o) = pushed(b)
+    p shouldMatch { case u: Union =>
+      u.inputs.exists(_.output.head.ptype != u.columns.head.ptype) shouldBe true
+    }
+    filtersEveryInput(p) shouldBe true
+    o.firedRules.get("push_down_filters").isDefined shouldBe true
+    sameRows(query)
+  }
+
+  test("push a filter below a dedup") {
+    val query =
+      """from orders
+        |select o_orderstatus
+        |dedup
+        |where o_orderstatus = 'F'""".stripMargin
+    val (p, _) = pushed(bound(query))
+    p shouldMatch { case Distinct(Project(_: Filter, _, _)) =>
+    }
+    sameRows(query)
+  }
+
+  test("push a filter into both inputs of intersect and except") {
+    for op <- Seq("intersect", "intersect all", "except", "except all") do
+      val query =
+        s"""from orders
+           |select o_custkey as k
+           |${op} {
+           |  from customer
+           |  select c_custkey as k
+           |}
+           |where k < 100""".stripMargin
+      val (p, _) = pushed(bound(query))
+      p shouldMatch { case _: SetOp =>
+      }
+      filtersEveryInput(p) shouldBe true
+      sameRows(query)
+  }
+
+  test("push single-input join conditions into the inputs of a set operation") {
+    val query =
+      """from {
+        |  from orders
+        |  select o_custkey as k
+        |  concat {
+        |    from customer
+        |    select c_custkey as k
+        |  }
+        |} as u
+        |join customer on u.k = c_custkey
+        |where u.k < 100
+        |select c_name""".stripMargin
+    val p = withQuery(query)(engine.runtimePlan(_))
+    filtersEveryInput(p) shouldBe true
+    sameRows(query)
+  }
+
 end EnginePushDownFiltersTest
