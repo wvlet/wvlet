@@ -246,6 +246,29 @@ class EngineScanPushdownTest extends UniTest:
     (wide.requests.result().size - before) shouldBe 2
   }
 
+  test("should read the input of scalar subqueries once when only their qualification differs") {
+    val before = wide.requests.result().size
+    rows("""from wide
+        |where a = 1
+        |select
+        |  { from wide where wide.a >= 2 select b.max } as mx,
+        |  { from wide where a >= 2 select b.sum } as total""".stripMargin) shouldBe
+      Seq(IndexedSeq(30L, 50L))
+    // The two inputs bind to the same plan, which their SQL text told apart
+    (wide.requests.result().size - before) shouldBe 2
+  }
+
+  test("should evaluate scalar subqueries over different inputs on their own") {
+    val before = wide.requests.result().size
+    rows("""from wide
+        |where a = 1
+        |select
+        |  { from wide where a >= 2 select b.max } as mx,
+        |  { from wide where a >= 3 select b.sum } as total""".stripMargin) shouldBe
+      Seq(IndexedSeq(30L, 30L))
+    (wide.requests.result().size - before) shouldBe 3
+  }
+
   test("should evaluate scalar subqueries over a CTE in the CTE's scope") {
     // The CTE is only known once its WITH is planned: the subqueries over it must still read it
     rows(

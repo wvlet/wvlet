@@ -65,6 +65,13 @@ trait TableSource:
     */
   def scanSplits(spec: ScanSpec): Option[ScanSplits] = None
 
+  /**
+    * The identity of the data this source reads: sources with equal keys read the same rows, so
+    * that plans over them can be shared. The source itself by default; sources created per
+    * reference of the same file use their path
+    */
+  def key: Any = this
+
 end TableSource
 
 /** Independently readable parts of a scan; `close` releases what the parts share */
@@ -83,6 +90,8 @@ class MemTable(val name: String, val schema: Schema, batches: Seq[Batch]) extend
 
 /** A Parquet file, a directory of Parquet files (Hive partitions), or an Iceberg table */
 class ParquetSource(val name: String, path: String) extends TableSource:
+  override def key: Any = ("parquet", path)
+
   private val isSingleFile: Boolean =
     path.endsWith(".parquet") && !path.exists(c => c == '*' || c == '{')
 

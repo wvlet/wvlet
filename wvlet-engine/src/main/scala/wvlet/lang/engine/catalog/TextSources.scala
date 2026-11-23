@@ -113,6 +113,8 @@ end TypeInference
 
 /** JSON array, JSON object, or JSON Lines file (optionally gzipped) */
 class JsonSource(val name: String, path: String) extends TableSource:
+  override def key: Any = ("json", path)
+
   private lazy val loaded: (Schema, Batch) =
     val bytes =
       if path.endsWith(".gz") then
@@ -178,6 +180,8 @@ end JsonSource
 
 /** CSV / TSV file with a header row; column types are inferred from the values */
 class CsvSource(val name: String, path: String) extends TableSource:
+  override def key: Any = ("csv", path)
+
   private val delimiter: Char =
     if path.toLowerCase.contains(".tsv") then
       '\t'

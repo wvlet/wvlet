@@ -18,7 +18,6 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
-import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.SqlGenerator
 import wvlet.lang.compiler.DBType
 import wvlet.lang.engine.catalog.*
@@ -31,6 +30,7 @@ import wvlet.lang.engine.runtime.Optimizer
 import wvlet.lang.engine.runtime.PlanValidator
 import wvlet.lang.engine.runtime.PushDownFilters
 import wvlet.lang.engine.runtime.RuntimePlan
+import wvlet.lang.engine.runtime.ShareSubplans
 import wvlet.lang.engine.runtime.SharedCTE
 import wvlet.lang.engine.vector.*
 import wvlet.lang.model.expr.*
@@ -110,9 +110,10 @@ class Planner(
       planDepth -= 1
 
   /**
-    * Evaluate uncorrelated scalar subqueries that aggregate the same input (same FROM and WHERE,
-    * e.g. the count, avg, and avg of each TPC-DS q09 bucket) as one query, so that the input is
-    * read once for all of them. The results fill [[scalarResults]]
+    * Evaluate uncorrelated scalar subqueries that aggregate the same input (e.g. the count, avg,
+    * and avg of each TPC-DS q09 bucket) as one query, so that the input is read once for all of
+    * them. Inputs are the same when their bound runtime plans are equal up to column ids
+    * ([[ShareSubplans.key]]). The results fill [[scalarResults]]
     */
   private def prefetchScalarSubqueries(r: Relation): Unit =
     // CTE names are resolved by scope while planning, not here: skip inputs that may read one
@@ -129,7 +130,18 @@ class Planner(
           found = true
       }
       found
-    val subs = mutable.ArrayBuffer.empty[(String, Project)]
+    // The keys' bindings are discarded: restore the hidden-name counter so that names don't shift
+    def inputKey(p: Project): Option[Any] =
+      val seq = hiddenSeq
+      try
+        ShareSubplans.key(runtimeBinder.bind(p.child))
+      catch
+        case _: Exception =>
+          // Correlated inputs fail on their outer names; they are evaluated on their own
+          None
+      finally
+        hiddenSeq = seq
+    val subs = mutable.ArrayBuffer.empty[(Any, Project)]
     r.traverseExpressions { case s: SubQueryExpression =>
       s.query match
         case p: Project
@@ -137,11 +149,7 @@ class Planner(
               !scalarResults.containsKey(p) && !prefetchTried.containsKey(p) =>
           prefetchTried.put(p, ())
           if !readsCTE(p.child) then
-            try
-              subs += GenSQL.generateSQLFromRelation(p.child, addHeader = false).sql -> p
-            catch
-              case _: Exception =>
-          end if
+            inputKey(p).foreach(k => subs += k -> p)
         case _ =>
     }
     subs
