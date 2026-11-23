@@ -27,17 +27,7 @@ import wvlet.uni.test.UniTest
 class EngineRuntimePlanTest extends UniTest:
   private val runtime = OptimizerOptions().withValidatePlans(true)
   // Rows are checked against DuckDB through generated SQL, over the same tables
-  private val conformance = EngineConformance(
-    "spec/tpch",
-    EngineTPCHBench
-      .tables
-      .map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
-    e =>
-      EngineTPCHBench
-        .tables
-        .foreach(t => e.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet")),
-    runtime
-  )
+  private val conformance = EngineConformance.tpch(runtime)
 
   private val engine = conformance.engine
 
@@ -45,25 +35,27 @@ class EngineRuntimePlanTest extends UniTest:
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
-  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
+  /** The compiled query, as the engine receives it (before model expansion) */
+  private def compiled[A](query: String)(f: Context ?=> Relation => A): A =
     val unit      = CompilationUnit.fromWvletString(query)
     val r         = compiler.compileSingleUnit(unit)
     given Context = r.context
-    val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}"))
-    f(GenSQL.expand(q, summon[Context]))
+    f(EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}")))
+
+  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
+    compiled(query)(q => f(GenSQL.expand(q, summon[Context])))
 
   private def runtimePlan(query: String): RuntimePlan = withQuery(query)(engine.runtimePlan(_))
 
-  /** The query must return the same rows on `e` as on DuckDB, which must accept its SQL */
-  private def matchesDuckDB(query: String, e: WvletEngine = engine): Unit =
-    val unit      = CompilationUnit.fromWvletString(query)
-    val r         = compiler.compileSingleUnit(unit)
-    given Context = r.context
-    val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}"))
-    val result    = conformance.compare(query, q, e)
-    debug(result.message)
-    if !result.matched || result.message.startsWith("skipped") then
-      fail(s"${result.message}\n${query}")
+  /**
+    * The query must return the same rows on `e` as on DuckDB, which must accept its SQL; in order
+    * with `ordered`
+    */
+  private def matchesDuckDB(
+      query: String,
+      e: WvletEngine = engine,
+      ordered: Boolean = false
+  ): Unit = compiled(query)(conformance.assertMatches(query, _, e, ordered))
 
   test("bind a filter, projection, and top-n sort over a scan") {
     val p = runtimePlan("""from lineitem
@@ -121,7 +113,8 @@ class EngineRuntimePlanTest extends UniTest:
       nodes(p).exists(_.isInstanceOf[RuntimePlan.Sort]) shouldBe true
       PlanValidator.violations(p) shouldBe Nil
       rowsOf(engine, query).size > 0 shouldBe true
-      matchesDuckDB(query)
+      // The keys end with a unique column: compare in order
+      matchesDuckDB(query, ordered = true)
       p
 
     // A scalar subquery over the sort input
@@ -719,7 +712,7 @@ class EngineRuntimePlanTest extends UniTest:
         |order by o_totalprice desc, o_orderkey
         |limit 10""".stripMargin
     rowsOf(engine, query).size shouldBe 10
-    matchesDuckDB(query)
+    matchesDuckDB(query, ordered = true)
   }
 
   test("report expressions that read columns their input doesn't output") {

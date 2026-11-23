@@ -28,17 +28,7 @@ class EngineDecorrelateTest extends UniTest:
 
   private val options = OptimizerOptions().withValidatePlans(true)
   // Rows are checked against DuckDB through generated SQL, over the same tables
-  private val conformance = EngineConformance(
-    "spec/tpch",
-    EngineTPCHBench
-      .tables
-      .map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
-    e =>
-      EngineTPCHBench
-        .tables
-        .foreach(t => e.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet")),
-    options
-  )
+  private val conformance = EngineConformance.tpch(options)
 
   private val engine = conformance.engine
 
@@ -46,12 +36,15 @@ class EngineDecorrelateTest extends UniTest:
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
-  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
+  /** The compiled query, as the engine receives it (before model expansion) */
+  private def compiled[A](query: String)(f: Context ?=> Relation => A): A =
     val unit      = CompilationUnit.fromSqlString(query)
     val r         = compiler.compileSingleUnit(unit)
     given Context = r.context
-    val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}"))
-    f(GenSQL.expand(q, summon[Context]))
+    f(EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}")))
+
+  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
+    compiled(query)(q => f(GenSQL.expand(q, summon[Context])))
 
   private def runtimePlan(query: String): RuntimePlan =
     val p = withQuery(query)(engine.runtimePlan(_))
@@ -74,14 +67,7 @@ class EngineDecorrelateTest extends UniTest:
 
   /** The query must return the same rows on `e` as on DuckDB, which must accept its SQL */
   private def matchesDuckDB(query: String, e: WvletEngine): Unit =
-    val unit      = CompilationUnit.fromSqlString(query)
-    val r         = compiler.compileSingleUnit(unit)
-    given Context = r.context
-    val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}"))
-    val result    = conformance.compare(query, q, e)
-    debug(result.message)
-    if !result.matched || result.message.startsWith("skipped") then
-      fail(s"${result.message}\n${query}")
+    compiled(query)(conformance.assertMatches(query, _, e))
 
   /** The rows of the query, the same as DuckDB's */
   private def sameRows(query: String): Seq[String] =

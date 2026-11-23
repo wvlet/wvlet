@@ -59,6 +59,21 @@ class EngineConformance(
 
   def run(unit: CompilationUnit): Seq[ConformanceResult] = queries(unit)((n, q) => compare(n, q))
 
+  /**
+    * Fail unless the query returns the same rows on `target` as on DuckDB, which must accept its
+    * SQL (see [[compare]])
+    */
+  def assertMatches(
+      name: String,
+      q: Relation,
+      target: WvletEngine = engine,
+      ordered: Boolean = false
+  )(using Context): Unit =
+    val r = compare(name, q, target, ordered)
+    debug(r.message)
+    if !r.matched || r.message.startsWith("skipped") then
+      throw AssertionError(s"${r.message}\n${name}")
+
   /** The engine's physical plan of each query in the unit, or the planning error */
   def explain(unit: CompilationUnit): Seq[String] =
     queries(unit) { (_, q) =>
@@ -113,11 +128,12 @@ class EngineConformance(
     d
 
   /**
-    * Compare one query's rows on `target` (this conformance's engine by default) with DuckDB's. A
+    * Compare one query's rows on `target` (this conformance's engine by default) with DuckDB's, as
+    * multisets, or in order with `ordered` (for queries whose ORDER BY keys are a total order). A
     * query DuckDB rejects is reported as matched, with a message starting with "skipped"
     */
-  def compare(name: String, q: Relation, target: WvletEngine = engine)(using
-      ctx: Context
+  def compare(name: String, q: Relation, target: WvletEngine = engine, ordered: Boolean = false)(
+      using ctx: Context
   ): ConformanceResult =
     val mode     = determinism(q)
     val expected =
@@ -180,8 +196,16 @@ class EngineConformance(
                 s"${actualRows.size} rows (nondeterministic: row count only)"
               )
             else
-              val e    = expectedRows.sortBy(rowKey)
-              val a    = actualRows.sortBy(rowKey)
+              val e =
+                if ordered then
+                  expectedRows
+                else
+                  expectedRows.sortBy(rowKey)
+              val a =
+                if ordered then
+                  actualRows
+                else
+                  actualRows.sortBy(rowKey)
               val diff = e.zip(a).find((x, y) => !rowEquals(x, y))
               diff match
                 case Some((x, y)) =>
@@ -350,3 +374,14 @@ class EngineConformance(
     x.size == y.size && x.zip(y).forall(valueEquals)
 
 end EngineConformance
+
+object EngineConformance:
+  /** A conformance over the TPC-H sample tables (spec/tpch/data), on DuckDB and the engine */
+  def tpch(optimizer: plan.OptimizerOptions): EngineConformance =
+    val tables = EngineTPCHBench.tables
+    EngineConformance(
+      "spec/tpch",
+      tables.map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
+      e => tables.foreach(t => e.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet")),
+      optimizer
+    )

@@ -1814,10 +1814,10 @@ class Planner(
 
   /**
     * A correlated [NOT] EXISTS / [NOT] IN filter conjunct over `p` as a semi or anti join with the
-    * decorrelated subquery body, which `plan` and `filtered` plan as in [[planCorrelated]]: the
-    * planner's operators, or runtime-plan nodes. The correlation equalities are hash keys (a nested
-    * loop join without any), the other correlated conditions a residual over p ++ body, with inner
-    * names resolving first. An IN also joins on the target and the select item.
+    * decorrelated subquery body, which `plan` and `filtered` plan as in [[planCorrelated]]. The
+    * correlation equalities are hash keys (a nested loop join without any), the other correlated
+    * conditions a residual over p ++ body, with inner names resolving first. An IN also joins on
+    * the target and the select item.
     *
     * NOT IN keeps SQL semantics: a row passes when no body row of its correlation group makes
     * `target <> value` other than TRUE, that is, an anti join on the correlation keys with the
@@ -2547,7 +2547,7 @@ private[engine] trait JoinPlanBuilder[P] extends JoinTreeBuilder[P]:
   /** Apply filter conjuncts: subquery conjuncts as joins, then the rest as a filter */
   def conjuncts(p: P, conds: List[Expression]): P
 
-/** Builds aggregations for the planner: operators, or runtime nodes with their operators */
+/** Builds aggregations for the planner: runtime nodes with their operators */
 private[engine] trait AggPlanBuilder[P]:
   /** The operator form of a plan */
   def op(p: P): Operator
