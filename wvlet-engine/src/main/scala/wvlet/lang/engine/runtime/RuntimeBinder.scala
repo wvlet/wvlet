@@ -338,7 +338,8 @@ class RuntimeBinder(planner: Planner):
           // Subqueries become joins over the optimized input, factored as the planner does:
           // semi and anti joins for [NOT] EXISTS / [NOT] IN conjuncts (plan-time constants for
           // uncorrelated ones with Decorrelate off), left joins for correlated scalar subqueries
-          // and EXISTS under OR / NOT / CASE
+          // and EXISTS under OR / NOT / CASE (legacy nodes with decorrelate_correlated or
+          // decorrelate_scalar off)
           plans.conjuncts(lowered(bind(child)), planner.conjuncts(f.filterExpr)).plan
         else
           filterOver(bind(child), conds)
@@ -804,7 +805,9 @@ class RuntimeBinder(planner: Planner):
       * with [[Optimization.DecorrelateCorrelated]]), then the other conjuncts filter their result,
       * their correlated scalar subqueries and EXISTS under OR / NOT / CASE joined as the planner
       * joins them (with [[Optimization.DecorrelateScalar]]). Uncorrelated subqueries inside them
-      * are constants
+      * are constants, as are uncorrelated [NOT] EXISTS / [NOT] IN conjuncts with
+      * [[Optimization.Decorrelate]] off. None, for legacy nodes, when a toggle the conjuncts need
+      * is off
       */
     private def subqueryJoins(p: Lowered, conds: List[Expression]): Option[Lowered] =
       // With Decorrelate off, uncorrelated conjuncts are plain conditions, whose subqueries the
