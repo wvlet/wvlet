@@ -30,9 +30,8 @@ import wvlet.uni.test.UniTest
 class EnginePushDownFiltersTest extends UniTest:
   import RuntimePlan.*
 
-  private val options  = OptimizerOptions().withValidatePlans(true)
-  private val engine   = WvletEngine(optimizer = options)
-  private val disabled = engine.withOptimizer(options.withDisabled(Optimization.PushDownFilters))
+  private val options = OptimizerOptions().withValidatePlans(true)
+  private val engine  = WvletEngine(optimizer = options)
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -76,7 +75,10 @@ class EnginePushDownFiltersTest extends UniTest:
     withQuery(query)(q => e.execute(q).batches.map(_.size.toLong).sum)
 
   /** The query returns the same rows with the pass and without it */
-  private def sameRows(query: String): Unit = count(engine, query) shouldBe count(disabled, query)
+  private def sameRows(query: String, o: OptimizerOptions = options): Unit =
+    val on = engine.withOptimizer(o)
+    count(on, query) shouldBe
+      count(on.withOptimizer(o.withDisabled(Optimization.PushDownFilters)), query)
 
   test("push a filter through a projection to the scan") {
     val query =
@@ -460,7 +462,7 @@ class EnginePushDownFiltersTest extends UniTest:
             0
       ) + p.children.map(keyFilters).sum
     keyFilters(p) shouldBe 2
-    sameRows(query)
+    sameRows(query, noShare)
   }
 
 end EnginePushDownFiltersTest
