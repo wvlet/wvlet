@@ -73,6 +73,8 @@ class Planner(
       pruneColumns = enabled(Optimization.PruneColumns),
       scanFilters = enabled(Optimization.PushScanFilters)
     )
+    if !enabled(Optimization.LateGather) then
+      Planner.disableLateGather(pruned)
     if enabled(Optimization.Parallelize) then
       Parallelizer(pruned, TaskRunner.default)
     else
@@ -2955,6 +2957,17 @@ object Planner:
     * which a larger result is estimated without
     */
   val MaxResultStatsRows: Long = 1L << 20
+
+  /** Make the filters and hash joins of a physical plan gather their output columns eagerly */
+  private[engine] def disableLateGather(op: Operator): Unit =
+    op match
+      case f: FilterOp =>
+        f.lateGather = false
+      case j: HashJoinOp =>
+        j.lateGather = false
+      case _ =>
+    op.children.foreach(disableLateGather)
+    op.sharedInputs.foreach(disableLateGather)
 
   /**
     * The keys and the inequality of an ASOF join, each bound over its input: a left row matches the

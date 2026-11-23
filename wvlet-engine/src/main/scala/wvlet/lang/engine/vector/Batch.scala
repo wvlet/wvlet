@@ -35,14 +35,59 @@ case class Schema(fields: IndexedSeq[Field]):
 object Schema:
   val empty: Schema = Schema(IndexedSeq.empty)
 
-/** A set of equally sized column vectors */
-final class Batch(val columns: Array[Vec], val size: Int):
-  def numColumns: Int         = columns.length
-  def column(i: Int): Vec     = columns(i)
-  def isEmpty: Boolean        = size == 0
-  def row(i: Int): Array[Any] = columns.map(_.get(i))
+/**
+  * A set of equally sized column vectors.
+  *
+  * A column can be deferred: a source vector and the row positions (an index array, -1 for NULL)
+  * to take from it, shared by the columns that came through the same [[take]]. A deferred column is
+  * gathered on its first [[column]] read and cached; [[columns]] and [[compact]] gather all of them.
+  * Taking rows of deferred columns composes the index arrays, so a chain of filters and joins
+  * gathers each column once, at its reader. Deferred batches stay inside the operator pipeline that
+  * made them: buffered batches ([[wvlet.lang.engine.exec.Operator.drain]], [[Batch.concat]]) are
+  * compacted, so the cache is never shared across threads.
+  */
+final class Batch private (
+    private val cols: Array[Vec],
+    private var srcs: Array[Vec],
+    private var sels: Array[Array[Int]],
+    val size: Int
+):
+  def this(columns: Array[Vec], size: Int) = this(columns, null, null, size)
 
-  def filter(mask: Array[Boolean]): Batch =
+  def numColumns: Int = cols.length
+
+  /** Whether some columns are not gathered yet */
+  def isDeferred: Boolean = srcs != null
+
+  /** The i-th column, gathered on first read when deferred */
+  def column(i: Int): Vec =
+    var v = cols(i)
+    if v == null then
+      v = srcs(i).gather(sels(i), size)
+      cols(i) = v
+    v
+
+  /** All columns, gathered */
+  def columns: Array[Vec] =
+    compact()
+    cols
+
+  /** Gather the deferred columns and drop the references to their sources */
+  def compact(): Batch =
+    if srcs != null then
+      var i = 0
+      while i < cols.length do
+        column(i)
+        i += 1
+      srcs = null
+      sels = null
+    this
+
+  def isEmpty: Boolean        = size == 0
+  def row(i: Int): Array[Any] = Array.tabulate(cols.length)(c => column(c).get(i))
+
+  /** Positions of the true values of the mask, or null when every row is selected */
+  private def maskPositions(mask: Array[Boolean]): Array[Int] =
     var count = 0
     var i     = 0
     while i < size do
@@ -50,7 +95,7 @@ final class Batch(val columns: Array[Vec], val size: Int):
         count += 1
       i += 1
     if count == size then
-      this
+      null
     else
       // Positions are computed once and shared by every column
       val idx = new Array[Int](count)
@@ -61,18 +106,95 @@ final class Batch(val columns: Array[Vec], val size: Int):
           idx(j) = i
           j += 1
         i += 1
-      gather(idx, count)
+      idx
 
-  def gather(idx: Array[Int], n: Int): Batch = Batch(columns.map(_.gather(idx, n)), n)
+  /** Rows whose mask is true, gathered */
+  def filter(mask: Array[Boolean]): Batch =
+    val idx = maskPositions(mask)
+    if idx == null then
+      this
+    else
+      gather(idx, idx.length)
+
+  /** Rows whose mask is true, with the columns deferred ([[take]]) */
+  def takeWhere(mask: Array[Boolean]): Batch =
+    val idx = maskPositions(mask)
+    if idx == null then
+      this
+    else
+      take(idx, idx.length)
+
+  /** Rows at the given positions (-1 for a row of NULLs), gathered */
+  def gather(idx: Array[Int], n: Int): Batch = take(idx, n).compact()
+
+  /**
+    * Rows at the given positions (-1 for a row of NULLs), with every column deferred: no column is
+    * copied until it is read. `idx` must not be modified afterwards
+    */
+  def take(idx: Array[Int], n: Int): Batch =
+    val m = cols.length
+    if m == 0 then
+      return Batch(Array.empty[Vec], n)
+    val newSrcs = new Array[Vec](m)
+    val newSels = new Array[Array[Int]](m)
+    // Index arrays composed so far, by identity of the inner one (a batch has few distinct ones)
+    var inner: List[(Array[Int], Array[Int])] = Nil
+    var i                                     = 0
+    while i < m do
+      val v = cols(i)
+      if v != null then
+        newSrcs(i) = v
+        newSels(i) = idx
+      else
+        val sel = sels(i)
+        newSrcs(i) = srcs(i)
+        newSels(i) =
+          inner.find(_._1 eq sel) match
+            case Some((_, composed)) =>
+              composed
+            case None =>
+              val composed = Batch.compose(sel, idx, n)
+              inner = (sel, composed) :: inner
+              composed
+      i += 1
+    Batch(new Array[Vec](m), newSrcs, newSels, n)
+
+  end take
 
   def slice(from: Int, until: Int): Batch =
     val end = math.min(until, size)
     if from == 0 && end == size then
       this
+    else if srcs != null then
+      val n = math.max(0, end - from)
+      take(Array.tabulate(n)(from + _), n)
     else
-      Batch(columns.map(_.slice(from, end)), math.max(0, end - from))
+      Batch(cols.map(_.slice(from, end)), math.max(0, end - from))
 
-  def select(indexes: Array[Int]): Batch = Batch(indexes.map(columns), size)
+  /** The columns at the given positions, in that order (deferred columns stay deferred) */
+  def select(indexes: Array[Int]): Batch =
+    if srcs == null then
+      Batch(indexes.map(cols), size)
+    else
+      Batch(indexes.map(cols), indexes.map(srcs), indexes.map(sels), size)
+
+  /** The columns of this batch followed by those of `other`, which has the same row count */
+  def ++(other: Batch): Batch =
+    require(size == other.size, s"Row counts differ: ${size} and ${other.size}")
+    if srcs == null && other.srcs == null then
+      Batch(cols ++ other.cols, size)
+    else
+      def srcsOf(b: Batch): Array[Vec] =
+        if b.srcs == null then
+          new Array[Vec](b.cols.length)
+        else
+          b.srcs
+      def selsOf(b: Batch): Array[Array[Int]] =
+        if b.sels == null then
+          new Array[Array[Int]](b.cols.length)
+        else
+          b.sels
+      Batch(cols ++ other.cols, srcsOf(this) ++ srcsOf(other), selsOf(this) ++ selsOf(other), size)
 
   override def toString: String = s"Batch(${size} rows, ${numColumns} columns)"
 
@@ -86,10 +208,24 @@ object Batch:
   /** A batch with no columns that still carries a row count (e.g. `select 1` input) */
   def ofRows(n: Int): Batch = Batch(Array.empty, n)
 
+  /** `outer` positions mapped through `inner` positions; -1 (a row of NULLs) stays -1 */
+  private def compose(inner: Array[Int], outer: Array[Int], n: Int): Array[Int] =
+    val out = new Array[Int](n)
+    var i   = 0
+    while i < n do
+      val k = outer(i)
+      out(i) =
+        if k < 0 then
+          -1
+        else
+          inner(k)
+      i += 1
+    out
+
   /** Concatenate batches with the same column types */
   def concat(schema: Schema, batches: Seq[Batch]): Batch =
     if batches.size == 1 then
-      batches.head
+      batches.head.compact()
     else
       val total = batches.map(_.size).sum
       val cols  =

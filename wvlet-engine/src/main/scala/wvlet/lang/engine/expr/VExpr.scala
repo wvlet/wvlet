@@ -37,7 +37,7 @@ trait VExpr:
 
 /** A reference to an input column */
 case class ColRef(index: Int, ptype: PType, name: String) extends VExpr:
-  def eval(b: Batch): Vec          = b.columns(index)
+  def eval(b: Batch): Vec          = b.column(index)
   def sig: String                  = s"#${index}"
   override def isConstant: Boolean = false
 

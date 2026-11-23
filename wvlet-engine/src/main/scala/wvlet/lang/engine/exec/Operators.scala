@@ -63,12 +63,12 @@ trait Operator:
 
   protected def details: String = ""
 
-  /** Drain every remaining batch */
+  /** Drain every remaining batch, compacted (see [[Batch]]) */
   def drain(): Seq[Batch] =
     val b = Seq.newBuilder[Batch]
     var x = next()
     while x != null do
-      b += x
+      b += x.compact()
       x = next()
     b.result()
 
@@ -123,6 +123,13 @@ class SingleRowOp extends Operator:
   * that order), so columns only the condition reads aren't copied
   */
 class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null) extends Operator:
+  /** Whether the output columns are deferred instead of gathered (`late_gather`) */
+  var lateGather: Boolean = true
+
+  def withLateGather(enabled: Boolean): this.type =
+    lateGather = enabled
+    this
+
   val schema: Schema =
     if keep == null then
       child.schema
@@ -150,7 +157,11 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
           b
         else
           b.select(keep)
-      val r = in.filter(mask)
+      val r =
+        if lateGather then
+          in.takeWhere(mask)
+        else
+          in.filter(mask)
       if r.size > 0 then
         out = r
     out
@@ -1094,7 +1105,7 @@ class HashJoinOp(
     schema,
     joinBuild,
     mode
-  )
+  ).withLateGather(lateGather)
 
   override def close(): Unit =
     // A shared build's right input belongs to the join that made the build
@@ -1108,6 +1119,23 @@ class HashJoinOp(
   private var buildMatched: Array[Boolean] = null
   private var emittedUnmatched             = false
   private val leftWidth                    = left.schema.size
+
+  /** Whether the output columns are deferred instead of gathered (`late_gather`) */
+  var lateGather: Boolean = true
+
+  def withLateGather(enabled: Boolean): this.type =
+    lateGather = enabled
+    this
+
+  private def rowsOf(b: Batch, idx: Array[Int], n: Int): Batch =
+    if lateGather then
+      b.take(idx, n)
+    else
+      b.gather(idx, n)
+
+  /** Probe rows `lIdx` next to build rows `rIdx` (-1 for NULLs) */
+  private def joined(probe: Batch, lIdx: Array[Int], rIdx: Array[Int]): Batch =
+    rowsOf(probe, lIdx, lIdx.length) ++ rowsOf(build, rIdx, rIdx.length)
 
   private def buildTable(): Unit =
     joinBuild.ensureBuilt()
@@ -1146,10 +1174,10 @@ class HashJoinOp(
       return null
     val n = idx.length
     if kind.outputsBuildOnly then
-      build.gather(idx, n)
+      rowsOf(build, idx, n)
     else
       val leftPad = left.schema.types.map(t => Vec.nullVec(t, n)).toArray
-      Batch(leftPad ++ build.gather(idx, n).columns, n)
+      Batch(leftPad, n) ++ rowsOf(build, idx, n)
 
   private def probeBatch(probe: Batch): Batch =
     val keyVecs = leftKeys.map(_.eval(probe)).toArray
@@ -1169,11 +1197,8 @@ class HashJoinOp(
     // Apply the residual condition on candidate pairs
     residual.foreach { cond =>
       if lIdx.nonEmpty then
-        val joined = Batch(
-          probe.gather(lIdx, lIdx.length).columns ++ build.gather(rIdx, rIdx.length).columns,
-          lIdx.length
-        )
-        val mask = Kernels.trueMask(cond.eval(joined))
+        // Only the columns the condition reads are gathered
+        val mask = Kernels.trueMask(cond.eval(joined(probe, lIdx, rIdx)))
         val keep = (0 until lIdx.length).filter(mask(_)).toArray
         lIdx = keep.map(lIdx)
         rIdx = keep.map(rIdx)
@@ -1181,14 +1206,9 @@ class HashJoinOp(
     kind match
       case JoinKind.Inner | JoinKind.Cross =>
         if lIdx.isEmpty then
-          Batch(probe.gather(lIdx, 0).columns ++ build.gather(rIdx, 0).columns, 0) match
-            case _ =>
-              null
+          null
         else
-          Batch(
-            probe.gather(lIdx, lIdx.length).columns ++ build.gather(rIdx, rIdx.length).columns,
-            lIdx.length
-          )
+          joined(probe, lIdx, rIdx)
       case JoinKind.Left | JoinKind.Full | JoinKind.Right =>
         if buildMatched != null then
           rIdx.foreach(r => buildMatched(r) = true)
@@ -1196,10 +1216,7 @@ class HashJoinOp(
           if lIdx.isEmpty then
             null
           else
-            Batch(
-              probe.gather(lIdx, lIdx.length).columns ++ build.gather(rIdx, rIdx.length).columns,
-              lIdx.length
-            )
+            joined(probe, lIdx, rIdx)
         else
           val matched = new Array[Boolean](probe.size)
           lIdx.foreach(l => matched(l) = true)
@@ -1209,14 +1226,15 @@ class HashJoinOp(
           if allL.isEmpty then
             null
           else
-            Batch(
-              probe.gather(allL, allL.length).columns ++ build.gather(allR, allR.length).columns,
-              allL.length
-            )
+            joined(probe, allL, allR)
       case JoinKind.Semi =>
         val matched = new Array[Boolean](probe.size)
         lIdx.foreach(l => matched(l) = true)
-        val r = probe.filter(matched)
+        val r =
+          if lateGather then
+            probe.takeWhere(matched)
+          else
+            probe.filter(matched)
         if r.size == 0 then
           null
         else
@@ -1225,7 +1243,11 @@ class HashJoinOp(
         val keep = new Array[Boolean](probe.size)
         java.util.Arrays.fill(keep, true)
         lIdx.foreach(l => keep(l) = false)
-        val r = probe.filter(keep)
+        val r =
+          if lateGather then
+            probe.takeWhere(keep)
+          else
+            probe.filter(keep)
         if r.size == 0 then
           null
         else

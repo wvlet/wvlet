@@ -58,7 +58,7 @@ object Parallelizer:
       case s: ScanOp if s.source.canSplit =>
         Some(Pipeline(s, x => x, None, Nil, Nil))
       case f: FilterOp =>
-        pipeline(f.child, runner).map(_.map(x => FilterOp(x, f.cond, f.keep)))
+        pipeline(f.child, runner).map(_.map(x => FilterOp(x, f.cond, f.keep).withLateGather(f.lateGather)))
       case pr: ProjectOp =>
         pipeline(pr.child, runner).map(_.map(x => ProjectOp(x, pr.exprs, pr.schema)))
       case j: HashJoinOp =>
@@ -74,7 +74,7 @@ object Parallelizer:
             j.schema,
             buildRunner = runner,
             runtimeFilters = j.runtimeFilters
-          )
+          ).withLateGather(j.lateGather)
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
             close = p.close :+ (() => template.right.close())
@@ -185,7 +185,7 @@ object Parallelizer:
               expectedGroups = a.expectedGroups
             )
           case f: FilterOp =>
-            FilterOp(r(f.child), f.cond, f.keep)
+            FilterOp(r(f.child), f.cond, f.keep).withLateGather(f.lateGather)
           case p: ProjectOp =>
             ProjectOp(r(p.child), p.exprs, p.schema)
           case l: LimitOp if l.child.isInstanceOf[DistinctOp] =>
@@ -238,7 +238,7 @@ object Parallelizer:
               j.schema,
               buildRunner = runner,
               runtimeFilters = j.runtimeFilters
-            )
+            ).withLateGather(j.lateGather)
           case j: NestedLoopJoinOp =>
             NestedLoopJoinOp(r(j.left), r(j.right), j.cond, j.kind, j.schema)
           case s: SetOpOp if !s.all =>
