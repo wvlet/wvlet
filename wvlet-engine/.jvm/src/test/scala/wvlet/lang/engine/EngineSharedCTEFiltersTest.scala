@@ -90,6 +90,16 @@ class EngineSharedCTEFiltersTest extends UniTest:
     sameRows(query)
   }
 
+  test("keep a reader's NOT IN list apart from one with a NULL") {
+    // `not in ('F', null)` keeps no row; the other reader's `not in ('F')` keeps 'O'
+    val query =
+      s"""${cte}select 'a', l_linestatus from t where l_linestatus not in ('F', null)
+         |union all
+         |select 'b', l_linestatus from t where l_linestatus not in ('F')""".stripMargin
+    rows(engine, query) shouldBe Seq("b|O")
+    sameRows(query)
+  }
+
   test("push a condition every reader has as it is") {
     val query =
       s"""${cte}select a.l_returnflag, a.q, b.q

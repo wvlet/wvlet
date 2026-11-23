@@ -249,8 +249,16 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
     extends VExpr:
   override def children: Seq[VExpr] = Seq(child)
   def ptype: PType                  = PType.Bool
-  def sig: String                   = s"in(${child.sig},${values.mkString(",")},${negate})"
-  def eval(b: Batch): Vec           =
+  // A NULL in the list changes the value where no value matches, so the signature marks it
+  def sig: String =
+    val nullValue =
+      if hasNullValue then
+        ",null"
+      else
+        ""
+    s"in(${child.sig},${values.mkString(",")}${nullValue},${negate})"
+
+  def eval(b: Batch): Vec =
     val v                     = child.eval(b)
     val o                     = new Array[Boolean](b.size)
     var nulls: Array[Boolean] = null

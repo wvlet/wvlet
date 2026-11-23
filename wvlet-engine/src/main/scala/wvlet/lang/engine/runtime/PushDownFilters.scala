@@ -512,12 +512,14 @@ object PushDownFilters extends Pass:
           .filter(isDeterministic)
           .map(c => JoinCondition(BExpr(c), f.literalCounts))
       }
-      val common    = branches.map(_.map(_.cond.expr.sig).toSet).reduce(_ intersect _)
-      val inAll     = branches.head.filter(c => common.contains(c.cond.expr.sig))
+      // Conjuncts compare structurally: a signature omits what a RowFn closes over (tuple_in's
+      // subquery rows), so two readers' different conjuncts can share one
+      val common    = branches.map(_.map(_.cond.expr).toSet).reduce(_ intersect _)
+      val inAll     = branches.head.filter(c => common.contains(c.cond.expr))
       val columns   = branches.flatMap(_.flatMap(_.cond.refs)).distinct.sortBy(_.value)
       val perColumn = columns.flatMap { col =>
         val parts = branches.map(
-          _.filter(c => !common.contains(c.cond.expr.sig) && c.cond.refs == Set(col))
+          _.filter(c => !common.contains(c.cond.expr) && c.cond.refs == Set(col))
         )
         if parts.exists(_.isEmpty) then
           None
@@ -525,7 +527,7 @@ object PushDownFilters extends Pass:
           // One disjunct per distinct conjunction, in reader order
           val disjuncts = parts
             .map(cs => cs.map(_.cond.expr).reduce(AndExpr(_, _)) -> cs)
-            .distinctBy(_._1.sig)
+            .distinctBy(_._1)
           val e      = disjuncts.map(_._1).reduce(OrExpr(_, _))
           val counts = disjuncts.flatMap(_._2.flatMap(_.literalCounts)).toMap
           Some(JoinCondition(BExpr(e), counts))
