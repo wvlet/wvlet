@@ -157,7 +157,9 @@ class EngineMaterializedCTEStatsTest extends UniTest:
          |where not exists (select 1 from t where t.s = o.o_orderstatus and t.c > 1000000)
          |  and exists (select 1 from t where t.s = o.o_orderstatus)""".stripMargin
     explain(boundBuilds, query) shouldContain "HashJoin[RightAnti]"
-    explain(engine, query) shouldNotContain "HashJoin[RightAnti]"
+    val plan = explain(engine, query)
+    plan shouldNotContain "HashJoin[RightAnti]"
+    plan shouldContain "HashJoin[Anti]"
     val r = rows(engine, query)
     r.nonEmpty shouldBe true
     r shouldBe rows(disabled, query)
