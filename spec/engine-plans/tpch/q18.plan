@@ -1,5 +1,5 @@
 -- q18#1
-Scan[lineitem](columns=l_orderkey,l_quantity) -> [l_orderkey:long, l_quantity:decimal(15,2)]
+Scan[lineitem](columns=l_orderkey,l_quantity join_filter=l_orderkey) -> [l_orderkey:long, l_quantity:decimal(15,2)]
   Scan[orders](columns=o_orderkey,o_custkey,o_totalprice,o_orderdate) -> [o_orderkey:long, o_custkey:long, o_totalprice:decimal(15,2), o_orderdate:date]
   ↓ Morsel[parallelism=N] -> [o_orderkey:long, o_custkey:long, o_totalprice:decimal(15,2), o_orderdate:date]
 ↙ HashJoin[Inner](#0 = #0) -> [l_orderkey:long, l_quantity:decimal(15,2), o_orderkey:long, o_custkey:long, o_totalprice:decimal(15,2), o_orderdate:date]

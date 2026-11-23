@@ -291,7 +291,8 @@ object ColumnPruner:
       j.rightKeys.map(VExprs.remap(_, rm)),
       j.kind,
       j.residual.map(VExprs.remap(_, joined)),
-      schema
+      schema,
+      runtimeFilters = j.runtimeFilters
     )
     (op, kept)
 

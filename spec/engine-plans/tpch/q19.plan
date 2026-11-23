@@ -1,5 +1,5 @@
 -- q19#1
-Scan[lineitem](columns=l_partkey,l_quantity,l_extendedprice,l_discount,l_shipinstruct,l_shipmode filter=And(Or(Compare(l_shipmode,Eq,AIR),Compare(l_shipmode,Eq,AIR REG)),Compare(l_shipinstruct,Eq,DELIVER IN PERSON))) -> [l_partkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipinstruct:string, l_shipmode:string]
+Scan[lineitem](columns=l_partkey,l_quantity,l_extendedprice,l_discount,l_shipinstruct,l_shipmode filter=And(Or(Compare(l_shipmode,Eq,AIR),Compare(l_shipmode,Eq,AIR REG)),Compare(l_shipinstruct,Eq,DELIVER IN PERSON)) join_filter=l_partkey) -> [l_partkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipinstruct:string, l_shipmode:string]
 ↓ Filter((in(#5,AIR,AIR REG,false) and (#4=lit(DELIVER IN PERSON:string))), keep=0,1,2,3) -> [l_partkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
   Scan[part](columns=p_partkey,p_brand,p_size,p_container) -> [p_partkey:long, p_brand:string, p_size:int, p_container:string]
   ↓ Morsel[parallelism=N] -> [p_partkey:long, p_brand:string, p_size:int, p_container:string]

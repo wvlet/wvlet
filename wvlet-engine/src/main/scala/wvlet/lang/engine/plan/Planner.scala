@@ -55,6 +55,12 @@ class Planner(
 
   private[engine] def enabled(o: Optimization): Boolean = options.isEnabled(o)
 
+  /** Lower a runtime plan into operators, with runtime join filters when enabled */
+  private[engine] def lower(p: RuntimePlan): Operator = Lowering(
+    p,
+    joinFilters = enabled(Optimization.RuntimeJoinFilters)
+  )
+
   /** Whether a join builds on the other input, as this one has much more rows than that */
   private[engine] def swapBuild(rows: Double, otherRows: Double): Boolean = JoinOrderOptimizer
     .swapBuild(options, rows, otherRows)
@@ -121,7 +127,7 @@ class Planner(
     try
       val bound     = runtimeBinder.bind(r)
       val optimized = optimizeRuntime(bound)
-      val op        = optimizePhysical(Lowering(optimized))
+      val op        = optimizePhysical(lower(optimized))
       finalizeCTEs(op)
       if enabled(Optimization.ReplanMaterializedCTEs) then
         if enabled(Optimization.ReplanCTEBodies) then
@@ -152,7 +158,7 @@ class Planner(
   private def replanJoinedCTEs(bound: RuntimePlan, optimized: RuntimePlan): Option[Operator] =
     replanRuntime(bound, optimized).flatMap { replanned =>
       try
-        val op = optimizePhysical(Lowering(replanned))
+        val op = optimizePhysical(lower(replanned))
         if !readsKeptColumns(op) then
           throw StatusCode
             .UNEXPECTED_STATE
@@ -256,7 +262,7 @@ class Planner(
                 s
               else
                 try
-                  SharedInput(s.name, body, Lowering(body))
+                  SharedInput(s.name, body, lower(body))
                 catch
                   case e: WvletLangException
                       if e.statusCode == StatusCode.UNEXPECTED_STATE && !options.validatePlans =>
@@ -441,7 +447,7 @@ class Planner(
   private lazy val runtimeOptimizer = Optimizer.default(options)
 
   /** Plan a relation into operators: bind it to the runtime plan, optimize, and lower it */
-  private[engine] def planRelation(r: Relation): Operator = Lowering(runtimePlan(r))
+  private[engine] def planRelation(r: Relation): Operator = lower(runtimePlan(r))
 
   /** The optimized runtime plan of a relation */
   def runtimePlan(r: Relation): RuntimePlan = optimizeRuntime(runtimeBinder.bind(r))
@@ -1347,7 +1353,7 @@ class Planner(
           body
         else
           runtimeOptimizer.pruneColumns(body, keep.map(out(_).id).toSet)
-      val op       = Lowering(runtimeOptimizer.pushScanFilters(pruned))
+      val op       = Planner.this.lower(runtimeOptimizer.pushScanFilters(pruned))
       val pos      = pruned.output.map(_.id).zipWithIndex.toMap
       val selected =
         if pruned.output.size == keep.size then

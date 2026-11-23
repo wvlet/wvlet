@@ -1,7 +1,7 @@
 -- q16#1
-Scan[date_dim](columns=d_date_sk,d_date filter=And(Compare(d_date,GtEq,2002-02-01),Compare(d_date,LtEq,2002-04-02))) -> [d_date_sk:long, d_date:date]
+Scan[date_dim](columns=d_date_sk,d_date filter=And(Compare(d_date,GtEq,2002-02-01),Compare(d_date,LtEq,2002-04-02)) join_filter=d_date_sk) -> [d_date_sk:long, d_date:date]
 ↓ Filter(((#1>=lit(11719:date)) and (#1<=lit(11779:date))), keep=0) -> [d_date_sk:long]
-  Scan[catalog_sales](columns=cs_ship_date_sk,cs_ship_addr_sk,cs_call_center_sk,cs_warehouse_sk,cs_order_number,cs_ext_ship_cost,cs_net_profit) -> [cs_ship_date_sk:long, cs_ship_addr_sk:long, cs_call_center_sk:long, cs_warehouse_sk:long, cs_order_number:long, cs_ext_ship_cost:decimal(7,2), cs_net_profit:decimal(7,2)]
+  Scan[catalog_sales](columns=cs_ship_date_sk,cs_ship_addr_sk,cs_call_center_sk,cs_warehouse_sk,cs_order_number,cs_ext_ship_cost,cs_net_profit join_filter=cs_ship_addr_sk) -> [cs_ship_date_sk:long, cs_ship_addr_sk:long, cs_call_center_sk:long, cs_warehouse_sk:long, cs_order_number:long, cs_ext_ship_cost:decimal(7,2), cs_net_profit:decimal(7,2)]
     Scan[customer_address](columns=ca_address_sk,ca_state filter=Compare(ca_state,Eq,GA)) -> [ca_address_sk:long, ca_state:string]
     ↓ Filter((#1=lit(GA:string)), keep=0) -> [ca_address_sk:long]
     ↓ Morsel[parallelism=N] -> [ca_address_sk:long]

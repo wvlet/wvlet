@@ -1,5 +1,5 @@
 -- q08#1
-Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_net_profit) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_net_profit:decimal(7,2)]
+Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_net_profit join_filter=ss_sold_date_sk,ss_store_sk) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_net_profit:decimal(7,2)]
   Scan[date_dim](columns=d_date_sk,d_year,d_qoy filter=And(Compare(d_qoy,Eq,2),Compare(d_year,Eq,1998))) -> [d_date_sk:long, d_year:long, d_qoy:long]
   ↓ Filter(((#2=lit(2:long)) and (#1=lit(1998:long))), keep=0) -> [d_date_sk:long]
   ↓ Morsel[parallelism=N] -> [d_date_sk:long]
@@ -14,7 +14,7 @@ Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_net_profit) -> [ss_sold
   ↓ Morsel[parallelism=N] -> [ca_zip:string]
   ↓ PartitionedAgg[parallelism=N](keys=[#0], aggs=[]) -> [ca_zip:string]
   ↓ Project(#0) -> [ca_zip:string]
-    Scan[customer_address](columns=ca_address_sk,ca_zip) -> [ca_address_sk:long, ca_zip:string]
+    Scan[customer_address](columns=ca_address_sk,ca_zip join_filter=ca_address_sk) -> [ca_address_sk:long, ca_zip:string]
       Scan[customer](columns=c_current_addr_sk,c_preferred_cust_flag filter=Compare(c_preferred_cust_flag,Eq,Y)) -> [c_current_addr_sk:long, c_preferred_cust_flag:string]
       ↓ Filter((#1=lit(Y:string)), keep=0) -> [c_current_addr_sk:long]
       ↓ Morsel[parallelism=N] -> [c_current_addr_sk:long]

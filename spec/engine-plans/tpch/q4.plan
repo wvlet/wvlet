@@ -1,5 +1,5 @@
 -- q4#1
-Scan[lineitem](columns=l_orderkey,l_commitdate,l_receiptdate) -> [l_orderkey:long, l_commitdate:date, l_receiptdate:date]
+Scan[lineitem](columns=l_orderkey,l_commitdate,l_receiptdate join_filter=l_orderkey) -> [l_orderkey:long, l_commitdate:date, l_receiptdate:date]
 ↓ Filter((#1<#2), keep=0) -> [l_orderkey:long]
   Scan[orders](columns=o_orderkey,o_orderdate,o_orderpriority filter=And(Compare(o_orderdate,GtEq,1993-07-01),Compare(o_orderdate,Lt,1993-10-01))) -> [o_orderkey:long, o_orderdate:date, o_orderpriority:string]
   ↓ Filter(((#1>=lit(8582:date)) and (#1<lit(8674:date))), keep=0,2) -> [o_orderkey:long, o_orderpriority:string]

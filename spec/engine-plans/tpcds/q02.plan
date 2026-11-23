@@ -1,8 +1,8 @@
 -- q02#1
-Scan[date_dim](columns=d_week_seq,d_year filter=Compare(d_year,Eq,2001)) -> [d_week_seq:long, d_year:long]
+Scan[date_dim](columns=d_week_seq,d_year filter=Compare(d_year,Eq,2001) join_filter=d_week_seq) -> [d_week_seq:long, d_year:long]
 ↓ Filter((#1=lit(2001:long)), keep=0) -> [d_week_seq:long]
     (shared)
-      Scan[date_dim](columns=d_date_sk,d_week_seq,d_day_name) -> [d_date_sk:long, d_week_seq:long, d_day_name:string]
+      Scan[date_dim](columns=d_date_sk,d_week_seq,d_day_name join_filter=d_date_sk) -> [d_date_sk:long, d_week_seq:long, d_day_name:string]
         Scan[web_sales](columns=ws_sold_date_sk,ws_ext_sales_price) -> [ws_sold_date_sk:long, ws_ext_sales_price:decimal(7,2)]
         ↓ Project(#0, #1) -> [sold_date_sk:long, sales_price:decimal(7,2)]
         ↓ Morsel[parallelism=N] -> [sold_date_sk:long, sales_price:decimal(7,2)]
@@ -25,7 +25,7 @@ Scan[date_dim](columns=d_week_seq,d_year filter=Compare(d_year,Eq,2001)) -> [d_w
 ↙ HashJoin[Inner](#0 = #0) -> [d_week_seq:long, d_week_seq:long, sun_sales:decimal(38,2), mon_sales:decimal(38,2), tue_sales:decimal(38,2), wed_sales:decimal(38,2), thu_sales:decimal(38,2), fri_sales:decimal(38,2), sat_sales:decimal(38,2)]
 ↓ Project(#1, #2, #3, #4, #5, #6, #7, #8) -> [d_week_seq1:long, sun_sales1:decimal(38,2), mon_sales1:decimal(38,2), tue_sales1:decimal(38,2), wed_sales1:decimal(38,2), thu_sales1:decimal(38,2), fri_sales1:decimal(38,2), sat_sales1:decimal(38,2)]
 ↓ Project(#0, #1, #2, #3, #4, #5, #6, #7) -> [d_week_seq1:long, sun_sales1:decimal(38,2), mon_sales1:decimal(38,2), tue_sales1:decimal(38,2), wed_sales1:decimal(38,2), thu_sales1:decimal(38,2), fri_sales1:decimal(38,2), sat_sales1:decimal(38,2)]
-  Scan[date_dim](columns=d_week_seq,d_year) -> [d_week_seq:long, d_year:long]
+  Scan[date_dim](columns=d_week_seq,d_year join_filter=d_week_seq) -> [d_week_seq:long, d_year:long]
   ↓ Filter((#1=(lit(2001:int)+lit(1:int))), keep=0) -> [d_week_seq:long]
     Scan[CTE[wswscs]]() -> [d_week_seq:long, sun_sales:decimal(38,2), mon_sales:decimal(38,2), tue_sales:decimal(38,2), wed_sales:decimal(38,2), thu_sales:decimal(38,2), fri_sales:decimal(38,2), sat_sales:decimal(38,2)]
     ↓ Morsel[parallelism=N] -> [d_week_seq:long, sun_sales:decimal(38,2), mon_sales:decimal(38,2), tue_sales:decimal(38,2), wed_sales:decimal(38,2), thu_sales:decimal(38,2), fri_sales:decimal(38,2), sat_sales:decimal(38,2)]

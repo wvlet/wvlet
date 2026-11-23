@@ -1,5 +1,5 @@
 -- q12#1
-Scan[orders](columns=o_orderkey,o_orderpriority) -> [o_orderkey:long, o_orderpriority:string]
+Scan[orders](columns=o_orderkey,o_orderpriority join_filter=o_orderkey) -> [o_orderkey:long, o_orderpriority:string]
   Scan[lineitem](columns=l_orderkey,l_shipdate,l_commitdate,l_receiptdate,l_shipmode filter=And(And(Or(Compare(l_shipmode,Eq,MAIL),Compare(l_shipmode,Eq,SHIP)),Compare(l_receiptdate,GtEq,1994-01-01)),Compare(l_receiptdate,Lt,1995-01-01))) -> [l_orderkey:long, l_shipdate:date, l_commitdate:date, l_receiptdate:date, l_shipmode:string]
   ↓ Filter(((((in(#4,MAIL,SHIP,false) and (#2<#3)) and (#1<#2)) and (#3>=lit(8766:date))) and (#3<lit(9131:date))), keep=0,4) -> [l_orderkey:long, l_shipmode:string]
   ↓ Morsel[parallelism=N] -> [l_orderkey:long, l_shipmode:string]

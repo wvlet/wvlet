@@ -1,7 +1,7 @@
 -- q3#1
-Scan[lineitem](columns=l_orderkey,l_extendedprice,l_discount,l_shipdate filter=Compare(l_shipdate,Gt,1995-03-15)) -> [l_orderkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipdate:date]
+Scan[lineitem](columns=l_orderkey,l_extendedprice,l_discount,l_shipdate filter=Compare(l_shipdate,Gt,1995-03-15) join_filter=l_orderkey) -> [l_orderkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipdate:date]
 ↓ Filter((#3>lit(9204:date)), keep=0,1,2) -> [l_orderkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
-  Scan[orders](columns=o_orderkey,o_custkey,o_orderdate,o_shippriority filter=Compare(o_orderdate,Lt,1995-03-15)) -> [o_orderkey:long, o_custkey:long, o_orderdate:date, o_shippriority:int]
+  Scan[orders](columns=o_orderkey,o_custkey,o_orderdate,o_shippriority filter=Compare(o_orderdate,Lt,1995-03-15) join_filter=o_custkey) -> [o_orderkey:long, o_custkey:long, o_orderdate:date, o_shippriority:int]
   ↓ Filter((#2<lit(9204:date))) -> [o_orderkey:long, o_custkey:long, o_orderdate:date, o_shippriority:int]
     Scan[customer](columns=c_custkey,c_mktsegment filter=Compare(c_mktsegment,Eq,BUILDING)) -> [c_custkey:long, c_mktsegment:string]
     ↓ Filter((#1=lit(BUILDING:string)), keep=0) -> [c_custkey:long]

@@ -1,5 +1,5 @@
 -- q97#1
-Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long]
+Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk join_filter=ss_sold_date_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long]
   Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,GtEq,1200)) -> [d_date_sk:long, d_month_seq:long]
   ↓ Filter(((#1>=lit(1200:long)) and (#1<=(lit(1200:int)+lit(11:int)))), keep=0) -> [d_date_sk:long]
   ↓ Morsel[parallelism=N] -> [d_date_sk:long]
@@ -10,7 +10,7 @@ Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk) -> [ss_sold
 ↓ Project(#0, #1) -> [ss_customer_sk:long, ss_item_sk:long]
 ↓ Project(#0, #1) -> [customer_sk:long, item_sk:long]
 ↓ Project(#0, #1) -> [customer_sk:long, item_sk:long]
-  Scan[catalog_sales](columns=cs_sold_date_sk,cs_bill_customer_sk,cs_item_sk) -> [cs_sold_date_sk:long, cs_bill_customer_sk:long, cs_item_sk:long]
+  Scan[catalog_sales](columns=cs_sold_date_sk,cs_bill_customer_sk,cs_item_sk join_filter=cs_sold_date_sk) -> [cs_sold_date_sk:long, cs_bill_customer_sk:long, cs_item_sk:long]
     Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,GtEq,1200)) -> [d_date_sk:long, d_month_seq:long]
     ↓ Filter(((#1>=lit(1200:long)) and (#1<=(lit(1200:int)+lit(11:int)))), keep=0) -> [d_date_sk:long]
     ↓ Morsel[parallelism=N] -> [d_date_sk:long]

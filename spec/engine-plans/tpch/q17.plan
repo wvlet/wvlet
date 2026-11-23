@@ -1,5 +1,5 @@
 -- q17#1
-Scan[lineitem](columns=l_partkey,l_quantity,l_extendedprice) -> [l_partkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2)]
+Scan[lineitem](columns=l_partkey,l_quantity,l_extendedprice join_filter=l_partkey) -> [l_partkey:long, l_quantity:decimal(15,2), l_extendedprice:decimal(15,2)]
   Scan[part](columns=p_partkey,p_brand,p_container filter=And(Compare(p_brand,Eq,Brand#23),Compare(p_container,Eq,MED BOX))) -> [p_partkey:long, p_brand:string, p_container:string]
   ↓ Filter(((#1=lit(Brand#23:string)) and (#2=lit(MED BOX:string))), keep=0) -> [p_partkey:long]
   ↓ Morsel[parallelism=N] -> [p_partkey:long]

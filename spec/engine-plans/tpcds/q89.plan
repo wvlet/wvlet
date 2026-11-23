@@ -1,5 +1,5 @@
 -- q89#1
-Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_sales_price) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
+Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_sales_price join_filter=ss_sold_date_sk,ss_item_sk,ss_store_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
   Scan[date_dim](columns=d_date_sk,d_year,d_moy filter=Compare(d_year,Eq,1999)) -> [d_date_sk:long, d_year:long, d_moy:long]
   ↓ Filter((#1=lit(1999:long)), keep=0,2) -> [d_date_sk:long, d_moy:long]
   ↓ Morsel[parallelism=N] -> [d_date_sk:long, d_moy:long]

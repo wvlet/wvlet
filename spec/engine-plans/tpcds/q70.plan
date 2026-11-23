@@ -1,6 +1,6 @@
 -- q70#1
   (shared)
-    Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_net_profit) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_net_profit:decimal(7,2)]
+    Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_net_profit join_filter=ss_sold_date_sk,ss_store_sk) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_net_profit:decimal(7,2)]
       Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,GtEq,1200)) -> [d_date_sk:long, d_month_seq:long]
       ↓ Filter(((#1>=lit(1200:long)) and (#1<=(lit(1200:int)+lit(11:int)))), keep=0) -> [d_date_sk:long]
       ↓ Morsel[parallelism=N] -> [d_date_sk:long]
@@ -8,7 +8,7 @@
       Scan[store](columns=s_store_sk,s_county,s_state) -> [s_store_sk:long, s_county:string, s_state:string]
       ↓ Morsel[parallelism=N] -> [s_store_sk:long, s_county:string, s_state:string]
     ↙ HashJoin[Inner](#1 = #0) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_net_profit:decimal(7,2), d_date_sk:long, s_store_sk:long, s_county:string, s_state:string]
-      Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_net_profit) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_net_profit:decimal(7,2)]
+      Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_net_profit join_filter=ss_sold_date_sk,ss_store_sk) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_net_profit:decimal(7,2)]
         Scan[store](columns=s_store_sk,s_state) -> [s_store_sk:long, s_state:string]
         ↓ Morsel[parallelism=N] -> [s_store_sk:long, s_state:string]
       ↙ HashJoin[Inner](#1 = #0) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_net_profit:decimal(7,2), s_store_sk:long, s_state:string]

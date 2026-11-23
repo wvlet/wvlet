@@ -680,7 +680,7 @@ class RuntimeBinder(planner: Planner):
     if o ne p then
       // The first (innermost) bound plan, when an outer input optimizes to the same plan
       boundInputs.putIfAbsent(o, p)
-    Lowered(o, Lowering(o))
+    Lowered(o, planner.lower(o))
 
   // Inputs optimized while binding: the optimized plan -> the bound plan it came from
   private val boundInputs = java.util.IdentityHashMap[RuntimePlan, RuntimePlan]()
@@ -746,7 +746,7 @@ class RuntimeBinder(planner: Planner):
 
     override def values(schema: Schema, rows: Batch): Lowered =
       val p = RuntimePlan.Values(columnsOf(schema), rows)
-      Lowered(p, Lowering(p))
+      Lowered(p, planner.lower(p))
 
     override def union(inputs: IndexedSeq[Lowered], schema: Schema): Lowered = Lowered(
       RuntimePlan.Union(inputs.map(_.plan), columnsOf(schema)),
