@@ -134,6 +134,10 @@ class RuntimeBinder(planner: Planner):
             RuntimePlan.Limit(bind(child), limit.value, o.rows.value)
           case child =>
             RuntimePlan.Limit(bind(child), Long.MaxValue, o.rows.value)
+      case d: Distinct =>
+        RuntimePlan.Distinct(bind(d.child))
+      case d: Dedup =>
+        RuntimePlan.Distinct(bind(d.child))
       case g: GroupBy =>
         aggregation(g, None, defaultItems = true)
       case Agg(_: Pivot, _, _, _) | (_: Pivot) | (_: Unpivot) =>
@@ -154,12 +158,37 @@ class RuntimeBinder(planner: Planner):
         bind(planner.desugarSQLSelect(s))
       case j: Join =>
         join(j, Nil)
+      case u: Union =>
+        val all = union(Seq(u.left, u.right))
+        if u.isDistinct then
+          RuntimePlan.Distinct(all)
+        else
+          all
+      case c: Concat =>
+        union(Seq(c.left, c.right))
+      case i: Intersect =>
+        setOp(i.left, i.right, intersect = true, all = !i.isDistinct)
+      case e: Except =>
+        setOp(e.left, e.right, intersect = false, all = !e.isDistinct)
       case other =>
-        // Distinct, column edits, set operations, samples, a Project that evaluates windows or
-        // unnest, ...
+        // Column edits, samples, a Project that evaluates windows or unnest, ...
         legacy(other)
 
   end bind
+
+  /** The output columns of a set operation over `inputs`, as the planner builds its schema */
+  private def setOpColumns(inputs: Seq[RuntimePlan]): IndexedSeq[Column] = columnsOf(
+    planner.mergeSchemas(inputs.map(_.schema))
+  )
+
+  private def union(rs: Seq[Relation]): RuntimePlan =
+    val inputs = rs.map(bind).toIndexedSeq
+    RuntimePlan.Union(inputs, setOpColumns(inputs))
+
+  private def setOp(l: Relation, r: Relation, intersect: Boolean, all: Boolean): RuntimePlan =
+    val left  = bind(l)
+    val right = bind(r)
+    RuntimePlan.SetOp(left, right, intersect, all, setOpColumns(Seq(left, right)))
 
   private def scan(src: wvlet.lang.engine.catalog.TableSource, alias: Option[String]): RuntimePlan =
     val schema = alias.map(a => src.schema.withQualifier(a)).getOrElse(src.schema)

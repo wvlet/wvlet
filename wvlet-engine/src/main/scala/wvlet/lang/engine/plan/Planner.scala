@@ -482,7 +482,11 @@ class Planner(
     else
       op
 
-  private def mergeSchemas(schemas: Seq[Schema]): Schema =
+  /**
+    * The output schema of a set operation: the names of the first input, and at each position the
+    * common type of the inputs
+    */
+  private[engine] def mergeSchemas(schemas: Seq[Schema]): Schema =
     val first = schemas.head
     Schema(
       first

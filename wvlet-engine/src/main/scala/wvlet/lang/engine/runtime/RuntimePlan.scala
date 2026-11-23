@@ -199,6 +199,27 @@ enum RuntimePlan:
     */
   case InnerJoins(inputs: IndexedSeq[RuntimePlan], conds: IndexedSeq[JoinCondition])
 
+  /**
+    * The rows of every input, in order (UNION ALL): column i of each input is cast to the type of
+    * output column i, the common type of the inputs' columns at that position
+    */
+  case Union(inputs: IndexedSeq[RuntimePlan], columns: IndexedSeq[Column])
+
+  /**
+    * INTERSECT (`intersect`) or EXCEPT of two inputs, comparing whole rows after casting them to
+    * the output types; with `all`, bag semantics, otherwise distinct rows
+    */
+  case SetOp(
+      left: RuntimePlan,
+      right: RuntimePlan,
+      intersect: Boolean,
+      all: Boolean,
+      columns: IndexedSeq[Column]
+  )
+
+  /** The distinct rows of `child` */
+  case Distinct(child: RuntimePlan)
+
   /** A relation planned by the recursive planner, whose operator schema gives the columns */
   case Legacy(op: Operator, columns: IndexedSeq[Column])
 
@@ -229,6 +250,12 @@ enum RuntimePlan:
         columns
       case InnerJoins(inputs, _) =>
         inputs.flatMap(_.output)
+      case Union(_, columns) =>
+        columns
+      case SetOp(_, _, _, _, columns) =>
+        columns
+      case Distinct(child) =>
+        child.output
       case Legacy(_, columns) =>
         columns
       case CTERef(_, columns) =>
@@ -252,6 +279,12 @@ enum RuntimePlan:
         Seq(child)
       case InnerJoins(inputs, _) =>
         inputs
+      case Union(inputs, _) =>
+        inputs
+      case SetOp(left, right, _, _, _) =>
+        Seq(left, right)
+      case Distinct(child) =>
+        Seq(child)
 
   /**
     * The node over new children, in the order of [[children]]. Returns this node when every child
@@ -280,6 +313,12 @@ enum RuntimePlan:
           a.copy(child = cs(0))
         case j: InnerJoins =>
           j.copy(inputs = cs.toIndexedSeq)
+        case u: Union =>
+          u.copy(inputs = cs.toIndexedSeq)
+        case s: SetOp =>
+          s.copy(left = cs(0), right = cs(1))
+        case d: Distinct =>
+          d.copy(child = cs(0))
 
   /** The output as an operator schema */
   def schema: Schema = Schema(output.map(_.toField))
@@ -336,6 +375,22 @@ enum RuntimePlan:
         s"Aggregate(keys=[${keys.mkString(", ")}], ${calls.mkString(", ")})"
       case InnerJoins(_, conds) =>
         s"InnerJoins(${conds.mkString(", ")})"
+      case Union(_, _) =>
+        "Union"
+      case SetOp(_, _, intersect, all, _) =>
+        val op =
+          if intersect then
+            "Intersect"
+          else
+            "Except"
+        val a =
+          if all then
+            "(all)"
+          else
+            ""
+        s"${op}${a}"
+      case Distinct(_) =>
+        "Distinct"
       case Legacy(op, _) =>
         s"Legacy[${op.name}]"
       case CTERef(cte, _) =>

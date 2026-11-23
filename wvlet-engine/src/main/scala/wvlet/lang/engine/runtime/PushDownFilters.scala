@@ -38,7 +38,9 @@ import scala.collection.mutable
   *     the keys;
   *   - into the preserved input of a LEFT or RIGHT join, when the conjunct reads only that input;
   *   - into an inner join tree, as a condition that [[ReorderJoins]] places. There, `a = b` and
-  *     `a = constant` add `b = constant` for columns `a` and `b` of the same type.
+  *     `a = constant` add `b = constant` for columns `a` and `b` of the same type;
+  *   - into every input of a UNION, INTERSECT, or EXCEPT, by position and cast to the output type,
+  *     and below a DISTINCT.
   *
   * It stops at filters (whose own conjuncts push down from there), limits, full joins, and
   * [[RuntimePlan.Legacy]] leaves. A conjunct keeps its literal count (selectivity) as it moves.
@@ -173,9 +175,37 @@ object PushDownFilters extends Pass:
             j
           else
             InnerJoins(newInputs, withInferred)
+        case u @ Union(inputs, columns) =>
+          val (in, out) = conds.partition(_.refs.forall(id => columns.exists(_.id == id)))
+          moved(in)
+          filter(u.withChildren(inputs.map(i => push(i, in.map(toInput(_, columns, i))))), out)
+        case s @ SetOp(left, right, _, _, columns) =>
+          // Rows equal under the set comparison give a conjunct the same value, so filtering both
+          // inputs keeps the result
+          val (in, out) = conds.partition(_.refs.forall(id => columns.exists(_.id == id)))
+          moved(in)
+          filter(
+            s.withChildren(Seq(left, right).map(i => push(i, in.map(toInput(_, columns, i))))),
+            out
+          )
+        case d @ Distinct(child) =>
+          moved(conds)
+          withChild(d, push(child, conds))
         case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) | Sort(_, _, _) |
             Limit(_, _, _) | Aggregate(_, _, _, _) =>
           filter(p.withChildren(p.children.map(push(_, Nil))), conds)
+
+    /**
+      * A conjunct over the output `columns` of a set operation as a conjunct over its input: each
+      * column becomes the input column at its position, cast to the output type
+      */
+    private def toInput(c: Conjunct, columns: IndexedSeq[Column], input: RuntimePlan): Conjunct =
+      val in  = input.output
+      val pos = columns.indices.map(i => columns(i).id.value -> i).toMap
+      c.substitute { r =>
+        val col = in(pos(r.index))
+        castTo(ColRef(col.id.value, col.ptype, col.name), columns(pos(r.index)).ptype)
+      }
 
     private def withChild(p: RuntimePlan, child: RuntimePlan): RuntimePlan = p.withChildren(
       Seq(child)
