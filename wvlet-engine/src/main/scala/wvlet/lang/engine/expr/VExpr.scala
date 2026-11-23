@@ -868,9 +868,9 @@ object Kernels:
         val q = x / m
         val r = x % m
         o(k) =
-          if r >= half && half > 0 then
+          if r >= half then
             q + 1
-          else if -r >= half && half > 0 then
+          else if -r >= half then
             q - 1
           else
             q
