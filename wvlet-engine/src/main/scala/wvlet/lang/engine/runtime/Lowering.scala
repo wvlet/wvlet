@@ -162,13 +162,13 @@ object Lowering:
             .flatMap { k =>
               probeKeys(k).expr match
                 case c: ColRef if c.ptype == buildKeys(k).ptype && rangeType(c.ptype) =>
-                  scanColumn(probe, c.index).map { column =>
+                  scanColumns(probe, c.index).map { (id, column) =>
                     val f = RuntimeFilter(k, column, rangeFilter(column, c.ptype))
-                    pending(c.index) = f :: pending.getOrElse(c.index, Nil)
+                    pending(id) = f :: pending.getOrElse(id, Nil)
                     f
                   }
                 case _ =>
-                  None
+                  Nil
             }
         }
 
@@ -196,48 +196,61 @@ object Lowering:
         (lo, hi) => ScanFilters.range(column, t, lo, hi)
 
   /**
-    * The Parquet column of the scan that column `id` of `p` reads, when each row of `p` holds the
-    * value of the scan row it comes from, so that dropping scan rows by that column only drops rows
-    * of `p` with those values: through filters, plain projections, and the probe sides of joins
-    * that preserve their rows
+    * The Parquet columns of the scans that column `id` of `p` reads, with the id of each scan's
+    * column, when each row of `p` holds the value of the scan row it comes from, so that dropping
+    * scan rows by that column only drops rows of `p` with those values: through filters, plain
+    * projections, the inputs of UNION ALL, and the probe sides of joins that preserve their rows
     */
-  private def scanColumn(p: RuntimePlan, id: Int): Option[String] =
+  private def scanColumns(p: RuntimePlan, id: Int): Seq[(Int, String)] =
     p match
       case s @ Scan(source, columns, _, _) if source.supportsFilter =>
         columns.indexWhere(_.id.value == id) match
           case -1 =>
-            None
+            Nil
           case i =>
-            Some(s.sourceColumnName(i)).filter(source.canFilterOn)
+            Seq(s.sourceColumnName(i)).filter(source.canFilterOn).map(id -> _)
       case Filter(child, _, _) =>
-        scanColumn(child, id)
+        scanColumns(child, id)
       case Project(child, exprs, columns) =>
         columns.indexWhere(_.id.value == id) match
           case -1 =>
-            None
+            Nil
           case i =>
             exprs(i).expr match
               case c: ColRef =>
-                scanColumn(child, c.index)
+                scanColumns(child, c.index)
               case _ =>
-                None
+                Nil
+      // Each output row is a row of one input. An input column cast to a wider type is skipped
+      case Union(inputs, columns) =>
+        columns.indexWhere(_.id.value == id) match
+          case -1 =>
+            Nil
+          case i =>
+            inputs.flatMap { in =>
+              val c = in.output(i)
+              if c.ptype == columns(i).ptype then
+                scanColumns(in, c.id.value)
+              else
+                Nil
+            }
       // Only into the probe side: a build side is read while building, which can come before the
       // build of the join above sets the filter (morsel pipelines prepare inner builds first)
       case Join(left, right, kind, _, _, _, buildLeft) =>
         if left.output.exists(_.id.value == id) then
           kind match
             case JoinKind.Inner | JoinKind.Semi | JoinKind.Anti | JoinKind.Left if !buildLeft =>
-              scanColumn(left, id)
+              scanColumns(left, id)
             case _ =>
-              None
+              Nil
         else
           kind match
             case JoinKind.Inner | JoinKind.Right if buildLeft =>
-              scanColumn(right, id)
+              scanColumns(right, id)
             case _ =>
-              None
+              Nil
       case _ =>
-        None
+        Nil
 
   /** Column id -> position in the output of `p` (-1 for ids it doesn't output) */
   private def positions(p: RuntimePlan): Array[Int] = positions(p.output)
