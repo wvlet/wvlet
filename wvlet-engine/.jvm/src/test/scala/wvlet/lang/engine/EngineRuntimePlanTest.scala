@@ -76,12 +76,16 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // A filter with a subquery when Decorrelate is off
-    val off = engine.withOptimizer(runtime.withDisabled(Optimization.Decorrelate))
+    // A correlated subquery filter with decorrelate_correlated off. Column edits with aggregates,
+    // the other legacy form, fail on the legacy planner too
+    val off = engine.withOptimizer(runtime.withDisabled(Optimization.DecorrelateCorrelated))
     val p   =
       withQuery(
-        "from nation where n_regionkey in (from region where r_name = 'ASIA' select r_regionkey)"
+        """from nation
+        |where exists { from region where r_regionkey = n_regionkey and r_name = 'ASIA' }"""
+          .stripMargin
       )(off.runtimePlan(_))
+    debug(p.explain)
     val leaves = nodes(p).collect { case l: RuntimePlan.Legacy =>
       l
     }

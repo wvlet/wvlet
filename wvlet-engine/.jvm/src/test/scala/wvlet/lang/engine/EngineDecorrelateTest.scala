@@ -87,7 +87,22 @@ class EngineDecorrelateTest extends UniTest:
         .stripMargin
     val p = runtimePlan(query)
     joinKinds(p) shouldBe Seq(JoinKind.Anti)
+    // The values, decided at plan time, are a Values leaf
+    nodes(p).exists(_.isInstanceOf[Values]) shouldBe true
+    hasLegacy(p) shouldBe false
     sameRows(query).size shouldBe 20
+  }
+
+  test("bind IN with a scalar subquery in its target as a semi join") {
+    val query =
+      """select n_name from nation
+        |where n_regionkey + (select min(r_regionkey) from region) in (
+        |  select r_regionkey from region where r_name = 'ASIA'
+        |)""".stripMargin
+    val p = runtimePlan(query)
+    joinKinds(p) shouldBe Seq(JoinKind.Semi)
+    hasLegacy(p) shouldBe false
+    sameRows(query).size shouldBe 5
   }
 
   test("return no rows for NOT IN when the subquery has a NULL") {
@@ -206,6 +221,75 @@ class EngineDecorrelateTest extends UniTest:
     val p   = withQuery(query)(off.runtimePlan(_))
     joinKinds(p).headOption shouldBe Some(JoinKind.Semi)
     joinAboveSemi(p) shouldBe None
+  }
+
+  private val noDecorrelate = engine.withOptimizer(options.withDisabled(Optimization.Decorrelate))
+
+  /** The plan and rows with decorrelate disabled, checked against the legacy planner's rows */
+  private def withoutDecorrelate(query: String): (RuntimePlan, Seq[String]) =
+    val p = withQuery(query)(noDecorrelate.runtimePlan(_))
+    debug(p.explain)
+    hasLegacy(p) shouldBe false
+    val r = rows(noDecorrelate, query)
+    r shouldBe rows(legacy, query)
+    (p, r)
+
+  test("bind uncorrelated subquery conjuncts as plan-time constants with decorrelate disabled") {
+    def constant(query: String): Seq[String] =
+      val (p, r) = withoutDecorrelate(query)
+      joinKinds(p) shouldBe Nil
+      nodes(p).exists(_.isInstanceOf[Filter]) shouldBe true
+      r
+
+    constant("""select n_name from nation
+        |where n_regionkey in (select r_regionkey from region where r_name = 'ASIA')""".stripMargin)
+      .size shouldBe 5
+    constant("""select n_name from nation
+        |where n_regionkey not in (select r_regionkey from region where r_name = 'ASIA')
+        |  and n_name like 'A%'""".stripMargin) shouldBe Seq("ALGERIA", "ARGENTINA")
+    // NULL in the values: no row passes
+    constant("""select n_name from nation
+        |where n_regionkey not in (
+        |  select case when r_name = 'ASIA' then null else r_regionkey end from region
+        |)""".stripMargin) shouldBe Nil
+    // NULL targets never pass NOT IN
+    constant("""select n_name from nation
+        |where (case when n_nationkey < 10 then null else n_regionkey end) not in (
+        |  select r_regionkey from region where r_name = 'ASIA'
+        |)""".stripMargin).size shouldBe 12
+    constant("""select n_name from nation
+        |where exists (select 1 from region where r_name = 'MARS')""".stripMargin) shouldBe Nil
+  }
+
+  test("bind subquery conjuncts over joins as plan-time constants with decorrelate disabled") {
+    // Over an inner join tree
+    val (tree, treeRows) = withoutDecorrelate(
+      """select n_name from nation, region
+        |where n_regionkey = r_regionkey
+        |  and n_nationkey in (select s_nationkey from supplier where s_acctbal > 9900)"""
+        .stripMargin
+    )
+    joinKinds(tree) shouldBe Seq(JoinKind.Inner)
+    treeRows.size shouldBe 1
+    // Over a left join
+    val (left, leftRows) = withoutDecorrelate(
+      """select n_name, r_name from nation
+        |left join region on n_regionkey = r_regionkey and r_name = 'ASIA'
+        |where n_nationkey not in (select s_nationkey from supplier where s_acctbal > 9000)"""
+        .stripMargin
+    )
+    joinKinds(left) shouldBe Seq(JoinKind.Left)
+    leftRows.nonEmpty shouldBe true
+  }
+
+  test("bind correlated subquery conjuncts as joins with decorrelate disabled") {
+    val (p, r) = withoutDecorrelate(
+      """select n_name from nation
+        |where exists (select 1 from region where r_regionkey = n_regionkey and r_name = 'ASIA')"""
+        .stripMargin
+    )
+    joinKinds(p) shouldBe Seq(JoinKind.Semi)
+    r.size shouldBe 5
   }
 
   test("bind correlated EXISTS as a semi join over the decorrelated body") {
