@@ -562,10 +562,10 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
         ("io.trino" % "trino-testing" % TRINO_VERSION % Test)
-          .exclude("io.trino", "trino-tpch")
-          .exclude("io.trino", "trino-exchange-filesystem"),
+          .exclude("io.trino" % "trino-tpch")
+          .exclude("io.trino" % "trino-exchange-filesystem"),
         ("io.trino" % "trino-exchange-filesystem" % TRINO_VERSION % Test).jar(),
-        ("io.trino" % "trino-memory" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar()
+        ("io.trino" % "trino-memory" % TRINO_VERSION % Test).exclude("io.trino" % "trino-tpch").jar()
         //        // Add Spark as a reference impl (Scala 2)
         //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
         //          // exclude sbt-parser-combinators as it conflicts with Scala 3
