@@ -32,3 +32,47 @@ from [
 ] as t(region, amount)
 group by rollup(region)
 select region, sum(amount) as total, grouping(region) as g
+
+-- A filter over a key passes the union: rolled-up sets see the key as NULL
+from [
+  ['A', 'X', 100],
+  ['A', 'Y', 200],
+  ['B', 'X', 150]
+] as t(region, product, amount)
+group by rollup(region, product)
+select region, product, sum(amount) as total, grouping(region, product) as gid
+where region = 'A'
+order by gid, product
+
+-- `is null` keeps real NULL keys and subtotal rows
+from [
+  ['A', null, 100],
+  ['A', 'Y', 200],
+  ['B', 'X', 150]
+] as t(region, product, amount)
+group by rollup(region, product)
+select region, product, sum(amount) as total, grouping(product) as g
+where product is null
+order by region, g
+
+-- A filter over grouping() selects whole sets
+from [
+  ['A', 'X', 100],
+  ['A', 'Y', 200],
+  ['B', 'X', 150]
+] as t(region, product, amount)
+group by cube(region, product)
+select region, product, sum(amount) as total, grouping(region, product) as gid
+where gid = 2
+order by product
+
+-- A filter over a key and an aggregate keeps the grand total out
+from [
+  ['A', 'X', 100],
+  ['A', 'Y', 200],
+  ['B', 'X', 150]
+] as t(region, product, amount)
+group by cube(region, product)
+select region, product, sum(amount) as total
+where total >= 150 and region is not null
+order by region, product
