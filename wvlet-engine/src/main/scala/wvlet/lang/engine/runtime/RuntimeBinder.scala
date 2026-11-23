@@ -246,8 +246,8 @@ class RuntimeBinder(planner: Planner):
         Field(names.flatMap(_.lift(i)).getOrElse(c.name), c.ptype, List(a.alias.leafName))
       }
     child match
-      case RuntimePlan.Scan(src, _) =>
-        RuntimePlan.Scan(src, fields.map(newColumn))
+      case s: RuntimePlan.Scan =>
+        s.copy(columns = fields.map(newColumn))
       case RuntimePlan.Legacy(s: ScanOp, _) =>
         legacyOp(s.withSchema(Schema(fields)))
       case RuntimePlan.CTERef(cte, _) =>

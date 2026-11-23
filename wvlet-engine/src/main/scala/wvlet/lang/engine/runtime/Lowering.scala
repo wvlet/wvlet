@@ -29,8 +29,8 @@ object Lowering:
 
   def apply(p: RuntimePlan): Operator =
     p match
-      case Scan(source, _) =>
-        ScanOp(source, p.schema, None, None)
+      case Scan(source, _, read, filter) =>
+        ScanOp(source, p.schema, read, filter)
       case Values(_, rows) =>
         BatchesOp(p.schema, Seq(rows), "Values")
       case Filter(ref @ CTERef(cte, columns), cond, counts) =>

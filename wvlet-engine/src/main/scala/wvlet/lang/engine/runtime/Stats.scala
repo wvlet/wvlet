@@ -35,7 +35,7 @@ object Stats:
   /** Estimated rows of p: source row counts, passed through every node but joins */
   def rows(p: RuntimePlan): Double =
     p match
-      case Scan(source, _) =>
+      case Scan(source, _, _, _) =>
         source.estimatedRows.map(_.toDouble).getOrElse(1e6)
       case Values(_, _) =>
         1e3
@@ -88,9 +88,9 @@ object Stats:
   /** Distinct values of column `id` of p from source statistics, if traceable */
   def distinct(p: RuntimePlan, id: ColumnId): Option[Double] =
     p match
-      case Scan(source, columns) =>
+      case s @ Scan(source, columns, _, _) =>
         val i = columns.indexWhere(_.id == id)
-        Option.when(i >= 0)(i).flatMap(i => source.estimatedDistinct(source.schema(i).name))
+        Option.when(i >= 0)(i).flatMap(i => source.estimatedDistinct(s.sourceColumnName(i)))
       case Filter(child, _, _) =>
         distinct(child, id)
       case Project(child, exprs, columns) =>

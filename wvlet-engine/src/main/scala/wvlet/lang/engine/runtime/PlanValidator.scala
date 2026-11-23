@@ -40,9 +40,14 @@ object PlanValidator:
       if out.distinct.size != out.size then
         b += s"duplicate output column ids in ${n.output.mkString(", ")}"
       n match
-        case Scan(source, columns) =>
-          if columns.size != source.schema.size then
-            b += s"Scan[${source.name}] has ${columns.size} columns for ${source.schema.size}"
+        case Scan(source, columns, read, _) =>
+          val width = read.map(_.size).getOrElse(source.schema.size)
+          if columns.size != width then
+            b += s"Scan[${source.name}] has ${columns.size} columns for ${width}"
+          read.foreach { r =>
+            if r.exists(i => i < 0 || i >= source.schema.size) then
+              b += s"Scan[${source.name}] reads ${r.mkString(",")} of ${source.schema.size} columns"
+          }
         case Values(columns, rows) =>
           if columns.size != rows.columns.length then
             b += s"Values has ${columns.size} columns for ${rows.columns.length}"

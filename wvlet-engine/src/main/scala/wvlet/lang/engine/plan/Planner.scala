@@ -1351,7 +1351,7 @@ class Planner(
             body
           else
             runtimeOptimizer.pruneColumns(body, keep.map(out(_).id).toSet)
-        val op       = Lowering(pruned)
+        val op       = Lowering(runtimeOptimizer.pushScanFilters(pruned))
         val pos      = pruned.output.map(_.id).zipWithIndex.toMap
         val selected =
           if pruned.output.size == keep.size then

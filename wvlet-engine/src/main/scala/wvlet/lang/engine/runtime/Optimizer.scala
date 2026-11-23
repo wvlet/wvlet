@@ -123,6 +123,13 @@ class Optimizer(val passes: Seq[Pass], options: OptimizerOptions):
       PlanValidator.validate(next)
     next
 
+  /** The plan with the row-group filters of its scans recomputed ([[PushScanFilters]]) */
+  def pushScanFilters(p: RuntimePlan): RuntimePlan =
+    val next = PushScanFilters.run(p, ctx)
+    if options.validatePlans && (next ne p) then
+      PlanValidator.validate(next)
+    next
+
   /**
     * The optimized plan with the conditions pushed into it, through its filters too
     * ([[PushDownFilters.filter]])
@@ -137,7 +144,13 @@ end Optimizer
 
 object Optimizer:
   /** The passes, in order */
-  val defaultPasses: Seq[Pass] = Seq(Normalize, PushDownFilters, ReorderJoins, PruneColumns)
+  val defaultPasses: Seq[Pass] = Seq(
+    Normalize,
+    PushDownFilters,
+    ReorderJoins,
+    PruneColumns,
+    PushScanFilters
+  )
 
   /** The default passes */
   def default(options: OptimizerOptions): Optimizer = Optimizer(defaultPasses, options)
