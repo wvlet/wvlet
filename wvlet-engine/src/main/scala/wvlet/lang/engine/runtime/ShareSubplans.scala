@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.runtime
 
+import wvlet.lang.engine.expr.Const
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.VExprs
 
@@ -29,11 +30,11 @@ object ShareSubplans:
     * column ids: ids are renumbered in order of definition, children first. Column names, types,
     * and qualifiers are part of the key, so that names resolve alike over plans with equal keys.
     *
-    * Equality is conservative. Expressions compare as values after renumbering, and by their
-    * signatures, so a row function compares its function by reference. Literal counts, which only
-    * steer join order estimates, are left out. A plan with a `Legacy` leaf, `Values` rows, or a
-    * `CTERef`, whose operators, batches, and CTEs only compare by reference, or one reading a
-    * column it doesn't define (an outer reference), has no key.
+    * Equality is conservative. Expressions compare as values after renumbering (floating-point
+    * constants by their bits), so a row function compares its function by reference. Literal
+    * counts, which only steer join order estimates, are left out. A plan with a `Legacy` leaf,
+    * `Values` rows, or a `CTERef`, whose operators, batches, and CTEs only compare by reference, or
+    * one reading a column it doesn't define (an outer reference), has no key.
     */
   def key(p: RuntimePlan): Option[Any] =
     val ids = mutable.HashMap.empty[Int, Int]
@@ -52,10 +53,20 @@ object ShareSubplans:
       (id, c.name, c.ptype, c.qualifiers)
     }
 
-    // With its signature, since `==` on boxed values equates some distinct constants (0.0, -0.0)
+    // With the bits of its floating-point constants, since `==` on boxed values equates 0.0 and
+    // -0.0 (and Scala.js prints both as 0)
     private def expr(e: BExpr): Any =
       val v = renumber(e)
-      (v, v.sig)
+      (v, floatBits(v))
+
+    private def floatBits(e: VExpr): Seq[Long] =
+      e match
+        case Const(d: Double, _) =>
+          Seq(java.lang.Double.doubleToLongBits(d))
+        case Const(f: Float, _) =>
+          Seq(java.lang.Float.floatToIntBits(f).toLong)
+        case other =>
+          other.children.flatMap(floatBits)
 
     private def renumber(e: BExpr): VExpr = VExprs.mapRefs(
       e.expr,
