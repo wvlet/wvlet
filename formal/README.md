@@ -18,6 +18,8 @@ Machine-checked models of Wvlet behavior where example-based tests sample poorly
   `TyperRules.identifierRules`, `RelationRefResolver.resolveTableRef`): which binding a bare
   identifier or a relation name resolves to. The spec itself is
   [adr/2026-11-18-name-lookup-precedence.md](../adr/2026-11-18-name-lookup-precedence.md).
+- A bag algebra with SQL three-valued logic for the engine's optimizer rules, and the first rule
+  on it: where `PushDownFilters` (wvlet-engine) moves a WHERE conjunct over a join.
 
 See
 [adr/2026-11-18-lean-formal-verification.md](../adr/2026-11-18-lean-formal-verification.md) for
@@ -39,6 +41,7 @@ lake exe model-build-traces # regenerate the model build conformance fixture
 lake exe sql-fold-traces    # regenerate the SQL block folding conformance fixture
 lake exe rewrite-expr-traces # regenerate the expression rewrite conformance fixture
 lake exe name-lookup-traces # regenerate the name lookup conformance fixture
+lake exe pushdown-filter-traces # regenerate the filter pushdown conformance fixture
 ```
 
 ## Layout
@@ -72,6 +75,10 @@ lake exe name-lookup-traces # regenerate the name lookup conformance fixture
 | `WvletFormal/NameLookup/Global.lean` | `visibleEntries` (visible packages, buckets, stable sort by basename), `findFirstAnywhere` | `mem_visiblePackages` / `mem_entriesIn`: exactly presets, the default package, the own package, and every prefix of an import are visible; `visibleEntries_head`: the winner has the smallest basename; `visibleEntries_unique_min`: a strictly smallest basename wins whatever the registration order |
 | `WvletFormal/NameLookup/Resolve.lean` | `findSymbolByName` tiers, the identifier rule, relation-name resolution over symbol kinds | `findSymbol_local` / `findSymbol_global` / `findSymbol_anywhere`: scope, then visible globals, then the import-by-name fallback; `findSymbol_add` / `identify_after_add`: re-running lookup after a pass adds a local binding returns it (multi-pass typing); `identify_column_iff`: a column wins exactly over nothing or a function definition that is not completing; `resolveRelation_table_iff`: tables are the last tier |
 | `WvletFormal/NameLookup/Traces.lean`, `NameLookupTraces.lean` | — | exports the name lookup conformance fixture |
+| `WvletFormal/Algebra/Bag.lean` | rows as maps from column ids to `Rewrite.Value`, relations as lists (bags), conditions in Kleene logic (`Rewrite.Tri`), WHERE (keeps TRUE rows only), and inner, left, right, full, semi, and anti joins with a general ON condition and NULL padding; shared by the optimizer rule models | `Cond.eval_congr`: a condition sees only the columns it reads; `Cond.holds_and`: `p and q` is TRUE exactly when both are |
+| `WvletFormal/Pushdown/Rule.lean` | `place`: where `PushDownFilters` puts a conjunct over a join (the preserved input of a LEFT or RIGHT join and the left input of a semi or anti join when it reads only that input, the inner join's conditions, or above); `rewrite`: the plan it builds | `rewrite_sound`: every placement keeps the rows of the filter over the join, for every pair of inputs and ON condition, NULLs included; `inner_left`: pushing into one input of an inner join (as `ReorderJoins` may) keeps them too |
+| `WvletFormal/Pushdown/Necessity.lean` | — | for each refusal (the null-supplying input of a LEFT or RIGHT join, either input of a FULL join, the ON condition of a LEFT join), inputs where moving the conjunct anyway changes the rows, also for a conjunct that is never TRUE on NULLs |
+| `WvletFormal/Pushdown/Traces.lean`, `PushdownFilterTraces.lean` | — | exports the filter pushdown conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -123,11 +130,19 @@ behavior as traces:
   `NameLookupConformanceTest` (langJVM) replays it against the real `Scope`, `GlobalSymbolIndex`,
   `findSymbolByName`, `identifierRules`, and `resolveTableRef`, running the completing cases inside
   the symbol's completer.
+- `lake exe pushdown-filter-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/pushdown-filter-traces.json`:
+  inner, left, right, and full joins of two inline tables (NULL keys and values, a duplicate
+  row) under `a = c` and `a = c and b < d`, each with one of 11 WHERE conjuncts over the left
+  input, the right input, both, or no column, with the model's placement and rows.
+  `PushDownFiltersConformanceTest` (engineJVM) runs `Normalize` and `PushDownFilters` on each
+  query's bound plan (`select` before `where`, so the conjunct is a filter there) to check
+  where the conjunct went, and runs the query to compare rows.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator
 typing rule in `TyperRules`, the build
-ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, or a name-lookup rule, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
+ordering in `ModelOrder`, a folding rule in `SQLBlock.accepts`, a rule in `RewriteExpr`, a name-lookup rule, or where `PushDownFilters` moves a conjunct over a join, update the model first, fix the proofs, regenerate the fixture, and then change the Scala code until the
 conformance test passes.
 
 ## Known gaps of the typer model
@@ -193,3 +208,23 @@ The model proves today's behavior. These are left for follow-ups:
 - Out of scope: GenSQL's second resolution (val substitution that ignores columns, and a lookup
   that falls back to any package), qualified expression names (`t.col`, type members, mixin
   method order), and function-call resolution through `FunctionInliner`.
+
+## Known gaps of the filter pushdown model
+
+- Only the join case of `PushDownFilters` is modeled: the conjunct sits directly over one join.
+  Projections, aggregations, windows, set operations, and the walk that moves a conjunct through
+  several nodes are out of scope.
+- The equalities to constants the pass infers inside inner join trees (`a = b` and `a = 1` add
+  `b = 1`) are not modeled; the placement check tolerates the extra conditions.
+- The model treats an outer join's ON condition as one condition; the pass also moves its
+  equalities between the inputs into hash keys. The row replay checks that NULL keys never
+  match, but the key extraction itself is not proved.
+- Semi and anti joins are proved but not replayed, since queries reach them only through IN and
+  EXISTS subqueries; the replay comes with the decorrelation model. Right semi and anti joins,
+  the `Join` nodes `ReorderJoins` builds, and ASOF joins are out of scope.
+- The engine never turns an outer join into an inner join under a NULL-rejecting conjunct, so
+  the model has no such rule.
+- A TRUE conjunct that reads no column is dropped (by the binder, or by the pass itself), so
+  for those cases the fixture checks that no filter is left; a FALSE one stays and is checked.
+- The binder binds a WHERE directly over an inner join into the join's conditions, so the
+  fixture's queries project before filtering: every conjunct then reaches the pass as a filter.

@@ -24,6 +24,8 @@ on:
       - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/typer/TyperRules.scala'
       - 'wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/RelationRefResolver.scala'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/**'
+      - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/PushDownFilters.scala'
+      - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/**'
   push:
     branches:
       - main
@@ -36,6 +38,7 @@ on:
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/codegen/sql-fold-traces.json'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/transform/**'
       - 'wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/**'
+      - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/**'
   workflow_dispatch:
 
 jobs:
@@ -101,3 +104,8 @@ jobs:
           lake exe name-lookup-traces
           git diff --exit-code -- ../wvlet-lang/.jvm/src/test/resources/wvlet/lang/compiler/lookup/ \
             || (echo "::error::The name lookup conformance fixture is stale. Run 'cd formal && lake exe name-lookup-traces' and commit the result." && exit 1)
+      - name: Check filter pushdown conformance fixture freshness
+        run: |
+          lake exe pushdown-filter-traces
+          git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/ \
+            || (echo "::error::The filter pushdown conformance fixture is stale. Run 'cd formal && lake exe pushdown-filter-traces' and commit the result." && exit 1)
