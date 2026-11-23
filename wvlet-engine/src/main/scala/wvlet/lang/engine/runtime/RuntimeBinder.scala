@@ -295,7 +295,8 @@ class RuntimeBinder(planner: Planner):
         if conds.exists(planner.hasSubquery) then
           if planner.enabled(Optimization.Decorrelate) then
             // Subqueries become joins over the optimized input, factored as the planner does:
-            // semi and anti joins when they are uncorrelated, legacy nodes otherwise
+            // semi and anti joins for [NOT] EXISTS / [NOT] IN conjuncts, legacy nodes for other
+            // subquery forms (under OR / NOT / CASE, correlated scalar subqueries)
             plans.conjuncts(lowered(bind(child)), planner.conjuncts(f.filterExpr)).plan
           else
             legacy(f)
