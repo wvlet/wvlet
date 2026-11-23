@@ -39,7 +39,14 @@ class LocalFileReadEngineTest extends UniTest:
     port = Some(1)
   )
 
-  private val provider = ConnectorProvider(workEnv)
+  // Without the DuckDB factories, a read that falls back to DuckDB fails instead of passing
+  private val provider = ConnectorProvider(
+    workEnv,
+    ConnectorProvider
+      .defaultFactories
+      .filterNot(f => f.connectorType == "duckdb" || f.connectorType == "generic")
+  )
+
   private val executor = QueryExecutor(provider, Profile("remote", Seq(trino)), workEnv)
   private val compiler = Compiler(
     CompilerOptions(sourceFolders = List("."), workEnv = workEnv, dbType = DBType.Trino)

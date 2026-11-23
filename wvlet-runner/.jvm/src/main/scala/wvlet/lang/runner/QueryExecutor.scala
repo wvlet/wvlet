@@ -769,8 +769,10 @@ class QueryExecutor(
           }
           hasLocalFile && !hasNonFileInput
 
-        val engineReadsLocalFiles =
-          activeEngine.dbType == DBType.DuckDB || activeEngine.dbType == DBType.Generic
+        // Check the resolved connector: types without a runtime connector (e.g. -t hive) run on
+        // the generic DuckDB fallback, which reads local files itself
+        val engineDBType          = activeDBConnector.dbType
+        val engineReadsLocalFiles = engineDBType == DBType.DuckDB || engineDBType == DBType.Generic
         if !engineReadsLocalFiles && readsOnlyLocalFiles(q) then
           workEnv.info("Auto-switched to the wvlet engine for local file read.")
           return localEngineSession.execute(q, config.rowLimit)

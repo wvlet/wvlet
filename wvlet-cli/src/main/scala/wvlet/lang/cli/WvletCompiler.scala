@@ -80,8 +80,8 @@ class WvletCompiler(
           default = defaultProfile
         )
 
-  // Closing the provider closes every cached connector, including the default engine and the
-  // scratch DuckDB connector QueryExecutor may have created for local file reads/exports
+  // Closing the provider closes every cached connector, including the default engine, the
+  // in-process engine for local file reads, and the scratch DuckDB connector for exports
   override def close(): Unit = dbConnectorProvider.close()
 
   private def createCompiler(parseOnly: Boolean = false): Compiler =

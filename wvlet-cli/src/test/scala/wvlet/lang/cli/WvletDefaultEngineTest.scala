@@ -34,6 +34,7 @@ class WvletDefaultEngineTest extends UniTest:
   }
 
   test("run DuckDB SQL with -t duckdb") {
+    // Succeeds only on DuckDB: the same statement fails with NOT_IMPLEMENTED on the engine
     WvletMain.main(Array("run", "-t", "duckdb", "execute sql\"select 42\""))
   }
 
