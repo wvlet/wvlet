@@ -20,6 +20,11 @@ import wvlet.lang.connector.Connector
 import wvlet.lang.connector.DBConnector
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.engine.catalog.JsonRows
+import wvlet.lang.engine.vector.Field
+import wvlet.lang.engine.vector.PType
+import wvlet.lang.engine.vector.Schema
+import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.log.LogSupport
 
 import java.nio.charset.StandardCharsets
@@ -75,6 +80,30 @@ object SourceTableStaging extends LogSupport:
     }
 
   /**
+    * Copy a source connector's table into `stagingTable`, an in-memory table of the in-process
+    * wvlet engine `session`. Columns follow `schemaFields` (the compile-time table schema) when
+    * given; otherwise they are inferred from the rows. Returns the number of staged rows
+    */
+  def stageTableOnEngine(
+      source: Connector,
+      qualifiedName: List[String],
+      session: WvletEngineSession,
+      stagingTable: String,
+      schemaFields: Seq[NamedType]
+  ): Long =
+    val schema =
+      Option.when(schemaFields.nonEmpty)(
+        Schema(
+          schemaFields.map(f => Field(f.name.name, PType.fromDataType(f.dataType))).toIndexedSeq
+        )
+      )
+    streamTableAsJsonRows(source, qualifiedName) { rows =>
+      val table = JsonRows.toMemTable(stagingTable, rows, schema)
+      session.registerTemporary(table)
+      table.estimatedRows.getOrElse(0L)
+    }
+
+  /**
     * Land JSON rows in `stagingTable` on the target engine, consuming the row iterator
     * incrementally. Returns the number of loaded rows
     */
@@ -90,7 +119,7 @@ object SourceTableStaging extends LogSupport:
         .NOT_IMPLEMENTED
         .newException(
           s"Staging into '${engineName}' (${engine.dbType}) is not supported yet; " +
-            "use a DuckDB engine as the staging target"
+            "use the wvlet engine (or DuckDB) as the staging target"
         )
     val file = Files.createTempFile(s"wv_staging_", ".jsonl")
     // DuckDB accepts forward slashes on every platform; backslashes would need escaping in

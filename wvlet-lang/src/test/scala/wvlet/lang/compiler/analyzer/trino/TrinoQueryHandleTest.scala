@@ -1,6 +1,7 @@
 package wvlet.lang.compiler.analyzer.trino
 
 import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.model.DataType
 import wvlet.uni.http.Http
 import wvlet.uni.http.HttpClientConfig
 import wvlet.uni.http.HttpSyncClient
@@ -111,6 +112,16 @@ class TrinoQueryHandleTest extends UniTest:
     it.next().rowCount shouldBe 2
     handle.cancel()
     it.hasNext shouldBe false
+  }
+
+  test("should keep decimal parameters and timestamp time zones of Trino column types") {
+    Trino.parseTrinoType("decimal(10,2)") shouldBe
+      DataType.DecimalType(DataType.IntConstant(10), DataType.IntConstant(2))
+    Trino.parseTrinoType("timestamp(3) with time zone") shouldBe
+      DataType.TimestampType(DataType.TimestampField.TIMESTAMP, withTimeZone = true)
+    Trino.parseTrinoType("timestamp(3)") shouldBe
+      DataType.TimestampType(DataType.TimestampField.TIMESTAMP, withTimeZone = false)
+    Trino.parseTrinoType("varchar(100)") shouldBe DataType.StringType
   }
 
 end TrinoQueryHandleTest

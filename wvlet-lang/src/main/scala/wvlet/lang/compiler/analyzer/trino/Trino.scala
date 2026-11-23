@@ -20,6 +20,7 @@ import wvlet.uni.json.JSON.JSONObject
 import wvlet.uni.json.JSON.JSONString
 import wvlet.uni.json.JSON.JSONValue
 import wvlet.uni.log.LogSupport
+import scala.util.Try
 
 /**
   * Cross-platform Trino client built on uni's `HttpSyncClient`.
@@ -202,12 +203,20 @@ object Trino extends LogSupport:
     * wvlet `DataType`. We strip trailing parameters before parsing because wvlet's `DataType.parse`
     * doesn't accept the full Trino type grammar — close-enough for column metadata used by the CLI
     * printer. Anything we still can't map (compound types like `array(bigint)`, vendor extensions,
-    * future Trino additions) falls back to `any` so column display never breaks rendering.
+    * future Trino additions) falls back to `any` so column display never breaks rendering. Decimal
+    * precision/scale and the time zone of timestamps are kept, so local file exports (Parquet)
+    * write the source's column types.
     */
   private[trino] def parseTrinoType(name: String): DataType =
-    val base = name.takeWhile(c => c != '(' && c != ' ').toLowerCase
+    val lower = name.trim.toLowerCase
+    val base  = lower.takeWhile(c => c != '(' && c != ' ')
     try
-      DataType.parse(base)
+      if base == "timestamp" && lower.endsWith("with time zone") then
+        DataType.TimestampType(DataType.TimestampField.TIMESTAMP, withTimeZone = true)
+      else if base == "decimal" then
+        Try(DataType.parse(lower)).getOrElse(DataType.parse(base))
+      else
+        DataType.parse(base)
     catch
       case _: Exception =>
         DataType.AnyType

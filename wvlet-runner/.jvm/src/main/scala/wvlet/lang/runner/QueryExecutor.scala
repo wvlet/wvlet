@@ -41,6 +41,7 @@ import wvlet.lang.connector.Connector
 import wvlet.lang.runner.activity.ItemStore
 import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.connector.LocalFileExport
 import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.engine.WvletEngineConnector
@@ -228,14 +229,25 @@ class QueryExecutor(
                   .ULID
                   .newULIDString
                   .toLowerCase}"
-            val rowCount = SourceTableStaging.stageTable(
-              source,
-              List(t.name.name),
-              activeDBConnector,
-              activeEngine.name,
-              staging,
-              t.schema.fields
-            )
+            val rowCount =
+              activeEngineSession match
+                case Some(session) =>
+                  SourceTableStaging.stageTableOnEngine(
+                    source,
+                    List(t.name.name),
+                    session,
+                    staging,
+                    t.schema.fields
+                  )
+                case None =>
+                  SourceTableStaging.stageTable(
+                    source,
+                    List(t.name.name),
+                    activeDBConnector,
+                    activeEngine.name,
+                    staging,
+                    t.schema.fields
+                  )
             workEnv.info(s"Staged ${sourceName}.${t.name.name} (${rowCount} rows) as ${staging}")
             staging
           }
@@ -368,139 +380,39 @@ class QueryExecutor(
         session.save(save)
         QueryResult.empty
       case (s: SaveTo, _) if s.isForFile && !context.dbType.supportSaveAsFile =>
-        // Cross-engine handoff (e.g., Trino -> DuckDB) for local file output
-        executeSaveToLocalFileViaDuckDB(s)
+        // Engines without local file output (e.g. Trino) hand the rows to the engine's writers
+        executeSaveToLocalFile(s)
       case _ =>
         val statements = GenSQL.generateSaveSQL(save, context)
         runStatements(statements)
         QueryResult.empty
 
   /**
-    * Cross-engine SaveTo implementation for local files when the current DB doesn't support direct
-    * file output. Streams from the current connector (e.g., Trino) and writes via DuckDB. Temporary
-    * artifacts live under workEnv.cacheFolder.
-    *
-    * Note: This is a scaffolding entry point; full ingestion will follow.
+    * `save to '<local file>'` on engines that can't write local files (e.g. Trino, Snowflake):
+    * stream the result from the active engine and write the file with the wvlet engine's writers
     */
-  private def executeSaveToLocalFileViaDuckDB(save: SaveTo)(using context: Context): QueryResult =
-    import java.io.{BufferedWriter, File, FileOutputStream, FileWriter, OutputStreamWriter}
-    import java.sql.ResultSet
-    import java.util.zip.GZIPOutputStream
-    import wvlet.uni.util.ULID
-    import java.nio.file.{Files, Paths}
-    import scala.util.Using
-
-    def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
-
+  private def executeSaveToLocalFile(save: SaveTo)(using context: Context): QueryResult =
     val targetPath = context.dataFilePath(save.targetName)
-    if isRemotePath(targetPath) then
+    if targetPath.contains("://") then
       throw StatusCode
         .NOT_IMPLEMENTED
         .newException(
-          s"Remote path is not supported for local file save via DuckDB handoff: ${targetPath}"
+          s"Saving to a remote path is not supported on ${context.dbType}: ${targetPath}"
         )
-
     if !targetPath.toLowerCase.endsWith(".parquet") then
       throw StatusCode
         .NOT_IMPLEMENTED
         .newException(s"Only Parquet is supported for Trino local save. Given: ${targetPath}")
-
-    val uid       = ULID.newULIDString
-    val stageDir  = File(s"${workEnv.cacheFolder}/wvlet/stage/${uid}")
-    val jsonlFile = File(stageDir, "export.jsonl.gz")
-    if !stageDir.exists() then
-      Files.createDirectories(Paths.get(stageDir.getPath))
-
-    def writeJSONL(rs: ResultSet, out: File): Long =
-      var rowCount = 0L
-      val rowCodec = summon[Weaver[ListMap[String, Any]]]
-      Using.resource(BufferedWriter(OutputStreamWriter(GZIPOutputStream(FileOutputStream(out))))) {
-        w =>
-          val codec = JDBCCodec(rs)
-          val it    = codec.mapMsgPackMapRows { msgpack =>
-            rowCodec.unweave(msgpack)
-          }
-          while it.hasNext do
-            val row = it.next()
-            w.write(rowCodec.toJson(row))
-            w.newLine()
-            rowCount += 1
-      }
-      rowCount
-
-    // Cross-platform variant for backends that don't expose a JDBC ResultSet (Trino HTTP).
-    // Streams the result page by page through the same JSON writer the JDBC path produces, so
-    // large exports never hold the whole result set in memory.
-    def writeJSONLFromXP(batches: Iterator[XPQueryResult], out: File): Long =
-      val rowCodec = summon[Weaver[ListMap[String, Any]]]
-      var rowCount = 0L
-      Using.resource(BufferedWriter(OutputStreamWriter(GZIPOutputStream(FileOutputStream(out))))) {
-        w =>
-          batches.foreach { batch =>
-            val names = batch.columns.map(_.name.name)
-            batch
-              .rows
-              .foreach { row =>
-                val pairs = names
-                  .iterator
-                  .zip(row.values.iterator)
-                  .map { case (n, v) =>
-                    n -> v.orNull.asInstanceOf[Any]
-                  }
-                w.write(rowCodec.toJson(ListMap.from(pairs)))
-                w.newLine()
-                rowCount += 1
-              }
-          }
-      }
-      rowCount
-
-    // 1) Execute on Trino (or current engine) and dump to JSONL
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
-    val sourceConn                      = activeDBConnector
-    val n                               =
-      sourceConn.sqlConnector match
-        case Some(sc) =>
-          // HTTP-based engines (e.g. Trino): no JDBC ResultSet — stream the paginated result.
-          val handle = sc.submit(baseSQL.sql)
-          try writeJSONLFromXP(handle.batches(), jsonlFile)
-          finally handle.close()
-        case None =>
-          sourceConn.runQuery(baseSQL.sql) { rs =>
-            writeJSONL(rs, jsonlFile)
-          }
-    workEnv.info(s"Exported ${n} rows to compressed JSONL at ${jsonlFile.getPath}")
-
-    // 2) Directly COPY from read_json_auto() to Parquet via DuckDB
-    val duck                  = dbConnectorProvider.getConnector(DBType.DuckDB, None)
-    def sq(s: String): String = s.replace("'", "''")
-    import scala.util.control.NonFatal
-    try
-      val copyOpts = "(FORMAT 'parquet', USE_TMP_FILE true)"
-      val copySQL  =
-        s"copy (select * from read_json_auto('${sq(jsonlFile.getPath)}')) to '${sq(
-            targetPath
-          )}' ${copyOpts}"
-      duck.execute(copySQL)
-    finally
-      def safe(msg: String)(f: => Unit): Unit =
-        try
-          f
-        catch
-          case NonFatal(e) =>
-            workEnv.warn(s"${msg}: ${e.getMessage}")
-      safe(s"Failed to delete temporary compressed JSONL ${jsonlFile.getPath}") {
-        jsonlFile.delete()
-      }
-      safe(s"Failed to delete stage dir ${stageDir.getPath}") {
-        stageDir.delete()
-      }
-
-    workEnv.info(s"Saved result to ${targetPath}")
+    val n                               = LocalFileExport.write(
+      activeDBConnector,
+      baseSQL.sql,
+      targetPath,
+      localEngineSession.saveOptionsOf(save)
+    )
+    workEnv.info(s"Saved ${n} rows to ${targetPath}")
     QueryResult.empty
-
-  end executeSaveToLocalFileViaDuckDB
 
   /**
     * Resolve a `run flow <name>` reference to its flow definition via the symbol table
@@ -725,7 +637,11 @@ class QueryExecutor(
       // databases do not accumulate them
       stagedTables.foreach { staging =>
         try
-          activeDBConnector.execute(s"""drop table if exists "${staging}"""")
+          activeEngineSession match
+            case Some(session) =>
+              session.dropTemporary(staging)
+            case None =>
+              activeDBConnector.execute(s"""drop table if exists "${staging}"""")
         catch
           case scala.util.control.NonFatal(e) =>
             debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")

@@ -29,16 +29,16 @@ import wvlet.lang.connector.slack.SlackApiClient
 import wvlet.lang.connector.slack.SlackUser
 import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.engine.WvletEngineConnector
 import wvlet.uni.test.UniTest
 
 /**
-  * End-to-end: a Slack source connector queried from a DuckDB engine (#1861 Phase 3). Slack tables
-  * are staged into the active engine transparently; flows deliver stage outputs through the
-  * connector's post_message tool
+  * End-to-end: a Slack source connector queried from an engine (#1861 Phase 3). Slack tables are
+  * staged into the active engine transparently
   */
-class SlackSourceQueryTest extends UniTest:
+abstract class SlackSourceQueryBase(engine: ConnectorConfig) extends UniTest:
 
-  private class RecordingSlackClient extends SlackApiClient:
+  protected class RecordingSlackClient extends SlackApiClient:
     val posted = scala.collection.mutable.ListBuffer.empty[(String, String)]
     override def listChannels(): List[SlackChannel] = List(
       SlackChannel("C1", "general", isPrivate = false, numMembers = 12, topic = ""),
@@ -55,7 +55,7 @@ class SlackSourceQueryTest extends UniTest:
 
     override def postMessage(channel: String, text: String): Unit = posted += (channel -> text)
 
-  private val fakeSlack = RecordingSlackClient()
+  protected val fakeSlack = RecordingSlackClient()
 
   // A factory returning the fake-backed connector, replacing the HTTP-based default
   private object FakeSlackFactory extends ConnectorFactory:
@@ -67,18 +67,10 @@ class SlackSourceQueryTest extends UniTest:
     )
 
   private val workEnv = WorkEnv()
-  private val duckdb  = ConnectorConfig(
-    name = "duckdb",
-    `type` = "duckdb",
-    default = true,
-    catalog = Some("memory"),
-    schema = Some("main")
-  )
-
   private val slack   = ConnectorConfig(name = "slack", `type` = "slack")
-  private val profile = Profile(name = "dev", connectors = Seq(duckdb, slack))
+  private val profile = Profile(name = "dev", connectors = Seq(engine, slack))
 
-  private val provider = ConnectorProvider(
+  protected val provider = ConnectorProvider(
     workEnv,
     factories =
       ConnectorProvider.defaultFactories.filterNot(_.connectorType == "slack") :+ FakeSlackFactory
@@ -106,19 +98,23 @@ class SlackSourceQueryTest extends UniTest:
       )
     }
 
-  compiler.setDefaultCatalog(provider.getDBConnector(duckdb).getCatalog("memory", "main"))
+  private val engineCatalog = engine.catalog.getOrElse(engine.name)
+  compiler.setDefaultCatalog(
+    ConnectorCatalogs.catalogOf(provider.getConnector(engine), engine, engineCatalog, "main")
+  )
+
   compiler.setDefaultSchema("main")
 
   override def afterAll: Unit =
     executor.close()
     provider.close()
 
-  private def run(statement: String): QueryResult =
+  protected def run(statement: String): QueryResult =
     val unit   = CompilationUnit.fromWvletString(statement)
     val result = compiler.compileSingleUnit(unit)
     executor.executeSingle(unit, result.context)
 
-  test("should query a Slack table from the DuckDB engine via automatic staging") {
+  test("should query a Slack table from the active engine via automatic staging") {
     val result = run("from slack.channels | where is_private = false | select name")
     val tsv    = result.toTSV
     tsv shouldContain "general"
@@ -129,6 +125,39 @@ class SlackSourceQueryTest extends UniTest:
     val result = run("from slack.messages | select count(*) as cnt")
     result.toTSV shouldContain "2"
   }
+
+end SlackSourceQueryBase
+
+/** Slack source queries on the in-process wvlet engine, the default engine */
+class SlackSourceWvletEngineQueryTest
+    extends SlackSourceQueryBase(SlackSourceWvletEngineQueryTest.engine):
+
+  test("should drop staged tables from the engine session after the query") {
+    run("from slack.users | select name").toTSV shouldContain "alice"
+    provider.getConnector(SlackSourceWvletEngineQueryTest.engine) match
+      case w: WvletEngineConnector =>
+        w.session.tableNames.filter(_.startsWith("__wv_src_")) shouldBe Nil
+      case other =>
+        fail(s"Expected the wvlet engine connector, but got ${other.connectorType}")
+  }
+
+object SlackSourceWvletEngineQueryTest:
+  val engine = ConnectorConfig(name = "wvlet", `type` = "wvlet", default = true)
+
+/**
+  * Slack source queries on DuckDB, plus flows delivering stage outputs through the connector's
+  * post_message tool and ad-hoc tool calls
+  */
+class SlackSourceQueryTest
+    extends SlackSourceQueryBase(
+      ConnectorConfig(
+        name = "duckdb",
+        `type` = "duckdb",
+        default = true,
+        catalog = Some("memory"),
+        schema = Some("main")
+      )
+    ):
 
   test("should deliver a flow stage output through the post_message tool") {
     val result = run("""flow notify_flow = {

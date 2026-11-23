@@ -8,11 +8,16 @@ import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.engine.catalog.ParquetSource
+import wvlet.lang.engine.catalog.ScanSpec
+import wvlet.lang.engine.vector.PType
 import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.runner.ActivationRequest
 import wvlet.lang.runner.ActivationSink
 import wvlet.lang.runner.FlowExecutor
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.connector.LocalFileExport
 import wvlet.uni.control.Control
 import wvlet.uni.test.UniTest
 
@@ -130,7 +135,7 @@ class TrinoFlowExecutorTest extends UniTest:
     FlowExecutor.dropRunTables(connector, result.runId, result.stageResults.map(_.name))
   }
 
-  test("export activate('file') output on Trino via the DuckDB handoff") {
+  test("export activate('file') output on Trino via the engine's file writer") {
     val exportPath = java.nio.file.Paths.get("target/trino-file-activation.csv")
     java.nio.file.Files.deleteIfExists(exportPath)
     val (flow, ctx) = compileFlow("""flow TrinoFileFlow = {
@@ -165,6 +170,30 @@ class TrinoFlowExecutorTest extends UniTest:
     content shouldContain "name"
     java.nio.file.Files.deleteIfExists(exportPath)
     FlowExecutor.dropRunTables(connector, result.runId, result.stageResults.map(_.name))
+  }
+
+  test("save a Trino query result to a local Parquet file keeping the column types") {
+    val exportPath = java.nio.file.Paths.get("target/trino-save.parquet")
+    java.nio.file.Files.deleteIfExists(exportPath)
+    given QueryProgressMonitor = QueryProgressMonitor.noOp
+    val n                      = LocalFileExport.write(
+      connector,
+      """select * from (values
+        |  (1, 'a', date '2026-01-02', decimal '3.25'),
+        |  (2, null, null, null)
+        |) as t(id, name, d, amt)""".stripMargin,
+      exportPath.toString,
+      Map("format" -> "parquet")
+    )
+    n shouldBe 2L
+    val table = ParquetSource("t", exportPath.toString)
+    table.schema.names shouldBe IndexedSeq("id", "name", "d", "amt")
+    table.schema.types shouldBe IndexedSeq(PType.Int32, PType.Str, PType.Date, PType.Decimal(3, 2))
+    val b = table.scan(ScanSpec()).toSeq.head
+    b.size shouldBe 2
+    b.column(1).get(0) shouldBe "a"
+    b.column(2).isNull(1) shouldBe true
+    java.nio.file.Files.deleteIfExists(exportPath)
   }
 
 end TrinoFlowExecutorTest

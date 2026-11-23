@@ -85,12 +85,13 @@ object DataFileWriter extends LogSupport:
 
   /**
     * Write `batches` to `path`, replacing the file. `options` are the `save to ... with` options:
-    * `format`, `compression` (Parquet), and `header` / `delimiter` (CSV)
+    * `format`, `compression` (Parquet), and `header` / `delimiter` (CSV). Parquet and text files
+    * consume `batches` one at a time, so an iterator streams a large result
     */
   def write(
       path: String,
       schema: Schema,
-      batches: Seq[Batch],
+      batches: IterableOnce[Batch],
       options: Map[String, Any] = Map.empty
   ): Unit =
     if path.contains("://") then
@@ -104,7 +105,13 @@ object DataFileWriter extends LogSupport:
       case DataFileFormat.Parquet =>
         writeParquet(path, schema, batches, opts)
       case DataFileFormat.Iceberg =>
-        IcebergWriter.create(path, schema, batches, opts)
+        val all =
+          batches match
+            case s: Seq[Batch] @unchecked =>
+              s
+            case other =>
+              other.iterator.toIndexedSeq
+        IcebergWriter.create(path, schema, all, opts)
       case text =>
         IO.writeString(path, "")
         textChunks(text, schema, batches, opts, withHeader = true).foreach(IO.appendString(path, _))
@@ -151,7 +158,7 @@ object DataFileWriter extends LogSupport:
   private def textChunks(
       format: DataFileFormat,
       schema: Schema,
-      batches: Seq[Batch],
+      batches: IterableOnce[Batch],
       opts: Map[String, Any],
       withHeader: Boolean
   ): Iterator[String] =
@@ -182,7 +189,7 @@ object DataFileWriter extends LogSupport:
   private def writeParquet(
       path: String,
       schema: Schema,
-      batches: Seq[Batch],
+      batches: IterableOnce[Batch],
       opts: Map[String, Any]
   ): Unit =
     opts
@@ -198,10 +205,12 @@ object DataFileWriter extends LogSupport:
     val pschema = parquetSchemaOf(schema)
     val writer  = Parquet.newBatchWriter(path, pschema, writeOptionsOf(opts))
     try
-      batches.foreach { b =>
-        if b.size > 0 then
-          writer.write(columnBatchOf(pschema, schema, b))
-      }
+      batches
+        .iterator
+        .foreach { b =>
+          if b.size > 0 then
+            writer.write(columnBatchOf(pschema, schema, b))
+        }
       writer.close()
     catch
       case e: Throwable =>
@@ -464,7 +473,7 @@ object DataFileWriter extends LogSupport:
 
   private def delimitedChunks(
       schema: Schema,
-      batches: Seq[Batch],
+      batches: IterableOnce[Batch],
       opts: Map[String, Any],
       defaultDelimiter: String,
       withHeader: Boolean

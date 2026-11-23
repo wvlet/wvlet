@@ -217,6 +217,15 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
         registerSchema(source)
       case _ =>
 
+  /**
+    * Register a query-scoped table, e.g. rows staged from a source connector, without adding it to
+    * the compile-time catalog. Drop it with [[dropTemporary]] when the query finishes
+    */
+  def registerTemporary(table: MemTable): Unit = engine.catalog.register(table)
+
+  /** Drop a table registered with [[registerTemporary]]; a missing table is ignored */
+  def dropTemporary(name: String): Unit = writer.dropTable(name, ifExists = true)
+
   // A table whose schema can't be read stays queryable (the engine reports the error at scan
   // time) but untyped at compile time
   private def registerSchema(source: TableSource): Unit =
@@ -570,8 +579,8 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
       case _ =>
         None
 
-  // `save to ... with k: v, ...` option values: literals as Scala values
-  private def saveOptionsOf(s: SaveTo)(using Context): Map[String, Any] =
+  /** `save to ... with k: v, ...` option values: literals as Scala values */
+  def saveOptionsOf(s: SaveTo)(using Context): Map[String, Any] =
     s.saveOptions
       .map { o =>
         val value: Any = literalValueOf(o.value).getOrElse(
