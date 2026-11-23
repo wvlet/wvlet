@@ -1063,75 +1063,74 @@ class RuntimeBinder(planner: Planner):
     val (exprs, fields) = planner.bindItems(binder, p.selectItems)
     RuntimePlan.Project(in, exprs.map(BExpr.of(_, in.output)), fields.map(newColumn))
 
+  /**
+    * A sort, as `Planner.planSort` plans it. Subqueries in sort keys bind as plan-time constants
+    * through the same `Binder`, as in select items
+    */
   private def sort(s: Sort, limit: Option[Long]): RuntimePlan =
-    if s.orderBy.exists(k => planner.hasSubquery(k.sortKey)) then
-      legacyOp(planner.planSort(s, limit))
+    val in      = bind(s.child)
+    val schema  = in.schema
+    val orderBy = planner.resolveSortItems(s)
+    // Keys over the input's positions
+    val outKeys = orderBy.map { k =>
+      try
+        Right(planner.sortKeys(Binder(planner, BindScope(schema)), List(k), schema).head)
+      catch
+        case e @ (_: ColumnNotFound | _: WvletLangException) =>
+          Left(e)
+    }
+    def orderKey(k: wvlet.lang.engine.exec.SortKey, over: RuntimePlan): OrderKey = OrderKey(
+      BExpr.of(k.expr, over.output),
+      k.ascending,
+      k.nullsFirst
+    )
+    if outKeys.forall(_.isRight) then
+      RuntimePlan.Sort(in, outKeys.map(k => orderKey(k.toOption.get, in)).toIndexedSeq, limit)
     else
-      val in      = bind(s.child)
-      val schema  = in.schema
-      val orderBy = planner.resolveSortItems(s)
-      // Keys over the input's positions
-      val outKeys = orderBy.map { k =>
-        try
-          Right(planner.sortKeys(Binder(planner, BindScope(schema)), List(k), schema).head)
-        catch
-          case e @ (_: ColumnNotFound | _: WvletLangException) =>
-            Left(e)
-      }
-      def orderKey(k: wvlet.lang.engine.exec.SortKey, over: RuntimePlan): OrderKey = OrderKey(
-        BExpr.of(k.expr, over.output),
-        k.ascending,
-        k.nullsFirst
-      )
-      if outKeys.forall(_.isRight) then
-        RuntimePlan.Sort(in, outKeys.map(k => orderKey(k.toOption.get, in)).toIndexedSeq, limit)
-      else
-        s.child match
-          case p: Project =>
-            // ORDER BY an expression outside the select list (an input column, or an aggregate
-            // over a grouping): evaluate it as a hidden select item
-            val hidden = orderBy
-              .zip(outKeys)
-              .collect { case (k, Left(_)) =>
-                k -> planner.hiddenName("sort")
-              }
-            val proj = bind(
-              p.copy(selectItems =
-                p.selectItems ++
-                  hidden.map((k, name) =>
-                    SingleColumn(NameExpr.fromString(name), k.sortKey, NoSpan)
-                  )
-              )
-            )
-            val out        = proj.output
-            val hiddenRefs =
-              hidden
-                .map { (k, name) =>
-                  val c  = out.find(_.name == name).get
-                  val sk = planner.sortKey(k, ColRef(c.id.value, c.ptype, name))
-                  OrderKey(BExpr(sk.expr), sk.ascending, sk.nullsFirst)
-                }
-                .iterator
-            // The select items keep their positions in the extended projection
-            val keys = outKeys.map {
-              case Right(k) =>
-                orderKey(k, proj)
-              case Left(_) =>
-                hiddenRefs.next()
+      s.child match
+        case p: Project =>
+          // ORDER BY an expression outside the select list (an input column, or an aggregate
+          // over a grouping): evaluate it as a hidden select item
+          val hidden = orderBy
+            .zip(outKeys)
+            .collect { case (k, Left(_)) =>
+              k -> planner.hiddenName("sort")
             }
-            val sorted = RuntimePlan.Sort(proj, keys.toIndexedSeq, limit)
-            if out.exists(c => planner.isHidden(c.toField)) then
-              val keep = out.filterNot(c => planner.isHidden(c.toField))
-              RuntimePlan.Project(sorted, keep.map(BExpr.ref), keep.map(c => newColumn(c.toField)))
-            else
-              sorted
-          case _ =>
-            throw outKeys
-              .collectFirst { case Left(e) =>
-                e
+          val proj = bind(
+            p.copy(selectItems =
+              p.selectItems ++
+                hidden.map((k, name) => SingleColumn(NameExpr.fromString(name), k.sortKey, NoSpan))
+            )
+          )
+          val out        = proj.output
+          val hiddenRefs =
+            hidden
+              .map { (k, name) =>
+                val c  = out.find(_.name == name).get
+                val sk = planner.sortKey(k, ColRef(c.id.value, c.ptype, name))
+                OrderKey(BExpr(sk.expr), sk.ascending, sk.nullsFirst)
               }
-              .get
-      end if
+              .iterator
+          // The select items keep their positions in the extended projection
+          val keys = outKeys.map {
+            case Right(k) =>
+              orderKey(k, proj)
+            case Left(_) =>
+              hiddenRefs.next()
+          }
+          val sorted = RuntimePlan.Sort(proj, keys.toIndexedSeq, limit)
+          if out.exists(c => planner.isHidden(c.toField)) then
+            val keep = out.filterNot(c => planner.isHidden(c.toField))
+            RuntimePlan.Project(sorted, keep.map(BExpr.ref), keep.map(c => newColumn(c.toField)))
+          else
+            sorted
+        case _ =>
+          throw outKeys
+            .collectFirst { case Left(e) =>
+              e
+            }
+            .get
+    end if
 
   end sort
 

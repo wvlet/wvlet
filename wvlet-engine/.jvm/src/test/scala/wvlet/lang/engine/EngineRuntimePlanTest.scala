@@ -28,7 +28,7 @@ import wvlet.uni.test.UniTest
 class EngineRuntimePlanTest extends UniTest:
   private val runtime = OptimizerOptions().withPlanner(PlannerMode.Runtime).withValidatePlans(true)
   private val engine  = WvletEngine(optimizer = runtime)
-  private val legacy  = engine.withOptimizer(OptimizerOptions())
+  private val legacy  = engine.withOptimizer(OptimizerOptions().withPlanner(PlannerMode.Legacy))
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -76,15 +76,50 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // A sort key evaluating a scalar subquery
-    val p = runtimePlan(
-      "from nation order by n_regionkey = (from region select max(r_regionkey)) select n_name"
-    )
+    // A filter with a subquery when Decorrelate is off
+    val off = engine.withOptimizer(runtime.withDisabled(Optimization.Decorrelate))
+    val p   =
+      withQuery(
+        "from nation where n_regionkey in (from region where r_name = 'ASIA' select r_regionkey)"
+      )(off.runtimePlan(_))
     val leaves = nodes(p).collect { case l: RuntimePlan.Legacy =>
       l
     }
     leaves.nonEmpty shouldBe true
     leaves.foreach(l => l.columns.map(_.name) shouldBe l.op.schema.names)
+  }
+
+  test("bind sort keys with subqueries as plan-time constants") {
+    def check(query: String): RuntimePlan =
+      val p = runtimePlan(query)
+      debug(p.explain)
+      legacyLeafCount(p) shouldBe 0
+      nodes(p).exists(_.isInstanceOf[RuntimePlan.Sort]) shouldBe true
+      PlanValidator.violations(p) shouldBe Nil
+      val expected = rowsOf(legacy, query)
+      expected.size > 0 shouldBe true
+      rowsOf(engine, query) shouldBe expected
+      p
+
+    // A scalar subquery over the sort input
+    check("""from nation
+        |order by n_regionkey = (from region select max(r_regionkey)) desc, n_name
+        |select n_name""".stripMargin)
+    // IN (subquery) with a top-n limit
+    check("""from nation
+        |order by n_regionkey in (from region where r_name = 'ASIA' select r_regionkey) desc,
+        |  n_nationkey
+        |limit 5""".stripMargin)
+    // A key outside the select list, evaluated as a hidden select item
+    val hidden = check("""from nation
+        |select n_name
+        |order by n_regionkey = (from region select min(r_regionkey)), n_name""".stripMargin)
+    // The hidden key column is projected away above the sort
+    hidden shouldMatch {
+      case RuntimePlan.Project(RuntimePlan.Sort(inner: RuntimePlan.Project, _, _), _, cols) =>
+        cols.map(_.name) shouldBe IndexedSeq("n_name")
+        inner.columns.size shouldBe 2
+    }
   }
 
   test("bind a projection with windows as a window under a projection") {
