@@ -198,11 +198,27 @@ class RuntimeBinder(planner: Planner):
         setOp(i.left, i.right, intersect = true, all = !i.isDistinct)
       case e: Except =>
         setOp(e.left, e.right, intersect = false, all = !e.isDistinct)
+      case s: Sample =>
+        sample(s)
       case other =>
-        // Samples, a Project or column edit that evaluates unnest or subqueries, ...
+        // A Project or column edit that evaluates unnest or subqueries, ...
         legacy(other)
 
   end bind
+
+  /**
+    * A sample as the planner plans it: a row count as a limit, a percentage as a
+    * [[RuntimePlan.Sample]], and a percentage given by an expression keeps every row
+    */
+  private def sample(s: Sample): RuntimePlan =
+    val in = bind(s.child)
+    s.size match
+      case SamplingSize.Rows(n) =>
+        RuntimePlan.Limit(in, n, 0)
+      case SamplingSize.Percentage(p) =>
+        RuntimePlan.Sample(in, p)
+      case SamplingSize.PercentageExpr(_) =>
+        in
 
   /** The output columns of a set operation over `inputs`, as the planner builds its schema */
   private def setOpColumns(inputs: Seq[RuntimePlan]): IndexedSeq[Column] = columnsOf(

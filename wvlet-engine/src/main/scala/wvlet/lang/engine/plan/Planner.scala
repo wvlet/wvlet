@@ -805,11 +805,7 @@ class Planner(
       case SamplingSize.Rows(n) =>
         LimitOp(op, n, 0)
       case SamplingSize.Percentage(p) =>
-        val rnd = scala.util.Random(0)
-        FilterOp(
-          op,
-          RowFn("sample", Nil, PType.Bool, _ => rnd.nextDouble() * 100 < p, nullSafe = true)
-        )
+        Planner.sampleFilter(op, p)
       case other =>
         op
 
@@ -3231,6 +3227,18 @@ private[engine] enum SubqueryConjunct:
   def sub: Relation
 
 object Planner:
+
+  /**
+    * About `percentage` percent of the rows of `op`: a filter keeping each row with that
+    * probability, drawn from a generator seeded with 0, so the same input gives the same sample
+    */
+  def sampleFilter(op: Operator, percentage: Double): Operator =
+    val rnd = scala.util.Random(0)
+    FilterOp(
+      op,
+      RowFn("sample", Nil, PType.Bool, _ => rnd.nextDouble() * 100 < percentage, nullSafe = true)
+    )
+
   /** A planner for a subquery: shares the catalog, sources, and CTE definitions */
   def nested(p: Planner): Planner = p
 

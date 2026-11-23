@@ -85,6 +85,9 @@ object Stats:
         rows(left)
       case Distinct(child) =>
         rows(child)
+      case Sample(child, _) =>
+        // As CardinalityEstimator does for the filter a sample lowers to
+        rows(child)
       case Window(child, _, _) =>
         rows(child)
 
@@ -95,6 +98,8 @@ object Stats:
         val i = columns.indexWhere(_.id == id)
         Option.when(i >= 0)(i).flatMap(i => source.estimatedDistinct(s.sourceColumnName(i)))
       case Filter(child, _, _) =>
+        distinct(child, id)
+      case Sample(child, _) =>
         distinct(child, id)
       case Project(child, exprs, columns) =>
         val i = columns.indexWhere(_.id == id)

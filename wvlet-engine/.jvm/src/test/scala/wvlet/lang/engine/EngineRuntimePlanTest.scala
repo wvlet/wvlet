@@ -75,8 +75,8 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("keep relations the binder doesn't cover as legacy leaves") {
-    // A sample
-    val p = runtimePlan("from nation sample 5")
+    // A pivot
+    val p = runtimePlan("from nation pivot on n_regionkey in (0, 1) agg _.count")
     p match
       case RuntimePlan.Legacy(op, cols) =>
         cols.map(_.name) shouldBe op.schema.names
@@ -115,6 +115,29 @@ class EngineRuntimePlanTest extends UniTest:
       val r = e.execute(q)
       r.batches.flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).toSeq))
     }
+
+  test("bind a sample of rows as a limit and a percentage sample as a sample node") {
+    runtimePlan("from nation sample 5") shouldMatch {
+      case RuntimePlan.Limit(_: RuntimePlan.Scan, 5L, 0L) =>
+    }
+    rowsOf(engine, "from nation sample 5") shouldBe rowsOf(legacy, "from nation sample 5")
+
+    // A filter over the sample stays above it: moving it changes which rows the generator sees
+    val query =
+      """from lineitem
+        |sample 10%
+        |where l_quantity > 10
+        |select l_orderkey, l_linenumber""".stripMargin
+    val p = runtimePlan(query)
+    debug(p.explain)
+    p shouldMatch {
+      case RuntimePlan.Project(RuntimePlan.Filter(RuntimePlan.Sample(_, 10.0), _, _), _, _) =>
+    }
+    PlanValidator.violations(p) shouldBe Nil
+    val expected = rowsOf(legacy, query)
+    expected.size > 0 shouldBe true
+    rowsOf(engine, query) shouldBe expected
+  }
 
   test("bind column edits as projections over their input") {
     val query =
