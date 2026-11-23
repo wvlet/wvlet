@@ -153,8 +153,12 @@ class RuntimeBinder(planner: Planner):
         RuntimePlan.Distinct(bind(d.child))
       case g: GroupBy =>
         aggregation(g, None, defaultItems = true)
-      case Agg(_: Pivot, _, _, _) | (_: Pivot) | (_: Unpivot) =>
-        legacy(r)
+      case Agg(p: Pivot, _, items, _) =>
+        planner.pivot(p, items, r => lowered(bind(r)), plans).plan
+      case p: Pivot =>
+        planner.pivot(p, Nil, r => lowered(bind(r)), plans).plan
+      case u: Unpivot =>
+        planner.unpivot(u, r => lowered(bind(r)), plans).plan
       case r if planner.unnestCall(r).isDefined =>
         val (call, alias) = planner.unnestCall(r).get
         // Over one row without columns, as the planner plans it
@@ -707,6 +711,11 @@ class RuntimeBinder(planner: Planner):
       val op  = ProjectOp(in.op, cols.map(i => ColRef(i, out(i).ptype, out(i).name)), schema)
       val cte = planner.sharedInput(label, body, op)
       () => Lowered(RuntimePlan.CTERef(cte, columnsOf(schema)), cte.reader(schema))
+
+    override def values(schema: Schema, rows: Batch): Lowered = Lowered(
+      RuntimePlan.Values(columnsOf(schema), rows),
+      BatchesOp(schema, Seq(rows))
+    )
 
     override def union(inputs: IndexedSeq[Lowered], schema: Schema): Lowered = Lowered(
       RuntimePlan.Union(inputs.map(_.plan), columnsOf(schema)),

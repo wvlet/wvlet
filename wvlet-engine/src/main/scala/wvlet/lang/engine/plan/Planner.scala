@@ -640,13 +640,35 @@ class Planner(
     * aggregate filtered to its value. Without USING aggregates, count(*). Without GROUP BY, rows
     * are grouped by the columns used neither for pivoting nor in the aggregates
     */
-  private def planPivot(p: Pivot, aggItems: List[Attribute]): Operator =
-    val childOp = planRelation(p.child)
-    val schema  = childOp.schema
-    val batch   = Operator.materialize(childOp)
-    def input   = BatchesOp(schema, Seq(batch))
-    val scope   = BindScope(schema)
-    val binder  = Binder(this, scope)
+  private def planPivot(p: Pivot, aggItems: List[Attribute]): Operator = pivot(
+    p,
+    aggItems,
+    planRelation,
+    operatorPlans
+  )
+
+  /**
+    * Plan a PIVOT whose input is planned with `plan`: an aggregation with one filtered call per
+    * (pivot values, aggregate). The input is computed at plan time only when a pivot key lists no
+    * values, which then come from its rows, and the aggregation reads those rows
+    */
+  private[engine] def pivot[P](
+      p: Pivot,
+      aggItems: List[Attribute],
+      plan: Relation => P,
+      builder: AggPlanBuilder[P]
+  ): P =
+    val child  = plan(p.child)
+    val schema = builder.op(child).schema
+    // The input rows, when some pivot values come from them
+    val batch =
+      if p.pivotKeys.exists(_.values.isEmpty) then
+        Some(Operator.materialize(builder.op(child)))
+      else
+        None
+    val input  = batch.map(builder.values(schema, _)).getOrElse(child)
+    val scope  = BindScope(schema)
+    val binder = Binder(this, scope)
     // Pivot columns and their values
     val pivots: List[(VExpr, Seq[Any])] = p
       .pivotKeys
@@ -660,8 +682,9 @@ class Planner(
                 ValueOps.cast(c.eval(Batch.ofRows(1)).get(0), c.ptype, col.ptype)
               }
           else
-            val vec = col.eval(batch)
-            (0 until batch.size)
+            val b   = batch.get
+            val vec = col.eval(b)
+            (0 until b.size)
               .map(vec.get)
               .filter(_ != null)
               .distinct
@@ -757,15 +780,20 @@ class Planner(
     }
     val aggCalls  = calls.result()
     val outSchema = Schema(keys.map((n, e) => Field(n, e.ptype)) ++ fields.result())
-    HashAggOp(input, keys.map(_._2), aggCalls, outSchema)
+    builder.aggregate(input, keys.map(_._2), aggCalls, outSchema)
 
-  end planPivot
+  end pivot
 
-  /** UNPIVOT: one row per (input row, target column) with a non-NULL value */
-  private def planUnpivot(u: Unpivot): Operator =
-    val child   = planRelation(u.child)
-    val batches = Operator.materialize(child)
-    val schema  = child.schema
+  private def planUnpivot(u: Unpivot): Operator = unpivot(u, planRelation, operatorPlans)
+
+  /**
+    * Plan an UNPIVOT whose input is planned with `plan`: one row per (input row, target column)
+    * with a non-NULL value, as a union of one filtered projection per target column. With several
+    * target columns, the branches read one evaluation of the input, computed on first read
+    */
+  private[engine] def unpivot[P](u: Unpivot, plan: Relation => P, builder: AggPlanBuilder[P]): P =
+    val child   = plan(u.child)
+    val schema  = builder.op(child).schema
     val key     = u.unpivotKey
     val targets = key
       .targetColumns
@@ -784,20 +812,23 @@ class Planner(
           Field(key.getValueColumnName.leafName, valueType)
         )
     )
-    val parts = targets.map { t =>
-      val in    = BatchesOp(schema, Seq(batches))
-      val value = castExpr(ColRef(t, schema(t).ptype, schema(t).name), valueType)
-      val proj  = ProjectOp(
-        FilterOp(in, IsNullExpr(ColRef(t, schema(t).ptype, schema(t).name), negate = true)),
-        others.map(i => ColRef(i, schema(i).ptype, schema(i).name): VExpr) ++
-          IndexedSeq(Const(schema(t).name, PType.Str), value),
+    val reader: () => P =
+      if targets.size > 1 then
+        builder.sharedInput(child, schema.fields.indices, "UnpivotInput")
+      else
+        () => child
+    def col(i: Int): VExpr = ColRef(i, schema(i).ptype, schema(i).name)
+    val parts              = targets.map { t =>
+      builder.project(
+        builder.filter(reader(), IsNullExpr(col(t), negate = true)),
+        others.map(col) ++
+          IndexedSeq(Const(schema(t).name, PType.Str), castExpr(col(t), valueType)),
         outSchema
       )
-      proj: Operator
     }
-    UnionAllOp(parts, outSchema)
+    builder.union(parts.toIndexedSeq, outSchema)
 
-  end planUnpivot
+  end unpivot
 
   private def planSample(s: Sample): Operator =
     val op = planRelation(s.child)
@@ -2809,6 +2840,8 @@ class Planner(
       schema
     )
 
+    override def values(schema: Schema, rows: Batch): Operator = BatchesOp(schema, Seq(rows))
+
     override def aggregate(
         in: Operator,
         keys: IndexedSeq[VExpr],
@@ -3244,6 +3277,9 @@ private[engine] trait AggPlanBuilder[P]:
 
   /** The rows of every input, whose columns are `schema` */
   def union(inputs: IndexedSeq[P], schema: Schema): P
+
+  /** Rows computed at plan time, whose columns are `schema` */
+  def values(schema: Schema, rows: Batch): P
 
   /** Group `in` by `keys`, outputting the keys then the aggregates (`schema`) */
   def aggregate(in: P, keys: IndexedSeq[VExpr], calls: IndexedSeq[AggCall], schema: Schema): P
