@@ -55,6 +55,12 @@ trait Operator:
     */
   protected def extraInputs(indent: Int): Seq[String] = Nil
 
+  /**
+    * Inputs that are not children because they are computed once for several readers (e.g. the
+    * right input of a parallel cross join), so that a walk over a plan can reach every operator
+    */
+  def sharedInputs: Seq[Operator] = Nil
+
   protected def details: String = ""
 
   /** Drain every remaining batch */

@@ -62,6 +62,9 @@ object Stats:
         rows(inputs.head)
       case Legacy(op, _) =>
         CardinalityEstimator.rows(op)
+      case CTERef(_, _) =>
+        // As for a scan of a shared result: its rows are unknown until it is computed
+        1e6
       case Filter(child, _, _) =>
         rows(child)
       case Project(child, _, _) =>
@@ -103,7 +106,7 @@ object Stats:
         val i = columns.indexWhere(_.id == id)
         Option.when(i >= 0)(i).flatMap(CardinalityEstimator.columnDistinct(op, _))
       case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
-          InnerJoins(_, _) =>
+          InnerJoins(_, _) | CTERef(_, _) =>
         None
 
   /** Distinct values of an expression over p: a column, possibly cast */

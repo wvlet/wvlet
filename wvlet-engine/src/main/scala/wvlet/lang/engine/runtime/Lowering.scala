@@ -69,6 +69,8 @@ object Lowering:
           )
       case Legacy(op, _) =>
         op
+      case CTERef(cte, _) =>
+        cte.reader(p.schema)
 
   /** Column id -> position in the output of `p` (-1 for ids it doesn't output) */
   private def positions(p: RuntimePlan): Array[Int] =

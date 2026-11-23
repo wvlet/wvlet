@@ -75,6 +75,13 @@ object PlanValidator:
         case Legacy(op, columns) =>
           if columns.map(_.ptype) != op.schema.types then
             b += s"Legacy[${op.name}] columns ${columns.mkString(", ")} differ from ${op.schema}"
+        case CTERef(cte, columns) =>
+          if columns.map(_.ptype) != cte.body.output.map(_.ptype) then
+            b +=
+              s"CTERef[${cte.name}] columns ${columns.mkString(", ")} differ from ${cte
+                  .body
+                  .output
+                  .mkString(", ")}"
       end match
     end loop
     loop(p)

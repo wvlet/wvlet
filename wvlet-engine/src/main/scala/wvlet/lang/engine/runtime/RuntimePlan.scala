@@ -202,6 +202,12 @@ enum RuntimePlan:
   /** A relation planned by the recursive planner, whose operator schema gives the columns */
   case Legacy(op: Operator, columns: IndexedSeq[Column])
 
+  /**
+    * A read of a CTE that several relations read, computed once: `columns` are the output of its
+    * body, by position, under ids of this reader
+    */
+  case CTERef(cte: SharedCTE, columns: IndexedSeq[Column])
+
   /** The output columns, in order */
   def output: IndexedSeq[Column] =
     this match
@@ -225,10 +231,12 @@ enum RuntimePlan:
         inputs.flatMap(_.output)
       case Legacy(_, columns) =>
         columns
+      case CTERef(_, columns) =>
+        columns
 
   def children: Seq[RuntimePlan] =
     this match
-      case Scan(_, _) | Values(_, _) | Legacy(_, _) =>
+      case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
         Nil
       case Filter(child, _, _) =>
         Seq(child)
@@ -256,7 +264,7 @@ enum RuntimePlan:
       this
     else
       this match
-        case Scan(_, _) | Values(_, _) | Legacy(_, _) =>
+        case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) =>
           this
         case f: Filter =>
           f.copy(child = cs(0))
@@ -330,5 +338,22 @@ enum RuntimePlan:
         s"InnerJoins(${conds.mkString(", ")})"
       case Legacy(op, _) =>
         s"Legacy[${op.name}]"
+      case CTERef(cte, _) =>
+        s"CTERef[${cte.name}]"
 
 end RuntimePlan
+
+/**
+  * A CTE that several relations read, computed once for all of them. Its body is a bound runtime
+  * plan; the planner lowers it once every reader is planned, keeping only the columns the readers
+  * read
+  */
+trait SharedCTE:
+  /** The CTE name */
+  def name: String
+
+  /** The bound and optimized body, whose output the readers read */
+  def body: RuntimePlan
+
+  /** An operator reading the result, with the output columns of the body under `schema` */
+  def reader(schema: Schema): Operator

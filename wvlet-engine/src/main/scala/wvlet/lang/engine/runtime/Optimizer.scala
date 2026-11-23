@@ -116,9 +116,16 @@ class Optimizer(val passes: Seq[Pass], options: OptimizerOptions):
   /** How many times each rule fired, by rule name */
   def firedRules: Map[String, Int] = ctx.firedRules
 
+  /** The plan pruned to the columns needed to output `needed` ([[PruneColumns.prune]]) */
+  def pruneColumns(p: RuntimePlan, needed: Set[ColumnId]): RuntimePlan =
+    val next = PruneColumns.prune(p, needed, ctx)
+    if options.validatePlans && (next ne p) then
+      PlanValidator.validate(next)
+    next
+
 object Optimizer:
   /** The passes, in order */
-  val defaultPasses: Seq[Pass] = Seq(Normalize, PushDownFilters, ReorderJoins)
+  val defaultPasses: Seq[Pass] = Seq(Normalize, PushDownFilters, ReorderJoins, PruneColumns)
 
   /** The default passes */
   def default(options: OptimizerOptions): Optimizer = Optimizer(defaultPasses, options)

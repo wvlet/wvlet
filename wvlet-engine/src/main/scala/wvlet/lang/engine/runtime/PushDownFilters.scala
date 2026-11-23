@@ -173,8 +173,8 @@ object PushDownFilters extends Pass:
             j
           else
             InnerJoins(newInputs, withInferred)
-        case Scan(_, _) | Values(_, _) | Legacy(_, _) | Sort(_, _, _) | Limit(_, _, _) |
-            Aggregate(_, _, _, _) =>
+        case Scan(_, _) | Values(_, _) | Legacy(_, _) | CTERef(_, _) | Sort(_, _, _) |
+            Limit(_, _, _) | Aggregate(_, _, _, _) =>
           filter(p.withChildren(p.children.map(push(_, Nil))), conds)
 
     private def withChild(p: RuntimePlan, child: RuntimePlan): RuntimePlan = p.withChildren(
