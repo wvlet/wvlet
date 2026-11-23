@@ -130,8 +130,8 @@ class EngineSharedCTEFiltersTest extends UniTest:
     sameRows(query)
   }
 
-  test("keep the body unfiltered when the recursive planner plans a reader") {
-    // The IN subquery is planned by the recursive planner, which reports no filter
+  test("keep the body unfiltered when an IN subquery reads it") {
+    // The IN subquery's reader reports no filter
     val query =
       s"""${cte}select l_linestatus, q from t
          |where l_returnflag = 'R'

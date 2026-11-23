@@ -15,6 +15,6 @@ A CTE read more than once is computed once and read from memory. Its body used t
 
 ## Consequences
 
-- Shared CTE bodies compute fewer columns (8 TPC-DS golden plans changed); the legacy planner keeps the eager plan until M4.
+- Shared CTE bodies compute fewer columns (8 TPC-DS golden plans changed); the legacy planner keeps the eager plan until M4. (Amended 2026-11-23: M4b deleted the legacy planner and its eager shared-CTE path; every shared CTE is a `SharedCTE`.)
 - When every reader is on the IR (after M4), the union can come from the `CTERef`s of the logical plan instead of from physical scans, and the walk over operators goes away.
 - A future operator that hides an input in a closure without `sharedInputs` makes a query reading a shared CTE there fail loudly rather than return wrong rows.

@@ -17,5 +17,5 @@ A shared CTE (read more than once) is computed once and read from memory; since 
 ## Consequences
 
 - 7 TPC-DS golden plans changed (q04, q11, q31, q39, q64, q74, q75); the changed queries ran 17% faster at SF1.
-- A body with a legacy-planned reader (q95's IN subquery) stays unfiltered until Decorrelate/M4 puts those readers on the IR. After M4 the filters can come from the `CTERef`s of the logical plan.
+- A body with a legacy-planned reader (q95's IN subquery) stays unfiltered until Decorrelate/M4 puts those readers on the IR. After M4 the filters can come from the `CTERef`s of the logical plan. (Amended 2026-11-23: M4b deleted the legacy planner, so no reader is legacy-planned; readers lowered before the outer plan is optimized, such as plan-time subqueries, still report no filter.)
 - A filter that reaches an ordered inner join inside the body stays above it, as for aggregation inputs today.

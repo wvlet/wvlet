@@ -112,7 +112,13 @@ class EngineConformance(
     }
     d
 
-  private def compare(name: String, q: Relation)(using ctx: Context): ConformanceResult =
+  /**
+    * Compare one query's rows on `target` (this conformance's engine by default) with DuckDB's. A
+    * query DuckDB rejects is reported as matched, with a message starting with "skipped"
+    */
+  def compare(name: String, q: Relation, target: WvletEngine = engine)(using
+      ctx: Context
+  ): ConformanceResult =
     val mode     = determinism(q)
     val expected =
       try
@@ -131,7 +137,7 @@ class EngineConformance(
       case Right((cols, expectedRows)) =>
         val actual =
           try
-            val res = engine.execute(q)
+            val res = target.execute(q)
             Right(
               (
                 res.schema.names,

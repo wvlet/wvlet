@@ -23,9 +23,9 @@ import wvlet.lang.engine.plan.Optimization
 /**
   * Rewrites conditions into the shape the later passes key on. It runs first.
   *
-  * The planner still factors the conditions that legacy join planning reads (conditions with
-  * subqueries, and joins the binder leaves to the planner) on the compiler's expressions, before
-  * binding.
+  * The binder still factors the conditions it hands to the shared planner code (conditions with
+  * subqueries, and conditions over a left join's preserved input) on the compiler's expressions,
+  * before binding.
   */
 object Normalize extends RuleBatch("normalize", Seq(FactorOr))
 

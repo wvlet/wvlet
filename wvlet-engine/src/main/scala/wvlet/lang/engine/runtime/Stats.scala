@@ -26,8 +26,8 @@ import wvlet.lang.engine.plan.JoinOrderOptimizer
 
 /**
   * Row and distinct-count estimates of [[RuntimePlan]] nodes, read from source statistics. They
-  * follow [[CardinalityEstimator]] over the lowered operators rule for rule, so that join order is
-  * the same on both planners
+  * follow [[CardinalityEstimator]] over the lowered operators rule for rule, so that join order
+  * reads the same estimates on both forms
   */
 object Stats:
   import RuntimePlan.*

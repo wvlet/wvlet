@@ -52,12 +52,11 @@ import wvlet.lang.model.plan.*
 
 /**
   * Binds a typed, model-expanded [[Relation]] to a [[RuntimePlan]]: names resolve to column ids
-  * once, here. It covers every relation the planner plans.
+  * once, here. It covers every relation the engine plans, and calls the [[Planner]] for the parts
+  * shared through its plan builders (aggregation, joins, decorrelation, pivot, unpivot).
   *
-  * The binder routes a relation by the same tests the planner uses, and binds inputs in the
-  * planner's order, so that the lowered plan is the planner's plan and the planner's state (shared
-  * CTEs, hidden column names) changes in the same order. A relation that fails to bind is an error,
-  * as in the planner; the binder never falls back to the planner after binding an input.
+  * Inputs bind in a fixed order, since binding changes the planner's state (shared CTEs, hidden
+  * column names, plan-time subquery results). A relation that fails to bind is an error.
   */
 class RuntimeBinder(planner: Planner):
   private var lastId = 0
@@ -69,7 +68,7 @@ class RuntimeBinder(planner: Planner):
   private def columnsOf(s: Schema): IndexedSeq[Column] = s.fields.map(newColumn)
 
   def bind(r: Relation): RuntimePlan =
-    // Same case order as Planner.planLegacy, so that a relation takes the planner's path
+    // The case order decides which path a relation takes (e.g., Count over an aggregation input)
     r match
       case q: Query =>
         bind(q.body)
@@ -166,14 +165,13 @@ class RuntimeBinder(planner: Planner):
       case p: Project if planner.isAggregation(p.child, p.selectItems) =>
         aggregation(p.child, Some(p.selectItems), defaultItems = false)
       case p: Project if p.selectItems.exists(i => planner.unnestArg(i).isDefined) =>
-        // Unnest before windows, as `Planner.planProject` routes it: windows next to unnest fail
-        // in `bindUnnestItems`, as on the planner
+        // Unnest before windows: windows next to unnest fail in `bindUnnestItems`
         unnestProject(p)
       case p: Project =>
         windowProject(p)
       case s: SQLSelect =>
         bind(planner.desugarSQLSelect(s))
-      // New columns with aggregates or unnest fail in the binder, as on the planner
+      // New columns with aggregates or unnest fail in the shared Binder
       case a: AddColumnsToRelation =>
         columnEdit(a.child, prepend = false, a.newColumns)
       case a: PrependColumnsToRelation =>
@@ -348,8 +346,7 @@ class RuntimeBinder(planner: Planner):
     )
 
   /**
-    * unnest(list, ...) over the rows of `in`, keeping their columns with `keepInput`, as
-    * `Planner.planUnnest` plans it
+    * unnest(list, ...) over the rows of `in`, keeping their columns with `keepInput`
     */
   private def unnest(
       in: RuntimePlan,
@@ -367,9 +364,7 @@ class RuntimeBinder(planner: Planner):
       fields.map(newColumn)
     )
 
-  /**
-    * A join and filter conditions over it, planned as `Planner.planJoinTree` plans them
-    */
+  /** A join and filter conditions over it */
   private def join(j: Join, filters: List[Expression]): RuntimePlan =
     planner.lateralUnnest(j) match
       case Some(u) =>
@@ -379,7 +374,7 @@ class RuntimeBinder(planner: Planner):
 
   /**
     * A lateral unnest over the left input and the conditions over it (its ON conjuncts, then the
-    * filters), as `Planner.planJoinTree` plans them
+    * filters)
     */
   private def lateralUnnest(
       j: Join,
@@ -414,7 +409,7 @@ class RuntimeBinder(planner: Planner):
 
   /**
     * An ASOF join: a [[RuntimePlan.AsOfJoin]] on the keys and the inequality that
-    * `Planner.asOfJoinSpec` finds, as `Planner.planAsOfJoin` plans it
+    * `Planner.asOfJoinSpec` finds
     */
   private def asOfJoin(j: Join): RuntimePlan =
     val left  = bind(j.left)
@@ -493,10 +488,9 @@ class RuntimeBinder(planner: Planner):
     * reading one input over a subquery no larger than it, which join that input
     * ([[placedSemiJoin]]).
     *
-    * Conditions bind in the planner's order, as they may evaluate scalar subqueries: the
-    * single-input ones input by input, then the others. They bind unfactored: the Normalize pass
-    * factors their `or`s, except for conditions with subqueries, which the planner factors as it
-    * applies them
+    * Conditions bind in a fixed order, as they may evaluate scalar subqueries: the single-input
+    * ones input by input, then the others. They bind unfactored: the Normalize pass factors their
+    * `or`s, except for conditions with subqueries, which are factored as they are applied
     */
   private def innerJoins(j: Join, filters: List[Expression]): RuntimePlan =
     val (leaves, joinConds) = planner.flattenJoins(j, planner.splitConjuncts)
@@ -654,7 +648,7 @@ class RuntimeBinder(planner: Planner):
     loop(e, bound)
     counts.result()
 
-  /** An aggregation, planned as `Planner.planAggregation` plans it */
+  /** An aggregation, through the shared `Planner.aggregation` */
   private def aggregation(
       input: Relation,
       items: Option[List[Attribute]],
@@ -777,12 +771,11 @@ class RuntimeBinder(planner: Planner):
         subqueryJoins(p, conds)
 
     /**
-      * Conjuncts over p as `Planner.applyConjuncts` applies them: [NOT] EXISTS / [NOT] IN conjuncts
-      * become semi and anti joins in conjunct order (correlated ones with their bodies on the
-      * runtime plan), then the other conjuncts filter their result, their correlated scalar
-      * subqueries and EXISTS under OR / NOT / CASE joined as the planner joins them. Uncorrelated
-      * subqueries inside them are constants, as are uncorrelated [NOT] EXISTS / [NOT] IN conjuncts
-      * with [[Optimization.Decorrelate]] off
+      * Conjuncts over p: [NOT] EXISTS / [NOT] IN conjuncts become semi and anti joins in conjunct
+      * order (correlated ones with their bodies on the runtime plan), then the other conjuncts
+      * filter their result, their correlated scalar subqueries and EXISTS under OR / NOT / CASE
+      * joined by `Planner.bindWithSubqueries`. Uncorrelated subqueries inside them are constants,
+      * as are uncorrelated [NOT] EXISTS / [NOT] IN conjuncts with [[Optimization.Decorrelate]] off
       */
     private def subqueryJoins(p: Lowered, conds: List[Expression]): Lowered =
       // With Decorrelate off, uncorrelated conjuncts are plain conditions, whose subqueries the
@@ -919,8 +912,7 @@ class RuntimeBinder(planner: Planner):
 
   /**
     * select ..., unnest(list), ...: the items with each list in place of its unnest, the lists
-    * unnested, then the items in order with each list's elements, as `Planner.projectWithUnnest`
-    * plans it
+    * unnested, then the items in order with each list's elements
     */
   private def unnestProject(p: Project): RuntimePlan =
     val in                       = bind(p.child)
@@ -949,7 +941,7 @@ class RuntimeBinder(planner: Planner):
   /**
     * An item without unnest, which the binder evaluates in a projection. Uncorrelated subqueries in
     * items bind as plan-time constants (`Planner.bindScalarSubquery`, `bindInSubquery`,
-    * `bindExists`), and correlated ones fail, as on the planner
+    * `bindExists`), and correlated ones fail
     */
   private def isPlainItem(i: Attribute): Boolean = planner.unnestArg(i).isEmpty
 
@@ -966,7 +958,7 @@ class RuntimeBinder(planner: Planner):
 
   /**
     * New columns added to (or, with `prepend`, prepended to) `child`, over the window calls of the
-    * new columns, as `Planner.planColumnEdit` plans them
+    * new columns
     */
   private def columnEdit(child: Relation, prepend: Boolean, items: List[Attribute]): RuntimePlan =
     val in                 = bind(child)
@@ -994,7 +986,7 @@ class RuntimeBinder(planner: Planner):
       planner.bindWithWindows(in.schema, items)(planner.bindItems(_, items))
     (calls.map(c => windowOver(in, c.windowCalls, c.schema)).getOrElse(in), exprs, fields)
 
-  /** A projection over the window calls of its items, as `Planner.planProject` plans it */
+  /** A projection over the window calls of its items */
   private def windowProject(p: Project): RuntimePlan =
     val (w, exprs, fields) = withWindows(bind(p.child), p.selectItems)
     RuntimePlan.Project(w, exprs.map(BExpr.of(_, w.output)), fields.map(newColumn))
@@ -1006,8 +998,8 @@ class RuntimeBinder(planner: Planner):
     RuntimePlan.Project(in, exprs.map(BExpr.of(_, in.output)), fields.map(newColumn))
 
   /**
-    * A sort, as `Planner.planSort` plans it. Subqueries in sort keys bind as plan-time constants
-    * through the same `Binder`, as in select items
+    * A sort. Subqueries in sort keys bind as plan-time constants through the same `Binder`, as in
+    * select items
     */
   private def sort(s: Sort, limit: Option[Long]): RuntimePlan =
     val in      = bind(s.child)

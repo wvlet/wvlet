@@ -82,24 +82,12 @@ end Optimization
 object Optimization:
   def fromName(name: String): Option[Optimization] = values.find(_.name == name)
 
-/** How relations are planned into operators. The names are the values of `wvlet.engine.planner` */
-enum PlannerMode(val name: String):
-  /** Directly by the recursive [[Planner]] */
-  case Legacy extends PlannerMode("legacy")
-
-  /** Through the engine's runtime plan ([[wvlet.lang.engine.runtime.RuntimePlan]]) */
-  case Runtime extends PlannerMode("runtime")
-
-object PlannerMode:
-  def fromName(name: String): Option[PlannerMode] = values.find(_.name == name)
-
 /**
-  * Which planner optimizations run, and how relations are planned. `validatePlans` checks every
-  * runtime plan with [[wvlet.lang.engine.runtime.PlanValidator]] (for tests and debugging)
+  * Which planner optimizations run. `validatePlans` checks every runtime plan with
+  * [[wvlet.lang.engine.runtime.PlanValidator]] (for tests and debugging)
   */
 case class OptimizerOptions(
     disabled: Set[Optimization] = Set.empty,
-    planner: PlannerMode = PlannerMode.Runtime,
     validatePlans: Boolean = false
 ):
   def isEnabled(o: Optimization): Boolean = !disabled.contains(o)
@@ -107,28 +95,11 @@ case class OptimizerOptions(
   def withDisabled(o: Optimization*): OptimizerOptions = copy(disabled = disabled ++ o)
   def withEnabled(o: Optimization*): OptimizerOptions  = copy(disabled = disabled -- o)
   def noDisabled(): OptimizerOptions                   = copy(disabled = Set.empty)
-  def withPlanner(p: PlannerMode): OptimizerOptions    = copy(planner = p)
   def withValidatePlans(b: Boolean): OptimizerOptions  = copy(validatePlans = b)
 
 object OptimizerOptions:
-  val PropertyName: String        = "wvlet.engine.optimizer.disabled"
-  val EnvName: String             = "WVLET_ENGINE_OPTIMIZER_DISABLED"
-  val PlannerPropertyName: String = "wvlet.engine.planner"
-  val PlannerEnvName: String      = "WVLET_ENGINE_PLANNER"
-
-  /** Parse a planner mode name (`legacy` or `runtime`). Unknown names are an error */
-  def parsePlanner(name: String): PlannerMode = PlannerMode
-    .fromName(name.trim.toLowerCase)
-    .getOrElse {
-      throw StatusCode
-        .INVALID_ARGUMENT
-        .newException(
-          s"Unknown planner in ${PlannerPropertyName}: ${name} (available: ${PlannerMode
-              .values
-              .map(_.name)
-              .mkString(", ")})"
-        )
-    }
+  val PropertyName: String = "wvlet.engine.optimizer.disabled"
+  val EnvName: String      = "WVLET_ENGINE_OPTIMIZER_DISABLED"
 
   /** Parse comma-separated optimization names. Unknown names are an error */
   def parse(names: String): OptimizerOptions =
@@ -155,20 +126,13 @@ object OptimizerOptions:
   /**
     * The options set by the wvlet.engine.optimizer.disabled system property or the
     * WVLET_ENGINE_OPTIMIZER_DISABLED environment variable (every optimization runs when neither is
-    * set), and the planner set by wvlet.engine.planner or WVLET_ENGINE_PLANNER (runtime by default)
+    * set)
     */
-  def fromSystem(): OptimizerOptions =
-    val o = sys
-      .props
-      .get(PropertyName)
-      .orElse(sys.env.get(EnvName))
-      .map(parse)
-      .getOrElse(OptimizerOptions())
-    sys
-      .props
-      .get(PlannerPropertyName)
-      .orElse(sys.env.get(PlannerEnvName))
-      .map(n => o.withPlanner(parsePlanner(n)))
-      .getOrElse(o)
+  def fromSystem(): OptimizerOptions = sys
+    .props
+    .get(PropertyName)
+    .orElse(sys.env.get(EnvName))
+    .map(parse)
+    .getOrElse(OptimizerOptions())
 
 end OptimizerOptions

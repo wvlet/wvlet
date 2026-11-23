@@ -78,10 +78,9 @@ class Planner(
 
   // Named relations of WITH clauses
   private val cteDefs = mutable.HashMap.empty[String, AliasedRelation]
-  // CTEs referenced more than once are computed once and scanned from memory afterwards
+  // How many times each CTE is referenced: one read more than once is shared
   private val cteRefCounts = mutable.HashMap.empty[String, Int]
-  private val cteTables    = mutable.HashMap.empty[String, (AliasedRelation, SharedResult)]
-  // Shared CTEs of the runtime planner by name, and every one created, in order
+  // Shared CTEs by name, and every one created, in order
   private val cteRefs      = mutable.HashMap.empty[String, (AliasedRelation, DeferredCTE)]
   private val deferredCTEs = mutable.ArrayBuffer.empty[DeferredCTE]
   // The shared CTEs whose bodies are being bound, innermost first
@@ -197,22 +196,14 @@ class Planner(
 
   // --- relations ------------------------------------------------------------------------
 
-  /** Binds relations to the engine's runtime plan (with the runtime planner) */
+  /** Binds relations to the engine's runtime plan */
   private lazy val runtimeBinder = RuntimeBinder(this)
 
   /** The logical passes over runtime plans */
   private lazy val runtimeOptimizer = Optimizer.default(options)
 
-  /**
-    * Plan a relation into operators: through the runtime plan (`wvlet.engine.planner=runtime`), or
-    * directly by [[planLegacy]]
-    */
-  private[engine] def planRelation(r: Relation): Operator =
-    options.planner match
-      case PlannerMode.Runtime =>
-        Lowering(runtimePlan(r))
-      case PlannerMode.Legacy =>
-        planLegacy(r)
+  /** Plan a relation into operators: bind it to the runtime plan, optimize, and lower it */
+  private[engine] def planRelation(r: Relation): Operator = Lowering(runtimePlan(r))
 
   /** The optimized runtime plan of a relation */
   def runtimePlan(r: Relation): RuntimePlan = optimizeRuntime(runtimeBinder.bind(r))
@@ -232,15 +223,13 @@ class Planner(
     countCTERefs(w)
 
   /**
-    * The shared CTE a table name refers to, with the runtime planner: a CTE read more than once,
-    * whose body is bound on the first read
+    * The shared CTE a table name refers to: a CTE read more than once, whose body is bound on the
+    * first read
     */
   private[engine] def sharedCTE(name: String): Option[SharedCTE] =
     val key = name.toLowerCase
     cteDefs.get(key) match
-      case Some(d)
-          if options.planner == PlannerMode.Runtime && enabled(Optimization.ShareCTEs) &&
-            cteRefCounts.getOrElse(key, 0) > 1 =>
+      case Some(d) if enabled(Optimization.ShareCTEs) && cteRefCounts.getOrElse(key, 0) > 1 =>
         val cte =
           cteRefs.get(key) match
             case Some((defn, c)) if defn eq d =>
@@ -263,168 +252,6 @@ class Planner(
 
   private[engine] def parseSql(r: RawSQL): Relation = sources.parseSql(r)
 
-  /** Plan a relation with the planner's own recursion (children go through [[planRelation]]) */
-  private[engine] def planLegacy(r: Relation): Operator =
-    r match
-      case q: Query =>
-        planRelation(q.body)
-      case w: WithQuery =>
-        registerCTEs(w)
-        planRelation(w.queryBody)
-      case b: BracedRelation =>
-        planRelation(b.child)
-      case s: SelectAsAlias =>
-        planRelation(s.child)
-      case t: TestRelation =>
-        planRelation(t.child)
-      case d: Debug =>
-        planRelation(d.child)
-      case d: Describe =>
-        val (schema, batch) = describeRows(planRelation(d.child).schema)
-        BatchesOp(schema, Seq(batch))
-      case r: RelationInspector =>
-        planRelation(r.child)
-      case p: PartitioningHint =>
-        planRelation(p.child)
-      case n: NamedRelation =>
-        requalify(planRelation(n.child), n.name.leafName)
-      case _: EmptyRelation =>
-        SingleRowOp()
-      case v: Values =>
-        val op = planValues(v, None)
-        v.relationType match
-          // An inlined table value (val t(a, b) = [...]) is referenced by its name
-          case s: wvlet.lang.model.DataType.SchemaType if s.isFullyNamed =>
-            requalify(op, s.typeName.name)
-          case _ =>
-            op
-      case a: AliasedRelation =>
-        planAliased(a)
-      case t: TableScan =>
-        planTable(t.name.name, t.name.fullName)
-      case t: TableRef =>
-        planTable(t.name.leafName, t.name.fullName)
-      case f: FileScan =>
-        scanOp(fileSource(f.filePath), None)
-      case f: FileRef =>
-        scanOp(fileSource(f.filePath), None)
-      case r: RawSQL =>
-        planRelation(sources.parseSql(r))
-      case f: Filter =>
-        planFilter(f)
-      case s: Sort =>
-        planSort(s, None)
-      case l: Limit =>
-        l.child match
-          case s: Sort =>
-            planSort(s, Some(l.limit.value))
-          case Offset(s: Sort, rows, _) =>
-            LimitOp(planSort(s, Some(l.limit.value + rows.value)), l.limit.value, rows.value)
-          case Offset(child, rows, _) =>
-            LimitOp(planRelation(child), l.limit.value, rows.value)
-          case child =>
-            LimitOp(planRelation(child), l.limit.value, 0)
-      case o: Offset =>
-        o.child match
-          case Limit(child, limit, _) =>
-            // LIMIT n OFFSET m in SQL order: the offset applies first
-            LimitOp(planRelation(child), limit.value, o.rows.value)
-          case child =>
-            LimitOp(planRelation(child), Long.MaxValue, o.rows.value)
-      case d: Distinct =>
-        DistinctOp(planRelation(d.child))
-      case d: Dedup =>
-        DistinctOp(planRelation(d.child))
-      case g: GroupBy =>
-        planAggregation(g, None, defaultItems = true)
-      case Agg(p: Pivot, _, items, _) =>
-        planPivot(p, items)
-      case p: Pivot =>
-        planPivot(p, Nil)
-      case u: Unpivot =>
-        planUnpivot(u)
-      case r if unnestCall(r).isDefined =>
-        val (call, alias) = unnestCall(r).get
-        planUnnest(None, call, alias)
-      case a: Agg =>
-        planAggregation(a.child, Some(a.selectItems), defaultItems = false)
-      case c: Count if isAggregationInput(c.child) =>
-        // Count the groups
-        val groups = planAggregation(c.child, None, defaultItems = false)
-        val t      = Aggregates.resultType("count_star", Nil)
-        val name   = c.selectItems.headOption.map(nameOf).getOrElse("count")
-        HashAggOp(
-          groups,
-          IndexedSeq.empty,
-          IndexedSeq(AggCall("count_star", Nil, distinct = false, filter = None, t)),
-          Schema(IndexedSeq(Field(name, t)))
-        )
-      case c: Count =>
-        planAggregation(c.child, Some(c.selectItems), defaultItems = false)
-      case p: Project =>
-        planProject(p.child, p.selectItems)
-      case s: SQLSelect =>
-        planSQLSelect(s)
-      case a: AddColumnsToRelation =>
-        planColumnEdit(a.child, prepend = false, a.newColumns)
-      case a: PrependColumnsToRelation =>
-        planColumnEdit(a.child, prepend = true, a.newColumns)
-      case e: ExcludeColumnsFromRelation =>
-        val op = planRelation(e.child)
-        projectIndexes(op, excludeIndexes(op.schema, e))
-      case r: RenameColumnsFromRelation =>
-        val op = planRelation(r.child)
-        ProjectOp(
-          op,
-          op.schema.fields.indices.map(i => ColRef(i, op.schema(i).ptype, op.schema(i).name)),
-          renameSchema(op.schema, r)
-        )
-      case s: ShiftColumns =>
-        val op = planRelation(s.child)
-        projectIndexes(op, shiftIndexes(op.schema, s))
-      case j: Join =>
-        planJoinTree(j, Nil)
-      case u: Union =>
-        val op = UnionAllOp(
-          Seq(planRelation(u.left), planRelation(u.right)),
-          unionSchema(u.left, u.right)
-        )
-        if u.isDistinct then
-          DistinctOp(op)
-        else
-          op
-      case c: Concat =>
-        val inputs = Seq(planRelation(c.left), planRelation(c.right))
-        UnionAllOp(inputs, mergeSchemas(inputs.map(_.schema)))
-      case i: Intersect =>
-        val l  = planRelation(i.left)
-        val rr = planRelation(i.right)
-        SetOpOp(
-          l,
-          rr,
-          isIntersect = true,
-          all = !i.isDistinct,
-          mergeSchemas(Seq(l.schema, rr.schema))
-        )
-      case e: Except =>
-        val l  = planRelation(e.left)
-        val rr = planRelation(e.right)
-        SetOpOp(
-          l,
-          rr,
-          isIntersect = false,
-          all = !e.isDistinct,
-          mergeSchemas(Seq(l.schema, rr.schema))
-        )
-      case s: Sample =>
-        planSample(s)
-      case other =>
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(s"Unsupported relation in the engine: ${other.nodeName}")
-
-  end planLegacy
-
   private def batchOf(schema: Schema, rows: Seq[Seq[Any]]): Batch =
     val cols = schema
       .fields
@@ -433,27 +260,6 @@ class Planner(
         Vec.fromValues(schema(c).ptype, rows.map(_(c)))
       }
     Batch(cols.toArray, rows.size)
-
-  private def requalify(op: Operator, q: String): Operator =
-    val schema = op.schema.withQualifier(q)
-    ProjectOp(
-      op,
-      schema.fields.indices.map(i => ColRef(i, schema(i).ptype, schema(i).name)),
-      schema
-    )
-
-  private def projectIndexes(op: Operator, idx: Seq[Int]): Operator = ProjectOp(
-    op,
-    idx.map(i => ColRef(i, op.schema(i).ptype, op.schema(i).name)).toIndexedSeq,
-    Schema(idx.map(op.schema(_)).toIndexedSeq)
-  )
-
-  /** Drop hidden helper columns */
-  private def dropHidden(op: Operator): Operator =
-    if op.schema.fields.exists(isHidden) then
-      projectIndexes(op, op.schema.fields.indices.filterNot(i => isHidden(op.schema(i))))
-    else
-      op
 
   /**
     * The output schema of a set operation: the names of the first input, and at each position the
@@ -478,10 +284,6 @@ class Planner(
         }
     )
 
-  private def unionSchema(l: Relation, r: Relation): Schema = mergeSchemas(
-    Seq(planRelation(l).schema, planRelation(r).schema)
-  )
-
   /** Count the references to each CTE of `w`, including those in subqueries */
   private def countCTERefs(w: WithQuery): Unit =
     val names = w.queryDefs.map(_.alias.leafName.toLowerCase).toSet
@@ -497,30 +299,6 @@ class Planner(
         count(t.name.name.toLowerCase)
     }
 
-  private def planTable(name: String, fullName: String): Operator =
-    val key = name.toLowerCase
-    sharedCTE(name) match
-      case Some(c) =>
-        // With the runtime planner: a reader of the deferred CTE that runtime plans read too. It
-        // reports no filter, so the body stays unfiltered
-        c.reader(c.body.schema)
-      case None =>
-        cteDefs.get(key) match
-          case Some(d) if enabled(Optimization.ShareCTEs) && cteRefCounts.getOrElse(key, 0) > 1 =>
-            val shared =
-              cteTables.get(key) match
-                case Some((defn, r)) if defn eq d =>
-                  r
-                case _ =>
-                  val r = SharedResult(optimizePhysical(planAliased(d)))
-                  cteTables(key) = (d, r)
-                  r
-            shared.newReader(s"CTE[${name}]")
-          case Some(d) =>
-            planAliased(d)
-          case None =>
-            scanOp(tableSource(name, fullName), Some(name))
-
   /** The source of a catalog table (not a CTE) */
   private[engine] def tableSource(name: String, fullName: String): TableSource = catalog
     .lookup(name, fullName)
@@ -535,45 +313,6 @@ class Planner(
     .getOrElse {
       throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported file format: ${path}")
     }
-
-  private def scanOp(src: TableSource, alias: Option[String]): Operator =
-    val schema = alias.map(a => src.schema.withQualifier(a)).getOrElse(src.schema)
-    ScanOp(src, schema, None, None)
-
-  private def planAliased(a: AliasedRelation): Operator =
-    val child =
-      a.child match
-        case v: Values =>
-          planValues(v, a.columnNames)
-        case other =>
-          planRelation(other)
-    val names  = a.columnNames.map(_.map(_.name.name))
-    val schema = Schema(
-      child
-        .schema
-        .fields
-        .zipWithIndex
-        .map { (f, i) =>
-          val n = names.flatMap(_.lift(i)).getOrElse(f.name)
-          Field(n, f.ptype, List(a.alias.leafName))
-        }
-    )
-    child match
-      case s: ScanOp =>
-        s.withSchema(schema)
-      case _ =>
-        ProjectOp(
-          child,
-          schema.fields.indices.map(i => ColRef(i, schema(i).ptype, schema(i).name)),
-          schema
-        )
-
-  private def planValues(
-      v: Values,
-      columnNames: Option[List[wvlet.lang.model.DataType.NamedType]]
-  ): Operator =
-    val (schema, batch) = valuesBatch(v, columnNames)
-    BatchesOp(schema, Seq(batch), "Values")
 
   /** The rows of a VALUES list, evaluated, and their schema */
   private[engine] def valuesBatch(
@@ -630,18 +369,6 @@ class Planner(
         Set(c.index)
       case other =>
         other.children.flatMap(columnRefs).toSet
-
-  /**
-    * PIVOT with DuckDB semantics: one output column per pivot value (combination), each an
-    * aggregate filtered to its value. Without USING aggregates, count(*). Without GROUP BY, rows
-    * are grouped by the columns used neither for pivoting nor in the aggregates
-    */
-  private def planPivot(p: Pivot, aggItems: List[Attribute]): Operator = pivot(
-    p,
-    aggItems,
-    planRelation,
-    operatorPlans
-  )
 
   /**
     * Plan a PIVOT whose input is planned with `plan`: an aggregation with one filtered call per
@@ -780,8 +507,6 @@ class Planner(
 
   end pivot
 
-  private def planUnpivot(u: Unpivot): Operator = unpivot(u, planRelation, operatorPlans)
-
   /**
     * Plan an UNPIVOT whose input is planned with `plan`: one row per (input row, target column)
     * with a non-NULL value, as a union of one filtered projection per target column. With several
@@ -826,19 +551,7 @@ class Planner(
 
   end unpivot
 
-  private def planSample(s: Sample): Operator =
-    val op = planRelation(s.child)
-    s.size match
-      case SamplingSize.Rows(n) =>
-        LimitOp(op, n, 0)
-      case SamplingSize.Percentage(p) =>
-        Planner.sampleFilter(op, p)
-      case other =>
-        op
-
   // --- SQL SELECT blocks ----------------------------------------------------------------
-
-  private def planSQLSelect(s: SQLSelect): Operator = planRelation(desugarSQLSelect(s))
 
   /** A SQL SELECT block as wvlet operators: filters, grouping, HAVING, projection, order, limit */
   private[engine] def desugarSQLSelect(s: SQLSelect): Relation =
@@ -964,15 +677,6 @@ class Planner(
   private[engine] def isAggregation(child: Relation, items: List[Attribute]): Boolean =
     isAggregationInput(child) || items.exists(i => Binder.containsAggregate(i))
 
-  private def planProject(child: Relation, items: List[Attribute]): Operator =
-    if isAggregation(child, items) then
-      planAggregation(child, Some(items), defaultItems = false)
-    else if items.exists(i => unnestArg(i).isDefined) then
-      projectWithUnnest(planRelation(child), items)
-    else
-      val op = planRelation(child)
-      projectWithWindows(op, items)
-
   // --- unnest ---------------------------------------------------------------------------
 
   private def isUnnest(name: NameExpr): Boolean = name.leafName.equalsIgnoreCase("unnest")
@@ -1027,22 +731,6 @@ class Planner(
       }
     (lists, fields)
 
-  /** unnest(list, ...) as a relation; over `left` (a lateral join) when given */
-  private def planUnnest(
-      left: Option[Operator],
-      call: TableFunctionCall,
-      alias: Option[AliasedRelation],
-      outer: Boolean = false
-  ): Operator =
-    val input           = left.getOrElse(SingleRowOp())
-    val (lists, fields) = unnestLists(input.schema, call, alias)
-    val inputFields     =
-      if left.isDefined then
-        input.schema.fields
-      else
-        IndexedSeq.empty
-    UnnestOp(input, lists, keepInput = left.isDefined, Schema(inputFields ++ fields), outer)
-
   /**
     * Select items with `unnest(list)` items bound over `schema`, each as its list: the expressions,
     * their fields, and the positions of the list items. Items bind one by one, since `*` expands to
@@ -1076,52 +764,6 @@ class Planner(
       fields: IndexedSeq[Field],
       i: Int
   ): Field = fields(i).copy(ptype = Binder.listElementType(exprs(i)))
-
-  /** select ..., unnest(list), ...: the row repeats per list element */
-  private def projectWithUnnest(op: Operator, items: List[Attribute]): Operator =
-    val (exprs, fields, listIdx) = bindUnnestItems(op.schema, items)
-    val proj                     = ProjectOp(op, exprs, Schema(fields))
-    val elemFields               = listIdx.map(unnestElementField(exprs, fields, _))
-    val unnest                   = UnnestOp(
-      proj,
-      listIdx.map(i => ColRef(i, fields(i).ptype, fields(i).name): VExpr),
-      keepInput = true,
-      Schema(fields ++ elemFields)
-    )
-    val out = fields
-      .indices
-      .map { i =>
-        listIdx.indexOf(i) match
-          case -1 =>
-            (ColRef(i, fields(i).ptype, fields(i).name): VExpr, fields(i))
-          case k =>
-            (ColRef(fields.size + k, elemFields(k).ptype, elemFields(k).name), elemFields(k))
-      }
-    ProjectOp(unnest, out.map(_._1), Schema(out.map(_._2)))
-
-  end projectWithUnnest
-
-  /** Bind a projection, evaluating window functions first when there are any */
-  private def projectWithWindows(op: Operator, items: List[Attribute]): Operator =
-    val (in, (exprs, fields)) = withWindows(op, items)((_, b) => bindItems(b, items))
-    ProjectOp(in, exprs, Schema(fields))
-
-  /**
-    * Bind expressions over `op`. When they contain window functions, a window operator is placed
-    * over `op` (input columns first, then the window results), and binding runs against it
-    *
-    * @return
-    *   the operator to evaluate the bound result over, and the result of `bindAll`
-    */
-  private def withWindows[A](op: Operator, items: List[Expression])(
-      bindAll: (Operator, Binder) => A
-  ): (Operator, A) =
-    val (calls, a) = bindWithWindows(op.schema, items)(bindAll(op, _))
-    calls match
-      case Some(c) =>
-        (c.build(op), a)
-      case None =>
-        (op, a)
 
   /**
     * Bind expressions over an input of schema `schema`. When they contain window functions, the
@@ -1305,10 +947,10 @@ class Planner(
     SharedInput(name, body, op)
 
   /**
-    * A CTE read more than once, with the runtime planner. Its body is bound when it is first read,
-    * and lowered once every reader is planned ([[finalizeCTEs]]), keeping only the columns the
-    * readers read, and only the rows they keep when every reader reports its filter. A read before
-    * then (a subquery evaluated at plan time) computes every column and row
+    * A CTE read more than once. Its body is bound when it is first read, and lowered once every
+    * reader is planned ([[finalizeCTEs]]), keeping only the columns the readers read, and only the
+    * rows they keep when every reader reports its filter. A read before then (a subquery evaluated
+    * at plan time) computes every column and row
     */
   private class DeferredCTE(val name: String) extends SharedCTE:
     // Set right after binding: the body can't read its own CTE
@@ -1505,20 +1147,6 @@ class Planner(
       case _ =>
         false
 
-  private def planColumnEdit(
-      child: Relation,
-      prepend: Boolean,
-      newColumns: List[Attribute]
-  ): Operator =
-    val input = planRelation(child)
-    // Window functions in new columns are evaluated first; their results follow the input columns
-    val (op, (exprs, fields)) =
-      withWindows(input, newColumns) { (op, binder) =>
-        bindItems(binder, newColumns)
-      }
-    val all = columnEditItems(input.schema, prepend, exprs, fields)
-    ProjectOp(op, all.map(_._1), Schema(all.map(_._2)))
-
   /**
     * The output of adding (or, with `prepend`, prepending) the bound new columns `exprs` / `fields`
     * to an input of schema `input`: a new column with an existing name replaces it in place, and
@@ -1601,12 +1229,6 @@ class Planner(
     (schema, batchOf(schema, rows))
 
   // --- aggregation ----------------------------------------------------------------------
-
-  private def planAggregation(
-      input: Relation,
-      items: Option[List[Attribute]],
-      defaultItems: Boolean
-  ): Operator = aggregation(input, items, defaultItems, planRelation, operatorPlans)
 
   /**
     * Plan an aggregation of `input` (a GROUP BY, possibly with HAVING, or a global aggregation)
@@ -1957,53 +1579,6 @@ class Planner(
 
   end resolveSortItems
 
-  private[engine] def planSort(s: Sort, limit: Option[Long]): Operator =
-    val op      = planRelation(s.child)
-    val orderBy = resolveSortItems(s)
-    val outKeys = orderBy.map { k =>
-      try
-        Right(sortKeys(Binder(this, BindScope(op.schema)), List(k), op.schema).head)
-      catch
-        case e @ (_: ColumnNotFound | _: WvletLangException) =>
-          Left(e)
-    }
-    if outKeys.forall(_.isRight) then
-      SortOp(op, outKeys.map(_.toOption.get), limit)
-    else
-      s.child match
-        case p: Project =>
-          // ORDER BY an expression outside the select list (an input column, or an aggregate
-          // over a grouping): evaluate it as a hidden select item
-          val hidden = orderBy
-            .zip(outKeys)
-            .collect { case (k, Left(_)) =>
-              k -> hiddenName("sort")
-            }
-          val proj = planRelation(
-            p.copy(selectItems =
-              p.selectItems ++
-                hidden.map((k, name) => SingleColumn(NameExpr.fromString(name), k.sortKey, NoSpan))
-            )
-          )
-          val hiddenRefs =
-            hidden
-              .map { (k, name) =>
-                val i = proj.schema.fields.indexWhere(_.name == name)
-                sortKey(k, ColRef(i, proj.schema(i).ptype, name))
-              }
-              .iterator
-          val keys = outKeys.map(_.getOrElse(hiddenRefs.next()))
-          dropHidden(SortOp(proj, keys, limit))
-        case _ =>
-          throw outKeys
-            .collectFirst { case Left(e) =>
-              e
-            }
-            .get
-    end if
-
-  end planSort
-
   // --- filters and subqueries -----------------------------------------------------------
 
   private[engine] def conjuncts(e: Expression): List[Expression] = factorOrs(splitConjuncts(e))
@@ -2060,68 +1635,6 @@ class Planner(
       case other =>
         List(other)
 
-  private def planFilter(f: Filter): Operator =
-    f.child match
-      case g: GroupBy =>
-        // HAVING without a selection
-        planAggregation(f, None, defaultItems = true)
-      case j: Join if isInnerJoin(j) =>
-        planJoinTree(j, conjuncts(f.filterExpr))
-      case j: Join if j.joinType == JoinType.LeftOuterJoin && !j.asof =>
-        // Conditions on the preserved (left) side filter before the join, so that an inner join
-        // tree under left joins can use them for its join order and pushdown
-        val conds          = conjuncts(f.filterExpr)
-        val leftSchema     = planRelation(j.left).schema
-        val (pushed, rest) = conds.partition(c => !hasSubquery(c) && bindsIn(c, leftSchema))
-        if pushed.isEmpty then
-          applyConjuncts(planRelation(j), conds)
-        else
-          val left = Filter(j.left, pushed.reduce((a, b) => And(a, b, NoSpan)), f.span)
-          applyConjuncts(planRelation(j.copy(left = left)), rest)
-      case child =>
-        applyConjuncts(planRelation(child), conjuncts(f.filterExpr))
-
-  /** Apply filter conjuncts, turning subqueries into joins where possible */
-  private[engine] def applyConjuncts(input: Operator, conds: List[Expression]): Operator =
-    val originalWidth = input.schema.size
-    var op            = input
-    val plain         = mutable.ArrayBuffer.empty[Expression]
-    conds.foreach { c =>
-      if sys.env.contains("ENGINE_DEBUG") then
-        warn(s"conjunct: ${c.getClass.getSimpleName}: ${c}")
-      rewriteSubqueryConjunct(op, c) match
-        case Some((newOp, residual)) =>
-          op = newOp
-          residual.foreach(plain += _)
-        case None =>
-          plain += c
-    }
-    if plain.nonEmpty then
-      // Subquery joins may extend the input, so bind every condition after all joins are added
-      val bound = mutable.ArrayBuffer.empty[(Expression, VExpr)]
-      plain.foreach { c =>
-        val (newOp, e) = bindWithSubqueries(op, c)
-        if newOp ne op then
-          // Earlier conditions were bound to the narrower input, whose columns keep their positions
-          op = newOp
-        bound += ((c, e))
-      }
-      val cond = bound.map(_._2).reduce((a, b) => AndExpr(a, b))
-      op = FilterOp(op, cond)
-    if op.schema.size != originalWidth then
-      projectIndexes(op, 0 until originalWidth)
-    else
-      op
-
-  end applyConjuncts
-
-  /**
-    * Bind one conjunct whose correlated scalar subqueries become left joins; returns the (possibly
-    * extended) input and the bound condition
-    */
-  private def bindWithSubqueries(input: Operator, cond: Expression): (Operator, VExpr) =
-    bindWithSubqueries(operatorPlans, input, cond, planRelation, planFilter)
-
   /**
     * Bind one conjunct over `input`, whose correlated scalar subqueries ([[decorrelateScalar]]) and
     * EXISTS under OR / NOT / CASE ([[decorrelateExists]]) become left joins extending it, with
@@ -2167,22 +1680,8 @@ class Planner(
         true
 
   /**
-    * EXISTS / NOT EXISTS / IN / NOT IN conjuncts as semi and anti joins. Returns the new input and
-    * any condition left to evaluate
-    */
-  private def rewriteSubqueryConjunct(
-      op: Operator,
-      c: Expression
-  ): Option[(Operator, Option[Expression])] = subqueryConjunct(c).flatMap {
-    case SubqueryConjunct.Exists(sub, negate) =>
-      existsJoin(op, sub, negate)
-    case SubqueryConjunct.In(a, sub, negate) =>
-      inJoin(op, a, sub, negate)
-  }
-
-  /**
     * A filter conjunct that is EXISTS, NOT EXISTS, IN, or NOT IN over a subquery (correlated or
-    * not), which [[rewriteSubqueryConjunct]] turns into a join
+    * not), which the runtime binder turns into a join
     */
   private[engine] def subqueryConjunct(c: Expression): Option[SubqueryConjunct] =
     c match
@@ -2312,86 +1811,6 @@ class Planner(
     this,
     BindScope(inner, offset = outer.size, parent = Some(BindScope(outer)))
   )
-
-  private def existsJoin(
-      op: Operator,
-      sub: Relation,
-      negate: Boolean
-  ): Option[(Operator, Option[Expression])] =
-    if !isCorrelated(sub, op.schema) then
-      // Uncorrelated: a constant condition
-      val rows = Operator.materialize(Planner.nested(this).plan(sub)).size
-      val keep = (rows > 0) != negate
-      Some(
-        (
-          if keep then
-            op
-          else
-            FilterOp(op, Const(false, PType.Bool))
-          ,
-          None
-        )
-      )
-    else
-      val conj = SubqueryConjunct.Exists(sub, negate)
-      Some((correlatedJoin(operatorPlans, op, conj, planRelation, planFilter), None))
-
-  end existsJoin
-
-  /**
-    * A semi / anti hash join of `op` with a subquery's rows. When the subquery side is estimated to
-    * be much larger, its rows become the probe side instead (RIGHT SEMI / RIGHT ANTI): the hash
-    * table holds `op`'s rows, the large input is probed in parallel parts marking the matched rows,
-    * and `op`'s matched (or unmatched) rows are emitted once at the end
-    */
-  private def semiJoin(
-      op: Operator,
-      inner: Operator,
-      lk: IndexedSeq[VExpr],
-      rk: IndexedSeq[VExpr],
-      kind: JoinKind,
-      residual: Option[VExpr]
-  ): Operator = JoinOrderOptimizer.semiJoinOp(
-    op,
-    inner,
-    lk,
-    rk,
-    kind,
-    residual,
-    buildLeft = swapBuild(CardinalityEstimator.rows(inner), CardinalityEstimator.rows(op))
-  )
-
-  private def inJoin(
-      op: Operator,
-      a: Expression,
-      sub: Relation,
-      negate: Boolean
-  ): Option[(Operator, Option[Expression])] =
-    if isCorrelated(sub, op.schema) then
-      val conj = SubqueryConjunct.In(a, sub, negate)
-      return Some((correlatedJoin(operatorPlans, op, conj, planRelation, planFilter), None))
-    val inner    = Planner.nested(this).plan(sub)
-    val lb       = Binder(this, BindScope(op.schema))
-    val target   = lb.bind(a)
-    val valueRef = ColRef(0, inner.schema(0).ptype, inner.schema(0).name)
-    val t        = PType.common(target.ptype, valueRef.ptype)
-    val lk       = IndexedSeq(castExpr(target, t))
-    val rk       = IndexedSeq(castExpr(valueRef, t))
-    if !negate then
-      Some((semiJoin(op, inner, lk, rk, JoinKind.Semi, None), None))
-    else
-      // NOT IN: no row passes when the subquery has a NULL; NULL targets never pass
-      val values  = Operator.materialize(inner)
-      val v       = values.columns(0)
-      val hasNull = (0 until values.size).exists(v.isNull)
-      if hasNull then
-        Some((FilterOp(op, Const(false, PType.Bool)), None))
-      else
-        val src  = BatchesOp(inner.schema, Seq(values))
-        val anti = HashJoinOp(op, src, lk, rk, JoinKind.Anti, None, op.schema)
-        Some((FilterOp(anti, IsNullExpr(target, negate = true)), None))
-
-  end inJoin
 
   /**
     * A correlated [NOT] EXISTS / [NOT] IN filter conjunct over `p` as a semi or anti join with the
@@ -2803,117 +2222,6 @@ class Planner(
       Planner.LateralUnnest(call, alias, outer, conds)
     }
 
-  /**
-    * Plan inner joins and filter conditions together: single-input conditions are pushed to their
-    * inputs, equalities between inputs become hash join keys, and inputs are joined greedily,
-    * building on the smaller side
-    */
-  private[engine] def planJoinTree(j: Join, filters: List[Expression]): Operator =
-    lateralUnnest(j) match
-      case Some(Planner.LateralUnnest(call, alias, outer, conds)) =>
-        // A lateral unnest over the left input: join ... unnest(left.column)
-        val op = planUnnest(Some(planRelation(j.left)), call, alias, outer)
-        return applyConjuncts(op, conds ++ filters)
-      case None =>
-    end match
-    if !isInnerJoin(j) then
-      return applyConjuncts(planOuterJoin(j), filters)
-    innerJoinTree(j, filters)
-
-  end planJoinTree
-
-  /** Builds the planner's own join trees: operators */
-  private object operatorPlans
-      extends JoinPlanBuilder[Operator]
-      with AggPlanBuilder[Operator]
-      with OperatorTreeBuilder:
-    override def sharedInput(in: Operator, cols: IndexedSeq[Int], label: String): () => Operator =
-      val shared = SharedResult(optimizePhysical(projectIndexes(in, cols)))
-      () => shared.newReader(label)
-
-    override def union(inputs: IndexedSeq[Operator], schema: Schema): Operator = UnionAllOp(
-      inputs,
-      schema
-    )
-
-    override def values(schema: Schema, rows: Batch): Operator = BatchesOp(schema, Seq(rows))
-
-    override def aggregate(
-        in: Operator,
-        keys: IndexedSeq[VExpr],
-        calls: IndexedSeq[AggCall],
-        schema: Schema
-    ): Operator = HashAggOp(in, keys, calls, schema)
-
-    override def project(p: Operator, exprs: IndexedSeq[VExpr], schema: Schema): Operator =
-      ProjectOp(p, exprs, schema)
-
-    override def window(p: Operator, calls: IndexedSeq[WindowCall], schema: Schema): Operator =
-      WindowOp(p, calls, schema)
-
-    override def conjuncts(p: Operator, conds: List[Expression]): Operator = applyConjuncts(
-      p,
-      conds
-    )
-
-  end operatorPlans
-
-  /**
-    * Plan a tree of inner joins (without a lateral unnest on top) and filter conditions together:
-    * single-input conditions are pushed to their inputs, equalities between inputs become hash join
-    * keys, and [[JoinOrderOptimizer]] orders the joins. The runtime planner orders them in its
-    * `ReorderJoins` pass instead
-    */
-  private def innerJoinTree(j: Join, filters: List[Expression]): Operator =
-    val builder             = operatorPlans
-    val (leaves, joinConds) = flattenJoins(j)
-    val inputs              = leaves.map(planRelation)
-    val all                 = (joinConds ++ filters).filterNot(isTrueLiteral)
-    // Conditions with subqueries are applied after joining, except for uncorrelated scalar
-    // subqueries, which are constants (e.g., d_month_seq = (select ... from date_dim))
-    val (withSubqueries, conds) = all
-      .map(c => c -> withoutScalarSubqueries(c))
-      .partition((_, e) => hasSubquery(e))
-    val subqueryConds = withSubqueries.map(_._1)
-    val graph         = JoinGraph.build(
-      inputs,
-      builder.op,
-      conds,
-      // Which inputs a condition references
-      refs = e => inputs.indices.filter(i => referencesInput(e, inputs.map(_.schema), i)).toSet,
-      push = builder.conjuncts,
-      selectivity = selectivity
-    )
-    var (current, remaining) = JoinOrderOptimizer(options).plan(
-      graph,
-      JoinOrderOptimizer.expressionSearch(builder, joinBinding)
-    )
-    if remaining.nonEmpty then
-      current = builder.conjuncts(current, remaining)
-    if subqueryConds.nonEmpty then
-      current = builder.conjuncts(current, subqueryConds)
-    current
-
-  end innerJoinTree
-
-  /** Binds join conditions for [[JoinOrderOptimizer]] */
-  private val joinBinding: JoinBinding =
-    new JoinBinding:
-      override def joinKeys(
-          left: Schema,
-          right: Schema,
-          pairs: Seq[(Expression, Expression)]
-      ): (IndexedSeq[VExpr], IndexedSeq[VExpr]) = Planner.this.joinKeys(
-        Binder(Planner.this, BindScope(left)),
-        Binder(Planner.this, BindScope(right)),
-        pairs
-      )
-
-      override def bind(schema: Schema, e: Expression): VExpr = Binder(
-        Planner.this,
-        BindScope(schema)
-      ).bind(e)
-
   private[engine] def isTrueLiteral(e: Expression): Boolean = e.isInstanceOf[TrueLiteral]
 
   /**
@@ -2991,20 +2299,6 @@ class Planner(
         case _ =>
           true
     )
-
-  private def planOuterJoin(j: Join): Operator =
-    val left  = planRelation(j.left)
-    val right = planRelation(j.right)
-    val kind  = joinKind(j)
-    if j.asof then
-      return planAsOfJoin(j, left, right, kind)
-    usingKeys(j, left.schema, right.schema) match
-      case Some(names) =>
-        usingJoin(left, right, names, kind, operatorPlans)
-      case None =>
-        joinOn(j, kind, left, right, operatorPlans)
-
-  end planOuterJoin
 
   /**
     * The key names of a USING or NATURAL join of inputs with these schemas: the listed columns, or
@@ -3159,26 +2453,8 @@ class Planner(
   end usingJoin
 
   /**
-    * ASOF join: equalities between the inputs become keys, and the single remaining comparison
-    * between the inputs selects the closest right row
-    */
-  private def planAsOfJoin(j: Join, left: Operator, right: Operator, kind: JoinKind): Operator =
-    val spec = asOfJoinSpec(j, kind, left.schema, right.schema)
-    AsOfJoinOp(
-      left,
-      right,
-      spec.leftKeys,
-      spec.rightKeys,
-      spec.leftValue,
-      spec.rightValue,
-      spec.op,
-      spec.kind,
-      left.schema ++ right.schema
-    )
-
-  /**
     * The keys and the inequality of an ASOF join of inputs with these schemas, bound over each
-    * input, shared by both planners
+    * input
     */
   private[engine] def asOfJoinSpec(
       j: Join,
@@ -3268,7 +2544,7 @@ end Planner
 
 /** Builds join trees for the planner, with the planner's filter conditions (and subqueries) */
 private[engine] trait JoinPlanBuilder[P] extends JoinTreeBuilder[P]:
-  /** Apply filter conjuncts as `Planner.applyConjuncts` does */
+  /** Apply filter conjuncts: subquery conjuncts as joins, then the rest as a filter */
   def conjuncts(p: P, conds: List[Expression]): P
 
 /** Builds aggregations for the planner: operators, or runtime nodes with their operators */

@@ -10,7 +10,7 @@ The engine decorrelates a filter conjunct `x NOT IN (select y from t where t.k =
 
 - Correlated NOT IN is the NOT EXISTS rewrite: an anti join on the correlation keys only, with the residual `rest and (x = y or x is null or y is null)`. A row passes when no row of its group makes `x <> y` other than TRUE. An empty group passes, including for a NULL target or a NULL correlation key.
 - The residual is built from bound expressions (the target bound in the outer scope, the value as a column of the body), not from a rewritten query expression. The residual binder resolves inner names first, so `a not in (select a from t2 where ...)` would otherwise compare the inner `a` with itself.
-- The decorrelation is one function, `Planner.correlatedJoin[P]`, generic over the plan builder. The legacy planner calls it with operators and the runtime binder with runtime-plan nodes, so both planners build the same keys, residuals, and build sides, and the fix applies to both.
+- The decorrelation is one function, `Planner.correlatedJoin[P]`, generic over the plan builder. The legacy planner calls it with operators and the runtime binder with runtime-plan nodes, so both planners build the same keys, residuals, and build sides, and the fix applies to both. (Amended 2026-11-23: M4b deleted the legacy planner; the runtime binder is the only caller.)
 - Uncorrelated NOT IN is unchanged: its values are materialized at plan time, a NULL value gives no rows, and `x is not null` filters after a hash anti join on `x`.
 
 ## Consequences
