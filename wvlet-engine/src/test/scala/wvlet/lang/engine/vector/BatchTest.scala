@@ -36,3 +36,51 @@ class BatchTest extends UniTest:
     val b = batchOf(10)
     b.slice(0, 4096) shouldBeTheSameInstanceAs b
   }
+
+  test("take should defer columns until they are read") {
+    val b = batchOf(10)
+    val t = b.take(Array(7, 2, 5), 3)
+    t.isDeferred shouldBe true
+    t.column(1).get(0) shouldBe "s7"
+    // A read column is cached
+    t.column(1) shouldBeTheSameInstanceAs t.column(1)
+    t.isDeferred shouldBe true
+    t.columns.map(_.get(2)).toSeq shouldBe Seq(5, "s5")
+    t.isDeferred shouldBe false
+  }
+
+  test("take over deferred columns should compose the positions, keeping -1 as NULL") {
+    val b = batchOf(10)
+    val t = b.take(Array(9, 8, 7, 6), 4).take(Array(3, -1, 0), 3)
+    t.row(0).toSeq shouldBe Seq(6, "s6")
+    t.row(1).toSeq shouldBe Seq(null, null)
+    t.row(2).toSeq shouldBe Seq(9, "s9")
+    // A NULL row of a deferred batch taken again stays NULL
+    t.take(Array(1, 2), 2).row(0).toSeq shouldBe Seq(null, null)
+  }
+
+  test("takeWhere, select, ++, and slice should keep deferred columns") {
+    val b = batchOf(6)
+    val t = b.takeWhere(Array(true, false, true, false, true, false))
+    t.size shouldBe 3
+    val s = t.select(Array(1))
+    s.isDeferred shouldBe true
+    s.column(0).get(2) shouldBe "s4"
+    val joined = t ++ b.take(Array(5, -1, 0), 3)
+    joined.numColumns shouldBe 4
+    joined.row(1).toSeq shouldBe Seq(2, "s2", null, null)
+    val sl = joined.slice(1, 3)
+    sl.isDeferred shouldBe true
+    sl.row(1).toSeq shouldBe Seq(4, "s4", 0, "s0")
+  }
+
+  test("gather and concat should return gathered columns") {
+    val b = batchOf(6)
+    val t = b.take(Array(1, 3), 2)
+    t.gather(Array(1), 1).isDeferred shouldBe false
+    val c = Batch.concat(Schema(IndexedSeq(Field("a", PType.Int32), Field("b", PType.Str))), Seq(t))
+    c.isDeferred shouldBe false
+    c.row(1).toSeq shouldBe Seq(3, "s3")
+  }
+
+end BatchTest

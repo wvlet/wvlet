@@ -133,6 +133,12 @@ enum Optimization(val name: String):
   /** Parallel scan pipelines and two-phase / partitioned aggregation */
   case Parallelize extends Optimization("parallelize")
 
+  /**
+    * Filters and hash joins defer their output columns (row positions over their input columns)
+    * instead of copying every column: each column is gathered once, by the operator that reads it
+    */
+  case LateGather extends Optimization("late_gather")
+
 end Optimization
 
 object Optimization:
