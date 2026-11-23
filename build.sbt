@@ -274,13 +274,11 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       Seq(targetFile)
     },
     Compile / sourceGenerators += skillGen.taskValue,
-    // Watch changes of example .wv files upon testing. In sbt 2, Seq[File] outputs are
-    // rejected by the caching layer, so wrap the value in Def.uncached (same trick uni
-    // uses for JSEnv).
-    Test / watchSources ++=
-      Def.uncached(
-        ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get() ++
-          ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get()
+    // Re-run tests in watch mode (~test) when example .wv files change
+    Test / watchTriggers ++=
+      Seq(
+        (ThisBuild / baseDirectory).value.toGlob / "spec" / ** / "*.wv",
+        (ThisBuild / baseDirectory).value.toGlob / "wvlet-stdlib" / ** / "*.wv"
       )
   )
   .jvmSettings(
@@ -305,12 +303,11 @@ val specRunnerSettings = Seq(
   Test / fork := true,
   // When forking, the base directory should be set to the root directory
   Test / baseDirectory := (ThisBuild / baseDirectory).value,
-  // Watch changes of example .wv files upon testing. Def.uncached wraps the Seq[File]
-  // value so sbt 2's cached-task validator does not reject a non-serializable File output.
-  Test / watchSources ++=
-    Def.uncached(
-      ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get() ++
-        ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get()
+  // Re-run tests in watch mode (~test) when example .wv files change
+  Test / watchTriggers ++=
+    Seq(
+      (ThisBuild / baseDirectory).value.toGlob / "spec" / ** / "*.wv",
+      (ThisBuild / baseDirectory).value.toGlob / "wvlet-lang" / ** / "*.wv"
     )
 )
 
