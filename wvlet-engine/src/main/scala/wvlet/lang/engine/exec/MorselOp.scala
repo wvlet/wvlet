@@ -24,7 +24,8 @@ import scala.collection.mutable
   * filters, projections, hash join probes) as a task of `runner`. Up to twice the runner's
   * parallelism of parts are in flight; results are emitted in part order, so the output equals the
   * sequential one. `prepare` runs on the calling thread before any part starts (hash join builds,
-  * so that tasks never wait for other tasks), and `release` when the operator closes.
+  * so that tasks never wait for other tasks; one step may run several builds on coordinator
+  * threads, see [[TaskRunner.runTogether]]), and `release` when the operator closes.
   *
   * With `tail` (right / full joins), one more run over an empty input follows the parts, on the
   * calling thread, to emit the build rows no part matched.
@@ -53,6 +54,9 @@ class MorselOp(
   private var current: Iterator[Batch] = Iterator.empty
   private val window                   = math.max(2, runner.parallelism * 2)
   private var tailDone                 = false
+
+  /** The number of steps run before the parts start (for tests) */
+  def prepareSteps: Int = prepare.size
 
   /** The tail pipeline over an empty input, run on the calling thread after every part */
   private def runTail(): Seq[Batch] =
