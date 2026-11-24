@@ -8,7 +8,8 @@ import wvlet.uni.test.UniTest
   * one-shot `DuckDB.execute`. The same session semantics must hold on all three platforms (JDBC on
   * JVM, koffi-FFI on JS, C API on Native): state created by one `execute` is visible to the next.
   *
-  * Auto-skips on Scala.js and Native if libduckdb isn't loadable. `DuckDB.canExecute` gates the run.
+  * Auto-skips on Scala.js and Native if libduckdb isn't loadable. `DuckDB.canExecute` gates the
+  * run.
   */
 class DuckDBSessionTest extends UniTest:
 
