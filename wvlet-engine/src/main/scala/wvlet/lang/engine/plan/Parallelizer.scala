@@ -44,8 +44,9 @@ object Parallelizer:
       rewrite(op, runner)
 
   /**
-    * Whether pipelines start at the outputs of grouped aggregations ([[BreakerSource]]), and
-    * whether partitioned aggregations route their input in parallel
+    * Whether pipelines start at the outputs of grouped aggregations ([[BreakerSource]]), whether
+    * partitioned aggregations route their input in parallel, and whether the builds of a pipeline
+    * run at the same time
     */
   private case class AboveBreakers(
       enabled: Boolean,
