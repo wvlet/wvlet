@@ -19,9 +19,9 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 ## Parquet footer cache
 
 - `ParquetFooterCache` (`catalog/`) keeps parsed footers of local Parquet files, process-wide, LRU up to 256 files. Behind `parquet_footer_cache` (on by default).
-- An entry is valid while the file's size and last-modified time match a stat taken before the footer read. Files without an mtime, or modified within the last 10 seconds, are not cached, as DuckDB's `parquet_metadata_cache` does for coarse mtimes.
+- An entry is valid while the file's size and last-modified time match a stat taken before the footer read. Symbolic links, files without an mtime, and files modified within the last 10 seconds are not cached, as DuckDB's `parquet_metadata_cache` does for coarse mtimes.
 - Scans use it when `ScanSpec.footerCache` is set (from the toggle at lowering); planning reads when the `ParquetSource` was built with `footerCache` (file paths in queries). Other callers parse as before.
-- Only local paths are cached. A remote source would need a key that changes on overwrite (e.g. an ETag), since uni's `FileInfo` has none.
+- Only local paths are cached. A remote source would need a key that changes on overwrite (e.g. an ETag), since uni's `FileInfo` has none. See [the footer cache ADR](../adr/2026-11-24-engine-parquet-footer-cache.md).
 
 ## Accelerators (GPU offload)
 

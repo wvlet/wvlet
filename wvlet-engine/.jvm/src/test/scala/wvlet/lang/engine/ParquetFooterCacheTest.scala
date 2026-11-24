@@ -90,6 +90,15 @@ class ParquetFooterCacheTest extends UniTest:
     open(path).hit shouldBe false
   }
 
+  test("should not cache the footer of a symbolic link, whose stat is the link's own") {
+    val target = copy(nation, "link-target.parquet")
+    val link   = dir.resolve("link.parquet")
+    Files.deleteIfExists(link)
+    Files.createSymbolicLink(link, Paths.get(target))
+    open(link.toString).file.numRows shouldBe 25L
+    ParquetFooterCache.contains(link.toString) shouldBe false
+  }
+
   test("should not cache footers without the flag") {
     val path = copy(nation, "off.parquet")
     val src  = ParquetSource("off", path)

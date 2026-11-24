@@ -25,10 +25,10 @@ import wvlet.uni.io.FileSystem
   * `parquet_footer_cache` optimization, after DuckDB's `parquet_metadata_cache`).
   *
   * An entry is valid while the file's size and last-modified time stay the same. Both are read
-  * before the footer, so a rewrite during the read can't be filed under the new file's key. A file
-  * without a last-modified time, or one modified within [[RecentWriteMillis]] of the read (mtime
-  * can be coarse), is opened without caching its footer. At most [[MaxEntries]] files are kept,
-  * evicting the least recently used.
+  * before the footer, so a rewrite during the read can't be filed under the new file's key. A
+  * symbolic link, a file without a last-modified time, or one modified within [[RecentWriteMillis]]
+  * of the read (mtime can be coarse), is opened without caching its footer. At most [[MaxEntries]]
+  * files are kept, evicting the least recently used.
   */
 object ParquetFooterCache:
 
@@ -81,7 +81,11 @@ object ParquetFooterCache:
     val stat =
       try
         val info = FileSystem.info(path)
-        info.lastModified.map(t => (info.size, t.toEpochMilli))
+        // A symbolic link's stat describes the link, not the file it points to
+        if info.isFile then
+          info.lastModified.map(t => (info.size, t.toEpochMilli))
+        else
+          None
       catch
         case _: Exception =>
           None
@@ -102,6 +106,8 @@ object ParquetFooterCache:
             val e = Entry(size, mtime, f.metadata)
             entries.synchronized(entries.put(path, e))
             Opened(f, Some(e), false)
+
+  end open
 
   /** Whether `path` has a cached footer (for tests) */
   def contains(path: String): Boolean = entries.synchronized(entries.containsKey(path))
