@@ -166,20 +166,35 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
   /**
     * Integer and date columns: the width of the [min, max] range in the file statistics, at most
     * the non-null count. Strings of files up to [[ParquetSource.DistinctScanLimit]] rows: counted
-    * by reading the column once (cached), as DuckDB keeps distinct-count statistics for join
-    * ordering
+    * by reading the column once, as DuckDB keeps distinct-count statistics for join ordering.
+    * Estimates are cached per file version (see [[ParquetSource.MaxDistinctEntries]]); a file
+    * [[ParquetFooterCache]] wouldn't cache is estimated once per source (a source lives for one
+    * query)
     */
   override def estimatedDistinct(column: String): Option[Double] =
-    // Keyed by path: file sources in queries are new ParquetSource instances per query
-    val key = (path, column)
-    val c   = ParquetSource.distinctCache.get(key)
-    if c != null then
-      c
+    // Stat before computing, so that the entry describes the file read or an older version
+    def version = ParquetFooterCache
+      .fileVersion(path)
+      .filterNot((_, mtime) => ParquetFooterCache.isRecentWrite(mtime))
+    if !isSingleFile then
+      None
     else
-      // Computed outside the map, so that a scan doesn't block other planners
-      val d = computeDistinct(column)
-      ParquetSource.distinctCache.putIfAbsent(key, d)
-      d
+      version match
+        case None =>
+          // A file whose rewrites can't be told apart: not shared with other queries
+          localDistinct.synchronized(localDistinct.getOrElseUpdate(column, computeDistinct(column)))
+        case Some(v) =>
+          ParquetSource.cachedDistinct(path, column, v) match
+            case Some(d) =>
+              d
+            case None =>
+              // Computed outside the lock, so that a scan doesn't block other planners
+              val d = computeDistinct(column)
+              ParquetSource.putDistinct(path, column, v, d)
+              d
+
+  // Estimates of a file without a trusted version, kept for this source only
+  private val localDistinct = scala.collection.mutable.HashMap.empty[String, Option[Double]]
 
   private def computeDistinct(column: String): Option[Double] =
     if !isSingleFile then
@@ -278,11 +293,43 @@ object ParquetSource:
   /** Up to how many rows a string column is read to count its distinct values */
   val DistinctScanLimit: Long = 1000000
 
-  /** Distinct-count estimates per (file path, column), shared by the sources of the same file */
-  private val distinctCache = java
-    .util
-    .concurrent
-    .ConcurrentHashMap[(String, String), Option[Double]]()
+  /** Up to how many (file, column) distinct-count estimates are kept */
+  val MaxDistinctEntries: Int = 4096
+
+  /** A distinct-count estimate and the file version (size, last-modified) it was computed from */
+  private case class DistinctEntry(version: (Long, Long), estimate: Option[Double])
+
+  // Estimates per (file path, column), shared by the sources of the same file. Access-ordered, so
+  // that the eldest entry is the least recently used
+  private val distinctCache =
+    new java.util.LinkedHashMap[(String, String), DistinctEntry](16, 0.75f, true):
+      override def removeEldestEntry(
+          e: java.util.Map.Entry[(String, String), DistinctEntry]
+      ): Boolean = size() > MaxDistinctEntries
+
+  /** The cached estimate of `column` in `path`, when it was computed from file version `version` */
+  private def cachedDistinct(
+      path: String,
+      column: String,
+      version: (Long, Long)
+  ): Option[Option[Double]] = distinctCache.synchronized {
+    Option(distinctCache.get((path, column))).filter(_.version == version).map(_.estimate)
+  }
+
+  private def putDistinct(
+      path: String,
+      column: String,
+      version: (Long, Long),
+      estimate: Option[Double]
+  ): Unit = distinctCache.synchronized {
+    distinctCache.put((path, column), DistinctEntry(version, estimate))
+  }
+
+  /** The file version the cached estimate of `column` in `path` was computed from (for tests) */
+  def cachedDistinctVersion(path: String, column: String): Option[(Long, Long)] = distinctCache
+    .synchronized {
+      Option(distinctCache.get((path, column))).map(_.version)
+    }
 
   /** The columns, their engine types, and uni read options of a scan over `schema` */
   def readOptions(schema: Schema, spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =
