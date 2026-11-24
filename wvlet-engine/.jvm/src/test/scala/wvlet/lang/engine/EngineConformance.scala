@@ -35,7 +35,8 @@ class EngineConformance(
     specPath: String,
     setupSQL: Seq[String],
     setupEngine: WvletEngine => Unit,
-    optimizer: plan.OptimizerOptions = plan.OptimizerOptions()
+    optimizer: plan.OptimizerOptions = plan.OptimizerOptions(),
+    accelerator: Option[runtime.PlanAccelerator] = None
 ) extends LogSupport
     with AutoCloseable:
   Class.forName("org.duckdb.DuckDBDriver")
@@ -47,7 +48,7 @@ class EngineConformance(
     finally st.close()
   }
 
-  val engine = WvletEngine(baseDir = specPath, optimizer = optimizer)
+  val engine = WvletEngine(baseDir = specPath, optimizer = optimizer, accelerator = accelerator)
   setupEngine(engine)
 
   private val compiler = Compiler(

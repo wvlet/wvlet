@@ -41,9 +41,10 @@ object Lowering:
       p: RuntimePlan,
       joinFilters: Boolean = false,
       presizeAggs: Boolean = false,
-      inSet: Boolean = false
+      inSet: Boolean = false,
+      accelerator: Option[PlanAccelerator] = None
   ): Operator =
-    val l = Lower(joinFilters, presizeAggs)
+    val l = Lower(joinFilters, presizeAggs, accelerator)
     if inSet then
       l.markInSet(p)
     l.lower(p)
@@ -60,7 +61,11 @@ object Lowering:
         .map(g => math.min(g, GroupTable.MaxPresizeGroups.toDouble).toInt)
         .getOrElse(0)
 
-  private class Lower(joinFilters: Boolean, presizeAggs: Boolean):
+  private class Lower(
+      joinFilters: Boolean,
+      presizeAggs: Boolean,
+      accelerator: Option[PlanAccelerator]
+  ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
     // The nodes not lowered yet that are in a duplicate-insensitive context, set by their parent
@@ -82,7 +87,14 @@ object Lowering:
             val c = contexts(i) && setNodes.getOrDefault(kids(i), true)
             setNodes.put(kids(i), c)
           }
-      lowerNode(p, inSet)
+      // An accelerator takes the whole subtree, or none of it; its CPU fallback lowers p alone
+      accelerator.flatMap(
+        _.accelerate(p, q => Lowering(q, presizeAggs = presizeAggs, inSet = inSet))
+      ) match
+        case Some(op) =>
+          op
+        case None =>
+          lowerNode(p, inSet)
 
     private def lowerNode(p: RuntimePlan, inSet: Boolean): Operator =
       p match
@@ -307,10 +319,10 @@ object Lowering:
         Nil
 
   /** Column id -> position in the output of `p` (-1 for ids it doesn't output) */
-  private def positions(p: RuntimePlan): Array[Int] = positions(p.output)
+  private[engine] def positions(p: RuntimePlan): Array[Int] = positions(p.output)
 
   /** Column id -> position in `out` (-1 for ids it doesn't have) */
-  private def positions(out: IndexedSeq[Column]): Array[Int] =
+  private[engine] def positions(out: IndexedSeq[Column]): Array[Int] =
     val pos = Array.fill(out.map(_.id.value).maxOption.getOrElse(-1) + 1)(-1)
     out.indices.foreach(i => pos(out(i).id.value) = i)
     pos

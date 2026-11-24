@@ -16,6 +16,12 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 - A new toggle must be listed in `OptimizerOptionsTest`, or the JS and Native CI jobs fail.
 - Give every executor or planner change an `Optimization` toggle from the start, so it can be benchmarked on one build.
 
+## Accelerators (GPU offload)
+
+- A `PlanAccelerator` (`runtime/PlanAccelerator.scala`) is offered each runtime plan subtree top-down in `Lowering`, before CPU lowering; the first subtree it accepts runs as one operator. `WvletEngine(accelerator = ...)` sets one; the `gpu_offload` toggle turns the hook off. See [the GPU executor ADR](../adr/2026-11-24-engine-gpu-executor.md).
+- `wvlet-engine-gpu` is the example accelerator (cudf-java, JVM only, not in the CLI pack or the CI aggregates). It runs subtrees that join or aggregate, keeps scanned columns on the device across queries, and runs a subtree on the CPU if the device fails at run time.
+- `EnginePlanAcceleratorTest` checks the hook with a stub accelerator. On a machine with a CUDA device, `./sbt "engineGpu/testOnly *GpuTPCHTest"` checks spec/tpch against DuckDB with GPU offload, and `WVLET_ENGINE_BENCH_SF=10 WVLET_ENGINE_BENCH_AB=gpu_offload ./sbt "engineGpu/testOnly *GpuTPCHBench"` compares GPU on and off.
+
 ## Correctness gates
 
 - `EngineBasicSpecTest` runs spec/basic with `PlanValidator` on.

@@ -35,7 +35,7 @@ import scala.util.control.NonFatal
   * A table of a [[Warehouse]]: an Apache Iceberg table at `path` that the engine writes. Reads go
   * through uni's Iceberg reader as for any [[ParquetSource]]
   */
-class ManagedTable(name: String, val path: String) extends ParquetSource(name, path):
+class ManagedTable(name: String, path: String) extends ParquetSource(name, path):
   /** The table properties */
   lazy val properties: Map[String, String] =
     val ds = ParquetSource.openDataset(path)

@@ -184,6 +184,12 @@ enum Optimization(val name: String):
     */
   case ParallelAggPartitioning extends Optimization("parallel_agg_partitioning")
 
+  /**
+    * Run the plan subtrees that the engine's [[wvlet.lang.engine.runtime.PlanAccelerator]] (e.g. a
+    * GPU) supports on it. Without an accelerator, nothing changes
+    */
+  case GpuOffload extends Optimization("gpu_offload")
+
 end Optimization
 
 object Optimization:

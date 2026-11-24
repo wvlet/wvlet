@@ -29,6 +29,7 @@ import wvlet.lang.engine.runtime.BExpr
 import wvlet.lang.engine.runtime.JoinCondition
 import wvlet.lang.engine.runtime.Lowering
 import wvlet.lang.engine.runtime.Optimizer
+import wvlet.lang.engine.runtime.PlanAccelerator
 import wvlet.lang.engine.runtime.PlanValidator
 import wvlet.lang.engine.runtime.PushDownFilters
 import wvlet.lang.engine.runtime.RuntimePlan
@@ -50,7 +51,8 @@ import scala.util.control.NonFatal
 class Planner(
     catalog: EngineCatalog,
     sources: SourceResolver,
-    options: OptimizerOptions = OptimizerOptions()
+    options: OptimizerOptions = OptimizerOptions(),
+    accelerator: Option[PlanAccelerator] = None
 )(using ctx: Context)
     extends LogSupport:
 
@@ -61,7 +63,8 @@ class Planner(
     p,
     joinFilters = enabled(Optimization.RuntimeJoinFilters),
     presizeAggs = enabled(Optimization.PresizeAggregates),
-    inSet = inSet
+    inSet = inSet,
+    accelerator = accelerator.filter(_ => enabled(Optimization.GpuOffload))
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

@@ -69,7 +69,8 @@ class OptimizerOptionsTest extends UniTest:
         "concurrent_join_builds",
         "concurrent_shared_ctes",
         "parallel_above_breakers",
-        "parallel_agg_partitioning"
+        "parallel_agg_partitioning",
+        "gpu_offload"
       )
   }
 

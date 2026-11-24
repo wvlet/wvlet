@@ -1,0 +1,13 @@
+# Sirius memory settings for SF100 on one DGX Spark (GB10, 128 GB shared by GPU and CPU).
+#
+# SF100 is ~32 GB of Parquet. Pinned (compressed) tables plus hash tables need far more GPU
+# memory than sirius.yaml's 50%, so give the GPU 70% (~83 GB) and keep the pinned host pools
+# small. The rest is for the OS and the DuckDB process. Spill to local disk instead of failing.
+sirius:
+  memory:
+    gpu:
+      usage_limit_fraction: 0.7
+    host:
+      capacity_bytes: 12Gi
+    disk:
+      downgrade_root_dirs: "/tmp/sirius_disk_memory"

@@ -97,11 +97,11 @@ class MemTable(val name: String, val schema: Schema, batches: Seq[Batch]) extend
         batches.iterator.map(_.select(idx))
 
 /** A Parquet file, a directory of Parquet files (Hive partitions), or an Iceberg table */
-class ParquetSource(val name: String, path: String) extends TableSource:
+class ParquetSource(val name: String, val path: String) extends TableSource:
   override def key: Any = ("parquet", path)
 
-  private val isSingleFile: Boolean =
-    path.endsWith(".parquet") && !path.exists(c => c == '*' || c == '{')
+  /** Whether `path` names one Parquet file, rather than a folder or a glob */
+  val isSingleFile: Boolean = path.endsWith(".parquet") && !path.exists(c => c == '*' || c == '{')
 
   private lazy val parquetSchema: ParquetSchema =
     if isSingleFile then

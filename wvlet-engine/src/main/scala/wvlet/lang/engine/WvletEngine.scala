@@ -13,6 +13,8 @@
  */
 package wvlet.lang.engine
 
+import wvlet.lang.engine.runtime.PlanAccelerator
+
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
@@ -58,12 +60,14 @@ case class EngineResult(schema: Schema, batches: Seq[Batch]):
   * The in-process columnar query engine: executes typed wvlet relations on vectors, reading Parquet
   * / Iceberg through uni. Tables are registered in [[catalog]]; file paths in queries are resolved
   * against `baseDir`. `optimizer` selects the planner optimizations to run (by default, all but
-  * those named in the `wvlet.engine.optimizer.disabled` system property).
+  * those named in the `wvlet.engine.optimizer.disabled` system property). With an `accelerator`,
+  * the plan subtrees it supports run on it (e.g. a GPU), and the rest on the CPU.
   */
 class WvletEngine(
     val catalog: EngineCatalog = EngineCatalog(),
     baseDir: String = ".",
-    val optimizer: OptimizerOptions = OptimizerOptions.fromSystem()
+    val optimizer: OptimizerOptions = OptimizerOptions.fromSystem(),
+    val accelerator: Option[PlanAccelerator] = None
 ) extends LogSupport:
 
   private class DefaultResolver(using ctx: Context) extends SourceResolver:
@@ -123,7 +127,8 @@ class WvletEngine(
   def physicalPlan(r: Relation)(using ctx: Context): Operator = Planner(
     catalog,
     DefaultResolver(),
-    optimizer
+    optimizer,
+    accelerator
   ).plan(lowerShow(r))
 
   /**
@@ -133,7 +138,8 @@ class WvletEngine(
   def runtimePlan(r: Relation)(using ctx: Context): wvlet.lang.engine.runtime.RuntimePlan = Planner(
     catalog,
     DefaultResolver(),
-    optimizer
+    optimizer,
+    accelerator
   ).runtimePlan(lowerShow(r))
 
   /** SHOW statements become their SQL queries over information_schema (or a VALUES list) */
@@ -145,10 +151,26 @@ class WvletEngine(
     .asInstanceOf[Relation]
 
   /** An engine running only the given planner optimizations, over the same catalog and folder */
-  def withOptimizer(o: OptimizerOptions): WvletEngine = WvletEngine(catalog, baseDir, o)
+  def withOptimizer(o: OptimizerOptions): WvletEngine = WvletEngine(
+    catalog,
+    baseDir,
+    o,
+    accelerator
+  )
 
   /** An engine over another catalog, resolving files against the same folder */
-  def withCatalog(c: EngineCatalog): WvletEngine = WvletEngine(c, baseDir, optimizer)
+  def withCatalog(c: EngineCatalog): WvletEngine = WvletEngine(c, baseDir, optimizer, accelerator)
+
+  /** An engine running the plan subtrees `a` supports on it */
+  def withAccelerator(a: PlanAccelerator): WvletEngine = WvletEngine(
+    catalog,
+    baseDir,
+    optimizer,
+    Some(a)
+  )
+
+  /** An engine running every plan on the CPU */
+  def noAccelerator(): WvletEngine = WvletEngine(catalog, baseDir, optimizer, None)
 
   /** Expand model references, plan, and run a query relation */
   def execute(r: Relation)(using ctx: Context): EngineResult =
