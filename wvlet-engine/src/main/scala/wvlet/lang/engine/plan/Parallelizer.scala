@@ -52,13 +52,16 @@ object Parallelizer:
       tail: Option[Operator => Operator],
       prepare: List[() => Unit],
       close: List[() => Unit],
-      operators: Int = 0
+      hasWork: Boolean = false
   ):
-    /** Add an operator over the pipeline, the same over the parts and the tail */
-    def map(f: Operator => Operator): Pipeline = copy(
+    /**
+      * Add an operator over the pipeline, the same over the parts and the tail. `work`: whether it
+      * computes something (not only selects or renames columns)
+      */
+    def map(f: Operator => Operator, work: Boolean = true): Pipeline = copy(
       rebuild = x => f(rebuild(x)),
       tail = tail.map(t => x => f(t(x))),
-      operators = operators + 1
+      hasWork = hasWork || work
     )
 
   private def isOuterBuild(kind: JoinKind): Boolean = kind.tracksBuildMatches
@@ -79,7 +82,12 @@ object Parallelizer:
           _.map(x => FilterOp(x, f.cond, f.keep).withLateGather(f.lateGather))
         )
       case pr: ProjectOp =>
-        pipeline(pr.child, runner).map(_.map(x => ProjectOp(x, pr.exprs, pr.schema)))
+        pipeline(pr.child, runner).map(
+          _.map(
+            x => ProjectOp(x, pr.exprs, pr.schema),
+            work = !pr.exprs.forall(_.isInstanceOf[ColRef])
+          )
+        )
       case j: HashJoinOp =>
         pipeline(j.left, runner).map { p =>
           // One join over the (itself parallelized) build input, whose build every copy shares
@@ -202,14 +210,26 @@ object Parallelizer:
     else
       HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
 
+  /**
+    * The column selections and renames between `op` and the grouped aggregation at the bottom of
+    * its pipeline, over `agg` (that aggregation, rewritten) instead
+    */
+  private def rebuildOver(op: Operator, agg: Operator): Operator =
+    op match
+      case p: ProjectOp =>
+        ProjectOp(rebuildOver(p.child, agg), p.exprs, p.schema)
+      case _ =>
+        agg
+
   private def rewrite(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     def r(x: Operator): Operator = rewrite(x, runner)
     pipeline(op, runner) match
       case Some(p) =>
         p.scan.source match
-          case b: BreakerSource if p.operators == 0 =>
-            // Nothing above the aggregation to run as morsels
-            b.op
+          case b: BreakerSource if !p.hasWork =>
+            // Nothing above the aggregation worth running as morsels: keep the operators as they
+            // are over it
+            rebuildOver(op, b.op)
           case _ =>
             MorselOp(p.scan, p.rebuild, op.schema, runner, p.prepare, p.close, p.tail)
       case None =>
