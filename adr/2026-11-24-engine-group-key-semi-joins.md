@@ -20,3 +20,8 @@ Date: 2026-11-24 · PR #2364
 - TPC-H q17 at SF10 0.43–0.50x (2.8x → about 2x DuckDB), TPC-H SF10 suite 0.92x; TPC-DS q32 / q64 / q92 0.88–0.98x; other plans unchanged.
 - Anti joins are left out (a NOT IN reads the subquery's NULL keys), as are right and full joins, which keep unmatched groups.
 - The threshold depends on filter selectivity estimates: TPC-H q20's `p_name like 'forest%'` gets the default selectivity, so it is not reduced.
+
+## Amendment (2026-11-24)
+
+- The pass also matches a right join with the aggregation on the left that builds on the right, the mirror of a left join. The aggregation's side is lowered first there, but no runtime join filter from above reaches through such a join into its build side, so the copy of the key source takes none of the original's filters. A right join building on the left stays out.
+- `prefix_like_selectivity` estimates `x like 'p%'` as a range with two bounds (0.09), so q20's `forest%` parts pass the 1/8 bar. q20 at SF10: 0.64x. See [the design note](../plans/2026-11-24-engine-prefix-like-selectivity.md).

@@ -48,6 +48,7 @@ class OptimizerOptionsTest extends UniTest:
         "reorder_joins",
         "reduce_semi_joins",
         "group_key_semi_joins",
+        "prefix_like_selectivity",
         "exact_join_order",
         "swap_build_side",
         "prefetch_scalar_subqueries",
