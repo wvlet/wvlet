@@ -894,7 +894,8 @@ final class JoinBuild(
     rightKeys: IndexedSeq[VExpr],
     trackMatches: Boolean = false,
     runner: TaskRunner = TaskRunner.Sequential,
-    filters: Seq[RuntimeFilter] = Nil
+    filters: Seq[RuntimeFilter] = Nil,
+    packKeys: Boolean = true
 ):
   @volatile
   private var built = false
@@ -909,6 +910,9 @@ final class JoinBuild(
   private var tables: Array[GroupTable] = null
   private var heads: Array[Array[Int]]  = null
   private var chain: Array[Int]         = null
+  // Multi-column integer keys packed into one Int64 key from the build key ranges, so the tables
+  // compare one Long per candidate; null when the keys are not packed
+  private var packer: KeyPacker = null
 
   /** The row with the same key after `row`, or -1 */
   inline def nextMatch(row: Int): Int = chain(row)
@@ -929,18 +933,26 @@ final class JoinBuild(
 
   private def buildTable(): Unit =
     build = Operator.materialize(right)
-    val keyVecs = rightKeys.map(_.eval(build)).toArray
-    val types   = rightKeys.map(_.ptype)
+    val rawKeys  = rightKeys.map(_.eval(build)).toArray
+    val rawTypes = rightKeys.map(_.ptype)
     // Rows with NULL keys never match
     val valid = new Array[Int](build.size)
     var nv    = 0
     var i     = 0
     while i < build.size do
-      if !GroupKey.hasNull(keyVecs, i) then
+      if !GroupKey.hasNull(rawKeys, i) then
         valid(nv) = i
         nv += 1
       i += 1
-    filters.foreach(f => f.set(keyVecs(f.key), valid, nv))
+    filters.foreach(f => f.set(rawKeys(f.key), valid, nv))
+    if packKeys then
+      packer = KeyPacker.of(rawTypes, rawKeys, valid, nv)
+    // The key columns the tables hold
+    val (keyVecs, types) =
+      if packer == null then
+        (rawKeys, rawTypes)
+      else
+        (Array[Vec](packer.pack(rawKeys, build.size)), IndexedSeq(PType.Int64))
     chain = Vec.filledInts(build.size, -1)
     if runner.parallelism > 1 && nv >= JoinBuild.MinParallelRows then
       parts = GroupTable.partitionCount(runner.parallelism)
@@ -1008,8 +1020,14 @@ final class JoinBuild(
     * The first build row with the key of each probe row, or -1 when none has it (or the probe key
     * has a NULL). Safe to call from several threads once built
     */
-  def firstMatches(keys: Array[Vec], n: Int): Array[Int] =
+  def firstMatches(probeKeys: Array[Vec], n: Int): Array[Int] =
     val out = new Array[Int](n)
+    // Probe rows outside the build key ranges pack as NULL, which never match
+    val keys =
+      if packer == null then
+        probeKeys
+      else
+        Array[Vec](packer.pack(probeKeys, n))
     if parts == 1 then
       val ids  = tables(0).lookup(keys, n)
       val head = heads(0)
