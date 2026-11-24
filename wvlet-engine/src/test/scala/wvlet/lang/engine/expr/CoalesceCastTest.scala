@@ -165,4 +165,16 @@ class CoalesceCastTest extends UniTest:
     rows(v) shouldBe Seq(JBigDecimal("1.00"), null, JBigDecimal("3.00"))
   }
 
+  test("should divide decimals on doubles like BigDecimal.doubleValue") {
+    val x = LongVec(dec2, Array(100L, 250L, 0L, 300L), nulls(false, false, true, false))
+    val y = LongVec(dec2, Array(300L, 50L, 100L, 0L), null)
+    val q = Kernels.arith(ArithOp.Div, x, y, PType.Float64)
+    rows(q) shouldBe Seq(1.0 / 3.0, 5.0, null, null)
+    // Above 2^53 the unscaled values go through BigDecimal
+    val large = LongVec(dec2, Array(Long.MaxValue), null)
+    val one   = LongVec(dec2, Array(100L), null)
+    Kernels.arith(ArithOp.Div, large, one, PType.Float64).get(0) shouldBe
+      JBigDecimal.valueOf(Long.MaxValue, 2).doubleValue()
+  }
+
 end CoalesceCastTest

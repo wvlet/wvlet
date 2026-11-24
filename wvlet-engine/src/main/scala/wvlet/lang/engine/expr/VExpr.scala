@@ -733,15 +733,25 @@ object Kernels:
           o(k) = l.values(k).toDouble
           k += 1
         o
+      // Long-backed decimals: unscaled / 10^scale when that rounds correctly, else via BigDecimal
+      case l: LongVec =>
+        val o = decimalToDoubles(l.values, decimalScale(l))
+        if o != null then
+          o
+        else
+          rowDoubles(l)
       case other =>
-        val o = new Array[Double](other.size)
-        var k = 0
-        while k < o.length do
-          val x = other.get(k)
-          if x != null then
-            o(k) = ValueOps.toDouble(x)
-          k += 1
-        o
+        rowDoubles(other)
+
+  private def rowDoubles(v: Vec): Array[Double] =
+    val o = new Array[Double](v.size)
+    var k = 0
+    while k < o.length do
+      val x = v.get(k)
+      if x != null then
+        o(k) = ValueOps.toDouble(x)
+      k += 1
+    o
 
   private val Pow10: Array[Long] =
     val a = new Array[Long](19)
@@ -974,6 +984,7 @@ object Kernels:
               o(i) = Math.multiplyExact(a(i), b(i))
               i += 1
           case ArithOp.IntDiv | ArithOp.Div | ArithOp.Mod =>
+            val mod = op == ArithOp.Mod
             while i < n do
               if nulls == null || !nulls(i) then
                 if b(i) == 0 then
@@ -984,11 +995,12 @@ object Kernels:
                       else
                         nulls.clone()
                   resultNulls(i) = true
-                else if op == ArithOp.Mod then
+                else if mod then
                   o(i) = a(i) % b(i)
                 else
                   o(i) = a(i) / b(i)
               i += 1
+        end match
         if out == PType.Int32 then
           IntVec(PType.Int32, o.map(_.toInt), resultNulls)
         else
@@ -1013,6 +1025,9 @@ object Kernels:
               o(i) = a(i) * b(i)
               i += 1
           case ArithOp.Div | ArithOp.IntDiv | ArithOp.Mod =>
+            // Decided once: comparing enum cases calls equals, which costs a call per row
+            val div    = op == ArithOp.Div
+            val intDiv = op == ArithOp.IntDiv
             while i < n do
               if b(i) == 0.0 then
                 if resultNulls eq nulls then
@@ -1022,15 +1037,12 @@ object Kernels:
                     else
                       nulls.clone()
                 resultNulls(i) = true
+              else if div then
+                o(i) = a(i) / b(i)
+              else if intDiv then
+                o(i) = math.floor(a(i) / b(i))
               else
-                o(i) =
-                  op match
-                    case ArithOp.Div =>
-                      a(i) / b(i)
-                    case ArithOp.IntDiv =>
-                      math.floor(a(i) / b(i))
-                    case _ =>
-                      a(i) % b(i)
+                o(i) = a(i) % b(i)
               i += 1
         end match
         DoubleVec(o, resultNulls)
