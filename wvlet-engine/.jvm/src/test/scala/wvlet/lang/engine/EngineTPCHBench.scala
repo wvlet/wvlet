@@ -174,9 +174,7 @@ object EngineTPCHBench extends LogSupport:
       // offAccelerator, when given, replaces the accelerator there (to A/B accelerator settings)
       val offEngine = opts
         .abOff
-        .map(off =>
-          WvletEngine(engine.catalog, specPath, off, offAccelerator.orElse(accelerator))
-        )
+        .map(off => WvletEngine(engine.catalog, specPath, off, offAccelerator.orElse(accelerator)))
       val abResults = Seq.newBuilder[ABTiming]
       val abFailed  = Seq.newBuilder[String]
 

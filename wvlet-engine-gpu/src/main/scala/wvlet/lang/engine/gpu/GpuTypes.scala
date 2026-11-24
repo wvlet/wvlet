@@ -139,7 +139,9 @@ object GpuTypes:
       )
     p match
       case PType.Bool =>
-        ColumnVector.fromBoxedBooleans(boxed(x => java.lang.Boolean.valueOf(x.asInstanceOf[Boolean]))*)
+        ColumnVector.fromBoxedBooleans(
+          boxed(x => java.lang.Boolean.valueOf(x.asInstanceOf[Boolean]))*
+        )
       case PType.Int32 =>
         ColumnVector.fromBoxedInts(boxed(x => Integer.valueOf(x.asInstanceOf[Number].intValue()))*)
       case PType.Date =>
@@ -184,6 +186,7 @@ object GpuTypes:
           ColumnVector.decimalFromBigInt(-d.scale, values*)
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported type on the GPU: ${other}")
+    end match
 
   end fromVec
 
@@ -238,7 +241,16 @@ object GpuTypes:
             fits = words(2 * i + 1) == (words(2 * i) >> 63) || (nulls != null && nulls(i))
             i += 1
           if fits then
-            LongVec(d, Array.tabulate(n)(i => if nulls != null && nulls(i) then 0L else words(2 * i)), nulls)
+            LongVec(
+              d,
+              Array.tabulate(n)(i =>
+                if nulls != null && nulls(i) then
+                  0L
+                else
+                  words(2 * i)
+              ),
+              nulls
+            )
           else
             ObjVec(
               d,

@@ -383,8 +383,8 @@ object GpuExprs:
 
   /**
     * [[evalColumn]], except that a decimal of type `p` may come back as DECIMAL64 at the same scale
-    * when the value bounds allowed computing it in 64 bits. Every consumer of such a column casts it
-    * to the type it needs, and the host copy reads both widths.
+    * when the value bounds allowed computing it in 64 bits. Every consumer of such a column casts
+    * it to the type it needs, and the host copy reads both widths.
     */
   def evalColumnNarrow(e: VExpr, p: PType, input: IndexedSeq[ColumnVector], rows: Int)(using
       b: Bounds
@@ -395,12 +395,14 @@ object GpuExprs:
         try
           val cv = o.toColumn(rows)
           val t  = cv.getType
-          if t.getTypeId == DType.DTypeEnum.DECIMAL64 && t.getScale == -d.scale || t == dtype(d) then
+          if t.getTypeId == DType.DTypeEnum.DECIMAL64 && t.getScale == -d.scale || t == dtype(d)
+          then
             cv
           else
             try cv.castTo(dtype(d))
             finally cv.close()
-        finally o.close()
+        finally
+          o.close()
       case _ =>
         evalColumn(e, p, input, rows)
 
@@ -438,8 +440,9 @@ object GpuExprs:
           // Only exact casts run on the device (see castable)
           bound(c.child)
         case cw: CaseWhen =>
-          val vs = cw.whens.map(w => bound(w._2)) ++
-            cw.elseExpr.map(bound).orElse(Some(Some(JBigDecimal.ZERO)))
+          val vs =
+            cw.whens.map(w => bound(w._2)) ++
+              cw.elseExpr.map(bound).orElse(Some(Some(JBigDecimal.ZERO)))
           Option.when(vs.forall(_.isDefined))(vs.flatten.reduce((x, y) => x.max(y)))
         case _ =>
           None
@@ -524,13 +527,9 @@ object GpuExprs:
       case _ =>
         col(l.operable.binaryOp(op, r.operable, out))
 
-  private def logical(
-      l: VExpr,
-      r: VExpr,
-      op: BinaryOp,
-      input: IndexedSeq[ColumnVector],
-      rows: Int
-  )(using Bounds): Operand =
+  private def logical(l: VExpr, r: VExpr, op: BinaryOp, input: IndexedSeq[ColumnVector], rows: Int)(
+      using Bounds
+  ): Operand =
     withOperand(evalAs(l, PType.Bool, input, rows)) { lo =>
       withOperand(evalAs(r, PType.Bool, input, rows)) { ro =>
         binary(lo, ro, op, DType.BOOL8, rows)
@@ -544,7 +543,7 @@ object GpuExprs:
         case d: PType.Decimal if declared.getTypeId == DType.DTypeEnum.DECIMAL128 =>
           // The declared precision needs 128 bits, but the values may not: when the bounds of the
           // result and of each side fit 18 digits at their scales, compute in DECIMAL64
-          val (ls, rs) = (scaleOf(a.left.ptype).get, scaleOf(a.right.ptype).get)
+          val (ls, rs)   = (scaleOf(a.left.ptype).get, scaleOf(a.right.ptype).get)
           val sideScales =
             a.op match
               case ArithOp.Mul =>

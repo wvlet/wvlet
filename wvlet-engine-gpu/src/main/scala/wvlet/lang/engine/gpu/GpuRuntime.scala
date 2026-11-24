@@ -73,21 +73,24 @@ enum GpuFeature(val featureName: String):
   /** Copy DECIMAL128 and string results to the host as whole buffers, not one value per row */
   case BulkCopy extends GpuFeature("bulk_copy")
 
+end GpuFeature
+
 object GpuFeature:
-  def parse(names: String): Set[GpuFeature] = names
-    .split(",")
-    .map(_.trim)
-    .filter(_.nonEmpty)
-    .map(n =>
-      values
-        .find(_.featureName == n)
-        .getOrElse(
-          throw IllegalArgumentException(
-            s"Unknown GPU feature ${n}; one of ${values.map(_.featureName).mkString(", ")}"
+  def parse(names: String): Set[GpuFeature] =
+    names
+      .split(",")
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .map(n =>
+        values
+          .find(_.featureName == n)
+          .getOrElse(
+            throw IllegalArgumentException(
+              s"Unknown GPU feature ${n}; one of ${values.map(_.featureName).mkString(", ")}"
+            )
           )
-        )
-    )
-    .toSet
+      )
+      .toSet
 
 /**
   * Settings of the GPU executor.
@@ -108,12 +111,12 @@ case class GpuConfig(
     disabled: Set[GpuFeature] = Set.empty,
     profile: Boolean = false
 ):
-  def withPoolFraction(f: Double): GpuConfig           = copy(poolFraction = f)
-  def withCacheFraction(f: Double): GpuConfig          = copy(cacheFraction = f)
-  def withDisabled(fs: Set[GpuFeature]): GpuConfig     = copy(disabled = fs)
-  def noDisabled(): GpuConfig                          = copy(disabled = Set.empty)
-  def withProfile(enabled: Boolean): GpuConfig         = copy(profile = enabled)
-  def isEnabled(f: GpuFeature): Boolean                = !disabled.contains(f)
+  def withPoolFraction(f: Double): GpuConfig       = copy(poolFraction = f)
+  def withCacheFraction(f: Double): GpuConfig      = copy(cacheFraction = f)
+  def withDisabled(fs: Set[GpuFeature]): GpuConfig = copy(disabled = fs)
+  def noDisabled(): GpuConfig                      = copy(disabled = Set.empty)
+  def withProfile(enabled: Boolean): GpuConfig     = copy(profile = enabled)
+  def isEnabled(f: GpuFeature): Boolean            = !disabled.contains(f)
 
 object GpuConfig:
   /**
@@ -210,7 +213,8 @@ class GpuColumnCache(budgetBytes: Long) extends LogSupport:
     }
     val cv = read(File(path), name)
     val e  =
-      try Entry(cv, maxAbs(cv))
+      try
+        Entry(cv, maxAbs(cv))
       catch
         case t: Throwable =>
           cv.close()
@@ -232,9 +236,11 @@ class GpuColumnCache(budgetBytes: Long) extends LogSupport:
           e
     }
 
+  end entry
+
   /** max(|min|, |max|) of a decimal or integer column, or None for other types */
   private def maxAbs(cv: ColumnVector): Option[JBigDecimal] =
-    val t = cv.getType
+    val t                                     = cv.getType
     def value(s: Scalar): Option[JBigDecimal] =
       try
         if !s.isValid then

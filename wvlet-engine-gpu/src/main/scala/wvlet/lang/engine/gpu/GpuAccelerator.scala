@@ -118,15 +118,19 @@ private[gpu] object GTable:
   * match no row of `values` (the other input's join keys, borrowed) cannot join, so the input may
   * drop them before it does further work
   */
-private[gpu] final case class KeyFilter(cols: IndexedSeq[Int], types: IndexedSeq[PType], values: Table)
+private[gpu] final case class KeyFilter(
+    cols: IndexedSeq[Int],
+    types: IndexedSeq[PType],
+    values: Table
+)
 
 private[gpu] object KeyFilter:
   /** Apply a filter only to inputs with more than this many times its number of keys */
   val MinReduction = 4L
 
 /**
-  * How one aggregate call runs in a group-by: its owned input columns (none for count(*)), one
-  * cudf aggregation per input, and how the per-group results combine into the call's value
+  * How one aggregate call runs in a group-by: its owned input columns (none for count(*)), one cudf
+  * aggregation per input, and how the per-group results combine into the call's value
   */
 private[gpu] final class AggInput(
     val cols: IndexedSeq[ColumnVector],
@@ -153,9 +157,12 @@ private[gpu] object AggInput:
 private[gpu] object DecimalSum:
   import GpuPlans.using
 
-  /** The split inputs of a sum over `arg` (a decimal column at `scale`), or None if a value is wider than 64 bits */
+  /**
+    * The split inputs of a sum over `arg` (a decimal column at `scale`), or None if a value is
+    * wider than 64 bits
+    */
   def split(arg: ColumnVector, scale: Int): Option[AggInput] =
-    val d64 = DType.create(DType.DTypeEnum.DECIMAL64, -scale)
+    val d64                          = DType.create(DType.DTypeEnum.DECIMAL64, -scale)
     val narrow: Option[ColumnVector] =
       if arg.getType == d64 then
         Some(arg.incRefCount())
@@ -167,8 +174,7 @@ private[gpu] object DecimalSum:
       try
         val v = n.bitCastTo(DType.INT64)
         try
-          val hi =
-            using(Scalar.fromInt(32))(k => v.binaryOp(BinaryOp.SHIFT_RIGHT, k, DType.INT64))
+          val hi = using(Scalar.fromInt(32))(k => v.binaryOp(BinaryOp.SHIFT_RIGHT, k, DType.INT64))
           val lo =
             try
               using(Scalar.fromLong(0xffffffffL))(m =>
@@ -183,9 +189,13 @@ private[gpu] object DecimalSum:
             IndexedSeq(GroupByAggregation.sum(), GroupByAggregation.sum()),
             r => combine(r(0), r(1), scale)
           )
-        finally v.close()
-      finally n.close()
+        finally
+          v.close()
+      finally
+        n.close()
     }
+
+  end split
 
   /** Whether `rows` values of at most `bound` sum to an unscaled value within a Long at `scale` */
   def fitsSum(bound: Option[java.math.BigDecimal], scale: Int, rows: Int): Boolean = bound.exists(
@@ -243,7 +253,10 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       case Filter(child, cond, _) =>
         markNeeded(child, needed ++ cond.refs)
       case a: Aggregate =>
-        markNeeded(a.child, (a.keys.flatMap(_.refs) ++ a.calls.flatMap(_.exprs.flatMap(_.refs))).toSet)
+        markNeeded(
+          a.child,
+          (a.keys.flatMap(_.refs) ++ a.calls.flatMap(_.exprs.flatMap(_.refs))).toSet
+        )
       case Sort(child, keys, _) =>
         markNeeded(child, needed ++ keys.flatMap(_.expr.refs))
       case Limit(child, _, _) =>
@@ -257,8 +270,10 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
         other.children.foreach(c => markNeeded(c, c.output.map(_.id).toSet))
 
   /** The value bounds of `t`'s columns, for evaluating expressions over them */
-  private def boundsOf(t: GTable): Bounds =
-    Bounds(t.bounds, config.isEnabled(GpuFeature.DecimalNarrow))
+  private def boundsOf(t: GTable): Bounds = Bounds(
+    t.bounds,
+    config.isEnabled(GpuFeature.DecimalNarrow)
+  )
 
   /**
     * Run `p` on the device. Key filters `kfs` (from joins above) may drop output rows whose keys
@@ -274,8 +289,9 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
         finally depth -= 1
       ai.rapids.cudf.Cuda.DEFAULT_STREAM.sync()
       info(
-        f"${"  " * depth}${p.getClass.getSimpleName}: ${t.rows}%,d rows, ${(System.nanoTime() -
-            start) / 1e6}%.1f ms"
+        f"${"  " * depth}${p.getClass.getSimpleName}: ${t.rows}%,d rows, ${(
+            System.nanoTime() - start
+          ) / 1e6}%.1f ms"
       )
       t
     else
@@ -333,7 +349,9 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       case Values(columns, rows) =>
         // A constant relation (e.g. a subquery result computed at plan time): upload its rows
         GTable(
-          buildAll(columns.size)(i => GpuTypes.fromVec(rows.column(i), columns(i).ptype, rows.size)),
+          buildAll(columns.size)(i =>
+            GpuTypes.fromVec(rows.column(i), columns(i).ptype, rows.size)
+          ),
           rows.size
         )
       case Distinct(child) =>
@@ -350,6 +368,9 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
         throw StatusCode
           .NOT_IMPLEMENTED
           .newException(s"Not supported on the GPU: ${other.getClass.getSimpleName}")
+    end match
+
+  end execNode
 
   private def scan(s: Scan): GTable =
     val src  = s.source.asInstanceOf[ParquetSource]
@@ -357,7 +378,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       GpuPlans.buildAll(s.columns.size) { i =>
         val cv = cache.column(src.path, s.sourceColumnName(i))
         // Casts to the declared type keep the values
-        val d  = GpuTypes.dtype(s.columns(i).ptype)
+        val d = GpuTypes.dtype(s.columns(i).ptype)
         if cv.getType == d then
           cv
         else
@@ -429,8 +450,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
   /** Whether every call of `a` is count(distinct x) of the same single argument */
   private def isDistinctCountOnly(a: Aggregate): Boolean =
     a.calls.nonEmpty &&
-      a.calls
-        .forall(c => isCount(c) && c.distinct && c.args.size == 1 && c.filter.isEmpty) &&
+      a.calls.forall(c => isCount(c) && c.distinct && c.args.size == 1 && c.filter.isEmpty) &&
       a.calls.map(_.args.head).distinct.size == 1
 
   /**
@@ -466,107 +486,106 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     }
 
   /** Group `t`, the rows of `a.child` with the column of id `i` at `pos(i)`, by `a`'s keys */
-  private def groupByOver(a: Aggregate, t: GTable, pos: Array[Int]): GTable =
-    locally {
-      given Bounds = boundsOf(t)
-      val keys     =
-        buildAll(a.keys.size)(i =>
-          GpuExprs.evalColumn(a.keys(i).lower(pos), a.keys(i).ptype, t.cols, t.rows)
-        )
-      // The input columns and cudf aggregations of each call
-      val inputs =
-        try
-          timed("aggregate arguments") {
-            buildAll(a.calls.size, (in: AggInput) => in.close())(i => aggInput(a.calls(i), pos, t))
-          }
-        catch
-          case e: Throwable =>
-            keys.foreach(_.close())
-            throw e
+  private def groupByOver(a: Aggregate, t: GTable, pos: Array[Int]): GTable = locally {
+    given Bounds = boundsOf(t)
+    val keys     =
+      buildAll(a.keys.size)(i =>
+        GpuExprs.evalColumn(a.keys(i).lower(pos), a.keys(i).ptype, t.cols, t.rows)
+      )
+    // The input columns and cudf aggregations of each call
+    val inputs =
       try
-        if keys.isEmpty && t.rows == 0 then
-          globalOverEmpty(a)
-        else
-          // A global aggregation groups by one constant key
-          val constKey =
-            if keys.isEmpty then
-              val z = Scalar.fromInt(0)
-              try Some(ColumnVector.fromScalar(z, t.rows))
-              finally z.close()
+        timed("aggregate arguments") {
+          buildAll(a.calls.size, (in: AggInput) => in.close())(i => aggInput(a.calls(i), pos, t))
+        }
+      catch
+        case e: Throwable =>
+          keys.foreach(_.close())
+          throw e
+    try
+      if keys.isEmpty && t.rows == 0 then
+        globalOverEmpty(a)
+      else
+        // A global aggregation groups by one constant key
+        val constKey =
+          if keys.isEmpty then
+            val z = Scalar.fromInt(0)
+            try Some(ColumnVector.fromScalar(z, t.rows))
+            finally z.close()
+          else
+            None
+        try
+          val groupCols = keys ++ constKey
+          val aggs      = Seq.newBuilder[ai.rapids.cudf.GroupByAggregationOnColumn]
+          var argIndex  = groupCols.size
+          inputs.foreach { in =>
+            if in.cols.isEmpty then
+              // count(*) counts the rows of any column: the first key
+              aggs += in.aggs.head.onColumn(0)
             else
-              None
-          try
-            val groupCols = keys ++ constKey
-            val aggs      = Seq.newBuilder[ai.rapids.cudf.GroupByAggregationOnColumn]
-            var argIndex  = groupCols.size
-            inputs.foreach { in =>
-              if in.cols.isEmpty then
-                // count(*) counts the rows of any column: the first key
-                aggs += in.aggs.head.onColumn(0)
-              else
-                in.aggs
-                  .foreach { agg =>
-                    aggs += agg.onColumn(argIndex)
-                    argIndex += 1
-                  }
-            }
-            val opts = GroupByOptions.builder().withIgnoreNullKeys(false).build()
-            val res  =
-              timed(s"group-by of ${t.rows} rows, ${groupCols.size} key(s)") {
-                using(Table((groupCols ++ inputs.flatMap(_.cols))*)) { tbl =>
-                  GTable.of(tbl.groupBy(opts, groupCols.indices*).aggregate(aggs.result()*))
+              in.aggs
+                .foreach { agg =>
+                  aggs += agg.onColumn(argIndex)
+                  argIndex += 1
                 }
+          }
+          val opts = GroupByOptions.builder().withIgnoreNullKeys(false).build()
+          val res  =
+            timed(s"group-by of ${t.rows} rows, ${groupCols.size} key(s)") {
+              using(Table((groupCols ++ inputs.flatMap(_.cols))*)) { tbl =>
+                GTable.of(tbl.groupBy(opts, groupCols.indices*).aggregate(aggs.result()*))
               }
-            using(res) { r =>
-              val nKeys = keys.size
-              // The results of each call, after the keys (and the constant key)
-              var at = nKeys + constKey.size
-              val values = inputs.map { in =>
-                val n = in.aggs.size
-                val v = in.combine(r.cols.slice(at, at + n))
-                at += n
-                v
-              }
-              val out = a
-                .columns
-                .indices
-                .map { i =>
-                  val d = GpuTypes.dtype(a.columns(i).ptype)
-                  if i < nKeys then
-                    val src = r.cols(i)
-                    if src.getType == d then
-                      src.incRefCount()
-                    else
-                      src.castTo(d)
+            }
+          using(res) { r =>
+            val nKeys = keys.size
+            // The results of each call, after the keys (and the constant key)
+            var at     = nKeys + constKey.size
+            val values = inputs.map { in =>
+              val n = in.aggs.size
+              val v = in.combine(r.cols.slice(at, at + n))
+              at += n
+              v
+            }
+            val out = a
+              .columns
+              .indices
+              .map { i =>
+                val d = GpuTypes.dtype(a.columns(i).ptype)
+                if i < nKeys then
+                  val src = r.cols(i)
+                  if src.getType == d then
+                    src.incRefCount()
                   else
-                    val src = values(i - nKeys)
-                    if src.getType == d then
-                      src
-                    else
-                      try src.castTo(d)
-                      finally src.close()
-                }
-              // Keys and min/max keep the bounds of their input; sums and counts widen
-              val outBounds =
-                a.keys.map(k => GpuExprs.bound(k.lower(pos))) ++
-                  a.calls
-                    .map { c =>
-                      c.name.toLowerCase match
-                        case "min" | "max" =>
-                          GpuExprs.bound(c.args.head.lower(pos))
-                        case _ =>
-                          None
-                    }
-              GTable(out, r.rows, outBounds)
-            }
-          finally
-            constKey.foreach(_.close())
-          end try
-      finally
-        keys.foreach(_.close())
-        inputs.foreach(_.close())
-      end try
-    }
+                    src.castTo(d)
+                else
+                  val src = values(i - nKeys)
+                  if src.getType == d then
+                    src
+                  else
+                    try src.castTo(d)
+                    finally src.close()
+              }
+            // Keys and min/max keep the bounds of their input; sums and counts widen
+            val outBounds =
+              a.keys.map(k => GpuExprs.bound(k.lower(pos))) ++
+                a.calls
+                  .map { c =>
+                    c.name.toLowerCase match
+                      case "min" | "max" =>
+                        GpuExprs.bound(c.args.head.lower(pos))
+                      case _ =>
+                        None
+                  }
+            GTable(out, r.rows, outBounds)
+          }
+        finally
+          constKey.foreach(_.close())
+        end try
+    finally
+      keys.foreach(_.close())
+      inputs.foreach(_.close())
+    end try
+  }
 
   /** The input columns of an aggregate call, in the type the aggregation accumulates in */
   private def aggInput(c: AggregateCall, pos: Array[Int], t: GTable)(using Bounds): AggInput =
@@ -627,7 +646,12 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
               case JoinKind.Inner | JoinKind.Left | JoinKind.Semi | JoinKind.Anti
                   if config.isEnabled(GpuFeature.JoinKeyFilter) &&
                     l.rows * KeyFilter.MinReduction <= maxSourceRows(j.left) =>
-                val cols = j.rightKeys.map(_.lower(rpos)).collect { case c: ColRef => c.index }
+                val cols = j
+                  .rightKeys
+                  .map(_.lower(rpos))
+                  .collect { case c: ColRef =>
+                    c.index
+                  }
                 Option.when(cols.size == keyTypes.size)(KeyFilter(cols, keyTypes, lkt)).toList
               case _ =>
                 Nil
@@ -646,6 +670,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
           }
         }
       finally lk.foreach(_.close())
+      end try
     }
 
   /** Whether join output column i is read above (or by `extra`), when pruning is on */
@@ -702,7 +727,12 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     */
   private def pushDown(p: RuntimePlan, f: KeyFilter): Option[(Int, KeyFilter)] =
     def refs(exprs: IndexedSeq[VExpr]): Option[IndexedSeq[Int]] =
-      val idx = f.cols.map(exprs).collect { case c: ColRef => c.index }
+      val idx = f
+        .cols
+        .map(exprs)
+        .collect { case c: ColRef =>
+          c.index
+        }
       Option.when(idx.size == f.cols.size)(idx)
     p match
       case Filter(_, _, _) | Distinct(_) | Sort(_, _, None) =>
@@ -728,6 +758,8 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       case _ =>
         None
 
+  end pushDown
+
   /** The most rows any table read by `p` has (0 when unknown) */
   private def maxSourceRows(p: RuntimePlan): Long =
     p match
@@ -738,8 +770,13 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       case other =>
         other.children.map(maxSourceRows).maxOption.getOrElse(0L)
 
-  private def childFilters(p: RuntimePlan, kfs: List[KeyFilter], child: Int): List[KeyFilter] =
-    kfs.flatMap(f => pushDown(p, f).collect { case (c, g) if c == child => g })
+  private def childFilters(p: RuntimePlan, kfs: List[KeyFilter], child: Int): List[KeyFilter] = kfs
+    .flatMap(f =>
+      pushDown(p, f).collect {
+        case (c, g) if c == child =>
+          g
+      }
+    )
 
   /**
     * The rows of `t` (consumed) whose filter columns match a row of the filter's values. Skipped
@@ -767,7 +804,8 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
                 val view = map.toColumnView(0, map.getRowCount.toInt)
                 try using(in.table)(tbl => GTable.of(tbl.gather(view)).withBounds(in.bounds))
                 finally view.close()
-              finally map.close()
+              finally
+                map.close()
             }
           }
         finally keys.foreach(_.close())
@@ -786,14 +824,15 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     val lv = lmap.toColumnView(0, n)
     val rv = rmap.toColumnView(0, n)
     try
-      val lt = gatherKept(l, lv, OutOfBoundsPolicy.DONT_CHECK, keep)
+      val lt     = gatherKept(l, lv, OutOfBoundsPolicy.DONT_CHECK, keep)
       val policy =
         if nullify then
           OutOfBoundsPolicy.NULLIFY
         else
           OutOfBoundsPolicy.DONT_CHECK
       val rt =
-        try gatherKept(r, rv, policy, i => keep(l.cols.size + i))
+        try
+          gatherKept(r, rv, policy, i => keep(l.cols.size + i))
         catch
           case e: Throwable =>
             lt.foreach(_.close())
@@ -885,8 +924,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
             val keep =
               try pass.replaceNulls(f)
               finally f.close()
-            try
-              using(pairs.table)(t => GTable.of(t.filter(keep))).pipe { passing =>
+            try using(pairs.table)(t => GTable.of(t.filter(keep))).pipe { passing =>
                 using(passing) { pt =>
                   val unmatched = leftRowsWithout(l, lv, keep)
                   using(unmatched) { u =>
@@ -911,18 +949,28 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
                 }
               }
             finally keep.close()
-          finally pass.close()
+          finally
+            pass.close()
+          end try
         }
       finally lv.close()
-    finally maps.foreach(_.close())
+      end try
+    finally
+      maps.foreach(_.close())
+    end try
 
   end leftWithResidual
 
   /** The rows of `l` whose index is not among the left indices `lv` of pairs where `keep` holds */
-  private def leftRowsWithout(l: GTable, lv: ai.rapids.cudf.ColumnView, keep: ColumnVector): GTable =
-    val matched = using(lv.copyToColumnVector()) { lc =>
-      using(Table(lc))(lt => GTable.of(lt.filter(keep))).cols.head
-    }
+  private def leftRowsWithout(
+      l: GTable,
+      lv: ai.rapids.cudf.ColumnView,
+      keep: ColumnVector
+  ): GTable =
+    val matched =
+      using(lv.copyToColumnVector()) { lc =>
+        using(Table(lc))(lt => GTable.of(lt.filter(keep))).cols.head
+      }
     try
       val f    = Scalar.fromBool(false)
       val none =
@@ -939,7 +987,8 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
           using(l.table)(tbl => GTable.of(tbl.filter(mask)).withBounds(l.bounds))
         }
       }
-    finally matched.close()
+    finally
+      matched.close()
 
   /**
     * A semi or anti join with a residual condition: inner-join the keys, keep the pairs that pass
@@ -974,9 +1023,10 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
                 _ => true
             )
           ) { pairs =>
-            val pass = GpuExprs.evalColumn(residual, PType.Bool, pairs.cols, pairs.rows)(using
-              boundsOf(pairs)
-            )
+            val pass =
+              GpuExprs.evalColumn(residual, PType.Bool, pairs.cols, pairs.rows)(using
+                boundsOf(pairs)
+              )
             try
               // The left row of each passing pair
               using(lv.copyToColumnVector()) { lc =>
@@ -1051,9 +1101,8 @@ private[gpu] object GpuPlans:
         done.foreach(close)
         throw e
 
-  private def supported(e: BExpr, input: IndexedSeq[Column])(using GpuConfig): Boolean = GpuExprs.supports(
-    e.lower(positions(input))
-  )
+  private def supported(e: BExpr, input: IndexedSeq[Column])(using GpuConfig): Boolean = GpuExprs
+    .supports(e.lower(positions(input)))
 
   private def supportedTypes(p: RuntimePlan): Boolean = p
     .output
@@ -1110,14 +1159,16 @@ private[gpu] object GpuPlans:
   /**
     * Push the single-input predicates that a filter's OR conditions imply below the inner joins
     * under it, keeping the filter itself. From `(n1 = 'FRANCE' and n2 = 'GERMANY') or (n1 =
-    * 'GERMANY' and n2 = 'FRANCE')` above the joins (TPC-H q7), each nation scan gets `n = 'FRANCE' or
-    * n = 'GERMANY'`, and the joins (and their key filters) then start from 2 of 25 nations.
+    * 'GERMANY' and n2 = 'FRANCE')` above the joins (TPC-H q7), each nation scan gets `n = 'FRANCE'
+    * or n = 'GERMANY'`, and the joins (and their key filters) then start from 2 of 25 nations.
     */
   def impliedFilters(p: RuntimePlan): RuntimePlan =
     val q = p.withChildren(p.children.map(impliedFilters))
     q match
       case f @ Filter(j: Join, cond, _) =>
-        val ors = conjuncts(cond.expr).collect { case o: OrExpr => o }
+        val ors = conjuncts(cond.expr).collect { case o: OrExpr =>
+          o
+        }
         if ors.isEmpty then
           f
         else
