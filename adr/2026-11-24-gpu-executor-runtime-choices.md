@@ -20,7 +20,7 @@ After [the first GPU executor](2026-11-24-engine-gpu-executor.md), TPC-H SF10 to
 
 ## Consequences
 
-- TPC-H SF10, best of 3 hot runs: 0.75-0.79 s with the GPU, against 2.57 s with every new feature off, 8.5 s for the CPU engine, and 0.82 s for DuckDB + Sirius with pinned tables. All 22 queries run as one GPU subtree, and `GpuTPCHTest` matches DuckDB on spec/tpch and, with `WVLET_GPU_TEST_DATA=target/tpch-sf10`, at SF10.
+- TPC-H SF10, best of 3 hot runs: 0.74-0.79 s with the GPU, against 2.41 s with every new feature off, 7.56 s for the CPU engine, and 0.82 s for DuckDB + Sirius with pinned tables. Since the engine planner gained `group_key_semi_joins` (#2364), q17 gets its reduction from the plan, and the key filter no longer changes it. All 22 queries run as one GPU subtree, and `GpuTPCHTest` matches DuckDB on spec/tpch and, with `WVLET_GPU_TEST_DATA=target/tpch-sf10`, at SF10.
 - Bounds come from whole cached columns, so a filter that removes the large values does not tighten them. A query over a table with a few huge values falls back to DECIMAL128 and the slower group-by.
 - The key filter's thresholds are heuristics measured on TPC-H. A plan whose reduced side still matches nearly all rows pays one extra semi join.
 - Pruned join columns are all-NULL placeholders, not removed columns, so positions stay those of the runtime plan; they still cost a validity mask per row.
