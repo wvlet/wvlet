@@ -45,3 +45,5 @@ import WvletFormal.Decorrelate.Traces
 import WvletFormal.Scalar.Rule
 import WvletFormal.Scalar.Necessity
 import WvletFormal.Scalar.Traces
+import WvletFormal.SemiReduce.Rule
+import WvletFormal.SemiReduce.Traces

@@ -116,6 +116,8 @@ lake exe factor-or-traces   # regenerate the OR factoring conformance fixture
 | `WvletFormal/Scalar/Rule.lean` | SQL's value of a correlated scalar subquery (`scalarSql`: an aggregate, any function of its rows, over the inner rows that make the WHERE TRUE); `planScalar`: `decorrelateScalar`'s GROUP BY of the filtered body by the inner keys (NULL keys form a group), the left join on the keys, and the `CASE WHEN key IS NULL THEN empty` projection, skipped when the value over no rows is NULL | `planScalar_sound`: the plan keeps every outer row once, in order, with SQL's value, for every aggregate, NULL keys, duplicate outer rows, and groups without rows included; `scalarFilter_sound`: so any condition over the value keeps SQL's rows |
 | `WvletFormal/Scalar/Necessity.lean` | — | without the projection, `count` of an outer row without a group is NULL, not 0; an inner join drops those rows; telling unmatched rows by a NULL value (`coalesce`) replaces a matched group's NULL (`nullif(count(*), 1)`); matching NULL keys as GROUP BY groups them gives a NULL outer key the NULL group's count |
 | `WvletFormal/Scalar/Traces.lean`, `ScalarSubqueryTraces.lean` | — | exports the scalar subquery conformance fixture |
+| `WvletFormal/SemiReduce/Rule.lean` | `projHas`: a row's projection to columns `K` occurs in a relation; the semi-join reduction of `ReduceSemiJoins` (an inner join whose needed columns `K` are the left input's, read where only the set of rows matters) | `innerJoin_proj_iff_semiJoin`: `X ⋈ Y` and `X ⋉ Y` on the same ON condition have the same rows projected to `K`, as sets, a NULL condition dropping the pair in both; `semiJoin_reduce`, `antiJoin_reduce`, `notIn_reduce`: so IN / EXISTS, NOT EXISTS, and NOT IN (whose NULL handling reads only the set of values, `inTri_congr`) over either input keep the same rows |
+| `WvletFormal/SemiReduce/Traces.lean`, `SemiReduceTraces.lean` | — | exports the semi-join reduction conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -225,6 +227,14 @@ behavior as traces:
   (`is null`, `= v`, and one under OR), with decorrelation on and off, compares rows with the model
   and DuckDB, and checks the plan: one left join over an aggregation, with the
   `CASE WHEN key IS NULL` above it exactly when the value over no rows is not NULL.
+- `lake exe semi-reduce-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/semi-reduce-traces.json`: an
+  outer table with a NULL key and inputs `l` and `r` with NULL keys and values and duplicate rows,
+  with the rows that IN, NOT IN, EXISTS, and NOT EXISTS keep over `select lk from l, r where lk =
+  rk` and 3 extra conditions across the inputs (`<>`, `<`, and an OR with `is null`).
+  `SemiReduceConformanceTest` (engineJVM) runs each query with `reduce_semi_joins` on and off,
+  compares rows with the model and DuckDB, and checks that the rule turned the subquery's inner
+  join into a semi join.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator

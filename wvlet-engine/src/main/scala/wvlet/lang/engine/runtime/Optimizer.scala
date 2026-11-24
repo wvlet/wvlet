@@ -131,6 +131,16 @@ class Optimizer(
       PlanValidator.validate(next)
     next
 
+  /**
+    * A shared CTE body whose readers read only its distinct rows of the columns `needed`, with its
+    * joins reduced ([[ReduceSemiJoins.reduceBody]])
+    */
+  def reduceSemiJoins(p: RuntimePlan, needed: Set[ColumnId]): RuntimePlan =
+    val next = ReduceSemiJoins.reduceBody(p, needed, ctx)
+    if options.validatePlans && (next ne p) then
+      PlanValidator.validate(next)
+    next
+
   /** The plan with the row-group filters of its scans recomputed ([[PushScanFilters]]) */
   def pushScanFilters(p: RuntimePlan): RuntimePlan =
     val next = PushScanFilters.run(p, ctx)
@@ -155,6 +165,7 @@ object Optimizer:
   val defaultPasses: Seq[Pass] = Seq(
     Normalize,
     PushDownFilters,
+    ReduceSemiJoins,
     ReorderJoins,
     PruneColumns,
     PushScanFilters
