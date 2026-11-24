@@ -23,7 +23,7 @@ Lane: Standard (a new logical rewrite, measured at SF10).
 
 - New pass `GroupKeySemiJoins` (own file in `runtime/`), toggle `group_key_semi_joins` (on by default), run after `ReorderJoins` and before `PruneColumns` / `PushScanFilters`, so the copy below is pruned and gets its row-group filters.
 - It matches a hash join `j` whose one side `B` is, through projections and deterministic filters, an `Aggregate` with group keys, and whose key pair `(o, b)` has `b` a pass-through of a group key `g`. `B`'s rows that match no row of the other side `O` never reach the output when `j` is:
-  - Inner (B on either side), Left with B on the right, or Semi with B on the right.
+  - Inner, Left, or Semi, with B on the right. B stays on the right so that O, lowered first, takes the runtime join filters of the scan column ids the copy of S shares with it (the B-on-the-left case fired on no TPC-H / TPC-DS plan).
   - Not Right / Full (unmatched B rows stay), and not Anti (a NOT IN reads NULL keys of B).
 - A key source for `o` in `O`: a subplan `S` and its column `s` with every non-NULL value of `o` among the values of `s`. It is traced through filters, pass-through projections, either side of an inner join (and across its key equalities to the other side), the left side of a semi join (and its keys to the right), and the preserved side of a left join. The smallest candidate by estimated rows (filtered by `Stats.selectivity`) wins. It has to be a scan under filters and projections, or a shared CTE read, so that reading it again is cheap.
 - Rewrite: the aggregate's input `I` becomes `I ⋉ π_s(S)` on `g = s`. Filtering by a group key commutes with grouping, so the groups with `g` in `S` keep all their rows, and the others are dropped before they are computed.

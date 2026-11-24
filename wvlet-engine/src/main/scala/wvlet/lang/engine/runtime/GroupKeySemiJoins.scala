@@ -20,13 +20,13 @@ import wvlet.lang.engine.plan.Optimization
 
 /**
   * Semi-join reduction of an aggregation by the keys its join can match. A hash join whose one side
-  * (B) is, through projections and deterministic filters, an aggregation with group keys, and that
-  * drops B's unmatched rows (an inner join, or B on the right of a left or semi join), outputs
-  * nothing of a group whose key no row of the other side (O) has. When a key of O is traced to a
-  * small relation S whose column s holds all of its non-NULL values, the aggregation's input I
-  * becomes `I ⋉ S` on `g = s` for B's key g: a filter on a group key commutes with grouping, so the
-  * groups with a key in S keep all their rows, and the others are no longer computed. A NULL key
-  * matches nothing, in the join as in the semi join.
+  * (B, on the right) is, through projections and deterministic filters, an aggregation with group
+  * keys, and that drops B's unmatched rows (an inner, left, or semi join), outputs nothing of a
+  * group whose key no row of the other side (O) has. When a key of O is traced to a small relation
+  * S whose column s holds all of its non-NULL values, the aggregation's input I becomes `I ⋉ S` on
+  * `g = s` for B's key g: a filter on a group key commutes with grouping, so the groups with a key
+  * in S keep all their rows, and the others are no longer computed. A NULL key matches nothing, in
+  * the join as in the semi join.
   *
   * TPC-H q17's decorrelated `avg(l_quantity)` per `l_partkey` over all of `lineitem` is joined only
   * with the parts of one brand and container; it now aggregates only their rows. DuckDB pushes the
@@ -63,18 +63,14 @@ object GroupKeySemiJoins extends Pass:
       case j @ Join(left, right, kind, lk, rk, _, _) if lk.nonEmpty =>
         val pairs = lk.indices.map(i => (lk(i), rk(i)))
         // B on the right: every kind that drops B's unmatched rows. An anti join is left out, as a
-        // NOT IN reads B's NULL keys
-        val onRight =
+        // NOT IN reads B's NULL keys. B stays on the right, so that O, lowered first, takes the
+        // runtime join filters registered for the scan column ids the copy of S shares with it
+        val reducedRight =
           if kind == JoinKind.Inner || kind == JoinKind.Left || kind == JoinKind.Semi then
             reduce(right, left, pairs, ctx).map(r => j.copy(right = r))
           else
             None
-        val onLeft =
-          if onRight.isEmpty && kind == JoinKind.Inner then
-            reduce(left, right, pairs.map(_.swap), ctx).map(l => j.copy(left = l))
-          else
-            None
-        onRight.orElse(onLeft) match
+        reducedRight match
           case Some(r) =>
             ctx.fired(name)
             r
@@ -141,7 +137,7 @@ object GroupKeySemiJoins extends Pass:
         rewriteAgg(child, id, oc, o, ctx).map(c => f.copy(child = c))
       case a @ Aggregate(child, keys, _, columns) if keys.nonEmpty =>
         val k = columns.indexWhere(_.id == id)
-        if k < 0 || k >= keys.size || !keys.forall(deterministic) || reduced(child, keys(k)) then
+        if k < 0 || k >= keys.size || !keys.forall(deterministic) || reduced(child, keys) then
           None
         else
           val g = keys(k)
@@ -177,11 +173,14 @@ object GroupKeySemiJoins extends Pass:
       case _ =>
         None
 
-  /** Whether `input` is already semi-joined on the group key g, so that a re-run adds no other */
-  private def reduced(input: RuntimePlan, g: BExpr): Boolean =
+  /**
+    * Whether `input` is already semi-joined on one of the group keys, so that a re-run of the
+    * passes (the planner optimizes some inputs before their parents) adds no other
+    */
+  private def reduced(input: RuntimePlan, keys: IndexedSeq[BExpr]): Boolean =
     input match
       case Join(_, _, JoinKind.Semi, lk, _, _, _) =>
-        lk.exists(_.expr == g.expr)
+        lk.exists(k => keys.exists(_.expr == k.expr))
       case _ =>
         false
 
@@ -245,7 +244,7 @@ object GroupKeySemiJoins extends Pass:
 
   /**
     * The estimated rows of p and of the scan under it, when p is a scan or a shared CTE read under
-    * filters and projections
+    * deterministic filters and projections, so that reading it again gives the same rows
     */
   private def cheap(p: RuntimePlan): Option[(Double, Double)] =
     p match
@@ -255,16 +254,19 @@ object GroupKeySemiJoins extends Pass:
       case c: CTERef =>
         // Computed once, whatever reads it
         Some((Stats.rows(c), 0.0))
-      case Filter(child, cond, counts) =>
+      case Filter(child, cond, counts) if deterministic(cond) =>
         cheap(child).map { (r, scan) =>
-          val sel =
-            FactorOr
-              .conjuncts(cond.expr)
-              .map(c => Stats.selectivity(child, JoinCondition(BExpr(c), counts)))
-              .product
-          (r * sel, scan)
+          val conds = FactorOr.conjuncts(cond.expr).map(c => JoinCondition(BExpr(c), counts))
+          val rows  =
+            child match
+              case _: CTERef =>
+                // Counted from the result once the CTE is computed
+                Stats.filteredRows(child, conds)
+              case _ =>
+                r * conds.map(Stats.selectivity(child, _)).product
+          (rows, scan)
         }
-      case Project(child, _, _) =>
+      case Project(child, exprs, _) if exprs.forall(deterministic) =>
         cheap(child)
       case _ =>
         None

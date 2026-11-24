@@ -1,6 +1,6 @@
 # ADR: An aggregation joined by a group key aggregates only the keys its join can match
 
-Date: 2026-11-24 · PR #TBD
+Date: 2026-11-24 · PR #2364
 
 ## Context
 
@@ -10,7 +10,7 @@ Date: 2026-11-24 · PR #TBD
 
 ## Decision
 
-- A logical pass, `GroupKeySemiJoins` (`group_key_semi_joins`, on by default), runs after `ReorderJoins`. For a hash join that drops an aggregation's unmatched rows (inner, or the aggregation on the right of a left or semi join), it semi-joins the aggregation's input with a small relation on the other side that holds every non-NULL value of the join key, on the group key. A filter on a group key commutes with grouping.
+- A logical pass, `GroupKeySemiJoins` (`group_key_semi_joins`, on by default), runs after `ReorderJoins`. For a hash join that drops an aggregation's unmatched rows (an inner, left, or semi join with the aggregation on the right), it semi-joins the aggregation's input with a small relation on the other side that holds every non-NULL value of the join key, on the group key. A filter on a group key commutes with grouping.
 - The key source is traced through filters, pass-through projections, and the key equalities of inner and semi joins (and a left join's right side). It must be a scan under filters and projections, or a shared CTE read, since it is read again; its estimated rows must be at most 1/8 of the group key's distinct values, and its scan no larger than the aggregation's input.
 - The copy keeps its column ids: a semi join outputs only its left columns, so no node outputs both copies.
 - It is a separate pass instead of a change to `decorrelateScalar`, so it also covers joins to grouped subqueries and CTEs, and leaves the Lean-modeled decorrelation as it is.
