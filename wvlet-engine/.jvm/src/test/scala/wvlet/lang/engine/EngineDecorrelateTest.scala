@@ -479,4 +479,36 @@ class EngineDecorrelateTest extends UniTest:
         .sorted shouldBe want
   }
 
+  test("bind correlated scalar subqueries in select items as left joins") {
+    val query =
+      """select n_name,
+        |  (select count(*) from supplier where s_nationkey = n_nationkey and s_acctbal > 9000) as rich,
+        |  (select max(s_acctbal) from supplier where s_nationkey = n_nationkey) as top,
+        |  row_number() over (order by n_name) as rn
+        |from nation""".stripMargin
+    leftJoins(runtimePlan(query)) shouldBe 2
+    sameRows(query).size shouldBe 25
+    // Only the item's own column: the joined keys and values stay hidden
+    sameRows("""select * from (
+        |  select *, (select count(*) from supplier where s_nationkey = n_nationkey) from nation
+        |)""".stripMargin).head.split("\\|").size shouldBe 5
+  }
+
+  test("bind a correlated scalar subquery in a Wvlet select item") {
+    val query =
+      """from [[1, 1], [2, null], [3, 2]] as l(i, a)
+        |select i, { from [[1], [1], [2]] as r(a) where r.a = l.a select count(*) } as cnt"""
+        .stripMargin
+    val unit      = CompilationUnit.fromWvletString(query)
+    val r         = compiler.compileSingleUnit(unit)
+    given Context = r.context
+    val q = GenSQL.expand(EngineTPCHBench.queryOf(unit).getOrElse(fail(query)), summon[Context])
+    conformance.assertMatches(query, q)
+    engine
+      .execute(q)
+      .batches
+      .flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).mkString("|")))
+      .sorted shouldBe Seq("1|2", "2|0", "3|1")
+  }
+
 end EngineDecorrelateTest
