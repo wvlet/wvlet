@@ -76,7 +76,12 @@ class Planner(
     if !enabled(Optimization.LateGather) then
       Planner.disableLateGather(pruned)
     if enabled(Optimization.Parallelize) then
-      Parallelizer(pruned, TaskRunner.default, enabled(Optimization.ParallelAboveBreakers))
+      Parallelizer(
+        pruned,
+        TaskRunner.default,
+        aboveBreakers = enabled(Optimization.ParallelAboveBreakers),
+        parallelPartitioning = enabled(Optimization.ParallelAggPartitioning)
+      )
     else
       pruned
 

@@ -26,6 +26,11 @@ import scala.collection.mutable
   * Inputs of fewer than `minParallelRows` rows are aggregated on the calling thread, in the input's
   * group order, as [[HashAggOp]] does. `expectedGroups` (0 when unknown) pre-sizes the group
   * tables, split across the partitions.
+  *
+  * With `parallelPartitioning`, input rows are routed to partitions as tasks too: each task hashes
+  * and scatters a contiguous run of input batches, and each partition joins the tasks' rows in
+  * input order, so its rows (and its groups' first-seen order) are the same as routing them on the
+  * calling thread.
   */
 class PartitionedAggOp(
     val child: Operator,
@@ -34,7 +39,8 @@ class PartitionedAggOp(
     val schema: Schema,
     runner: TaskRunner,
     minParallelRows: Int = PartitionedAggOp.MinParallelRows,
-    val expectedGroups: Int = 0
+    val expectedGroups: Int = 0,
+    parallelPartitioning: Boolean = true
 ) extends Operator:
   require(keys.nonEmpty, "PartitionedAggOp needs grouping keys")
 
@@ -54,7 +60,8 @@ class PartitionedAggOp(
       null
 
   private def aggregate(): Iterator[Batch] =
-    val input = child.drain()
+    // Not compacted: rows are gathered into their partitions, which copies them anyway
+    val input = readInput()
     val total = input.map(_.size).sum
     // A partition has at most one group per row
     def aggregateAll(batches: Seq[Batch], groups: Int): Seq[Batch] =
@@ -70,24 +77,45 @@ class PartitionedAggOp(
       finally op.close()
     if total < minParallelRows || runner.parallelism <= 1 then
       return aggregateAll(input, expectedGroups).iterator
-    val parts      = GroupTable.partitionCount(runner.parallelism)
-    val hasher     = GroupTable(keys.map(_.ptype))
-    val partitions = Array.fill(parts)(mutable.ArrayBuffer.empty[Batch])
-    input.foreach { b =>
-      val h   = hasher.keyHashes(keys.map(_.eval(b)).toArray, b.size)
-      val idx = GroupTable.partitionRows(h, b.size, parts)
-      var p   = 0
-      while p < parts do
-        if idx(p).nonEmpty then
-          partitions(p) += b.gather(idx(p), idx(p).length)
-        p += 1
+    val parts = GroupTable.partitionCount(runner.parallelism)
+    // The rows of each input batch in each partition
+    def route(batches: IndexedSeq[Batch]): Array[mutable.ArrayBuffer[Batch]] =
+      val hasher = GroupTable(keys.map(_.ptype))
+      val out    = Array.fill(parts)(mutable.ArrayBuffer.empty[Batch])
+      batches.foreach { b =>
+        val h   = hasher.keyHashes(keys.map(_.eval(b)).toArray, b.size)
+        val idx = GroupTable.partitionRows(h, b.size, parts)
+        var p   = 0
+        while p < parts do
+          if idx(p).nonEmpty then
+            out(p) += b.gather(idx(p), idx(p).length)
+          p += 1
+      }
+      out
+    val routed: Seq[Array[mutable.ArrayBuffer[Batch]]] =
+      if parallelPartitioning && input.size > 1 then
+        // Contiguous runs of input batches, about two per thread, routed as tasks
+        val runs = math.min(input.size, runner.parallelism * 2)
+        val step = (input.size + runs - 1) / runs
+        input.grouped(step).toIndexedSeq.map(run => runner.submit(() => route(run))).map(_.get())
+      else
+        Seq(route(input))
+    val handles = (0 until parts).map { p =>
+      val ps = routed.flatMap(_(p))
+      runner.submit(() => aggregateAll(ps, expectedGroups / parts))
     }
-    val handles = partitions
-      .toIndexedSeq
-      .map(ps => runner.submit(() => aggregateAll(ps.toSeq, expectedGroups / parts)))
     handles.iterator.flatMap(_.get())
 
   end aggregate
+
+  /** Every input batch, in order, with deferred columns left deferred */
+  private def readInput(): IndexedSeq[Batch] =
+    val b = IndexedSeq.newBuilder[Batch]
+    var x = child.next()
+    while x != null do
+      b += x
+      x = child.next()
+    b.result()
 
 end PartitionedAggOp
 
