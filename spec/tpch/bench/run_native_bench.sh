@@ -4,7 +4,7 @@
 #
 # Usage: run_native_bench.sh <wvc_binary> <data_dir> [rounds] [queries]
 #
-#   wvc_binary  e.g. wvc/target/out/native0.5/scala-*/wvc (build with `./sbt wvc/nativeLink`;
+#   wvc_binary  e.g. target/out/native0.5/scala-*/wvc/wvc (build with `./sbt wvc/nativeLink`;
 #               set SCALANATIVE_MODE=release-fast and SCALANATIVE_GC=immix|boehm to compare GCs)
 #   data_dir    folder of <table>.parquet files: spec/tpch/data (tiny) or target/tpch-sf1 (made by
 #               EngineTPCHBench, see website/docs/development/benchmark.md)
@@ -25,7 +25,13 @@ SPEC="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 cp "${SPEC}"/q*.wv "${WORK}/"
-for f in "${DATA}"/*.parquet; do
+shopt -s nullglob
+tables=("${DATA}"/*.parquet)
+if [ ${#tables[@]} -eq 0 ]; then
+  echo "error: no .parquet files in ${DATA}" >&2
+  exit 1
+fi
+for f in "${tables[@]}"; do
   printf "model %s = {\n  from '%s'\n}\n\n" "$(basename "${f}" .parquet)" "${f}" >> "${WORK}/tables.wv"
 done
 

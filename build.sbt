@@ -324,9 +324,10 @@ lazy val wvcLib = project
       // Scala Native 0.5.13 still compiles javalib's zlib glue (z.c) but, unlike 0.5.12, leaves
       // zlib out of wvc-lib's Windows link libraries. A Windows DLL must resolve every symbol at
       // link time, so link zlib explicitly there (zlib.lib, prepared by native.yml)
-      val windowsTarget =
-        targetConfig.targetTriple.exists(_.contains("windows")) ||
-          sys.props.getOrElse("os.name", "").startsWith("Windows")
+      val windowsTarget = targetConfig
+        .targetTriple
+        .map(_.contains("windows"))
+        .getOrElse(sys.props.getOrElse("os.name", "").startsWith("Windows"))
       if (windowsTarget)
         targetConfig.withLinkingOptions(targetConfig.linkingOptions :+ "-lzlib")
       else

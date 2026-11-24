@@ -19,7 +19,7 @@ This page owns how cross-platform modules split shared and platform code, and ho
 
 ## Native garbage collectors
 
-- Every native artifact (`wvc`, `wvcLib`, the native test binaries) uses Scala Native's default Immix GC, with no heap cap. Native builds no longer need libgc.
+- Every native artifact (`wvc`, `wvcLib`, the native test binaries) uses Scala Native's default Immix GC, with no heap cap. Native builds no longer need libgc. The Windows job in `native.yml` still installs `bdwgc` from its cached vcpkg set; dropping it changes the cache key and rebuilds every vcpkg port.
 - Immix and Commix corrupted live objects under multi-threaded allocation up to Scala Native 0.5.12 (scala-native#5046, #5160), and the engine runs its morsels on a thread pool. 0.5.13 fixed this. TPC-H SF1 on 0.5.13 completed every query in 110 runs with Immix, at 0.61x the wall time of Boehm and about 2x its peak RSS. See [benchmarking](../website/docs/development/benchmark.md#columnar-engine-on-scala-native).
 - `wvc` sets no heap cap, because the engine's live data grows with the input (SF1 needs more than 512 MB). Users bound memory with `GC_MAXIMUM_HEAP_SIZE`. Since 0.5.13, running out of heap throws OutOfMemoryError ("Scala Native heap space") instead of aborting.
 - `wvcLib` (`libwvlet`, loaded into Rust, C, C++, and Python hosts) used Boehm from #925 to avoid a segfault in host processes. On 0.5.13, Boehm segfaults in the Rust host test on linux-x64 and fails to link on Windows (`GC_least_plausible_heap_addr`), so `wvcLib` uses Immix too. The Native workflow's `make test` in `wvc-lib` is the gate.
