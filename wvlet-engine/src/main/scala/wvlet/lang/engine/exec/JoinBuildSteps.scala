@@ -198,12 +198,7 @@ object JoinBuildSteps:
         else if pt == PType.Bool && vs.forall(_.isInstanceOf[BoolVec]) then
           BoolVec(typed(vs.map(_.asInstanceOf[BoolVec].values)), nullsOf(vs))
         else
-          Batch
-            .concat(
-              Schema(IndexedSeq(schema(c))),
-              batches.map(x => Batch(Array(x.columns(c)), x.size))
-            )
-            .columns(0)
+          Batch.concatVecs(pt, vs, total)
       }
     runAll(groups.length - 1, runner) { g =>
       copies.foreach(_(groups(g), groups(g + 1)))

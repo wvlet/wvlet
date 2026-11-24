@@ -38,32 +38,9 @@ final class RuntimeFilter(
   def filter: Option[ParquetFilter] = current
 
   /** Set the filter from the build keys at rows `rows(0 until n)`, which are all non-NULL */
-  def set(keys: Vec, rows: Array[Int], n: Int): Unit =
-    if n > 0 then
-      var lo = Long.MaxValue
-      var hi = Long.MinValue
-      var j  = 0
-      keys match
-        case v: IntVec =>
-          while j < n do
-            val x = v.values(rows(j)).toLong
-            if x < lo then
-              lo = x
-            if x > hi then
-              hi = x
-            j += 1
-          current = range(lo, hi)
-        case v: LongVec =>
-          while j < n do
-            val x = v.values(rows(j))
-            if x < lo then
-              lo = x
-            if x > hi then
-              hi = x
-            j += 1
-          current = range(lo, hi)
-        case _ =>
-          ()
+  def set(keys: Vec, rows: Array[Int], n: Int): Unit = JoinBuildSteps
+    .keyRange(keys, rows, n, TaskRunner.Sequential)
+    .foreach(setRange)
 
   /** Set the filter from the [min, max] range of the non-NULL build keys */
   def setRange(bounds: (Long, Long)): Unit = current = range(bounds._1, bounds._2)

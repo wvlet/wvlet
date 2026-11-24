@@ -33,9 +33,9 @@ Lane: Standard — an executor change on the hot path of every large join, measu
 
 - New toggle `parallel_join_build` (on by default), set on each `JoinBuild` the way `join_direct_index` is, and copied where `Parallelizer` rebuilds the join (both `withDirectIndex` sites). Off reproduces today's build.
 - Run the steps after the input scan in parallel on the query's `TaskRunner`, for builds over a row threshold (`JoinBuild.MinParallelRows`); small builds stay serial.
-  - **Concat:** a `Batch.concat` variant that takes a runner and copies each input batch into the concatenated columns as separate tasks (typed arrays only; boxed columns keep today's copy). Other callers (Sort, nested loop) keep the sequential default.
+  - **Concat:** a `JoinBuildSteps.concat` that takes a runner and copies each input batch into the concatenated columns as separate tasks (typed arrays only; boxed columns keep today's copy). Other callers (Sort, nested loop) keep the sequential default.
   - **NULL-key scan:** when no key column has NULLs, `valid` is the identity (a parallel fill), so `RuntimeFilter.set`, `KeyPacker.of`, and the build paths keep one input shape. Otherwise row chunks are scanned in parallel and joined in order.
-  - **Min/max once:** computed over row chunks in parallel, and shared by the runtime filter and the direct index instead of two serial scans.
+  - **Min/max:** computed over row chunks in parallel for the runtime filter (raw keys) and the direct index (normalized keys).
   - **Direct index:** split the key range into slices, one per task. Each row chunk counts its rows per slice; a prefix sum gives each (chunk, slice) an offset; chunks scatter their rows into one index array (nv ints, about 240 MB extra peak in q21, next to the 240 MB `heads`), so each slice's rows stay in input order. Each task then fills its slice of `heads` and the `chain` of its rows, so no two tasks write the same slot and chains keep input order. This does not reuse `GroupTable.partitionRows`, which is serial and allocates an array per partition.
 - Results stay identical: same `heads`, `chain`, and `uniqueKeys` as the serial build, so the probe side does not change.
 - Running builds of different joins at the same time (several `prepare` steps in q7) is out of scope.
