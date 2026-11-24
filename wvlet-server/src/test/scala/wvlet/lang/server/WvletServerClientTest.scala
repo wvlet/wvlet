@@ -50,8 +50,9 @@ class WvletServerClientTest extends WvletDITest:
 
   test("preserve session state across statements of one client") {
     withClient { client =>
-      client.runQuery("execute sql\"create table remote_nums(n integer)\"")
-      client.runQuery("execute sql\"insert into remote_nums values (1), (2), (3)\"")
+      // The server runs queries on the in-process wvlet engine by default; a saved table must
+      // stay visible to later statements of the same client session
+      client.runQuery("from [[1], [2], [3]] as t(n) save to remote_nums").hasError shouldBe false
       val result = client.runQuery("from remote_nums select count(*) as cnt")
       result match
         case t: TableRows =>
