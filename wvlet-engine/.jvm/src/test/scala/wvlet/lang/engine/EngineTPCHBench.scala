@@ -33,7 +33,8 @@ import java.util.concurrent.TimeoutException
 /**
   * Opt-in benchmark of the columnar engine against DuckDB on the TPC-H queries in spec/tpch, both
   * reading the same Parquet files. No assertion on timings; the numbers are logged and written to
-  * `target/engine-bench/tpch-sf<sf>.tsv` for before/after comparison on one machine.
+  * `target/engine-bench/tpch-sf<sf>.tsv` for before/after comparison on one machine. Engine runs
+  * also report the JVM's GC time and the bytes all threads allocated during the run (medians).
   *
   * {{{
   *   WVLET_ENGINE_BENCH_SF=1 ./sbt "engineJVM/testOnly *EngineTPCHBench"
@@ -181,12 +182,20 @@ object EngineTPCHBench extends LogSupport:
               val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
               (ms, cpuMs / math.max(ms, 0.001))
             def engineOnce(): (Double, Long) = timed(engine.execute(q).numRows.toLong)
-            // Wall time and busy cores (process CPU time / wall time) of one engine run
-            def engineTimed(): (Double, Double) =
+            // Wall time, busy cores (process CPU time / wall time), GC time, and allocated MB of
+            // one engine run
+            def engineTimed(): EngineRun =
               val cpu0    = processCpuNanos()
+              val gc0     = gcMillis()
+              val alloc0  = allocatedBytes()
               val (ms, _) = engineOnce()
               val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
-              (ms, cpuMs / math.max(ms, 0.001))
+              EngineRun(
+                ms,
+                cpuMs / math.max(ms, 0.001),
+                (gcMillis() - gc0).toDouble,
+                (allocatedBytes() - alloc0) / 1048576.0
+              )
             try
               if opts.explain then
                 Files.writeString(File(outDir, s"${label}-${name}.plan").toPath, engine.explain(q))
@@ -215,12 +224,14 @@ object EngineTPCHBench extends LogSupport:
               val r = QueryTiming(
                 name,
                 duck.map(_._1).sorted,
-                eng.map(_._1).sorted,
+                eng.map(_.ms).sorted,
                 duckRows,
                 engineRows,
                 None,
-                eng.map(_._2).sorted,
-                duck.map(_._2).sorted
+                eng.map(_.cores).sorted,
+                duck.map(_._2).sorted,
+                eng.map(_.gcMs).sorted,
+                eng.map(_.allocMb).sorted
               )
               info(r.logLine)
               r
@@ -254,12 +265,12 @@ object EngineTPCHBench extends LogSupport:
           .getOrElse("default")}"
     val table = Seq.newBuilder[String]
     table +=
-      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | DuckDB busy cores | engine busy cores | engine / DuckDB CPU | rows |"
-    table += "|---|---:|---:|---:|---:|---:|---:|---|"
+      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | DuckDB busy cores | engine busy cores | engine / DuckDB CPU | engine GC (ms) | engine alloc (MB) | rows |"
+    table += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"
     results.foreach { r =>
       r.error match
         case Some(e) =>
-          table += s"| ${r.name} | | | | | | | error: ${e.take(80)} |"
+          table += s"| ${r.name} | | | | | | | | | error: ${e.take(80)} |"
         case None =>
           val rows =
             if r.rowsMatch then
@@ -268,22 +279,25 @@ object EngineTPCHBench extends LogSupport:
               s"MISMATCH duckdb=${r.duckdbRows} engine=${r.engineRows}"
           table +=
             f"| ${r.name} | ${r.duckdbMedian}%.1f | ${r.engineMedian}%.1f | ${r.ratio}%.1fx | ${r
-                .duckdbCores}%.1f | ${r.engineCores}%.1f | ${r.cpuRatio}%.1fx | ${rows} |"
+                .duckdbCores}%.1f | ${r.engineCores}%.1f | ${r.cpuRatio}%.1fx | ${r
+                .engineGcMs}%.0f | ${r.engineAllocMb}%.0f | ${rows} |"
     }
     val duckCpu = ok.map(r => r.duckdbMedian * r.duckdbCores).sum
     val engCpu  = ok.map(r => r.engineMedian * r.engineCores).sum
     table +=
       f"| total | ${duckTotal}%.1f | ${engTotal}%.1f | ${engTotal / duckTotal}%.1fx | ${duckCpu /
-          duckTotal}%.1f | ${engCpu / engTotal}%.1f | ${engCpu / duckCpu}%.1fx | |"
+          duckTotal}%.1f | ${engCpu / engTotal}%.1f | ${engCpu / duckCpu}%.1fx | ${ok
+          .map(_.engineGcMs)
+          .sum}%.0f | ${ok.map(_.engineAllocMb).sum}%.0f | |"
     info(s"${header}\n${table.result().mkString("\n")}")
 
     val tsv   = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.tsv")
     val lines =
-      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio" +:
+      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb" +:
         results.map { r =>
           f"${r.name}\t${r.duckdbMedian}%.1f\t${r.engineMedian}%.1f\t${r.ratio}%.2f\t${r
               .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}\t${r.engineCores}%.2f\t${r
-              .duckdbCores}%.2f\t${r.cpuRatio}%.2f"
+              .duckdbCores}%.2f\t${r.cpuRatio}%.2f\t${r.engineGcMs}%.1f\t${r.engineAllocMb}%.1f"
         }
     Files.writeString(tsv.toPath, lines.mkString("", "\n", "\n"))
     info(s"Wrote ${tsv.getPath}")
@@ -298,8 +312,16 @@ object EngineTPCHBench extends LogSupport:
       engineRows: Long,
       error: Option[String],
       engineCoresPerRun: Seq[Double] = Nil,
-      duckdbCoresPerRun: Seq[Double] = Nil
+      duckdbCoresPerRun: Seq[Double] = Nil,
+      engineGcMsPerRun: Seq[Double] = Nil,
+      engineAllocMbPerRun: Seq[Double] = Nil
   ):
+    /** The median GC time (collector time summed over the JVM's collectors) of the engine runs */
+    def engineGcMs: Double = median(engineGcMsPerRun)
+
+    /** The median MB allocated by all threads during an engine run */
+    def engineAllocMb: Double = median(engineAllocMbPerRun)
+
     /** The median busy cores of the engine runs: process CPU time / wall time */
     def engineCores: Double = median(engineCoresPerRun)
 
@@ -343,6 +365,30 @@ object EngineTPCHBench extends LogSupport:
       xs(xs.size / 2)
     else
       (xs(xs.size / 2 - 1) + xs(xs.size / 2)) / 2
+
+  /** Wall time, busy cores, GC time, and allocated MB of one engine run */
+  case class EngineRun(ms: Double, cores: Double, gcMs: Double, allocMb: Double)
+
+  /** Accumulated collection time of the JVM's garbage collectors */
+  def gcMillis(): Long =
+    var total = 0L
+    java
+      .lang
+      .management
+      .ManagementFactory
+      .getGarbageCollectorMXBeans
+      .forEach { b =>
+        total += math.max(0L, b.getCollectionTime)
+      }
+    total
+
+  /** Bytes allocated so far by all live threads, or 0 when the JVM can't tell */
+  def allocatedBytes(): Long =
+    java.lang.management.ManagementFactory.getThreadMXBean match
+      case t: com.sun.management.ThreadMXBean if t.isThreadAllocatedMemoryEnabled =>
+        t.getTotalThreadAllocatedBytes
+      case _ =>
+        0L
 
   /** CPU time of this process (every thread, GC and JIT included) */
   def processCpuNanos(): Long =
