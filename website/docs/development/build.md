@@ -53,7 +53,7 @@ The server will be reloaded automatically when you update .md files.
 Wvlet can be compiled to a native library using Scala Native, which compiles Scala code to a native binary for the target OS and CPU architecture.
 
 :::info
-To build native libraries, you need to install `clang`, `llvm`, `libstdc++-12-dev`, and `libgc` (Boehm GC) on your system. See also [Scala Native Setup](https://scala-native.org/en/latest/user/setup.html). 
+To build native libraries, you need to install `clang`, `llvm`, and `libstdc++-12-dev` on your system. See also [Scala Native Setup](https://scala-native.org/en/latest/user/setup.html). 
 :::
 
 ### DuckDB Dependency

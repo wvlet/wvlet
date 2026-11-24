@@ -16,7 +16,7 @@ Wvlet is a cross-SQL flow-style query language for functional data modeling and 
 # Install wvlet CLI command to ~/local/bin/wv
 sbt:wvlet> cli/packInstall
 
-# Build native library (requires clang, llvm, libgc)
+# Build native library (requires clang, llvm)
 sbt:wvlet> wvcLib/nativeLink
 
 # Build standalone native compiler
@@ -194,7 +194,7 @@ test _.output should be """
 ## Environment Requirements
 
 - **JDK**: Minimum JDK 17, JDK 24+ required for Trino connector testing
-- **Native Builds**: clang, llvm, libstdc++-12-dev, libgc (Boehm GC)
+- **Native Builds**: clang, llvm, libstdc++-12-dev
 - **Node.js**: 18+ for UI development and documentation
 - **SBT**: 1.11.2 (specified in project/build.properties)
 

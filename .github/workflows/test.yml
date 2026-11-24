@@ -156,7 +156,7 @@ jobs:
         # libcurl4-openssl-dev provides the unversioned libcurl.so symlink that the linker
         # needs when @link("curl") (via uni's CurlBindings) becomes reachable through the
         # cross-platform Trino client.
-        run: sudo apt-get update && sudo apt-get install -y libgc-dev libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Scala Native test
         # Runs without libduckdb, as the native CLI ships: DuckDB-backed tests skip themselves
         # (DuckDB.canExecute / isAvailable) and the "libduckdb is not available" fallback tests
