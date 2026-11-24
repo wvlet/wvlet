@@ -1834,7 +1834,12 @@ class Planner(
           correlated = Some(c)
           // Register the items' aggregate calls, with NULL in place of each subquery
           val nulls = c.subqueries.map((name, _) => name -> NullLiteral(NoSpan)).toMap
-          bindSelectItems(Binder(this, aggBinder.scope, Some(aggCtx), nulls), c.items)
+          // Items that fail here (e.g. a subquery inside an aggregate) keep the original error
+          try
+            bindSelectItems(Binder(this, aggBinder.scope, Some(aggCtx), nulls), c.items)
+          catch
+            case NonFatal(_) =>
+              throw e
       finally
         windowCollector = saved
     val extraItems = mutable.ArrayBuffer.empty[(VExpr, Field)]
@@ -1921,7 +1926,9 @@ class Planner(
             val items2 = firstPass ++ extraItems
             builder.project(filtered, items2.map(_._1), Schema(items2.map(_._2)))
           case Some(c) =>
-            // The keys under their input columns' qualifiers, so that outer references resolve
+            // The keys under their input columns' names and qualifiers, so that outer references
+            // resolve as over the input (a select alias naming a key is no input column). Items
+            // still find keys by `aggCtx.keyNames`
             val out       = builder.op(filtered).schema
             val qualified = Schema(
               out
@@ -1930,7 +1937,10 @@ class Planner(
                 .map { i =>
                   keyExprs.lift(i).map(_._2) match
                     case Some(ColRef(k, _, _)) =>
-                      out(i).copy(qualifiers = inOp.schema(k).qualifiers)
+                      out(i).copy(
+                        name = inOp.schema(k).name,
+                        qualifiers = inOp.schema(k).qualifiers
+                      )
                     case _ =>
                       out(i)
                 }
@@ -1940,22 +1950,24 @@ class Planner(
               qualified.fields.indices.map(i => ColRef(i, qualified(i).ptype, qualified(i).name)),
               qualified
             )
-            // A subquery correlated to an enclosing query further out stays unbound, as before
-            val columns =
+            // A subquery correlated to an enclosing query further out stays unbound, as before:
+            // the caller sees the original error
+            val items2 =
               try
-                c.subqueries
-                  .map { (name, sub) =>
-                    val (joined, ref) = rewriteSubqueries(builder, p, sub, plan, filter)
-                    p = joined
-                    name -> ref
-                  }
-                  .toMap
+                val columns =
+                  c.subqueries
+                    .map { (name, sub) =>
+                      val (joined, ref) = rewriteSubqueries(builder, p, sub, plan, filter)
+                      p = joined
+                      name -> ref
+                    }
+                    .toMap
+                // The joins keep the aggregation's columns first, so keys and calls keep their refs
+                val b = Binder(this, BindScope(builder.op(p).schema), Some(aggCtx), columns)
+                bindSelectItems(b, c.items) ++ extraItems
               catch
                 case NonFatal(_) =>
                   throw c.error
-            // The joins keep the aggregation's columns first, so keys and calls keep their refs
-            val b      = Binder(this, BindScope(builder.op(p).schema), Some(aggCtx), columns)
-            val items2 = bindSelectItems(b, c.items) ++ extraItems
             builder.project(p, items2.map(_._1), Schema(items2.map(_._2)))
     end match
 

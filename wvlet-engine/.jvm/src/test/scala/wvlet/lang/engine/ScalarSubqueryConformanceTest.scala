@@ -241,6 +241,11 @@ class ScalarSubqueryConformanceTest extends UniTest:
         s"select a, b, ${sub(c)} as v, count(*) as n from ${left} as l(a, b) group by a, b",
         grouped(rs, _.take(2))
       )
+      // Keys by position under an alias: the subquery still reads the input column `l.a`
+      check(
+        s"select a as k, b, ${sub(c)} as v, count(*) as n from ${left} as l(a, b) group by 1, 2",
+        grouped(rs, _.take(2))
+      )
       // Next to an aggregate in the same item
       check(
         s"select a, b, coalesce(${sub(
