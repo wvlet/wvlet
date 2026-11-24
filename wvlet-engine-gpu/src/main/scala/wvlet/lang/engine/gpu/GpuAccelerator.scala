@@ -245,7 +245,9 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     markNeeded(p, p.output.map(_.id).toSet)
     exec(p)
 
-  private def markNeeded(p: RuntimePlan, needed: Set[ColumnId]): Unit =
+  private def markNeeded(p: RuntimePlan, neededHere: Set[ColumnId]): Unit =
+    // A node reached from several parents keeps what any of them reads
+    val needed = Option(neededCols.get(p)).fold(neededHere)(_ ++ neededHere)
     neededCols.put(p, needed)
     p match
       case Project(child, exprs, _) =>
@@ -373,9 +375,12 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
   end execNode
 
   private def scan(s: Scan): GTable =
-    val src  = s.source.asInstanceOf[ParquetSource]
-    val cols =
+    val src = s.source.asInstanceOf[ParquetSource]
+    // Read each bound with its column, while that column is surely in the cache
+    val bounds = Array.fill[Option[java.math.BigDecimal]](s.columns.size)(None)
+    val cols   =
       GpuPlans.buildAll(s.columns.size) { i =>
+        bounds(i) = cache.bound(src.path, s.sourceColumnName(i))
         val cv = cache.column(src.path, s.sourceColumnName(i))
         // Casts to the declared type keep the values
         val d = GpuTypes.dtype(s.columns(i).ptype)
@@ -392,7 +397,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       else
         cols.head.getRowCount.toInt
       ,
-      s.columns.indices.map(i => cache.bound(src.path, s.sourceColumnName(i)))
+      bounds.toIndexedSeq
     )
 
   private def filter(t: GTable, cond: VExpr): GTable =
@@ -540,31 +545,39 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
             val nKeys = keys.size
             // The results of each call, after the keys (and the constant key)
             var at     = nKeys + constKey.size
-            val values = inputs.map { in =>
-              val n = in.aggs.size
-              val v = in.combine(r.cols.slice(at, at + n))
-              at += n
-              v
-            }
-            val out = a
-              .columns
-              .indices
-              .map { i =>
-                val d = GpuTypes.dtype(a.columns(i).ptype)
-                if i < nKeys then
-                  val src = r.cols(i)
-                  if src.getType == d then
-                    src.incRefCount()
-                  else
-                    src.castTo(d)
-                else
-                  val src = values(i - nKeys)
-                  if src.getType == d then
-                    src
-                  else
-                    try src.castTo(d)
-                    finally src.close()
+            val values =
+              buildAll(inputs.size) { k =>
+                val in = inputs(k)
+                val n  = in.aggs.size
+                val v  = in.combine(r.cols.slice(at, at + n))
+                at += n
+                v
               }
+            // Each output takes over its call's value (or closes it after a cast)
+            var taken = 0
+            val out   =
+              try
+                buildAll(a.columns.size) { i =>
+                  val d = GpuTypes.dtype(a.columns(i).ptype)
+                  if i < nKeys then
+                    val src = r.cols(i)
+                    if src.getType == d then
+                      src.incRefCount()
+                    else
+                      src.castTo(d)
+                  else
+                    val src = values(i - nKeys)
+                    taken = i - nKeys + 1
+                    if src.getType == d then
+                      src
+                    else
+                      try src.castTo(d)
+                      finally src.close()
+                }
+              catch
+                case e: Throwable =>
+                  values.drop(taken).foreach(_.close())
+                  throw e
             // Keys and min/max keep the bounds of their input; sums and counts widen
             val outBounds =
               a.keys.map(k => GpuExprs.bound(k.lower(pos))) ++
@@ -863,14 +876,16 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
         else
           using(Table(kept.map(t.cols)*))(tbl => GTable.of(tbl.gather(map, policy))).cols
       var next = 0
-      buildAll(t.cols.size) { i =>
-        if keep(i) then
-          val c = gathered(next).incRefCount()
-          next += 1
-          c
-        else
-          using(Scalar.fromNull(t.cols(i).getType))(nul => ColumnVector.fromScalar(nul, n))
-      }.tap(_ => gathered.foreach(_.close()))
+      try
+        buildAll(t.cols.size) { i =>
+          if keep(i) then
+            val c = gathered(next).incRefCount()
+            next += 1
+            c
+          else
+            using(Scalar.fromNull(t.cols(i).getType))(nul => ColumnVector.fromScalar(nul, n))
+        }
+      finally gathered.foreach(_.close())
 
   /**
     * A left outer join with a residual condition: the inner-joined pairs that pass the residual,
@@ -929,13 +944,14 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
                   val unmatched = leftRowsWithout(l, lv, keep)
                   using(unmatched) { u =>
                     val padded = GTable(
-                      u.cols.map(_.incRefCount()) ++
-                        r.cols
-                          .map { c =>
-                            using(Scalar.fromNull(c.getType))(nul =>
-                              ColumnVector.fromScalar(nul, u.rows)
-                            )
-                          },
+                      buildAll(u.cols.size + r.cols.size) { i =>
+                        if i < u.cols.size then
+                          u.cols(i).incRefCount()
+                        else
+                          using(Scalar.fromNull(r.cols(i - u.cols.size).getType))(nul =>
+                            ColumnVector.fromScalar(nul, u.rows)
+                          )
+                      },
                       u.rows
                     )
                     using(padded) { pd =>
