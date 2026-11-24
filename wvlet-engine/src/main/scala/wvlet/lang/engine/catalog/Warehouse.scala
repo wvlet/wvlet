@@ -76,16 +76,21 @@ class Warehouse(
 ) extends LogSupport:
   private def dir(path: String): IOPath = IOPath.parse(path)
 
+  // Hidden folders (`.name`) are skipped. Table folders may start with `_` (e.g. the run-scoped
+  // `__wv_flow_*` stage tables); only Iceberg table folders count as tables
   private def subFolders(path: String): Seq[String] =
     if FileSystem.isDirectory(dir(path)) then
       FileSystem
         .list(dir(path), ListOptions.default)
         .filter(p => FileSystem.isDirectory(p))
         .map(_.fileName)
-        .filterNot(n => n.startsWith(".") || n.startsWith("_"))
+        .filterNot(_.startsWith("."))
         .sorted
     else
       Nil
+
+  // Schema folders starting with `_` are skipped
+  private def schemaFolders: Seq[String] = subFolders(root).filterNot(_.startsWith("_"))
 
   private def join(parent: String, child: String): String = s"${parent.stripSuffix("/")}/${child}"
 
@@ -123,12 +128,12 @@ class Warehouse(
     join(sp, childName(sp, t))
 
   /** The schemas (sub-folders), the default schema included */
-  def schemas: Seq[String] = (defaultSchema +: subFolders(root))
+  def schemas: Seq[String] = (defaultSchema +: schemaFolders)
     .distinctBy(_.toLowerCase)
     .sortBy(_.toLowerCase)
 
   def hasSchema(name: String): Boolean =
-    name.equalsIgnoreCase(defaultSchema) || subFolders(root).exists(_.equalsIgnoreCase(name))
+    name.equalsIgnoreCase(defaultSchema) || schemaFolders.exists(_.equalsIgnoreCase(name))
 
   def createSchema(name: String): Unit =
     if name.isEmpty || name.contains("/") || name.contains("\\") || name.startsWith(".") then

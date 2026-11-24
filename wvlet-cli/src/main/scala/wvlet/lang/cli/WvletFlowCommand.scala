@@ -57,7 +57,7 @@ case class WvletFlowOption(
     profile: Option[String] = None,
     @option(
       prefix = "-t,--target",
-      description = "Engine to use without a profile (duckdb (default), wvlet, ...)"
+      description = "Engine to use without a profile (wvlet (default), duckdb, ...)"
     )
     targetDBType: Option[String] = None,
     @option(prefix = "--catalog", description = "Context database catalog to use")
@@ -72,19 +72,24 @@ case class WvletFlowOption(
     runStore: Option[String] = None
 ):
   /**
-    * The profile of a flow or build run: `--profile`, or with `-t` the default profile of that
-    * engine (e.g. `-t wvlet` runs on the in-process wvlet engine)
+    * The profile of a flow or build run: `--profile`, with `-t` the default profile of that engine
+    * (e.g. `-t duckdb`), and otherwise the in-process wvlet engine. In-process `wvlet` connectors
+    * without a `warehouse` persist their tables in the work folder's `target/warehouse`
     */
   def resolveProfile: Profile =
-    targetDBType match
-      case Some(target) =>
-        if profile.isDefined then
-          throw StatusCode
-            .INVALID_ARGUMENT
-            .newException("Specify either -t (--target) or --profile")
-        Profile.defaultProfileFor(DBType.fromString(target)).withEngineOverrides(catalog, schema)
-      case None =>
-        Profile.getProfile(profile, catalog, schema)
+    val resolved =
+      targetDBType match
+        case Some(target) =>
+          if profile.isDefined then
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException("Specify either -t (--target) or --profile")
+          Profile.defaultProfileFor(DBType.fromString(target)).withEngineOverrides(catalog, schema)
+        case None =>
+          Profile.getProfile(profile, catalog, schema, default = Profile.defaultWvletProfile)
+    resolved.withDefaultWarehouse(
+      java.nio.file.Path.of(WorkEnv(workFolder).warehouseFolder).toAbsolutePath.normalize.toString
+    )
 
 end WvletFlowOption
 

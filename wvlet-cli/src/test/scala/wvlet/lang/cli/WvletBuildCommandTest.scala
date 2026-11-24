@@ -31,15 +31,16 @@ class WvletBuildCommandTest extends UniTest:
     WvletMain.main(s"build --dry-run -w ${projectDir}")
   }
 
-  test("build all materialized models") {
-    WvletMain.main(s"build -w ${projectDir}")
+  // The project has a view model, which needs a SQL engine
+  test("build all materialized models on DuckDB with -t duckdb") {
+    WvletMain.main(s"build -t duckdb -w ${projectDir}")
   }
 
   test("build a selection with its upstream models") {
-    WvletMain.main(s"build -s +cli_names -w ${projectDir}")
+    WvletMain.main(s"build -t duckdb -s +cli_names -w ${projectDir}")
   }
 
-  test("build table models on the wvlet engine with -t wvlet") {
+  test("build table models on the wvlet engine by default into target/warehouse") {
     import wvlet.lang.compiler.WorkEnv
     import wvlet.lang.runner.FlowRunRegistry
     val dir = Files.createTempDirectory("wvlet-build-engine")
@@ -55,10 +56,17 @@ class WvletBuildCommandTest extends UniTest:
         |}
         |""".stripMargin
     )
-    WvletMain.main(s"build -t wvlet -w ${dir}")
+    WvletMain.main(s"build -w ${dir}")
     val runs = FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list()
     runs.map(_.state) shouldBe List("success")
     runs.head.stages.map(_.state).toSet shouldBe Set("success")
+    Files.isDirectory(dir.resolve("target/warehouse/main/engine_src")) shouldBe true
+
+    // The selected model's upstream persists in the warehouse, so a selected build passes the
+    // upstream check
+    WvletMain.main(s"build -s engine_names -w ${dir}")
+    FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list().map(_.state) shouldBe
+      List("success", "success")
   }
 
   test("report an unknown model in a selection") {

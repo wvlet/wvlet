@@ -67,7 +67,7 @@ class WvletFlowCommandTest extends UniTest:
     e.getMessage shouldContain "target_name"
   }
 
-  test("run a flow on the wvlet engine with -t wvlet") {
+  test("run a flow on the wvlet engine by default") {
     import wvlet.lang.compiler.WorkEnv
     import wvlet.lang.runner.FlowRunRegistry
     val dir = Files.createTempDirectory("wvlet-flow-engine")
@@ -79,10 +79,26 @@ class WvletFlowCommandTest extends UniTest:
         |}
         |""".stripMargin
     )
-    WvletMain.main(s"flow run EnginePipeline -t wvlet -w ${dir}")
+    WvletMain.main(s"flow run EnginePipeline -w ${dir}")
     val runs = FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list()
     runs.map(_.state) shouldBe List("success")
     runs.head.stages.map(_.state) shouldBe List("success", "success")
+    // Stage tables persist in the project's target/warehouse
+    Files.isDirectory(dir.resolve("target/warehouse")) shouldBe true
+  }
+
+  test("resolve the default profile to the wvlet engine with the target warehouse") {
+    val dir     = Files.createTempDirectory("wvlet-flow-profile")
+    val profile = WvletFlowOption(workFolder = dir.toString).resolveProfile
+    profile.defaultEngine.`type` shouldBe "wvlet"
+    profile.defaultEngine.properties.get("warehouse") shouldBe
+      Some(wvlet.lang.compiler.WorkEnv(dir.toString).warehouseFolder)
+
+    // -t duckdb keeps DuckDB, with no warehouse
+    val duckdb =
+      WvletFlowOption(workFolder = dir.toString, targetDBType = Some("duckdb")).resolveProfile
+    duckdb.defaultEngine.`type` shouldBe "duckdb"
+    duckdb.defaultEngine.properties.get("warehouse") shouldBe None
   }
 
   test("reject -t together with --profile") {
@@ -302,8 +318,22 @@ class WvletFlowCommandTest extends UniTest:
     import wvlet.lang.compiler.WorkEnv
     import wvlet.lang.runner.FlowRunRegistry
     WvletMain.main(s"flow run SamplePipeline -w ${flowDir}")
+    val warehouse                   = java.nio.file.Path.of(WorkEnv(flowDir).warehouseFolder)
+    def stageTables(): List[String] =
+      if Files.isDirectory(warehouse.resolve("main")) then
+        Files
+          .list(warehouse.resolve("main"))
+          .toArray
+          .toList
+          .map(_.toString)
+          .filter(_.contains("__wv_flow_"))
+      else
+        Nil
+    stageTables() shouldNotBe Nil
     WvletMain.main(s"flow session clean -w ${flowDir}")
     FlowRunRegistry.forWorkEnv(WorkEnv(flowDir)).list() shouldBe Nil
+    // Cleaning drops the run's stage tables from the warehouse
+    stageTables() shouldBe Nil
   }
 
   test("clean stale running records with --stale") {

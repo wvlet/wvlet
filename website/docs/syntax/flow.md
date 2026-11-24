@@ -593,12 +593,16 @@ Flows are triggered explicitly with the `run flow` statement or the `wvlet flow`
 
 ### Engine Support
 
-Flows run on DuckDB (the default) and on Trino, selected with `--profile` like regular
-queries. `-t <engine>` selects an engine without a profile file: `wvlet flow run F -t wvlet` runs
-the stages as plans on the in-process [wvlet engine](../usage/wvlet-engine.md), with activations,
-notifications, and tables of other connectors. The engine has no views yet (`materialized: 'view'`
-models need a SQL engine such as `-t duckdb`), and its statements can't be stopped mid-run (a
-timeout still fails the stage). Stage materialization adapts to the engine automatically (e.g. Trino catalogs
+Flows run on the in-process [wvlet engine](../usage/wvlet-engine.md) by default, and on DuckDB
+and Trino, selected with `--profile` like regular queries or with `-t <engine>` (e.g.
+`wvlet flow run F -t duckdb`) without a profile file. On the engine, stages run as plans, with
+activations, notifications, and tables of other connectors. Stage tables persist as Iceberg tables
+in the project's `target/warehouse` folder (or the `warehouse` of the profile's `wvlet`
+connector), so a resumed run reads the tables of its successful stages, and `wvlet flow session
+clean` drops them. Two processes writing one warehouse at the same time are not coordinated, and a
+running scheduler doesn't see tables another process creates after it starts. The engine has no
+views yet (`materialized: 'view'` models need a SQL engine such as `-t duckdb`), and its statements
+can't be stopped mid-run (a timeout still fails the stage). Stage materialization adapts to the engine automatically (e.g. Trino catalogs
 without `create or replace table` get an explicit drop-and-create), and stage timeouts and
 cancellation stop the running query server-side on both engines. Run-scoped
 `__wv_flow_*` tables are created in the `catalog`/`schema` of the profile's default engine

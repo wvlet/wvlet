@@ -222,6 +222,31 @@ class EngineFlowExecutorTest extends UniTest:
     session.hasTable(table) shouldBe false
   }
 
+  test("drop run tables persisted in the warehouse from a new session") {
+    val warehouse   = Files.createTempDirectory("wv-engine-run-tables").toString
+    val profile     = warehouseProfile(warehouse)
+    val (flow, ctx) = compileFlow("""flow EngineWarehouseDropFlow = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin)
+    given Context = ctx
+    val writer    = ConnectorProvider(workEnv)
+    val result    =
+      try FlowExecutor(writer.getConnector(profile.defaultEngine), workEnv).execute(flow)
+      finally writer.close()
+    val table = result.stageResult("src").flatMap(_.table).get
+    Files.isDirectory(java.nio.file.Path.of(warehouse, "main", table)) shouldBe true
+
+    // A later process (e.g. `wvlet flow session clean`) sees the `__wv_flow_*` table and drops it
+    val cleaner = ConnectorProvider(workEnv)
+    try
+      val connector = cleaner.getConnector(profile.defaultEngine)
+      connector.asInstanceOf[WvletEngineConnector].session.hasTable(table) shouldBe true
+      FlowExecutor.dropRunTables(connector, result.runId, List("src"))
+    finally
+      cleaner.close()
+    Files.exists(java.nio.file.Path.of(warehouse, "main", table)) shouldBe false
+  }
+
   // --- wvlet build ---
 
   private def project(files: (String, String)*): String =
