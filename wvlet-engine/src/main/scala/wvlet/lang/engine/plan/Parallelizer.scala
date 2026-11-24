@@ -27,17 +27,26 @@ object Parallelizer:
 
   /**
     * With `aboveBreakers`, the output of a grouped aggregation is a source whose parts are its
-    * batches, so that the filters, projections, and join probes above it run as morsels too
+    * batches, so that the filters, projections, and join probes above it run as morsels too. With
+    * `parallelPartitioning`, partitioned aggregations route their input rows to partitions as tasks
     */
-  def apply(op: Operator, runner: TaskRunner, aboveBreakers: Boolean = true): Operator =
+  def apply(
+      op: Operator,
+      runner: TaskRunner,
+      aboveBreakers: Boolean = true,
+      parallelPartitioning: Boolean = true
+  ): Operator =
     if runner.parallelism <= 1 then
       op
     else
-      given AboveBreakers = AboveBreakers(aboveBreakers)
+      given AboveBreakers = AboveBreakers(aboveBreakers, parallelPartitioning)
       rewrite(op, runner)
 
-  /** Whether pipelines start at the outputs of grouped aggregations ([[BreakerSource]]) */
-  private case class AboveBreakers(enabled: Boolean)
+  /**
+    * Whether pipelines start at the outputs of grouped aggregations ([[BreakerSource]]), and
+    * whether partitioned aggregations route their input in parallel
+    */
+  private case class AboveBreakers(enabled: Boolean, parallelPartitioning: Boolean)
 
   /**
     * A scan and the operators over it that can run on parts of the scan independently:
@@ -207,12 +216,21 @@ object Parallelizer:
         op
 
   /** A hash aggregation run in parallel: in two phases over a pipeline, or partitioned by key */
-  private def aggregate(a: HashAggOp, runner: TaskRunner)(using AboveBreakers): Operator =
+  private def aggregate(a: HashAggOp, runner: TaskRunner)(using o: AboveBreakers): Operator =
     def r(x: Operator): Operator = rewrite(x, runner)
     if TwoPhaseAgg.supports(a) then
       pipeline(a.child, runner) match
         case Some(p) =>
-          TwoPhaseAgg.plan(a, p.scan, p.rebuild, p.tail, runner, p.prepare, p.close)
+          TwoPhaseAgg.plan(
+            a,
+            p.scan,
+            p.rebuild,
+            p.tail,
+            runner,
+            p.prepare,
+            p.close,
+            o.parallelPartitioning
+          )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
             r(a.child),
@@ -220,7 +238,8 @@ object Parallelizer:
             a.aggs,
             a.schema,
             runner,
-            expectedGroups = a.expectedGroups
+            expectedGroups = a.expectedGroups,
+            parallelPartitioning = o.parallelPartitioning
           )
         case None =>
           HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
@@ -232,10 +251,14 @@ object Parallelizer:
         a.aggs,
         a.schema,
         runner,
-        expectedGroups = a.expectedGroups
+        expectedGroups = a.expectedGroups,
+        parallelPartitioning = o.parallelPartitioning
       )
     else
       HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
+    end if
+
+  end aggregate
 
   /**
     * The column selections and renames between `op` and the grouped aggregation at the bottom of
@@ -369,7 +392,8 @@ private[plan] object TwoPhaseAgg:
       tail: Option[Operator => Operator],
       runner: TaskRunner,
       prepare: List[() => Unit],
-      release: List[() => Unit]
+      release: List[() => Unit],
+      parallelPartitioning: Boolean
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -438,7 +462,8 @@ private[plan] object TwoPhaseAgg:
           finalAggs,
           finalSchema,
           runner,
-          expectedGroups = a.expectedGroups
+          expectedGroups = a.expectedGroups,
+          parallelPartitioning = parallelPartitioning
         )
       else
         HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)

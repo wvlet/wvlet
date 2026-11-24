@@ -152,6 +152,12 @@ enum Optimization(val name: String):
     */
   case ParallelAboveBreakers extends Optimization("parallel_above_breakers")
 
+  /**
+    * With `parallelize`, partitioned aggregations route their input rows to key partitions as
+    * tasks, each hashing a run of input batches, instead of on the calling thread
+    */
+  case ParallelAggPartitioning extends Optimization("parallel_agg_partitioning")
+
 end Optimization
 
 object Optimization:

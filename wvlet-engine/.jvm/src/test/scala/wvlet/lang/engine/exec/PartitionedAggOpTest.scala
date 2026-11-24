@@ -90,4 +90,23 @@ class PartitionedAggOpTest extends UniTest:
     actual.head.row(0).toSeq shouldBe expected.head.row(0).toSeq
   }
 
+  test("should give the same output, in the same order, routing input rows in parallel or not") {
+    // Unsorted rows: each partition's groups come in first-seen order, which must not change
+    def run(parallel: Boolean): Seq[Seq[Any]] =
+      val op = PartitionedAggOp(
+        BatchesOp(schema, batches),
+        keys,
+        aggs,
+        outSchema,
+        runner,
+        minParallelRows = 0,
+        parallelPartitioning = parallel
+      )
+      try op.drain().flatMap(b => (0 until b.size).map(i => b.row(i).toSeq))
+      finally op.close()
+    val sequential = run(false)
+    sequential.nonEmpty shouldBe true
+    run(true) shouldBe sequential
+  }
+
 end PartitionedAggOpTest
