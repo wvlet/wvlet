@@ -858,16 +858,17 @@ class Planner(
         printSql(other).replace("count(*)", "count_star()")
 
   /** Single-line SQL text of an expression */
-  private def printSql(e: Expression): String =
-    val sql =
-      try
-        SqlGenerator(
-          CodeFormatterConfig(sqlDBType = DBType.DuckDB, fitToLine = true, maxLineWidth = 10000)
-        ).print(e)
-      catch
-        case _: Exception =>
-          e.toString
-    sql.replaceAll("\\s+", " ")
+  private def printSql(e: Expression): String = sqlText(e).replaceAll("\\s+", " ")
+
+  /** SQL text of an expression, with the whitespace inside its string literals kept */
+  private def sqlText(e: Expression): String =
+    try
+      SqlGenerator(
+        CodeFormatterConfig(sqlDBType = DBType.DuckDB, fitToLine = true, maxLineWidth = 10000)
+      ).print(e)
+    catch
+      case _: Exception =>
+        e.toString
 
   private def isStar(e: Expression): Boolean =
     e match
@@ -2066,7 +2067,12 @@ class Planner(
       case other =>
         List(other)
 
-  private def exprKey(e: Expression): String = exprName(e)
+  /**
+    * The key [[factorOr]] matches conjuncts by: their SQL text, with column qualifiers, quoted
+    * literals (whitespace kept), and LIKE's ESCAPE. Not [[exprName]], which names `l.b` and `r.b`
+    * alike as `b`, nor [[printSql]], which reads `'x  y'` as `'x y'`
+    */
+  private def exprKey(e: Expression): String = sqlText(e)
 
   /** (a and b) or (a and c) => a and (b or c), so join keys inside OR branches become usable */
   private def factorOr(e: Expression): List[Expression] =
@@ -2237,6 +2243,9 @@ class Planner(
     val keys  = List.newBuilder[(Expression, Expression)]
     val other = List.newBuilder[Expression]
     conds.foreach {
+      // Wvlet's `x = null` (and `x is null`) is a null check (see Binder), not a key
+      case c @ Eq(_, _: NullLiteral, _) =>
+        other += c
       case eq: Eq
           if bindsIn(eq.left, inner) && !bindsIn(eq.right, inner) && bindsIn(eq.right, outer) =>
         keys += ((eq.left, eq.right))

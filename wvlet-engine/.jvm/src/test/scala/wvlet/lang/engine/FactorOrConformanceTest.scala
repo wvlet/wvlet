@@ -97,9 +97,20 @@ class FactorOrConformanceTest extends UniTest:
 
   private def sorted(rs: Seq[List[String]]): List[String] = rs.map(_.mkString("|")).sorted.toList
 
-  private val table = arr(fixture("table"))
-    .map(r => arr(r).map(cell).mkString("[", ", ", "]"))
+  private val tableRows = arr(fixture("table")).map(r => arr(r).map(cell))
+
+  private def inlineTable(rows: Seq[Seq[String]]): String = rows
+    .map(_.mkString("[", ", ", "]"))
     .mkString("[", ", ", "]")
+
+  private val table = inlineTable(tableRows)
+
+  // The table split into two inputs joined on the row id: `l(i, a, v)` with v = b and
+  // `r(i, v, s)` with v = c, so that the traced `b` and `c` are columns with the same name
+  private val leftTable = inlineTable(tableRows.zipWithIndex.map((r, i) => i.toString :: r.take(2)))
+  private val rightTable = inlineTable(
+    tableRows.zipWithIndex.map((r, i) => i.toString :: r.drop(2))
+  )
 
   private val cases = arr(fixture("cases")).map(obj)
 
@@ -161,7 +172,7 @@ class FactorOrConformanceTest extends UniTest:
         List(other)
 
   test("factor each traced condition as the model does") {
-    cases.size shouldBe 15
+    cases.size shouldBe 17
     for c <- cases do
       val where = str(c("where"))
       debug(where)
@@ -206,6 +217,48 @@ class FactorOrConformanceTest extends UniTest:
       o.firedRules.contains("factor_or") shouldBe factors
       val rows = sorted(rowsOf(engine, q))
       sorted(rowsOf(unfactored, q)) shouldBe rows
+      withQuery(q)(conformance.assertMatches(q, _))
+  }
+
+  private val joined   = s"from ${leftTable} as l(i, a, v)"
+  private val right    = s"${rightTable} as r(i, v, s)"
+  private val asTable  = " select l.a, l.v as b, r.v as c, r.s"
+  private val trueSubq = "exists { from [[1]] as u(x) }"
+
+  /** The traced condition over the join in each context, and the rows it gives */
+  private def joinQueries(c: Map[String, JSONValue]): Seq[(String, List[String])] =
+    val w    = str(c("joinWhere"))
+    val rows = arr(c("rows")).map(r => arr(r).map(cell))
+    // A left join keeps each left row, with the right columns when the condition is TRUE
+    val outer = tableRows.map(r =>
+      if rows.contains(r) then
+        r
+      else
+        r.take(2) ++ List("null", "null")
+    )
+    Seq(
+      // Bound unfactored, factored by Normalize
+      s"${joined} join ${right} on l.i = r.i and (${w})${asTable}"      -> sorted(rows),
+      s"${joined} left join ${right} on l.i = r.i and (${w})${asTable}" -> sorted(outer),
+      // Factored by the planner (Planner.factorOr), as conditions with subqueries are
+      s"${joined} left join ${right} on l.i = r.i where ${trueSubq} and (${w})${asTable}" ->
+        sorted(rows),
+      s"${joined} left join ${right} on l.i = r.i and ${trueSubq} and (${w})${asTable}" ->
+        sorted(outer),
+      s"${joined} join ${right} on l.i = r.i where ${str(c("existsBranchesWhere"))}${asTable}" ->
+        sorted(rows),
+      s"${joined} where exists { from ${right} where r.i = l.i and (${w}) } select l.a, l.v as b" ->
+        sorted(rows.map(_.take(2)))
+    )
+
+  test("return the model's rows for each traced condition over a join") {
+    for
+      c         <- cases
+      (q, want) <- joinQueries(c)
+    do
+      debug(q)
+      for e <- Seq(engine, unfactored) do
+        sorted(rowsOf(e, q)) shouldBe want
       withQuery(q)(conformance.assertMatches(q, _))
   }
 

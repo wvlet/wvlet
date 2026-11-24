@@ -108,7 +108,7 @@ lake exe factor-or-traces   # regenerate the OR factoring conformance fixture
 | `WvletFormal/JoinKeyFilter/Traces.lean`, `JoinKeyFilterTraces.lean` | — | exports the join-key filter conformance fixture |
 | `WvletFormal/Algebra/Bag.lean` (`inList`) | `a IN (v1, ..., vn)` over constants, NULL among them, valued by `inTri` | — |
 | `WvletFormal/FactorOr/Rule.lean` | `factor`: the conjuncts common to every branch of an `or` (matched by a key, taken from the first branch), then the `or` of the other conjuncts, or nothing more when a branch has no other conjunct; `factorConjuncts`: each conjunct of a filter condition replaced by its factored conjuncts | `factor_sound`, `factorConjuncts_sound`: the factored condition has the value of the original on every row where conjuncts with the same key have the same value (`FaithfulOn`), NULLs included, by distributivity and absorption in Kleene logic; `filter_sound_id`: with the condition itself as the key, a WHERE keeps its rows |
-| `WvletFormal/FactorOr/Necessity.lean` | `oldSig`: `InList.sig` before the fix (non-NULL values joined with commas); `oldLitSig`: `Const.sig` before the signature audit (the text `'null'` printed as a NULL) | `oldSig_drops_null_value`, `oldSig_joins_values`: the old signature factors `a not in (1, 3)` with `a not in (1, 3, null)`, and `s in ('x,y')` with `s in ('x', 'y')`, and keeps rows SQL drops; `oldLitSig_reads_text_as_null`: the old literal signature factors `s = 'null'` with `s = null` and keeps rows SQL drops; `complement_unsound`: `(p and q) or (not p and q) = q` holds in two-valued logic only; `not_common_unsound`: a conjunct of one branch cannot be taken out |
+| `WvletFormal/FactorOr/Necessity.lean` | `oldSig`: `InList.sig` before the fix (non-NULL values joined with commas); `oldLitSig`: `Const.sig` before the signature audit (the text `'null'` printed as a NULL); `oldNameKey`: the planner's `exprName` key before this model replayed it (a column without its qualifier) | `oldSig_drops_null_value`, `oldSig_joins_values`: the old signature factors `a not in (1, 3)` with `a not in (1, 3, null)`, and `s in ('x,y')` with `s in ('x', 'y')`, and keeps rows SQL drops; `oldLitSig_reads_text_as_null`: the old literal signature factors `s = 'null'` with `s = null` and keeps rows SQL drops; `oldExprName_drops_qualifier`: the planner's old `exprName` key reads `r.v` as `l.v`, factors `l.v and a = 1` out of `(l.v and a = 1) or (r.v and a = 1)`, and drops a row SQL keeps; `complement_unsound`: `(p and q) or (not p and q) = q` holds in two-valued logic only; `not_common_unsound`: a conjunct of one branch cannot be taken out |
 | `WvletFormal/FactorOr/Traces.lean`, `FactorOrTraces.lean` | — | exports the OR factoring conformance fixture |
 | `WvletFormal/Decorrelate/Rule.lean` | SQL's `[NOT] EXISTS` and `IN` over a correlated subquery (`existsSql`, `inSql`); `planCorrelated`'s split of the subquery's WHERE (`locals` filter the body, `corrs` go on the join); `planExists` and `planIn`: the semi and anti joins of `correlatedJoin`; `markJoin`: `decorrelateExists`' left join with the distinct correlation keys and its `key is not null` flag | `planExists_sound`, `planIn_sound`: the joins return SQL's rows of the WHERE conjunct, for every pair of inputs and conjunct list, NULLs and duplicates included; `markJoin_sound`: the mark join keeps every outer row once, flagged by SQL's EXISTS (never unknown), when the correlated conditions are key equalities; `markFilter_sound`: so any condition over the flag (EXISTS under OR, NOT, or CASE) keeps SQL's rows |
 | `WvletFormal/Decorrelate/Necessity.lean` | — | EXISTS as an inner join duplicates outer rows, and removing the duplicates also removes duplicate outer rows SQL keeps; the mark's left join over the body instead of its distinct keys duplicates outer rows; a semi join under OR drops rows; NOT EXISTS is not NOT IN (a NULL outer key, a NULL inner key) |
@@ -185,14 +185,20 @@ behavior as traces:
   DuckDB, and checks the uncorrelated plan: no join over an empty subquery or one with a NULL,
   an anti join otherwise.
 - `lake exe factor-or-traces` writes
-  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/factor-or-traces.json`: 15 WHERE
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/factor-or-traces.json`: 17 WHERE
   conditions that are an `or` (a common conjunct, absorption, no common conjunct, three branches,
   duplicate and reordered conjuncts, a complement, IN lists with and without a NULL value,
-  `'x,y'` against `'x', 'y'`, and `s = 'null'` against `s = null::string`) over an inline table with NULLs in every column, with whether the
-  model factors each one, into how many conjuncts, the factored condition, and the rows.
+  `'x,y'` against `'x', 'y'`, `s = 'null'` against `s = null::string`, `b and a = 1` against
+  `c and a = 1`, and `'x  y'` against `'x y'`) over an inline table with NULLs in every column,
+  with whether the model factors each one, into how many conjuncts, the factored condition, the
+  rows, and the condition over a join of the table's two halves on the row id (`b` and `c` as
+  `l.v` and `r.v`, alone and with a TRUE `exists` in each branch).
   `FactorOrConformanceTest` (engineJVM) runs `Normalize` on each bound condition to check that it
   factors as the model does, and runs the condition (FactorOr on and off) and its factored form
-  to compare rows with the model and DuckDB. It also replays collisions outside the model's
+  to compare rows with the model and DuckDB. It runs the join form as an inner join ON and a left
+  join ON (factored by `Normalize`), and as a WHERE and a left join ON beside an `exists`, a WHERE
+  with an `exists` in each branch, and a correlated EXISTS body (factored by `Planner.factorOr`),
+  against the model's rows and DuckDB. It also replays collisions outside the model's
   conditions (a literal that prints like two `coalesce` arguments or a list, and a LIKE with an
   ESCAPE character) against DuckDB.
 - `lake exe decorrelate-traces` writes
@@ -336,12 +342,14 @@ The model proves today's behavior. These are left for follow-ups:
 - Expressions are deterministic and total in the model: a volatile function (`random()`) under
   two branches would share a signature but not a value, and the model has no errors (division by
   zero, failed casts) whose evaluation order factoring could change.
-- The binder factors conditions it hands to the shared planner code (with subqueries, or over a
-  left join's preserved input) on compiler expressions, keyed by `exprName`
-  (`Planner.factorOr`); that copy of the rule is the same `factor` but its key is not replayed.
+- The binder factors conditions it hands to the shared planner code (with subqueries) on
+  compiler expressions (`Planner.factorOr`), keyed by their SQL text with the whitespace inside
+  literals kept. Its key used to be `exprName`, which names `l.v` and `r.v` alike
+  (`oldExprName_drops_qualifier`). The replay runs each traced condition over a join, where `b`
+  and `c` are such columns, through this copy of the rule. Lateral unnest ON conditions and ASOF
+  join conditions use the same key but are not replayed.
 - The engine keeps a bound `between` as one conjunct; the model splits every `and`, which has the
-  same value. Outer join ON conditions and inner join conditions are factored by the same
-  `factor`, but the replay covers WHERE only.
+  same value.
 
 ## Known gaps of the decorrelation model
 
