@@ -65,13 +65,43 @@ Same setup, with [`sirius-sf100.yaml`](sirius-sf100.yaml) (70% of memory for the
 
 ### SF100 (2026-11-24)
 
-The same bench at SF100 (`WVLET_ENGINE_BENCH_SF=100`, `WVLET_GPU_POOL_FRACTION=0.7`, `WVLET_GPU_CACHE_FRACTION=0.6`), GPU on and off in one JVM. Row counts match on every query that finished.
+The same bench at SF100, GPU on and off in one JVM, best of 2 hot runs:
 
-- 16 of 22 queries ran fully on the GPU. They take 3.99 s in total, against 43.0 s on the CPU engine (10.8x) and 2.88 s for Sirius pinned on the same 16 queries. q2, q20, q21, and q22 are on par with Sirius or faster; q5, q6, and q11 are 2.5-3x slower.
-- q1 ran out of the RMM pool: 600M rows of its columns, plus the cached columns of earlier queries, exceed 75 GiB. It fell back to the CPU after the failed attempt (42 s against 5.6 s on the CPU engine).
-- q12 and q13 read string columns (`l_shipmode`, `o_comment`) larger than cudf's 2 GB limit for one string column, so the GPU attempt fails and the subtree runs on the CPU (17 s and 28 s against 2.2 s and 6.0 s).
-- q7, q18, and q19 ran out of Java heap (`-Xmx16g`) in a CPU hash join build, so the bench left them out.
-- SF100 needs chunked scans or eviction before each GPU subtree, and should reject offloads whose columns cannot fit. Neither is in this example yet.
+```sh
+WVLET_GPU_TEST_HEAP=28g WVLET_ENGINE_BENCH_SF=100 WVLET_ENGINE_BENCH_RUNS=2 \
+  WVLET_GPU_POOL_FRACTION=0.7 WVLET_GPU_CACHE_FRACTION=0.6 WVLET_ENGINE_BENCH_TIMEOUT=900 \
+  WVLET_ENGINE_BENCH_AB=gpu_offload ./sbt "engineGpu/testOnly *GpuTPCHBench"
+```
+
+- All 22 queries run on the GPU, with row counts matching the CPU engine and no CPU fallback: 9.17 s against 99.3 s on the CPU engine (10.8x), and 5.10 s for DuckDB + Sirius with pinned tables (DuckDB on the CPU: 25.94 s).
+- Faster than Sirius pinned on q2, q18, q20, and q22, and within 10% on q21. The largest gaps are q1 (1.41 vs 0.58 s), q13 (1.18 vs 0.35 s), q19 (0.74 vs 0.13 s), and q12 (0.65 vs 0.14 s): they stream lineitem or orders through the GPU in 32M-row ranges, because their columns don't fit in the pool whole or their strings exceed cudf's 2 GB column limit. See [the chunked scans ADR](../../adr/2026-11-24-gpu-chunked-scans.md).
+- Before chunked scans, q1, q12, q13, and q19 failed on the device and then ran on the CPU (17-37 s each), and q7, q18, and q19 ran out of the CPU engine's 16 GB heap. `WVLET_GPU_TEST_HEAP=28g` sets the test JVM's heap; with the pool at 0.7 of free memory (74 GiB), both fit in the GB10's 128 GB.
+
+| query | Wvlet engine + GPU (ms) | Wvlet engine, CPU (ms) | DuckDB + Sirius, pinned (ms) |
+| --- | ---: | ---: | ---: |
+| q1 | 1,412 | 7,111 | 580 |
+| q2 | 42 | 603 | 43 |
+| q3 | 293 | 2,680 | 183 |
+| q4 | 138 | 1,886 | 107 |
+| q5 | 368 | 3,650 | 145 |
+| q6 | 189 | 1,570 | 58 |
+| q7 | 271 | 11,964 | 192 |
+| q8 | 353 | 3,850 | 198 |
+| q9 | 761 | 9,192 | 670 |
+| q10 | 357 | 3,718 | 187 |
+| q11 | 204 | 516 | 68 |
+| q12 | 646 | 1,996 | 143 |
+| q13 | 1,178 | 4,427 | 351 |
+| q14 | 112 | 1,967 | 91 |
+| q15 | 223 | 4,147 | 125 |
+| q16 | 316 | 838 | 143 |
+| q17 | 174 | 3,255 | 109 |
+| q18 | 630 | 20,355 | 824 |
+| q19 | 744 | 3,816 | 131 |
+| q20 | 121 | 4,042 | 128 |
+| q21 | 534 | 6,449 | 500 |
+| q22 | 106 | 1,265 | 127 |
+| **total** | **9.17 s** | 99.3 s | 5.10 s |
 
 To run it on a Spark (JDK 17+ and this repository checked out there):
 
@@ -82,7 +112,7 @@ WVLET_ENGINE_BENCH_SF=10 WVLET_ENGINE_BENCH_RUNS=3 WVLET_ENGINE_BENCH_AB=gpu_off
   ./sbt "engineGpu/testOnly *GpuTPCHBench"             # writes target/engine-bench/tpch-gpu-sf10-ab.tsv
 ```
 
-`CUDF_CLASSIFIER` picks the cudf build (default `cuda13-arm64`; `cuda12` for x86_64 with CUDA 12). `WVLET_GPU_POOL_FRACTION` (default 0.8 of free device memory) and `WVLET_GPU_CACHE_FRACTION` (default 0.5 of the pool) size the memory pool and the column cache.
+`CUDF_CLASSIFIER` picks the cudf build (default `cuda13-arm64`; `cuda12` for x86_64 with CUDA 12). `WVLET_GPU_POOL_FRACTION` (default 0.8 of free device memory) and `WVLET_GPU_CACHE_FRACTION` (default 0.5 of the pool) size the memory pool and the column cache. `WVLET_GPU_STREAM_ROWS` (default 100M), `WVLET_GPU_STREAM_FRACTION` (default 0.9), and `WVLET_GPU_CHUNK_ROWS` (default 32M) decide which scans stream and how many rows each range has.
 
 ## GB10 notes
 

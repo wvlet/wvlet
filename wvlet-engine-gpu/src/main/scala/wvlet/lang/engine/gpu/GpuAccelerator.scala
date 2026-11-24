@@ -16,14 +16,17 @@ package wvlet.lang.engine.gpu
 import ai.rapids.cudf.BinaryOp
 import ai.rapids.cudf.ColumnVector
 import ai.rapids.cudf.DType
+import ai.rapids.cudf.DistinctHashJoin
 import ai.rapids.cudf.GroupByAggregation
 import ai.rapids.cudf.GroupByOptions
+import ai.rapids.cudf.HashJoin
 import ai.rapids.cudf.NullPolicy
 import ai.rapids.cudf.OrderByArg
 import ai.rapids.cudf.OutOfBoundsPolicy
 import ai.rapids.cudf.Scalar
 import ai.rapids.cudf.Table
 import wvlet.lang.api.StatusCode
+import wvlet.lang.engine.catalog.ParquetFooterCache
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
@@ -64,10 +67,23 @@ class GpuAccelerator(config: GpuConfig = GpuConfig.fromEnv())
     // them back to the host costs more than the CPU's own scan (TPC-H q13 and q22 read o_comment
     // and c_phone this way), so such subtrees stay on the CPU
     // and planning never touches the device: it is initialized when a GPU operator first runs
-    if GpuRuntime.isAvailable && GpuPlans.reduces(p) && GpuPlans.supports(p)(using config) then
+    if GpuRuntime.isAvailable && GpuPlans.reduces(p) && GpuPlans.supports(p)(using config) &&
+      withinLimits(p)
+    then
       Some(GpuOp(p, () => GpuPlans(cache, config), () => cpu(p), config))
     else
       None
+
+  /**
+    * Whether `p` can run within cudf's limits: with [[GpuFeature.OffloadLimits]], a subtree that
+    * would concatenate a string column of a streamed table stays on the CPU
+    */
+  private def withinLimits(p: RuntimePlan): Boolean =
+    given GpuConfig = config
+    // Only tables over streamRows rows can have string columns over the limit
+    !config.isEnabled(GpuFeature.OffloadLimits) ||
+    !GpuPlans.scansOf(p).exists(GpuPlans.largeRows) ||
+    !GpuPlans(null, config).concatsLargeStrings(GpuOp.rewrite(p, config))
 
 end GpuAccelerator
 
@@ -78,7 +94,7 @@ object GpuAccelerator:
   private[gpu] def sharedCache(config: GpuConfig): GpuColumnCache = synchronized {
     if cache == null then
       val pool = GpuRuntime.init(config)
-      cache = GpuColumnCache((pool * config.cacheFraction).toLong)
+      cache = GpuColumnCache((pool * config.cacheFraction).toLong, config.pieceBytes)
     cache
   }
 
@@ -116,13 +132,34 @@ private[gpu] object GTable:
 /**
   * A filter that a join passes to one of its inputs: rows whose columns `cols` (cast to `types`)
   * match no row of `values` (the other input's join keys, borrowed) cannot join, so the input may
-  * drop them before it does further work
+  * drop them before it does further work. `origin` is the join that made it: within one loop over
+  * ranges, filters of the same origin and columns hold the same keys
   */
 private[gpu] final case class KeyFilter(
     cols: IndexedSeq[Int],
     types: IndexedSeq[PType],
-    values: Table
+    values: Table,
+    origin: AnyRef
 )
+
+/**
+  * A plan node and the key filters it runs with, compared by identity: the key of a result or hash
+  * table reused across the ranges of a loop
+  */
+private[gpu] final class RunKey(val p: AnyRef, kfs: List[KeyFilter]):
+  private val sig = kfs.map(f => (f.origin, f.cols))
+
+  override def hashCode: Int =
+    System.identityHashCode(p) * 31 +
+      sig.map((o, c) => System.identityHashCode(o) * 17 + c.hashCode).hashCode
+
+  override def equals(o: Any): Boolean =
+    o match
+      case k: RunKey =>
+        (k.p eq p) && k.sig.size == sig.size &&
+        k.sig.zip(sig).forall((a, b) => (a._1 eq b._1) && a._2 == b._2)
+      case _ =>
+        false
 
 private[gpu] object KeyFilter:
   /** Apply a filter only to inputs with more than this many times its number of keys */
@@ -230,20 +267,243 @@ private[gpu] object DecimalSum:
 
 end DecimalSum
 
+/**
+  * An aggregation split for streamed input: `partial` aggregates each range, `merge` aggregates the
+  * concatenated partial results (keys first, then one column per partial call), and [[finish]]
+  * turns the merged columns into the aggregation's output. avg is a sum and a count until
+  * [[finish]] divides them, so that the partial sums stay exact.
+  */
+private[gpu] final class PartialAgg(a: RuntimePlan.Aggregate):
+  import GpuPlans.using
+  private val nk = a.keys.size
+
+  private def isAvg(c: AggregateCall): Boolean =
+    val n = c.name.toLowerCase
+    n == "avg" || n == "mean"
+
+  /** The partial calls of each call, with their result types */
+  private val parts: IndexedSeq[Seq[(AggregateCall, PType)]] = a
+    .calls
+    .zip(a.columns.drop(nk))
+    .map { (c, col) =>
+      if isAvg(c) then
+        val sum = c.copy(name = "sum")
+        val t   = GpuPlans.aggInputType(sum).get
+        Seq((sum.copy(ptype = t), t), (c.copy(name = "count", ptype = PType.Int64), PType.Int64))
+      else
+        Seq((c, col.ptype))
+    }
+
+  private val flat = parts.flatten
+
+  private def columnsOf(types: Seq[PType]): IndexedSeq[Column] =
+    a.columns.take(nk) ++ types.map(t => a.columns.head.copy(ptype = t))
+
+  val partial: RuntimePlan.Aggregate = a.copy(
+    calls = flat.map(_._1),
+    columns = columnsOf(flat.map(_._2))
+  )
+
+  val merge: RuntimePlan.Aggregate =
+    val calls = flat
+      .zipWithIndex
+      .map { case ((c, t), i) =>
+        val name =
+          c.name.toLowerCase match
+            case "count" | "count_star" =>
+              "sum"
+            case other =>
+              other
+        AggregateCall(name, Seq(BExpr(ColRef(nk + i, t, s"p${i}"))), false, None, t)
+      }
+    a.copy(
+      keys = a.keys.indices.map(i => BExpr(ColRef(i, a.keys(i).ptype, s"k${i}"))),
+      calls = calls,
+      columns = columnsOf(flat.map(_._2))
+    )
+
+  /** The aggregation's output from the merged columns `m` (borrowed) */
+  def finish(m: GTable): GTable =
+    var at  = nk
+    val out =
+      GpuPlans.buildAll(a.columns.size) { i =>
+        if i < nk then
+          m.cols(i).incRefCount()
+        else
+          val c = a.calls(i - nk)
+          val d = GpuTypes.dtype(a.columns(i).ptype)
+          if isAvg(c) then
+            val v =
+              using(m.cols(at).castTo(DType.FLOAT64)) { sum =>
+                using(m.cols(at + 1).castTo(DType.FLOAT64)) { n =>
+                  // A NULL sum (no non-NULL values) gives NULL
+                  sum.div(n)
+                }
+              }
+            at += 2
+            if v.getType == d then
+              v
+            else
+              try v.castTo(d)
+              finally v.close()
+          else
+            val v = m.cols(at)
+            at += 1
+            if v.getType == d then
+              v.incRefCount()
+            else
+              v.castTo(d)
+      }
+    // Keys and min/max keep their bounds; an avg has none
+    var b      = nk
+    val bounds =
+      m.bounds.take(nk) ++
+        parts
+          .indices
+          .map { k =>
+            val r =
+              if isAvg(a.calls(k)) then
+                None
+              else
+                m.bounds(b)
+            b += parts(k).size
+            r
+          }
+    GTable(out, m.rows, bounds)
+
+  end finish
+
+end PartialAgg
+
+/** Counters of the GPU executor, for tests and logs */
+object GpuStats:
+  private val ranges = java.util.concurrent.atomic.AtomicLong()
+
+  /** The row ranges that streamed scans have run so far in this JVM */
+  def streamedRanges: Long = ranges.get()
+
+  private[gpu] def addRange(): Unit = ranges.incrementAndGet()
+
 /** Plan-time support checks and device execution of runtime plan nodes */
 private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends LogSupport:
   import GpuPlans.*
 
   private var depth = 0
 
-  /** The columns (by id) that nodes above each plan node read, from [[prepare]] */
+  /** The columns (by id) that nodes above each plan node read, from [[markNeeded]] */
   private val neededCols = java.util.IdentityHashMap[RuntimePlan, Set[ColumnId]]()
+
+  private given GpuConfig = config
+
+  /** The current row range of each streamed scan, while its ranges run */
+  private val bound = java.util.IdentityHashMap[Scan, GTable]()
+
+  /**
+    * The results of one loop over the ranges of a streamed scan that are the same for every range:
+    * subtrees that read no streamed scan, and the hash tables built over them
+    */
+  private final class Loop extends AutoCloseable:
+    val results = scala.collection.mutable.HashMap.empty[RunKey, GTable]
+    val hashes  = scala.collection.mutable.HashMap.empty[RunKey, AutoCloseable]
+
+    /** Whether a reused subtree is running: its own nodes are not kept separately */
+    var reusing = false
+
+    override def close(): Unit =
+      results.values.foreach(_.close())
+      hashes.values.foreach(_.close())
+
+  // The innermost loop first
+  private var loops: List[Loop] = Nil
 
   /** Run a GPU subtree: all of its output is read */
   def run(p: RuntimePlan): GTable =
-    neededCols.clear()
-    markNeeded(p, p.output.map(_.id).toSet)
+    markAll(p)
     exec(p)
+
+  /** The scans of the running subtree that stream */
+  private var streamed: java.util.Set[Scan] = java.util.Collections.emptySet()
+
+  /** Decide what `p` streams and which columns its nodes read, before it runs */
+  private def markAll(p: RuntimePlan): Unit =
+    neededCols.clear()
+    streamsOf.clear()
+    streamed = streamedScans(p)
+    markNeeded(p, p.output.map(_.id).toSet)
+
+  /**
+    * Whether running `p` would concatenate a string column of a table over `streamRows` rows that a
+    * node above reads and whose estimated size ([[GpuPlans.stringBytes]]) exceeds `stringLimit`:
+    * the ranges of a streamed scan are concatenated where they stop streaming, unless an
+    * aggregation merges them, and such a column would exceed cudf's 2 GB string limit
+    */
+  def concatsLargeStrings(p: RuntimePlan): Boolean =
+    val strings =
+      scansOf(p)
+        .collect {
+          case s @ Scan(src: ParquetSource, _, _, _) if largeRows(s) =>
+            // Unknown sizes count as too large
+            s.columns.indices.filter(tooLongStrings(s, _)).map(s.columns(_).id)
+        }
+        .flatten
+        .toSet
+    strings.nonEmpty && {
+      markAll(p)
+      def visit(n: RuntimePlan, through: Option[Scan], merged: Boolean): Boolean =
+        val s    = streamOf(n)
+        val root = s.exists(x => !through.exists(_ eq x))
+        val here = root && !merged && Option(neededCols.get(n)).exists(_.exists(strings))
+        here || (
+          n match
+            case Filter(c, _, _) =>
+              visit(c, s, false)
+            case Project(c, _, _) =>
+              visit(c, s, false)
+            case j: Join =>
+              visit(j.left, s, false) || visit(j.right, s, false)
+            case a: Aggregate =>
+              visit(a.child, None, mergeable(a))
+            case other =>
+              other.children.exists(visit(_, None, false))
+        )
+      visit(p, None, false)
+    }
+
+  end concatsLargeStrings
+
+  /**
+    * With [[GpuFeature.ReserveMemory]], evict the cached columns that `p` doesn't read until the
+    * columns it reads and its estimated working memory fit in 90% of the pool. The estimate is each
+    * scan's estimated size ([[GpuPlans.scanBytes]]) times its [[GpuPlans.scanFactors]] for a whole
+    * scan, or its size plus four ranges for a streamed scan
+    */
+  def reserve(p: RuntimePlan): Unit =
+    val pool = GpuRuntime.poolSize
+    // Subtrees over smaller tables (all of TPC-H SF10) fit as the cache's budget allows
+    if pool > 0 && config.isEnabled(GpuFeature.ReserveMemory) && scansOf(p).exists(largeRows) then
+      val factors = scanFactors(p)
+      val scans   = scansOf(p).collect { case s @ Scan(src: ParquetSource, _, _, _) =>
+        (s, src)
+      }
+      val keep =
+        scans
+          .flatMap((s, src) => s.columns.indices.map(i => (src.path, s.sourceColumnName(i))))
+          .toSet
+      val needed =
+        scans
+          .map { (s, _) =>
+            val bytes  = scanBytes(s)
+            val factor = Option(factors.get(s)).getOrElse(1)
+            if streams(s, factor) then
+              val rows = math.max(1L, s.source.estimatedRows.getOrElse(1L))
+              bytes + 4L * bytes * math.min(rows, config.chunkRows.toLong) / rows
+            else
+              factor * bytes
+          }
+          .sum
+      cache.reserve(needed, (pool * 0.9).toLong, keep)
+
+  end reserve
 
   private def markNeeded(p: RuntimePlan, neededHere: Set[ColumnId]): Unit =
     // A node reached from several parents keeps what any of them reads
@@ -282,6 +542,25 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     * match none of the filter's values: they are pushed down as far as they stay valid
     */
   def exec(p: RuntimePlan, kfs: List[KeyFilter] = Nil): GTable =
+    loops match
+      case loop :: _ if !loop.reusing && !containsBound(p) =>
+        // The same for every range: run once per loop. Only this subtree's result is kept, not
+        // those of its nodes, which run as usual
+        val key = RunKey(p, kfs)
+        loop.results.get(key) match
+          case Some(done) =>
+            share(done)
+          case None =>
+            loop.reusing = true
+            val t =
+              try execProfiled(p, kfs)
+              finally loop.reusing = false
+            loop.results(key) = t
+            share(t)
+      case _ =>
+        execProfiled(p, kfs)
+
+  private def execProfiled(p: RuntimePlan, kfs: List[KeyFilter]): GTable =
     if config.profile then
       // Device time of each node, children included (the device is synchronized after each)
       val start = System.nanoTime()
@@ -318,6 +597,12 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
   private def execNode(p: RuntimePlan, kfs: List[KeyFilter]): GTable =
     def child0(c: RuntimePlan): GTable = exec(c, childFilters(p, kfs, 0))
     p match
+      case s: Scan if bound.containsKey(s) =>
+        share(bound.get(s))
+      case a: Aggregate if startsStream(a.child) && mergeable(a) =>
+        streamAggregate(a, kfs)
+      case _ if startsStream(p) =>
+        streamConcat(p, kfs)
       case s: Scan =>
         scan(s)
       case Filter(child, cond, _) =>
@@ -380,15 +665,8 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     val bounds = Array.fill[Option[java.math.BigDecimal]](s.columns.size)(None)
     val cols   =
       GpuPlans.buildAll(s.columns.size) { i =>
-        bounds(i) = cache.bound(src.path, s.sourceColumnName(i))
-        val cv = cache.column(src.path, s.sourceColumnName(i))
-        // Casts to the declared type keep the values
-        val d = GpuTypes.dtype(s.columns(i).ptype)
-        if cv.getType == d then
-          cv
-        else
-          try cv.castTo(d)
-          finally cv.close()
+        bounds(i) = cache.bound(src.path, s.sourceColumnName(i), inPieces(s, i))
+        castOwned(cache.column(src.path, s.sourceColumnName(i), inPieces(s, i)), s.columns(i).ptype)
       }
     GTable(
       cols,
@@ -399,6 +677,184 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       ,
       bounds.toIndexedSeq
     )
+
+  /** `cv` (consumed) in the declared type: casts keep the values */
+  private def castOwned(cv: ColumnVector, p: PType): ColumnVector =
+    val d = GpuTypes.dtype(p)
+    if cv.getType == d then
+      cv
+    else
+      try cv.castTo(d)
+      finally cv.close()
+
+  /** Whether column i of `s` is cached in pieces ([[GpuFeature.StringPieces]]) */
+  private def inPieces(s: Scan, i: Int): Boolean =
+    config.isEnabled(GpuFeature.StringPieces) && largeRows(s) && GpuPlans.tooLongStrings(s, i)
+
+  /** Another reference to the columns of `t` */
+  private def share(t: GTable): GTable = GTable(t.cols.map(_.incRefCount()), t.rows, t.bounds)
+
+  /** Whether `p` reads a scan whose ranges are running */
+  private def containsBound(p: RuntimePlan): Boolean =
+    !bound.isEmpty && {
+      p match
+        case s: Scan =>
+          bound.containsKey(s)
+        case other =>
+          other.children.exists(containsBound)
+    }
+
+  private val streamsOf = java.util.IdentityHashMap[RuntimePlan, Option[Scan]]()
+
+  private def streamOf(p: RuntimePlan): Option[Scan] =
+    val known = streamsOf.get(p)
+    if known != null then
+      known
+    else
+      val s = GpuPlans.streamOf(p, streamed)
+      streamsOf.put(p, s)
+      s
+
+  /** Whether `p` streams over a scan whose ranges are not running yet: `p` starts the loop */
+  private def startsStream(p: RuntimePlan): Boolean = streamOf(p).exists(s => !bound.containsKey(s))
+
+  /**
+    * Run `body` once per row range of the streamed scan `s`, which reads that range meanwhile, and
+    * return the results. The scan's cached columns are held for the whole loop, so that eviction
+    * cannot make a later range read them again
+    */
+  private def ranges(s: Scan)(body: => GTable): IndexedSeq[GTable] =
+    val src  = s.source.asInstanceOf[ParquetSource]
+    val cols =
+      buildAll(s.columns.size, (c: CachedColumn) => c.close())(i =>
+        cache.columnRef(src.path, s.sourceColumnName(i), inPieces(s, i))
+      )
+    try
+      val rows  = cols.headOption.map(_.rows).getOrElse(0L)
+      val chunk = config.chunkRows.toLong
+      val n     = math.max(1L, (rows + chunk - 1) / chunk).toInt
+      val loop  = Loop()
+      loops = loop :: loops
+      try
+        buildAll(n, (t: GTable) => t.close()) { k =>
+          val from  = k * chunk
+          val to    = math.min(rows, from + chunk)
+          val range = GTable(
+            buildAll(cols.size)(i => castOwned(cols(i).slice(from, to), s.columns(i).ptype)),
+            (to - from).toInt,
+            cols.map(_.bound)
+          )
+          GpuStats.addRange()
+          bound.put(s, range)
+          try
+            timed(f"range ${k + 1} of ${n} of ${s.source.name}, ${to - from}%,d rows")(body)
+          finally
+            bound.remove(s)
+            range.close()
+        }
+      finally
+        loops = loops.tail
+        loop.close()
+    finally
+      cols.foreach(_.close())
+    end try
+
+  end ranges
+
+  /**
+    * The rows of `parts` (consumed) concatenated. Each column's bound is the largest of the parts'
+    * (None if one is unknown)
+    */
+  private def concat(parts: IndexedSeq[GTable]): GTable =
+    if parts.size == 1 then
+      parts.head
+    else
+      try
+        val n      = parts.head.cols.size
+        val bounds = (0 until n).map(i =>
+          val bs = parts.map(_.bounds(i))
+          if bs.forall(_.isDefined) then
+            bs.flatten.reduceOption(_.max(_))
+          else
+            None
+        )
+        if n == 0 then
+          GTable(IndexedSeq.empty, parts.map(_.rows).sum)
+        else
+          val tables = parts.map(_.table)
+          try GTable.of(Table.concatenate(tables*)).withBounds(bounds)
+          finally tables.foreach(_.close())
+      finally
+        parts.foreach(_.close())
+
+  /**
+    * A streamed subtree whose parent doesn't stream: run it per range and concatenate the results.
+    * Columns that no node above reads become all-NULL placeholders first, when pruning is on
+    */
+  private def streamConcat(p: RuntimePlan, kfs: List[KeyFilter]): GTable =
+    val s    = streamOf(p).get
+    val keep =
+      Option(neededCols.get(p)) match
+        case Some(needed) if config.isEnabled(GpuFeature.PruneColumns) =>
+          val ids = p.output.map(_.id)
+          (i: Int) => needed.contains(ids(i))
+        case _ =>
+          (_: Int) => true
+    concat(ranges(s)(prune(execNode(p, kfs), keep)))
+
+  /** `t` (consumed) with the columns `keep` rejects replaced by all-NULL placeholders */
+  private def prune(t: GTable, keep: Int => Boolean): GTable =
+    if t.cols.indices.forall(keep) then
+      t
+    else
+      using(t) { in =>
+        GTable(
+          buildAll(in.cols.size) { i =>
+            if keep(i) then
+              in.cols(i).incRefCount()
+            else
+              using(Scalar.fromNull(in.cols(i).getType))(nul =>
+                ColumnVector.fromScalar(nul, in.rows)
+              )
+          },
+          in.rows,
+          in.bounds
+        )
+      }
+
+  /**
+    * An aggregation over a streamed input: aggregate each range, then merge the partial results
+    * (see [[PartialAgg]]); count(distinct) keeps the distinct (keys, argument) rows of each range
+    */
+  private def streamAggregate(a: Aggregate, kfs: List[KeyFilter]): GTable =
+    val s   = streamOf(a.child).get
+    val pos = positions(a.child)
+    val ckf = childFilters(a, kfs, 0)
+    if config.isEnabled(GpuFeature.DistinctCount) && isDistinctCountOnly(a) then
+      val parts =
+        ranges(s) {
+          using(exec(a.child, ckf))(t => distinctRows(a, t, pos))
+        }
+      using(concat(parts)) { c =>
+        using(c.table) { tbl =>
+          using(
+            GTable.of(
+              tbl.dropDuplicates(c.cols.indices.toArray, Table.DuplicateKeepOption.KEEP_ANY, true)
+            )
+          )(d => countDistinctRows(a, d))
+        }
+      }
+    else
+      val split = PartialAgg(a)
+      val parts =
+        ranges(s) {
+          using(exec(a.child, ckf))(t => groupByOver(split.partial, t, pos))
+        }
+      using(concat(parts)) { c =>
+        using(groupByOver(split.merge, c, Array.tabulate(c.cols.size)(identity)))(split.finish)
+      }
+
+  end streamAggregate
 
   private def filter(t: GTable, cond: VExpr): GTable =
     val mask = GpuExprs.evalColumn(cond, PType.Bool, t.cols, t.rows)(using boundsOf(t))
@@ -452,18 +908,15 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
         groupByOver(a, t, positions(a.child))
     }
 
-  /** Whether every call of `a` is count(distinct x) of the same single argument */
-  private def isDistinctCountOnly(a: Aggregate): Boolean =
-    a.calls.nonEmpty &&
-      a.calls.forall(c => isCount(c) && c.distinct && c.args.size == 1 && c.filter.isEmpty) &&
-      a.calls.map(_.args.head).distinct.size == 1
-
   /**
     * count(distinct x) grouped by the keys, as the distinct (keys, x) rows and then a count of
     * non-NULL x per group: both steps stay on cudf's hash paths, while `nunique` sorts (TPC-H q16)
     */
   private def distinctCount(a: Aggregate, t: GTable): GTable =
-    val pos   = positions(a.child)
+    using(distinctRows(a, t, positions(a.child)))(d => countDistinctRows(a, d))
+
+  /** The distinct (keys, argument) rows of `t` for count(distinct) */
+  private def distinctRows(a: Aggregate, t: GTable, pos: Array[Int]): GTable =
     val exprs = a.keys ++ a.calls.take(1).map(_.args.head)
     val cols  =
       buildAll(exprs.size)(i =>
@@ -479,16 +932,20 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
           }
         }
       finally cols.foreach(_.close())
-    using(distinct) { d =>
-      // Group the distinct rows (keys at 0..n-1, the argument at n) by the keys
-      val n       = a.keys.size
-      val arg     = BExpr(ColRef(n, exprs.last.ptype, "x"))
-      val counted = a.copy(
-        keys = a.keys.indices.map(i => BExpr(ColRef(i, a.keys(i).ptype, s"k${i}"))),
-        calls = a.calls.map(_.copy(distinct = false, args = Seq(arg)))
-      )
-      groupByOver(counted, d, Array.tabulate(n + 1)(identity))
-    }
+    distinct
+
+  /** Count the non-NULL arguments per group of the distinct (keys, argument) rows `d` (borrowed) */
+  private def countDistinctRows(a: Aggregate, d: GTable): GTable = locally {
+    // Group the distinct rows (keys at 0..n-1, the argument at n) by the keys
+    val exprs   = a.keys ++ a.calls.take(1).map(_.args.head)
+    val n       = a.keys.size
+    val arg     = BExpr(ColRef(n, exprs.last.ptype, "x"))
+    val counted = a.copy(
+      keys = a.keys.indices.map(i => BExpr(ColRef(i, a.keys(i).ptype, s"k${i}"))),
+      calls = a.calls.map(_.copy(distinct = false, args = Seq(arg)))
+    )
+    groupByOver(counted, d, Array.tabulate(n + 1)(identity))
+  }
 
   /** Group `t`, the rows of `a.child` with the column of id `i` at `pos(i)`, by `a`'s keys */
   private def groupByOver(a: Aggregate, t: GTable, pos: Array[Int]): GTable = locally {
@@ -658,14 +1115,16 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
             j.kind match
               case JoinKind.Inner | JoinKind.Left | JoinKind.Semi | JoinKind.Anti
                   if config.isEnabled(GpuFeature.JoinKeyFilter) &&
-                    l.rows * KeyFilter.MinReduction <= maxSourceRows(j.left) =>
+                    l.rows * KeyFilter.MinReduction <= maxSourceRows(j.left) &&
+                    // The right input runs once per loop, so its filter can't depend on a range
+                    !containsBound(j.left) =>
                 val cols = j
                   .rightKeys
                   .map(_.lower(rpos))
                   .collect { case c: ColRef =>
                     c.index
                   }
-                Option.when(cols.size == keyTypes.size)(KeyFilter(cols, keyTypes, lkt)).toList
+                Option.when(cols.size == keyTypes.size)(KeyFilter(cols, keyTypes, lkt, j)).toList
               case _ =>
                 Nil
           using(exec(j.right, childFilters(j, kfs, 1) ++ own)) { r =>
@@ -677,6 +1136,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
               )
             try
               using(Table(rk*)) { rkt =>
+                joinKey = RunKey(j, kfs)
                 joinTables(j, l, r, lkt, rkt)
               }
             finally rk.foreach(_.close())
@@ -700,7 +1160,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     val resRefs  = j.residual.map(_.refs).getOrElse(Set.empty)
     j.kind match
       case JoinKind.Inner =>
-        val maps = lkt.innerJoinGatherMaps(rkt, false)
+        val maps = innerMaps(j, lkt, rkt)
         try
           val joined = gatherBoth(l, r, maps(0), maps(1), nullify = false, keepOf(j, resRefs))
           residual match
@@ -711,11 +1171,18 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
         finally
           maps.foreach(_.close())
       case JoinKind.Left if residual.isEmpty =>
-        val maps = lkt.leftJoinGatherMaps(rkt, false)
+        val maps =
+          buildSide(j) match
+            case Some(1) =>
+              lkt.leftJoinGatherMaps(hashOf(j, rkt))
+            case _ =>
+              lkt.leftJoinGatherMaps(rkt, false)
         try gatherBoth(l, r, maps(0), maps(1), nullify = true, keepOf(j))
         finally maps.foreach(_.close())
       case JoinKind.Left =>
         leftWithResidual(j, l, r, lkt, rkt, residual.get)
+      case JoinKind.Semi | JoinKind.Anti if residual.isEmpty && buildSide(j).contains(1) =>
+        semiByDistinctHash(j, l, lkt, rkt)
       case JoinKind.Semi | JoinKind.Anti if residual.isEmpty =>
         val map =
           if j.kind == JoinKind.Semi then
@@ -733,6 +1200,89 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     end match
 
   end joinTables
+
+  /**
+    * Which input of `j` is the same for every range of the running loops, so that its hash table is
+    * built once per loop: 1 for the right input, 0 for the left (inner joins only), or None
+    */
+  private def buildSide(j: Join): Option[Int] =
+    if loops.isEmpty then
+      None
+    else
+      (containsBound(j.left), containsBound(j.right)) match
+        case (true, false) =>
+          Some(1)
+        case (false, true) if j.kind == JoinKind.Inner =>
+          Some(0)
+        case _ =>
+          None
+
+  /**
+    * The join being run and its key filters, set right before [[joinTables]] (which runs no other
+    * node): the key of its hash tables built once per loop
+    */
+  private var joinKey: RunKey = null
+
+  /** The hash table over `keys` (the build input's keys) of `j`, built once per loop */
+  private def hashOf(j: Join, keys: Table): HashJoin =
+    val loop = loops.head
+    loop.hashes.get(joinKey) match
+      case Some(h: HashJoin) =>
+        h
+      case _ =>
+        val h = HashJoin(keys, false)
+        loop.hashes(joinKey) = h
+        h
+
+  /** The inner join pairs (left, right) of `j`'s keys, through a hash table built once per loop */
+  private def innerMaps(j: Join, lkt: Table, rkt: Table): Array[ai.rapids.cudf.GatherMap] =
+    buildSide(j) match
+      case Some(1) =>
+        lkt.innerJoinGatherMaps(hashOf(j, rkt))
+      case Some(0) =>
+        val m = rkt.innerJoinGatherMaps(hashOf(j, lkt))
+        Array(m(1), m(0))
+      case _ =>
+        lkt.innerJoinGatherMaps(rkt, false)
+
+  /**
+    * A semi or anti join of a streamed left input: each range looks its keys up in a hash table of
+    * the right input's distinct keys, built once per loop
+    */
+  private def semiByDistinctHash(j: Join, l: GTable, lkt: Table, rkt: Table): GTable =
+    val loop = loops.head
+    val h    =
+      loop.hashes.get(joinKey) match
+        case Some(h: DistinctHashJoin) =>
+          h
+        case _ =>
+          val keys = (0 until rkt.getNumberOfColumns).toArray
+          val h    =
+            using(rkt.dropDuplicates(keys, Table.DuplicateKeepOption.KEEP_ANY, true))(
+              DistinctHashJoin(_, false)
+            )
+          loop.hashes(joinKey) = h
+          h
+    using(lkt.leftDistinctJoinGatherMap(h)) { map =>
+      val view = map.toColumnView(0, map.getRowCount.toInt)
+      try
+        // Left rows without a match get a negative index (cudf's JoinNoMatch)
+        val matched =
+          using(Scalar.fromInt(0))(z => view.binaryOp(BinaryOp.GREATER_EQUAL, z, DType.BOOL8))
+        val mask =
+          try
+            if j.kind == JoinKind.Semi then
+              matched.incRefCount()
+            else
+              matched.not()
+          finally matched.close()
+        try using(l.table)(tbl => GTable.of(tbl.filter(mask)).withBounds(l.bounds))
+        finally mask.close()
+      finally
+        view.close()
+    }
+
+  end semiByDistinctHash
 
   /**
     * Where node `p` passes key filter `f` (on its output columns) down: the child index and the
@@ -899,7 +1449,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       rkt: Table,
       residual: VExpr
   ): GTable =
-    val maps = lkt.innerJoinGatherMaps(rkt, false)
+    val maps = innerMaps(j, lkt, rkt)
     try
       val n         = maps(0).getRowCount.toInt
       val lv        = maps(0).toColumnView(0, n)
@@ -1018,7 +1568,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       rkt: Table,
       residual: VExpr
   ): GTable =
-    val maps = lkt.innerJoinGatherMaps(rkt, false)
+    val maps = innerMaps(j, lkt, rkt)
     try
       val n  = maps(0).getRowCount.toInt
       val lv = maps(0).toColumnView(0, n)
@@ -1123,6 +1673,236 @@ private[gpu] object GpuPlans:
   private def supportedTypes(p: RuntimePlan): Boolean = p
     .output
     .forall(c => GpuTypes.dtypeOf(c.ptype).isDefined)
+
+  /** The scans of `p` */
+  def scansOf(p: RuntimePlan): Seq[Scan] =
+    p match
+      case s: Scan =>
+        Seq(s)
+      case other =>
+        other.children.flatMap(scansOf)
+
+  private val stringSizes = java
+    .util
+    .concurrent
+    .ConcurrentHashMap[(String, String, Long, Long), Option[Long]]()
+
+  /**
+    * The estimated characters of a string column of a Parquet file, from its footer: the
+    * uncompressed size of plain-encoded column chunks, and the rows times the mean length of the
+    * min and max values of dictionary-encoded ones (whose pages hold only the distinct values).
+    * None when a dictionary-encoded chunk has no statistics
+    */
+  def stringBytes(path: String, column: String): Option[Long] =
+    val f   = java.io.File(path)
+    val key = (f.getCanonicalPath, column, f.length(), f.lastModified())
+    stringSizes.computeIfAbsent(
+      key,
+      _ =>
+        try
+          val pf = ParquetFooterCache.open(path).file
+          try
+            val chunks = pf
+              .rowGroups
+              .flatMap(_.columns.find(_.path == Seq(column)))
+              .map { c =>
+                if c.encodings.exists(_.toString.contains("DICTIONARY")) then
+                  c.statistics
+                    .flatMap(st => st.min.zip(st.max))
+                    .map((lo, hi) => c.numValues * (lo.length + hi.length) / 2)
+                else
+                  Some(c.totalUncompressedSize)
+              }
+            Option.when(chunks.nonEmpty && chunks.forall(_.isDefined))(chunks.flatten.sum)
+          finally
+            pf.close()
+        catch
+          case NonFatal(_) =>
+            None
+    )
+
+  /** Whether `s` reads a table of more than `streamRows` rows */
+  def largeRows(s: Scan)(using cfg: GpuConfig): Boolean = s
+    .source
+    .estimatedRows
+    .exists(_ > cfg.streamRows)
+
+  /**
+    * Whether `s` runs in row ranges ([[GpuFeature.ChunkedScans]]): a table over `streamRows` rows
+    * with a string column too large to concatenate, or whose whole scan, `factor` times its
+    * estimated size ([[scanFactors]]), would take more than `streamFraction` of the pool. Before
+    * the pool exists (planning before the first GPU run), every such table counts as streaming
+    */
+  def streams(s: Scan, factor: Int)(using cfg: GpuConfig): Boolean =
+    cfg.isEnabled(GpuFeature.ChunkedScans) && largeRows(s) && {
+      val pool = GpuRuntime.poolSize
+      needsPieces(s) || pool == 0 || factor * scanBytes(s) > cfg.streamFraction * pool
+    }
+
+  /**
+    * How many times its estimated size each scan of `p` takes on the device when it runs whole: 1,
+    * plus 1 for a filter between it and the next join or aggregation above (which copies the rows
+    * it keeps), plus 1 when that is an aggregation (whose arguments are as long as the scan). TPC-H
+    * q1 (scan, filter, aggregate) gets 3; q9's lineitem, which a join reduces first, gets 1
+    */
+  def scanFactors(p: RuntimePlan): java.util.IdentityHashMap[Scan, Int] =
+    val out = java.util.IdentityHashMap[Scan, Int]()
+    def visit(n: RuntimePlan, filtered: Boolean, aggregated: Boolean): Unit =
+      n match
+        case s: Scan =>
+          val f =
+            1 + (
+              if filtered then
+                1
+              else
+                0
+            ) + (
+              if aggregated then
+                1
+              else
+                0
+            )
+          out.put(s, math.max(f, Option(out.get(s)).getOrElse(0)))
+        case a: Aggregate =>
+          visit(a.child, false, true)
+        case Filter(child, _, _) =>
+          visit(child, true, aggregated)
+        case j: Join =>
+          j.children.foreach(visit(_, false, false))
+        case other =>
+          other.children.foreach(visit(_, filtered, aggregated))
+    visit(p, false, false)
+    out
+
+  /** The scans of `p` that stream ([[streams]] with their [[scanFactors]]) */
+  def streamedScans(p: RuntimePlan)(using GpuConfig): java.util.Set[Scan] =
+    val out = java
+      .util
+      .Collections
+      .newSetFromMap(java.util.IdentityHashMap[Scan, java.lang.Boolean]())
+    scanFactors(p).forEach((s, f) =>
+      if streams(s, f) then
+        out.add(s)
+    )
+    out
+
+  /** Whether a string column of `s` is estimated to exceed `stringLimit` */
+  def needsPieces(s: Scan)(using GpuConfig): Boolean = s
+    .columns
+    .indices
+    .exists(i => tooLongStrings(s, i))
+
+  /** Whether column i of `s` is a string column estimated to exceed `stringLimit` */
+  def tooLongStrings(s: Scan, i: Int)(using cfg: GpuConfig): Boolean =
+    s.columns(i).ptype == PType.Str && {
+      s.source match
+        case src: ParquetSource =>
+          stringBytes(src.path, s.sourceColumnName(i)).forall(_ > cfg.stringLimit)
+        case _ =>
+          false
+    }
+
+  /**
+    * The estimated device size of the columns `s` reads: rows times the column widths, and for a
+    * string column its estimated characters ([[stringBytes]]) plus 4-byte offsets
+    */
+  def scanBytes(s: Scan): Long =
+    val rows = s.source.estimatedRows.getOrElse(0L)
+    s.columns
+      .indices
+      .map { i =>
+        val p = s.columns(i).ptype
+        (s.source, p) match
+          case (src: ParquetSource, PType.Str) =>
+            stringBytes(src.path, s.sourceColumnName(i)).getOrElse(rows * 12) + rows * 4
+          case _ =>
+            rows * widthOf(p)
+      }
+      .sum
+
+  /**
+    * The streamed scan whose ranges `p` runs over, one range at a time: through filters,
+    * projections, and the probe side of joins (either input of an inner join, the left input of the
+    * others). When both inputs of an inner join stream, the one with more rows does, and the other
+    * runs once and concatenates its own ranges
+    */
+  def streamOf(p: RuntimePlan, streamed: java.util.Set[Scan]): Option[Scan] =
+    p match
+      case s: Scan =>
+        Option.when(streamed.contains(s))(s)
+      case Filter(child, _, _) =>
+        streamOf(child, streamed)
+      case Project(child, _, _) =>
+        streamOf(child, streamed)
+      case j: Join =>
+        j.kind match
+          case JoinKind.Inner =>
+            (streamOf(j.left, streamed), streamOf(j.right, streamed)) match
+              case (Some(a), Some(b)) =>
+                def rows(s: Scan) = s.source.estimatedRows.getOrElse(0L)
+                if rows(b) > rows(a) then
+                  Some(b)
+                else
+                  Some(a)
+              case (a, b) =>
+                a.orElse(b)
+          case JoinKind.Left | JoinKind.Semi | JoinKind.Anti =>
+            streamOf(j.left, streamed)
+          case _ =>
+            None
+      case _ =>
+        None
+
+  /** Whether every call of `a` is count(distinct x) of the same single argument */
+  def isDistinctCountOnly(a: Aggregate): Boolean =
+    a.calls.nonEmpty &&
+      a.calls.forall(c => isCount(c) && c.distinct && c.args.size == 1 && c.filter.isEmpty) &&
+      a.calls.map(_.args.head).distinct.size == 1
+
+  /** Whether `a` can aggregate ranges separately and merge the results ([[PartialAgg]]) */
+  def mergeable(a: Aggregate)(using cfg: GpuConfig): Boolean =
+    (cfg.isEnabled(GpuFeature.DistinctCount) && isDistinctCountOnly(a)) ||
+      a.calls
+        .forall(c =>
+          !c.distinct &&
+            Set("sum", "count", "count_star", "min", "max", "avg", "mean").contains(
+              c.name.toLowerCase
+            )
+        )
+
+  /** Bytes per row of a column of type `p` on the device, counting 16 for a string */
+  def widthOf(p: PType): Long =
+    if p == PType.Str then
+      16L
+    else
+      GpuTypes.dtypeOf(p).map(d => math.max(1, d.getSizeInBytes).toLong).getOrElse(8L)
+
+  /**
+    * Move the conjuncts of each left join's residual that read only right columns into a filter
+    * over its right input, when that input streams ([[GpuFeature.StreamResidual]]): a right row
+    * failing them joins no left row, so the join's output is the same, and the filter runs per
+    * range (TPC-H q13's `o_comment NOT LIKE` at SF100)
+    */
+  def streamResiduals(p: RuntimePlan, streamed: java.util.Set[Scan]): RuntimePlan =
+    val q = p.withChildren(p.children.map(streamResiduals(_, streamed)))
+    q match
+      case j: Join
+          if j.kind == JoinKind.Left && j.residual.isDefined &&
+            streamOf(j.right, streamed).isDefined =>
+        val rightIds      = j.right.output.map(_.id).toSet
+        val (moved, kept) = conjuncts(j.residual.get.expr).partition { e =>
+          val refs = BExpr(e).refs
+          refs.nonEmpty && refs.subsetOf(rightIds)
+        }
+        if moved.isEmpty then
+          j
+        else
+          j.copy(
+            right = Filter(j.right, BExpr(moved.reduce(AndExpr(_, _)))),
+            residual = kept.reduceOption(AndExpr(_, _)).map(BExpr(_))
+          )
+      case other =>
+        other
 
   /** Whether `p` joins or aggregates, which the GPU speeds up and which shrink its output */
   def reduces(p: RuntimePlan): Boolean =
@@ -1347,12 +2127,10 @@ class GpuOp(plan: RuntimePlan, plans: () => GpuPlans, cpu: () => Operator, confi
 
   private def run(): Iterator[Batch] =
     val nano = System.nanoTime()
-    val p    =
-      if config.isEnabled(GpuFeature.ImpliedFilters) then
-        GpuPlans.impliedFilters(plan)
-      else
-        plan
-    val t = plans().run(p)
+    val p    = GpuOp.rewrite(plan, config)
+    val gp   = plans()
+    gp.reserve(p)
+    val t = gp.run(p)
     try
       val types = schema.types
       val bulk  = config.isEnabled(GpuFeature.BulkCopy)
@@ -1372,6 +2150,19 @@ class GpuOp(plan: RuntimePlan, plans: () => GpuPlans, cpu: () => Operator, confi
 end GpuOp
 
 object GpuOp:
+  /** The GPU module's own rewrites of a subtree before it runs (see [[GpuFeature]]) */
+  def rewrite(plan: RuntimePlan, config: GpuConfig): RuntimePlan =
+    given GpuConfig = config
+    val p           =
+      if config.isEnabled(GpuFeature.ImpliedFilters) then
+        GpuPlans.impliedFilters(plan)
+      else
+        plan
+    if config.isEnabled(GpuFeature.StreamResidual) then
+      GpuPlans.streamResiduals(p, GpuPlans.streamedScans(p))
+    else
+      p
+
   /** The nodes of a GPU subtree in flow order, e.g. `Scan(lineitem) -> Filter -> Aggregate` */
   def describe(p: RuntimePlan): String =
     p match
