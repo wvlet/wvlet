@@ -23,6 +23,7 @@ import ai.rapids.cudf.RmmAllocationMode
 import ai.rapids.cudf.DType
 import ai.rapids.cudf.Scalar
 import ai.rapids.cudf.Table
+import wvlet.lang.engine.gpu.GpuPlans.using
 import wvlet.uni.log.LogSupport
 
 import java.io.File
@@ -104,6 +105,24 @@ enum GpuFeature(val featureName: String):
     * can exceed cudf's 2 GB string column limit
     */
   case OffloadLimits extends GpuFeature("offload_limits")
+
+  /**
+    * Group by a single key with cudf's sort-based path when the key is a cached column stored in
+    * order (TPC-H q18's l_orderkey)
+    */
+  case SortedKeys extends GpuFeature("sorted_keys")
+
+  /**
+    * Aggregate over a filter that keeps most rows without copying them: the filter's mask becomes
+    * one more group key, and the groups of dropped rows are removed from the result (TPC-H q1)
+    */
+  case MaskedFilter extends GpuFeature("masked_filter")
+
+  /** avg of a decimal or integer as an exact sum and a count per group (TPC-H q1) */
+  case AvgAsSum extends GpuFeature("avg_as_sum")
+
+  /** Group by the INT32 codes of low-cardinality string scan columns (TPC-H q1) */
+  case DictionaryKeys extends GpuFeature("dictionary_keys")
 
 end GpuFeature
 
@@ -323,6 +342,11 @@ class GpuColumnCache(budgetBytes: Long, pieceBytes: Long = GpuConfig.DefaultPiec
   private val entries = mutable.LinkedHashMap.empty[Key, CachedColumn]
   private var bytes   = 0L
 
+  // Per cached column, checked or built on first request, and dropped with the column
+  private val sortedness = mutable.HashMap.empty[Key, Boolean]
+  // Dictionaries of string columns (None: too many distinct values)
+  private val dicts = mutable.HashMap.empty[Key, Option[GpuDictionary]]
+
   private def keyOf(path: String, name: String): Key =
     val f = File(path)
     Key(f.getCanonicalPath, name, f.length(), f.lastModified())
@@ -350,6 +374,62 @@ class GpuColumnCache(budgetBytes: Long, pieceBytes: Long = GpuConfig.DefaultPiec
     */
   def bound(path: String, name: String, pieces: Boolean = false): Option[JBigDecimal] =
     entry(path, name, ref = false, pieces).bound
+
+  /**
+    * Whether an integer column of a Parquet file, cached in one piece, is non-decreasing and has no
+    * NULLs: checked once on the device
+    */
+  def isSorted(path: String, name: String): Boolean =
+    val key = keyOf(path, name)
+    synchronized(sortedness.get(key)).getOrElse {
+      using(columnRef(path, name)) { c =>
+        val sorted = c.pieces.size == 1 && GpuColumnCache.isNonDecreasing(c.pieces.head)
+        synchronized {
+          // Not kept for a column evicted meanwhile
+          if entries.contains(key) then
+            sortedness(key) = sorted
+        }
+        sorted
+      }
+    }
+
+  /**
+    * The dictionary of a string column of a Parquet file, cached in one piece, with few distinct
+    * values: built once on the device. The caller must close the returned codes and values.
+    */
+  def dictionary(path: String, name: String): Option[(ColumnVector, ColumnVector)] =
+    val key = keyOf(path, name)
+    using(columnRef(path, name)) { c =>
+      synchronized {
+        // Evicted meanwhile: don't keep a dictionary that eviction would no longer release
+        if !entries.contains(key) || c.pieces.size != 1 then
+          None
+        else
+          val d = dicts.getOrElseUpdate(
+            key, {
+              val built = GpuDictionary.build(c.pieces.head)
+              built.foreach { b =>
+                bytes += b.sizeBytes
+              }
+              built
+            }
+          )
+          val out = d.map(b => (b.codes.incRefCount(), b.values.incRefCount()))
+          evict()
+          out
+      }
+    }
+
+  /** Drop what is kept for a column being evicted */
+  private def forget(k: Key): Unit =
+    sortedness.remove(k)
+    dicts
+      .remove(k)
+      .flatten
+      .foreach { d =>
+        bytes -= d.sizeBytes
+        d.close()
+      }
 
   /**
     * The cache entry of a column, read on first use. With `ref`, a retained copy, taken while the
@@ -490,6 +570,7 @@ class GpuColumnCache(budgetBytes: Long, pieceBytes: Long = GpuConfig.DefaultPiec
     val (k, c) = entries.head
     entries.remove(k)
     bytes -= c.sizeBytes
+    forget(k)
     debug(s"Evicted ${k.column} of ${k.path} from the GPU cache")
     c.close()
 
@@ -507,6 +588,7 @@ class GpuColumnCache(budgetBytes: Long, pieceBytes: Long = GpuConfig.DefaultPiec
       val c = entries.remove(k).get
       bytes -= c.sizeBytes
       others -= c.sizeBytes
+      forget(k)
       debug(s"Evicted ${k.column} of ${k.path} from the GPU cache to reserve memory")
       c.close()
   }
@@ -522,7 +604,98 @@ class GpuColumnCache(budgetBytes: Long, pieceBytes: Long = GpuConfig.DefaultPiec
   def clear(): Unit = synchronized {
     entries.values.foreach(_.close())
     entries.clear()
+    sortedness.clear()
+    dicts.values.flatten.foreach(_.close())
+    dicts.clear()
     bytes = 0
   }
 
 end GpuColumnCache
+
+object GpuColumnCache extends LogSupport:
+  /** Whether an integer column has no NULLs and each value is at most the next one */
+  private[gpu] def isNonDecreasing(cv: ColumnVector): Boolean =
+    val t = cv.getType
+    val n = cv.getRowCount.toInt
+    (t == DType.INT32 || t == DType.INT64) && cv.getNullCount == 0 && n > 1 && {
+      val nano = System.nanoTime()
+      val a    = cv.subVector(0, n - 1)
+      try
+        val b = cv.subVector(1, n)
+        try
+          val le = a.binaryOp(ai.rapids.cudf.BinaryOp.LESS_EQUAL, b, DType.BOOL8)
+          try
+            val all = le.all()
+            try
+              val sorted = all.isValid && all.getBoolean
+              debug(f"Sortedness check: ${sorted} in ${(System.nanoTime() - nano) / 1e6}%.1f ms")
+              sorted
+            finally
+              all.close()
+          finally
+            le.close()
+        finally
+          b.close()
+      finally
+        a.close()
+    }
+
+end GpuColumnCache
+
+/**
+  * The distinct values of a string column, sorted, and the INT32 code of each row: its value's
+  * position among them
+  */
+private[gpu] final class GpuDictionary(val values: ColumnVector, val codes: ColumnVector)
+    extends AutoCloseable:
+  def sizeBytes: Long        = values.getDeviceMemorySize + codes.getDeviceMemorySize
+  override def close(): Unit =
+    values.close()
+    codes.close()
+
+private[gpu] object GpuDictionary extends LogSupport:
+  /** At most this many distinct values */
+  val MaxValues = 1 << 15
+
+  /** At most one distinct value per this many rows */
+  val MinRowsPerValue = 16
+
+  /** The dictionary of a string column without NULLs and with few distinct values, or None */
+  def build(cv: ColumnVector): Option[GpuDictionary] =
+    val n = cv.getRowCount
+    if cv.getType != DType.STRING || cv.getNullCount != 0 || n < MinRowsPerValue then
+      None
+    else
+      val nano     = System.nanoTime()
+      val distinct =
+        val t = Table(cv)
+        try t.dropDuplicates(Array(0), Table.DuplicateKeepOption.KEEP_ANY, true)
+        finally t.close()
+      try
+        val k = distinct.getRowCount
+        if k > MaxValues || k * MinRowsPerValue > n then
+          debug(s"No dictionary: ${k} distinct values in ${n} rows")
+          None
+        else
+          val sorted = distinct.orderBy(ai.rapids.cudf.OrderByArg.asc(0))
+          try
+            val rowsT = Table(cv)
+            try
+              val codes  = sorted.lowerBound(Array(true), rowsT, Array(false))
+              val values = sorted.getColumn(0).incRefCount()
+              debug(
+                f"Dictionary of ${k} values over ${n}%,d rows in ${(System.nanoTime() - nano) /
+                    1e6}%.1f ms"
+              )
+              Some(GpuDictionary(values, codes))
+            finally
+              rowsT.close()
+          finally
+            sorted.close()
+      finally
+        distinct.close()
+    end if
+
+  end build
+
+end GpuDictionary
