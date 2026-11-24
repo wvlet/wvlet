@@ -226,6 +226,36 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
 
   private var depth = 0
 
+  /** The columns (by id) that nodes above each plan node read, from [[prepare]] */
+  private val neededCols = java.util.IdentityHashMap[RuntimePlan, Set[ColumnId]]()
+
+  /** Run a GPU subtree: all of its output is read */
+  def run(p: RuntimePlan): GTable =
+    neededCols.clear()
+    markNeeded(p, p.output.map(_.id).toSet)
+    exec(p)
+
+  private def markNeeded(p: RuntimePlan, needed: Set[ColumnId]): Unit =
+    neededCols.put(p, needed)
+    p match
+      case Project(child, exprs, _) =>
+        markNeeded(child, exprs.flatMap(_.refs).toSet)
+      case Filter(child, cond, _) =>
+        markNeeded(child, needed ++ cond.refs)
+      case a: Aggregate =>
+        markNeeded(a.child, (a.keys.flatMap(_.refs) ++ a.calls.flatMap(_.exprs.flatMap(_.refs))).toSet)
+      case Sort(child, keys, _) =>
+        markNeeded(child, needed ++ keys.flatMap(_.expr.refs))
+      case Limit(child, _, _) =>
+        markNeeded(child, needed)
+      case j: Join =>
+        val more = (j.leftKeys ++ j.rightKeys ++ j.residual).flatMap(_.refs).toSet
+        markNeeded(j.left, needed ++ more)
+        markNeeded(j.right, needed ++ more)
+      case other =>
+        // Distinct reads every column
+        other.children.foreach(c => markNeeded(c, c.output.map(_.id).toSet))
+
   /** The value bounds of `t`'s columns, for evaluating expressions over them */
   private def boundsOf(t: GTable): Bounds =
     Bounds(t.bounds, config.isEnabled(GpuFeature.DecimalNarrow))
@@ -618,13 +648,23 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       finally lk.foreach(_.close())
     }
 
+  /** Whether join output column i is read above (or by `extra`), when pruning is on */
+  private def keepOf(j: Join, extra: Set[ColumnId] = Set.empty): Int => Boolean =
+    Option(neededCols.get(j)) match
+      case Some(needed) if config.isEnabled(GpuFeature.PruneColumns) =>
+        val ids = j.inputs.map(_.id)
+        i => needed.contains(ids(i)) || extra.contains(ids(i))
+      case _ =>
+        _ => true
+
   private def joinTables(j: Join, l: GTable, r: GTable, lkt: Table, rkt: Table): GTable =
     val residual = j.residual.map(_.lower(positions(j.inputs)))
+    val resRefs  = j.residual.map(_.refs).getOrElse(Set.empty)
     j.kind match
       case JoinKind.Inner =>
         val maps = lkt.innerJoinGatherMaps(rkt, false)
         try
-          val joined = gatherBoth(l, r, maps(0), maps(1), nullify = false)
+          val joined = gatherBoth(l, r, maps(0), maps(1), nullify = false, keepOf(j, resRefs))
           residual match
             case Some(cond) =>
               using(joined)(t => filter(t, cond))
@@ -634,10 +674,10 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
           maps.foreach(_.close())
       case JoinKind.Left if residual.isEmpty =>
         val maps = lkt.leftJoinGatherMaps(rkt, false)
-        try gatherBoth(l, r, maps(0), maps(1), nullify = true)
+        try gatherBoth(l, r, maps(0), maps(1), nullify = true, keepOf(j))
         finally maps.foreach(_.close())
       case JoinKind.Left =>
-        leftWithResidual(l, r, lkt, rkt, residual.get)
+        leftWithResidual(j, l, r, lkt, rkt, residual.get)
       case JoinKind.Semi | JoinKind.Anti if residual.isEmpty =>
         val map =
           if j.kind == JoinKind.Semi then
@@ -739,35 +779,66 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       r: GTable,
       lmap: ai.rapids.cudf.GatherMap,
       rmap: ai.rapids.cudf.GatherMap,
-      nullify: Boolean
+      nullify: Boolean,
+      keep: Int => Boolean = _ => true
   ): GTable =
     val n  = lmap.getRowCount.toInt
     val lv = lmap.toColumnView(0, n)
     val rv = rmap.toColumnView(0, n)
     try
-      val lt     = using(l.table)(tbl => GTable.of(tbl.gather(lv, OutOfBoundsPolicy.DONT_CHECK)))
+      val lt = gatherKept(l, lv, OutOfBoundsPolicy.DONT_CHECK, keep)
       val policy =
         if nullify then
           OutOfBoundsPolicy.NULLIFY
         else
           OutOfBoundsPolicy.DONT_CHECK
       val rt =
-        try
-          using(r.table)(tbl => GTable.of(tbl.gather(rv, policy)))
+        try gatherKept(r, rv, policy, i => keep(l.cols.size + i))
         catch
           case e: Throwable =>
-            lt.close()
+            lt.foreach(_.close())
             throw e
-      GTable(lt.cols ++ rt.cols, n, l.bounds ++ r.bounds)
+      GTable(lt ++ rt, n, l.bounds ++ r.bounds)
     finally
       lv.close()
       rv.close()
+
+  /**
+    * The rows of `t` at the positions of `map`. Columns that no node above reads (`keep` false) are
+    * not gathered: they become all-NULL placeholders (TPC-H q13 drops `o_comment` this way)
+    */
+  private def gatherKept(
+      t: GTable,
+      map: ai.rapids.cudf.ColumnView,
+      policy: OutOfBoundsPolicy,
+      keep: Int => Boolean
+  ): IndexedSeq[ColumnVector] =
+    val n    = map.getRowCount.toInt
+    val kept = t.cols.indices.filter(keep)
+    if kept.size == t.cols.size then
+      using(t.table)(tbl => GTable.of(tbl.gather(map, policy))).cols
+    else
+      val gathered =
+        if kept.isEmpty then
+          IndexedSeq.empty
+        else
+          using(Table(kept.map(t.cols)*))(tbl => GTable.of(tbl.gather(map, policy))).cols
+      var next = 0
+      buildAll(t.cols.size) { i =>
+        if keep(i) then
+          val c = gathered(next).incRefCount()
+          next += 1
+          c
+        else
+          using(Scalar.fromNull(t.cols(i).getType))(nul => ColumnVector.fromScalar(nul, n))
+      }.tap(_ => gathered.foreach(_.close()))
 
   /**
     * A left outer join with a residual condition: the inner-joined pairs that pass the residual,
     * then each left row without such a pair, with NULLs for the right columns (TPC-H q13)
     */
   private def leftWithResidual(
+      j: Join,
       l: GTable,
       r: GTable,
       lkt: Table,
@@ -776,13 +847,38 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
   ): GTable =
     val maps = lkt.innerJoinGatherMaps(rkt, false)
     try
-      val n  = maps(0).getRowCount.toInt
-      val lv = maps(0).toColumnView(0, n)
+      val n         = maps(0).getRowCount.toInt
+      val lv        = maps(0).toColumnView(0, n)
+      val rightOnly =
+        config.isEnabled(GpuFeature.PruneColumns) &&
+          j.residual.exists(_.refs.subsetOf(j.right.output.map(_.id).toSet))
+      // A residual over right columns only is evaluated once per right row, and its result
+      // gathered: the pairs then need not carry the columns it reads (q13's o_comment)
+      val keep = keepOf(
+        j,
+        if rightOnly then
+          Set.empty
+        else
+          j.residual.get.refs
+      )
       try
-        using(gatherBoth(l, r, maps(0), maps(1), nullify = false)) { pairs =>
-          val pass = GpuExprs.evalColumn(residual, PType.Bool, pairs.cols, pairs.rows)(using
-            boundsOf(pairs)
-          )
+        using(gatherBoth(l, r, maps(0), maps(1), nullify = false, keep)) { pairs =>
+          val pass =
+            if rightOnly then
+              val onRight = j.residual.get.lower(positions(j.right))
+              using(GpuExprs.evalColumn(onRight, PType.Bool, r.cols, r.rows)(using boundsOf(r))) {
+                mask =>
+                  val rv = maps(1).toColumnView(0, n)
+                  try
+                    using(Table(mask))(t => GTable.of(t.gather(rv, OutOfBoundsPolicy.DONT_CHECK)))
+                      .cols
+                      .head
+                  finally rv.close()
+              }
+            else
+              GpuExprs.evalColumn(residual, PType.Bool, pairs.cols, pairs.rows)(using
+                boundsOf(pairs)
+              )
           try
             // A NULL residual does not pass
             val f    = Scalar.fromBool(false)
@@ -863,7 +959,21 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       val lv = maps(0).toColumnView(0, n)
       try
         val matched: ColumnVector =
-          using(gatherBoth(l, r, maps(0), maps(1), nullify = false)) { pairs =>
+          using(
+            gatherBoth(
+              l,
+              r,
+              maps(0),
+              maps(1),
+              nullify = false,
+              if config.isEnabled(GpuFeature.PruneColumns) then
+                val ids  = j.inputs.map(_.id)
+                val refs = j.residual.map(_.refs).getOrElse(Set.empty)
+                i => refs.contains(ids(i))
+              else
+                _ => true
+            )
+          ) { pairs =>
             val pass = GpuExprs.evalColumn(residual, PType.Bool, pairs.cols, pairs.rows)(using
               boundsOf(pairs)
             )
@@ -1175,7 +1285,7 @@ class GpuOp(plan: RuntimePlan, plans: () => GpuPlans, cpu: () => Operator, confi
         GpuPlans.impliedFilters(plan)
       else
         plan
-    val t = plans().exec(p)
+    val t = plans().run(p)
     try
       val types = schema.types
       val bulk  = config.isEnabled(GpuFeature.BulkCopy)

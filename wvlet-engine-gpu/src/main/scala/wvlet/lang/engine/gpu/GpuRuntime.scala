@@ -58,6 +58,9 @@ enum GpuFeature(val featureName: String):
     */
   case ImpliedFilters extends GpuFeature("implied_filters")
 
+  /** Don't gather join output columns that no node above reads (TPC-H q13's o_comment) */
+  case PruneColumns extends GpuFeature("prune_columns")
+
   /** count(distinct x) as distinct rows, then a count: hash-based instead of cudf's `nunique` */
   case DistinctCount extends GpuFeature("distinct_count")
 
