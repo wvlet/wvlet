@@ -64,7 +64,7 @@ class DuckDBAnalyzerTest extends UniTest:
 
   test("guess gzip-compressed CSV and TSV schema goes through the DuckDB backend") {
     if !DuckDB.isAvailable then
-      ignore("DuckDB backend not available on this platform (Scala.js stub)")
+      ignore("libduckdb is not loadable on this platform")
     else
       for path <- Seq("spec/basic/people.csv.gz", "spec/basic/people.tsv") do
         columnNamesOf(path) shouldBe List("id", "name", "age", "salary")
@@ -72,7 +72,7 @@ class DuckDBAnalyzerTest extends UniTest:
 
   test("guess parquet schema goes through the DuckDB backend") {
     if !DuckDB.isAvailable then
-      ignore("DuckDB backend not available on this platform (Scala.js stub)")
+      ignore("libduckdb is not loadable on this platform")
     else
       val rel = DuckDBAnalyzer.guessSchema(
         "spec/cdp_behavior/data/weblog_users_first_purchased_at/part-00000-90048009-4be7-472e-ad1a-019aed6bd6fa-c000.snappy.parquet"

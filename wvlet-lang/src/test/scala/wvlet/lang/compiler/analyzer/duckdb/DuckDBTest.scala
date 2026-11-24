@@ -31,7 +31,7 @@ class DuckDBTest extends UniTest:
   }
 
   test("isAvailable reports a platform-dependent backend presence") {
-    // JVM (JDBC) and Native (libduckdb) backends report true; the Scala.js stub reports false.
+    // JVM (JDBC) reports true; Scala.js and Native report whether libduckdb could be loaded.
     // Either is valid; the test just pins the contract so a future refactor that, e.g., drops
     // the JVM backend doesn't silently change the API.
     val available = DuckDB.isAvailable
