@@ -87,7 +87,7 @@ object ModelBuildLauncher extends LogSupport:
       workFolder: String,
       workEnv: WorkEnv,
       selectors: List[String],
-      dbType: DBType = DBType.Wvlet
+      dbType: DBType
   ): BuildPlan =
     // Compile for the profile's engine, so the generated DDL (e.g. create or replace) fits it
     val compiler = Compiler(

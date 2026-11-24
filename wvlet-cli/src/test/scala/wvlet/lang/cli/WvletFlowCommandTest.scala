@@ -88,11 +88,13 @@ class WvletFlowCommandTest extends UniTest:
   }
 
   test("resolve the default profile to the wvlet engine with the target warehouse") {
-    val dir     = Files.createTempDirectory("wvlet-flow-profile")
+    val dir = Files.createTempDirectory("wvlet-flow-profile")
+    // A .wv file makes the folder a project, whose target folder is <dir>/target
+    Files.writeString(dir.resolve("p.wv"), "from [[1]] as t(x)")
     val profile = WvletFlowOption(workFolder = dir.toString).resolveProfile
     profile.defaultEngine.`type` shouldBe "wvlet"
     profile.defaultEngine.properties.get("warehouse") shouldBe
-      Some(wvlet.lang.compiler.WorkEnv(dir.toString).warehouseFolder)
+      Some(dir.toAbsolutePath.resolve("target/warehouse").toString)
 
     // -t duckdb keeps DuckDB, with no warehouse
     val duckdb =

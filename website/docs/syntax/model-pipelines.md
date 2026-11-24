@@ -92,9 +92,11 @@ cycle.
 `wvlet build` uses the same options as [`wvlet flow`](flow.md#wvlet-flow-cli): `-w <folder>`,
 `-t <engine>`, `--profile`, `--catalog`, `--schema`, and `--run-store`. Builds run on the
 in-process [wvlet engine](../usage/wvlet-engine.md) by default. The built tables persist as Iceberg
-tables in the project's `target/warehouse` folder (`~/.cache/wvlet/target/warehouse` when the work
-folder has no `.wv` file), so later builds of a selection find their upstream models. A `wvlet`
-connector of a profile can set its own `warehouse` folder instead. `target/` is disposable:
+tables in the project's `target/warehouse` folder, so later builds of a selection find their
+upstream models. A `wvlet` connector of a profile can set its own `warehouse` folder instead. When
+the work folder has no `.wv` file directly in it, the folder is `~/.cache/wvlet/target/warehouse`,
+which all such work folders share: give a project whose files are only in subfolders a `warehouse`
+of its own. `target/` is disposable:
 `append to` models whose history can't be rebuilt need an explicit `warehouse`. The engine can't
 build `view` models yet; build them on DuckDB with `wvlet build -t duckdb` or a DuckDB profile.
 
