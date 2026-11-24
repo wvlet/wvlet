@@ -88,6 +88,9 @@ class EngineOptimizerToggleTest extends UniTest:
       if o == Optimization.ConcurrentSharedCTEs then
         // EngineConcurrentSharedCTEsTest checks that the flag starts the results concurrently
         ignore("Changes when shared CTE results are computed, not the plan")
+      if o == Optimization.ConcurrentJoinBuilds then
+        // EngineConcurrentJoinBuildsTest checks that the flag runs a pipeline's builds as one step
+        ignore("Changes when the hash join builds of a pipeline run, not the plan")
       val changed = EnginePlanGolden
         .suites
         .zip(baselinePlans)

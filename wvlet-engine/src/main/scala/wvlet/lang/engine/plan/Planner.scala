@@ -86,7 +86,8 @@ class Planner(
         pruned,
         TaskRunner.default,
         aboveBreakers = enabled(Optimization.ParallelAboveBreakers),
-        parallelPartitioning = enabled(Optimization.ParallelAggPartitioning)
+        parallelPartitioning = enabled(Optimization.ParallelAggPartitioning),
+        concurrentBuilds = enabled(Optimization.ConcurrentJoinBuilds)
       )
     else
       pruned

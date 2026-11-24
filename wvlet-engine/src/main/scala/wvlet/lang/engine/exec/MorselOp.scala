@@ -54,6 +54,9 @@ class MorselOp(
   private val window                   = math.max(2, runner.parallelism * 2)
   private var tailDone                 = false
 
+  /** The number of steps run before the parts start (for tests) */
+  def prepareSteps: Int = prepare.size
+
   /** The tail pipeline over an empty input, run on the calling thread after every part */
   private def runTail(): Seq[Batch] =
     val op = tail.get(IteratorOp(scan.schema, () => Iterator.empty, scan.name))

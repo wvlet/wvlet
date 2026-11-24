@@ -160,6 +160,12 @@ enum Optimization(val name: String):
   case ParallelJoinBuild extends Optimization("parallel_join_build")
 
   /**
+    * With `parallelize`, the hash join builds a pipeline waits for run at the same time, each on a
+    * coordinator thread outside the task pool, instead of one after another on the calling thread
+    */
+  case ConcurrentJoinBuilds extends Optimization("concurrent_join_builds")
+
+  /**
     * With `parallelize`, compute the shared CTE results a plan reads at the same time, each drained
     * on a coordinator thread outside the task pool, instead of one by one on the calling thread
     */

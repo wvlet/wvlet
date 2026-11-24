@@ -34,19 +34,36 @@ object Parallelizer:
       op: Operator,
       runner: TaskRunner,
       aboveBreakers: Boolean = true,
-      parallelPartitioning: Boolean = true
+      parallelPartitioning: Boolean = true,
+      concurrentBuilds: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
     else
-      given AboveBreakers = AboveBreakers(aboveBreakers, parallelPartitioning)
+      given AboveBreakers = AboveBreakers(aboveBreakers, parallelPartitioning, concurrentBuilds)
       rewrite(op, runner)
 
   /**
     * Whether pipelines start at the outputs of grouped aggregations ([[BreakerSource]]), and
     * whether partitioned aggregations route their input in parallel
     */
-  private case class AboveBreakers(enabled: Boolean, parallelPartitioning: Boolean)
+  private case class AboveBreakers(
+      enabled: Boolean,
+      parallelPartitioning: Boolean,
+      concurrentBuilds: Boolean
+  )
+
+  /**
+    * The steps a pipeline runs before its parts start: with `concurrent_join_builds`, several
+    * builds run as one step that runs them at the same time ([[TaskRunner.runTogether]])
+    */
+  private def prepareSteps(p: Pipeline, runner: TaskRunner)(using
+      o: AboveBreakers
+  ): List[() => Unit] =
+    if o.concurrentBuilds && p.prepare.size > 1 then
+      List(() => TaskRunner.runTogether(runner, p.prepare))
+    else
+      p.prepare
 
   /**
     * A scan and the operators over it that can run on parts of the scan independently:
@@ -229,7 +246,7 @@ object Parallelizer:
             p.rebuild,
             p.tail,
             runner,
-            p.prepare,
+            prepareSteps(p, runner),
             p.close,
             o.parallelPartitioning
           )
@@ -283,7 +300,7 @@ object Parallelizer:
             // are over it
             rebuildOver(op, b.op)
           case _ =>
-            MorselOp(p.scan, p.rebuild, op.schema, runner, p.prepare, p.close, p.tail)
+            MorselOp(p.scan, p.rebuild, op.schema, runner, prepareSteps(p, runner), p.close, p.tail)
       case None =>
         op match
           case a: HashAggOp =>

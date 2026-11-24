@@ -62,6 +62,37 @@ object TaskRunner extends TaskRunnerCompatImpl:
         def cancel(): Unit = ()
 
   /**
+    * Run `tasks` that may each wait for tasks of `runner` (e.g. the hash join builds of one
+    * pipeline) at the same time: the first on the calling thread, the others on coordinator threads
+    * ([[TaskRunner.coordinate]]). A task no coordinator has started yet runs on the calling thread
+    * when its turn comes, so a limit on coordinators never makes the caller wait for queued work.
+    * Returns after every task has finished, raising the first failure
+    */
+  def runTogether(runner: TaskRunner, tasks: Seq[() => Unit]): Unit =
+    if tasks.size <= 1 || runner.parallelism <= 1 then
+      tasks.foreach(_())
+    else
+      val once   = tasks.map(t => ComputeOnce(t))
+      val failed = java.util.concurrent.atomic.AtomicBoolean(false)
+      // After a failure, tasks that haven't started never start
+      once.tail.foreach(c => runner.coordinate(() => c.runUnless(() => failed.get())))
+      var error: Throwable = null
+      once.foreach { c =>
+        if error == null then
+          try
+            c.get()
+          catch
+            case e: Throwable =>
+              error = e
+              failed.set(true)
+        else
+          c.runUnless(() => true)
+          c.awaitIfStarted()
+      }
+      if error != null then
+        throw error
+
+  /**
     * The parallelism to use: the WVLET_ENGINE_PARALLELISM environment variable or the
     * wvlet.engine.parallelism system property when set, otherwise the number of processors
     */
