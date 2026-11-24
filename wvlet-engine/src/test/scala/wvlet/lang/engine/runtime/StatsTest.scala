@@ -57,10 +57,10 @@ class StatsTest extends UniTest:
       Batch(Array(longs()), 0)
     )
 
-    override def rows: Option[Long]                                     = Some(1000)
-    override def distinct(position: Int): Option[Double]                = distinctCount
-    override def filteredRows(cond: BExpr): Option[Long]                = passing
-    def reader(schema: Schema, filter: Option[JoinCondition]): Operator =
+    override def rows: Option[Long]                      = Some(1000)
+    override def distinct(position: Int): Option[Double] = distinctCount
+    override def filteredRows(cond: BExpr): Option[Long] = passing
+    def reader(schema: Schema, filter: Option[JoinCondition], setContext: Boolean): Operator =
       throw UnsupportedOperationException("not read")
 
   private val k   = Column(ColumnId(7), "k", PType.Int64)

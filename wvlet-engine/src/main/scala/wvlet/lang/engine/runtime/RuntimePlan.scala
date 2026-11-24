@@ -638,8 +638,14 @@ trait SharedCTE:
   /**
     * An operator reading the result, with the output columns of the body under `schema`. `filter`
     * is the condition the reader applies right above it, over the body's column ids: when every
-    * reader has one, the planner pushes what they share into the body ([[PushDownFilters.shared]])
+    * reader has one, the planner pushes what they share into the body ([[PushDownFilters.shared]]).
+    * `setContext` says that the reader is in a duplicate-insensitive context
+    * ([[ReduceSemiJoins.childContexts]]): when every reader is, the body's joins may be reduced
     */
-  def reader(schema: Schema, filter: Option[JoinCondition] = None): Operator
+  def reader(
+      schema: Schema,
+      filter: Option[JoinCondition] = None,
+      setContext: Boolean = false
+  ): Operator
 
 end SharedCTE

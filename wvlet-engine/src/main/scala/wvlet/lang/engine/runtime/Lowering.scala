@@ -54,8 +54,25 @@ object Lowering:
   private class Lower(joinFilters: Boolean, presizeAggs: Boolean):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
+    // The nodes not lowered yet that are in a duplicate-insensitive context, set by their parent
+    // ([[ReduceSemiJoins.childContexts]]), so that shared CTE readers report it
+    private val setNodes = java.util.IdentityHashMap[RuntimePlan, Boolean]()
 
     def lower(p: RuntimePlan): Operator =
+      val inSet = setNodes.getOrDefault(p, false)
+      val kids  = p.children
+      if kids.nonEmpty then
+        val contexts = ReduceSemiJoins.childContexts(p, inSet)
+        kids
+          .indices
+          .foreach { i =>
+            // A node read twice is in such a context only if both reads are
+            val c = contexts(i) && setNodes.getOrDefault(kids(i), true)
+            setNodes.put(kids(i), c)
+          }
+      lowerNode(p, inSet)
+
+    private def lowerNode(p: RuntimePlan, inSet: Boolean): Operator =
       p match
         case Scan(source, _, read, filter) =>
           ScanOp(source, p.schema, read, filter, scanFilters(p.output))
@@ -68,7 +85,10 @@ object Lowering:
           // The reader reports its condition over the body's columns, which share positions
           val e      = cte.overBody(columns, cond.expr)
           val filter = JoinCondition(BExpr(e), PushDownFilters.remapCounts(cond.expr, e, counts))
-          FilterOp(cte.reader(ref.schema, Some(filter)), cond.lower(positions(ref)))
+          FilterOp(
+            cte.reader(ref.schema, Some(filter), setNodes.getOrDefault(ref, false)),
+            cond.lower(positions(ref))
+          )
         case Filter(child, cond, _) =>
           FilterOp(lower(child), cond.lower(positions(child)))
         case Project(child, exprs, _) =>
@@ -146,7 +166,7 @@ object Lowering:
           val pos = positions(child)
           UnnestOp(lower(child), lists.map(_.lower(pos)), keepInput, p.schema, outer)
         case CTERef(cte, _) =>
-          cte.reader(p.schema)
+          cte.reader(p.schema, None, inSet)
 
     private def scanFilters(columns: IndexedSeq[Column]): Seq[RuntimeFilter] =
       if pending.isEmpty then
