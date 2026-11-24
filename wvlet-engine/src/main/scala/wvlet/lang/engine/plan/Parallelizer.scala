@@ -85,7 +85,16 @@ object Parallelizer:
         pipeline(pr.child, runner).map(
           _.map(
             x => ProjectOp(x, pr.exprs, pr.schema),
-            work = !pr.exprs.forall(_.isInstanceOf[ColRef])
+            // Selecting, renaming, or adding constant columns (grouping sets) is not worth a task
+            work =
+              !pr
+                .exprs
+                .forall {
+                  case _: ColRef | _: Const =>
+                    true
+                  case _ =>
+                    false
+                }
           )
         )
       case j: HashJoinOp =>
