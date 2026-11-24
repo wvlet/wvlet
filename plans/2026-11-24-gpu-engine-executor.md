@@ -25,7 +25,9 @@
 
 - Done: the hook, the toggle, and `wvlet-engine-gpu` with scans (cached), filters, projections, aggregations, inner/left/semi/anti joins, sorts, limits, and DISTINCT. TPC-H SF10: 2.63 s vs 10.99 s on the CPU engine and 3.43 s on DuckDB; see [`examples/dgx-spark/`](../examples/dgx-spark/README.md) and [the ADR](../adr/2026-11-24-engine-gpu-executor.md).
 - Changed from the design: no ServiceLoader or profile property yet (the bench and tests construct `GpuAccelerator` directly), and only subtrees that join or aggregate are offloaded.
-- Next: a `wv` / profile switch (`accelerator: gpu`), DECIMAL64 arithmetic where values fit (q1), SF100 with cache eviction, and splitting work across both Sparks.
+- Follow-up: [`2026-11-24-gpu-executor-speedup.md`](2026-11-24-gpu-executor-speedup.md) took SF10 to 0.74-0.79 s (DuckDB + Sirius pinned: 0.82 s), with all 22 queries on the GPU.
+- SF100 (see the README): 16 queries run on the GPU in 3.99 s, against 43.0 s on the CPU engine and 2.88 s for Sirius pinned on the same queries. q1 ran out of device memory, q12 and q13 hit cudf's 2 GB string column limit, and q7, q18, and q19 ran out of Java heap on the CPU side.
+- Next: SF100 support (chunked scans, eviction before a subtree, and rejecting offloads that cannot fit), a `wv` / profile switch (`accelerator: gpu`), sorted group-by keys (q18), and splitting work across both Sparks.
 
 ## Phases
 

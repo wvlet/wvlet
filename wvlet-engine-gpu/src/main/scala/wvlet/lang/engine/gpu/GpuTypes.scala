@@ -22,6 +22,7 @@ import wvlet.lang.engine.vector.*
 
 import java.math.BigDecimal as JBigDecimal
 import java.math.BigInteger
+import java.nio.charset.StandardCharsets
 
 /** Mapping between the engine's physical types and cudf types, and device-to-host conversion */
 object GpuTypes:
@@ -126,8 +127,76 @@ object GpuTypes:
           None
     }
 
-  /** Copy a device column to a host vector of engine type `p` */
-  def toVec(cv: ColumnVector, p: PType): Vec =
+  /** Upload the first `n` values of a host vector of engine type `p` (small inputs: row by row) */
+  def fromVec(v: Vec, p: PType, n: Int): ColumnVector =
+    def boxed[A <: AnyRef](f: Any => A)(using scala.reflect.ClassTag[A]): Array[A] =
+      Array.tabulate[A](n)(i =>
+        v.get(i) match
+          case null =>
+            null.asInstanceOf[A]
+          case x =>
+            f(x)
+      )
+    p match
+      case PType.Bool =>
+        ColumnVector.fromBoxedBooleans(
+          boxed(x => java.lang.Boolean.valueOf(x.asInstanceOf[Boolean]))*
+        )
+      case PType.Int32 =>
+        ColumnVector.fromBoxedInts(boxed(x => Integer.valueOf(x.asInstanceOf[Number].intValue()))*)
+      case PType.Date =>
+        val days = ColumnVector.fromBoxedInts(
+          boxed(x => Integer.valueOf(x.asInstanceOf[Number].intValue()))*
+        )
+        try days.castTo(DType.TIMESTAMP_DAYS)
+        finally days.close()
+      case PType.Int64 =>
+        ColumnVector.fromBoxedLongs(
+          boxed(x => java.lang.Long.valueOf(x.asInstanceOf[Number].longValue()))*
+        )
+      case PType.Timestamp | PType.TimestampTz =>
+        ColumnVector.timestampMicroSecondsFromBoxedLongs(
+          boxed(x => java.lang.Long.valueOf(x.asInstanceOf[Number].longValue()))*
+        )
+      case PType.Float64 =>
+        ColumnVector.fromBoxedDoubles(
+          boxed(x => java.lang.Double.valueOf(x.asInstanceOf[Number].doubleValue()))*
+        )
+      case PType.Str =>
+        ColumnVector.fromStrings(boxed(_.toString)*)
+      case d: PType.Decimal =>
+        val values: Array[BigInteger] = boxed[BigInteger](x =>
+          GpuTypes
+            .unscaled(x, d.scale)
+            .getOrElse(
+              throw StatusCode
+                .INVALID_ARGUMENT
+                .newException(s"Cannot convert ${x} to ${d} on the GPU")
+            )
+        )
+        if dtype(d).getTypeId == DType.DTypeEnum.DECIMAL64 then
+          val longs: Array[java.lang.Long] = values.map(u =>
+            if u == null then
+              null
+            else
+              java.lang.Long.valueOf(u.longValueExact())
+          )
+          ColumnVector.decimalFromBoxedLongs(-d.scale, longs*)
+        else
+          ColumnVector.decimalFromBigInt(-d.scale, values*)
+      case other =>
+        throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported type on the GPU: ${other}")
+    end match
+
+  end fromVec
+
+  private val Mask64 = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE)
+
+  /**
+    * Copy a device column to a host vector of engine type `p`. With `bulk`, DECIMAL128 values are
+    * read as whole buffers rather than one BigDecimal per row
+    */
+  def toVec(cv: ColumnVector, p: PType, bulk: Boolean = true): Vec =
     val n = Math.toIntExact(cv.getRowCount)
     val h = cv.copyToHost()
     try
@@ -160,6 +229,41 @@ object GpuTypes:
           if n > 0 then
             h.getData.getLongs(o, 0, 0, n)
           LongVec(d, o, nulls)
+        case d: PType.Decimal if bulk =>
+          // DECIMAL128 as little-endian (low, high) word pairs: unscaled longs when every high
+          // word only extends the sign of its low word, as the CPU engine keeps such values
+          val words = new Array[Long](2 * n)
+          if n > 0 then
+            h.getData.getLongs(words, 0, 0, 2 * n)
+          var fits = true
+          var i    = 0
+          while fits && i < n do
+            fits = words(2 * i + 1) == (words(2 * i) >> 63) || (nulls != null && nulls(i))
+            i += 1
+          if fits then
+            LongVec(
+              d,
+              Array.tabulate(n)(i =>
+                if nulls != null && nulls(i) then
+                  0L
+                else
+                  words(2 * i)
+              ),
+              nulls
+            )
+          else
+            ObjVec(
+              d,
+              Array.tabulate[AnyRef](n) { i =>
+                if nulls != null && nulls(i) then
+                  null
+                else
+                  val hi = BigInteger.valueOf(words(2 * i + 1)).shiftLeft(64)
+                  val lo = BigInteger.valueOf(words(2 * i)).and(Mask64)
+                  JBigDecimal(hi.or(lo), d.scale)
+              },
+              nulls
+            )
         case d: PType.Decimal =>
           // DECIMAL128: unscaled longs when every value fits, as the CPU engine keeps them
           val big =
@@ -192,6 +296,23 @@ object GpuTypes:
               ),
               nulls
             )
+        case PType.Str if bulk && n > 0 =>
+          // One copy of the UTF-8 bytes, then a String per row from its offsets
+          val offs = new Array[Int](n + 1)
+          h.getOffsets.getInts(offs, 0, 0, n + 1)
+          val base  = offs(0)
+          val bytes = new Array[Byte](offs(n) - base)
+          if bytes.nonEmpty then
+            h.getData.getBytes(bytes, 0, base, bytes.length)
+          StrVec(
+            Array.tabulate(n)(i =>
+              if nulls != null && nulls(i) then
+                null
+              else
+                String(bytes, offs(i) - base, offs(i + 1) - offs(i), StandardCharsets.UTF_8)
+            ),
+            nulls
+          )
         case PType.Str =>
           StrVec(
             Array.tabulate(n)(i =>

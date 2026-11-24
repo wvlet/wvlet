@@ -156,7 +156,8 @@ object EngineTPCHBench extends LogSupport:
       dataDir: String,
       tables: Seq[String],
       opts: BenchOptions,
-      accelerator: Option[runtime.PlanAccelerator] = None
+      accelerator: Option[runtime.PlanAccelerator] = None,
+      offAccelerator: Option[runtime.PlanAccelerator] = None
   ): Seq[QueryTiming] =
     Class.forName("org.duckdb.DuckDBDriver")
     val conn: Connection = DriverManager.getConnection("jdbc:duckdb:")
@@ -170,7 +171,10 @@ object EngineTPCHBench extends LogSupport:
       val engine = WvletEngine(baseDir = specPath, accelerator = accelerator)
       tables.foreach(t => engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet"))
       // The engine with the A/B optimizations disabled, over the same tables
-      val offEngine = opts.abOff.map(off => WvletEngine(engine.catalog, specPath, off, accelerator))
+      // offAccelerator, when given, replaces the accelerator there (to A/B accelerator settings)
+      val offEngine = opts
+        .abOff
+        .map(off => WvletEngine(engine.catalog, specPath, off, offAccelerator.orElse(accelerator)))
       val abResults = Seq.newBuilder[ABTiming]
       val abFailed  = Seq.newBuilder[String]
 

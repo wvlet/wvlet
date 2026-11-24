@@ -28,7 +28,8 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 
 - A `PlanAccelerator` (`runtime/PlanAccelerator.scala`) is offered each runtime plan subtree top-down in `Lowering`, before CPU lowering; the first subtree it accepts runs as one operator. `WvletEngine(accelerator = ...)` sets one; the `gpu_offload` toggle turns the hook off. See [the GPU executor ADR](../adr/2026-11-24-engine-gpu-executor.md).
 - `wvlet-engine-gpu` is the example accelerator (cudf-java, JVM only, not in the CLI pack or the CI aggregates). It runs subtrees that join or aggregate, keeps scanned columns on the device across queries, and runs a subtree on the CPU if the device fails at run time.
-- `EnginePlanAcceleratorTest` checks the hook with a stub accelerator. On a machine with a CUDA device, `./sbt "engineGpu/testOnly *GpuTPCHTest"` checks spec/tpch against DuckDB with GPU offload, and `WVLET_ENGINE_BENCH_SF=10 WVLET_ENGINE_BENCH_AB=gpu_offload ./sbt "engineGpu/testOnly *GpuTPCHBench"` compares GPU on and off.
+- `EnginePlanAcceleratorTest` checks the hook with a stub accelerator. On a machine with a CUDA device, `./sbt "engineGpu/testOnly *GpuTPCHTest"` checks spec/tpch against DuckDB with GPU offload (`WVLET_GPU_TEST_DATA=target/tpch-sf10` checks SF10), and `WVLET_ENGINE_BENCH_SF=10 WVLET_ENGINE_BENCH_AB=gpu_offload ./sbt "engineGpu/testOnly *GpuTPCHBench"` compares GPU on and off.
+- Optimizations inside the GPU module are `GpuFeature`s rather than `Optimization` toggles, because they don't change engine plans: A/B one with `WVLET_GPU_BENCH_AB=<feature>` in the same bench. The module rewrites only its own subtrees (implied filters, join key filters, column pruning) and picks decimal widths from cached value bounds; see [the follow-up ADR](../adr/2026-11-24-gpu-executor-runtime-choices.md).
 
 ## Correctness gates
 

@@ -23,19 +23,20 @@ import wvlet.uni.test.UniTest
 
 /**
   * Runs spec/tpch on the engine with GPU offload and checks the rows against DuckDB, as
-  * EngineTPCHTest does for the CPU engine. Skipped without a CUDA device.
+  * EngineTPCHTest does for the CPU engine. Skipped without a CUDA device. `WVLET_GPU_TEST_DATA`
+  * names another folder of TPC-H Parquet files (e.g. `target/tpch-sf10`), to check values at scale.
   */
 class GpuTPCHTest extends UniTest:
-  private val tables = EngineTPCHBench.tables
+  private val tables  = EngineTPCHBench.tables
+  private val dataDir = sys.env.getOrElse("WVLET_GPU_TEST_DATA", "spec/tpch/data")
 
   // Neither touches the GPU before a query runs: the device is initialized on first use
   private val accelerator = GpuAccelerator()
 
   private val conformance = EngineConformance(
     "spec/tpch",
-    tables.map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
-    engine =>
-      tables.foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet")),
+    tables.map(t => s"create view ${t} as select * from '${dataDir}/${t}.parquet'"),
+    engine => tables.foreach(t => engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet")),
     accelerator = Some(accelerator)
   )
 

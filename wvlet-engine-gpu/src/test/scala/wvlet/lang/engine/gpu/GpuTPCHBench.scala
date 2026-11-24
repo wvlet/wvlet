@@ -14,6 +14,7 @@
 package wvlet.lang.engine.gpu
 
 import wvlet.lang.engine.EngineTPCHBench
+import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.uni.test.UniTest
 
 /**
@@ -21,9 +22,12 @@ import wvlet.uni.test.UniTest
   * Ignored unless WVLET_ENGINE_BENCH_SF is set and a CUDA device is present. The same variables
   * apply; in particular `WVLET_ENGINE_BENCH_AB=gpu_offload` compares the engine with and without
   * the GPU in one JVM, and without it the engine (with GPU) runs against DuckDB.
+  * `WVLET_GPU_BENCH_AB=<feature>,...` (see [[GpuFeature]]) instead compares the GPU executor with
+  * and without those features, in one JVM and over one column cache.
   *
   * {{{
   *   WVLET_ENGINE_BENCH_SF=10 WVLET_ENGINE_BENCH_AB=gpu_offload ./sbt "engineGpu/testOnly *GpuTPCHBench"
+  *   WVLET_ENGINE_BENCH_SF=10 WVLET_GPU_BENCH_AB=decimal_sum_split ./sbt "engineGpu/testOnly *GpuTPCHBench"
   * }}}
   */
 class GpuTPCHBench extends UniTest:
@@ -37,5 +41,20 @@ class GpuTPCHBench extends UniTest:
         ignore("No CUDA device")
       case Some(opts) =>
         val dataDir = prepareData(opts.sf)
-        runBench("tpch-gpu", "spec/tpch", dataDir, tables, opts, Some(GpuAccelerator()))
+        val config  = GpuConfig.fromEnv()
+        sys.env.get("WVLET_GPU_BENCH_AB").filter(_.trim.nonEmpty).map(GpuFeature.parse) match
+          case Some(features) =>
+            // Same engine settings on both sides: only the GPU features differ
+            val off = config.withDisabled(config.disabled ++ features)
+            runBench(
+              "tpch-gpu",
+              "spec/tpch",
+              dataDir,
+              tables,
+              opts.copy(abOff = Some(opts.abOff.getOrElse(OptimizerOptions.fromSystem()))),
+              Some(GpuAccelerator(config)),
+              Some(GpuAccelerator(off))
+            )
+          case None =>
+            runBench("tpch-gpu", "spec/tpch", dataDir, tables, opts, Some(GpuAccelerator(config)))
   }

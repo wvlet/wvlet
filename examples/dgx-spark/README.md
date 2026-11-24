@@ -48,17 +48,30 @@ Same setup, with [`sirius-sf100.yaml`](sirius-sf100.yaml) (70% of memory for the
 
 ## Wvlet engine with GPU offload (SF10)
 
-[`wvlet-engine-gpu`](../../wvlet-engine-gpu) runs the plan subtrees of Wvlet's own engine that join or aggregate on the GPU through cudf-java, keeping scanned columns in GPU memory across queries; see [the ADR](../../adr/2026-11-24-engine-gpu-executor.md). Same Spark and data, JDK 25, best of 3 hot runs, GPU on and off in one JVM:
+[`wvlet-engine-gpu`](../../wvlet-engine-gpu) runs the plan subtrees of Wvlet's own engine that join or aggregate on the GPU through cudf-java, keeping scanned columns in GPU memory across queries; see [the ADR](../../adr/2026-11-24-engine-gpu-executor.md) and [its follow-up](../../adr/2026-11-24-gpu-executor-runtime-choices.md). Same Spark and data, JDK 25, best of 3 hot runs, GPU on and off in one JVM:
 
 | engine | total (s) | vs DuckDB CPU |
 | --- | ---: | ---: |
-| Wvlet engine, CPU | 10.99 | 0.31x |
+| Wvlet engine, CPU | 7.56 | 0.45x |
 | DuckDB CPU | 3.43 | 1.00x |
-| **Wvlet engine + GPU** | **2.63** | **1.30x** |
+| Wvlet engine + GPU, first version (#2363) | 2.63 | 1.30x |
+| **Wvlet engine + GPU** | **0.74-0.79** | **4.3-4.6x** |
 | DuckDB + Sirius, pinned | 0.82 | 4.18x |
 
-- 20 of 22 queries run as one GPU subtree (scans through joins, aggregation, and sort); q13 and q22 stay on the CPU. q4, q15, and q21 are 17-19x faster than the CPU engine; q1 (DECIMAL128 arithmetic) 1.4x; q16 is 1.3x slower.
-- Results match DuckDB on spec/tpch (`GpuTPCHTest`), and row counts match the CPU engine at SF10.
+- All 22 queries run as one GPU subtree. Against Sirius pinned, the Wvlet engine is faster on 13 queries (e.g. q8 16 vs 45 ms, q21 42 vs 75 ms, q9 63 vs 93 ms) and within run-to-run noise on q10, q11, and q17. It is slower on q5, q6, q12, and q19 by 2-10 ms each. The largest gaps are q1 (127 vs 66 ms: filter, decimal arguments, and a group-by over 59M rows) and q13 (76 vs 18 ms: a left join with a residual).
+- The gains over the first version came from DECIMAL64 arithmetic and sums chosen by the data's value bounds, filtering join inputs by the other side's keys, predicates implied by OR filters, pruning unread join columns, and bringing q13, q16, and q22 onto the GPU. The CPU engine's 7.56 s comes from the same JVM as the GPU run and includes later CPU engine changes (#2364, #2365); the earlier 10.99 s came from a separate run.
+- Results match DuckDB on spec/tpch and at SF10 (`WVLET_GPU_TEST_DATA=target/tpch-sf10 ./sbt "engineGpu/testOnly *GpuTPCHTest"`).
+- Each optimization is a `GpuFeature`: `WVLET_GPU_DISABLE=<name>,...` turns features off, and `WVLET_GPU_BENCH_AB=<name>,...` compares them on and off in one JVM. `WVLET_GPU_PROFILE=1` logs the device time of each plan node.
+
+### SF100 (2026-11-24)
+
+The same bench at SF100 (`WVLET_ENGINE_BENCH_SF=100`, `WVLET_GPU_POOL_FRACTION=0.7`, `WVLET_GPU_CACHE_FRACTION=0.6`), GPU on and off in one JVM. Row counts match on every query that finished.
+
+- 16 of 22 queries ran fully on the GPU. They take 3.99 s in total, against 43.0 s on the CPU engine (10.8x) and 2.88 s for Sirius pinned on the same 16 queries. q2, q20, q21, and q22 are on par with Sirius or faster; q5, q6, and q11 are 2.5-3x slower.
+- q1 ran out of the RMM pool: 600M rows of its columns, plus the cached columns of earlier queries, exceed 75 GiB. It fell back to the CPU after the failed attempt (42 s against 5.6 s on the CPU engine).
+- q12 and q13 read string columns (`l_shipmode`, `o_comment`) larger than cudf's 2 GB limit for one string column, so the GPU attempt fails and the subtree runs on the CPU (17 s and 28 s against 2.2 s and 6.0 s).
+- q7, q18, and q19 ran out of Java heap (`-Xmx16g`) in a CPU hash join build, so the bench left them out.
+- SF100 needs chunked scans or eviction before each GPU subtree, and should reject offloads whose columns cannot fit. Neither is in this example yet.
 
 To run it on a Spark (JDK 17+ and this repository checked out there):
 
