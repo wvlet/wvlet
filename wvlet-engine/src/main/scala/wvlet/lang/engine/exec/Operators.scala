@@ -1023,15 +1023,24 @@ final class JoinBuild(
             -1
         i += 1
     else
-      val rowsOf = GroupTable.partitionRows(hasher.keyHashes(keys, n), n, parts)
+      // Hash once: the partition tables hash alike, so they take each partition's hashes
+      val h      = hasher.keyHashes(keys, n)
+      val rowsOf = GroupTable.partitionRows(h, n, parts)
       var p      = 0
       while p < parts do
         val rows = rowsOf(p)
-        if rows.nonEmpty then
-          val ids  = tables(p).lookup(keys.map(_.gather(rows, rows.length)), rows.length)
+        val m    = rows.length
+        if m > 0 then
+          // Gathered keys keep the table's key comparisons sequential
+          val ph = new Array[Int](m)
+          var j  = 0
+          while j < m do
+            ph(j) = h(rows(j))
+            j += 1
+          val ids  = tables(p).lookup(keys.map(_.gather(rows, m)), m, ph)
           val head = heads(p)
-          var j    = 0
-          while j < rows.length do
+          j = 0
+          while j < m do
             val g = ids(j)
             out(rows(j)) =
               if g >= 0 then
@@ -1194,18 +1203,31 @@ class HashJoinOp(
   private def probeBatch(probe: Batch): Batch =
     val keyVecs = leftKeys.map(_.eval(probe)).toArray
     val first   = joinBuild.firstMatches(keyVecs, probe.size)
-    val li      = mutable.ArrayBuilder.make[Int]
-    val ri      = mutable.ArrayBuilder.make[Int]
-    var i       = 0
-    while i < probe.size do
+    if residual.isEmpty && kind.outputsProbeOnly then
+      // A semi / anti join without a residual only asks whether a match exists: the first one
+      // answers it, without walking the chain of build rows sharing the key
+      return probeExists(probe, first)
+    val n = probe.size
+    // Matching pairs, sized for one match per probe row and doubled on overflow
+    var lIdx = new Array[Int](n)
+    var rIdx = new Array[Int](n)
+    var np   = 0
+    var i    = 0
+    while i < n do
       var r = first(i)
       while r >= 0 do
-        li += i
-        ri += r
+        if np == lIdx.length then
+          val cap = math.max(16, np * 2)
+          lIdx = java.util.Arrays.copyOf(lIdx, cap)
+          rIdx = java.util.Arrays.copyOf(rIdx, cap)
+        lIdx(np) = i
+        rIdx(np) = r
+        np += 1
         r = joinBuild.nextMatch(r)
       i += 1
-    var lIdx = li.result()
-    var rIdx = ri.result()
+    if np < lIdx.length then
+      lIdx = java.util.Arrays.copyOf(lIdx, np)
+      rIdx = java.util.Arrays.copyOf(rIdx, np)
     // The pairs the residual condition kept, reusing the columns it gathered (late_gather only)
     var kept: Batch = null
     // Apply the residual condition on candidate pairs
@@ -1214,9 +1236,9 @@ class HashJoinOp(
         // Only the columns the condition reads are gathered
         val candidates = joined(probe, lIdx, rIdx)
         val mask       = Kernels.trueMask(cond.eval(candidates))
-        val keep       = (0 until lIdx.length).filter(mask(_)).toArray
-        lIdx = keep.map(lIdx)
-        rIdx = keep.map(rIdx)
+        val keep       = HashJoinOp.trueRows(mask, lIdx.length)
+        lIdx = HashJoinOp.pick(lIdx, keep)
+        rIdx = HashJoinOp.pick(rIdx, keep)
         if lateGather then
           kept = candidates.take(keep, keep.length)
     }
@@ -1241,14 +1263,34 @@ class HashJoinOp(
             matchedPairs
         else
           val matched = new Array[Boolean](probe.size)
-          lIdx.foreach(l => matched(l) = true)
-          val unmatched = (0 until probe.size).filter(!matched(_)).toArray
-          val allL      = lIdx ++ unmatched
-          val allR      = rIdx ++ Vec.filledInts(unmatched.length, -1)
-          if allL.isEmpty then
+          var j       = 0
+          while j < lIdx.length do
+            matched(lIdx(j)) = true
+            j += 1
+          // Matched pairs, then each unmatched probe row against NULLs
+          var total = lIdx.length
+          i = 0
+          while i < probe.size do
+            if !matched(i) then
+              total += 1
+            i += 1
+          if total == 0 then
             null
+          else if total == lIdx.length then
+            joined(probe, lIdx, rIdx)
           else
+            val allL = java.util.Arrays.copyOf(lIdx, total)
+            val allR = java.util.Arrays.copyOf(rIdx, total)
+            var k    = lIdx.length
+            i = 0
+            while i < probe.size do
+              if !matched(i) then
+                allL(k) = i
+                allR(k) = -1
+                k += 1
+              i += 1
             joined(probe, allL, allR)
+        end if
       case JoinKind.Semi =>
         val matched = new Array[Boolean](probe.size)
         lIdx.foreach(l => matched(l) = true)
@@ -1282,7 +1324,55 @@ class HashJoinOp(
 
   end probeBatch
 
+  /** A semi (rows with a match) or anti (rows without one) join's output from first matches */
+  private def probeExists(probe: Batch, first: Array[Int]): Batch =
+    val wantMatch = kind == JoinKind.Semi
+    val keep      = new Array[Boolean](probe.size)
+    var kept      = 0
+    var i         = 0
+    while i < probe.size do
+      if (first(i) >= 0) == wantMatch then
+        keep(i) = true
+        kept += 1
+      i += 1
+    if kept == 0 then
+      null
+    else if kept == probe.size then
+      probe
+    else if lateGather then
+      probe.takeWhere(keep)
+    else
+      probe.filter(keep)
+
 end HashJoinOp
+
+object HashJoinOp:
+  /** Positions 0 until n where mask is true */
+  private[exec] def trueRows(mask: Array[Boolean], n: Int): Array[Int] =
+    var count = 0
+    var i     = 0
+    while i < n do
+      if mask(i) then
+        count += 1
+      i += 1
+    val out = new Array[Int](count)
+    var k   = 0
+    i = 0
+    while i < n do
+      if mask(i) then
+        out(k) = i
+        k += 1
+      i += 1
+    out
+
+  /** xs at each position in idx (Array.map would box every Int) */
+  private[exec] def pick(xs: Array[Int], idx: Array[Int]): Array[Int] =
+    val out = new Array[Int](idx.length)
+    var i   = 0
+    while i < idx.length do
+      out(i) = xs(idx(i))
+      i += 1
+    out
 
 /** Nested-loop join for non-equi conditions and cross joins (right input materialized) */
 class NestedLoopJoinOp(
