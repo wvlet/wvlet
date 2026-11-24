@@ -149,7 +149,10 @@ object Parallelizer:
             // Parts mark matched build rows; the tail emits the rest once every part is done
             shared.copy(
               rebuild = x => template.withLeft(p.rebuild(x), OuterMode.Part),
-              tail = Some(x => template.withLeft(p.tail.getOrElse(p.rebuild)(x), OuterMode.Tail))
+              tail = Some(x => template.withLeft(p.tail.getOrElse(p.rebuild)(x), OuterMode.Tail)),
+              // A join is work: without it, `rewrite` would keep only the projections over an
+              // aggregation below and drop the join
+              hasWork = true
             )
           else
             shared.map(x => template.withLeft(x))

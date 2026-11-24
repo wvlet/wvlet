@@ -93,6 +93,18 @@ class EngineParallelAboveBreakersTest extends UniTest:
       r shouldBe rows(disabled, q)
   }
 
+  test("should keep a right join over an aggregation with only a column selection above it") {
+    // The join builds on the parts, and nothing above it computes anything
+    val q =
+      """select p.p_partkey, t.q
+        |from (select l_partkey, sum(l_quantity) as q from lineitem group by l_partkey) t
+        |right join (select p_partkey from part where p_brand = 'Brand#23') p
+        |  on t.l_partkey = p.p_partkey""".stripMargin
+    val r = rows(engine, q)
+    r.nonEmpty shouldBe true
+    r.sorted shouldBe rows(disabled, q).sorted
+  }
+
   test("should run the probe above an aggregation as morsels over its output") {
     if TaskRunner.default.parallelism <= 1 then
       ignore("Plans are not parallelized on one processor")
