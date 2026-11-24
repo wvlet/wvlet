@@ -105,10 +105,19 @@ class WvletCompiler(
       else
         Compiler(options)
     // Set catalog from connector. The in-process wvlet engine needs no catalog setting: its
-    // registered tables form the `wvlet` catalog
+    // registered tables form the `wvlet` catalog. Without the engine's connector module (e.g.
+    // DuckDB in the lite CLI), compile still generates the engine's SQL, with no catalog
     val defaultEngine = currentProfile.defaultEngine
     WvletEngineSession
       .defaultCatalogName(defaultEngine)
+      .filter { _ =>
+        val available = dbConnectorProvider.isAvailable(defaultEngine.`type`)
+        if !available then
+          debug(
+            s"The ${defaultEngine.`type`} connector is not installed. Compiling without its catalog"
+          )
+        available
+      }
       .foreach { catalog =>
         val schema = defaultEngine.schema.getOrElse("main")
         compiler.setDefaultCatalog(

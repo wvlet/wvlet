@@ -18,9 +18,13 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.connector.ConnectorFactoryRegistry
 import wvlet.lang.connector.duckdb.DuckDBConnector
 import wvlet.lang.connector.duckdb.DuckDBConnectorFactory
 import wvlet.lang.connector.duckdb.GenericConnector
+import wvlet.lang.connector.slack.SlackConnectorFactory
+import wvlet.lang.connector.trino.TrinoConnectorFactory
+import wvlet.lang.runner.engine.WvletEngineConnectorFactory
 import wvlet.uni.test.UniTest
 import wvlet.uni.test.defined
 
@@ -58,7 +62,46 @@ class ConnectorProviderTest extends UniTest:
         provider.getConnector(ConnectorConfig(name = "s", `type` = "slack"))
       }
       exception.statusCode shouldBe StatusCode.INVALID_ARGUMENT
-      exception.message shouldContain "No connector factory"
+      exception.message shouldContain "No connector for type 'slack'"
+    finally
+      provider.close()
+  }
+
+  test("should discover every connector module on the classpath") {
+    ConnectorFactoryRegistry.factories.map(_.connectorType).toSet shouldBe
+      Set("duckdb", "generic", "trino", "snowflake", "slack", "wvlet")
+  }
+
+  // The lite CLI leaves out the DuckDB and Snowflake modules
+  private def liteProvider(): ConnectorProvider = ConnectorProvider(
+    WorkEnv(),
+    factories = Seq(TrinoConnectorFactory, SlackConnectorFactory, WvletEngineConnectorFactory)
+  )
+
+  test("should tell how to install a connector whose module is missing") {
+    val provider = liteProvider()
+    try
+      provider.isAvailable("duckdb") shouldBe false
+      provider.isAvailable("wvlet") shouldBe true
+      for tpe <- Seq("duckdb", "generic", "snowflake") do
+        val exception = intercept[WvletLangException] {
+          provider.getConnector(ConnectorConfig(name = "db", `type` = tpe))
+        }
+        exception.statusCode shouldBe StatusCode.CONNECTOR_NOT_INSTALLED
+        exception.message shouldContain s"The ${tpe} connector (for 'db') is not installed"
+        exception.message shouldContain "wvlet-cli-full"
+    finally
+      provider.close()
+  }
+
+  test("should not fall back to DuckDB for unknown types without the DuckDB module") {
+    val provider = liteProvider()
+    try
+      val exception = intercept[WvletLangException] {
+        provider.getConnector(ConnectorConfig(name = "h", `type` = "hive"))
+      }
+      exception.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+      exception.message shouldContain "Available: slack, trino, wvlet"
     finally
       provider.close()
   }

@@ -20,21 +20,18 @@ import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.connector.Connector
 import wvlet.lang.connector.ConnectorFactory
+import wvlet.lang.connector.ConnectorFactoryRegistry
 import wvlet.lang.connector.DBConnector
-import wvlet.lang.connector.duckdb.DuckDBConnectorFactory
-import wvlet.lang.connector.duckdb.GenericConnectorFactory
-import wvlet.lang.connector.slack.SlackConnectorFactory
-import wvlet.lang.runner.engine.WvletEngineConnectorFactory
-import wvlet.lang.connector.snowflake.SnowflakeConnectorFactory
-import wvlet.lang.connector.trino.TrinoConnectorFactory
 import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 
 /**
-  * Resolves [[Connector]] instances from a profile's connector configs through an explicit
-  * [[ConnectorFactory]] registry, caching one live connector per distinct [[ConnectorConfig]]
+  * Resolves [[Connector]] instances from a profile's connector configs through a
+  * [[ConnectorFactory]] registry, caching one live connector per distinct [[ConnectorConfig]]. By
+  * default the registry holds the factories found on the classpath ([[ConnectorFactoryRegistry]]),
+  * so optional connector modules (DuckDB, Snowflake) are used when installed
   */
 class ConnectorProvider(
     workEnv: WorkEnv,
@@ -64,28 +61,35 @@ class ConnectorProvider(
     c => createConnector(c)
   )
 
+  /** Whether this provider can create connectors of the type */
+  def isAvailable(connectorType: String): Boolean = factoryMap.contains(connectorType.toLowerCase)
+
   private def createConnector(config: ConnectorConfig): Connector =
-    factoryMap.get(config.`type`.toLowerCase) match
+    val tpe = config.`type`.toLowerCase
+    factoryMap.get(tpe) match
       case Some(factory) =>
         factory.create(config, workEnv)
+      case None if ConnectorFactoryRegistry.isOptional(tpe) =>
+        // A known connector whose module this distribution leaves out: tell how to install it
+        // rather than silently running on another engine
+        throw ConnectorFactoryRegistry.notInstalled(tpe, config.name)
       case None =>
-        // Preserve the compile-only fallback for engines without a runtime connector (-t hive etc.)
-        warn(
-          s"Connector for type '${config
-              .`type`}' is not available. Using the generic DuckDB fallback"
-        )
-        factoryMap
-          .get("generic")
-          .map(_.create(config.copy(`type` = "generic"), workEnv))
-          .getOrElse(
+        factoryMap.get("generic") match
+          case Some(generic) =>
+            // Preserve the compile-only fallback for engines without a runtime connector
+            // (-t hive etc.)
+            warn(
+              s"Connector for type '${config
+                  .`type`}' is not available. Using the generic DuckDB fallback"
+            )
+            generic.create(config.copy(`type` = "generic"), workEnv)
+          case None =>
             throw StatusCode
               .INVALID_ARGUMENT
               .newException(
-                s"No connector factory for type '${config.`type`}' (registered: ${factoryMap
-                    .keys
-                    .mkString(", ")})"
+                s"No connector for type '${config.`type`}' (for '${config
+                    .name}'). Available: ${factoryMap.keys.toSeq.sorted.mkString(", ")}"
               )
-          )
 
   /** Resolve the profile's default engine as a SQL engine connector */
   def getConnector(profile: Profile): DBConnector = getDBConnector(profile.defaultEngine)
@@ -109,12 +113,10 @@ class ConnectorProvider(
 end ConnectorProvider
 
 object ConnectorProvider:
-  /** All built-in engine connectors */
-  def defaultFactories: Seq[ConnectorFactory] = Seq(
-    DuckDBConnectorFactory,
-    GenericConnectorFactory,
-    TrinoConnectorFactory,
-    SnowflakeConnectorFactory,
-    SlackConnectorFactory,
-    WvletEngineConnectorFactory
+  /** The connector factories registered on the classpath through `META-INF/services` */
+  def defaultFactories: Seq[ConnectorFactory] = ConnectorFactoryRegistry.factories
+
+  /** Whether the connector type has a factory on the classpath */
+  def isAvailable(connectorType: String): Boolean = ConnectorFactoryRegistry.isAvailable(
+    connectorType
   )

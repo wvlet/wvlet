@@ -102,6 +102,18 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv)
     */
   def sqlConnector: Option[SqlConnector] = None
 
+  /**
+    * The catalog to use when neither the command line nor the profile names one. Only engines with
+    * a fixed catalog (e.g. DuckDB's in-process `memory`) define it
+    */
+  def defaultCatalogName: Option[String] = None
+
+  /**
+    * The SQL dialect of this engine's functions and types. Differs from [[dbType]] for connectors
+    * that run on another engine (e.g. `generic` on DuckDB)
+    */
+  def functionDialect: DBType = dbType
+
   def withQueryScope(scope: QueryScope): this.type =
     queryScope = scope
     this

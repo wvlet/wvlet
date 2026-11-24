@@ -2,6 +2,7 @@ package wvlet.lang.connector.duckdb
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.SQLFunction
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.DBType.Generic
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.connector.DBConnection
@@ -13,6 +14,10 @@ class GenericConnector(workEnv: WorkEnv) extends DBConnector(Generic, workEnv):
   private var _connector: DuckDBConnector = null
 
   override def close(): Unit = Option(_connector).foreach(_.close())
+
+  // Runs on an in-process DuckDB, so its catalog, functions, and types are DuckDB's
+  override def defaultCatalogName: Option[String] = Some("memory")
+  override def functionDialect: DBType            = DBType.DuckDB
 
   private def getConnector: DuckDBConnector =
     if _connector == null then
