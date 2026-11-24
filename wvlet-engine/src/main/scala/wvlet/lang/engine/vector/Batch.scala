@@ -235,7 +235,7 @@ object Batch:
       Batch(cols, total)
 
   /** Vectors of one column concatenated: typed arrays are copied as is, others go through boxing */
-  private def concatVecs(ptype: PType, vs: Seq[Vec], total: Int): Vec =
+  private[engine] def concatVecs(ptype: PType, vs: Seq[Vec], total: Int): Vec =
     inline def nullsOf(): Array[Boolean] =
       if vs.forall(_.nulls == null) then
         null
