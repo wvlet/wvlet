@@ -197,7 +197,7 @@ object EngineTPCHBench extends LogSupport:
                 execute(conn, "set enable_profiling = 'json'")
                 execute(conn, s"set profiling_output = '${out}'")
                 try countRows(conn, sql)
-                finally execute(conn, "set enable_profiling = 'no_output'")
+                finally execute(conn, "pragma disable_profiling")
               val task = worker.submit { () =>
                 val (_, rows) = engineOnce()
                 (rows, (1 to opts.runs).map(_ => engineTimed()))
