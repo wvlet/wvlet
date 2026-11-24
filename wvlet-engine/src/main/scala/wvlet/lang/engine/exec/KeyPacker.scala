@@ -63,14 +63,22 @@ final class KeyPacker private (mins: Array[Long], maxs: Array[Long], shifts: Arr
               out(i) |= (a - lo) << shift
             i += 1
         case other =>
+          // Unreached: the planner casts probe keys to the build key types
           while i < n do
-            KeyPacker.longValue(other.get(i)) match
-              case Some(a) if a >= lo && a <= hi =>
-                out(i) |= (a - lo) << shift
-              case _ =>
-                if nulls == null then
-                  nulls = new Array[Boolean](n)
-                nulls(i) = true
+            val a =
+              other.get(i) match
+                case x: Int =>
+                  x.toLong
+                case x: Long =>
+                  x
+                case _ =>
+                  hi + 1
+            if a < lo || a > hi then
+              if nulls == null then
+                nulls = new Array[Boolean](n)
+              nulls(i) = true
+            else
+              out(i) |= (a - lo) << shift
             i += 1
       end match
       k += 1
@@ -86,15 +94,6 @@ object KeyPacker:
   inline val MaxBits = 62
 
   private def packable(t: PType): Boolean = t == PType.Int32 || t == PType.Date || t == PType.Int64
-
-  private def longValue(x: Any): Option[Long] =
-    x match
-      case i: Int =>
-        Some(i.toLong)
-      case l: Long =>
-        Some(l)
-      case _ =>
-        None
 
   /**
     * A packer for keys of these types, with ranges taken from the given rows (whose key columns
