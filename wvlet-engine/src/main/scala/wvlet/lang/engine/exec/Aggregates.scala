@@ -148,7 +148,8 @@ object Aggregates:
       case "avg" | "mean" | "stddev" | "stddev_samp" | "stddev_pop" | "variance" | "var_samp" |
           "var_pop" | "quantile_cont" | "median" =>
         argTypes.headOption match
-          case Some(PType.Date) | Some(PType.Timestamp) if name.toLowerCase == "median" =>
+          case Some(PType.Date) | Some(PType.Timestamp) | Some(PType.TimestampTz)
+              if name.toLowerCase == "median" =>
             argTypes.head
           case _ =>
             PType.Float64
@@ -560,7 +561,7 @@ object Aggregates:
     private var objs: Array[Any]       = null
     private val mode: Int              =
       ptype match
-        case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
+        case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp | PType.TimestampTz =>
           0
         case PType.Float64 =>
           1

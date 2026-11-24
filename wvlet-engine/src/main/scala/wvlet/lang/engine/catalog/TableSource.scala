@@ -327,6 +327,9 @@ object ParquetSource:
             PType.AnyT
           case (PhysicalType.INT32, _) =>
             PType.Int32
+          // Adjusted to UTC: an instant (TIMESTAMPTZ), as DuckDB reads it
+          case (PhysicalType.INT64, Some(LogicalType.Timestamp(true, _))) =>
+            PType.TimestampTz
           case (PhysicalType.INT64, Some(LogicalType.Timestamp(_, _))) =>
             PType.Timestamp
           case (PhysicalType.INT64, Some(LogicalType.Time(_, _))) =>
@@ -380,7 +383,7 @@ object ParquetSource:
         LongVec(PType.Int64, x.values, nulls)
       case (x: ColumnVector.LongColumn, d: PType.Decimal) =>
         LongVec(d, x.values, nulls)
-      case (x: ColumnVector.LongColumn, PType.Timestamp) =>
+      case (x: ColumnVector.LongColumn, t) if t.isTimestamp =>
         val unit =
           x.field.logicalType match
             case Some(LogicalType.Timestamp(_, u)) =>
@@ -389,11 +392,11 @@ object ParquetSource:
               TimeUnit.MICROS
         unit match
           case TimeUnit.MICROS =>
-            LongVec(PType.Timestamp, x.values, nulls)
+            LongVec(t, x.values, nulls)
           case TimeUnit.MILLIS =>
-            LongVec(PType.Timestamp, Vec.mapLong(x.values)(_ * 1000L), nulls)
+            LongVec(t, Vec.mapLong(x.values)(_ * 1000L), nulls)
           case TimeUnit.NANOS =>
-            LongVec(PType.Timestamp, Vec.mapLong(x.values)(Math.floorDiv(_, 1000L)), nulls)
+            LongVec(t, Vec.mapLong(x.values)(Math.floorDiv(_, 1000L)), nulls)
       case (x: ColumnVector.FloatColumn, PType.Float64) =>
         DoubleVec(Vec.mapFloatToDouble(x.values), nulls)
       case (x: ColumnVector.DoubleColumn, PType.Float64) =>
@@ -407,8 +410,8 @@ object ParquetSource:
             out(i) = x.getString(i)
           i += 1
         StrVec(out, nulls)
-      case (_, PType.Timestamp) =>
-        val b = VecBuilder(PType.Timestamp, c.size)
+      case (_, t) if t.isTimestamp =>
+        val b = VecBuilder(t, c.size)
         var i = 0
         while i < c.size do
           c.getValue(i) match

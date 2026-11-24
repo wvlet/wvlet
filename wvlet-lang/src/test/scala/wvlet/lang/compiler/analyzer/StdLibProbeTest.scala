@@ -115,6 +115,32 @@ class StdLibProbeTest extends UniTest:
     sql shouldContain "lag(v,1) over (order by k)"
   }
 
+  test("expand bare zero-argument defs per dialect") {
+    generateSQL("from [[1]] as t(x)\nselect current_date as d, uuid as u\n") shouldContain
+      "cast(now() AT TIME ZONE 'UTC' as date)"
+    generateSQL("from [[1]] as t(x)\nselect current_timestamp as ts\n", DBType.Trino) shouldContain
+      "cast(current_timestamp AT TIME ZONE 'UTC' as timestamp(6))"
+  }
+
+  test("keep a bare name that may be a column of an unknown table") {
+    val sql = generateSQL("from unknown_events\nselect uuid, rank\n")
+    sql shouldContain "select uuid, rank"
+    sql shouldNotContain "uuid()"
+  }
+
+  test("keep an alias that names a bare zero-argument def") {
+    val sql = generateSQL(
+      "from [[1, 10]] as t(k, v)\nselect v.lag(1) over (order by k) as rank, k as current_date\n"
+    )
+    sql shouldContain "as rank"
+    sql shouldContain "as current_date"
+  }
+
+  test("let a column shadow a bare zero-argument def") {
+    val sql = generateSQL("from [['a']] as t(uuid)\nselect uuid\n")
+    sql shouldNotContain "uuid()"
+  }
+
   test("probe a member call with args chained on map keys") {
     val sql = generateSQL("select map {\"a\": 1} as m\nselect m.keys.mk_string(',') as ks\n")
     info(sql)

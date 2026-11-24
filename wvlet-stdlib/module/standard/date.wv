@@ -36,6 +36,12 @@ trait date in duckdb = {
 
   -- The last day of the month of this date
   def last_day: date = sql"last_day(${this})"
+
+  -- Full English day and month names ('Monday', 'January')
+  def day_name: string = sql"dayname(${this})"
+  def month_name: string = sql"monthname(${this})"
+  -- ISO-8601 week-numbering year: the year of the Thursday of this date's ISO week
+  def iso_year: int = sql"isoyear(${this})"
 }
 
 trait date in trino = {
@@ -52,6 +58,12 @@ trait date in trino = {
 
   -- The last day of the month of this date
   def last_day: date = sql"last_day_of_month(${this})"
+
+  -- Full English day and month names ('Monday', 'January')
+  def day_name: string = sql"date_format(cast(${this} as timestamp),'%W')"
+  def month_name: string = sql"date_format(cast(${this} as timestamp),'%M')"
+  -- ISO-8601 week-numbering year
+  def iso_year: int = sql"year_of_week(${this})"
 }
 
 trait date in hive = {
@@ -78,6 +90,10 @@ trait date in hive = {
 
   -- The last day of the month of this date
   def last_day: date = sql"cast(last_day(${this}) as date)"
+
+  -- Full English day and month names ('Monday', 'January')
+  def day_name: string = sql"date_format(${this},'EEEE')"
+  def month_name: string = sql"date_format(${this},'MMMM')"
 }
 
 trait date in snowflake = {
@@ -98,6 +114,9 @@ trait date in snowflake = {
 
   -- The last day of the month of this date
   def last_day: date = sql"last_day(${this})"
+
+  -- ISO-8601 week-numbering year
+  def iso_year: int = sql"yearofweekiso(${this})"
 }
 
 trait date in bigquery = {
@@ -118,4 +137,10 @@ trait date in bigquery = {
 
   -- The last day of the month of this date
   def last_day: date = sql"last_day(${this})"
+
+  -- Full English day and month names ('Monday', 'January')
+  def day_name: string = sql"format_date('%A',${this})"
+  def month_name: string = sql"format_date('%B',${this})"
+  -- ISO-8601 week-numbering year
+  def iso_year: int = sql"extract(isoyear from ${this})"
 }

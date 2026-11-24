@@ -33,7 +33,7 @@ import java.nio.file.Path
 class EngineStdlibCoverageCheck extends UniTest:
 
   /** Stdlib functions that run on the engine and match DuckDB must not drop below this count */
-  private val minCovered = 284
+  private val minCovered = 296
 
   private val conformance     = EngineConformance(".", Nil, _ => ())
   override def afterAll: Unit = conformance.close()
@@ -64,6 +64,11 @@ class EngineStdlibCoverageCheck extends UniTest:
             Seq("','")
           case "field" | "unit" =>
             Seq("'month'")
+          case "format" =>
+            // Lockstep with the string receiver samples: '2024-03-15' is the third
+            Seq("'%Y-%m-%d'")
+          case "zone" =>
+            Seq("'Asia/Tokyo'")
           case "search" =>
             Seq("'l'")
           case "replacement" | "pad" =>

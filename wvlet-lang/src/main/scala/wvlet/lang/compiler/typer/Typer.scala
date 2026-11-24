@@ -14,6 +14,7 @@
 package wvlet.lang.compiler.typer
 
 import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.pipeline.ModelBuildSpec
 import wvlet.lang.compiler.CompilationUnit
@@ -37,6 +38,7 @@ import wvlet.lang.model.expr.DotRef
 import wvlet.lang.model.expr.FunctionApply
 import wvlet.lang.model.expr.FunctionArg
 import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.SingleColumn
 import wvlet.lang.model.expr.Window
 import wvlet.lang.model.expr.InRelation
 import wvlet.lang.model.expr.NotInRelation
@@ -281,7 +283,10 @@ object Typer extends Phase("typer") with LogSupport:
           .expr
           .transformUpExpression {
             case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
-              FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+              FunctionInliner
+                .findNativeFunction(ctx, id.fullName)
+                .orElse(FunctionInliner.inlineBareFunction(id)(using ctx))
+                .getOrElse(id)
           }
         val typedValDef =
           if newExpr eq v.expr then
@@ -461,6 +466,9 @@ object Typer extends Phase("typer") with LogSupport:
         // never sees it. This lets a name mix no-arg and arg-taking variants (e.g. mk_string
         // and mk_string(separator)) — a bare DotRef reached directly is genuinely bare and
         // resolves only to a no-arg variant
+        // A bare zero-argument def expands only where the input columns are all known: with an
+        // unknown schema (e.g. a table missing from the catalog), the identifier may be a column
+        var expandBareDefs                        = true
         def inlineExpr(e: Expression): Expression =
           e match
             case f: FunctionApply =>
@@ -474,6 +482,9 @@ object Typer extends Phase("typer") with LogSupport:
                       d
                     else
                       d.copy(qualifier = q)
+                  case id: Identifier =>
+                    // The function name is bound by this apply, not a bare reference
+                    id
                   case other =>
                     inlineExpr(other)
               val newArgs = f
@@ -517,11 +528,39 @@ object Typer extends Phase("typer") with LogSupport:
                   FunctionInliner.inlineFunctionBody(nd, m, Nil)
                 case _ =>
                   nd
+            case c: SingleColumn =>
+              // The alias is a name, not a reference: only the expression is inlined
+              val e = inlineExpr(c.expr)
+              if e eq c.expr then
+                c
+              else
+                val nc = c.copy(expr = e)
+                nc.copyMetadataFrom(c)
+                nc
             case other =>
-              other.mapChildExpressions(inlineExpr) match
+              val mapped =
+                try
+                  other.mapChildExpressions(inlineExpr)
+                catch
+                  case e: WvletLangException
+                      if expandBareDefs && e.statusCode == StatusCode.COMPILATION_FAILURE =>
+                    // A child identifier in a name slot was expanded: map again without it
+                    expandBareDefs = false
+                    try other.mapChildExpressions(inlineExpr)
+                    finally expandBareDefs = true
+              mapped match
                 case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
-                  // Replace references to native (compile-time evaluated) functions
-                  FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+                  // Replace references to native (compile-time evaluated) functions, and expand
+                  // bare zero-argument defs such as `current_date`
+                  FunctionInliner
+                    .findNativeFunction(ctx, id.fullName)
+                    .orElse {
+                      if expandBareDefs then
+                        FunctionInliner.inlineBareFunction(id)(using ctx)
+                      else
+                        None
+                    }
+                    .getOrElse(id)
                 case done =>
                   done
           end match
@@ -533,6 +572,7 @@ object Typer extends Phase("typer") with LogSupport:
             case t: TestRelation =>
               t
             case r: Relation =>
+              expandBareDefs = r.children.forall(_.relationType.isResolved)
               r.transformChildExpressions { case e: Expression =>
                 inlineExpr(e)
               }

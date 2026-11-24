@@ -133,7 +133,7 @@ object ScalarFunctions:
       ptype match
         case PType.Date =>
           v.asInstanceOf[Int].toLong * ValueOps.MicrosPerDay
-        case PType.Timestamp =>
+        case PType.Timestamp | PType.TimestampTz =>
           v.asInstanceOf[Long]
         case PType.Str =>
           ValueOps.parseTimestamp(v.asInstanceOf[String])
@@ -305,7 +305,7 @@ object ScalarFunctions:
     ptype match
       case PType.Date =>
         v.asInstanceOf[Int].toLong * ValueOps.MicrosPerDay
-      case PType.Timestamp =>
+      case PType.Timestamp | PType.TimestampTz =>
         v.asInstanceOf[Long]
       case _ =>
         ValueOps.parseTimestamp(ValueOps.toStr(v))
@@ -1201,9 +1201,58 @@ object ScalarFunctions:
       "isodow",
       "weekofyear"
     ).foreach(part)
+    // Seconds since the epoch with the fraction, a DOUBLE as in DuckDB
     reg("epoch") { args =>
       val t = args.head.ptype
-      fn("epoch", args, PType.Int64)(a => datePart("epoch", t, a(0)))
+      fn("epoch", args, PType.Float64)(a => toMicros(t, a(0)).toDouble / ValueOps.MicrosPerSecond)
+    }
+    reg("dayname") { args =>
+      val t = args.head.ptype
+      fn("dayname", args, PType.Str)(a => DateTimeFunctions.dayName(toMicros(t, a(0))))
+    }
+    reg("monthname") { args =>
+      val t = args.head.ptype
+      fn("monthname", args, PType.Str)(a => DateTimeFunctions.monthName(toMicros(t, a(0))))
+    }
+    reg("isoyear") { args =>
+      val t = args.head.ptype
+      fn("isoyear", args, PType.Int64)(a => DateTimeFunctions.isoYear(toMicros(t, a(0))))
+    }
+    def strptimeFn(name: String, failAsNull: Boolean): Unit =
+      reg(name) { args =>
+        arity(name, args, 2)
+        // The result type depends on the format: a format with a zone gives an instant
+        val out =
+          args(1) match
+            case Const(f: String, _) if DateTimeFunctions.hasZone(f) =>
+              PType.TimestampTz
+            case _ =>
+              PType.Timestamp
+        fn(name, Seq(str(args(0)), str(args(1))), out) { a =>
+          val s      = a(0).asInstanceOf[String]
+          val format = a(1).asInstanceOf[String]
+          if out == PType.Timestamp && DateTimeFunctions.hasZone(format) then
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(s"${name} with a time zone specifier requires a constant format")
+          DateTimeFunctions.strptime(s, format) match
+            case Some(v) =>
+              v
+            case None if failAsNull =>
+              null
+            case None =>
+              throw StatusCode
+                .INVALID_ARGUMENT
+                .newException(
+                  s"Could not parse string \"${s}\" according to format specifier \"${format}\""
+                )
+        }
+      }
+    strptimeFn("strptime", failAsNull = false)
+    strptimeFn("try_strptime", failAsNull = true)
+    reg("now") { args =>
+      arity("now", args, 0)
+      Const(System.currentTimeMillis() * 1000L, PType.TimestampTz)
     }
     reg("date_trunc", "datetrunc") { args =>
       val unit =
@@ -1262,9 +1311,10 @@ object ScalarFunctions:
         ValueOps.daysFromCivil(y, m, ValueOps.daysInMonth(y, m))
       }
     }
+    // Epoch seconds to an instant, rounded to the nearest microsecond as DuckDB does
     reg("to_timestamp") { args =>
-      fn("to_timestamp", Seq(toDouble(args.head)), PType.Timestamp)(a =>
-        (a(0).asInstanceOf[Double] * ValueOps.MicrosPerSecond).toLong
+      fn("to_timestamp", Seq(toDouble(args.head)), PType.TimestampTz)(a =>
+        Math.rint(a(0).asInstanceOf[Double] * ValueOps.MicrosPerSecond).toLong
       )
     }
     reg("epoch_ms") { args =>

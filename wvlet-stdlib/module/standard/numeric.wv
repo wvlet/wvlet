@@ -21,6 +21,13 @@ trait numeric = {
   def power(exponent:double): double = sql"power(${this},${exponent})"
   def sign: int = sql"sign(${this})"
 
+  -- Interpret this value as unix epoch seconds (in UTC), keeping the fraction to the microsecond
+  -- (to the millisecond on Trino, whose from_unixtime(double) is a timestamp(3))
+  def from_unixtime in duckdb: timestamp = sql"make_timestamp(cast(${this} * 1000000 as bigint))"
+  def from_unixtime in trino: timestamp = sql"cast(from_unixtime(${this}) AT TIME ZONE 'UTC' as timestamp(6))"
+  def from_unixtime in snowflake: timestamp = sql"to_timestamp_ntz(${this})"
+  def from_unixtime in bigquery: timestamp = sql"timestamp_micros(cast(${this} * 1000000 as int64))"
+
   -- Hyperbolic sine, cosine, and tangent
   def sinh: double = sql"sinh(${this})"
   def sinh in hive: double = sql"((exp(cast(${this} as double)) - exp(-cast(${this} as double))) / 2)"

@@ -40,7 +40,8 @@ class EngineConformance(
     with AutoCloseable:
   Class.forName("org.duckdb.DuckDBDriver")
   private val conn: Connection = DriverManager.getConnection("jdbc:duckdb:")
-  setupSQL.foreach { sql =>
+  // The engine's session time zone is UTC; DuckDB's defaults to the machine's
+  (Seq("SET TimeZone = 'UTC'") ++ setupSQL).foreach { sql =>
     val st = conn.createStatement()
     try st.execute(sql)
     finally st.close()
@@ -260,7 +261,15 @@ class EngineConformance(
       val cols = (1 to n).map(md.getColumnLabel)
       val rows = Seq.newBuilder[Seq[Any]]
       while rs.next() do
-        rows += (1 to n).map(i => normalizeJdbc(rs.getObject(i)))
+        rows +=
+          (1 to n).map { i =>
+            // java.sql.Timestamp renders in the JVM's zone, which shifts wall-clock times inside
+            // its DST gaps: read plain timestamps as LocalDateTime
+            if md.getColumnType(i) == java.sql.Types.TIMESTAMP then
+              normalizeJdbc(rs.getObject(i, classOf[java.time.LocalDateTime]))
+            else
+              normalizeJdbc(rs.getObject(i))
+          }
       (cols, rows.result())
     finally
       st.close()
@@ -293,7 +302,18 @@ class EngineConformance(
         val s = t.toString.stripSuffix(".0")
         s
       case t: java.time.LocalDateTime =>
-        t.toString.replace('T', ' ')
+        ValueOps.formatTimestamp(
+          Math.addExact(
+            Math.multiplyExact(t.toEpochSecond(java.time.ZoneOffset.UTC), 1000000L),
+            t.getNano / 1000L
+          )
+        )
+      case t: java.time.OffsetDateTime =>
+        // JDBC shows TIMESTAMPTZ in the JVM's zone: render the instant in UTC, as the engine does
+        val i = t.toInstant
+        ValueOps.formatTimestampTz(
+          Math.addExact(Math.multiplyExact(i.getEpochSecond, 1000000L), i.getNano / 1000L)
+        )
       case b: java.lang.Boolean =>
         b.booleanValue()
       case a: java.sql.Array =>
@@ -340,6 +360,8 @@ class EngineConformance(
           ValueOps.formatDate(v.asInstanceOf[Int])
         case PType.Timestamp =>
           ValueOps.formatTimestamp(v.asInstanceOf[Long])
+        case PType.TimestampTz =>
+          ValueOps.formatTimestampTz(v.asInstanceOf[Long])
         case PType.AnyT =>
           v match
             // Dynamically typed values (e.g., unnested list elements)

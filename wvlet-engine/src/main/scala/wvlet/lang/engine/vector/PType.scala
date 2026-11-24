@@ -20,7 +20,8 @@ import wvlet.lang.model.DataType
   *
   *   - Bool: [[BoolVec]]
   *   - Int32, Date (days since 1970-01-01): [[IntVec]]
-  *   - Int64, Timestamp (microseconds since the epoch, UTC): [[LongVec]]
+  *   - Int64, Timestamp (microseconds since the epoch, UTC), TimestampTz (an instant, as
+  *     microseconds since the epoch; the engine's session time zone is UTC): [[LongVec]]
   *   - Float64: [[DoubleVec]]
   *   - Decimal: [[LongVec]] of unscaled values, or [[ObjVec]] of `java.math.BigDecimal` when the
   *     unscaled values do not fit in a Long
@@ -44,6 +45,9 @@ sealed trait PType:
   def isIntegral: Boolean = this == PType.Int32 || this == PType.Int64
   def isDecimal: Boolean  = this.isInstanceOf[PType.Decimal]
 
+  /** TIMESTAMP or TIMESTAMP WITH TIME ZONE: both hold microseconds since the epoch */
+  def isTimestamp: Boolean = this == PType.Timestamp || this == PType.TimestampTz
+
   /** The wvlet DataType used for describing the result schema */
   def toDataType: DataType =
     this match
@@ -63,6 +67,8 @@ sealed trait PType:
         DataType.DateType
       case PType.Timestamp =>
         DataType.TimestampType(DataType.TimestampField.TIMESTAMP, withTimeZone = false)
+      case PType.TimestampTz =>
+        DataType.TimestampType(DataType.TimestampField.TIMESTAMP, withTimeZone = true)
       case PType.Null =>
         DataType.NullType
       case PType.AnyT =>
@@ -91,6 +97,10 @@ object PType:
 
   case object Timestamp extends PType:
     val name = "timestamp"
+
+  /** An instant (TIMESTAMP WITH TIME ZONE), shown in the session time zone, UTC */
+  case object TimestampTz extends PType:
+    val name = "timestamptz"
 
   case object Null extends PType:
     val name = "null"
@@ -131,6 +141,8 @@ object PType:
         Str
       case DataType.DateType =>
         Date
+      case t: DataType.TimestampType if t.withTimeZone =>
+        TimestampTz
       case _: DataType.TimestampType =>
         Timestamp
       case DataType.NullType =>
@@ -170,6 +182,11 @@ object PType:
         decimalUnion(x, y)
       case (Date, Timestamp) | (Timestamp, Date) =>
         Timestamp
+      // DuckDB casts a plain timestamp to TIMESTAMPTZ, not the other way
+      case (Date | Timestamp, TimestampTz) | (TimestampTz, Date | Timestamp) =>
+        TimestampTz
+      case (Str, TimestampTz) | (TimestampTz, Str) =>
+        TimestampTz
       case (Str, Date) | (Date, Str) =>
         Date
       case (Str, Timestamp) | (Timestamp, Str) =>

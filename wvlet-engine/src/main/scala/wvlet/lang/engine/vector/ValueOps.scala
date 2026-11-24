@@ -164,6 +164,8 @@ object ValueOps:
         formatDate(v.asInstanceOf[Int])
       case PType.Timestamp =>
         formatTimestamp(v.asInstanceOf[Long])
+      case PType.TimestampTz =>
+        formatTimestampTz(v.asInstanceOf[Long])
       case _ =>
         toStr(v)
 
@@ -208,7 +210,7 @@ object ValueOps:
           from match
             case PType.Str =>
               parseDate(v.asInstanceOf[String])
-            case PType.Timestamp =>
+            case PType.Timestamp | PType.TimestampTz =>
               Math.floorDiv(v.asInstanceOf[Long], MicrosPerDay).toInt
             case _ =>
               throw castError(v, "date")
@@ -218,8 +220,21 @@ object ValueOps:
               parseTimestamp(v.asInstanceOf[String])
             case PType.Date =>
               v.asInstanceOf[Int].toLong * MicrosPerDay
+            // The session time zone is UTC: the wall-clock time of an instant has the same micros
+            case PType.TimestampTz =>
+              v
             case _ =>
               throw castError(v, "timestamp")
+        case PType.TimestampTz =>
+          from match
+            case PType.Str =>
+              parseTimestampTz(v.asInstanceOf[String])
+            case PType.Date =>
+              v.asInstanceOf[Int].toLong * MicrosPerDay
+            case PType.Timestamp =>
+              v
+            case _ =>
+              throw castError(v, "timestamp with time zone")
         case _ =>
           v
 
@@ -336,6 +351,9 @@ object ValueOps:
       val f = pad(frac.toInt, 6).reverse.dropWhile(_ == '0').reverse
       s"${base}.${f}"
 
+  /** Format an instant in the session time zone, UTC, as DuckDB does (`2024-01-01 01:00:00+00`) */
+  def formatTimestampTz(micros: Long): String = s"${formatTimestamp(micros)}+00"
+
   def parseDate(s: String): Int =
     val t     = s.trim
     val parts = t.takeWhile(c => c != ' ' && c != 'T').split("-")
@@ -347,19 +365,78 @@ object ValueOps:
       case _: NumberFormatException =>
         throw castError(s, "date")
 
+  /**
+    * Parse a TIMESTAMP string. A trailing zone (`Z`, `+09`, `+09:30`, `-0500`, or a zone name such
+    * as `Asia/Tokyo`) is dropped, as DuckDB does for a cast to TIMESTAMP
+    */
   def parseTimestamp(s: String): Long =
+    val (local, zone) = parseLocalTimestamp(s)
+    // The zone is dropped, but it must still be an offset or a known zone name
+    zone.foreach { z =>
+      if parseOffsetSeconds(z).isEmpty then
+        TimeZones.toInstant(local, z)
+    }
+    local
+
+  /**
+    * Parse a TIMESTAMP WITH TIME ZONE string: a trailing offset or zone name is applied, and a time
+    * without one is in the session time zone, UTC
+    */
+  def parseTimestampTz(s: String): Long =
+    val (local, zone) = parseLocalTimestamp(s)
+    zone match
+      case None =>
+        local
+      case Some(z) =>
+        parseOffsetSeconds(z) match
+          case Some(sec) =>
+            local - sec * MicrosPerSecond
+          case None =>
+            TimeZones.toInstant(local, z)
+
+  /** A numeric UTC offset (`Z`, `+09`, `+0930`, `+09:30`, `-05`) in seconds */
+  private def parseOffsetSeconds(z: String): Option[Long] =
+    if z == "Z" || z == "z" then
+      Some(0L)
+    else if z.nonEmpty && (z.head == '+' || z.head == '-') then
+      val sign =
+        if z.head == '-' then
+          -1L
+        else
+          1L
+      val digits = z.tail.filter(_ != ':')
+      if digits.isEmpty || digits.length > 6 || !digits.forall(_.isDigit) then
+        throw castError(z, "time zone offset")
+      val hh = digits.take(2).toLong
+      val mm = (digits.slice(2, 4) + "00").take(2).toLong
+      val ss = (digits.slice(4, 6) + "00").take(2).toLong
+      Some(sign * (hh * 3600L + mm * 60L + ss))
+    else
+      None
+
+  /** The wall-clock micros of a timestamp string, and its zone suffix if any */
+  private def parseLocalTimestamp(s: String): (Long, Option[String]) =
     val t        = s.trim
     val sepIndex = t.indexWhere(c => c == ' ' || c == 'T')
     if sepIndex < 0 then
-      parseDate(t).toLong * MicrosPerDay
+      (parseDate(t).toLong * MicrosPerDay, None)
     else
       val days = parseDate(t.substring(0, sepIndex))
       var time = t.substring(sepIndex + 1).trim
-      // Drop a trailing zone designator (UTC is assumed)
-      time = time.stripSuffix("Z")
-      val zoneIdx = time.indexWhere(c => c == '+' || (c == '-'))
-      if zoneIdx > 0 then
-        time = time.substring(0, zoneIdx)
+      var zone = Option.empty[String]
+      // A zone name after a space (e.g. `10:00:00 Asia/Tokyo` or `10:00:00 UTC`)
+      val sp = time.indexOf(' ')
+      if sp > 0 then
+        zone = Some(time.substring(sp + 1).trim)
+        time = time.substring(0, sp)
+      else if time.endsWith("Z") || time.endsWith("z") then
+        zone = Some("Z")
+        time = time.dropRight(1)
+      else
+        val zoneIdx = time.indexWhere(c => c == '+' || c == '-')
+        if zoneIdx > 0 then
+          zone = Some(time.substring(zoneIdx))
+          time = time.substring(0, zoneIdx)
       val hms = time.split(":")
       try
         val h = hms(0).toInt
@@ -380,13 +457,16 @@ object ValueOps:
             case i =>
               val f = (sec.substring(i + 1) + "000000").take(6)
               (sec.substring(0, i).toInt, f.toLong)
-        days.toLong * MicrosPerDay + (h * 3600L + m * 60L + si) * MicrosPerSecond + fracMicros
+        (
+          days.toLong * MicrosPerDay + (h * 3600L + m * 60L + si) * MicrosPerSecond + fracMicros,
+          zone
+        )
       catch
         case _: NumberFormatException | _: ArrayIndexOutOfBoundsException =>
           throw castError(s, "timestamp")
     end if
 
-  end parseTimestamp
+  end parseLocalTimestamp
 
   // --- ordering ---------------------------------------------------------------------------
 
@@ -456,6 +536,8 @@ object ValueOps:
           formatDate(v.asInstanceOf[Int])
         case PType.Timestamp =>
           formatTimestamp(v.asInstanceOf[Long])
+        case PType.TimestampTz =>
+          formatTimestampTz(v.asInstanceOf[Long])
         case _: PType.Decimal =>
           v.asInstanceOf[JBigDecimal].toPlainString
         case _ =>
