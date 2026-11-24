@@ -70,8 +70,9 @@ object Parallelizer:
     * A scan and the operators over it that can run on parts of the scan independently:
     * `rebuild(input)` makes a copy of those operators over another input. `tail`, when the pipeline
     * has right / full joins, makes the copy that runs once after every part over an empty input,
-    * emitting the build rows no part matched. `prepare` runs on the calling thread before parts
-    * start (hash join builds), and `close` releases what the copies share
+    * emitting the build rows no part matched. `prepare` runs before parts start (hash join builds),
+    * on the calling thread or, with `concurrent_join_builds`, together on coordinator threads, and
+    * `close` releases what the copies share
     */
   private case class Pipeline(
       scan: ScanOp,

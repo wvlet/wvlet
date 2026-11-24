@@ -72,10 +72,19 @@ object TaskRunner extends TaskRunnerCompatImpl:
     if tasks.size <= 1 || runner.parallelism <= 1 then
       tasks.foreach(_())
     else
-      val once   = tasks.map(t => ComputeOnce(t))
       val failed = java.util.concurrent.atomic.AtomicBoolean(false)
+      val once   = tasks.map { t =>
+        ComputeOnce { () =>
+          try
+            t()
+          catch
+            case e: Throwable =>
+              failed.set(true)
+              throw e
+        }
+      }
       // After a failure, tasks that haven't started never start
-      once.tail.foreach(c => runner.coordinate(() => c.runUnless(() => failed.get())))
+      val handles = once.tail.map(c => runner.coordinate(() => c.runUnless(() => failed.get())))
       var error: Throwable = null
       once.foreach { c =>
         if error == null then
@@ -84,11 +93,12 @@ object TaskRunner extends TaskRunnerCompatImpl:
           catch
             case e: Throwable =>
               error = e
-              failed.set(true)
         else
           c.runUnless(() => true)
           c.awaitIfStarted()
       }
+      // Queued coordinator entries of tasks run here would keep their builds alive until dequeued
+      handles.foreach(_.cancel())
       if error != null then
         throw error
 
