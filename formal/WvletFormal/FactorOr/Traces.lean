@@ -6,7 +6,10 @@ the engine. One inline table with NULLs in every column meets WHERE conditions t
 branches: a conjunct common to every branch, absorption, no common conjunct, three branches,
 duplicate and reordered conjuncts, the conditions the old `InList.sig` confused (a NULL
 among IN values; `'x,y'` against `'x', 'y'`), and the ones the old `Const.sig` confused (`'null'`
-against a NULL string). Each case gives the condition, whether it factors
+against a NULL string), and the one the old planner key (`exprName`) confused (two columns with the
+same name in different inputs) or would confuse with whitespace collapsed (`'x  y'` against
+`'x y'`). Each case gives the condition (also over a join, where `b` and
+`c` are `l.v` and `r.v`), whether it factors
 with the condition itself as the key and into how many conjuncts, the factored condition, and the
 rows. Factoring is proved to keep them (`Rule.lean`).
 
@@ -38,6 +41,14 @@ def colName : Col → String
   | 2 => "c"
   | _ => "s"
 
+/-- The columns over a join of `l(i, a, v)` and `r(i, v, s)` on `i`: `b` and `c` are columns of
+two inputs with the same name `v`, which the old key (`exprName`) named alike. -/
+def joinColName : Col → String
+  | 0 => "l.a"
+  | 1 => "l.v"
+  | 2 => "r.v"
+  | _ => "r.s"
+
 /-- A literal in Wvlet syntax (the strings have no quotes to escape). -/
 def valueWv : Value → String
   | .str s => "'" ++ s ++ "'"
@@ -49,25 +60,33 @@ def colType : Col → String
   | 3 => "string"
   | _ => "boolean"
 
+section Render
+
+variable (name : Col → String)
+
 def termWv : Term → String
-  | .col c => colName c
+  | .col c => name c
   | .lit v => valueWv v
 
 def valuesWv (vs : List Value) : String := "(" ++ ", ".intercalate (vs.map valueWv) ++ ")"
 
-/-- The condition in Wvlet syntax. -/
+/-- The condition in Wvlet syntax, with `name` for the columns. -/
 def condWv : Cond → String
+  -- A boolean column as a conjunct, as `where b` is written: TRUE exactly when `b = true` is
+  | .eq (.col c) (.lit (.bool true)) => name c
   -- An untyped `= null` is `is null` in Wvlet: type the NULL as the column, as SQL's `= NULL`
-  | .eq (.col c) (.lit .null) => s!"{colName c} = null::{colType c}"
-  | .eq (.lit .null) (.col c) => s!"null::{colType c} = {colName c}"
-  | .eq a b => s!"{termWv a} = {termWv b}"
-  | .lt a b => s!"{termWv a} < {termWv b}"
-  | .isNull a => s!"{termWv a} is null"
-  | .inList a vs => s!"{termWv a} in {valuesWv vs}"
-  | .not (.inList a vs) => s!"{termWv a} not in {valuesWv vs}"
+  | .eq (.col c) (.lit .null) => s!"{name c} = null::{colType c}"
+  | .eq (.lit .null) (.col c) => s!"null::{colType c} = {name c}"
+  | .eq a b => s!"{termWv name a} = {termWv name b}"
+  | .lt a b => s!"{termWv name a} < {termWv name b}"
+  | .isNull a => s!"{termWv name a} is null"
+  | .inList a vs => s!"{termWv name a} in {valuesWv vs}"
+  | .not (.inList a vs) => s!"{termWv name a} not in {valuesWv vs}"
   | .not p => s!"not ({condWv p})"
   | .and p q => s!"({condWv p}) and ({condWv q})"
   | .or p q => s!"({condWv p}) or ({condWv q})"
+
+end Render
 
 private def a : Term := .col 0
 private def b : Term := .col 1
@@ -88,6 +107,8 @@ def sX_Y : Cond := .inList s [.str "x", .str "y"]
 def sX : Cond := .inList s [.str "x"]
 def sNullText : Cond := .eq s (.lit (.str "null"))
 def sNull : Cond := .eq s (.lit .null)
+def sTwoSpaces : Cond := .eq s (.lit (.str "x  y"))
+def sOneSpace : Cond := .eq s (.lit (.str "x y"))
 
 /-- Rows `(a, b, c, s)`, with NULLs in every column and a duplicate row. -/
 def tableRows : List (List Value) :=
@@ -101,7 +122,8 @@ def tableRows : List (List Value) :=
   , [.null, .bool false, .null, .str "x,y"]
   , [.null, .bool false, .bool true, .str "null"]
   , [int 3, .bool true, .bool false, .str "null"]
-  , [int 1, .bool true, .bool false, .str "x,y"] ]
+  , [int 1, .bool true, .bool false, .str "x,y"]
+  , [int 2, .bool false, .bool true, .str "x  y"] ]
 
 def mkRow (vs : List Value) : Row := fun i => vs.getD i .null
 
@@ -123,9 +145,20 @@ def cases : List (List (List Cond)) :=
   , [[sXY, bT], [sX_Y, cT]]
   , [[sX_Y, bT], [sX_Y, cT], [sX_Y]]
   , [[sNullText, bT], [sNull, cT]]
-  , [[sNullText, bT], [sNullText, cT]] ]
+  , [[sNullText, bT], [sNullText, cT]]
+  , [[bT, a1], [cT, a1]]
+  , [[sTwoSpaces, bT], [sOneSpace, cT]] ]
 
 def jrow (x : Row) : String := jarr ([0, 1, 2, 3].map fun i => jvalue (x i))
+
+/-- An uncorrelated subquery that is TRUE, so the replay can route a condition to the planner's
+copy of the rule (which factors conditions with subqueries) without changing its value. -/
+def existsWv : String := "exists { from [[1]] as u(x) }"
+
+/-- The condition over the join with `existsWv` added to each branch: the same value, with a
+subquery in every branch and a conjunct common to all of them. -/
+def existsBranchesWv (bs : List (List Cond)) : String :=
+  " or ".intercalate (bs.map fun br => s!"(({condWv joinColName (conj br)}) and {existsWv})")
 
 def jcase (bs : List (List Cond)) : String :=
   let e := disj (bs.map conj)
@@ -133,10 +166,12 @@ def jcase (bs : List (List Cond)) : String :=
   let n := match f with
     | some e' => (conjuncts e').length
     | none => 1
-  jobj [ ("where", jstr (condWv e))
+  jobj [ ("where", jstr (condWv colName e))
+       , ("joinWhere", jstr (condWv joinColName e))
+       , ("existsBranchesWhere", jstr (existsBranchesWv bs))
        , ("factored", if f.isSome then "true" else "false")
        , ("conjuncts", toString n)
-       , ("factoredWhere", jstr (condWv (f.getD e)))
+       , ("factoredWhere", jstr (condWv colName (f.getD e)))
        , ("rows", jarr ((filter e table).map jrow)) ]
 
 def fixture : String :=

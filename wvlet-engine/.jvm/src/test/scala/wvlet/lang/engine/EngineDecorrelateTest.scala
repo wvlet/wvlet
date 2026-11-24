@@ -460,4 +460,23 @@ class EngineDecorrelateTest extends UniTest:
     sameRows(cased).size shouldBe 24
   }
 
+  test("check an outer column for NULL in a correlated body, not as a correlation key") {
+    // Wvlet's `l.a is null` is `l.a = null`, a null check: as a key, it would never match
+    for (exists, want) <- Seq("exists" -> Seq("2|null"), "not exists" -> Seq("1|1", "3|null")) do
+      val query =
+        s"""from [[1, 1], [2, null], [3, null]] as l(i, a)
+           |where ${exists} { from [[1], [2]] as r(i) where r.i = l.i and l.a is null }"""
+          .stripMargin
+      val unit      = CompilationUnit.fromWvletString(query)
+      val r         = compiler.compileSingleUnit(unit)
+      given Context = r.context
+      val q = GenSQL.expand(EngineTPCHBench.queryOf(unit).getOrElse(fail(query)), summon[Context])
+      conformance.assertMatches(query, q)
+      engine
+        .execute(q)
+        .batches
+        .flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).mkString("|")))
+        .sorted shouldBe want
+  }
+
 end EngineDecorrelateTest

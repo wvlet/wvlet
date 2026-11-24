@@ -2,7 +2,8 @@
 Licensed under the Apache License, Version 2.0.
 
 Why factoring needs a faithful key and only the laws it uses: inputs where a key that identifies
-different conditions (`InList.sig` before this model, and `Const.sig` before the signature audit),
+different conditions (`InList.sig` before this model, `Const.sig` before the signature audit, and
+the planner's `exprName` key, which dropped a column's qualifier),
 or a rewrite that is a law of two-valued
 logic but not of SQL's three-valued logic, returns rows other than SQL's. Columns: `a` (0), `b`
 (1), `c` (2), `s` (3).
@@ -89,6 +90,36 @@ theorem oldLitSig_reads_text_as_null :
       (factoredRows oldLitSig nullTextCase
         [row [.null, .bool false, .bool true, .str "null"]]).length = 1 ∧
       (filter nullTextCase [row [.null, .bool false, .bool true, .str "null"]]).length = 0 := by
+  decide
+
+/-- The planner's key before this model replayed it (`exprName`): a column by its name without
+its input's qualifier, so `l.v` and `r.v` were one key. Here `c` stands for `r.v` and reads as
+`b` (`l.v`). Other conditions keep their structure. -/
+def oldNameTerm : Term → Term
+  | .col 2 => .col 1
+  | t => t
+
+def oldNameKey : Cond → Cond
+  | .eq x y => .eq (oldNameTerm x) (oldNameTerm y)
+  | .lt x y => .lt (oldNameTerm x) (oldNameTerm y)
+  | .isNull x => .isNull (oldNameTerm x)
+  | .not p => .not (oldNameKey p)
+  | .and p q => .and (oldNameKey p) (oldNameKey q)
+  | .or p q => .or (oldNameKey p) (oldNameKey q)
+  | c => c
+
+/-- `(b and a = 1) or (c and a = 1)`, as `(l.v and l.a = 1) or (r.v and l.a = 1)` over a join. -/
+def qualifierCase : Cond :=
+  .or (.and (isTrue b) (.eq a (.lit (.int 1)))) (.and (isTrue c) (.eq a (.lit (.int 1))))
+
+/-- The old planner key takes `b` out of both branches as if `c` were `b`, so it factors
+`b and a = 1`, which drops `a = 1, c` where SQL keeps the row. The condition itself as the key
+factors `a = 1 and (b or c)`, which keeps it. -/
+theorem oldExprName_drops_qualifier :
+    (factoredRows (K := Cond) id qualifierCase [row [.int 1, .bool false, .bool true]]).length = 1 ∧
+      (factoredRows oldNameKey qualifierCase
+        [row [.int 1, .bool false, .bool true]]).length = 0 ∧
+      (filter qualifierCase [row [.int 1, .bool false, .bool true]]).length = 1 := by
   decide
 
 /-- Dropping a conjunct with its negation, `(p and q) or (not p and q) = q`, is a law of
