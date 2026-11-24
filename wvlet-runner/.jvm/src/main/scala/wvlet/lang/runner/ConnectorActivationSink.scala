@@ -79,11 +79,7 @@ class ConnectorActivationSink(connectorName: String, connector: () => Connector)
       if request.params.contains("text") || !acceptsText then
         explicitArgs
       else
-        val rows = request
-          .connector
-          .queryJsonRows(
-            s"""select * from "${request.table}" limit ${ConnectorActivationSink.MaxAttachedRows}"""
-          )
+        val rows = request.jsonRows(ConnectorActivationSink.MaxAttachedRows)
         explicitArgs :+ ("text" -> JSONString(rows.mkString("\n")))
     target.invoke(toolName, JSONObject(args))
     logDelivered(request)

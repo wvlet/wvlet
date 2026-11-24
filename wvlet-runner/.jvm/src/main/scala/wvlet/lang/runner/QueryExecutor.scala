@@ -45,6 +45,8 @@ import wvlet.lang.runner.connector.LocalFileExport
 import wvlet.lang.engine.catalog.DataFileFormat
 import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.lang.runner.connector.ConnectorCatalogs
+import wvlet.lang.engine.catalog.MemTable
+import wvlet.lang.engine.catalog.StringRows
 import wvlet.lang.runner.engine.WvletEngineConnector
 import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.json.JSON
@@ -102,6 +104,9 @@ class QueryExecutor(
   private var activeEngine: ConnectorConfig = defaultProfile.defaultEngine
 
   private def activeDBConnector: DBConnector = dbConnectorProvider.getDBConnector(activeEngine)
+
+  // The active connector: a SQL engine, or the in-process wvlet engine
+  private def activeConnector: Connector = dbConnectorProvider.getConnector(activeEngine)
 
   // The in-process engine session when the active connector is a `wvlet` engine, which runs
   // typed plans directly instead of SQL
@@ -331,7 +336,7 @@ class QueryExecutor(
       .Using
       .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
         val flowExecutor = FlowExecutor(
-          activeDBConnector,
+          activeConnector,
           workEnv,
           registry = Some(store),
           engineResolver = Some(profileEngineResolver),
@@ -436,49 +441,54 @@ class QueryExecutor(
   /**
     * Execute flow runs embedded in a query plan and replace each RunFlow node with a reference to a
     * materialized flow-run summary table (stage, state, attempts, error), so that downstream query
-    * operators and test statements work on the summary rows via regular SQL
+    * operators and test statements read the summary rows
     */
-  private def runEmbeddedFlows(q: Relation)(using context: Context): Relation =
-    def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
+  private def runEmbeddedFlows(q: Relation)(using context: Context): Relation = q
+    .transformUp { case rf: RunFlow =>
+      val flow       = resolveFlow(rf)
+      val connector  = activeConnector
+      val flowResult =
+        scala
+          .util
+          .Using
+          .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
+            FlowExecutor(
+              connector,
+              workEnv,
+              registry = Some(store),
+              engineResolver = Some(profileEngineResolver),
+              defaultEngineName = activeEngine.name,
+              activationSinks = profileActivationSinks,
+              taskQueue = config.taskQueue,
+              itemStore = config.itemStore
+            ).execute(flow, args = rf.args)
+          }
 
-    q.transformUp { case rf: RunFlow =>
-        val flow       = resolveFlow(rf)
-        val connector  = activeDBConnector
-        val flowResult =
-          scala
-            .util
-            .Using
-            .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
-              FlowExecutor(
-                connector,
-                workEnv,
-                registry = Some(store),
-                engineResolver = Some(profileEngineResolver),
-                defaultEngineName = activeEngine.name,
-                activationSinks = profileActivationSinks,
-                taskQueue = config.taskQueue,
-                itemStore = config.itemStore
-              ).execute(flow, args = rf.args)
-            }
-
-        given monitor: QueryProgressMonitor = context.queryProgressMonitor
-
-        val summaryTable = s"__wv_flow_run_${flowResult.runId.toLowerCase}"
-        connector.execute(
-          s"""create or replace temp table "${summaryTable}" ("stage" varchar, "state" varchar, "attempts" bigint, "error" varchar)"""
-        )
-        if flowResult.stageResults.nonEmpty then
-          val rows = flowResult
-            .stageResults
-            .map { s =>
-              val err = s.error.map(e => sqlLit(e.getMessage)).getOrElse("null")
-              s"(${sqlLit(s.name)}, ${sqlLit(s.state.stateName)}, ${s.attempts}, ${err})"
-            }
-            .mkString(", ")
-          connector.execute(s"""insert into "${summaryTable}" values ${rows}""")
-        TableRef(DoubleQuotedIdentifier(summaryTable, rf.span), rf.span)
-      }
-      .asInstanceOf[Relation]
+      val summaryTable = s"__wv_flow_run_${flowResult.runId.toLowerCase}"
+      writeSummaryTable(
+        summaryTable,
+        List(
+          "stage"    -> DataType.StringType,
+          "state"    -> DataType.StringType,
+          "attempts" -> DataType.LongType,
+          "error"    -> DataType.StringType
+        ),
+        flowResult
+          .stageResults
+          .map { s =>
+            // Exceptions like NullPointerException may carry a null message
+            List(
+              s.name,
+              s.state.stateName,
+              s.attempts.toLong,
+              s.error.flatMap(e => Option(e.getMessage)).orNull
+            )
+          }
+          .toList
+      )
+      TableRef(DoubleQuotedIdentifier(summaryTable, rf.span), rf.span)
+    }
+    .asInstanceOf[Relation]
 
   end runEmbeddedFlows
 
@@ -486,11 +496,9 @@ class QueryExecutor(
     * Execute ad-hoc connector tool calls (`call <connector>.<tool>(...)`) embedded in a query plan
     * and replace each CallTool node with a reference to a materialized single-row invocation
     * summary table (connector, tool, status, content), so that downstream query operators and test
-    * statements work on the result via regular SQL
+    * statements read the result
     */
   private def runEmbeddedToolCalls(q: Relation)(using context: Context): Relation =
-    def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
-
     def jsonArgValue(toolName: String, e: Expression): JSON.JSONValue =
       e match
         case s: StringLiteral =>
@@ -588,22 +596,56 @@ class QueryExecutor(
             case other =>
               other.toJSON
 
-        given monitor: QueryProgressMonitor = context.queryProgressMonitor
-
         val summaryTable = s"__wv_call_${wvlet.uni.util.ULID.newULIDString.toLowerCase}"
-        activeDBConnector.execute(
-          s"""create or replace temp table "${summaryTable}" ("connector" varchar, "tool" varchar, "status" varchar, "content" varchar)"""
-        )
-        activeDBConnector.execute(
-          s"""insert into "${summaryTable}" values (${sqlLit(connectorName)}, ${sqlLit(
-              toolName
-            )}, ${sqlLit(status)}, ${sqlLit(content)})"""
+        writeSummaryTable(
+          summaryTable,
+          List("connector", "tool", "status", "content").map(_ -> DataType.StringType),
+          List(List(connectorName, toolName, status, content))
         )
         TableRef(DoubleQuotedIdentifier(summaryTable, ct.span), ct.span)
       }
       .asInstanceOf[Relation]
 
   end runEmbeddedToolCalls
+
+  /**
+    * Write a summary table (of `run flow` or a tool call) on the active engine as a temporary
+    * table: a temp table on SQL engines, an in-memory table (never in the warehouse) on the wvlet
+    * engine. Values are String, Long, or null
+    */
+  private def writeSummaryTable(
+      table: String,
+      columns: List[(String, DataType)],
+      rows: List[List[Any]]
+  )(using context: Context): Unit =
+    activeEngineSession match
+      case Some(session) =>
+        val schema = StringRows.schemaOf(columns)
+        val batch  = StringRows.toBatch(schema, rows.map(_.map(v => Option(v).map(_.toString))))
+        session.registerTemporary(MemTable(table, schema, Seq(batch)))
+      case None =>
+        given QueryProgressMonitor = context.queryProgressMonitor
+        def lit(v: Any): String    =
+          v match
+            case null =>
+              "null"
+            case n: Long =>
+              n.toString
+            case other =>
+              s"'${other.toString.replaceAll("'", "''")}'"
+        def sqlType(t: DataType): String =
+          t match
+            case DataType.LongType =>
+              "bigint"
+            case _ =>
+              "varchar"
+        val columnDefs = columns.map((n, t) => s""""${n}" ${sqlType(t)}""").mkString(", ")
+        activeDBConnector.execute(s"""create or replace temp table "${table}" (${columnDefs})""")
+        if rows.nonEmpty then
+          val values = rows.map(_.map(lit).mkString("(", ", ", ")")).mkString(", ")
+          activeDBConnector.execute(s"""insert into "${table}" values ${values}""")
+
+  end writeSummaryTable
 
   override protected def executeQuery(plan0: LogicalPlan)(using context: Context): QueryResult =
     // Tables resolved through a profile connector name must live on the engine active when
@@ -663,14 +705,19 @@ class QueryExecutor(
   private def executeQueryPlan(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")
-    (plan, activeEngineSession) match
+    // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
+    // summary tables
+    val rewritten =
+      plan match
+        case q: Relation =>
+          runEmbeddedToolCalls(runEmbeddedFlows(q))
+        case other =>
+          other
+    (rewritten, activeEngineSession) match
       case (q: Relation, Some(session)) =>
         workEnv.info(s"Executing on the wvlet engine:\n${q.pp}")
         session.execute(q, config.rowLimit)
-      case (q0: Relation, None) =>
-        // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
-        // summary tables
-        val q = runEmbeddedToolCalls(runEmbeddedFlows(q0))
+      case (q: Relation, None) =>
         // A query reading only local files runs on the in-process wvlet engine when the active
         // engine (e.g. Trino, Snowflake) can't see local files. DuckDB reads them itself
         def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")

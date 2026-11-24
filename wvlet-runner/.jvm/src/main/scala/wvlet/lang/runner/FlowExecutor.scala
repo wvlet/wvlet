@@ -28,7 +28,6 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.connector.CancellableStatement
 import wvlet.lang.connector.Connector
-import wvlet.lang.connector.DBConnector
 import wvlet.lang.runner.activity.ActivityExecutor
 import wvlet.lang.runner.activity.BatchConfig
 import wvlet.lang.runner.activity.BatchExecutor
@@ -37,7 +36,6 @@ import wvlet.lang.runner.activity.InMemoryItemStore
 import wvlet.lang.runner.activity.ItemStore
 import wvlet.lang.runner.activity.TaskQueue
 import wvlet.lang.runner.activity.TaskQueueActivityExecutor
-import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
 
@@ -686,11 +684,14 @@ class FlowExecutor(
                       s"[activate] stage ${ls
                           .name}: delivering materialized output ${table} to '${spec.target}'"
                     )
-                    val sinkConnector = defaultEngine
-                      .sqlConnector
-                      .getOrElse(FlowStageEngine.notOnEngine("activate"))
                     sink.activate(
-                      ActivationRequest(spec.target, spec.params, ls.name, table, sinkConnector)
+                      ActivationRequest(
+                        spec.target,
+                        spec.params,
+                        ls.name,
+                        table,
+                        defaultEngine.activationSource
+                      )
                     )
                   case None =>
                     workEnv.info(
@@ -1276,10 +1277,7 @@ class FlowExecutor(
     if hooks.nonEmpty then
       val summaryTable = s"__wv_flow_notify_${result.runId.toLowerCase}"
       try
-        // Activation sinks read the summary table through SQL
-        val sinkConnector = defaultEngine
-          .sqlConnector
-          .getOrElse(FlowStageEngine.notOnEngine("Flow notification (on_failure / on_success)"))
+        val source = defaultEngine.activationSource
         defaultEngine.replaceTableWithRows(
           summaryTable,
           List(
@@ -1314,13 +1312,7 @@ class FlowExecutor(
                       .runId}): delivering the run summary to '${spec.target}'"
                 )
                 sink.activate(
-                  ActivationRequest(
-                    spec.target,
-                    spec.params,
-                    result.flowName,
-                    summaryTable,
-                    sinkConnector
-                  )
+                  ActivationRequest(spec.target, spec.params, result.flowName, summaryTable, source)
                 )
               case None =>
                 workEnv.warn(
@@ -1528,9 +1520,9 @@ class FlowExecutor(
 
   /**
     * Replace TableScans that were resolved through a different connector with run-scoped staging
-    * tables materialized on the stage's engine. Rows move engine-independently as JSON lines
-    * (DBConnector.queryJsonRows) and land via DuckDB's read_json_auto; staging into engines without
-    * JSON ingestion is a follow-up
+    * tables materialized on the stage's engine. Rows move engine-independently as JSON lines and
+    * land via DuckDB's read_json_auto, or as an in-memory table on the wvlet engine; staging into
+    * other engines is a follow-up
     */
   private def stageForeignTables(
       body: Relation,
@@ -1545,22 +1537,21 @@ class FlowExecutor(
     val rewritten    = body
       .transformUp {
         case t @ TableScan(_, _, _, _, Some(sourceName)) if sourceName != engineName =>
-          if engine.dbType != DBType.DuckDB then
+          if engine.dbType != DBType.DuckDB && engine.dbType != DBType.Wvlet then
             throw StatusCode
               .NOT_IMPLEMENTED
               .newException(
                 s"Stage ${stageName} runs on '${engineName}' (${engine.dbType}) and reads " +
                   s"'${sourceName}.${t
                       .name
-                      .name}': staging into non-DuckDB engines is not supported yet"
+                      .name}': staging is supported only into DuckDB and the wvlet engine"
               )
           val stagingTable = stagedTables.getOrElseUpdate(
             (sourceName, t.name.fullName), {
               val source = resolveConnector(sourceName)
               stagedCount += 1
               val staging = tableFor(s"${stageName}__src${stagedCount}")
-              // Only DuckDB (a SQL engine) reaches here
-              materializeForeignTable(source, t, staging, engine.sqlConnector.get, engineName)
+              materializeForeignTable(source, t, staging, engine, engineName)
               staging
             }
           )
@@ -1582,17 +1573,16 @@ class FlowExecutor(
       source: Connector,
       table: TableScan,
       stagingTable: String,
-      engine: DBConnector,
+      engine: FlowStageEngine,
       engineName: String
   ): Unit =
     val qualifiedName = table.name.catalog.toList ++ table.name.schema.toList :+ table.name.name
-    val rowCount      = SourceTableStaging.stageTable(
+    val rowCount      = engine.stageForeignTable(
       source,
       qualifiedName,
-      engine,
-      engineName,
       stagingTable,
-      table.schema.fields
+      table.schema.fields,
+      engineName
     )
     workEnv.info(
       s"Staged ${table.connectorName.getOrElse("")}.${table

@@ -14,9 +14,7 @@
 package wvlet.lang.runner
 
 import wvlet.lang.api.StatusCode
-import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.connector.DBConnector
-import wvlet.lang.runner.connector.LocalFileExport
 import wvlet.uni.log.LogSupport
 
 import java.net.URI
@@ -24,7 +22,23 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
-import scala.util.Using
+
+/**
+  * Read access to a materialized table on the engine that holds it: a SQL engine or the in-process
+  * wvlet engine. Activation sinks read stage outputs through it
+  */
+trait ActivationSource:
+  /** The SQL connector of the engine, if it runs SQL (None on the in-process wvlet engine) */
+  def sqlConnector: Option[DBConnector]
+
+  /** Up to `limit` rows of the table, as JSON object strings */
+  def jsonRows(table: String, limit: Int): List[String]
+
+  /**
+    * Write every row of the table to a local file. `format` is csv (with a header row), parquet, or
+    * json (newline-delimited JSON objects)
+    */
+  def exportToFile(table: String, path: String, format: String): Unit
 
 /**
   * A delivery request of a materialized stage output to an activation target
@@ -37,16 +51,24 @@ import scala.util.Using
   *   The activating stage
   * @param table
   *   The run-scoped table holding the materialized stage output
-  * @param connector
-  *   Connector to the database holding the table
+  * @param source
+  *   Read access to the engine holding the table
   */
 case class ActivationRequest(
     target: String,
     params: Map[String, String],
     stageName: String,
     table: String,
-    connector: DBConnector
-)
+    source: ActivationSource
+):
+  /** Up to `limit` rows of the stage output, as JSON object strings */
+  def jsonRows(limit: Int): List[String] = source.jsonRows(table, limit)
+
+  /** Write the stage output to a local file (csv, parquet, or json) */
+  def exportToFile(path: String, format: String): Unit = source.exportToFile(table, path, format)
+
+  /** The SQL connector of the engine holding the table, if it runs SQL */
+  def sqlConnector: Option[DBConnector] = source.sqlConnector
 
 /**
   * A sink connector delivering materialized stage outputs to an external activation target
@@ -64,9 +86,9 @@ trait ActivationSink:
 /**
   * A built-in sink exporting the stage output to a local file: `activate('file', path: 'out.csv')`.
   * The format is taken from the `format:` parameter or the path extension (csv, parquet, or json;
-  * csv by default). Engines with native `COPY TO` support (DuckDB) write the file directly; other
-  * engines (e.g. Trino) stream the stage table's rows into the wvlet engine's file writers — the
-  * same path `save to` uses for local files on those engines
+  * csv by default). The engine holding the stage table writes the file ([[ActivationSource]]):
+  * DuckDB with `COPY TO`, the wvlet engine with its file writers, and other SQL engines (e.g.
+  * Trino) by streaming rows into the wvlet engine's file writers
   */
 class FileActivationSink extends ActivationSink with LogSupport:
   override def name: String = "file"
@@ -82,56 +104,17 @@ class FileActivationSink extends ActivationSink with LogSupport:
             s"activate('file') of stage ${request.stageName} requires a path: parameter"
           )
       )
-    val format       = request.params.get("format").orElse(extensionOf(path)).getOrElse("csv")
-    val formatClause =
-      format match
-        case "csv" =>
-          "(format csv, header)"
-        case "parquet" =>
-          "(format parquet)"
-        case "json" =>
-          "(format json)"
-        case other =>
-          throw StatusCode
-            .INVALID_ARGUMENT
-            .newException(
-              s"activate('file') of stage ${request.stageName}: unsupported format '${other}'"
-            )
-    val escapedPath = path.replaceAll("'", "''")
+    val format = request.params.get("format").orElse(extensionOf(path)).getOrElse("csv")
+    if !FileActivationSink.formats.contains(format) then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"activate('file') of stage ${request.stageName}: unsupported format '${format}'"
+        )
     info(s"Exporting stage ${request.stageName} output ${request.table} to ${path} (${format})")
-    if request.connector.dbType.supportSaveAsFile then
-      request
-        .connector
-        .withSession { conn =>
-          Using.resource(conn.createStatement()) { stmt =>
-            stmt.execute(
-              s"""copy (select * from "${request.table}") to '${escapedPath}' ${formatClause}"""
-            )
-          }
-        }
-    else
-      exportViaEngineWriter(request, path, format)
+    request.exportToFile(path, format)
 
   end activate
-
-  /**
-    * Export on engines without native `COPY TO`: stream the stage table page by page into the wvlet
-    * engine's file writers. Memory stays bounded by the source's result page size, and an empty
-    * stage output still produces a file carrying the schema (e.g. a header-only CSV)
-    */
-  private def exportViaEngineWriter(
-      request: ActivationRequest,
-      path: String,
-      format: String
-  ): Unit =
-    given QueryProgressMonitor    = QueryProgressMonitor.noOp
-    val options: Map[String, Any] =
-      format match
-        case "csv" =>
-          Map("format" -> "csv", "header" -> true)
-        case other =>
-          Map("format" -> other)
-    LocalFileExport.write(request.connector, s"""select * from "${request.table}"""", path, options)
 
   private def extensionOf(path: String): Option[String] =
     val name = path.substring(path.lastIndexOf('/') + 1)
@@ -142,6 +125,10 @@ class FileActivationSink extends ActivationSink with LogSupport:
       None
 
 end FileActivationSink
+
+object FileActivationSink:
+  /** File formats of `activate('file')` */
+  val formats: Set[String] = Set("csv", "parquet", "json")
 
 /**
   * A built-in sink posting the stage output to an HTTP endpoint:
@@ -214,10 +201,8 @@ class WebhookActivationSink(httpClient: => HttpClient = WebhookActivationSink.de
 
   /** Read up to maxRows rows of the stage table as JSON objects, reporting truncation */
   private def readRows(request: ActivationRequest, maxRows: Int): (List[String], Boolean) =
-    // Read one extra row to detect truncation; queryJsonRows is engine-independent (JDBC or HTTP)
-    val rows = request
-      .connector
-      .queryJsonRows(s"""select * from "${request.table}" limit ${maxRows + 1}""")
+    // Read one extra row to detect truncation
+    val rows = request.jsonRows(maxRows + 1)
     if rows.size > maxRows then
       (rows.take(maxRows), true)
     else

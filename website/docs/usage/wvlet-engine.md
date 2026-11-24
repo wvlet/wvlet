@@ -15,7 +15,7 @@ including ASOF joins, aggregations, window functions, subqueries, `pivot`, `unne
 `show` commands, and TPC-H), plus `save to`, `append to`, and `delete` on in-memory tables and
 `save to` / `append to` Parquet, CSV, and JSON files and Iceberg tables, and `create table`, `drop table`,
 `truncate`, and `create` / `drop schema`. Features it doesn't support yet report an error:
-`alter table`, views, `update`, `execute`, flow activations and notifications, table functions such as `read_csv(...)`, and some
+`alter table`, views, `update`, `execute`, table functions such as `read_csv(...)`, and some
 engine-specific functions. Map values run but can return results that
 differ from DuckDB.
 :::
