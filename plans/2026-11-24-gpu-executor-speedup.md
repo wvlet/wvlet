@@ -36,3 +36,19 @@ Lane: Standard. This is a multi-part performance change to an optional example m
 - **Casting decimal sums to FLOAT64:** fast, but inexact; results would differ from the CPU engine and DuckDB.
 - **Writing CUDA kernels (e.g. spark-rapids-jni's 128-bit chunk sum):** adds a native build to an example module. The INT64 split gets the same effect with stock cudf ops.
 - **Pinning whole tables up front like Sirius:** the column cache already keeps scanned columns on the device. The remaining gap is in compute, not loading.
+
+## Status (2026-11-24)
+
+- SF10, best of 3 hot runs: 0.75-0.79 s, against 2.57 s with every new feature off and 0.82 s for DuckDB + Sirius pinned. Results match DuckDB on spec/tpch and at SF10. See [the ADR](../adr/2026-11-24-gpu-executor-runtime-choices.md).
+- Landed, each a `GpuFeature` (A/B'd on the Spark; each listed with its main gain):
+  - `decimal_sum_split`: q1 478 to 292 ms.
+  - `decimal_narrow`: q1 to 168 ms.
+  - `constant_casts`, `upload_values`, `outer_residual`: q22, q16, and q13 move to the GPU; the suite went from 2.31 to 1.66 s.
+  - `bulk_copy`: q11 61 to 37 ms.
+  - `join_key_filter`: 1.64 to 1.09 s, with q17 at 0.10x and q9 at 0.27x.
+  - `distinct_count`: q16 146 to 44 ms.
+  - `implied_filters`: q7 128 to 28 ms.
+  - `prune_columns`: q13 107 to 76 ms.
+- Dropped: pushing residual conjuncts below the join made q13 slower, because the filter copied its strings once more.
+- Not done: cudf AST fusion (q1's remaining 127 ms is about one third filter copy, one third argument kernels, one third group-by) and sorted-key group-by (q18, about 20 ms by a microbenchmark).
+

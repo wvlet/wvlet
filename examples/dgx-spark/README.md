@@ -48,17 +48,20 @@ Same setup, with [`sirius-sf100.yaml`](sirius-sf100.yaml) (70% of memory for the
 
 ## Wvlet engine with GPU offload (SF10)
 
-[`wvlet-engine-gpu`](../../wvlet-engine-gpu) runs the plan subtrees of Wvlet's own engine that join or aggregate on the GPU through cudf-java, keeping scanned columns in GPU memory across queries; see [the ADR](../../adr/2026-11-24-engine-gpu-executor.md). Same Spark and data, JDK 25, best of 3 hot runs, GPU on and off in one JVM:
+[`wvlet-engine-gpu`](../../wvlet-engine-gpu) runs the plan subtrees of Wvlet's own engine that join or aggregate on the GPU through cudf-java, keeping scanned columns in GPU memory across queries; see [the ADR](../../adr/2026-11-24-engine-gpu-executor.md) and [its follow-up](../../adr/2026-11-24-gpu-executor-runtime-choices.md). Same Spark and data, JDK 25, best of 3 hot runs, GPU on and off in one JVM:
 
 | engine | total (s) | vs DuckDB CPU |
 | --- | ---: | ---: |
-| Wvlet engine, CPU | 10.99 | 0.31x |
+| Wvlet engine, CPU | 8.51 | 0.40x |
 | DuckDB CPU | 3.43 | 1.00x |
-| **Wvlet engine + GPU** | **2.63** | **1.30x** |
+| Wvlet engine + GPU, first version (#2363) | 2.63 | 1.30x |
+| **Wvlet engine + GPU** | **0.75-0.79** | **4.3-4.6x** |
 | DuckDB + Sirius, pinned | 0.82 | 4.18x |
 
-- 20 of 22 queries run as one GPU subtree (scans through joins, aggregation, and sort); q13 and q22 stay on the CPU. q4, q15, and q21 are 17-19x faster than the CPU engine; q1 (DECIMAL128 arithmetic) 1.4x; q16 is 1.3x slower.
-- Results match DuckDB on spec/tpch (`GpuTPCHTest`), and row counts match the CPU engine at SF10.
+- All 22 queries run as one GPU subtree. Against Sirius pinned, the Wvlet engine is faster on 9 queries: q9 (63 vs 93 ms), q18, q21, q16, q10, q20, q11, q15, and q22. The largest remaining gaps are q1 (127 vs 66 ms: filter, decimal arguments, and a group-by over 59M rows) and q13 (76 vs 18 ms: a left join with a residual).
+- The gains over the first version came from DECIMAL64 arithmetic and sums chosen by the data's value bounds, filtering join inputs by the other side's keys, predicates implied by OR filters, pruning unread join columns, and bringing q13, q16, and q22 onto the GPU. The CPU engine's 8.5 s here comes from the same JVM as the GPU run; the earlier 10.99 s came from a separate run.
+- Results match DuckDB on spec/tpch and at SF10 (`WVLET_GPU_TEST_DATA=target/tpch-sf10 ./sbt "engineGpu/testOnly *GpuTPCHTest"`).
+- Each optimization is a `GpuFeature`: `WVLET_GPU_DISABLE=<name>,...` turns features off, and `WVLET_GPU_BENCH_AB=<name>,...` compares them on and off in one JVM. `WVLET_GPU_PROFILE=1` logs the device time of each plan node.
 
 To run it on a Spark (JDK 17+ and this repository checked out there):
 

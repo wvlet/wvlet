@@ -17,7 +17,7 @@ NVIDIA's Sirius runs DuckDB plans on the GPU. On one DGX Spark (GB10, 128 GB of 
 
 ## Consequences
 
-- TPC-H SF10 on a DGX Spark (hot runs, columns cached): 2.63 s with GPU offload against 10.99 s on the CPU engine (4.2x), and 3.43 s for DuckDB on the CPU; DuckDB + Sirius with pinned tables takes 0.82 s. 20 of the 22 queries run as one GPU subtree; results match DuckDB on spec/tpch.
+- TPC-H SF10 on a DGX Spark (hot runs, columns cached): 2.63 s with GPU offload against 10.99 s on the CPU engine (4.2x), and 3.43 s for DuckDB on the CPU; DuckDB + Sirius with pinned tables takes 0.82 s. 20 of the 22 queries run as one GPU subtree; results match DuckDB on spec/tpch. [A follow-up](2026-11-24-gpu-executor-runtime-choices.md) brought this to 0.75-0.79 s with all 22 queries on the GPU.
 - Results are copied to the host once per GPU subtree, as one batch. Plans whose GPU subtree outputs many rows, or that need CPU-only nodes in the middle (window functions, outer joins with residuals, CTE reads), gain little.
 - The cache and the RMM pool share device memory: SF100 needs more than one GB10's pool for the whole suite and will evict. Spilling, chunked scans, and multi-GPU execution are not part of this example.
 - The engine's CPU paths are unchanged: without an accelerator, `Lowering` calls the same CPU lowering as before.
