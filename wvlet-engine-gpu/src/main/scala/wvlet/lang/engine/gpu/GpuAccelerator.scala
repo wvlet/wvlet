@@ -910,9 +910,15 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
   end streamAggregate
 
   private def filter(t: GTable, cond: VExpr): GTable =
-    val mask = GpuExprs.evalColumn(cond, PType.Bool, t.cols, t.rows)(using boundsOf(t))
+    val mask = predicate(cond, t)
     try filterBy(t, mask)
     finally mask.close()
+
+  /** Predicate `cond` (over `t`'s positions) as a BOOL8 column */
+  private def predicate(cond: VExpr, t: GTable): ColumnVector =
+    GpuExprs.evalPredicate(cond, t.cols, t.rows, config.isEnabled(GpuFeature.AstFilters))(using
+      boundsOf(t)
+    )
 
   /** The rows of `t` where `mask` is true, in order */
   private def filterBy(t: GTable, mask: ColumnVector): GTable =
@@ -975,10 +981,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     */
   private def maskedAggregate(a: Aggregate, f: Filter, input: GTable): GTable =
     using(input) { t =>
-      val evaluated =
-        GpuExprs.evalColumn(f.cond.lower(positions(f.child)), PType.Bool, t.cols, t.rows)(using
-          boundsOf(t)
-        )
+      val evaluated = predicate(f.cond.lower(positions(f.child)), t)
       // A NULL condition drops the row, as false does
       val mask =
         if evaluated.getNullCount == 0 then

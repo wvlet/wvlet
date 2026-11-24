@@ -124,6 +124,12 @@ enum GpuFeature(val featureName: String):
   /** Group by the INT32 codes of low-cardinality string scan columns (TPC-H q1) */
   case DictionaryKeys extends GpuFeature("dictionary_keys")
 
+  /**
+    * Evaluate the comparisons of a filter over fixed-width columns as one cudf AST kernel (TPC-H
+    * q6, q12, q19)
+    */
+  case AstFilters extends GpuFeature("ast_filters")
+
 end GpuFeature
 
 object GpuFeature:
