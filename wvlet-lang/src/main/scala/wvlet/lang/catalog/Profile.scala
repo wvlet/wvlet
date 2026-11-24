@@ -100,6 +100,21 @@ case class Profile(name: String, connectors: Seq[ConnectorConfig]):
         engine.copy(catalog = catalog.orElse(engine.catalog), schema = schema.orElse(engine.schema))
       }
 
+  /**
+    * Give every in-process `wvlet` connector (type `wvlet` without a host) that has no `warehouse`
+    * property this `warehouse` folder, so its tables persist there. Connectors with their own
+    * `warehouse` keep it
+    */
+  def withDefaultWarehouse(warehouse: String): Profile = copy(connectors =
+    connectors.map { c =>
+      if c.`type`.equalsIgnoreCase("wvlet") && c.host.isEmpty && !c.properties.contains("warehouse")
+      then
+        c.withProperty("warehouse", warehouse)
+      else
+        c
+    }
+  )
+
   /** Add a property to the default engine's connector config */
   def withProperty(key: String, value: Any): Profile = updateDefaultEngine(
     _.withProperty(key, value)

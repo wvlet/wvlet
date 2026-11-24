@@ -24,6 +24,12 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
     else
       s"${sys.props("user.home")}/.cache/wvlet/target"
 
+  /**
+    * The default folder of persistent tables of `wvlet build` and `wvlet flow` on the wvlet engine.
+    * The target folder is disposable: tables that can't be rebuilt need an explicit `warehouse`
+    */
+  def warehouseFolder: String = s"${targetFolder}/warehouse"
+
   def logFile: String   = s"${targetFolder}/wvlet-out.log"
   def errorFile: String = s"${targetFolder}/wvlet-err.log"
 

@@ -4,6 +4,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.flow.StageState
 import wvlet.lang.catalog.Profile
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.test.UniTest
@@ -30,7 +31,7 @@ class ModelBuildTest extends UniTest:
     dir.toAbsolutePath.toString
 
   private def build(dir: String, selectors: List[String] = Nil): FlowExecutionResult =
-    val plan = ModelBuildLauncher.plan(dir, workEnv, selectors)
+    val plan = ModelBuildLauncher.plan(dir, workEnv, selectors, DBType.DuckDB)
     ModelBuildLauncher.checkUpstreamsBuilt(plan, _ => connector)
     FlowExecutor(connector, workEnv).execute(plan.flow)(using plan.context)
 
@@ -101,7 +102,7 @@ class ModelBuildTest extends UniTest:
           |model mb_bound_src with { materialized: 'table' } = { from [[1]] as t(x) }
           |model mb_bound_down with { materialized: 'table' } = { from mb_bound_src }
           |""".stripMargin)
-    val plan = ModelBuildLauncher.plan(dir, workEnv, Nil)
+    val plan = ModelBuildLauncher.plan(dir, workEnv, Nil, DBType.DuckDB)
     plan.graph.get("mb_bound_src").map(_.targetName) shouldBe Some("memory.main.mb_bound_src")
     plan.sqlStatements.find(_._1.name == "mb_bound_down").get._2.mkString shouldContain
       "memory.main.mb_bound_src"
@@ -110,13 +111,13 @@ class ModelBuildTest extends UniTest:
   }
 
   test("derive the graph through ephemeral models") {
-    val plan = ModelBuildLauncher.plan(project(shop*), workEnv, Nil)
+    val plan = ModelBuildLauncher.plan(project(shop*), workEnv, Nil, DBType.DuckDB)
     plan.selected.map(_.name) shouldBe List("stg_orders", "customer_totals")
     plan.graph.upstreams("customer_totals") shouldBe List("stg_orders")
   }
 
   test("read a materialized upstream from its persisted relation") {
-    val plan     = ModelBuildLauncher.plan(project(shop*), workEnv, Nil)
+    val plan     = ModelBuildLauncher.plan(project(shop*), workEnv, Nil, DBType.DuckDB)
     val martSQL  = plan.sqlStatements.find(_._1.name == "customer_totals").get._2.mkString("\n")
     val stageSQL = plan.sqlStatements.find(_._1.name == "stg_orders").get._2.mkString("\n")
     martSQL shouldContain "mb_stg_orders"
@@ -128,7 +129,7 @@ class ModelBuildTest extends UniTest:
   test("select models with dbt-style selectors") {
     val dir                                = project(shop*)
     def selected(s: String*): List[String] = ModelBuildLauncher
-      .plan(dir, workEnv, s.toList)
+      .plan(dir, workEnv, s.toList, DBType.DuckDB)
       .selected
       .map(_.name)
     selected("customer_totals") shouldBe List("customer_totals")
@@ -145,7 +146,7 @@ class ModelBuildTest extends UniTest:
     val dir = project(shop*)
     List(List(""), List(","), List(" , ")).foreach { selectors =>
       val e = intercept[WvletLangException] {
-        ModelBuildLauncher.plan(dir, workEnv, selectors)
+        ModelBuildLauncher.plan(dir, workEnv, selectors, DBType.DuckDB)
       }
       e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
     }
@@ -154,7 +155,7 @@ class ModelBuildTest extends UniTest:
   private def cycleError(selectors: List[String], files: (String, String)*): WvletLangException =
     val dir = project(files*)
     intercept[WvletLangException] {
-      ModelBuildLauncher.plan(dir, workEnv, selectors)
+      ModelBuildLauncher.plan(dir, workEnv, selectors, DBType.DuckDB)
     }
 
   test("report a model that reads itself") {
@@ -217,7 +218,7 @@ class ModelBuildTest extends UniTest:
   test("reject unknown config keys") {
     val dir = project("m.wv" -> "model m with { materialised: 'table' } = { from [[1]] as t(x) }")
     val e   = intercept[WvletLangException] {
-      ModelBuildLauncher.plan(dir, workEnv, Nil)
+      ModelBuildLauncher.plan(dir, workEnv, Nil, DBType.DuckDB)
     }
     e.statusCode shouldBe StatusCode.INVALID_MODEL_CONFIG
     e.getMessage shouldContain "materialised"
@@ -228,7 +229,7 @@ class ModelBuildTest extends UniTest:
       "m.wv" -> "model m with { materialized: 'snapshot' } = { from [[1]] as t(x) }"
     )
     val e = intercept[WvletLangException] {
-      ModelBuildLauncher.plan(dir, workEnv, Nil)
+      ModelBuildLauncher.plan(dir, workEnv, Nil, DBType.DuckDB)
     }
     e.statusCode shouldBe StatusCode.INVALID_MODEL_CONFIG
   }
@@ -239,7 +240,7 @@ class ModelBuildTest extends UniTest:
         "model m(n: int) with { materialized: 'table' } = { from [[1]] as t(x) where x = n }"
     )
     val e = intercept[WvletLangException] {
-      ModelBuildLauncher.plan(dir, workEnv, Nil)
+      ModelBuildLauncher.plan(dir, workEnv, Nil, DBType.DuckDB)
     }
     e.statusCode shouldBe StatusCode.INVALID_MODEL_CONFIG
     e.getMessage shouldContain "parameters"
@@ -248,7 +249,7 @@ class ModelBuildTest extends UniTest:
   test("report a project without materialized models") {
     val dir = project("m.wv" -> "model m = { from [[1]] as t(x) }")
     val e   = intercept[WvletLangException] {
-      ModelBuildLauncher.plan(dir, workEnv, Nil)
+      ModelBuildLauncher.plan(dir, workEnv, Nil, DBType.DuckDB)
     }
     e.statusCode shouldBe StatusCode.MODEL_NOT_FOUND
   }
