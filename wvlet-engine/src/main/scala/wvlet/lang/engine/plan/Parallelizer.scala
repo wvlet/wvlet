@@ -160,7 +160,25 @@ object Parallelizer:
     * every input row, while DistinctOp keeps only the distinct ones
     */
   private def parallelDistinct(op: Operator, runner: TaskRunner)(using AboveBreakers): Boolean =
-    op.schema.size > 0 && pipeline(op, runner).isDefined
+    op.schema.size > 0 && startsPipeline(op)
+
+  /** Whether [[pipeline]] finds a pipeline in op, without building it */
+  private def startsPipeline(op: Operator)(using breakers: AboveBreakers): Boolean =
+    op match
+      case s: ScanOp =>
+        s.source.canSplit
+      case a: HashAggOp =>
+        breakers.enabled && a.keys.nonEmpty
+      case f: FilterOp =>
+        startsPipeline(f.child)
+      case p: ProjectOp =>
+        startsPipeline(p.child)
+      case j: HashJoinOp =>
+        startsPipeline(j.left)
+      case j: NestedLoopJoinOp =>
+        j.kind == JoinKind.Cross && j.cond.isEmpty && startsPipeline(j.left)
+      case _ =>
+        false
 
   private def alreadyDistinct(op: Operator): Boolean =
     op match
@@ -243,7 +261,7 @@ object Parallelizer:
             MorselOp(p.scan, p.rebuild, op.schema, runner, p.prepare, p.close, p.tail)
       case None =>
         op match
-          case a: HashAggOp if TwoPhaseAgg.supports(a) || a.keys.nonEmpty =>
+          case a: HashAggOp =>
             aggregate(a, runner)
           case f: FilterOp =>
             FilterOp(r(f.child), f.cond, f.keep).withLateGather(f.lateGather)
@@ -256,8 +274,6 @@ object Parallelizer:
             LimitOp(r(l.child), l.limit, l.offset)
           case s: SortOp =>
             SortOp(r(s.child), s.keys, s.limit, runner)
-          case a: HashAggOp =>
-            HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
           case d: DistinctOp
               if d.schema.size > 0 && (
                 d.child match

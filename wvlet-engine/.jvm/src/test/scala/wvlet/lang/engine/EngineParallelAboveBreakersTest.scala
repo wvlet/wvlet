@@ -16,6 +16,7 @@ package wvlet.lang.engine
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.TaskRunner
+import wvlet.lang.engine.plan.CardinalityEstimator
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.model.plan.Relation
@@ -99,6 +100,18 @@ class EngineParallelAboveBreakersTest extends UniTest:
     debug(plan)
     plan shouldContain "Scan[Aggregate]"
     explain(disabled, query) shouldNotContain "Scan[Aggregate]"
+  }
+
+  test("should estimate the rows above an aggregation as without the morsels") {
+    // Subquery plans read these estimates to choose join build sides
+    def estimate(e: WvletEngine): Double = partitioned {
+      withQuery(query) { q =>
+        val op = e.physicalPlan(q)
+        try CardinalityEstimator.rows(op)
+        finally op.close()
+      }
+    }
+    estimate(engine) shouldBe estimate(disabled)
   }
 
 end EngineParallelAboveBreakersTest
