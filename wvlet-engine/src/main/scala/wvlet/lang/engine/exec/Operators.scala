@@ -913,9 +913,28 @@ final class JoinBuild(
   // Multi-column integer keys packed into one Int64 key from the build key ranges, so the tables
   // compare one Long per candidate; null when the keys are not packed
   private var packer: KeyPacker = null
+  // A single integer key over a dense range: `directHeads(key - directMin)` is the first row with
+  // the key (DuckDB's perfect hash join, with chains for duplicate keys), so a probe neither hashes
+  // nor compares keys. `directStore` reads probe keys in the build key's representation. Null when
+  // the build uses hash tables
+  private var directHeads: Array[Int]          = null
+  private var directMin: Long                  = 0L
+  private var directStore: GroupTable.KeyStore = null
+
+  /** Whether no two build rows share a key, so every chain ends at its first row */
+  var uniqueKeys: Boolean = false
 
   /** The row with the same key after `row`, or -1 */
   inline def nextMatch(row: Int): Int = chain(row)
+
+  /**
+    * Whether a dense single integer key may use a direct index (`join_direct_index`); set before
+    * the build is made
+    */
+  var directIndex: Boolean = true
+
+  /** Whether the build probes through a direct index instead of hash tables (for tests) */
+  def usesDirectIndex: Boolean = directHeads != null
 
   /**
     * Build rows some probe matched, shared by the probe copies of a right / full join. Copies only
@@ -954,6 +973,88 @@ final class JoinBuild(
       else
         (Array[Vec](packer.pack(rawKeys, build.size)), IndexedSeq(PType.Int64))
     chain = Vec.filledInts(build.size, -1)
+    if directIndex && types.size == 1 then
+      buildDirect(keyVecs(0), types(0), valid, nv)
+    if directHeads == null then
+      buildHashed(keyVecs, types, valid, nv)
+    if trackMatches then
+      matched = new Array[Boolean](build.size)
+
+  end buildTable
+
+  /**
+    * The direct index of a single Int32 / Date / Int64 key whose range over the valid rows spans at
+    * most [[JoinBuild.DirectRangeFactor]] slots per row; leaves `directHeads` null otherwise
+    */
+  private def buildDirect(key: Vec, t: PType, valid: Array[Int], nv: Int): Unit =
+    if nv == 0 || !(t == PType.Int32 || t == PType.Date || t == PType.Int64) then
+      return
+    val store = GroupTable.KeyStore(t)
+    val norm  = store.normalize(key)
+    // The key of row r as a Long; valid rows have no NULL key
+    val ints: Array[Int] =
+      norm match
+        case v: IntVec =>
+          v.values
+        case _ =>
+          null
+    val longs: Array[Long] =
+      norm match
+        case v: LongVec =>
+          v.values
+        case _ =>
+          null
+    if ints == null && longs == null then
+      return
+    def keyAt(r: Int): Long =
+      if ints != null then
+        ints(r).toLong
+      else
+        longs(r)
+    var lo = Long.MaxValue
+    var hi = Long.MinValue
+    var j  = 0
+    while j < nv do
+      val a = keyAt(valid(j))
+      if a < lo then
+        lo = a
+      if a > hi then
+        hi = a
+      j += 1
+    val range = hi - lo
+    // A negative range overflowed a Long
+    if range < 0 ||
+      range >=
+        math.min(JoinBuild.DirectMaxSlots, math.max(1024L, nv.toLong * JoinBuild.DirectRangeFactor))
+    then
+      return
+    val heads = Vec.filledInts(range.toInt + 1, -1)
+    var dup   = false
+    // In reverse, so chains enumerate rows in input order
+    j = nv - 1
+    while j >= 0 do
+      val row = valid(j)
+      val k   = (keyAt(row) - lo).toInt
+      val h   = heads(k)
+      if h >= 0 then
+        dup = true
+      chain(row) = h
+      heads(k) = row
+      j -= 1
+    directMin = lo
+    directStore = store
+    uniqueKeys = !dup
+    directHeads = heads
+
+  end buildDirect
+
+  /** Hash tables over the valid rows, one per hash partition */
+  private def buildHashed(
+      keyVecs: Array[Vec],
+      types: IndexedSeq[PType],
+      valid: Array[Int],
+      nv: Int
+  ): Unit =
     if runner.parallelism > 1 && nv >= JoinBuild.MinParallelRows then
       parts = GroupTable.partitionCount(runner.parallelism)
     // Rows of each partition, in input order, and (with several partitions) their key hashes, so
@@ -982,6 +1083,7 @@ final class JoinBuild(
         byPos
     tables = new Array[GroupTable](parts)
     heads = new Array[Array[Int]](parts)
+    val uniqueParts             = new Array[Boolean](parts)
     def buildPart(p: Int): Unit =
       val rows = rowsOf(p)
       val n    = rows.length
@@ -1007,14 +1109,14 @@ final class JoinBuild(
         j -= 1
       tables(p) = table
       heads(p) = head
+      uniqueParts(p) = table.numGroups == n
     if parts == 1 then
       buildPart(0)
     else
       (0 until parts).map(p => runner.submit(() => buildPart(p))).foreach(_.get())
-    if trackMatches then
-      matched = new Array[Boolean](build.size)
+    uniqueKeys = !uniqueParts.contains(false)
 
-  end buildTable
+  end buildHashed
 
   /**
     * The first build row with the key of each probe row, or -1 when none has it (or the probe key
@@ -1028,7 +1130,9 @@ final class JoinBuild(
         probeKeys
       else
         Array[Vec](packer.pack(probeKeys, n))
-    if parts == 1 then
+    if directHeads != null then
+      directMatches(keys(0), n, out)
+    else if parts == 1 then
       val ids  = tables(0).lookup(keys, n)
       val head = heads(0)
       var i    = 0
@@ -1072,6 +1176,41 @@ final class JoinBuild(
 
   end firstMatches
 
+  /** [[firstMatches]] through the direct index */
+  private def directMatches(key: Vec, n: Int, out: Array[Int]): Unit =
+    val norm  = directStore.normalize(key)
+    val nulls = norm.nulls
+    val heads = directHeads
+    val lo    = directMin
+    val size  = heads.length.toLong
+    var i     = 0
+    norm match
+      case v: IntVec =>
+        val x = v.values
+        while i < n do
+          val k = x(i).toLong - lo
+          out(i) =
+            if k >= 0 && k < size && (nulls == null || !nulls(i)) then
+              heads(k.toInt)
+            else
+              -1
+          i += 1
+      case v: LongVec =>
+        val x = v.values
+        while i < n do
+          val k = x(i) - lo
+          // k < 0 also catches a subtraction that overflowed past Long.MaxValue
+          out(i) =
+            if k >= 0 && k < size && (nulls == null || !nulls(i)) then
+              heads(k.toInt)
+            else
+              -1
+          i += 1
+      case other =>
+        throw IllegalStateException(s"Unexpected join key vector: ${other.getClass.getSimpleName}")
+
+  end directMatches
+
 end JoinBuild
 
 object JoinBuild:
@@ -1081,6 +1220,15 @@ object JoinBuild:
     .get("wvlet.engine.partitionedJoinMinRows")
     .flatMap(_.toIntOption)
     .getOrElse(65536)
+
+  /**
+    * A direct index takes at most this many slots per build row: 4 bytes each, so at most 16 bytes
+    * per row, under what a hash table at half load takes
+    */
+  inline val DirectRangeFactor = 4
+
+  /** The most slots a direct index takes */
+  inline val DirectMaxSlots = 1L << 27
 
 /** How a right / full join tracks and emits build rows no probe row matched */
 enum OuterMode:
@@ -1118,7 +1266,12 @@ class HashJoinOp(
   override protected def details       =
     s"(${leftKeys.map(_.sig).mkString(",")} = ${rightKeys.map(_.sig).mkString(",")}${residual
         .map(r => s", residual=${r.sig}")
-        .getOrElse("")}${Operator.eagerTag(lateGather)})"
+        .getOrElse("")}${Operator.eagerTag(lateGather)}${
+        if directIndex then
+          ""
+        else
+          ", hashed"
+      })"
 
   /** The build this join probes */
   val joinBuild: JoinBuild =
@@ -1164,6 +1317,13 @@ class HashJoinOp(
 
   def withLateGather(enabled: Boolean): this.type =
     lateGather = enabled
+    this
+
+  /** Whether the build may use a direct index for a dense integer key (`join_direct_index`) */
+  def directIndex: Boolean = joinBuild.directIndex
+
+  def withDirectIndex(enabled: Boolean): this.type =
+    joinBuild.directIndex = enabled
     this
 
   private def rowsOf(b: Batch, idx: Array[Int], n: Int): Batch =
@@ -1231,6 +1391,15 @@ class HashJoinOp(
     var rIdx = new Array[Int](n)
     var np   = 0
     var i    = 0
+    if joinBuild.uniqueKeys then
+      // At most one match per probe row: the pairs fit, and no chain is read
+      while i < n do
+        val r = first(i)
+        if r >= 0 then
+          lIdx(np) = i
+          rIdx(np) = r
+          np += 1
+        i += 1
     while i < n do
       var r = first(i)
       while r >= 0 do

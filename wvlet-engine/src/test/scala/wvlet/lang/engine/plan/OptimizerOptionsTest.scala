@@ -63,6 +63,7 @@ class OptimizerOptionsTest extends UniTest:
         "presize_aggregates",
         "parallelize",
         "late_gather",
+        "join_direct_index",
         "concurrent_shared_ctes",
         "parallel_above_breakers",
         "parallel_agg_partitioning"
