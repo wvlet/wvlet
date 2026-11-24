@@ -145,6 +145,13 @@ enum Optimization(val name: String):
     */
   case ConcurrentSharedCTEs extends Optimization("concurrent_shared_ctes")
 
+  /**
+    * With `parallelize`, read the output of a grouped aggregation as a source split by batch, so
+    * that the filters, projections, join probes, and partial aggregations above it run as morsels
+    * instead of on the calling thread
+    */
+  case ParallelAboveBreakers extends Optimization("parallel_above_breakers")
+
 end Optimization
 
 object Optimization:

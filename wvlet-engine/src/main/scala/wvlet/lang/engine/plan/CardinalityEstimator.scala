@@ -29,6 +29,9 @@ object CardinalityEstimator:
   /** Estimated rows of op: source row counts, passed through every operator but joins */
   def rows(op: Operator): Double =
     op match
+      case s: ScanOp if s.source.isInstanceOf[BreakerSource] =>
+        // The output of an aggregation read as morsels: estimated as the aggregation itself
+        rows(s.source.asInstanceOf[BreakerSource].op)
       case s: ScanOp =>
         s.source.estimatedRows.map(_.toDouble).getOrElse(1e6)
       case b: BatchesOp =>
@@ -48,6 +51,8 @@ object CardinalityEstimator:
   /** Distinct values of output column i of op from source statistics, if traceable */
   def columnDistinct(op: Operator, i: Int): Option[Double] =
     op match
+      case s: ScanOp if s.source.isInstanceOf[BreakerSource] && s.columns.isEmpty =>
+        columnDistinct(s.source.asInstanceOf[BreakerSource].op, i)
       case s: ScanOp =>
         s.source.estimatedDistinct(s.sourceColumnName(i))
       case f: FilterOp =>

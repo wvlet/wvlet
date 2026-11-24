@@ -47,7 +47,8 @@ class EnginePresizeAggregatesTest extends UniTest:
             Seq(a.expectedGroups)
           case _ =>
             Nil
-      own ++ o.children.flatMap(hints)
+      // An aggregation read as morsels is a shared input of its scan
+      own ++ (o.children ++ o.sharedInputs).flatMap(hints)
     val rows = op
       .drain()
       .flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).toIndexedSeq))

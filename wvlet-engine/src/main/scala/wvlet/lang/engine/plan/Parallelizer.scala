@@ -25,11 +25,19 @@ import wvlet.lang.engine.vector.*
   */
 object Parallelizer:
 
-  def apply(op: Operator, runner: TaskRunner): Operator =
+  /**
+    * With `aboveBreakers`, the output of a grouped aggregation is a source whose parts are its
+    * batches, so that the filters, projections, and join probes above it run as morsels too
+    */
+  def apply(op: Operator, runner: TaskRunner, aboveBreakers: Boolean = true): Operator =
     if runner.parallelism <= 1 then
       op
     else
+      given AboveBreakers = AboveBreakers(aboveBreakers)
       rewrite(op, runner)
+
+  /** Whether pipelines start at the outputs of grouped aggregations ([[BreakerSource]]) */
+  private case class AboveBreakers(enabled: Boolean)
 
   /**
     * A scan and the operators over it that can run on parts of the scan independently:
@@ -43,26 +51,52 @@ object Parallelizer:
       rebuild: Operator => Operator,
       tail: Option[Operator => Operator],
       prepare: List[() => Unit],
-      close: List[() => Unit]
+      close: List[() => Unit],
+      hasWork: Boolean = false
   ):
-    /** Add an operator over the pipeline, the same over the parts and the tail */
-    def map(f: Operator => Operator): Pipeline = copy(
+    /**
+      * Add an operator over the pipeline, the same over the parts and the tail. `work`: whether it
+      * computes something (not only selects or renames columns)
+      */
+    def map(f: Operator => Operator, work: Boolean = true): Pipeline = copy(
       rebuild = x => f(rebuild(x)),
-      tail = tail.map(t => x => f(t(x)))
+      tail = tail.map(t => x => f(t(x))),
+      hasWork = hasWork || work
     )
 
   private def isOuterBuild(kind: JoinKind): Boolean = kind.tracksBuildMatches
 
-  private def pipeline(op: Operator, runner: TaskRunner): Option[Pipeline] =
+  private def pipeline(op: Operator, runner: TaskRunner)(using
+      breakers: AboveBreakers
+  ): Option[Pipeline] =
     op match
       case s: ScanOp if s.source.canSplit =>
         Some(Pipeline(s, x => x, None, Nil, Nil))
+      case a: HashAggOp if breakers.enabled && a.keys.nonEmpty =>
+        // The aggregation runs on the calling thread before any part starts (it parallelizes
+        // its own work); its output batches are the parts
+        val source = BreakerSource(aggregate(a, runner), "Aggregate")
+        Some(Pipeline(ScanOp(source, a.schema, None, None), x => x, None, Nil, List(source.close)))
       case f: FilterOp =>
         pipeline(f.child, runner).map(
           _.map(x => FilterOp(x, f.cond, f.keep).withLateGather(f.lateGather))
         )
       case pr: ProjectOp =>
-        pipeline(pr.child, runner).map(_.map(x => ProjectOp(x, pr.exprs, pr.schema)))
+        pipeline(pr.child, runner).map(
+          _.map(
+            x => ProjectOp(x, pr.exprs, pr.schema),
+            // Selecting, renaming, or adding constant columns (grouping sets) is not worth a task
+            work =
+              !pr
+                .exprs
+                .forall {
+                  case _: ColRef | _: Const =>
+                    true
+                  case _ =>
+                    false
+                }
+          )
+        )
       case j: HashJoinOp =>
         pipeline(j.left, runner).map { p =>
           // One join over the (itself parallelized) build input, whose build every copy shares
@@ -125,8 +159,26 @@ object Parallelizer:
     * parts are reduced to their distinct rows. Otherwise the partitioned aggregation would buffer
     * every input row, while DistinctOp keeps only the distinct ones
     */
-  private def parallelDistinct(op: Operator, runner: TaskRunner): Boolean =
-    op.schema.size > 0 && pipeline(op, runner).isDefined
+  private def parallelDistinct(op: Operator, runner: TaskRunner)(using AboveBreakers): Boolean =
+    op.schema.size > 0 && startsPipeline(op)
+
+  /** Whether [[pipeline]] finds a pipeline in op, without building it */
+  private def startsPipeline(op: Operator)(using breakers: AboveBreakers): Boolean =
+    op match
+      case s: ScanOp =>
+        s.source.canSplit
+      case a: HashAggOp =>
+        breakers.enabled && a.keys.nonEmpty
+      case f: FilterOp =>
+        startsPipeline(f.child)
+      case p: ProjectOp =>
+        startsPipeline(p.child)
+      case j: HashJoinOp =>
+        startsPipeline(j.left)
+      case j: NestedLoopJoinOp =>
+        j.kind == JoinKind.Cross && j.cond.isEmpty && startsPipeline(j.left)
+      case _ =>
+        false
 
   private def alreadyDistinct(op: Operator): Boolean =
     op match
@@ -140,7 +192,7 @@ object Parallelizer:
         false
 
   /** The distinct rows of a set operation input, unless they already are */
-  private def distinctInput(op: Operator, runner: TaskRunner): Operator =
+  private def distinctInput(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     op match
       case _: DistinctOp =>
         op
@@ -154,38 +206,63 @@ object Parallelizer:
       case _ =>
         op
 
-  private def rewrite(op: Operator, runner: TaskRunner): Operator =
+  /** A hash aggregation run in parallel: in two phases over a pipeline, or partitioned by key */
+  private def aggregate(a: HashAggOp, runner: TaskRunner)(using AboveBreakers): Operator =
+    def r(x: Operator): Operator = rewrite(x, runner)
+    if TwoPhaseAgg.supports(a) then
+      pipeline(a.child, runner) match
+        case Some(p) =>
+          TwoPhaseAgg.plan(a, p.scan, p.rebuild, p.tail, runner, p.prepare, p.close)
+        case None if a.keys.nonEmpty =>
+          PartitionedAggOp(
+            r(a.child),
+            a.keys,
+            a.aggs,
+            a.schema,
+            runner,
+            expectedGroups = a.expectedGroups
+          )
+        case None =>
+          HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
+    else if a.keys.nonEmpty then
+      // Any aggregate (DISTINCT, quantiles, ...): every group falls in one key partition
+      PartitionedAggOp(
+        r(a.child),
+        a.keys,
+        a.aggs,
+        a.schema,
+        runner,
+        expectedGroups = a.expectedGroups
+      )
+    else
+      HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
+
+  /**
+    * The column selections and renames between `op` and the grouped aggregation at the bottom of
+    * its pipeline, over `agg` (that aggregation, rewritten) instead
+    */
+  private def rebuildOver(op: Operator, agg: Operator): Operator =
+    op match
+      case p: ProjectOp =>
+        ProjectOp(rebuildOver(p.child, agg), p.exprs, p.schema)
+      case _ =>
+        agg
+
+  private def rewrite(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     def r(x: Operator): Operator = rewrite(x, runner)
     pipeline(op, runner) match
       case Some(p) =>
-        MorselOp(p.scan, p.rebuild, op.schema, runner, p.prepare, p.close, p.tail)
+        p.scan.source match
+          case b: BreakerSource if !p.hasWork =>
+            // Nothing above the aggregation worth running as morsels: keep the operators as they
+            // are over it
+            rebuildOver(op, b.op)
+          case _ =>
+            MorselOp(p.scan, p.rebuild, op.schema, runner, p.prepare, p.close, p.tail)
       case None =>
         op match
-          case a: HashAggOp if TwoPhaseAgg.supports(a) =>
-            pipeline(a.child, runner) match
-              case Some(p) =>
-                TwoPhaseAgg.plan(a, p.scan, p.rebuild, p.tail, runner, p.prepare, p.close)
-              case None if a.keys.nonEmpty =>
-                PartitionedAggOp(
-                  r(a.child),
-                  a.keys,
-                  a.aggs,
-                  a.schema,
-                  runner,
-                  expectedGroups = a.expectedGroups
-                )
-              case None =>
-                HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
-          case a: HashAggOp if a.keys.nonEmpty =>
-            // Any aggregate (DISTINCT, quantiles, ...): every group falls in one key partition
-            PartitionedAggOp(
-              r(a.child),
-              a.keys,
-              a.aggs,
-              a.schema,
-              runner,
-              expectedGroups = a.expectedGroups
-            )
+          case a: HashAggOp =>
+            aggregate(a, runner)
           case f: FilterOp =>
             FilterOp(r(f.child), f.cond, f.keep).withLateGather(f.lateGather)
           case p: ProjectOp =>
@@ -197,8 +274,6 @@ object Parallelizer:
             LimitOp(r(l.child), l.limit, l.offset)
           case s: SortOp =>
             SortOp(r(s.child), s.keys, s.limit, runner)
-          case a: HashAggOp =>
-            HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
           case d: DistinctOp
               if d.schema.size > 0 && (
                 d.child match
