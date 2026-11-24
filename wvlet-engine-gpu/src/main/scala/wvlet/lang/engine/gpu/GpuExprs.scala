@@ -22,6 +22,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.PType
 
+import java.math.BigDecimal as JBigDecimal
 import scala.util.Try
 
 /**
@@ -47,6 +48,15 @@ private[gpu] final class LitOperand(val s: Scalar) extends Operand:
   override def close(): Unit            = s.close()
 
 /**
+  * Upper bounds of the absolute values in each input column (None: unknown), for choosing DECIMAL64
+  * over DECIMAL128 by the data rather than by the declared precision. `narrow` turns this off.
+  */
+private[gpu] final case class Bounds(of: IndexedSeq[Option[JBigDecimal]], narrow: Boolean)
+
+private[gpu] object Bounds:
+  val none: Bounds = Bounds(IndexedSeq.empty, narrow = false)
+
+/**
   * Evaluates engine expressions ([[VExpr]] over input positions) with cudf. [[supports]] decides at
   * plan time whether an expression can run on the GPU with the CPU engine's semantics; [[eval]]
   * then computes it over a table of input columns.
@@ -56,7 +66,7 @@ object GpuExprs:
 
   // ---- plan-time support ----
 
-  def supports(e: VExpr): Boolean =
+  def supports(e: VExpr)(using GpuConfig): Boolean =
     e match
       case ColRef(_, p, _) =>
         dtypeOf(p).isDefined
@@ -214,7 +224,18 @@ object GpuExprs:
     case DatePart(component: String)
     case Substring(start: Int, length: Option[Int])
 
-  private def rowFn(f: RowFn): Option[GpuFn] =
+  /** An integer constant, also behind a cast of one (`cast(lit(1:int) as long)`) */
+  private def constLong(e: VExpr)(using cfg: GpuConfig): Option[Long] =
+    e match
+      case Const(n: (Int | Long | Short | Byte), _) =>
+        Some(n.asInstanceOf[Number].longValue())
+      case CastExpr(c: Const, p, false)
+          if p.isIntegral && cfg.isEnabled(GpuFeature.ConstantCasts) =>
+        constLong(c)
+      case _ =>
+        None
+
+  private def rowFn(f: RowFn)(using GpuConfig): Option[GpuFn] =
     f.name match
       case "date_part"
           if f.args.size == 1 && f.args.head.ptype == PType.Date && supports(f.args.head) =>
@@ -231,11 +252,10 @@ object GpuExprs:
               GpuFn.DatePart("day")
           }
       case "substring" if f.args.head.ptype == PType.Str && supports(f.args.head) =>
-        f.args.tail match
-          case Seq(Const(s: Long, _)) if s >= 1 && s < Int.MaxValue =>
+        f.args.tail.map(constLong) match
+          case Seq(Some(s)) if s >= 1 && s < Int.MaxValue =>
             Some(GpuFn.Substring(s.toInt, None))
-          case Seq(Const(s: Long, _), Const(n: Long, _))
-              if s >= 1 && n >= 0 && s + n < Int.MaxValue =>
+          case Seq(Some(s), Some(n)) if s >= 1 && n >= 0 && s + n < Int.MaxValue =>
             Some(GpuFn.Substring(s.toInt, Some(n.toInt)))
           case _ =>
             None
@@ -245,7 +265,7 @@ object GpuExprs:
   // ---- evaluation ----
 
   /** Evaluate `e` over `input` (columns by position, `rows` rows each) */
-  def eval(e: VExpr, input: IndexedSeq[ColumnVector], rows: Int): Operand =
+  def eval(e: VExpr, input: IndexedSeq[ColumnVector], rows: Int)(using Bounds): Operand =
     e match
       case ColRef(i, _, _) =>
         ColOperand(input(i), owned = false)
@@ -255,7 +275,8 @@ object GpuExprs:
         arith(a, input, rows)
       case Negate(c) =>
         val d = dtype(c.ptype)
-        withOperand(eval(c, input, rows)) { o =>
+        // In the declared type: a narrowed DECIMAL64 child would not match the zero's type
+        withOperand(evalAs(c, c.ptype, input, rows)) { o =>
           val zero =
             if d.isDecimalType then
               Scalar.fromDecimal(java.math.BigInteger.ZERO, d)
@@ -322,7 +343,8 @@ object GpuExprs:
       case c: CastExpr =>
         evalAs(c.child, c.ptype, input, rows)
       case f: RowFn =>
-        rowFn(f).get match
+        // Supported at plan time, with the features of the accelerator that offloaded it
+        rowFn(f)(using GpuConfig()).get match
           case GpuFn.DatePart(part) =>
             withColumn(eval(f.args.head, input, rows), rows) { cv =>
               val p =
@@ -352,13 +374,87 @@ object GpuExprs:
           .newException(s"Unsupported expression on the GPU: ${other.sig}")
 
   /** Evaluate `e` as a column of `rows` values of type `p` */
-  def evalColumn(e: VExpr, p: PType, input: IndexedSeq[ColumnVector], rows: Int): ColumnVector =
+  def evalColumn(e: VExpr, p: PType, input: IndexedSeq[ColumnVector], rows: Int)(using
+      b: Bounds = Bounds.none
+  ): ColumnVector =
     val o = evalAs(e, p, input, rows)
     try o.toColumn(rows)
     finally o.close()
 
+  /**
+    * [[evalColumn]], except that a decimal of type `p` may come back as DECIMAL64 at the same scale
+    * when the value bounds allowed computing it in 64 bits. Every consumer of such a column casts it
+    * to the type it needs, and the host copy reads both widths.
+    */
+  def evalColumnNarrow(e: VExpr, p: PType, input: IndexedSeq[ColumnVector], rows: Int)(using
+      b: Bounds
+  ): ColumnVector =
+    p match
+      case d: PType.Decimal if b.narrow =>
+        val o = eval(e, input, rows)
+        try
+          val cv = o.toColumn(rows)
+          val t  = cv.getType
+          if t.getTypeId == DType.DTypeEnum.DECIMAL64 && t.getScale == -d.scale || t == dtype(d) then
+            cv
+          else
+            try cv.castTo(dtype(d))
+            finally cv.close()
+        finally o.close()
+      case _ =>
+        evalColumn(e, p, input, rows)
+
+  /** An upper bound of |e| over the input rows, or None when unknown */
+  def bound(e: VExpr)(using b: Bounds): Option[JBigDecimal] =
+    if !b.narrow then
+      None
+    else
+      e match
+        case ColRef(i, _, _) =>
+          b.of.lift(i).flatten
+        case Const(v, _) =>
+          v match
+            case null =>
+              Some(JBigDecimal.ZERO)
+            case d: JBigDecimal =>
+              Some(d.abs())
+            case d: scala.math.BigDecimal =>
+              Some(d.bigDecimal.abs())
+            case n: (Int | Long | Short | Byte) =>
+              Some(JBigDecimal.valueOf(n.asInstanceOf[Number].longValue()).abs())
+            case _ =>
+              None
+        case a: Arith =>
+          a.op match
+            case ArithOp.Add | ArithOp.Sub =>
+              bound(a.left).zip(bound(a.right)).map(_.add(_))
+            case ArithOp.Mul =>
+              bound(a.left).zip(bound(a.right)).map(_.multiply(_))
+            case _ =>
+              None
+        case Negate(c) =>
+          bound(c)
+        case c: CastExpr if !c.tryCast && (c.ptype.isDecimal || c.ptype.isIntegral) =>
+          // Only exact casts run on the device (see castable)
+          bound(c.child)
+        case cw: CaseWhen =>
+          val vs = cw.whens.map(w => bound(w._2)) ++
+            cw.elseExpr.map(bound).orElse(Some(Some(JBigDecimal.ZERO)))
+          Option.when(vs.forall(_.isDefined))(vs.flatten.reduce((x, y) => x.max(y)))
+        case _ =>
+          None
+
+  /** Whether |value| <= bound has an unscaled value at `scale` within DECIMAL64's 18 digits */
+  private def fits64(bound: Option[JBigDecimal], scale: Int): Boolean = bound.exists(
+    _.movePointRight(scale).compareTo(Limit64) < 0
+  )
+
+  private val Limit64 = JBigDecimal.TEN.pow(18)
+
   /** Evaluate `e`, cast to `p` when its type differs */
-  def evalAs(e: VExpr, p: PType, input: IndexedSeq[ColumnVector], rows: Int): Operand =
+  def evalAs(e: VExpr, p: PType, input: IndexedSeq[ColumnVector], rows: Int)(using
+      Bounds
+  ): Operand =
     e match
       case Const(v, _) if e.ptype != p =>
         // Convert constants on the host, exactly
@@ -434,15 +530,36 @@ object GpuExprs:
       op: BinaryOp,
       input: IndexedSeq[ColumnVector],
       rows: Int
-  ): Operand =
+  )(using Bounds): Operand =
     withOperand(evalAs(l, PType.Bool, input, rows)) { lo =>
       withOperand(evalAs(r, PType.Bool, input, rows)) { ro =>
         binary(lo, ro, op, DType.BOOL8, rows)
       }
     }
 
-  private def arith(a: Arith, input: IndexedSeq[ColumnVector], rows: Int): Operand =
-    val out = dtype(a.ptype)
+  private def arith(a: Arith, input: IndexedSeq[ColumnVector], rows: Int)(using Bounds): Operand =
+    val declared = dtype(a.ptype)
+    val out      =
+      a.ptype match
+        case d: PType.Decimal if declared.getTypeId == DType.DTypeEnum.DECIMAL128 =>
+          // The declared precision needs 128 bits, but the values may not: when the bounds of the
+          // result and of each side fit 18 digits at their scales, compute in DECIMAL64
+          val (ls, rs) = (scaleOf(a.left.ptype).get, scaleOf(a.right.ptype).get)
+          val sideScales =
+            a.op match
+              case ArithOp.Mul =>
+                (ls, rs)
+              case _ =>
+                // Add and subtract rescale both sides to the result's scale
+                (d.scale, d.scale)
+          if fits64(bound(a), d.scale) && fits64(bound(a.left), sideScales._1) &&
+            fits64(bound(a.right), sideScales._2)
+          then
+            DType.create(DType.DTypeEnum.DECIMAL64, -d.scale)
+          else
+            declared
+        case _ =>
+          declared
     a.ptype match
       case d: PType.Decimal =>
         // Each side keeps its own scale, in the output's width (DECIMAL64 or DECIMAL128)
@@ -525,7 +642,7 @@ object GpuExprs:
       negate: Boolean,
       input: IndexedSeq[ColumnVector],
       rows: Int
-  ): Operand =
+  )(using Bounds): Operand =
     val vs                   = values.toSeq
     val search: ColumnVector =
       c.ptype match
@@ -572,7 +689,9 @@ object GpuExprs:
 
   end inList
 
-  private def caseWhen(cw: CaseWhen, input: IndexedSeq[ColumnVector], rows: Int): Operand =
+  private def caseWhen(cw: CaseWhen, input: IndexedSeq[ColumnVector], rows: Int)(using
+      Bounds
+  ): Operand =
     // From the last branch: each WHEN chooses between its value and the branches after it
     var acc: ColumnVector =
       cw.elseExpr match

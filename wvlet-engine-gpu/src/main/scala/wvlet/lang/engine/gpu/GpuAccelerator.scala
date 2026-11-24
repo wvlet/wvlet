@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.gpu
 
+import ai.rapids.cudf.BinaryOp
 import ai.rapids.cudf.ColumnVector
 import ai.rapids.cudf.DType
 import ai.rapids.cudf.GroupByAggregation
@@ -32,6 +33,7 @@ import wvlet.lang.engine.runtime.RuntimePlan.*
 import wvlet.lang.engine.vector.*
 import wvlet.uni.log.LogSupport
 
+import scala.util.chaining.*
 import scala.util.control.NonFatal
 
 /**
@@ -48,9 +50,8 @@ class GpuAccelerator(config: GpuConfig = GpuConfig.fromEnv())
     with LogSupport:
   def name: String = "gpu"
 
-  private lazy val cache: GpuColumnCache =
-    val pool = GpuRuntime.init(config)
-    GpuColumnCache((pool * config.cacheFraction).toLong)
+  // One cache per JVM, so that accelerators with different settings (A/B runs) share columns
+  private def cache: GpuColumnCache = GpuAccelerator.sharedCache(config)
 
   /** The columns cached on the device */
   def columnCache: GpuColumnCache = cache
@@ -60,17 +61,44 @@ class GpuAccelerator(config: GpuConfig = GpuConfig.fromEnv())
     // them back to the host costs more than the CPU's own scan (TPC-H q13 and q22 read o_comment
     // and c_phone this way), so such subtrees stay on the CPU
     // and planning never touches the device: it is initialized when a GPU operator first runs
-    if GpuRuntime.isAvailable && GpuPlans.reduces(p) && GpuPlans.supports(p) then
-      Some(GpuOp(p, () => GpuPlans(cache), () => cpu(p)))
+    if GpuRuntime.isAvailable && GpuPlans.reduces(p) && GpuPlans.supports(p)(using config) then
+      Some(GpuOp(p, () => GpuPlans(cache, config), () => cpu(p)))
     else
       None
 
 end GpuAccelerator
 
-/** The device result of a plan node: owned columns, positionally matching the node's output */
-private[gpu] final class GTable(val cols: IndexedSeq[ColumnVector], val rows: Int)
-    extends AutoCloseable:
-  def table: Table           = Table(cols*)
+object GpuAccelerator:
+  private var cache: GpuColumnCache = null
+
+  /** The column cache of this JVM, sized by the config of the first accelerator that runs */
+  private[gpu] def sharedCache(config: GpuConfig): GpuColumnCache = synchronized {
+    if cache == null then
+      val pool = GpuRuntime.init(config)
+      cache = GpuColumnCache((pool * config.cacheFraction).toLong)
+    cache
+  }
+
+/**
+  * The device result of a plan node: owned columns, positionally matching the node's output, and an
+  * upper bound of the absolute values of each numeric column where known (see [[Bounds]])
+  */
+private[gpu] final class GTable(
+    val cols: IndexedSeq[ColumnVector],
+    val rows: Int,
+    boundsOrEmpty: IndexedSeq[Option[java.math.BigDecimal]] = IndexedSeq.empty
+) extends AutoCloseable:
+  val bounds: IndexedSeq[Option[java.math.BigDecimal]] =
+    if boundsOrEmpty.isEmpty then
+      IndexedSeq.fill(cols.size)(None)
+    else
+      boundsOrEmpty
+
+  def table: Table = Table(cols*)
+
+  /** These columns with the given bounds (a row subset of a table keeps its bounds) */
+  def withBounds(b: IndexedSeq[Option[java.math.BigDecimal]]): GTable = GTable(cols, rows, b)
+
   override def close(): Unit = cols.foreach(_.close())
 
 private[gpu] object GTable:
@@ -82,11 +110,134 @@ private[gpu] object GTable:
       )
     finally t.close()
 
+/**
+  * How one aggregate call runs in a group-by: its owned input columns (none for count(*)), one
+  * cudf aggregation per input, and how the per-group results combine into the call's value
+  */
+private[gpu] final class AggInput(
+    val cols: IndexedSeq[ColumnVector],
+    val aggs: IndexedSeq[GroupByAggregation],
+    combineResults: IndexedSeq[ColumnVector] => ColumnVector = r => r.head.incRefCount()
+) extends AutoCloseable:
+  /** The call's value per group, as an owned column, from the borrowed group-by results */
+  def combine(results: IndexedSeq[ColumnVector]): ColumnVector = combineResults(results)
+  override def close(): Unit                                   = cols.foreach(_.close())
+
+private[gpu] object AggInput:
+  def single(col: ColumnVector, c: AggregateCall): AggInput = AggInput(
+    IndexedSeq(col),
+    IndexedSeq(GpuPlans.aggregation(c))
+  )
+
+/**
+  * Exact decimal sums without 128-bit accumulators. cudf's hash group-by has no 128-bit atomic add,
+  * so a DECIMAL128 sum takes its slower sort-based path for the whole group-by (TPC-H q1: 310 ms
+  * against 25 ms). When every value fits in 64 bits, each is split into its high (signed) and low
+  * (unsigned) 32 bits, both halves are summed as INT64, which cannot overflow below 2^31 rows, and
+  * the sums are combined in 128 bits over the groups.
+  */
+private[gpu] object DecimalSum:
+  import GpuPlans.using
+
+  /** The split inputs of a sum over `arg` (a decimal column at `scale`), or None if a value is wider than 64 bits */
+  def split(arg: ColumnVector, scale: Int): Option[AggInput] =
+    val d64 = DType.create(DType.DTypeEnum.DECIMAL64, -scale)
+    val narrow: Option[ColumnVector] =
+      if arg.getType == d64 then
+        Some(arg.incRefCount())
+      else if fitsLong(arg) then
+        Some(arg.castTo(d64))
+      else
+        None
+    narrow.map { n =>
+      try
+        val v = n.bitCastTo(DType.INT64)
+        try
+          val hi =
+            using(Scalar.fromInt(32))(k => v.binaryOp(BinaryOp.SHIFT_RIGHT, k, DType.INT64))
+          val lo =
+            try
+              using(Scalar.fromLong(0xffffffffL))(m =>
+                v.binaryOp(BinaryOp.BITWISE_AND, m, DType.INT64)
+              )
+            catch
+              case e: Throwable =>
+                hi.close()
+                throw e
+          AggInput(
+            IndexedSeq(hi, lo),
+            IndexedSeq(GroupByAggregation.sum(), GroupByAggregation.sum()),
+            r => combine(r(0), r(1), scale)
+          )
+        finally v.close()
+      finally n.close()
+    }
+
+  /** Whether every value of a DECIMAL128 column has an unscaled value within a Long */
+  private def fitsLong(cv: ColumnVector): Boolean =
+    def ok(s: Scalar): Boolean =
+      try !s.isValid || s.getBigDecimal.unscaledValue().bitLength() < 64
+      finally s.close()
+    ok(cv.min()) && ok(cv.max())
+
+  /** hi * 2^32 + lo as DECIMAL128 at `scale`, from the INT64 sums of the two halves */
+  private def combine(hiSum: ColumnVector, loSum: ColumnVector, scale: Int): ColumnVector =
+    val d0 = DType.create(DType.DTypeEnum.DECIMAL128, 0)
+    using(hiSum.castTo(d0)) { hi =>
+      using(Scalar.fromDecimal(java.math.BigInteger.ONE.shiftLeft(32), d0)) { two32 =>
+        using(hi.mul(two32, d0)) { h =>
+          using(loSum.castTo(d0)) { lo =>
+            using(h.add(lo, d0)) { unscaled =>
+              // Reinterpret the unscaled sum at the scale: multiply by 1 at that scale
+              val ds = DType.create(DType.DTypeEnum.DECIMAL128, -scale)
+              using(Scalar.fromDecimal(java.math.BigInteger.ONE, ds))(one => unscaled.mul(one, ds))
+            }
+          }
+        }
+      }
+    }
+
+end DecimalSum
+
 /** Plan-time support checks and device execution of runtime plan nodes */
-private[gpu] class GpuPlans(cache: GpuColumnCache):
+private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends LogSupport:
   import GpuPlans.*
 
+  private var depth = 0
+
+  /** The value bounds of `t`'s columns, for evaluating expressions over them */
+  private def boundsOf(t: GTable): Bounds =
+    Bounds(t.bounds, config.isEnabled(GpuFeature.DecimalNarrow))
+
   def exec(p: RuntimePlan): GTable =
+    if config.profile then
+      // Device time of each node, children included (the device is synchronized after each)
+      val start = System.nanoTime()
+      depth += 1
+      val t =
+        try execNode(p)
+        finally depth -= 1
+      ai.rapids.cudf.Cuda.DEFAULT_STREAM.sync()
+      info(
+        f"${"  " * depth}${p.getClass.getSimpleName}: ${t.rows}%,d rows, ${(System.nanoTime() -
+            start) / 1e6}%.1f ms"
+      )
+      t
+    else
+      execNode(p)
+
+  /** Run `body`, and with profiling on, log its device time */
+  private inline def timed[A](label: => String)(body: => A): A =
+    if config.profile then
+      val start = System.nanoTime()
+      val a     = body
+      ai.rapids.cudf.Cuda.DEFAULT_STREAM.sync()
+      info(f"${"  " * (depth + 1)}. ${label}: ${(System.nanoTime() - start) / 1e6}%.1f ms")
+      a
+    else
+      body
+
+  private def execNode(p: RuntimePlan): GTable =
     p match
       case s: Scan =>
         scan(s)
@@ -94,12 +245,15 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
         using(exec(child))(t => filter(t, cond.lower(positions(child))))
       case Project(child, exprs, columns) =>
         using(exec(child)) { t =>
-          val pos = positions(child)
+          val pos      = positions(child)
+          given Bounds = boundsOf(t)
+          val lowered  = exprs.map(_.lower(pos))
           GTable(
             buildAll(exprs.size)(i =>
-              GpuExprs.evalColumn(exprs(i).lower(pos), columns(i).ptype, t.cols, t.rows)
+              GpuExprs.evalColumnNarrow(lowered(i), columns(i).ptype, t.cols, t.rows)
             ),
-            t.rows
+            t.rows,
+            lowered.map(GpuExprs.bound)
           )
         }
       case a: Aggregate =>
@@ -111,16 +265,24 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
           val from = math.min(offset, t.rows.toLong).toInt
           // limit may be Long.MaxValue (an OFFSET without LIMIT): don't add it to from
           val to = from + math.min(limit, (t.rows - from).toLong).toInt
-          GTable(t.cols.map(_.subVector(from, to)), to - from)
+          GTable(t.cols.map(_.subVector(from, to)), to - from, t.bounds)
         }
       case j: Join =>
         join(j)
+      case Values(columns, rows) =>
+        // A constant relation (e.g. a subquery result computed at plan time): upload its rows
+        GTable(
+          buildAll(columns.size)(i => GpuTypes.fromVec(rows.column(i), columns(i).ptype, rows.size)),
+          rows.size
+        )
       case Distinct(child) =>
         using(exec(child)) { t =>
           using(t.table) { tbl =>
-            GTable.of(
-              tbl.dropDuplicates(t.cols.indices.toArray, Table.DuplicateKeepOption.KEEP_ANY, true)
-            )
+            GTable
+              .of(
+                tbl.dropDuplicates(t.cols.indices.toArray, Table.DuplicateKeepOption.KEEP_ANY, true)
+              )
+              .withBounds(t.bounds)
           }
         }
       case other =>
@@ -133,6 +295,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
     val cols =
       GpuPlans.buildAll(s.columns.size) { i =>
         val cv = cache.column(src.path, s.sourceColumnName(i))
+        // Casts to the declared type keep the values
         val d  = GpuTypes.dtype(s.columns(i).ptype)
         if cv.getType == d then
           cv
@@ -146,11 +309,13 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
         0
       else
         cols.head.getRowCount.toInt
+      ,
+      s.columns.indices.map(i => cache.bound(src.path, s.sourceColumnName(i)))
     )
 
   private def filter(t: GTable, cond: VExpr): GTable =
-    val mask = GpuExprs.evalColumn(cond, PType.Bool, t.cols, t.rows)
-    try using(t.table)(tbl => GTable.of(tbl.filter(mask)))
+    val mask = GpuExprs.evalColumn(cond, PType.Bool, t.cols, t.rows)(using boundsOf(t))
+    try using(t.table)(tbl => GTable.of(tbl.filter(mask)).withBounds(t.bounds))
     finally mask.close()
 
   private def sort(
@@ -183,7 +348,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
             order.incRefCount()
           else
             order.subVector(0, n)
-        try using(t.table)(tbl => GTable.of(tbl.gather(map)))
+        try using(t.table)(tbl => GTable.of(tbl.gather(map)).withBounds(t.bounds))
         finally map.close()
       finally
         order.close()
@@ -194,17 +359,17 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
 
   private def aggregate(a: Aggregate): GTable =
     using(exec(a.child)) { t =>
-      val pos  = positions(a.child)
-      val keys =
+      val pos      = positions(a.child)
+      given Bounds = boundsOf(t)
+      val keys     =
         buildAll(a.keys.size)(i =>
           GpuExprs.evalColumn(a.keys(i).lower(pos), a.keys(i).ptype, t.cols, t.rows)
         )
-      // One input column per call argument, in the type the aggregation accumulates in
-      val args =
+      // The input columns and cudf aggregations of each call
+      val inputs =
         try
-          buildAll(a.calls.size, (o: Option[ColumnVector]) => o.foreach(_.close())) { i =>
-            val c = a.calls(i)
-            aggInputType(c).map(p => GpuExprs.evalColumn(c.args.head.lower(pos), p, t.cols, t.rows))
+          timed("aggregate arguments") {
+            buildAll(a.calls.size, (in: AggInput) => in.close())(i => aggInput(a.calls(i), pos, t))
           }
         catch
           case e: Throwable =>
@@ -224,56 +389,89 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
               None
           try
             val groupCols = keys ++ constKey
-            // count(*) counts the rows of any column: the first key
-            val inputs   = groupCols ++ args.flatten
-            val aggs     = Seq.newBuilder[ai.rapids.cudf.GroupByAggregationOnColumn]
-            var argIndex = groupCols.size
-            a.calls
-              .zip(args)
-              .foreach { (c, arg) =>
-                val idx =
-                  arg match
-                    case Some(_) =>
-                      val i = argIndex
-                      argIndex += 1
-                      i
-                    case None =>
-                      0
-                aggs += aggregation(c).onColumn(idx)
-              }
+            val aggs      = Seq.newBuilder[ai.rapids.cudf.GroupByAggregationOnColumn]
+            var argIndex  = groupCols.size
+            inputs.foreach { in =>
+              if in.cols.isEmpty then
+                // count(*) counts the rows of any column: the first key
+                aggs += in.aggs.head.onColumn(0)
+              else
+                in.aggs
+                  .foreach { agg =>
+                    aggs += agg.onColumn(argIndex)
+                    argIndex += 1
+                  }
+            }
             val opts = GroupByOptions.builder().withIgnoreNullKeys(false).build()
             val res  =
-              using(Table(inputs*)) { tbl =>
-                GTable.of(tbl.groupBy(opts, groupCols.indices*).aggregate(aggs.result()*))
+              timed(s"group-by of ${t.rows} rows, ${groupCols.size} key(s)") {
+                using(Table((groupCols ++ inputs.flatMap(_.cols))*)) { tbl =>
+                  GTable.of(tbl.groupBy(opts, groupCols.indices*).aggregate(aggs.result()*))
+                }
               }
             using(res) { r =>
               val nKeys = keys.size
-              val out   = a
+              // The results of each call, after the keys (and the constant key)
+              var at = nKeys + constKey.size
+              val values = inputs.map { in =>
+                val n = in.aggs.size
+                val v = in.combine(r.cols.slice(at, at + n))
+                at += n
+                v
+              }
+              val out = a
                 .columns
                 .indices
                 .map { i =>
-                  // Skip the constant key of a global aggregation
-                  val src =
-                    if i < nKeys then
-                      r.cols(i)
-                    else
-                      r.cols(i + constKey.size)
                   val d = GpuTypes.dtype(a.columns(i).ptype)
-                  if src.getType == d then
-                    src.incRefCount()
+                  if i < nKeys then
+                    val src = r.cols(i)
+                    if src.getType == d then
+                      src.incRefCount()
+                    else
+                      src.castTo(d)
                   else
-                    src.castTo(d)
+                    val src = values(i - nKeys)
+                    if src.getType == d then
+                      src
+                    else
+                      try src.castTo(d)
+                      finally src.close()
                 }
-              GTable(out, r.rows)
+              // Keys and min/max keep the bounds of their input; sums and counts widen
+              val outBounds =
+                a.keys.map(k => GpuExprs.bound(k.lower(pos))) ++
+                  a.calls
+                    .map { c =>
+                      c.name.toLowerCase match
+                        case "min" | "max" =>
+                          GpuExprs.bound(c.args.head.lower(pos))
+                        case _ =>
+                          None
+                    }
+              GTable(out, r.rows, outBounds)
             }
           finally
             constKey.foreach(_.close())
           end try
       finally
         keys.foreach(_.close())
-        args.flatten.foreach(_.close())
+        inputs.foreach(_.close())
       end try
     }
+
+  /** The input columns of an aggregate call, in the type the aggregation accumulates in */
+  private def aggInput(c: AggregateCall, pos: Array[Int], t: GTable)(using Bounds): AggInput =
+    aggInputType(c) match
+      case None =>
+        AggInput(IndexedSeq.empty, IndexedSeq(aggregation(c)))
+      case Some(d: PType.Decimal) if isSum(c) && config.isEnabled(GpuFeature.DecimalSumSplit) =>
+        // DECIMAL64 when the argument was computed in 64 bits: no range check needed then
+        val arg = GpuExprs.evalColumnNarrow(c.args.head.lower(pos), d, t.cols, t.rows)
+        try DecimalSum.split(arg, d.scale).getOrElse(AggInput.single(arg.incRefCount(), c))
+        finally arg.close()
+      case Some(p) =>
+        AggInput.single(GpuExprs.evalColumn(c.args.head.lower(pos), p, t.cols, t.rows), c)
 
   /** A global aggregation of no rows: count is 0, the other aggregates NULL */
   private def globalOverEmpty(a: Aggregate): GTable =
@@ -296,15 +494,19 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
       using(exec(j.right)) { r =>
         val lpos     = positions(j.left)
         val rpos     = positions(j.right)
+        val lb       = boundsOf(l)
+        val rb       = boundsOf(r)
         val keyTypes = j.leftKeys.zip(j.rightKeys).map((a, b) => joinKeyType(a.ptype, b.ptype).get)
         val lk       =
           buildAll(keyTypes.size)(i =>
-            GpuExprs.evalColumn(j.leftKeys(i).lower(lpos), keyTypes(i), l.cols, l.rows)
+            GpuExprs.evalColumn(j.leftKeys(i).lower(lpos), keyTypes(i), l.cols, l.rows)(using lb)
           )
         val rk =
           try
             buildAll(keyTypes.size)(i =>
-              GpuExprs.evalColumn(j.rightKeys(i).lower(rpos), keyTypes(i), r.cols, r.rows)
+              GpuExprs.evalColumn(j.rightKeys(i).lower(rpos), keyTypes(i), r.cols, r.rows)(using
+                rb
+              )
             )
           catch
             case e: Throwable =>
@@ -326,10 +528,12 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
                         joined
                   finally
                     maps.foreach(_.close())
-                case JoinKind.Left =>
+                case JoinKind.Left if residual.isEmpty =>
                   val maps = lkt.leftJoinGatherMaps(rkt, false)
                   try gatherBoth(l, r, maps(0), maps(1), nullify = true)
                   finally maps.foreach(_.close())
+                case JoinKind.Left =>
+                  leftWithResidual(l, r, lkt, rkt, residual.get)
                 case JoinKind.Semi | JoinKind.Anti if residual.isEmpty =>
                   val map =
                     if j.kind == JoinKind.Semi then
@@ -338,7 +542,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
                       lkt.leftAntiJoinGatherMap(rkt, false)
                   try
                     val view = map.toColumnView(0, map.getRowCount.toInt)
-                    try using(l.table)(tbl => GTable.of(tbl.gather(view)))
+                    try using(l.table)(tbl => GTable.of(tbl.gather(view)).withBounds(l.bounds))
                     finally view.close()
                   finally
                     map.close()
@@ -379,10 +583,92 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
           case e: Throwable =>
             lt.close()
             throw e
-      GTable(lt.cols ++ rt.cols, n)
+      GTable(lt.cols ++ rt.cols, n, l.bounds ++ r.bounds)
     finally
       lv.close()
       rv.close()
+
+  /**
+    * A left outer join with a residual condition: the inner-joined pairs that pass the residual,
+    * then each left row without such a pair, with NULLs for the right columns (TPC-H q13)
+    */
+  private def leftWithResidual(
+      l: GTable,
+      r: GTable,
+      lkt: Table,
+      rkt: Table,
+      residual: VExpr
+  ): GTable =
+    val maps = lkt.innerJoinGatherMaps(rkt, false)
+    try
+      val n  = maps(0).getRowCount.toInt
+      val lv = maps(0).toColumnView(0, n)
+      try
+        using(gatherBoth(l, r, maps(0), maps(1), nullify = false)) { pairs =>
+          val pass = GpuExprs.evalColumn(residual, PType.Bool, pairs.cols, pairs.rows)(using
+            boundsOf(pairs)
+          )
+          try
+            // A NULL residual does not pass
+            val f    = Scalar.fromBool(false)
+            val keep =
+              try pass.replaceNulls(f)
+              finally f.close()
+            try
+              using(pairs.table)(t => GTable.of(t.filter(keep))).pipe { passing =>
+                using(passing) { pt =>
+                  val unmatched = leftRowsWithout(l, lv, keep)
+                  using(unmatched) { u =>
+                    val padded = GTable(
+                      u.cols.map(_.incRefCount()) ++
+                        r.cols
+                          .map { c =>
+                            using(Scalar.fromNull(c.getType))(nul =>
+                              ColumnVector.fromScalar(nul, u.rows)
+                            )
+                          },
+                      u.rows
+                    )
+                    using(padded) { pd =>
+                      using(pt.table) { a =>
+                        using(pd.table)(b =>
+                          GTable.of(Table.concatenate(a, b)).withBounds(l.bounds ++ r.bounds)
+                        )
+                      }
+                    }
+                  }
+                }
+              }
+            finally keep.close()
+          finally pass.close()
+        }
+      finally lv.close()
+    finally maps.foreach(_.close())
+
+  end leftWithResidual
+
+  /** The rows of `l` whose index is not among the left indices `lv` of pairs where `keep` holds */
+  private def leftRowsWithout(l: GTable, lv: ai.rapids.cudf.ColumnView, keep: ColumnVector): GTable =
+    val matched = using(lv.copyToColumnVector()) { lc =>
+      using(Table(lc))(lt => GTable.of(lt.filter(keep))).cols.head
+    }
+    try
+      val f    = Scalar.fromBool(false)
+      val none =
+        try ColumnVector.fromScalar(f, l.rows)
+        finally f.close()
+      val flags =
+        try
+          using(Scalar.fromBool(true)) { t =>
+            using(Table(none))(target => GTable.of(Table.scatter(Array(t), matched, target)))
+          }
+        finally none.close()
+      using(flags) { fl =>
+        using(fl.cols.head.not()) { mask =>
+          using(l.table)(tbl => GTable.of(tbl.filter(mask)).withBounds(l.bounds))
+        }
+      }
+    finally matched.close()
 
   /**
     * A semi or anti join with a residual condition: inner-join the keys, keep the pairs that pass
@@ -403,7 +689,9 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
       try
         val matched: ColumnVector =
           using(gatherBoth(l, r, maps(0), maps(1), nullify = false)) { pairs =>
-            val pass = GpuExprs.evalColumn(residual, PType.Bool, pairs.cols, pairs.rows)
+            val pass = GpuExprs.evalColumn(residual, PType.Bool, pairs.cols, pairs.rows)(using
+              boundsOf(pairs)
+            )
             try
               // The left row of each passing pair
               using(lv.copyToColumnVector()) { lc =>
@@ -430,7 +718,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
                 fl.cols.head.incRefCount()
               else
                 fl.cols.head.not()
-            try using(l.table)(tbl => GTable.of(tbl.filter(mask)))
+            try using(l.table)(tbl => GTable.of(tbl.filter(mask)).withBounds(l.bounds))
             finally mask.close()
           }
         finally
@@ -447,7 +735,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache):
 end GpuPlans
 
 private[gpu] object GpuPlans:
-  def apply(cache: GpuColumnCache): GpuPlans = new GpuPlans(cache)
+  def apply(cache: GpuColumnCache, config: GpuConfig): GpuPlans = new GpuPlans(cache, config)
 
   inline def using[A <: AutoCloseable, B](a: A)(f: A => B): B =
     try f(a)
@@ -478,7 +766,7 @@ private[gpu] object GpuPlans:
         done.foreach(close)
         throw e
 
-  private def supported(e: BExpr, input: IndexedSeq[Column]): Boolean = GpuExprs.supports(
+  private def supported(e: BExpr, input: IndexedSeq[Column])(using GpuConfig): Boolean = GpuExprs.supports(
     e.lower(positions(input))
   )
 
@@ -495,9 +783,11 @@ private[gpu] object GpuPlans:
         other.children.exists(reduces)
 
   /** Whether all of `p` runs on the GPU */
-  def supports(p: RuntimePlan): Boolean =
+  def supports(p: RuntimePlan)(using cfg: GpuConfig): Boolean =
     supportedTypes(p) && {
       p match
+        case Values(columns, _) =>
+          columns.nonEmpty && cfg.isEnabled(GpuFeature.UploadValues)
         case Scan(src: ParquetSource, columns, _, _) =>
           src.isSingleFile && columns.nonEmpty
         case Filter(child, cond, _) =>
@@ -518,7 +808,7 @@ private[gpu] object GpuPlans:
               case JoinKind.Inner | JoinKind.Semi | JoinKind.Anti =>
                 true
               case JoinKind.Left =>
-                j.residual.isEmpty
+                j.residual.isEmpty || cfg.isEnabled(GpuFeature.OuterResidual)
               case _ =>
                 false
           kindOk && j.leftKeys.nonEmpty && supports(j.left) && supports(j.right) &&
@@ -541,6 +831,8 @@ private[gpu] object GpuPlans:
         Some(PType.Int64)
       case _ =>
         None
+
+  def isSum(c: AggregateCall): Boolean = c.name.toLowerCase == "sum" && !c.distinct
 
   private def isCount(c: AggregateCall): Boolean =
     val n = c.name.toLowerCase

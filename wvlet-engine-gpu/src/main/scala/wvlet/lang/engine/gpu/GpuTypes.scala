@@ -126,6 +126,66 @@ object GpuTypes:
           None
     }
 
+  /** Upload the first `n` values of a host vector of engine type `p` (small inputs: row by row) */
+  def fromVec(v: Vec, p: PType, n: Int): ColumnVector =
+    def boxed[A <: AnyRef](f: Any => A)(using scala.reflect.ClassTag[A]): Array[A] =
+      Array.tabulate[A](n)(i =>
+        v.get(i) match
+          case null =>
+            null.asInstanceOf[A]
+          case x =>
+            f(x)
+      )
+    p match
+      case PType.Bool =>
+        ColumnVector.fromBoxedBooleans(boxed(x => java.lang.Boolean.valueOf(x.asInstanceOf[Boolean]))*)
+      case PType.Int32 =>
+        ColumnVector.fromBoxedInts(boxed(x => Integer.valueOf(x.asInstanceOf[Number].intValue()))*)
+      case PType.Date =>
+        val days = ColumnVector.fromBoxedInts(
+          boxed(x => Integer.valueOf(x.asInstanceOf[Number].intValue()))*
+        )
+        try days.castTo(DType.TIMESTAMP_DAYS)
+        finally days.close()
+      case PType.Int64 =>
+        ColumnVector.fromBoxedLongs(
+          boxed(x => java.lang.Long.valueOf(x.asInstanceOf[Number].longValue()))*
+        )
+      case PType.Timestamp | PType.TimestampTz =>
+        ColumnVector.timestampMicroSecondsFromBoxedLongs(
+          boxed(x => java.lang.Long.valueOf(x.asInstanceOf[Number].longValue()))*
+        )
+      case PType.Float64 =>
+        ColumnVector.fromBoxedDoubles(
+          boxed(x => java.lang.Double.valueOf(x.asInstanceOf[Number].doubleValue()))*
+        )
+      case PType.Str =>
+        ColumnVector.fromStrings(boxed(_.toString)*)
+      case d: PType.Decimal =>
+        val values: Array[BigInteger] = boxed[BigInteger](x =>
+          GpuTypes
+            .unscaled(x, d.scale)
+            .getOrElse(
+              throw StatusCode
+                .INVALID_ARGUMENT
+                .newException(s"Cannot convert ${x} to ${d} on the GPU")
+            )
+        )
+        if dtype(d).getTypeId == DType.DTypeEnum.DECIMAL64 then
+          val longs: Array[java.lang.Long] = values.map(u =>
+            if u == null then
+              null
+            else
+              java.lang.Long.valueOf(u.longValueExact())
+          )
+          ColumnVector.decimalFromBoxedLongs(-d.scale, longs*)
+        else
+          ColumnVector.decimalFromBigInt(-d.scale, values*)
+      case other =>
+        throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported type on the GPU: ${other}")
+
+  end fromVec
+
   /** Copy a device column to a host vector of engine type `p` */
   def toVec(cv: ColumnVector, p: PType): Vec =
     val n = Math.toIntExact(cv.getRowCount)
