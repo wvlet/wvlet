@@ -6,7 +6,7 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 
 - Every relation is planned through the runtime IR in `wvlet.lang.engine.runtime`: `RuntimeBinder` → `RuntimePlan` → `Lowering` into physical operators (`wvlet.lang.engine.exec`).
 - `Planner` (`wvlet.lang.engine.plan`) keeps the shared pieces the binder calls, generic over a plan builder: correlated joins, decorrelation, join ordering, and parallelization.
-- Logical passes (`PushDownFilters`, `PruneColumns`, `ReorderJoins`, `ShareSubplans`, `Normalize`, ...) run in `Optimizer` over the runtime plan. Rules with three-valued-logic subtleties have Lean models; see [formal verification](formal-verification.md).
+- Logical passes (`PushDownFilters`, `PruneColumns`, `ReorderJoins`, `GroupKeySemiJoins`, `ShareSubplans`, `Normalize`, ...) run in `Optimizer` over the runtime plan. Rules with three-valued-logic subtleties have Lean models; see [formal verification](formal-verification.md).
 - `WvletEngine.runtimePlan` uses a new `Planner` per call; share one `Planner` when building plans by hand in tests.
 
 ## Optimizer toggles
