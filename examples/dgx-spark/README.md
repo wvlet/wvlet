@@ -48,17 +48,19 @@ Same setup, with [`sirius-sf100.yaml`](sirius-sf100.yaml) (70% of memory for the
 
 ## Wvlet engine with GPU offload (SF10)
 
-[`wvlet-engine-gpu`](../../wvlet-engine-gpu) runs the plan subtrees of Wvlet's own engine that join or aggregate on the GPU through cudf-java, keeping scanned columns in GPU memory across queries; see [the ADR](../../adr/2026-11-24-engine-gpu-executor.md) and [its follow-up](../../adr/2026-11-24-gpu-executor-runtime-choices.md). Same Spark and data, JDK 25, best of 3 hot runs, GPU on and off in one JVM:
+[`wvlet-engine-gpu`](../../wvlet-engine-gpu) runs the plan subtrees of Wvlet's own engine that join or aggregate on the GPU through cudf-java, keeping scanned columns in GPU memory across queries; see [the ADR](../../adr/2026-11-24-engine-gpu-executor.md) and its follow-ups on [runtime choices](../../adr/2026-11-24-gpu-executor-runtime-choices.md) and [column properties](../../adr/2026-11-24-gpu-column-properties.md). Same Spark and data, JDK 25, best of 3 hot runs, GPU on and off in one JVM:
 
 | engine | total (s) | vs DuckDB CPU |
 | --- | ---: | ---: |
-| Wvlet engine, CPU | 7.56 | 0.45x |
+| Wvlet engine, CPU | 7.98 | 0.43x |
 | DuckDB CPU | 3.43 | 1.00x |
 | Wvlet engine + GPU, first version (#2363) | 2.63 | 1.30x |
-| **Wvlet engine + GPU** | **0.74-0.79** | **4.3-4.6x** |
+| Wvlet engine + GPU, #2366 | 0.74-0.79 | 4.3-4.6x |
+| **Wvlet engine + GPU** | **0.66-0.71** | **4.8-5.2x** |
 | DuckDB + Sirius, pinned | 0.82 | 4.18x |
 
-- All 22 queries run as one GPU subtree. Against Sirius pinned, the Wvlet engine is faster on 13 queries (e.g. q8 16 vs 45 ms, q21 42 vs 75 ms, q9 63 vs 93 ms) and within run-to-run noise on q10, q11, and q17. It is slower on q5, q6, q12, and q19 by 2-10 ms each. The largest gaps are q1 (127 vs 66 ms: filter, decimal arguments, and a group-by over 59M rows) and q13 (76 vs 18 ms: a left join with a residual).
+- All 22 queries run as one GPU subtree. Against Sirius pinned, the Wvlet engine is faster on 14 queries (e.g. q18 45 vs 78 ms, q8 16 vs 45 ms, q21 44 vs 75 ms, q6 12 vs 14 ms) and within 2 ms on q1 (67-70 vs 66 ms), q15, and q17. It is slower on q5, q12, and q19 by 1-8 ms each; q11 varies between 19 and 37 ms across runs (Sirius 24 ms). The largest gap left is q13 (75 vs 18 ms: a left join with a residual, where the LIKE over 15M comments alone takes 24 ms).
+- Since #2366, q1 went from 127 to 67-70 ms. The filter that keeps 59M of 60M rows became a group key instead of a copy, `avg` became an exact sum and count, and its string keys group on dictionary codes. q18 went from 65 to 45 ms with a sorted group-by on `l_orderkey`, and q6 and q12 dropped 4-7 ms each from filter comparisons fused into one cudf AST kernel. The CPU engine's 7.98 s is from the same JVM as this GPU run.
 - The gains over the first version came from DECIMAL64 arithmetic and sums chosen by the data's value bounds, filtering join inputs by the other side's keys, predicates implied by OR filters, pruning unread join columns, and bringing q13, q16, and q22 onto the GPU. The CPU engine's 7.56 s comes from the same JVM as the GPU run and includes later CPU engine changes (#2364, #2365); the earlier 10.99 s came from a separate run.
 - Results match DuckDB on spec/tpch and at SF10 (`WVLET_GPU_TEST_DATA=target/tpch-sf10 ./sbt "engineGpu/testOnly *GpuTPCHTest"`).
 - Each optimization is a `GpuFeature`: `WVLET_GPU_DISABLE=<name>,...` turns features off, and `WVLET_GPU_BENCH_AB=<name>,...` compares them on and off in one JVM. `WVLET_GPU_PROFILE=1` logs the device time of each plan node.
