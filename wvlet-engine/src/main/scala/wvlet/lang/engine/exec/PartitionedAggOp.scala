@@ -60,7 +60,7 @@ class PartitionedAggOp(
       null
 
   private def aggregate(): Iterator[Batch] =
-    // Not compacted: rows are gathered into their partitions, which copies them anyway
+    // Deferred columns are gathered by the tasks that route the batches
     val input = readInput()
     val total = input.map(_.size).sum
     // A partition has at most one group per row
@@ -76,13 +76,16 @@ class PartitionedAggOp(
       try op.drain()
       finally op.close()
     if total < minParallelRows || runner.parallelism <= 1 then
-      return aggregateAll(input, expectedGroups).iterator
+      return aggregateAll(input.map(_.compact()), expectedGroups).iterator
     val parts = GroupTable.partitionCount(runner.parallelism)
     // The rows of each input batch in each partition
     def route(batches: IndexedSeq[Batch]): Array[mutable.ArrayBuffer[Batch]] =
       val hasher = GroupTable(keys.map(_.ptype))
       val out    = Array.fill(parts)(mutable.ArrayBuffer.empty[Batch])
-      batches.foreach { b =>
+      batches.foreach { deferred =>
+        // Copying each partition's rows from compact columns is cheaper than composing every
+        // partition's positions over the deferred columns' sources
+        val b   = deferred.compact()
         val h   = hasher.keyHashes(keys.map(_.eval(b)).toArray, b.size)
         val idx = GroupTable.partitionRows(h, b.size, parts)
         var p   = 0
@@ -108,7 +111,7 @@ class PartitionedAggOp(
 
   end aggregate
 
-  /** Every input batch, in order, with deferred columns left deferred */
+  /** Every input batch, in order, with deferred columns left deferred (see [[Batch.take]]) */
   private def readInput(): IndexedSeq[Batch] =
     val b = IndexedSeq.newBuilder[Batch]
     var x = child.next()
