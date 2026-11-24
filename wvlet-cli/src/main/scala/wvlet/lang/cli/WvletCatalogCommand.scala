@@ -22,7 +22,7 @@ import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.lang.catalog.SchemaDriftDetector
 import wvlet.lang.catalog.StaticCatalogExporter
-import wvlet.lang.compiler.DBType
+import wvlet.lang.connector.DBConnector
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.SchemaDriftChecker
@@ -89,30 +89,30 @@ class WvletCatalogCommand(opts: WvletGlobalOption) extends LogSupport:
           System.exit(1)
         throw e
 
-  private def resolveCatalogName(engine: ConnectorConfig, catalogOpt: Option[String]): String =
-    catalogOpt
-      .orElse(engine.catalog)
-      .getOrElse {
-        if engine.dbType == DBType.DuckDB || engine.dbType == DBType.Generic then
-          // The in-process DuckDB catalog is always named memory
-          "memory"
-        else
-          throw StatusCode
-            .INVALID_ARGUMENT
-            .newException(
-              s"Specify --catalog or add a catalog to the '${engine.name}' connector in the profile"
-            )
-      }
+  private def resolveCatalogName(
+      engine: ConnectorConfig,
+      connector: DBConnector,
+      catalogOpt: Option[String]
+  ): String = catalogOpt
+    .orElse(engine.catalog)
+    .orElse(connector.defaultCatalogName)
+    .getOrElse {
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"Specify --catalog or add a catalog to the '${engine.name}' connector in the profile"
+        )
+    }
 
   @command(description = "Import database table schemas as Wvlet type definitions")
   def `import`(catalogOpts: WvletCatalogOption): Unit =
     val workEnv = WorkEnv(catalogOpts.workFolder)
     val profile = Profile.getProfile(catalogOpts.profile, catalogOpts.catalog, catalogOpts.schema)
     val engine  = profile.defaultEngine
-    val catalogName = resolveCatalogName(engine, catalogOpts.catalog)
 
     Control.withResource(ConnectorProvider(workEnv)) { connectorProvider =>
-      val connector = connectorProvider.getConnector(profile)
+      val connector   = connectorProvider.getConnector(profile)
+      val catalogName = resolveCatalogName(engine, connector, catalogOpts.catalog)
       // Scan the database directly (not through the ConnectorCatalog metadata cache), so a
       // catalog import always reflects the current table schemas
       val schemaNames =
@@ -137,13 +137,7 @@ class WvletCatalogCommand(opts: WvletGlobalOption) extends LogSupport:
           )
           None
         else
-          // The Generic engine runs on an in-process DuckDB, so its functions are DuckDB's
-          val contextDBType =
-            if engine.dbType == DBType.Generic then
-              DBType.DuckDB
-            else
-              engine.dbType
-          val contextName = contextDBType.toString.toLowerCase
+          val contextName = connector.functionDialect.toString.toLowerCase
           StaticCatalogExporter.exportFunctions(
             catalogName,
             contextName,
@@ -178,27 +172,23 @@ class WvletCatalogCommand(opts: WvletGlobalOption) extends LogSupport:
   )
   def diff(diffOpts: WvletCatalogDiffOption): Unit = handleError {
     val workEnv = WorkEnv(diffOpts.workFolder)
-    // Default to the DuckDB profile like `wvlet run`: the generic profile carries no catalog,
-    // which would leave nothing to diff against
+    // Default to the DuckDB profile: the generic profile carries no catalog, which would leave
+    // nothing to diff against, and the wvlet engine is not a catalog-backed SQL connector.
+    // Without the DuckDB connector module, this reports how to install it
     val profile = Profile.getProfile(
       diffOpts.profile,
       diffOpts.catalog,
       diffOpts.schema,
       default = Profile.defaultDuckDBProfile
     )
-    val engine      = profile.defaultEngine
-    val catalogName = resolveCatalogName(engine, diffOpts.catalog)
-    val schemaName  = diffOpts.schema.orElse(engine.schema).getOrElse("main")
-    // The Generic engine runs on an in-process DuckDB, so types normalize with DuckDB rules
-    val dbType =
-      if engine.dbType == DBType.Generic then
-        DBType.DuckDB
-      else
-        engine.dbType
+    val engine     = profile.defaultEngine
+    val schemaName = diffOpts.schema.orElse(engine.schema).getOrElse("main")
 
     Control.withResource(ConnectorProvider(workEnv)) { connectorProvider =>
-      val connector = connectorProvider.getConnector(profile)
-      val report    = SchemaDriftChecker.check(
+      val connector   = connectorProvider.getConnector(profile)
+      val catalogName = resolveCatalogName(engine, connector, diffOpts.catalog)
+      val dbType      = connector.functionDialect
+      val report      = SchemaDriftChecker.check(
         sourceFolders = List(diffOpts.workFolder),
         workEnv = workEnv,
         connector = connector,

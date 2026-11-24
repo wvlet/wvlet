@@ -1,6 +1,5 @@
 package wvlet.lang.compiler.analyzer.duckdb
 
-import org.duckdb.DuckDBConnection
 import wvlet.uni.control.Control.withResource
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Name
@@ -13,15 +12,32 @@ import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.RelationType
 
 import java.io.File
+import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.ResultSet
 
+/**
+  * JVM DuckDB backend over the DuckDB JDBC driver. The driver is optional: wvlet-lang does not
+  * depend on it, and it is on the classpath only when wvlet-connector-duckdb is (the full CLI, or
+  * tests). Without it, [[isAvailable]] and [[canExecute]] report `false`, like Native without
+  * libduckdb, and file references are left for the wvlet engine to read.
+  */
 trait DuckDBCompat:
-  def isAvailable: Boolean = true
-  def canExecute: Boolean  = true
+  private lazy val driverLoaded: Boolean =
+    try
+      Class.forName(DuckDBCompat.driverClassName)
+      true
+    catch
+      case _: ClassNotFoundException | _: LinkageError =>
+        false
 
-  /** Why DuckDB is unavailable; the JVM always bundles DuckDB JDBC, so this is never reported. */
-  def notAvailableMessage: String = "DuckDB is not available"
+  def isAvailable: Boolean = driverLoaded
+  def canExecute: Boolean  = driverLoaded
+
+  /** Why DuckDB is unavailable */
+  def notAvailableMessage: String =
+    "DuckDB is not available: the DuckDB JDBC driver is not on the classpath. Install the " +
+      "full wvlet CLI, or copy wvlet-connector-duckdb and duckdb_jdbc into the lib folder of the CLI"
 
   def schemaOf(path: String): RelationType =
     if !File(path).isFile then
@@ -132,14 +148,14 @@ trait DuckDBCompat:
           closed = true
           conn.close()
 
-  private def withConnection[U](f: DuckDBConnection => U): U = withResource(openConnection(None))(f)
+  private def withConnection[U](f: Connection => U): U = withResource(openConnection(None))(f)
 
-  private def openConnection(path: Option[String]): DuckDBConnection =
-    Class.forName("org.duckdb.DuckDBDriver")
-    DriverManager.getConnection(s"jdbc:duckdb:${path.getOrElse("")}") match
-      case conn: DuckDBConnection =>
-        conn
-      case _ =>
-        throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
+  private def openConnection(path: Option[String]): Connection =
+    if !driverLoaded then
+      throw StatusCode.CONNECTOR_NOT_INSTALLED.newException(notAvailableMessage)
+    DriverManager.getConnection(s"jdbc:duckdb:${path.getOrElse("")}")
 
 end DuckDBCompat
+
+object DuckDBCompat:
+  private val driverClassName = "org.duckdb.DuckDBDriver"

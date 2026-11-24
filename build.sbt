@@ -68,6 +68,8 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   lang.jvm,
   engine.jvm,
   connector,
+  connectorDuckDB,
+  connectorSnowflake,
   runner.jvm,
   client.jvm,
   spec,
@@ -226,9 +228,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Compile / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / "wvlet-stdlib",
     libraryDependencies ++=
       Seq(
-        "org.wvlet.uni" %% "uni" % UNI_VERSION,
-        // For resolving parquet file schema
-        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
+        "org.wvlet.uni" %% "uni" % UNI_VERSION
       ),
     stdlibGen := {
       val libDir     = (ThisBuild / baseDirectory).value / "wvlet-stdlib" / "module"
@@ -256,7 +256,14 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     // scala3-compiler is JVM-only; kept out of the shared crossProject deps so `%%` on
     // Scala.js/Native doesn't try to resolve non-existent _sjs1_3 / _native0.5_3 artifacts.
-    libraryDependencies += "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
+    libraryDependencies ++=
+      Seq(
+        "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test,
+        // DuckDB is optional at runtime: when the driver is on the classpath (via
+        // wvlet-connector-duckdb), DuckDBCompat uses it for file schema inference. Tests use it
+        // as the conformance oracle
+        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION % Test
+      )
   )
   .jsSettings(
     libraryDependencies += scalajsJavaSecureRandom,
@@ -415,7 +422,9 @@ lazy val cli = project
     },
     packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
   )
-  .dependsOn(server)
+  // The CLI still bundles the optional connectors; the lite/full pack split comes next (see
+  // adr/2026-11-23-optional-connector-modules.md)
+  .dependsOn(server, connectorDuckDB, connectorSnowflake)
 
 /**
   * Shared test helpers that wrap uni-test (e.g., AirSpec-DI-style `initDesign` + per-test
@@ -444,7 +453,11 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // A pass over the engine's closed plan enums must handle every case
     scalacOptions += "-Wconf:id=E029:e"
   )
-  .jvmSettings(specRunnerSettings)
+  .jvmSettings(
+    specRunnerSettings,
+    // DuckDB is the conformance oracle of the engine tests
+    libraryDependencies += "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION % Test
+  )
   .jsSettings(
     libraryDependencies += scalajsJavaSecureRandom,
     scalaJSLinkerConfig ~= {
@@ -454,11 +467,10 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(uniNativeCurlLinking)
   .dependsOn(lang)
 
-// Capability-based Connector traits, the factory registry, and the built-in engine connectors
-// (DuckDB, Trino, Snowflake) extracted from wvlet-runner. One module for now; packages are kept
-// per-engine (wvlet.lang.connector.{duckdb,trino,snowflake}) so future service connectors with
-// heavy dependencies can split into their own modules mechanically.
-// See https://github.com/wvlet/wvlet/issues/1861
+// Capability-based Connector traits, the ServiceLoader-based factory registry, and the light
+// built-in connectors (Trino over REST, Slack). Connectors with heavy JDBC drivers live in their
+// own modules (wvlet-connector-duckdb, wvlet-connector-snowflake) so the default CLI pack can
+// leave them out. See adr/2026-11-23-optional-connector-modules.md
 lazy val connector = project
   .in(file("wvlet-connector"))
   .settings(
@@ -468,12 +480,34 @@ lazy val connector = project
     libraryDependencies ++=
       Seq(
         // ConnectorCatalog's table-schema cache
-        "com.github.ben-manes.caffeine" % "caffeine"       % CAFFEINE_VERSION,
-        "org.duckdb"                    % "duckdb_jdbc"    % DUCKDB_JDBC_VERSION,
-        "net.snowflake"                 % "snowflake-jdbc" % SNOWFLAKE_JDBC_VERSION
+        "com.github.ben-manes.caffeine" % "caffeine" % CAFFEINE_VERSION
       )
   )
   .dependsOn(lang.jvm)
+
+// DuckDB connector (and the `generic` fallback that runs on DuckDB). Optional at runtime: it
+// registers through META-INF/services, and also enables DuckDB file schema inference in
+// wvlet-lang by putting duckdb_jdbc on the classpath
+lazy val connectorDuckDB = project
+  .in(file("wvlet-connector-duckdb"))
+  .settings(
+    buildSettings,
+    name                               := "wvlet-connector-duckdb",
+    description                        := "DuckDB connector for wvlet",
+    libraryDependencies += "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
+  )
+  .dependsOn(connector)
+
+// Snowflake connector over JDBC. Optional at runtime, registered through META-INF/services
+lazy val connectorSnowflake = project
+  .in(file("wvlet-connector-snowflake"))
+  .settings(
+    buildSettings,
+    name                                  := "wvlet-connector-snowflake",
+    description                           := "Snowflake connector for wvlet",
+    libraryDependencies += "net.snowflake" % "snowflake-jdbc" % SNOWFLAKE_JDBC_VERSION
+  )
+  .dependsOn(connector)
 
 // Cross-platform query runner. Shared sources (wvlet-runner/src) hold the engine-agnostic
 // runtime built on SqlConnector — usable from JVM, Node.js, and Native CLIs. The JVM-only
@@ -538,12 +572,16 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   // `client` provides the RPC client for the remote wvlet-server backend (WvletServerClient)
   .dependsOn(lang, engine, client)
-  .jvmConfigure(_.dependsOn(connector, testUtil % Test))
+  // The DuckDB and Snowflake connectors are optional at runtime; tests use DuckDB as the
+  // conformance oracle
+  .jvmConfigure(
+    _.dependsOn(connector, connectorDuckDB % Test, connectorSnowflake % Test, testUtil % Test)
+  )
 
 lazy val spec = project
   .in(file("wvlet-spec"))
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
-  .dependsOn(runner.jvm, testUtil % Test)
+  .dependsOn(runner.jvm, connectorDuckDB % Test, testUtil % Test)
 
 // The Scala.js linker owns its output directory and deletes unknown files on every link,
 // so the hand-written type declarations of the TypeScript SDK are kept in types/ and
@@ -649,7 +687,7 @@ lazy val server = project
     libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.20",
     uniRestart / baseDirectory        := (ThisBuild / baseDirectory).value
   )
-  .dependsOn(api.jvm, client.jvm, runner.jvm, httpServer, testUtil % Test)
+  .dependsOn(api.jvm, client.jvm, runner.jvm, httpServer, connectorDuckDB % Test, testUtil % Test)
 
 // Hand-written uni-RPC clients live in wvlet-client/src/main/scala. The FrontendRPC shim
 // aggregates the per-service clients so consumers see a single surface. Cross-builds for all

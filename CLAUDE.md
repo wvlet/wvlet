@@ -195,7 +195,8 @@ cd formal && lake exe scalar-subquery-traces
 
 ### Multi-Module SBT Structure
 - **Core Language**: `wvlet-lang` (compiler, parser, analyzer), `wvlet-api` (cross-platform APIs)
-- **Execution**: `wvlet-connector` (Connector interface + DuckDB/Trino/Snowflake engine connectors), `wvlet-runner` (query executor), `wvlet-cli` (command-line interface)
+- **Execution**: `wvlet-connector` (Connector interface, ServiceLoader factory registry, Trino/Slack connectors), `wvlet-connector-duckdb` and `wvlet-connector-snowflake` (optional connector modules owning their JDBC drivers; see adr/2026-11-23-optional-connector-modules.md), `wvlet-runner` (query executor), `wvlet-cli` (command-line interface)
+  - A new connector module registers a `ConnectorFactoryProvider` class in `META-INF/services/wvlet.lang.connector.ConnectorFactoryProvider`. Main code outside a connector module must not reference its classes. Tests that need DuckDB as an oracle depend on `wvlet-connector-duckdb` (or `duckdb_jdbc`) in Test scope
 - **Web Stack**: `wvlet-server` (HTTP API), `wvlet-ui*` (React/Scala.js components)
 - **Multi-Platform**: JVM, JavaScript (Scala.js), Native (Scala Native) support
 - **Language Bindings**: `wvc-lib` for C/C++/Rust integration

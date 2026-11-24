@@ -138,6 +138,9 @@ class DuckDBConnector(
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
+  // The in-process DuckDB catalog is always named memory
+  override def defaultCatalogName: Option[String] = Some("memory")
+
   override def close(): Unit =
     if closed.compareAndSet(false, true) then
       // Ensure the connection is prepared

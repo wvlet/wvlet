@@ -220,7 +220,8 @@ object WvletServer extends LogSupport:
           resolvedConf.profile,
           resolvedConf.catalog,
           resolvedConf.schema,
-          Profile.defaultDuckDBProfile
+          // Like `wvlet run` and `wv`, queries without a profile run on the in-process engine
+          Profile.defaultWvletProfile
         )
       )
       .bindProvider[Profile, WvletScriptRunnerConfig] { (profile: Profile) =>
