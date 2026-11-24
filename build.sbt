@@ -310,8 +310,8 @@ lazy val wvcLib = project
         .withBaseName("wvlet")
         .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
         // Scala Native's default Immix GC. Boehm was used from #925 to avoid a segfault in host
-        // processes, but on Scala Native 0.5.13 Boehm itself segfaults in the Rust host test on
-        // linux-x64 and fails to link on Windows; see design/platforms.md
+        // processes, but Scala Native 0.5.13's Boehm glue fails to link on Windows against
+        // vcpkg's bdwgc; see design/platforms.md
         .withGC(GC.immix)
       // Allow overriding target triple via environment variable for cross-compilation
       val targetConfig =
