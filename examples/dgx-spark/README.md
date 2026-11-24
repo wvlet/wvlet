@@ -58,7 +58,7 @@ Same setup, with [`sirius-sf100.yaml`](sirius-sf100.yaml) (70% of memory for the
 | **Wvlet engine + GPU** | **0.75-0.79** | **4.3-4.6x** |
 | DuckDB + Sirius, pinned | 0.82 | 4.18x |
 
-- All 22 queries run as one GPU subtree. Against Sirius pinned, the Wvlet engine is faster on 9 queries: q9 (63 vs 93 ms), q18, q21, q16, q10, q20, q11, q15, and q22. The largest remaining gaps are q1 (127 vs 66 ms: filter, decimal arguments, and a group-by over 59M rows) and q13 (76 vs 18 ms: a left join with a residual).
+- All 22 queries run as one GPU subtree. Against Sirius pinned, the Wvlet engine is faster on 13 queries (e.g. q8 16 vs 45 ms, q21 42 vs 75 ms, q9 63 vs 93 ms) and within run-to-run noise on q10, q11, and q17. It is slower on q5, q6, q12, and q19 by 2-10 ms each. The largest gaps are q1 (127 vs 66 ms: filter, decimal arguments, and a group-by over 59M rows) and q13 (76 vs 18 ms: a left join with a residual).
 - The gains over the first version came from DECIMAL64 arithmetic and sums chosen by the data's value bounds, filtering join inputs by the other side's keys, predicates implied by OR filters, pruning unread join columns, and bringing q13, q16, and q22 onto the GPU. The CPU engine's 8.5 s here comes from the same JVM as the GPU run; the earlier 10.99 s came from a separate run.
 - Results match DuckDB on spec/tpch and at SF10 (`WVLET_GPU_TEST_DATA=target/tpch-sf10 ./sbt "engineGpu/testOnly *GpuTPCHTest"`).
 - Each optimization is a `GpuFeature`: `WVLET_GPU_DISABLE=<name>,...` turns features off, and `WVLET_GPU_BENCH_AB=<name>,...` compares them on and off in one JVM. `WVLET_GPU_PROFILE=1` logs the device time of each plan node.
