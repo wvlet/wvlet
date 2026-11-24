@@ -369,7 +369,14 @@ object ValueOps:
     * Parse a TIMESTAMP string. A trailing zone (`Z`, `+09`, `+09:30`, `-0500`, or a zone name such
     * as `Asia/Tokyo`) is dropped, as DuckDB does for a cast to TIMESTAMP
     */
-  def parseTimestamp(s: String): Long = parseLocalTimestamp(s)._1
+  def parseTimestamp(s: String): Long =
+    val (local, zone) = parseLocalTimestamp(s)
+    // The zone is dropped, but it must still be an offset or a known zone name
+    zone.foreach { z =>
+      if parseOffsetSeconds(z).isEmpty then
+        TimeZones.toInstant(local, z)
+    }
+    local
 
   /**
     * Parse a TIMESTAMP WITH TIME ZONE string: a trailing offset or zone name is applied, and a time

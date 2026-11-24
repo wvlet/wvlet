@@ -48,6 +48,9 @@ class DateTimeFunctionsTest extends UniTest:
       Some(ts("2024-02-05 13:00:00"))
     DateTimeFunctions.strptime("2024-02-05 extra", "%Y-%m-%d") shouldBe None
     DateTimeFunctions.strptime("2024-02-30", "%Y-%m-%d") shouldBe None
+    DateTimeFunctions.strptime("2024 000", "%Y %j") shouldBe None
+    DateTimeFunctions.strptime("10:00:00. 5", "%H:%M:%S.%f") shouldBe
+      Some(ts("1900-01-01 10:00:00.5"))
     DateTimeFunctions.strptime("2024-02-05 +09:00", "%Y-%m-%d %z") shouldBe
       Some(ts("2024-02-04 15:00:00"))
   }
@@ -76,7 +79,7 @@ class DateTimeFunctionsTest extends UniTest:
     ValueOps.parseTimestampTz("2024-01-01 10:00:00.5-05:30") shouldBe ts("2024-01-01 15:30:00.5")
     ValueOps.parseTimestampTz("2024-01-01T10:00:00Z") shouldBe ts("2024-01-01 10:00:00")
     ValueOps.parseTimestamp("2024-01-01 10:00:00+09") shouldBe ts("2024-01-01 10:00:00")
-    ValueOps.parseTimestamp("2024-01-01 10:00:00 Asia/Tokyo") shouldBe ts("2024-01-01 10:00:00")
+    ValueOps.parseTimestamp("2024-01-01 10:00:00 UTC") shouldBe ts("2024-01-01 10:00:00")
     ValueOps.formatTimestampTz(ts("2024-01-01 01:00:00")) shouldBe "2024-01-01 01:00:00+00"
   }
 
@@ -97,6 +100,9 @@ class DateTimeFunctionsTest extends UniTest:
 
   test("should reject unknown time zones") {
     withZones {
+      intercept[WvletLangException] {
+        ValueOps.parseTimestamp("2024-01-01 10:00:00 garbage")
+      }.getMessage shouldContain "garbage"
       intercept[WvletLangException] {
         TimeZones.toLocal(0L, "Bogus/Zone")
       }.getMessage shouldContain "Bogus/Zone"

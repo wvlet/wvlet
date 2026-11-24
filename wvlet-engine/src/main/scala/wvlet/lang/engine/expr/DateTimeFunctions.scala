@@ -111,15 +111,13 @@ object DateTimeFunctions:
       val endDay          = dayOf(end)
       val endTime         = Math.floorMod(end, MicrosPerDay)
       val (ey, em, ed)    = ValueOps.civilFromDays(endDay)
-      var startDay        = dayOf(start0)
       val startTime       = Math.floorMod(start0, MicrosPerDay)
-      val (sy0, sm0, sd0) = ValueOps.civilFromDays(startDay)
+      val (sy0, sm0, sd0) = ValueOps.civilFromDays(dayOf(start0))
       val endDays         = ValueOps.daysInMonth(ey, em)
       var sd              = sd0
       if endDays == ed && (sd0 > endDays || (sd0 == endDays && startTime < endTime)) then
         // Move back to the same time on the last day of the (shorter) end month
         sd = endDays
-        startDay = ValueOps.daysFromCivil(sy0, sm0, endDays)
       val months = (ey - sy0) * 12L + (em - sm0)
       // age() borrows a month when the end's day and time come before the start's
       if ed < sd || (ed == sd && endTime < startTime) then
@@ -164,6 +162,8 @@ object DateTimeFunctions:
     var offsetSec: Option[Long] = None
     var zone: Option[String]    = None
     var ok                      = true
+    // Digits read by the last readInt (after any skipped spaces)
+    var digitsRead = 0
 
     def readInt(maxDigits: Int, signed: Boolean = false): Option[Int] =
       // Spaces before a number are skipped, as in DuckDB
@@ -177,6 +177,7 @@ object DateTimeFunctions:
       val digitsStart = pos
       while pos < s.length && pos - digitsStart < maxDigits && s.charAt(pos).isDigit do
         pos += 1
+      digitsRead = pos - digitsStart
       if pos == digitsStart then
         pos = start
         None
@@ -246,14 +247,12 @@ object DateTimeFunctions:
           case 'S' =>
             set(readInt(2))(second = _)
           case 'f' =>
-            val start = pos
             set(readInt(6)) { v =>
-              micros = v.toLong * math.pow(10, 6 - (pos - start)).toLong
+              micros = v.toLong * math.pow(10, 6 - digitsRead).toLong
             }
           case 'g' =>
-            val start = pos
             set(readInt(3)) { v =>
-              micros = v.toLong * math.pow(10, 3 - (pos - start)).toLong * 1000L
+              micros = v.toLong * math.pow(10, 3 - digitsRead).toLong * 1000L
             }
           case 'b' | 'h' =>
             set(readName(monthNames, abbreviated = true))(m => month = m + 1)
@@ -330,8 +329,9 @@ object DateTimeFunctions:
           hour = 0
       }
       val days: Option[Int] =
-        if doy > 0 then
-          if doy >
+        if doy >= 0 then
+          if doy < 1 ||
+            doy >
               365 + (
                 if ValueOps.isLeapYear(year) then
                   1

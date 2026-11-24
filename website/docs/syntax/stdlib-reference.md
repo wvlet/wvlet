@@ -53,7 +53,7 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `log2` | double | all |  |
 | `power(exponent: double)` | double | all |  |
 | `sign` | int | all |  |
-| `from_unixtime` | timestamp | duckdb, trino, snowflake, bigquery | Interpret this value as unix epoch seconds (in UTC), keeping the fraction to the microsecond |
+| `from_unixtime` | timestamp | duckdb, trino, snowflake, bigquery | Interpret this value as unix epoch seconds (in UTC), keeping the fraction to the microsecond (to the millisecond on Trino, whose from_unixtime(double) is a timestamp(3)) |
 | `sinh` | double | all | Hyperbolic sine, cosine, and tangent |
 | `cosh` | double | all |  |
 | `tanh` | double | all |  |
