@@ -35,16 +35,19 @@ object Lowering:
   /**
     * Lower `p`. With `joinFilters`, hash joins whose unmatched probe rows are dropped give the
     * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]). With
-    * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]])
+    * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]). With
+    * `footerCache`, Parquet scans reuse cached footers
+    * ([[wvlet.lang.engine.catalog.ParquetFooterCache]])
     */
   def apply(
       p: RuntimePlan,
       joinFilters: Boolean = false,
       presizeAggs: Boolean = false,
       inSet: Boolean = false,
-      accelerator: Option[PlanAccelerator] = None
+      accelerator: Option[PlanAccelerator] = None,
+      footerCache: Boolean = false
   ): Operator =
-    val l = Lower(joinFilters, presizeAggs, accelerator)
+    val l = Lower(joinFilters, presizeAggs, accelerator, footerCache)
     if inSet then
       l.markInSet(p)
     l.lower(p)
@@ -64,7 +67,8 @@ object Lowering:
   private class Lower(
       joinFilters: Boolean,
       presizeAggs: Boolean,
-      accelerator: Option[PlanAccelerator]
+      accelerator: Option[PlanAccelerator],
+      footerCache: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -89,7 +93,10 @@ object Lowering:
           }
       // An accelerator takes the whole subtree, or none of it; its CPU fallback lowers p alone
       accelerator.flatMap(
-        _.accelerate(p, q => Lowering(q, presizeAggs = presizeAggs, inSet = inSet))
+        _.accelerate(
+          p,
+          q => Lowering(q, presizeAggs = presizeAggs, inSet = inSet, footerCache = footerCache)
+        )
       ) match
         case Some(op) =>
           op
@@ -99,7 +106,7 @@ object Lowering:
     private def lowerNode(p: RuntimePlan, inSet: Boolean): Operator =
       p match
         case Scan(source, _, read, filter) =>
-          ScanOp(source, p.schema, read, filter, scanFilters(p.output))
+          ScanOp(source, p.schema, read, filter, scanFilters(p.output), footerCache)
         case Values(columns, rows) if columns.isEmpty && rows.size == 1 =>
           // One row without columns (a query without FROM), as the planner plans it
           SingleRowOp()

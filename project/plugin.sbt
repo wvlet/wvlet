@@ -1,7 +1,7 @@
 // Uni releases are published to repo.wvlet.org first; Maven Central limits release frequency and size
 resolvers += "wvlet" at "https://repo.wvlet.org/maven2/"
 
-val UNI_VERSION = "2026.3.8"
+val UNI_VERSION = "2026.3.9"
 
 addSbtPlugin("org.scalameta" % "sbt-scalafmt"  % "2.6.2")
 addSbtPlugin("com.eed3si9n"  % "sbt-buildinfo" % "0.14.0")
@@ -18,7 +18,7 @@ val SCALAJS_VERSION = sys.env.getOrElse("SCALAJS_VERSION", "1.23.0")
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % SCALAJS_VERSION)
 
 // For Scala Native
-addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12")
+addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.13")
 
 // Cross-platform (JVM/JS/Native) crossProject support
 // (replaces org.portable-scala sbt-scalajs-crossproject & sbt-scala-native-crossproject

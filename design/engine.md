@@ -16,6 +16,13 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 - A new toggle must be listed in `OptimizerOptionsTest`, or the JS and Native CI jobs fail.
 - Give every executor or planner change an `Optimization` toggle from the start, so it can be benchmarked on one build.
 
+## Parquet footer cache
+
+- `ParquetFooterCache` (`catalog/`) keeps parsed footers of local Parquet files, process-wide, LRU up to 256 files. Behind `parquet_footer_cache` (on by default).
+- An entry is valid while the file's size and last-modified time match a stat taken before the footer read. Symbolic links, files without an mtime, and files modified within the last 10 seconds are not cached, as DuckDB's `parquet_metadata_cache` does for coarse mtimes.
+- Scans use it when `ScanSpec.footerCache` is set (from the toggle at lowering); planning reads when the `ParquetSource` was built with `footerCache` (file paths in queries). Other callers parse as before.
+- Only local paths are cached. A remote source would need a key that changes on overwrite (e.g. an ETag), since uni's `FileInfo` has none. See [the footer cache ADR](../adr/2026-11-24-engine-parquet-footer-cache.md).
+
 ## Accelerators (GPU offload)
 
 - A `PlanAccelerator` (`runtime/PlanAccelerator.scala`) is offered each runtime plan subtree top-down in `Lowering`, before CPU lowering; the first subtree it accepts runs as one operator. `WvletEngine(accelerator = ...)` sets one; the `gpu_offload` toggle turns the hook off. See [the GPU executor ADR](../adr/2026-11-24-engine-gpu-executor.md).

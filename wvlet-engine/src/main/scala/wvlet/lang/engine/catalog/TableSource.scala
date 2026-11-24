@@ -27,7 +27,11 @@ import scala.collection.mutable
   * source may use it to skip data that can't match (e.g. Parquet row groups by statistics), but
   * rows it returns are still filtered by the engine
   */
-case class ScanSpec(columns: Option[Seq[String]] = None, filter: Option[ParquetFilter] = None)
+case class ScanSpec(
+    columns: Option[Seq[String]] = None,
+    filter: Option[ParquetFilter] = None,
+    footerCache: Boolean = false
+)
 
 /** A readable table: its columns and a batch iterator over the requested columns */
 trait TableSource:
@@ -96,16 +100,28 @@ class MemTable(val name: String, val schema: Schema, batches: Seq[Batch]) extend
         val idx = cols.map(c => schema.names.indexOf(c)).toArray
         batches.iterator.map(_.select(idx))
 
-/** A Parquet file, a directory of Parquet files (Hive partitions), or an Iceberg table */
-class ParquetSource(val name: String, val path: String) extends TableSource:
+/**
+  * A Parquet file, a directory of Parquet files (Hive partitions), or an Iceberg table. With
+  * `footerCache`, planning reads (schema, row count, statistics) of a single file open it through
+  * [[ParquetFooterCache]]; scans do when their [[ScanSpec]] says so
+  */
+class ParquetSource(val name: String, val path: String, val footerCache: Boolean = false)
+    extends TableSource:
   override def key: Any = ("parquet", path)
 
   /** Whether `path` names one Parquet file, rather than a folder or a glob */
   val isSingleFile: Boolean = path.endsWith(".parquet") && !path.exists(c => c == '*' || c == '{')
 
+  /** Open the single file, through the footer cache when `cached` */
+  private def openFile(cached: Boolean): ParquetFooterCache.Opened =
+    if cached then
+      ParquetFooterCache.open(path)
+    else
+      ParquetFooterCache.Opened(Parquet.open(path), None, false)
+
   private lazy val parquetSchema: ParquetSchema =
     if isSingleFile then
-      val f = Parquet.open(path)
+      val f = openFile(footerCache).file
       try f.schema
       finally f.close()
     else
@@ -138,7 +154,7 @@ class ParquetSource(val name: String, val path: String) extends TableSource:
   override lazy val estimatedRows: Option[Long] =
     try
       if isSingleFile then
-        val f = Parquet.open(path)
+        val f = openFile(footerCache).file
         try Some(f.numRows)
         finally f.close()
       else
@@ -170,10 +186,11 @@ class ParquetSource(val name: String, val path: String) extends TableSource:
       None
     else
       try
-        val f = Parquet.open(path)
+        val opened = openFile(footerCache)
+        val f      = opened.file
         try
           val rows    = f.numRows
-          val stats   = f.columnStatistics.get(column)
+          val stats   = opened.columnStatistics.get(column)
           val nonNull = stats.flatMap(_.numNulls).map(n => rows - n).getOrElse(rows).toDouble
           def asLong(v: Any): Option[Long] =
             v match
@@ -195,7 +212,7 @@ class ParquetSource(val name: String, val path: String) extends TableSource:
               yield math.min(nonNull, max.toDouble - min.toDouble + 1)
             case Some(PType.Str) if rows <= ParquetSource.DistinctScanLimit =>
               val seen = scala.collection.mutable.HashSet.empty[Any]
-              scan(ScanSpec(Some(Seq(column)))).foreach { b =>
+              scan(ScanSpec(Some(Seq(column)), footerCache = footerCache)).foreach { b =>
                 val v = b.columns(0)
                 var i = 0
                 while i < b.size do
@@ -225,7 +242,7 @@ class ParquetSource(val name: String, val path: String) extends TableSource:
       None
     else
       val (cols, types, options) = readOptions(spec)
-      val f                      = Parquet.open(path)
+      val f                      = openFile(spec.footerCache).file
       val groups                 =
         try
           f.selectRowGroups(options)
@@ -246,7 +263,7 @@ class ParquetSource(val name: String, val path: String) extends TableSource:
   def scan(spec: ScanSpec): Iterator[Batch] =
     val (cols, types, options) = readOptions(spec)
     if isSingleFile then
-      val f  = Parquet.open(path)
+      val f  = openFile(spec.footerCache).file
       val it = f.readBatches(options)
       ParquetSource.closing(it.map(b => ParquetSource.toBatch(b, cols, types)), () => f.close())
     else
