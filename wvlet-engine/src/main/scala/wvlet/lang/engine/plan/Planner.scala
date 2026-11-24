@@ -40,6 +40,7 @@ import wvlet.lang.model.plan.*
 import wvlet.uni.log.LogSupport
 
 import scala.collection.mutable
+import scala.util.control.NonFatal
 
 /**
   * Translates a typed, model-expanded wvlet [[Relation]] into a tree of physical [[Operator]]s.
@@ -1950,7 +1951,7 @@ class Planner(
                   }
                   .toMap
               catch
-                case scala.util.control.NonFatal(_) =>
+                case NonFatal(_) =>
                   throw c.error
             // The joins keep the aggregation's columns first, so keys and calls keep their refs
             val b      = Binder(this, BindScope(builder.op(p).schema), Some(aggCtx), columns)
