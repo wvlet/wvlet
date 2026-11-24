@@ -105,6 +105,14 @@ class JoinDirectIndexTest extends UniTest:
     m2 shouldBe Seq(Nil, Seq(1), Nil)
   }
 
+  test("should index a few keys over a range that fits in cache") {
+    val build   = Array(ints(200000, 17, 150000, 17))
+    val probe   = Array(ints(17, 150000, 200000, 18, 200001, 16))
+    val (jb, m) = directMatches(build, probe)
+    m shouldBe Seq(Seq(1, 3), Seq(2), Seq(0), Nil, Nil, Nil)
+    jb.uniqueKeys shouldBe false
+  }
+
   test("should use hash tables for sparse keys") {
     val sparse = Array(ints(0, 1000000, 2000000))
     joinBuild(sparse, direct = true, TaskRunner.Sequential).usesDirectIndex shouldBe false
