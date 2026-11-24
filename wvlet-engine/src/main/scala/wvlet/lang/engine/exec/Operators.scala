@@ -895,7 +895,8 @@ final class JoinBuild(
     trackMatches: Boolean = false,
     runner: TaskRunner = TaskRunner.Sequential,
     filters: Seq[RuntimeFilter] = Nil,
-    packKeys: Boolean = true
+    packKeys: Boolean = true,
+    flatTable: Boolean = true
 ):
   @volatile
   private var built = false
@@ -920,6 +921,9 @@ final class JoinBuild(
   private var directHeads: Array[Int]          = null
   private var directMin: Long                  = 0L
   private var directStore: GroupTable.KeyStore = null
+  // A single integer key outside a dense range: one flat table over (key, first row) pairs, null
+  // when the build uses a direct index or GroupTables. `directStore` normalizes its probe keys too
+  private var flat: LongJoinTable = null
 
   /** Whether no two build rows share a key, so every chain ends at its first row */
   var uniqueKeys: Boolean = false
@@ -935,6 +939,9 @@ final class JoinBuild(
 
   /** Whether the build probes through a direct index instead of hash tables (for tests) */
   def usesDirectIndex: Boolean = directHeads != null
+
+  /** Whether the build probes through a [[LongJoinTable]] (for tests) */
+  def usesFlatTable: Boolean = flat != null
 
   /**
     * Build rows some probe matched, shared by the probe copies of a right / full join. Copies only
@@ -975,7 +982,9 @@ final class JoinBuild(
     chain = Vec.filledInts(build.size, -1)
     if directIndex && types.size == 1 then
       buildDirect(keyVecs(0), types(0), valid, nv)
-    if directHeads == null then
+    if directHeads == null && flatTable && types.size == 1 then
+      buildFlat(keyVecs(0), types(0), valid, nv)
+    if directHeads == null && flat == null then
       buildHashed(keyVecs, types, valid, nv)
     if trackMatches then
       matched = new Array[Boolean](build.size)
@@ -1047,6 +1056,60 @@ final class JoinBuild(
     directHeads = heads
 
   end buildDirect
+
+  /** The [[LongJoinTable]] of a single Int32 / Date / Int64 key; leaves `flat` null otherwise */
+  private def buildFlat(key: Vec, t: PType, valid: Array[Int], nv: Int): Unit =
+    if !(t == PType.Int32 || t == PType.Date || t == PType.Int64) then
+      return
+    val store = GroupTable.KeyStore(t)
+    // Every key as a Long; the values of rows with a NULL key are never read
+    val longs: Array[Long] =
+      store.normalize(key) match
+        case v: LongVec =>
+          v.values
+        case v: IntVec =>
+          val a = new Array[Long](v.size)
+          var i = 0
+          while i < a.length do
+            a(i) = v.values(i).toLong
+            i += 1
+          a
+        case _ =>
+          return
+    if runner.parallelism > 1 && nv >= JoinBuild.MinParallelRows then
+      parts = GroupTable.partitionCount(runner.parallelism)
+    val rowsOf =
+      if parts == 1 then
+        Array(java.util.Arrays.copyOf(valid, nv))
+      else
+        val h = new Array[Int](nv)
+        var j = 0
+        while j < nv do
+          h(j) = LongJoinTable.hash(longs(valid(j)))
+          j += 1
+        val byPos = GroupTable.partitionRows(h, nv, parts)
+        // Positions among the valid rows -> build rows
+        byPos.foreach { r =>
+          var k = 0
+          while k < r.length do
+            r(k) = valid(r(k))
+            k += 1
+        }
+        byPos
+    val (table, unique) = LongJoinTable.build(
+      longs,
+      rowsOf,
+      Integer.numberOfTrailingZeros(parts),
+      chain,
+      runner
+    )
+    // A null table: a skewed build, which GroupTables take
+    if table != null then
+      directStore = store
+      uniqueKeys = unique
+      flat = table
+
+  end buildFlat
 
   /** Hash tables over the valid rows, one per hash partition */
   private def buildHashed(
@@ -1132,6 +1195,16 @@ final class JoinBuild(
         Array[Vec](packer.pack(probeKeys, n))
     if directHeads != null then
       directMatches(keys(0), n, out)
+    else if flat != null then
+      directStore.normalize(keys(0)) match
+        case v: LongVec =>
+          flat.firstRows(v.values, v.nulls, n, out)
+        case v: IntVec =>
+          flat.firstRows(v.values, v.nulls, n, out)
+        case other =>
+          throw IllegalStateException(
+            s"Unexpected join key vector: ${other.getClass.getSimpleName}"
+          )
     else if parts == 1 then
       val ids  = tables(0).lookup(keys, n)
       val head = heads(0)
