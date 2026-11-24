@@ -20,7 +20,7 @@ CREATE TABLE test_comment_variations (
    status varchar NOT NULL DEFAULT 'active' COMMENT 'Account status' WITH ( enum_values = 'active,inactive,suspended' )
 );
 
--- Test with VALUES expressions (recommended in CLAUDE.md for SQL specs)
+-- Test with VALUES expressions (recommended in design/testing.md for SQL specs)
 CREATE TABLE test_comment_with_data AS 
 SELECT *
 FROM (

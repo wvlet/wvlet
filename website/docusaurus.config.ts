@@ -3,7 +3,7 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import vscodePackage from '../vscode-wvlet/package.json';
 
-// The VS Code extension version is bumped in every release commit (see CLAUDE.md), so it
+// The VS Code extension version is bumped in every release commit (see design/releasing.md), so it
 // doubles as the current Wvlet release version for structured data.
 const wvletVersion: string = vscodePackage.version;
 const siteDescription =
