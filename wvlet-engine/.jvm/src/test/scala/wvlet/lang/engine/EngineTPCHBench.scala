@@ -15,6 +15,7 @@ package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.model.plan.*
 import wvlet.uni.log.LogSupport
 import wvlet.uni.test.UniTest
@@ -54,6 +55,14 @@ import java.util.concurrent.TimeoutException
   *     timings) of one extra run of each query to `target/engine-bench/<label>-<query>.duckdb.json`
   *   - `WVLET_ENGINE_BENCH_EXPLAIN`: set 1 to write each engine plan to
   *     `target/engine-bench/<suite>-<query>.plan`
+  *   - `WVLET_ENGINE_BENCH_AB`: comma-separated optimization names (see `Optimization`). Instead of
+  *     comparing with DuckDB, each query runs on the engine with every optimization ("on") and with
+  *     these disabled ("off"), alternating on/off and off/on run by run in the same JVM, so that
+  *     load drift on a noisy machine hits both alike. Logs the on / off ratio of the fastest run of
+  *     each per query and for the suite, and writes `target/engine-bench/<suite>-sf<sf>-ab.tsv`.
+  *     Both suites at SF1 take about a minute; trust the suite totals first, since single short
+  *     queries still move by 10-20% between runs. For example
+  *     `WVLET_ENGINE_BENCH_SF=1 WVLET_ENGINE_BENCH_RUNS=5 WVLET_ENGINE_BENCH_AB=join_direct_index`
   *
   * [[EngineTPCDSBench]] runs spec/tpcds the same way.
   */
@@ -95,7 +104,8 @@ object EngineTPCHBench extends LogSupport:
       duckdbThreads: Option[Int],
       timeoutSeconds: Int,
       explain: Boolean,
-      duckdbProfile: Boolean = false
+      duckdbProfile: Boolean = false,
+      abOff: Option[OptimizerOptions] = None
   )
 
   object BenchOptions:
@@ -118,9 +128,20 @@ object EngineTPCHBench extends LogSupport:
           duckdbProfile = sys
             .env
             .get("WVLET_ENGINE_BENCH_DUCKDB_PROFILE")
-            .exists(v => v == "1" || v == "true")
+            .exists(v => v == "1" || v == "true"),
+          abOff = sys
+            .env
+            .get("WVLET_ENGINE_BENCH_AB")
+            .filter(_.trim.nonEmpty)
+            .map(names =>
+              OptimizerOptions
+                .fromSystem()
+                .withDisabled(OptimizerOptions.parse(names).disabled.toSeq*)
+            )
         )
       }
+
+  end BenchOptions
 
   /** The number of a query file name, e.g. 24 for q24.wv */
   def queryNumber(fileName: String): Int = fileName.filter(_.isDigit).toInt
@@ -147,6 +168,10 @@ object EngineTPCHBench extends LogSupport:
       }
       val engine = WvletEngine(baseDir = specPath)
       tables.foreach(t => engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet"))
+      // The engine with the A/B optimizations disabled, over the same tables
+      val offEngine = opts.abOff.map(off => WvletEngine(engine.catalog, specPath, off))
+      val abResults = Seq.newBuilder[ABTiming]
+      val abFailed  = Seq.newBuilder[String]
 
       val compiler = Compiler(
         CompilerOptions(sourceFolders = List(specPath), workEnv = WorkEnv(specPath))
@@ -172,6 +197,22 @@ object EngineTPCHBench extends LogSupport:
           case Some(_) if timedOut =>
             // A timed-out engine run may still occupy the worker thread
             QueryTiming(name, Nil, Nil, -1, -1, Some("skipped after a timeout"))
+          case Some(q) if offEngine.isDefined =>
+            val task = worker.submit(() => abTiming(name, q, engine, offEngine.get, opts.runs))
+            try
+              val r = task.get(opts.timeoutSeconds.toLong, TimeUnit.SECONDS)
+              info(r.logLine)
+              abResults += r
+            catch
+              case e: ExecutionException =>
+                warn(s"${name}: ${e.getCause}", e.getCause)
+                abFailed += name
+              case e: TimeoutException =>
+                task.cancel(true)
+                timedOut = true
+                warn(s"${name}: timed out after ${opts.timeoutSeconds}s")
+                abFailed += name
+            QueryTiming(name, Nil, Nil, -1, -1, Some("A/B run"))
           case Some(q) =>
             val sql = GenSQL.generateSQLFromRelation(q, addHeader = false).sql
             def duckdbOnce(): (Double, Long) = timed(countRows(conn, sql))
@@ -245,7 +286,10 @@ object EngineTPCHBench extends LogSupport:
             end try
         end match
       }
-      report(label, opts, results)
+      if offEngine.isDefined then
+        reportAB(label, opts, abResults.result(), abFailed.result())
+      else
+        report(label, opts, results)
       results
     finally
       worker.shutdownNow()
@@ -253,6 +297,120 @@ object EngineTPCHBench extends LogSupport:
     end try
 
   end runBench
+
+  /**
+    * Times one query on `on` and `off` after a warm-up of each, alternating which runs first, and
+    * checks that both return the same number of rows
+    */
+  private def abTiming(name: String, q: Relation, on: WvletEngine, off: WvletEngine, runs: Int)(
+      using Context
+  ): ABTiming =
+    // Wall and process CPU milliseconds, and rows, of one run
+    def once(e: WvletEngine): (Double, Double, Long) =
+      val cpu0       = processCpuNanos()
+      val (ms, rows) = timed(e.execute(q).numRows.toLong)
+      (ms, (processCpuNanos() - cpu0) / 1000000.0, rows)
+    val onRows  = once(on)._3
+    val offRows = once(off)._3
+    val onRuns  = Seq.newBuilder[(Double, Double)]
+    val offRuns = Seq.newBuilder[(Double, Double)]
+    (1 to runs).foreach { r =>
+      def runOn(): Unit =
+        val (ms, cpu, _) = once(on)
+        onRuns += ((ms, cpu))
+      def runOff(): Unit =
+        val (ms, cpu, _) = once(off)
+        offRuns += ((ms, cpu))
+      if r % 2 == 1 then
+        runOn()
+        runOff()
+      else
+        runOff()
+        runOn()
+    }
+    val onR  = onRuns.result()
+    val offR = offRuns.result()
+    ABTiming(name, onR.map(_._1), offR.map(_._1), onR.map(_._2), offR.map(_._2), onRows == offRows)
+
+  end abTiming
+
+  /** Logs the A/B timings and writes `target/engine-bench/<label>-sf<sf>-ab.tsv` */
+  private def reportAB(
+      label: String,
+      opts: BenchOptions,
+      results: Seq[ABTiming],
+      failed: Seq[String]
+  ): Unit =
+    // Only the A/B optimizations: ones disabled system-wide are off in both engines
+    val off                              = sys.env.getOrElse("WVLET_ENGINE_BENCH_AB", "")
+    val onMs                             = results.map(_.onMs).sum
+    val offMs                            = results.map(_.offMs).sum
+    val onCpu                            = results.map(_.onCpuMs).sum
+    val offCpu                           = results.map(_.offCpuMs).sum
+    def geomean(xs: Seq[Double]): Double =
+      if xs.isEmpty then
+        1.0
+      else
+        math.exp(xs.map(math.log).sum / xs.size)
+    val moved = results.sortBy(_.ratio)
+    val lines = Seq.newBuilder[String]
+    lines +=
+      f"${label} sf=${opts.sf}, ${opts.runs} runs, off=${off}: on / off wall ${onMs /
+          offMs}%.3f (${onMs}%.0f / ${offMs}%.0f ms), CPU ${onCpu /
+          offCpu}%.3f, wall geomean ${geomean(results.map(_.ratio))}%.3f over ${results
+          .size} queries"
+    lines +=
+      s"  most improved: ${moved.take(5).map(r => f"${r.name} ${r.ratio}%.2f").mkString(", ")}"
+    lines +=
+      s"  most regressed: ${moved
+          .reverse
+          .take(5)
+          .map(r => f"${r.name} ${r.ratio}%.2f")
+          .mkString(", ")}"
+    if failed.nonEmpty then
+      lines += s"  FAILED or timed out (not in the totals): ${failed.mkString(", ")}"
+    val mismatched = results.filterNot(_.rowsMatch).map(_.name)
+    if mismatched.nonEmpty then
+      lines += s"  ROW COUNT MISMATCH: ${mismatched.mkString(", ")}"
+    info(lines.result().mkString("\n"))
+    val tsv  = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}-ab.tsv")
+    val rows =
+      "query\ton_min_ms\toff_min_ms\tratio\ton_cpu_ms\toff_cpu_ms\tcpu_ratio\trows_match" +:
+        results.map { r =>
+          f"${r.name}\t${r.onMs}%.1f\t${r.offMs}%.1f\t${r.ratio}%.3f\t${r.onCpuMs}%.1f\t${r
+              .offCpuMs}%.1f\t${r.cpuRatio}%.3f\t${r.rowsMatch}"
+        }
+    Files.writeString(tsv.toPath, rows.mkString("", "\n", "\n"))
+    info(s"Wrote ${tsv.getPath}")
+
+  end reportAB
+
+  /**
+    * One query's engine runs with every optimization (on) and with the A/B optimizations disabled
+    * (off), as wall and process CPU milliseconds per run
+    */
+  case class ABTiming(
+      name: String,
+      onMsPerRun: Seq[Double],
+      offMsPerRun: Seq[Double],
+      onCpuMsPerRun: Seq[Double],
+      offCpuMsPerRun: Seq[Double],
+      rowsMatch: Boolean
+  ):
+    // The fastest run of each: load spikes on a shared machine only ever slow a run down
+    def onMs: Double     = onMsPerRun.min
+    def offMs: Double    = offMsPerRun.min
+    def onCpuMs: Double  = onCpuMsPerRun.min
+    def offCpuMs: Double = offCpuMsPerRun.min
+    def ratio: Double    = onMs / math.max(offMs, 0.001)
+    def cpuRatio: Double = onCpuMs / math.max(offCpuMs, 0.001)
+    def logLine: String  =
+      f"${name}%-4s on ${onMs}%7.1f ms  off ${offMs}%7.1f ms  (${ratio}%.2f)  CPU on ${onCpuMs}%7.1f ms  off ${offCpuMs}%7.1f ms  (${cpuRatio}%.2f)${
+          if rowsMatch then
+            ""
+          else
+            "  ROW COUNT MISMATCH"
+        }"
 
   private def report(label: String, opts: BenchOptions, results: Seq[QueryTiming]): Unit =
     val ok        = results.filter(_.error.isEmpty)
