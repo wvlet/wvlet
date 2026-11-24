@@ -23,9 +23,12 @@ import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.expr.Const
 import wvlet.lang.engine.expr.InList
 import wvlet.lang.engine.expr.Kernels
+import wvlet.lang.engine.expr.LikeExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.CardinalityEstimator
 import wvlet.lang.engine.plan.JoinOrderOptimizer
+import wvlet.lang.engine.plan.Optimization
+import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.vector.Batch
 import wvlet.lang.engine.vector.PType
 
@@ -34,7 +37,8 @@ import scala.util.control.NonFatal
 /**
   * Row and distinct-count estimates of [[RuntimePlan]] nodes, read from source statistics. They
   * follow [[CardinalityEstimator]] over the lowered operators rule for rule, so that join order
-  * reads the same estimates on both forms
+  * reads the same estimates on both forms, except for the prefix LIKE estimate of [[selectivity]]
+  * (`prefix_like_selectivity`), which only the runtime plan reads
   */
 object Stats:
   import RuntimePlan.*
@@ -165,7 +169,7 @@ object Stats:
     * Estimated rows of p passing all of `conds`: counted from the result for a read of a computed
     * shared CTE, and rows(p) times each condition's [[selectivity]] otherwise
     */
-  def filteredRows(p: RuntimePlan, conds: Seq[JoinCondition]): Double =
+  def filteredRows(p: RuntimePlan, conds: Seq[JoinCondition], options: OptimizerOptions): Double =
     val counted =
       p match
         case CTERef(cte, columns) if conds.nonEmpty && cte.rows.isDefined =>
@@ -173,14 +177,14 @@ object Stats:
           cte.filteredRows(BExpr(cte.overBody(columns, all))).map(_.toDouble)
         case _ =>
           None
-    counted.getOrElse(rows(p) * conds.map(selectivity(p, _)).product)
+    counted.getOrElse(rows(p) * conds.map(selectivity(p, _, options)).product)
 
   /**
     * Estimated fraction of the rows of p passing a condition: 1 / ndv for `x = literal` (n / ndv
-    * for `x in (n literals)`), as in DuckDB, and [[CardinalityEstimator.DefaultSelectivity]]
-    * otherwise
+    * for `x in (n literals)`), as in DuckDB, [[PrefixLike.Selectivity]] for `x like 'p%'` (when
+    * `prefix_like_selectivity` is on), and [[CardinalityEstimator.DefaultSelectivity]] otherwise
     */
-  def selectivity(p: RuntimePlan, c: JoinCondition): Double =
+  def selectivity(p: RuntimePlan, c: JoinCondition, options: OptimizerOptions): Double =
     def compared(e: VExpr): Option[VExpr] =
       e match
         case Compare(CmpOp.Eq, Const(_, _), x) =>
@@ -195,6 +199,14 @@ object Stats:
       .flatMap { n =>
         compared(c.cond.expr).flatMap(distinct(p, _)).filter(_ >= 1).map(d => math.min(1.0, n / d))
       }
+      .orElse(
+        Option
+          .when(options.isEnabled(Optimization.PrefixLikeSelectivity))(c.cond.expr)
+          .collect {
+            case l: LikeExpr if PrefixLike.prefix(l).isDefined =>
+              PrefixLike.Selectivity
+          }
+      )
       .getOrElse(CardinalityEstimator.DefaultSelectivity)
 
   /**

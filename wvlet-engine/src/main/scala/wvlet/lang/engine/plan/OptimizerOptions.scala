@@ -70,6 +70,12 @@ enum Optimization(val name: String):
   case GroupKeySemiJoins extends Optimization("group_key_semi_joins")
 
   /**
+    * Estimate a prefix pattern `x like 'p%'` as the range `x >= 'p' and x < next(p)` it is, two
+    * range conditions of the default selectivity each, instead of one
+    */
+  case PrefixLikeSelectivity extends Optimization("prefix_like_selectivity")
+
+  /**
     * Enumerate the join trees of small inner join graphs exactly, including bushy trees, instead of
     * multi-start greedy search
     */

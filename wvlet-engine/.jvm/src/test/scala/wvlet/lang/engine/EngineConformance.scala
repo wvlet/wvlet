@@ -87,7 +87,9 @@ class EngineConformance(
     }
 
   /** Apply f to each query of the unit, named `<file name>#<query number>` */
-  private def queries[A](unit: CompilationUnit)(f: Context ?=> (String, Relation) => A): Seq[A] =
+  private[engine] def queries[A](unit: CompilationUnit)(
+      f: Context ?=> (String, Relation) => A
+  ): Seq[A] =
     val r                            = compiler.compileSingleUnit(unit)
     given ctx: Context               = r.context
     val results                      = Seq.newBuilder[A]

@@ -30,6 +30,10 @@ class EngineGroupKeySemiJoinsTest extends UniTest:
     .engine
     .withOptimizer(options.withDisabled(Optimization.GroupKeySemiJoins))
 
+  private val noPrefixLike = conformance
+    .engine
+    .withOptimizer(options.withDisabled(Optimization.PrefixLikeSelectivity))
+
   override def afterAll: Unit = conformance.close()
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
@@ -117,6 +121,29 @@ class EngineGroupKeySemiJoinsTest extends UniTest:
          |order by l_orderkey, l_linenumber
          |""".stripMargin
     added(query) shouldBe 1
+  }
+
+  test("reduce an aggregation on the left of a right join") {
+    val query =
+      s"""from ${perPart}
+         |right join { from part where p_brand = 'Brand#23' } as p on t.l_partkey = p.p_partkey
+         |select p.p_partkey, q * 2 as q2
+         |order by p.p_partkey
+         |""".stripMargin
+    added(query) shouldBe 1
+  }
+
+  test("reduce TPC-H q20's aggregation by the parts of a prefix LIKE, estimated as a range") {
+    // The decorrelated sum ends up on the left of a right join. With the default selectivity of
+    // `p_name like 'forest%'`, the parts miss the bar
+    val unit  = conformance.units.find(_.sourceFile.fileName == "q20.wv").get
+    val added =
+      conformance.queries(unit) { (name, q) =>
+        conformance.assertMatches(name, q)
+        conformance.assertMatches(name, q, target = noPrefixLike)
+        semiJoins(conformance.engine.explain(q)) - semiJoins(noPrefixLike.explain(q))
+      }
+    added shouldBe Seq(1)
   }
 
   test("not reduce an aggregation on the preserved side of a left join") {

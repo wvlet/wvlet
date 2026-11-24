@@ -18,6 +18,9 @@ import wvlet.lang.engine.expr.CmpOp
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.expr.Const
+import wvlet.lang.engine.expr.LikeExpr
+import wvlet.lang.engine.plan.Optimization
+import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.vector.*
 import wvlet.uni.test.UniTest
 
@@ -71,17 +74,33 @@ class StatsTest extends UniTest:
   test("estimate a read of a computed CTE from its result's statistics") {
     val ref = RuntimePlan.CTERef(Computed(Some(50), Some(4)), IndexedSeq(k))
     Stats.distinct(ref, k.id) shouldBe Some(50.0)
-    Stats.filteredRows(ref, Seq(eq3)) shouldBe 4.0
-    Stats.filteredRows(ref, Nil) shouldBe 1000.0
+    Stats.filteredRows(ref, Seq(eq3), OptimizerOptions()) shouldBe 4.0
+    Stats.filteredRows(ref, Nil, OptimizerOptions()) shouldBe 1000.0
   }
 
   test("fall back to the selectivity estimate without the result's statistics") {
     val ref = RuntimePlan.CTERef(Computed(None, None), IndexedSeq(k))
     Stats.distinct(ref, k.id) shouldBe None
-    Stats.filteredRows(ref, Seq(eq3)) shouldBe 1000.0 * 0.3
+    Stats.filteredRows(ref, Seq(eq3), OptimizerOptions()) shouldBe 1000.0 * 0.3
     // With the distinct count only, `k = 3` keeps 1 / 50 of the rows
     val withDistinct = RuntimePlan.CTERef(Computed(Some(50), None), IndexedSeq(k))
-    Stats.filteredRows(withDistinct, Seq(eq3)) shouldBe 1000.0 / 50
+    Stats.filteredRows(withDistinct, Seq(eq3), OptimizerOptions()) shouldBe 1000.0 / 50
+  }
+
+  test("estimate a prefix LIKE as a range with two bounds") {
+    val ref  = RuntimePlan.CTERef(Computed(None, None), IndexedSeq(k))
+    val name = ColRef(7, PType.Str, "k")
+    def like(pattern: String, negate: Boolean = false) = JoinCondition(
+      BExpr(LikeExpr(name, pattern, negate)),
+      Map.empty
+    )
+    val on = OptimizerOptions()
+    Stats.selectivity(ref, like("forest%"), on) shouldBe 0.3 * 0.3
+    // Not a range: the default
+    Stats.selectivity(ref, like("%forest"), on) shouldBe 0.3
+    Stats.selectivity(ref, like("forest%", negate = true), on) shouldBe 0.3
+    val off = on.withDisabled(Optimization.PrefixLikeSelectivity)
+    Stats.selectivity(ref, like("forest%"), off) shouldBe 0.3
   }
 
 end StatsTest
