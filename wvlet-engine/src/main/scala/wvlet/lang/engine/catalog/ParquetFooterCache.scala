@@ -75,20 +75,29 @@ object ParquetFooterCache:
       override def removeEldestEntry(e: java.util.Map.Entry[String, Entry]): Boolean =
         size() > MaxEntries
 
+  /**
+    * The version (size, last-modified epoch milliseconds) of the local file at `path`, or None when
+    * it can't be trusted to change on a rewrite: a symbolic link (uni stats the link itself), a
+    * file without a last-modified time, or a path that can't be stat-ed. Take it before reading the
+    * file, so that it describes the bytes read or an older version
+    */
+  def fileVersion(path: String): Option[(Long, Long)] =
+    try
+      val info = FileSystem.info(path)
+      if info.isFile then
+        info.lastModified.map(t => (info.size, t.toEpochMilli))
+      else
+        None
+    catch
+      case _: Exception =>
+        None
+
+  /** Whether a file last modified at `mtime` was written too recently for its version to be kept */
+  def isRecentWrite(mtime: Long): Boolean = System.currentTimeMillis() - mtime < RecentWriteMillis
+
   /** Open the local Parquet file at `path`, reusing its cached footer when the file is unchanged */
   def open(path: String): Opened =
-    // Stat before reading the footer, so that the key describes the bytes read or an older version
-    val stat =
-      try
-        val info = FileSystem.info(path)
-        // A symbolic link's stat describes the link, not the file it points to
-        if info.isFile then
-          info.lastModified.map(t => (info.size, t.toEpochMilli))
-        else
-          None
-      catch
-        case _: Exception =>
-          None
+    val stat = fileVersion(path)
     stat match
       case None =>
         Opened(Parquet.open(path), None, false)
@@ -99,7 +108,7 @@ object ParquetFooterCache:
         else
           // Parse outside the lock, so that opening other files doesn't wait
           val f = Parquet.open(path)
-          if System.currentTimeMillis() - mtime < RecentWriteMillis then
+          if isRecentWrite(mtime) then
             entries.synchronized(entries.remove(path))
             Opened(f, None, false)
           else

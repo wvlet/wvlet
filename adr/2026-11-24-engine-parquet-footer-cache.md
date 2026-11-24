@@ -20,4 +20,4 @@ Date: 2026-11-24 · PR #2365
 
 - A cache hit costs one stat (about 0.2 ms) instead of a parse.
 - A file overwritten with the same size and the same mtime more than 10 seconds after its previous write would serve the old footer. With ordinary file systems and writers this doesn't happen. `wvlet.engine.optimizer.disabled=parquet_footer_cache` turns the cache off.
-- The distinct-count cache is still keyed only by path and column, so it keeps old estimates after a rewrite. Results stay correct. It is left as follow-up work.
+- The distinct-count cache now stores the file version (size, mtime) each estimate was computed from and recomputes when it changes, following the same skip rules, with or without the toggle. It is LRU-bounded to 4096 (path, column) entries.

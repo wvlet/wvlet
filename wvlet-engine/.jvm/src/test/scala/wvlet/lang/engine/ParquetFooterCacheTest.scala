@@ -28,7 +28,8 @@ import java.nio.file.StandardCopyOption
 /**
   * The `parquet_footer_cache` optimization: a parsed footer is reused while the file's size and
   * last-modified time stay the same, a changed or just-written file is parsed again, and with the
-  * optimization off every open parses the footer as before
+  * optimization off every open parses the footer as before. Distinct-count estimates are cached per
+  * file version the same way, with or without the optimization
   */
 class ParquetFooterCacheTest extends UniTest:
   private val dir = Paths.get("target/engine-test/footer-cache").toAbsolutePath
@@ -114,6 +115,48 @@ class ParquetFooterCacheTest extends UniTest:
     src.schema.fields.size shouldBe 4
     ParquetFooterCache.contains(path) shouldBe true
     src.scan(ScanSpec(footerCache = true)).map(_.size).sum shouldBe 25
+  }
+
+  private def versionOf(path: String): Option[(Long, Long)] = ParquetFooterCache.fileVersion(path)
+
+  test("should reuse a distinct-count estimate of an unchanged file") {
+    val path = copy(nation, "distinct-hit.parquet")
+    ParquetSource("d", path).estimatedDistinct("n_name") shouldBe Some(25.0)
+    ParquetSource.cachedDistinctVersion(path, "n_name") shouldBe versionOf(path)
+    ParquetSource("d", path).estimatedDistinct("n_name") shouldBe Some(25.0)
+  }
+
+  test("should estimate distinct counts again when the file size changes") {
+    val path = copy(nation, "distinct-size.parquet")
+    ParquetSource("d", path).estimatedDistinct("n_name") shouldBe Some(25.0)
+    copy(region, "distinct-size.parquet")
+    // region.parquet has no n_name column
+    ParquetSource("d", path).estimatedDistinct("n_name") shouldBe None
+    ParquetSource.cachedDistinctVersion(path, "n_name") shouldBe versionOf(path)
+  }
+
+  test("should estimate distinct counts again when the last-modified time changes") {
+    val path = copy(nation, "distinct-mtime.parquet")
+    ParquetSource("d", path).estimatedDistinct("n_name") shouldBe Some(25.0)
+    val before = ParquetSource.cachedDistinctVersion(path, "n_name")
+    Paths.get(path).toFile.setLastModified(minuteAgo - 60000)
+    ParquetSource("d", path).estimatedDistinct("n_name") shouldBe Some(25.0)
+    val after = ParquetSource.cachedDistinctVersion(path, "n_name")
+    after shouldBe versionOf(path)
+    (after == before) shouldBe false
+  }
+
+  test("should not cache distinct-count estimates of a just-written file or a symbolic link") {
+    val recent = copy(nation, "distinct-recent.parquet", mtime = None)
+    ParquetSource("d", recent).estimatedDistinct("n_name") shouldBe Some(25.0)
+    ParquetSource.cachedDistinctVersion(recent, "n_name") shouldBe None
+
+    val target = copy(nation, "distinct-link-target.parquet")
+    val link   = dir.resolve("distinct-link.parquet")
+    Files.deleteIfExists(link)
+    Files.createSymbolicLink(link, Paths.get(target))
+    ParquetSource("d", link.toString).estimatedDistinct("n_name") shouldBe Some(25.0)
+    ParquetSource.cachedDistinctVersion(link.toString, "n_name") shouldBe None
   }
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
