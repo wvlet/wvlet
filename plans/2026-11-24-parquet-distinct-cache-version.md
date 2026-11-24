@@ -17,7 +17,7 @@
 - Lane: Express — an internal fix with a clear diagnosis, no always-gate area, no user-visible behavior beyond plan choice after a rewrite.
 - Share one stat helper in `ParquetFooterCache` (file version = size + mtime, with the same symlink / no-mtime / recent-write rules) and use it in both caches.
 - Each distinct-count entry records the file version it was computed from, stated before computing; a lookup whose current version differs recomputes.
-- Files the footer cache would not cache (symbolic link, no mtime, written within 10 s) are not cached here either: the estimate is computed on each call.
+- Files the footer cache would not cache (symbolic link, no mtime, written within 10 s) are not cached across queries: the estimate is kept on the `ParquetSource` instance (one query) only.
 - Always validate, independent of the `parquet_footer_cache` toggle: the toggle stays a footer-only switch so its A/B isn't confounded, and a stat costs microseconds next to an estimate.
 - Bound the map with an access-ordered LRU of 4096 (path, column) entries, guarded by a lock; compute outside the lock as today.
 - Tests (JVM): a rewritten file (different size; same size with a different mtime) recomputes, an unchanged file reuses, a just-written file isn't cached.

@@ -168,26 +168,33 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
     * the non-null count. Strings of files up to [[ParquetSource.DistinctScanLimit]] rows: counted
     * by reading the column once, as DuckDB keeps distinct-count statistics for join ordering.
     * Estimates are cached per file version (see [[ParquetSource.MaxDistinctEntries]]); a file
-    * [[ParquetFooterCache]] wouldn't cache is estimated on each call
+    * [[ParquetFooterCache]] wouldn't cache is estimated once per source (a source lives for one
+    * query)
     */
   override def estimatedDistinct(column: String): Option[Double] =
     // Stat before computing, so that the entry describes the file read or an older version
-    val version = ParquetFooterCache
+    def version = ParquetFooterCache
       .fileVersion(path)
       .filterNot((_, mtime) => ParquetFooterCache.isRecentWrite(mtime))
-    version match
-      case None =>
-        // A file whose rewrites can't be told apart: estimated on each call
-        computeDistinct(column)
-      case Some(v) =>
-        ParquetSource.cachedDistinct(path, column, v) match
-          case Some(d) =>
-            d
-          case None =>
-            // Computed outside the lock, so that a scan doesn't block other planners
-            val d = computeDistinct(column)
-            ParquetSource.putDistinct(path, column, v, d)
-            d
+    if !isSingleFile then
+      None
+    else
+      version match
+        case None =>
+          // A file whose rewrites can't be told apart: not shared with other queries
+          localDistinct.synchronized(localDistinct.getOrElseUpdate(column, computeDistinct(column)))
+        case Some(v) =>
+          ParquetSource.cachedDistinct(path, column, v) match
+            case Some(d) =>
+              d
+            case None =>
+              // Computed outside the lock, so that a scan doesn't block other planners
+              val d = computeDistinct(column)
+              ParquetSource.putDistinct(path, column, v, d)
+              d
+
+  // Estimates of a file without a trusted version, kept for this source only
+  private val localDistinct = scala.collection.mutable.HashMap.empty[String, Option[Double]]
 
   private def computeDistinct(column: String): Option[Double] =
     if !isSingleFile then
