@@ -860,10 +860,12 @@ class Binder(
         )
       case _: CurrentDate =>
         Const((currentMicros() / ValueOps.MicrosPerDay).toInt, PType.Date)
-      case _: CurrentTimestamp | _: CurrentLocalTimeStamp =>
+      case _: CurrentTimestamp =>
+        Const(currentMicros(), PType.TimestampTz)
+      case _: CurrentLocalTimeStamp =>
         Const(currentMicros(), PType.Timestamp)
       case a: AtTimeZone =>
-        bind(a.expr)
+        atTimeZone(bind(a.expr), bind(a.timezone))
       case n: NativeExpression if NativeFunction.isImplemented(n.name) =>
         // Functions evaluated inside the compiler (e.g., ulid_string)
         NativeFunction.callByName(n.name) match
@@ -887,6 +889,40 @@ class Binder(
   end bindExpr
 
   private def currentMicros(): Long = System.currentTimeMillis() * 1000L
+
+  /** Micros of a date, timestamp, or timestamp string value */
+  private def timestampMicros(t: PType, v: Any): Long =
+    t match
+      case PType.Date =>
+        v.asInstanceOf[Int].toLong * ValueOps.MicrosPerDay
+      case PType.Str =>
+        ValueOps.parseTimestamp(v.asInstanceOf[String])
+      case _ =>
+        ValueOps.toLong(v)
+
+  /**
+    * `x AT TIME ZONE zone`, as in DuckDB: a plain timestamp is read as wall-clock time in the zone
+    * and becomes an instant (TIMESTAMPTZ); an instant becomes its wall-clock time in the zone
+    */
+  private def atTimeZone(x: VExpr, zone: VExpr): VExpr =
+    val z = castTo(zone, PType.Str)
+    x.ptype match
+      case PType.TimestampTz =>
+        RowFn(
+          "timezone",
+          Seq(x, z),
+          PType.Timestamp,
+          a => TimeZones.toLocal(a(0).asInstanceOf[Long], a(1).asInstanceOf[String])
+        )
+      case PType.Null =>
+        Const(null, PType.TimestampTz)
+      case _ =>
+        RowFn(
+          "timezone",
+          Seq(castTo(x, PType.Timestamp), z),
+          PType.TimestampTz,
+          a => TimeZones.toInstant(a(0).asInstanceOf[Long], a(1).asInstanceOf[String])
+        )
 
   private def resultType(t: PType): PType =
     if t == PType.Null then
@@ -1039,7 +1075,9 @@ class Binder(
               PType.Int64,
               a => (a(0).asInstanceOf[Int] - a(1).asInstanceOf[Int]).toLong
             )
-          case (PType.Timestamp | PType.Date, PType.Timestamp | PType.Date) if aop == ArithOp.Sub =>
+          case (a, b)
+              if (a.isTimestamp || a == PType.Date) &&
+                (b.isTimestamp || b == PType.Date) && aop == ArithOp.Sub =>
             val lt = l.ptype
             val rt = r.ptype
             RowFn(
@@ -1106,7 +1144,7 @@ class Binder(
     RowFn(
       "add_interval",
       Seq(b, interval),
-      PType.Timestamp,
+      t,
       a =>
         val iv0 = a(1).asInstanceOf[Interval]
         val iv  =
@@ -1392,7 +1430,23 @@ class Binder(
     name match
       case "count_star" =>
         error("count(*) is only allowed in aggregations", f)
-      case "date_add" | "date_sub" if args.size == 3 =>
+      case "date_sub" if args.size == 3 =>
+        // DuckDB's date_sub(part, start, end): the number of complete parts between the two
+        val part =
+          args.head match
+            case Const(v, _) =>
+              v.toString
+            case _ =>
+              error("date_sub requires a constant part", f)
+        val t1 = args(1).ptype
+        val t2 = args(2).ptype
+        RowFn(
+          "date_sub",
+          Seq(args(1), args(2)),
+          PType.Int64,
+          a => DateTimeFunctions.dateSub(part, timestampMicros(t1, a(0)), timestampMicros(t2, a(1)))
+        )
+      case "date_add" if args.size == 3 =>
         // Trino-style date_add(unit, n, date)
         val unit =
           args.head match
@@ -1400,17 +1454,12 @@ class Binder(
               v.toString
             case _ =>
               error("date_add requires a constant unit", f)
-        val t    = args(2).ptype
-        val sign =
-          if name == "date_sub" then
-            -1
-          else
-            1
+        val t = args(2).ptype
         RowFn(
           "date_add",
           Seq(args(1), args(2)),
           t,
-          a => ScalarFunctions.addInterval(t, a(1), unit, sign * ValueOps.toLong(a(0)))
+          a => ScalarFunctions.addInterval(t, a(1), unit, ValueOps.toLong(a(0)))
         )
       case IntervalFunction =>
         val unit =

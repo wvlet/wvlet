@@ -285,6 +285,13 @@ object DataFileWriter extends LogSupport:
           Some(LogicalType.Timestamp(false, TimeUnit.MICROS)),
           0
         )
+      case PType.TimestampTz =>
+        // An instant: adjusted to UTC, as DuckDB writes TIMESTAMPTZ
+        ParquetType.Primitive(
+          PhysicalType.INT64,
+          Some(LogicalType.Timestamp(true, TimeUnit.MICROS)),
+          0
+        )
       case PType.Decimal(p, s) =>
         ParquetType.decimal(p, s)
       case other =>
@@ -305,7 +312,7 @@ object DataFileWriter extends LogSupport:
         ColumnVector.BooleanColumn(field, b.values, nulls)
       case (PType.Int32 | PType.Date, i: IntVec) =>
         ColumnVector.IntColumn(field, i.values, nulls)
-      case (PType.Int64 | PType.Timestamp, l: LongVec) =>
+      case (PType.Int64 | PType.Timestamp | PType.TimestampTz, l: LongVec) =>
         ColumnVector.LongColumn(field, l.values, nulls)
       case (PType.Float64, d: DoubleVec) =>
         ColumnVector.DoubleColumn(field, d.values, nulls)
@@ -328,7 +335,7 @@ object DataFileWriter extends LogSupport:
           ),
           nulls
         )
-      case (PType.Int64 | PType.Timestamp, _) =>
+      case (PType.Int64 | PType.Timestamp | PType.TimestampTz, _) =>
         ColumnVector.LongColumn(
           field,
           Array.tabulate(n)(i =>
@@ -560,7 +567,7 @@ object DataFileWriter extends LogSupport:
     v match
       case null =>
         sb.append("null")
-      case _ if ptype == PType.Date || ptype == PType.Timestamp =>
+      case _ if ptype == PType.Date || ptype.isTimestamp =>
         sb.append(jsonString(ValueOps.toStr(ValueOps.toExternal(v, ptype))))
       case b: Boolean =>
         sb.append(b)

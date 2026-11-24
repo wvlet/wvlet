@@ -40,6 +40,7 @@ Apply these rules in order:
   - `url_encode` encodes a space as `%20`. Trino and Spark encode it as `+`, so their variants wrap it.
   - Hex output is lowercase: digests (`md5`, `sha1`, `sha256`) and `to_hex`. `from_hex` accepts either case. Encoding functions work on a string's UTF-8 bytes, and decoders return a string (PR #2325).
   - NULL in gives NULL out unless the doc says otherwise. String concatenation is the existing exception (ADR 2026-11-18-string-concat-null).
+  - Stdlib timestamps are UTC wall-clock times: `from_unixtime` reads epoch seconds in UTC, and `to_unixtime` floors to a whole second on every engine (DuckDB and Trino used to round half even).
   - Format patterns for parsing and formatting dates use strftime `%` codes. Variants for engines with Java- or Oracle-style patterns translate them. Today's `date.format(pattern)` passes the pattern through unchanged and is the first follow-up.
 - Engine-only capabilities with no shared name (`mad`, `kahan_sum`, `damerau_levenshtein`, `list_grade_up`, `json_merge_patch`, ...) are added only on request, through the same rules.
 
@@ -63,7 +64,8 @@ Apply these rules in order:
 - **Date/time:**
   - `d.day_name`, `d.month_name`, `d.iso_year`
   - `s.to_timestamp(format)` and `s.try_to_timestamp(format)`, which returns NULL on failure. These are format overloads of the existing `s.to_timestamp`, with strftime codes; `to_timestamp(s, fmt)` is the name PostgreSQL, Spark, and Snowflake share.
-  - `current_date`, `current_timestamp`
+  - `current_date`, `current_timestamp`, written bare: today's date and the current time in UTC on every engine, not the session time zone (PR for the date/time family)
+  - `ts.to_time_zone(zone)` and `ts.from_time_zone(zone)` convert a UTC wall-clock time to an IANA zone's and back (user-approved addition, date/time PR). Spark's `from_utc_timestamp` / `to_utc_timestamp` were not adopted: rule 1's `to_*` / `from_*` reads the direction more clearly
 - **Casts:**
   - `to_int` / `to_long` on a fractional value truncate toward zero on every engine (2.5 → 2, -2.5 → -2), like Scala/Java `toLong` and Spark. `round` stays the way to round.
   - Numeric `to_boolean` means non-zero is true.

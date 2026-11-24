@@ -96,6 +96,10 @@ trait string in duckdb = {
   -- Extract a JSON value from a string holding JSON text
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
   def json_extract_string(path:string): string = sql"json_extract_string(${this},${path})"
+  -- Parse the string as a timestamp with strftime codes (e.g. '%Y-%m-%d %H:%M:%S'); the whole
+  -- string must match. try_to_timestamp returns NULL where to_timestamp fails
+  def to_timestamp(format:string): timestamp = sql"strptime(${this},${format})"
+  def try_to_timestamp(format:string): timestamp = sql"try_strptime(${this},${format})"
 }
 
 trait string in trino = {
@@ -135,6 +139,10 @@ trait string in trino = {
   -- Extract a JSON value from a string holding JSON text
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
   def json_extract_string(path:string): string = sql"json_extract_scalar(${this},${path})"
+  -- Parse the string as a timestamp with strftime codes; date_parse spells minutes %i, the month
+  -- name %M, and the day name %W
+  def to_timestamp(format:string): timestamp = sql"date_parse(${this},replace(replace(replace(${format},'%M','%i'),'%B','%M'),'%A','%W'))"
+  def try_to_timestamp(format:string): timestamp = sql"try(date_parse(${this},replace(replace(replace(${format},'%M','%i'),'%B','%M'),'%A','%W')))"
 }
 
 trait string in hive = {
@@ -238,6 +246,9 @@ trait string in bigquery = {
   -- Extract a JSON value from a string holding JSON text (JSONPath, e.g. '$.a.b')
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
   def json_extract_string(path:string): string = sql"json_extract_scalar(${this},${path})"
+  -- Parse the string as a timestamp with strftime codes
+  def to_timestamp(format:string): timestamp = sql"parse_timestamp(${format},${this})"
+  def try_to_timestamp(format:string): timestamp = sql"safe.parse_timestamp(${format},${this})"
 }
 
 -- uuid(): a random version-4 UUID as a lowercase string, e.g.

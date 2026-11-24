@@ -79,7 +79,7 @@ object ScanFilters:
       None
     else
       t match
-        case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
+        case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp | PType.TimestampTz =>
           range(column, t, values.minBy(ValueOps.toLong), values.maxBy(ValueOps.toLong))
         case _ =>
           equalities(column, t, values.toSeq.distinct)
@@ -125,7 +125,7 @@ object ScanFilters:
             Some(ValueOps.toLong(k.value))
           case PType.Date =>
             Some(LocalDate.ofEpochDay(ValueOps.toInt(k.value).toLong))
-          case PType.Timestamp =>
+          case PType.Timestamp | PType.TimestampTz =>
             val micros = ValueOps.toLong(k.value)
             Some(
               Instant.ofEpochSecond(

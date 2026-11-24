@@ -401,6 +401,25 @@ object FunctionInliner extends ContextLogSupport:
     }
 
   /**
+    * Expand a bare identifier that names a top-level, zero-argument def (e.g. `current_date`,
+    * `uuid`) into the body of its dialect variant for the compile target. Name lookup is unchanged:
+    * the caller runs this only on identifiers left unresolved after columns were tried, so a column
+    * still shadows the def. Engine-native defs stay plain SQL references, and members of a type
+    * (which need a receiver) are never expanded
+    */
+  def inlineBareFunction(id: Identifier)(using context: Context): Option[Expression] =
+    val symbolInfos = context
+      .findAllSymbolsByName(id.toTermName)
+      // A symbol whose lazy completion is in progress cannot be expanded yet
+      .filterNot(_.isCompleting)
+      .map(_.symbolInfo)
+    selectBareMethodVariant(symbolInfos, context)
+      .filter { m =>
+        m.body.isDefined && !isEngineNative(m) && !m.owner.symbolInfo.isInstanceOf[TypeSymbolInfo]
+      }
+      .map(m => inlineFunctionBody(id, m, Nil))
+
+  /**
     * Inline the body of the function definition, substituting `this` and function arguments.
     * `activeFunctions` tracks the function symbols currently being inlined (innermost first) so
     * that recursive references are reported as user errors instead of looping forever.

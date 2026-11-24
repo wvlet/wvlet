@@ -35,7 +35,7 @@ class EngineFunctionCoverageCheck extends UniTest:
   private val catalogPath = Path.of("wvlet-stdlib/module/standard/duckdb/functions.wv")
 
   /** Covered catalog functions must not drop below this count */
-  private val minCovered = 192
+  private val minCovered = 198
 
   /** Function families out of scope for the engine: collations, spatial, DuckDB-specific types */
   private val excludedPrefixes: Seq[String] = Seq(

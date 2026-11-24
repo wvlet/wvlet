@@ -841,7 +841,7 @@ object Kernels:
       case (i: IntVec, PType.Int64) if i.ptype == PType.Int32 =>
         LongVec(PType.Int64, asLongs(i), i.nulls)
       case (_: IntVec | _: LongVec, PType.Float64)
-          if !v.ptype.isDecimal && v.ptype != PType.Date && v.ptype != PType.Timestamp =>
+          if !v.ptype.isDecimal && v.ptype != PType.Date && !v.ptype.isTimestamp =>
         DoubleVec(asDoubles(v), v.nulls)
       case (_, d: PType.Decimal) if v.ptype.isIntegral || v.ptype.isDecimal =>
         val u = asUnscaled(v, d.scale)
@@ -931,7 +931,7 @@ object Kernels:
     v match
       case i: IntVec if i.ptype == PType.Int32 =>
         IntVec(PType.Int32, Vec.mapInt(i.values)(-_), i.nulls)
-      case l: LongVec if l.ptype != PType.Timestamp =>
+      case l: LongVec if !l.ptype.isTimestamp =>
         LongVec(l.ptype, Vec.mapLong(l.values)(-_), l.nulls)
       case d: DoubleVec =>
         DoubleVec(Vec.mapDouble(d.values)(-_), d.nulls)

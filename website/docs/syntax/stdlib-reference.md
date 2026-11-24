@@ -53,6 +53,7 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `log2` | double | all |  |
 | `power(exponent: double)` | double | all |  |
 | `sign` | int | all |  |
+| `from_unixtime` | timestamp | duckdb, trino, snowflake, bigquery | Interpret this value as unix epoch seconds (in UTC), keeping the fraction to the microsecond |
 | `sinh` | double | all | Hyperbolic sine, cosine, and tangent |
 | `cosh` | double | all |  |
 | `tanh` | double | all |  |
@@ -257,6 +258,8 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `levenshtein(other: string)` | int | duckdb, trino, hive, snowflake, bigquery | Edit distance between two strings |
 | `json_extract(path: string)` | json | duckdb, trino, hive, snowflake, bigquery | Extract a JSON value from a string holding JSON text |
 | `json_extract_string(path: string)` | string | duckdb, trino, hive, snowflake, bigquery |  |
+| `to_timestamp(format: string)` | timestamp | duckdb, trino, bigquery | Parse the string as a timestamp with strftime codes (e.g. '%Y-%m-%d %H:%M:%S'); the whole string must match. try_to_timestamp returns NULL where to_timestamp fails |
+| `try_to_timestamp(format: string)` | timestamp | duckdb, trino, bigquery |  |
 
 ## Date Values
 
@@ -281,6 +284,9 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `add_years(n: int)` | date | duckdb, trino, hive, snowflake, bigquery |  |
 | `format(pattern: string)` | string | duckdb, trino, hive, snowflake, bigquery | Format the date with a strftime-style pattern (e.g. '%Y-%m-%d') |
 | `last_day` | date | duckdb, trino, hive, snowflake, bigquery | The last day of the month of this date |
+| `day_name` | string | duckdb, trino, hive, bigquery | Full English day and month names ('Monday', 'January') |
+| `month_name` | string | duckdb, trino, hive, bigquery |  |
+| `iso_year` | int | duckdb, trino, snowflake, bigquery | ISO-8601 week-numbering year: the year of the Thursday of this date's ISO week |
 
 ## Timestamp Values
 
@@ -312,8 +318,13 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `add_months(n: int)` | timestamp | duckdb, trino, snowflake |  |
 | `add_years(n: int)` | timestamp | duckdb, trino, snowflake |  |
 | `format(pattern: string)` | string | duckdb, trino, hive, snowflake, bigquery | Format the timestamp with a strftime-style pattern (e.g. '%Y-%m-%d %H:%M:%S') |
-| `to_unixtime` | long | duckdb, trino, hive, snowflake, bigquery | Unix epoch seconds of this timestamp |
+| `to_unixtime` | long | duckdb, trino, hive, snowflake, bigquery | Unix epoch seconds of this timestamp, floored to a whole second |
 | `to_string` | string | duckdb, trino, hive, snowflake, bigquery | Render as 'YYYY-MM-DD HH:MM:SS'. Overridden per engine so the rendering is identical |
+| `day_name` | string | duckdb, trino, hive, bigquery | Full English day and month names ('Monday', 'January') |
+| `month_name` | string | duckdb, trino, hive, bigquery |  |
+| `iso_year` | int | duckdb, trino, snowflake, bigquery | ISO-8601 week-numbering year: the year of the Thursday of this timestamp's ISO week |
+| `to_time_zone(zone: string)` | timestamp | duckdb, trino, hive, snowflake, bigquery | This UTC wall-clock time as wall-clock time in the zone (e.g. 'Asia/Tokyo'), and the inverse |
+| `from_time_zone(zone: string)` | timestamp | duckdb, trino, hive, snowflake, bigquery |  |
 
 ## JSON Values
 
@@ -422,6 +433,8 @@ Called without a receiver value (window functions require an `over(...)` clause)
 | `range(start: long, stop: long, step: long)` | array[long] | duckdb, trino | Integers from start (inclusive) to stop (exclusive) in increments of step, e.g. range(0, 10, 3) = [0, 3, 6, 9] and range(3, 0, -1) = [3, 2, 1]. A step of 0 is an error on DuckDB and yields an empty array on Trino |
 | `ulid_string` | string | all | Generate a new ULID |
 | `uuid` | string | duckdb, trino, snowflake, bigquery | uuid(): a random version-4 UUID as a lowercase string, e.g. 'f47ac10b-58cc-4372-a567-0e02b2c3d479'. A new value for every row |
+| `current_date` | date | duckdb, trino, snowflake, bigquery | current_date / current_timestamp: today's date and the current time, in UTC (stdlib timestamps are UTC wall-clock times). Written without parentheses |
+| `current_timestamp` | timestamp | duckdb, trino, snowflake, bigquery |  |
 | `row_number` | long | all | Sequential row number within the window (1, 2, 3, ...) |
 | `rank` | long | all | Rank with gaps after ties (1, 1, 3, ...) |
 | `dense_rank` | long | all | Rank without gaps after ties (1, 1, 2, ...) |

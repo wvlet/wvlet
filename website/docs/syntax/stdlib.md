@@ -77,7 +77,8 @@ Available on all values:
 | `s.md5` / `s.sha1` / `s.sha256` | Lowercase hex digest of the UTF-8 bytes |
 | `s.to_base64` / `s.from_base64` | Base64 encoding of the UTF-8 bytes, and its inverse |
 | `s.to_hex` / `s.from_hex` | Lowercase hex of the UTF-8 bytes, and its inverse (either case) |
-| `uuid()` | A random version-4 UUID string, new for every row (not on Hive) |
+| `uuid` | A random version-4 UUID string, new for every row (not on Hive); `uuid()` works too |
+| `s.to_timestamp(format)` / `s.try_to_timestamp(format)` | Parse with strftime codes (`'%Y-%m-%d %H:%M:%S'`); the whole string must match, and the `try_` form returns NULL instead of failing (DuckDB, Trino, BigQuery) |
 | `s.json_extract(path)` | Extract a JSON value with a JSONPath (e.g. `'$.a.b'`) |
 | `s.json_extract_string(path)` | Extract a JSON value as a plain string |
 
@@ -105,7 +106,9 @@ Available on numeric values (int, long, float, double, decimal):
 
 On float/double values: `x.is_nan`, `x.is_finite`, `x.is_infinite`, and trigonometric functions (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `degrees`, `radians`).
 
-On integer values: `x.from_unixtime` interprets the number as unix epoch seconds and returns a timestamp. `x.gcd(y)` / `x.lcm(y)` give the greatest common divisor and least common multiple, and `n.factorial` gives n! for n from 0 to 20; these three are available on DuckDB and the wvlet engine.
+On numeric values: `x.from_unixtime` interprets the number as unix epoch seconds in UTC and returns a timestamp; a fractional value keeps its fraction to the microsecond (not on Hive).
+
+On integer values: `x.gcd(y)` / `x.lcm(y)` give the greatest common divisor and least common multiple, and `n.factorial` gives n! for n from 0 to 20; these three are available on DuckDB and the wvlet engine.
 
 ## Date and Timestamp Functions
 
@@ -123,8 +126,14 @@ On `date` and `timestamp` values:
 | `d.format(pattern)` | Format with a `'%Y-%m-%d'`-style pattern |
 | `d.last_day` | Last day of the month |
 | `d.extract(field)` | Extract an arbitrary field |
+| `d.day_name` / `d.month_name` | Full English names (`'Monday'`, `'January'`); not on Snowflake |
+| `d.iso_year` | ISO-8601 week-numbering year (the year of the week's Thursday); not on Hive |
 
-Additionally on timestamps: `hour`, `minute`, `second`, `add_seconds(n)`, `add_minutes(n)`, `add_hours(n)`, `diff_seconds(other)`, `diff_minutes(other)`, `diff_hours(other)`, `to_unixtime` (epoch seconds), and `to_date`.
+Additionally on timestamps: `hour`, `minute`, `second`, `add_seconds(n)`, `add_minutes(n)`, `add_hours(n)`, `diff_seconds(other)`, `diff_minutes(other)`, `diff_hours(other)`, `to_unixtime` (epoch seconds, floored to a whole second), and `to_date`.
+
+Stdlib timestamps are UTC wall-clock times. `ts.to_time_zone(zone)` converts one to the wall-clock time in an IANA zone (e.g. `'Asia/Tokyo'`), and `ts.from_time_zone(zone)` converts the zone's wall-clock time back to UTC. A wall-clock time skipped by a daylight-saving transition uses the offset before it, and a repeated one the offset after it.
+
+`current_date` and `current_timestamp`, written without parentheses, give today's date and the current time in UTC.
 
 ```wvlet
 from events

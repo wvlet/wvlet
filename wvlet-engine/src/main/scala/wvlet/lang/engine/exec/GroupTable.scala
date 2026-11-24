@@ -427,7 +427,7 @@ object GroupTable:
       t match
         case PType.Int32 | PType.Date =>
           IntStore(t)
-        case PType.Int64 | PType.Timestamp =>
+        case PType.Int64 | PType.Timestamp | PType.TimestampTz =>
           LongStore(t)
         case PType.Float64 =>
           DoubleStore()

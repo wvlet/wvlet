@@ -281,7 +281,10 @@ object Typer extends Phase("typer") with LogSupport:
           .expr
           .transformUpExpression {
             case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
-              FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+              FunctionInliner
+                .findNativeFunction(ctx, id.fullName)
+                .orElse(FunctionInliner.inlineBareFunction(id)(using ctx))
+                .getOrElse(id)
           }
         val typedValDef =
           if newExpr eq v.expr then
@@ -474,6 +477,9 @@ object Typer extends Phase("typer") with LogSupport:
                       d
                     else
                       d.copy(qualifier = q)
+                  case id: Identifier =>
+                    // The function name is bound by this apply, not a bare reference
+                    id
                   case other =>
                     inlineExpr(other)
               val newArgs = f
@@ -520,8 +526,12 @@ object Typer extends Phase("typer") with LogSupport:
             case other =>
               other.mapChildExpressions(inlineExpr) match
                 case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
-                  // Replace references to native (compile-time evaluated) functions
-                  FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+                  // Replace references to native (compile-time evaluated) functions, and expand
+                  // bare zero-argument defs such as `current_date`
+                  FunctionInliner
+                    .findNativeFunction(ctx, id.fullName)
+                    .orElse(FunctionInliner.inlineBareFunction(id)(using ctx))
+                    .getOrElse(id)
                 case done =>
                   done
           end match

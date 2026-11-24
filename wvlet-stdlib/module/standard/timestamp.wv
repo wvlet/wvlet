@@ -43,11 +43,21 @@ trait timestamp in duckdb = {
   -- Format the timestamp with a strftime-style pattern (e.g. '%Y-%m-%d %H:%M:%S')
   def format(pattern:string): string = sql"strftime(${this},${pattern})"
 
-  -- Unix epoch seconds of this timestamp
-  def to_unixtime: long = sql"cast(epoch(${this}) as bigint)"
+  -- Unix epoch seconds of this timestamp, floored to a whole second
+  def to_unixtime: long = sql"cast(floor(epoch(${this})) as bigint)"
 
   -- Render as 'YYYY-MM-DD HH:MM:SS'. Overridden per engine so the rendering is identical
   def to_string: string = sql"cast(${this} as varchar)"
+
+  -- Full English day and month names ('Monday', 'January')
+  def day_name: string = sql"dayname(${this})"
+  def month_name: string = sql"monthname(${this})"
+  -- ISO-8601 week-numbering year: the year of the Thursday of this timestamp's ISO week
+  def iso_year: int = sql"isoyear(${this})"
+
+  -- This UTC wall-clock time as wall-clock time in the zone (e.g. 'Asia/Tokyo'), and the inverse
+  def to_time_zone(zone:string): timestamp = sql"(${this} AT TIME ZONE 'UTC') AT TIME ZONE ${zone}"
+  def from_time_zone(zone:string): timestamp = sql"(${this} AT TIME ZONE ${zone}) AT TIME ZONE 'UTC'"
 }
 
 trait timestamp in trino = {
@@ -67,11 +77,21 @@ trait timestamp in trino = {
 
   -- Unix epoch seconds of this timestamp. The bare timestamp is interpreted as UTC
   -- regardless of the session time zone, matching DuckDB's epoch() semantics
-  def to_unixtime: long = sql"cast(to_unixtime(with_timezone(${this},'UTC')) as bigint)"
+  def to_unixtime: long = sql"cast(floor(to_unixtime(with_timezone(${this},'UTC'))) as bigint)"
 
   -- Render without the sub-second part (e.g. '2024-03-15 10:30:45'), matching
   -- DuckDB's default timestamp rendering instead of Trino's trailing '.000'
   def to_string: string = sql"date_format(${this},'%Y-%m-%d %H:%i:%s')"
+
+  -- Full English day and month names ('Monday', 'January')
+  def day_name: string = sql"date_format(${this},'%W')"
+  def month_name: string = sql"date_format(${this},'%M')"
+  -- ISO-8601 week-numbering year
+  def iso_year: int = sql"year_of_week(${this})"
+
+  -- This UTC wall-clock time as wall-clock time in the zone (e.g. 'Asia/Tokyo'), and the inverse
+  def to_time_zone(zone:string): timestamp = sql"cast(with_timezone(${this},'UTC') AT TIME ZONE ${zone} as timestamp(6))"
+  def from_time_zone(zone:string): timestamp = sql"cast(with_timezone(${this},${zone}) AT TIME ZONE 'UTC' as timestamp(6))"
 }
 
 trait timestamp in hive = {
@@ -92,6 +112,14 @@ trait timestamp in hive = {
   def to_unixtime: long = sql"cast(unix_timestamp(${this}) as bigint)"
 
   def to_string: string = sql"cast(${this} as string)"
+
+  -- Full English day and month names ('Monday', 'January')
+  def day_name: string = sql"date_format(${this},'EEEE')"
+  def month_name: string = sql"date_format(${this},'MMMM')"
+
+  -- This UTC wall-clock time as wall-clock time in the zone (e.g. 'Asia/Tokyo'), and the inverse
+  def to_time_zone(zone:string): timestamp = sql"from_utc_timestamp(${this},${zone})"
+  def from_time_zone(zone:string): timestamp = sql"to_utc_timestamp(${this},${zone})"
 }
 
 trait timestamp in snowflake = {
@@ -119,6 +147,13 @@ trait timestamp in snowflake = {
 
   -- Render without the sub-second part, matching the other engines
   def to_string: string = sql"to_char(${this},'YYYY-MM-DD HH24:MI:SS')"
+
+  -- ISO-8601 week-numbering year
+  def iso_year: int = sql"yearofweekiso(${this})"
+
+  -- This UTC wall-clock time as wall-clock time in the zone (e.g. 'Asia/Tokyo'), and the inverse
+  def to_time_zone(zone:string): timestamp = sql"convert_timezone('UTC',${zone},${this})"
+  def from_time_zone(zone:string): timestamp = sql"convert_timezone(${zone},'UTC',${this})"
 }
 
 trait timestamp in bigquery = {
@@ -144,4 +179,25 @@ trait timestamp in bigquery = {
 
   -- Render without the sub-second part, matching the other engines
   def to_string: string = sql"format_timestamp('%Y-%m-%d %H:%M:%S',${this})"
+
+  -- Full English day and month names ('Monday', 'January')
+  def day_name: string = sql"format_timestamp('%A',${this})"
+  def month_name: string = sql"format_timestamp('%B',${this})"
+  -- ISO-8601 week-numbering year
+  def iso_year: int = sql"extract(isoyear from ${this})"
+
+  -- This UTC wall-clock time as wall-clock time in the zone (e.g. 'Asia/Tokyo'), and the inverse
+  def to_time_zone(zone:string): timestamp = sql"timestamp(datetime(${this},${zone}))"
+  def from_time_zone(zone:string): timestamp = sql"timestamp(datetime(${this}),${zone})"
 }
+
+-- current_date / current_timestamp: today's date and the current time, in UTC (stdlib timestamps
+-- are UTC wall-clock times). Written without parentheses
+def current_date in duckdb: date = sql"cast(now() AT TIME ZONE 'UTC' as date)"
+def current_date in trino: date = sql"cast(current_timestamp AT TIME ZONE 'UTC' as date)"
+def current_date in snowflake: date = sql"cast(sysdate() as date)"
+def current_date in bigquery: date = sql"current_date('UTC')"
+def current_timestamp in duckdb: timestamp = sql"now() AT TIME ZONE 'UTC'"
+def current_timestamp in trino: timestamp = sql"cast(current_timestamp AT TIME ZONE 'UTC' as timestamp(6))"
+def current_timestamp in snowflake: timestamp = sql"sysdate()"
+def current_timestamp in bigquery: timestamp = sql"current_timestamp()"

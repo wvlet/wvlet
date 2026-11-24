@@ -664,7 +664,7 @@ class WindowOp(
             null
       else
         c.ptype match
-          case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
+          case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp | PType.TimestampTz =>
             v match
               case l: LongVec =>
                 l.values
@@ -912,7 +912,7 @@ object WindowOp:
           BoolLayout
         case PType.Int32 | PType.Date =>
           IntLayout
-        case PType.Int64 | PType.Timestamp =>
+        case PType.Int64 | PType.Timestamp | PType.TimestampTz =>
           LongLayout
         case _: PType.Decimal =>
           DecimalLayout

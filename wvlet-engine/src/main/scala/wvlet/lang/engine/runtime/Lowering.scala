@@ -204,7 +204,7 @@ object Lowering:
     */
   private def rangeType(t: PType): Boolean =
     t match
-      case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp =>
+      case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp | PType.TimestampTz =>
         true
       case _ =>
         false

@@ -160,7 +160,7 @@ object Vec:
         BoolVec(new Array[Boolean](n), nulls)
       case PType.Int32 | PType.Date =>
         IntVec(ptype, new Array[Int](n), nulls)
-      case PType.Int64 | PType.Timestamp =>
+      case PType.Int64 | PType.Timestamp | PType.TimestampTz =>
         LongVec(ptype, new Array[Long](n), nulls)
       case d: PType.Decimal =>
         LongVec(d, new Array[Long](n), nulls)
@@ -184,7 +184,7 @@ object Vec:
           BoolVec(a, null)
         case PType.Int32 | PType.Date =>
           IntVec(ptype, filledInts(n, ValueOps.toInt(value)), null)
-        case PType.Int64 | PType.Timestamp =>
+        case PType.Int64 | PType.Timestamp | PType.TimestampTz =>
           val a = new Array[Long](n)
           java.util.Arrays.fill(a, ValueOps.toLong(value))
           LongVec(ptype, a, null)
@@ -366,7 +366,7 @@ object VecBuilder:
         BoolBuilder(capacity)
       case PType.Int32 | PType.Date =>
         IntBuilder(ptype, capacity)
-      case PType.Int64 | PType.Timestamp =>
+      case PType.Int64 | PType.Timestamp | PType.TimestampTz =>
         LongBuilder(ptype, capacity)
       case d: PType.Decimal =>
         DecimalBuilder(d, capacity)

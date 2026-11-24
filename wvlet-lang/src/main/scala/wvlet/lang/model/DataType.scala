@@ -450,7 +450,9 @@ object DataType extends LogSupport:
         "utf8"      -> StringType,
         "varbinary" -> BinaryType,
         "sql"       -> SQLExprType,
-        "timestamp" -> TimestampType(TimestampField.TIMESTAMP, withTimeZone = false)
+        "timestamp" -> TimestampType(TimestampField.TIMESTAMP, withTimeZone = false),
+        // DuckDB and PostgreSQL's short name for TIMESTAMP WITH TIME ZONE
+        "timestamptz" -> TimestampType(TimestampField.TIMESTAMP, withTimeZone = true)
       ).map { case (k, v) =>
         Name.typeName(k) -> v
       }
