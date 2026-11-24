@@ -63,6 +63,16 @@ Same setup, with [`sirius-sf100.yaml`](sirius-sf100.yaml) (70% of memory for the
 - Results match DuckDB on spec/tpch and at SF10 (`WVLET_GPU_TEST_DATA=target/tpch-sf10 ./sbt "engineGpu/testOnly *GpuTPCHTest"`).
 - Each optimization is a `GpuFeature`: `WVLET_GPU_DISABLE=<name>,...` turns features off, and `WVLET_GPU_BENCH_AB=<name>,...` compares them on and off in one JVM. `WVLET_GPU_PROFILE=1` logs the device time of each plan node.
 
+### SF100 (2026-11-24)
+
+The same bench at SF100 (`WVLET_ENGINE_BENCH_SF=100`, `WVLET_GPU_POOL_FRACTION=0.7`, `WVLET_GPU_CACHE_FRACTION=0.6`), GPU on and off in one JVM. Row counts match on every query that finished.
+
+- 16 of 22 queries ran fully on the GPU. They take 3.99 s in total, against 43.0 s on the CPU engine (10.8x) and 2.88 s for Sirius pinned on the same 16 queries. q2, q20, q21, and q22 are on par with Sirius or faster; q5, q6, and q11 are 2.5-3x slower.
+- q1 ran out of the RMM pool: 600M rows of its columns, plus the cached columns of earlier queries, exceed 75 GiB. It fell back to the CPU after the failed attempt (42 s against 5.6 s on the CPU engine).
+- q12 and q13 read string columns (`l_shipmode`, `o_comment`) larger than cudf's 2 GB limit for one string column, so the GPU attempt fails and the subtree runs on the CPU (17 s and 28 s against 2.2 s and 6.0 s).
+- q7, q18, and q19 ran out of Java heap (`-Xmx16g`) in a CPU hash join build, so the bench left them out.
+- SF100 needs chunked scans or eviction before each GPU subtree, and should reject offloads whose columns cannot fit. Neither is in this example yet.
+
 To run it on a Spark (JDK 17+ and this repository checked out there):
 
 ```sh
