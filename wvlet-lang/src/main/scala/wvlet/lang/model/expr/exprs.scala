@@ -529,7 +529,9 @@ case class CaseExpr(
 case class WhenClause(condition: Expression, result: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(condition, result)
 
-case class Exists(child: Expression, span: Span) extends Expression with UnaryExpression
+case class Exists(child: Expression, span: Span) extends Expression with UnaryExpression:
+  // Statically known type, assigned at construction (issue #71): EXISTS is never NULL
+  this.tpe = DataType.BooleanType
 
 enum TestType(val expr: String):
   case ShouldBe         extends TestType("should be")

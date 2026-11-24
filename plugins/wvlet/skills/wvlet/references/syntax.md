@@ -208,7 +208,7 @@ Frames: `rows [,0]` (unbounded preceding to current, the default), `rows [-1,1]`
 | `x in (1, 2)`, `x not in (...)`, `x in { from t select id }` | Membership |
 | `x between 1 and 10` | Inclusive range |
 | `x like 'a%'`, `x not like ...`, `x like 'a\_%' escape '\'` | Pattern match |
-| `exists { from t where ... }`, `not exists { ... }` | Subquery test |
+| `exists { from t where ... }`, `not exists { ... }` | Subquery test; also a boolean select item (`select exists { ... } as e`) |
 | `x::int`, `'2026-01-01'::date` | Cast |
 | `'7 days':interval` | Interval literal |
 | `+`, `-`, `*`, `/`, `//`, `%` | Arithmetic; `//` is integer division |

@@ -1355,7 +1355,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         Nil
       case t
           if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) &&
-            !t.isNonReservedKeyword =>
+            !SqlToken.expressionStartKeywords.contains(t) && !t.isNonReservedKeyword =>
         Nil
       case _ =>
         val item = selectItem()
