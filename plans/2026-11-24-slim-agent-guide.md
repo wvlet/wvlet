@@ -17,7 +17,7 @@ created: 2026-11-24
 - treasure-work splits this into a short AGENTS.md (no CLAUDE.md), ARCHITECTURE.md as the system map with a reading table, and design/ with one page per subsystem, a README index, and design/AGENTS.md describing how to write those pages.
 - design-notes/ holds a single 2025 typer exploration that nothing links to. adr/README.md already says longer design explorations live in plans/.
 - formal/README.md already documents each Lean model in detail; the design page only needs the sync rules and a pointer.
-- Open PR #2357 edits one CLAUDE.md line to mention `WVLET_ENGINE_BENCH_AB`.
+- PR #2357 edited one CLAUDE.md line to mention `WVLET_ENGINE_BENCH_AB`.
 
 ## Design
 
@@ -28,7 +28,7 @@ created: 2026-11-24
 - design/ pages: formal-verification, engine, stdlib, testing, platforms (Scala.js/Native, libduckdb loading), connectors, releasing, agent-docs (for-ai-agents page and bundled skill), plus README.md (index) and AGENTS.md (how to write these pages).
 - Each "when changing X" rule moves verbatim into its page; the AGENTS.md table row names the trigger so an agent knows to open the page.
 - Move design-notes/2025-01-15-new-typer-architecture.md to plans/ and delete design-notes/, so design/ holds only current contracts.
-- design/engine.md documents `WVLET_ENGINE_BENCH_AB` as #2357 describes it; #2357 then resolves its CLAUDE.md conflict by dropping that hunk.
+- design/engine.md documents `WVLET_ENGINE_BENCH_AB` as #2357 describes it; the rebase over #2357 drops its CLAUDE.md hunk.
 
 ## Alternatives and Why Not?
 
