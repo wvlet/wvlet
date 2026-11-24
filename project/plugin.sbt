@@ -1,7 +1,7 @@
 // Uni releases are published to repo.wvlet.org first; Maven Central limits release frequency and size
 resolvers += "wvlet" at "https://repo.wvlet.org/maven2/"
 
-val UNI_VERSION = "2026.3.7"
+val UNI_VERSION = "2026.3.8"
 
 addSbtPlugin("org.scalameta" % "sbt-scalafmt"  % "2.6.2")
 addSbtPlugin("com.eed3si9n"  % "sbt-buildinfo" % "0.14.0")
