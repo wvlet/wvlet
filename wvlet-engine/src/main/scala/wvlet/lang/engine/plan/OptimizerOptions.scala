@@ -63,6 +63,13 @@ enum Optimization(val name: String):
   case ReduceSemiJoins extends Optimization("reduce_semi_joins")
 
   /**
+    * Filter the input of an aggregation that a join reads by a group key to the keys a small
+    * relation on the join's other side holds, with a semi join, so that the groups the join can
+    * never match are not computed
+    */
+  case GroupKeySemiJoins extends Optimization("group_key_semi_joins")
+
+  /**
     * Enumerate the join trees of small inner join graphs exactly, including bushy trees, instead of
     * multi-start greedy search
     */

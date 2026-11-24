@@ -116,7 +116,11 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
         |join (select l_orderkey, count(*) n from lineitem group by l_orderkey) l
         |  on l_orderkey = o_orderkey
         |where o_orderdate < date '1992-01-10' order by 1""".stripMargin
-    explain(engine, q) shouldNotContain "join_filter=l_orderkey"
+    // Without the semi join on the group key, which filters the aggregation's input on purpose
+    val noGroupKeySemiJoins = engine.withOptimizer(
+      options.withDisabled(Optimization.GroupKeySemiJoins)
+    )
+    explain(noGroupKeySemiJoins, q) shouldNotContain "join_filter=l_orderkey"
   }
 
   test("turn off with runtime_join_filters") {

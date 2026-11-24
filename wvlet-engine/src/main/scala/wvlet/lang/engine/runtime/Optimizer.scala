@@ -167,6 +167,7 @@ object Optimizer:
     PushDownFilters,
     ReduceSemiJoins,
     ReorderJoins,
+    GroupKeySemiJoins,
     PruneColumns,
     PushScanFilters
   )
