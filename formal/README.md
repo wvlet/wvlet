@@ -369,9 +369,9 @@ The model proves today's behavior. These are left for follow-ups:
 
 ## Known gaps of the scalar subquery model
 
-- The engine binds a correlated scalar subquery in a condition only (`bindWithSubqueries`); as a
-  select item it fails to bind (`ColumnNotFound`), so the fixture reads values back through WHERE
-  conditions.
+- The fixture's values are replayed as select items of a plain projection (and through WHERE
+  conditions). A select item of an aggregation (`select a, count(*), (select ...) ... group by a`)
+  or next to `unnest` still fails to bind (`ColumnNotFound`), and is not replayed.
 - The aggregate is a function of the group's rows, so the model trusts the engine's aggregate
   functions and `emptyGroupValue`'s plan-time evaluation over no rows; the fixture replays seven
   aggregates and expressions.

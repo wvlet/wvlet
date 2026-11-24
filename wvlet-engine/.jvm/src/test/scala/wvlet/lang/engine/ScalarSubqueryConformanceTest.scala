@@ -38,11 +38,10 @@ import scala.util.Using
   * exe scalar-subquery-traces`) against the engine. The model proves that `Planner
   * .decorrelateScalar` (the body grouped by the correlation keys, left-joined to the outer input,
   * with the value over no rows for the unmatched outer rows) gives every outer row SQL's value,
-  * NULL keys, duplicate outer rows, and groups without rows included. The engine binds correlated
-  * scalar subqueries in conditions only, so this test reads each outer row's value back through
-  * WHERE conditions (`is null` and `= v` for each value), checks that the engine returns the
-  * model's rows with decorrelation on and off and that DuckDB agrees, and that the plan is one left
-  * join over an aggregation.
+  * NULL keys, duplicate outer rows, and groups without rows included. This test reads each outer
+  * row's value as a select item and back through WHERE conditions (`is null` and `= v` for each
+  * value), checks that the engine returns the model's rows with decorrelation on and off and that
+  * DuckDB agrees, and that the plan is one left join over an aggregation.
   */
 class ScalarSubqueryConformanceTest extends UniTest:
   import RuntimePlan.*
@@ -193,6 +192,27 @@ class ScalarSubqueryConformanceTest extends UniTest:
         )
       // The NULL outer key never matches, so it gets the value over no rows
       emptyIsNull shouldBe rs.exists(r => r(0) == "null" && r(2) == "null")
+  }
+
+  test("give every outer row the model's value as a select item") {
+    for c <- cases do
+      val rs          = rows(c("rows"))
+      val emptyIsNull = c("emptyIsNull") == JSONBoolean(true)
+      val query       = s"select a, b, ${sub(c)} as v from ${left} as l(a, b)"
+      check(query, rs)
+      checkPlan(query, emptyIsNull)
+      // Under `*`, inside an expression, and without an alias
+      check(
+        s"select *, coalesce(${sub(c)}, -1) from ${left} as l(a, b)",
+        rs.map(r =>
+          r.take(2) :+ (
+            if r(2) == "null" then
+              "-1"
+            else
+              r(2)
+          )
+        )
+      )
   }
 
   test("keep every outer row once with the value under other conditions") {

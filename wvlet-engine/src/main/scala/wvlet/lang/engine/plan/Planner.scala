@@ -2116,6 +2116,22 @@ class Planner(
       plan: Relation => P,
       filtered: Filter => P
   ): (P, VExpr) =
+    val (p, rewritten) = rewriteSubqueries(b, input, cond, plan, filtered)
+    (p, Binder(this, BindScope(b.op(p).schema)).bind(rewritten))
+
+  /**
+    * Rewrite the correlated scalar subqueries ([[decorrelateScalar]]) and EXISTS
+    * ([[decorrelateExists]]) of `expr` over `input` into references to columns of left joins
+    * extending it. Returns the extended input and the rewritten expression, which binds over the
+    * extended input's schema
+    */
+  private[engine] def rewriteSubqueries[P](
+      b: JoinPlanBuilder[P] & AggPlanBuilder[P],
+      input: P,
+      expr: Expression,
+      plan: Relation => P,
+      filtered: Filter => P
+  ): (P, Expression) =
     var p                                  = input
     def rewrite(e: Expression): Expression =
       e match
@@ -2133,10 +2149,10 @@ class Planner(
         case other =>
           // Top-down, so that subqueries are rewritten as a whole, not from their insides
           other.mapChildExpressions(rewrite)
-    val rewritten = rewrite(cond)
-    (p, Binder(this, BindScope(b.op(p).schema)).bind(rewritten))
+    val rewritten = rewrite(expr)
+    (p, rewritten)
 
-  end bindWithSubqueries
+  end rewriteSubqueries
 
   /** Whether a subquery references columns of the enclosing schema */
   private def isCorrelated(sub: Relation, outer: Schema): Boolean =
@@ -2703,6 +2719,28 @@ class Planner(
     case s: SubQueryExpression if !isCorrelated(s.query, Schema.empty) =>
       NullLiteral(s.span)
   }
+
+  /**
+    * Whether an expression has a correlated scalar subquery or EXISTS outside of other subqueries,
+    * which [[rewriteSubqueries]] joins to its input
+    */
+  private[engine] def hasCorrelatedSubquery(e: Expression): Boolean =
+    var found = false
+    // The same top-down walk as rewriteSubqueries
+    def visit(x: Expression): Expression =
+      x match
+        case s: SubQueryExpression =>
+          found ||= isCorrelated(s.query, Schema.empty)
+          x
+        case ex: Exists =>
+          found ||= isCorrelated(subqueryRelation(ex.child), Schema.empty)
+          x
+        case _: InRelation | _: NotInRelation =>
+          x
+        case other =>
+          other.mapChildExpressions(visit)
+    visit(e)
+    found
 
   private[engine] def hasSubquery(e: Expression): Boolean =
     var found = false

@@ -48,6 +48,7 @@ import wvlet.lang.engine.vector.Field
 import wvlet.lang.engine.vector.Schema
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
+import scala.util.control.NonFatal
 import wvlet.lang.model.plan.*
 
 /**
@@ -1008,14 +1009,62 @@ class RuntimeBinder(planner: Planner):
 
   /** A projection over the window calls of its items */
   private def windowProject(p: Project): RuntimePlan =
-    val (w, exprs, fields) = withWindows(bind(p.child), p.selectItems)
-    RuntimePlan.Project(w, exprs.map(BExpr.of(_, w.output)), fields.map(newColumn))
+    withSubqueryItems(bind(p.child), p.selectItems) { (in, items) =>
+      val (w, exprs, fields) = withWindows(in, items)
+      RuntimePlan.Project(w, exprs.map(BExpr.of(_, w.output)), fields.map(newColumn))
+    }
 
   private def project(p: Project): RuntimePlan =
-    val in              = bind(p.child)
-    val binder          = Binder(planner, BindScope(in.schema))
-    val (exprs, fields) = planner.bindItems(binder, p.selectItems)
-    RuntimePlan.Project(in, exprs.map(BExpr.of(_, in.output)), fields.map(newColumn))
+    withSubqueryItems(bind(p.child), p.selectItems) { (in, items) =>
+      val binder          = Binder(planner, BindScope(in.schema))
+      val (exprs, fields) = planner.bindItems(binder, items)
+      RuntimePlan.Project(in, exprs.map(BExpr.of(_, in.output)), fields.map(newColumn))
+    }
+
+  /**
+    * A projection `f` of select items over `in`. When the items fail to bind on a correlated scalar
+    * subquery (or EXISTS), which the `Binder` plans alone, those become left joins extending `in`,
+    * as in conditions (`Planner.rewriteSubqueries`), and `f` runs over the extended input. Each
+    * rewritten item keeps its output name; the joined columns are hidden, so `*` leaves them out.
+    * Items that bind keep their plan: uncorrelated subqueries stay plan-time constants
+    */
+  private def withSubqueryItems(in: RuntimePlan, items: List[Attribute])(
+      f: (RuntimePlan, List[Attribute]) => RuntimePlan
+  ): RuntimePlan =
+    try
+      f(in, items)
+    catch
+      case e: ColumnNotFound if items.exists(planner.hasCorrelatedSubquery) =>
+        // A subquery correlated to an enclosing query further out stays unbound, as before: the
+        // caller (e.g. `isCorrelated` of that query's subquery) sees the same ColumnNotFound
+        try
+          var current   = lowered(in)
+          val rewritten = items.map { item =>
+            if !planner.hasCorrelatedSubquery(item) then
+              item
+            else
+              val (extended, expr) = planner.rewriteSubqueries(
+                plans,
+                current,
+                item,
+                r => lowered(bind(r)),
+                cond => lowered(bind(cond))
+              )
+              current = extended
+              val value =
+                expr match
+                  case s: SingleColumn =>
+                    s.expr
+                  case a: Alias =>
+                    a.expr
+                  case other =>
+                    other
+              SingleColumn(NameExpr.fromString(planner.nameOf(item)), value, item.span)
+          }
+          f(current.plan, rewritten)
+        catch
+          case NonFatal(_) =>
+            throw e
 
   /**
     * A sort. Subqueries in sort keys bind as plan-time constants through the same `Binder`, as in
