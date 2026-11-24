@@ -61,8 +61,14 @@ class ConnectorProvider(
     c => createConnector(c)
   )
 
-  /** Whether this provider can create connectors of the type */
-  def isAvailable(connectorType: String): Boolean = factoryMap.contains(connectorType.toLowerCase)
+  /**
+    * Whether this provider can create connectors of the type, directly or (for a type that is not
+    * an optional module) through the generic DuckDB fallback
+    */
+  def isAvailable(connectorType: String): Boolean =
+    val tpe = connectorType.toLowerCase
+    factoryMap.contains(tpe) ||
+    (!ConnectorFactoryRegistry.isOptional(tpe) && factoryMap.contains("generic"))
 
   private def createConnector(config: ConnectorConfig): Connector =
     val tpe = config.`type`.toLowerCase
@@ -115,4 +121,3 @@ end ConnectorProvider
 object ConnectorProvider:
   /** The connector factories registered on the classpath through `META-INF/services` */
   def defaultFactories: Seq[ConnectorFactory] = ConnectorFactoryRegistry.factories
-

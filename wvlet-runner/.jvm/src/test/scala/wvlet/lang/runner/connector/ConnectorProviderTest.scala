@@ -48,6 +48,7 @@ class ConnectorProviderTest extends UniTest:
   test("should fall back to the generic connector for unknown types") {
     val provider = newProvider()
     try
+      provider.isAvailable("hive") shouldBe true
       val connector = provider.getConnector(ConnectorConfig(name = "h", `type` = "hive"))
       connector shouldMatch { case _: GenericConnector =>
       }
@@ -82,6 +83,7 @@ class ConnectorProviderTest extends UniTest:
     val provider = liteProvider()
     try
       provider.isAvailable("duckdb") shouldBe false
+      provider.isAvailable("hive") shouldBe false
       provider.isAvailable("wvlet") shouldBe true
       for tpe <- Seq("duckdb", "generic", "snowflake") do
         val exception = intercept[WvletLangException] {

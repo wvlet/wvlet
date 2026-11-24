@@ -17,7 +17,9 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.compiler.WorkEnv
+import wvlet.uni.log.LogSupport
 
+import java.util.ServiceConfigurationError
 import java.util.ServiceLoader
 import scala.jdk.CollectionConverters.*
 
@@ -47,7 +49,7 @@ trait ConnectorFactoryProvider:
   def factories: Seq[ConnectorFactory]
 
 /** Connector factories discovered on the classpath, and install hints for missing ones */
-object ConnectorFactoryRegistry:
+object ConnectorFactoryRegistry extends LogSupport:
 
   /**
     * Connector types shipped as optional modules, with the module that provides them. Used to tell
@@ -63,27 +65,37 @@ object ConnectorFactoryRegistry:
   lazy val factories: Seq[ConnectorFactory] = discover()
 
   private def discover(): Seq[ConnectorFactory] =
-    // Prefer the context class loader (sbt test layers, embedding apps), and fall back to the
-    // loader of this class when it sees no provider
+    // Merge the providers visible to the context class loader (sbt test layers, embedding apps)
+    // and to the loader of this class, as either may see a module the other does not
     val loaders =
       Seq(
         Option(Thread.currentThread().getContextClassLoader),
         Option(classOf[ConnectorFactoryProvider].getClassLoader)
       ).flatten.distinct
-    val providers = loaders
-      .iterator
-      .map(cl => ServiceLoader.load(classOf[ConnectorFactoryProvider], cl).asScala.toList)
-      .find(_.nonEmpty)
-      .getOrElse(Nil)
+    val factories = loaders.flatMap(loadProviders).flatMap(_.factories)
     // Keep the first factory per type for a stable registry when a module appears twice
-    providers
-      .flatMap(_.factories)
-      .foldLeft(List.empty[ConnectorFactory]) { (acc, f) =>
-        if acc.exists(_.connectorType == f.connectorType) then
-          acc
-        else
-          acc :+ f
-      }
+    factories.foldLeft(List.empty[ConnectorFactory]) { (acc, f) =>
+      if acc.exists(_.connectorType == f.connectorType) then
+        acc
+      else
+        acc :+ f
+    }
+
+  // Load providers one at a time, so a broken module jar (e.g. a mismatched version copied into
+  // lib/) drops only its own connectors instead of the whole registry
+  private def loadProviders(cl: ClassLoader): List[ConnectorFactoryProvider] =
+    val it        = ServiceLoader.load(classOf[ConnectorFactoryProvider], cl).iterator()
+    val providers = List.newBuilder[ConnectorFactoryProvider]
+    var hasNext   = true
+    while hasNext do
+      try
+        hasNext = it.hasNext
+        if hasNext then
+          providers += it.next()
+      catch
+        case e: ServiceConfigurationError =>
+          warn(s"Skipping a connector module that failed to load: ${e.getMessage}")
+    providers.result()
 
   /** Whether the connector type ships as an optional module */
   def isOptional(connectorType: String): Boolean = optionalConnectorModules.contains(
