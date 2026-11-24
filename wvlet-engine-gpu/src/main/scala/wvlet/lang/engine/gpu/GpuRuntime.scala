@@ -53,6 +53,15 @@ enum GpuFeature(val featureName: String):
   case OuterResidual extends GpuFeature("outer_residual")
 
   /**
+    * Filter join inputs early by the single-input predicates that OR conditions above the joins
+    * imply (TPC-H q7, q19)
+    */
+  case ImpliedFilters extends GpuFeature("implied_filters")
+
+  /** count(distinct x) as distinct rows, then a count: hash-based instead of cudf's `nunique` */
+  case DistinctCount extends GpuFeature("distinct_count")
+
+  /**
     * Filter a join's right input by the left input's keys before the right input aggregates or
     * joins further (TPC-H q17, q9)
     */

@@ -27,7 +27,9 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
+import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.runtime.*
 import wvlet.lang.engine.runtime.RuntimePlan.*
@@ -184,6 +186,13 @@ private[gpu] object DecimalSum:
         finally v.close()
       finally n.close()
     }
+
+  /** Whether `rows` values of at most `bound` sum to an unscaled value within a Long at `scale` */
+  def fitsSum(bound: Option[java.math.BigDecimal], scale: Int, rows: Int): Boolean = bound.exists(
+    _.movePointRight(scale)
+      .multiply(java.math.BigDecimal.valueOf(rows.toLong))
+      .compareTo(java.math.BigDecimal.valueOf(Long.MaxValue)) < 0
+  )
 
   /** Whether every value of a DECIMAL128 column has an unscaled value within a Long */
   private def fitsLong(cv: ColumnVector): Boolean =
@@ -381,7 +390,54 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
 
   private def aggregate(a: Aggregate, input: GTable): GTable =
     using(input) { t =>
-      val pos      = positions(a.child)
+      if config.isEnabled(GpuFeature.DistinctCount) && isDistinctCountOnly(a) then
+        distinctCount(a, t)
+      else
+        groupByOver(a, t, positions(a.child))
+    }
+
+  /** Whether every call of `a` is count(distinct x) of the same single argument */
+  private def isDistinctCountOnly(a: Aggregate): Boolean =
+    a.calls.nonEmpty &&
+      a.calls
+        .forall(c => isCount(c) && c.distinct && c.args.size == 1 && c.filter.isEmpty) &&
+      a.calls.map(_.args.head).distinct.size == 1
+
+  /**
+    * count(distinct x) grouped by the keys, as the distinct (keys, x) rows and then a count of
+    * non-NULL x per group: both steps stay on cudf's hash paths, while `nunique` sorts (TPC-H q16)
+    */
+  private def distinctCount(a: Aggregate, t: GTable): GTable =
+    val pos   = positions(a.child)
+    val exprs = a.keys ++ a.calls.take(1).map(_.args.head)
+    val cols  =
+      buildAll(exprs.size)(i =>
+        GpuExprs.evalColumn(exprs(i).lower(pos), exprs(i).ptype, t.cols, t.rows)(using boundsOf(t))
+      )
+    val distinct =
+      try
+        timed(f"distinct of ${t.rows}%,d rows") {
+          using(Table(cols*)) { tbl =>
+            GTable.of(
+              tbl.dropDuplicates(cols.indices.toArray, Table.DuplicateKeepOption.KEEP_ANY, true)
+            )
+          }
+        }
+      finally cols.foreach(_.close())
+    using(distinct) { d =>
+      // Group the distinct rows (keys at 0..n-1, the argument at n) by the keys
+      val n       = a.keys.size
+      val arg     = BExpr(ColRef(n, exprs.last.ptype, "x"))
+      val counted = a.copy(
+        keys = a.keys.indices.map(i => BExpr(ColRef(i, a.keys(i).ptype, s"k${i}"))),
+        calls = a.calls.map(_.copy(distinct = false, args = Seq(arg)))
+      )
+      groupByOver(counted, d, Array.tabulate(n + 1)(identity))
+    }
+
+  /** Group `t`, the rows of `a.child` with the column of id `i` at `pos(i)`, by `a`'s keys */
+  private def groupByOver(a: Aggregate, t: GTable, pos: Array[Int]): GTable =
+    locally {
       given Bounds = boundsOf(t)
       val keys     =
         buildAll(a.keys.size)(i =>
@@ -489,8 +545,16 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
         AggInput(IndexedSeq.empty, IndexedSeq(aggregation(c)))
       case Some(d: PType.Decimal) if isSum(c) && config.isEnabled(GpuFeature.DecimalSumSplit) =>
         // DECIMAL64 when the argument was computed in 64 bits: no range check needed then
-        val arg = GpuExprs.evalColumnNarrow(c.args.head.lower(pos), d, t.cols, t.rows)
-        try DecimalSum.split(arg, d.scale).getOrElse(AggInput.single(arg.incRefCount(), c))
+        val e   = c.args.head.lower(pos)
+        val arg = GpuExprs.evalColumnNarrow(e, d, t.cols, t.rows)
+        try
+          if arg.getType.getTypeId == DType.DTypeEnum.DECIMAL64 &&
+            DecimalSum.fitsSum(GpuExprs.bound(e), d.scale, t.rows)
+          then
+            // Even the sum of all rows fits in 64 bits: a plain DECIMAL64 sum is exact
+            AggInput.single(arg.incRefCount(), c)
+          else
+            DecimalSum.split(arg, d.scale).getOrElse(AggInput.single(arg.incRefCount(), c))
         finally arg.close()
       case Some(p) =>
         AggInput.single(GpuExprs.evalColumn(c.args.head.lower(pos), p, t.cols, t.rows), c)
@@ -933,6 +997,68 @@ private[gpu] object GpuPlans:
           false
     }
 
+  /**
+    * Push the single-input predicates that a filter's OR conditions imply below the inner joins
+    * under it, keeping the filter itself. From `(n1 = 'FRANCE' and n2 = 'GERMANY') or (n1 =
+    * 'GERMANY' and n2 = 'FRANCE')` above the joins (TPC-H q7), each nation scan gets `n = 'FRANCE' or
+    * n = 'GERMANY'`, and the joins (and their key filters) then start from 2 of 25 nations.
+    */
+  def impliedFilters(p: RuntimePlan): RuntimePlan =
+    val q = p.withChildren(p.children.map(impliedFilters))
+    q match
+      case f @ Filter(j: Join, cond, _) =>
+        val ors = conjuncts(cond.expr).collect { case o: OrExpr => o }
+        if ors.isEmpty then
+          f
+        else
+          f.copy(child = ors.foldLeft(j: RuntimePlan)((acc, o) => pushImplied(acc, o)))
+      case other =>
+        other
+
+  /** Add the predicates `pred` implies on each input of the inner joins at the top of `p` */
+  private def pushImplied(p: RuntimePlan, pred: VExpr): RuntimePlan =
+    p match
+      case j: Join if j.kind == JoinKind.Inner =>
+        def side(input: RuntimePlan): RuntimePlan =
+          implied(pred, input.output.map(_.id).toSet) match
+            case Some(e) if input.isInstanceOf[Join] =>
+              pushImplied(input, e)
+            case Some(e) =>
+              Filter(input, BExpr(e))
+            case None =>
+              input
+        j.copy(left = side(j.left), right = side(j.right))
+      case other =>
+        other
+
+  /**
+    * A predicate over only the columns `ids` that `e` implies (by dropping conjuncts), or None
+    */
+  private def implied(e: VExpr, ids: Set[ColumnId]): Option[VExpr] =
+    val refs = BExpr(e).refs
+    if refs.nonEmpty && refs.subsetOf(ids) then
+      Some(e)
+    else
+      e match
+        case OrExpr(l, r) =>
+          // Both branches must imply something, or the disjunction implies nothing
+          implied(l, ids).zip(implied(r, ids)).map(OrExpr(_, _))
+        case AndExpr(l, r) =>
+          (implied(l, ids), implied(r, ids)) match
+            case (Some(a), Some(b)) =>
+              Some(AndExpr(a, b))
+            case (a, b) =>
+              a.orElse(b)
+        case _ =>
+          None
+
+  private def conjuncts(e: VExpr): Seq[VExpr] =
+    e match
+      case AndExpr(l, r) =>
+        conjuncts(l) ++ conjuncts(r)
+      case other =>
+        Seq(other)
+
   /** The type both keys of a join pair are compared in, or None */
   def joinKeyType(l: PType, r: PType): Option[PType] =
     (l, r) match
@@ -1044,7 +1170,12 @@ class GpuOp(plan: RuntimePlan, plans: () => GpuPlans, cpu: () => Operator, confi
 
   private def run(): Iterator[Batch] =
     val nano = System.nanoTime()
-    val t    = plans().exec(plan)
+    val p    =
+      if config.isEnabled(GpuFeature.ImpliedFilters) then
+        GpuPlans.impliedFilters(plan)
+      else
+        plan
+    val t = plans().exec(p)
     try
       val types = schema.types
       val bulk  = config.isEnabled(GpuFeature.BulkCopy)
