@@ -993,7 +993,8 @@ final class JoinBuild(
 
   /**
     * The direct index of a single Int32 / Date / Int64 key whose range over the valid rows spans at
-    * most [[JoinBuild.DirectRangeFactor]] slots per row; leaves `directHeads` null otherwise
+    * most [[JoinBuild.DirectRangeFactor]] slots per row, or at most [[JoinBuild.DirectMinSlots]];
+    * leaves `directHeads` null otherwise
     */
   private def buildDirect(key: Vec, t: PType, valid: Array[Int], nv: Int): Unit =
     if nv == 0 || !(t == PType.Int32 || t == PType.Date || t == PType.Int64) then
@@ -1034,7 +1035,10 @@ final class JoinBuild(
     // A negative range overflowed a Long
     if range < 0 ||
       range >=
-        math.min(JoinBuild.DirectMaxSlots, math.max(1024L, nv.toLong * JoinBuild.DirectRangeFactor))
+        math.min(
+          JoinBuild.DirectMaxSlots,
+          math.max(JoinBuild.DirectMinSlots, nv.toLong * JoinBuild.DirectRangeFactor)
+        )
     then
       return
     val heads = Vec.filledInts(range.toInt + 1, -1)
@@ -1295,10 +1299,18 @@ object JoinBuild:
     .getOrElse(65536)
 
   /**
-    * A direct index takes at most this many slots per build row: 4 bytes each, so at most 16 bytes
-    * per row, under what a hash table at half load takes
+    * Beyond [[DirectMinSlots]], a direct index takes at most this many slots per build row: 4 bytes
+    * each, so at most 16 bytes per row, under what a hash table at half load takes
     */
   inline val DirectRangeFactor = 4
+
+  /**
+    * A direct index may always take this many slots (1 MB), however few build rows it has: it stays
+    * in cache, and a probe makes one load instead of hashing and comparing. Small builds over wide
+    * key ranges (a dimension filtered to a few hundred rows) take it, so their probes, mostly
+    * misses, are cheap
+    */
+  inline val DirectMinSlots = 1L << 18
 
   /** The most slots a direct index takes */
   inline val DirectMaxSlots = 1L << 27
