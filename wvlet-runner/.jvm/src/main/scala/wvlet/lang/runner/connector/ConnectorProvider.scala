@@ -116,7 +116,3 @@ object ConnectorProvider:
   /** The connector factories registered on the classpath through `META-INF/services` */
   def defaultFactories: Seq[ConnectorFactory] = ConnectorFactoryRegistry.factories
 
-  /** Whether the connector type has a factory on the classpath */
-  def isAvailable(connectorType: String): Boolean = ConnectorFactoryRegistry.isAvailable(
-    connectorType
-  )

@@ -62,11 +62,6 @@ object ConnectorFactoryRegistry:
   /** All factories registered on the classpath, discovered once */
   lazy val factories: Seq[ConnectorFactory] = discover()
 
-  /** Whether a factory for the connector type is on the classpath */
-  def isAvailable(connectorType: String): Boolean =
-    val tpe = connectorType.toLowerCase
-    factories.exists(_.connectorType == tpe)
-
   private def discover(): Seq[ConnectorFactory] =
     // Prefer the context class loader (sbt test layers, embedding apps), and fall back to the
     // loader of this class when it sees no provider
