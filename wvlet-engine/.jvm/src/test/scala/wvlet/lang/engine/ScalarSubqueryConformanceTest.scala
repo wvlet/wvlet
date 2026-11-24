@@ -97,6 +97,10 @@ class ScalarSubqueryConformanceTest extends UniTest:
   private val left  = values(rows(fixture("left")))
   private val right = values(rows(fixture("right")))
 
+  private def inlineTable(rs: List[List[String]]): String = rs
+    .map(_.mkString("[", ", ", "]"))
+    .mkString("[", ", ", "]")
+
   private val options       = OptimizerOptions().withValidatePlans(true)
   private val conformance   = EngineConformance(".", Nil, _ => (), options)
   private val engine        = conformance.engine
@@ -107,7 +111,12 @@ class ScalarSubqueryConformanceTest extends UniTest:
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
   private def compiled[A](query: String)(f: Context ?=> Relation => A): A =
-    val unit      = CompilationUnit.fromSqlString(query)
+    // Wvlet queries start with `from`: SQL has no select-item unnest
+    val unit =
+      if query.startsWith("from ") then
+        CompilationUnit.fromWvletString(query)
+      else
+        CompilationUnit.fromSqlString(query)
     val r         = compiler.compileSingleUnit(unit)
     given Context = r.context
     f(EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${query}")))
@@ -212,6 +221,68 @@ class ScalarSubqueryConformanceTest extends UniTest:
               r(2)
           )
         )
+      )
+  }
+
+  /** The model's rows grouped by `key` (outer columns), with the value and the group's row count */
+  private def grouped(
+      rs: List[List[String]],
+      key: List[String] => List[String]
+  ): List[List[String]] = rs.groupBy(r => key(r) :+ r(2)).toList.map((k, g) => k :+ g.size.toString)
+
+  /** Whether the subquery reads outer column `b` (then `group by a` alone leaves `b` ungrouped) */
+  private def readsB(c: Map[String, JSONValue]): Boolean = str(c("where")).contains("= b")
+
+  test("give every group the model's value as a select item of an aggregation") {
+    for c <- cases do
+      val rs = rows(c("rows"))
+      // The subquery reads grouping keys only, so every row of a group has the same value
+      check(
+        s"select a, b, ${sub(c)} as v, count(*) as n from ${left} as l(a, b) group by a, b",
+        grouped(rs, _.take(2))
+      )
+      // Next to an aggregate in the same item
+      check(
+        s"select a, b, coalesce(${sub(
+            c
+          )}, -1) * count(*) as w from ${left} as l(a, b) group by a, b",
+        grouped(rs, _.take(2)).map { r =>
+          val v =
+            if r(2) == "null" then
+              -1L
+            else
+              r(2).toLong
+          r.take(2) :+ (v * r(3).toLong).toString
+        }
+      )
+      if !readsB(c) then
+        val byA = grouped(rs, _.take(1))
+        check(s"select a, ${sub(c)} as v, count(*) as n from ${left} as l(a, b) group by a", byA)
+        // The grand total's `a` is NULL, so it gets the NULL key's value: the value over no rows
+        val nullValue = rs.find(_(0) == "null").map(_(2)).get
+        check(
+          s"select a, ${sub(c)} as v, count(*) as n from ${left} as l(a, b) group by rollup(a)",
+          byA :+ List("null", nullValue, rs.size.toString)
+        )
+  }
+
+  test("give every outer row the model's value next to unnest") {
+    for c <- cases do
+      val rs = rows(c("rows"))
+      // `end` ends a Wvlet flow, so the model's CASE is an if-then-else here
+      val agg = str(c("agg")).replace(
+        "case when count(*) > 0 then null else 1 end",
+        "if count(*) > 0 then null else 1"
+      )
+      val wvSub =
+        s"{ from ${inlineTable(rows(fixture("right")))} as r(c, d) where ${str(
+            c("where")
+          )} select ${agg} }"
+      check(
+        s"from ${inlineTable(
+            rows(fixture("left"))
+          )} as l(a, b) select a, b, ${wvSub} as v, unnest([1, 2]) as u",
+        rs.flatMap(r => Seq(r :+ "1", r :+ "2"))
       )
   }
 

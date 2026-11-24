@@ -1696,14 +1696,18 @@ class Planner(
   /**
     * Plan an aggregation of `input` (a GROUP BY, possibly with HAVING, or a global aggregation)
     * selecting `items`, whose input is planned with `plan`. With grouping sets, one aggregation per
-    * set reads a shared evaluation of the input, and a union combines them
+    * set reads a shared evaluation of the input, and a union combines them. A correlated scalar
+    * subquery (or EXISTS) in a select item is a left join over the aggregation's output
+    * (`rewriteSubqueries`), so that its outer references read the group's keys, NULL in a grouping
+    * set without them; `filter` plans the subquery's conditions
     */
   private[engine] def aggregation[P](
       input: Relation,
       items: Option[List[Attribute]],
       defaultItems: Boolean,
       plan: Relation => P,
-      builder: AggPlanBuilder[P]
+      filter: Filter => P,
+      builder: JoinPlanBuilder[P] & AggPlanBuilder[P]
   ): P =
     val (groupBy, having) =
       input match
@@ -1784,9 +1788,12 @@ class Planner(
       keyItems
     }
     // Bind select items in aggregation mode
-    def bindSelectItems(): IndexedSeq[(VExpr, Field)] =
+    def bindSelectItems(
+        b: Binder = aggBinder,
+        its: List[Attribute] = selectItems
+    ): IndexedSeq[(VExpr, Field)] =
       val boundItems = mutable.ArrayBuffer.empty[(VExpr, Field)]
-      selectItems.foreach {
+      its.foreach {
         case a: AllColumns =>
           // `select *` over a grouping: every key
           baseKeyExprs
@@ -1796,7 +1803,7 @@ class Planner(
                 ((aggCtx.keyRef(i), Field(baseKeyExprs(i)._1, baseKeyExprs(i)._2.ptype)))
             )
         case attr =>
-          val e = aggBinder.bind(attr)
+          val e = b.bind(attr)
           boundItems += ((e, Field(nameOf(attr), e.ptype)))
       }
       boundItems.toIndexedSeq
@@ -1807,9 +1814,28 @@ class Planner(
     val collector = Option.when(hasWindow)(WindowCollector(inOp.schema))
     if hasWindow then
       windowCollector = collector
-    val firstPass =
-      try bindSelectItems()
-      finally windowCollector = saved
+    // Items with correlated subqueries, which the binder plans alone, fail to bind: each subquery
+    // becomes a hidden name, read from a join over the aggregation's output below
+    var correlated = Option.empty[CorrelatedItems]
+    val firstPass  =
+      try
+        bindSelectItems()
+      catch
+        case e: ColumnNotFound if !hasWindow && selectItems.exists(hasCorrelatedSubquery) =>
+          val extracted = selectItems.map {
+            case a: AllColumns =>
+              (a, Nil)
+            case item =>
+              val (value, subs) = extractCorrelatedSubqueries(item)
+              (SingleColumn(NameExpr.fromString(nameOf(item)), value, item.span), subs)
+          }
+          val c = CorrelatedItems(e, extracted.map(_._1), extracted.flatMap(_._2))
+          correlated = Some(c)
+          // Register the items' aggregate calls, with NULL in place of each subquery
+          val nulls = c.subqueries.map((name, _) => name -> NullLiteral(NoSpan)).toMap
+          bindSelectItems(Binder(this, aggBinder.scope, Some(aggCtx), nulls), c.items)
+      finally
+        windowCollector = saved
     val extraItems = mutable.ArrayBuffer.empty[(VExpr, Field)]
     if defaultItems && items.isEmpty then
       // arbitrary(c) for every input column
@@ -1889,10 +1915,90 @@ class Planner(
           finally windowCollector = saved
         builder.project(win, items2.map(_._1), Schema(items2.map(_._2)))
       case None =>
-        val items2 = firstPass ++ extraItems
-        builder.project(filtered, items2.map(_._1), Schema(items2.map(_._2)))
+        correlated match
+          case None =>
+            val items2 = firstPass ++ extraItems
+            builder.project(filtered, items2.map(_._1), Schema(items2.map(_._2)))
+          case Some(c) =>
+            // The keys under their input columns' qualifiers, so that outer references resolve
+            val out       = builder.op(filtered).schema
+            val qualified = Schema(
+              out
+                .fields
+                .indices
+                .map { i =>
+                  keyExprs.lift(i).map(_._2) match
+                    case Some(ColRef(k, _, _)) =>
+                      out(i).copy(qualifiers = inOp.schema(k).qualifiers)
+                    case _ =>
+                      out(i)
+                }
+            )
+            var p = builder.project(
+              filtered,
+              qualified.fields.indices.map(i => ColRef(i, qualified(i).ptype, qualified(i).name)),
+              qualified
+            )
+            // A subquery correlated to an enclosing query further out stays unbound, as before
+            val columns =
+              try
+                c.subqueries
+                  .map { (name, sub) =>
+                    val (joined, ref) = rewriteSubqueries(builder, p, sub, plan, filter)
+                    p = joined
+                    name -> ref
+                  }
+                  .toMap
+              catch
+                case scala.util.control.NonFatal(_) =>
+                  throw c.error
+            // The joins keep the aggregation's columns first, so keys and calls keep their refs
+            val b      = Binder(this, BindScope(builder.op(p).schema), Some(aggCtx), columns)
+            val items2 = bindSelectItems(b, c.items) ++ extraItems
+            builder.project(p, items2.map(_._1), Schema(items2.map(_._2)))
+    end match
 
   end aggregation
+
+  /**
+    * Select items of an aggregation with each correlated subquery in place of a hidden name, the
+    * subqueries by name, and the binding error they gave
+    */
+  private case class CorrelatedItems(
+      error: ColumnNotFound,
+      items: List[Attribute],
+      subqueries: List[(String, Expression)]
+  )
+
+  /**
+    * `e` with each correlated scalar subquery (or EXISTS) in place of a hidden name, and the
+    * subqueries by name: the same top-down walk as `rewriteSubqueries`
+    */
+  private def extractCorrelatedSubqueries(e: Expression): (Expression, List[(String, Expression)]) =
+    val found                            = List.newBuilder[(String, Expression)]
+    def named(x: Expression): Expression =
+      val name = hiddenName("sqi")
+      found += name -> x
+      UnquotedIdentifier(name, NoSpan)
+    def visit(x: Expression): Expression =
+      x match
+        case s: SubQueryExpression if isCorrelated(s.query, Schema.empty) =>
+          named(s)
+        case ex: Exists if isCorrelated(subqueryRelation(ex.child), Schema.empty) =>
+          named(ex)
+        case _: SubQueryExpression | _: Exists | _: InRelation | _: NotInRelation =>
+          x
+        case other =>
+          other.mapChildExpressions(visit)
+    val rewritten =
+      e match
+        case s: SingleColumn =>
+          visit(s.expr)
+        case a: Alias =>
+          visit(a.expr)
+        case other =>
+          visit(other)
+    (rewritten, found.result())
 
   /**
     * A hash aggregation that groups only by the keys that are not constants (a grouping set's NULL

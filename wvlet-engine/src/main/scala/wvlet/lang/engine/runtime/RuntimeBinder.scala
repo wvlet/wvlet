@@ -656,7 +656,16 @@ class RuntimeBinder(planner: Planner):
       items: Option[List[Attribute]],
       defaultItems: Boolean
   ): RuntimePlan =
-    planner.aggregation(input, items, defaultItems, r => lowered(bind(r)), plans).plan
+    planner
+      .aggregation(
+        input,
+        items,
+        defaultItems,
+        r => lowered(bind(r)),
+        cond => lowered(bind(cond)),
+        plans
+      )
+      .plan
 
   /** Count the groups of an aggregation input: a global count over the grouping */
   private def countGroups(c: Count): RuntimePlan =
@@ -937,8 +946,10 @@ class RuntimeBinder(planner: Planner):
     * unnested, then the items in order with each list's elements
     */
   private def unnestProject(p: Project): RuntimePlan =
-    val in                       = bind(p.child)
-    val (exprs, fields, listIdx) = planner.bindUnnestItems(in.schema, p.selectItems)
+    withSubqueryItems(bind(p.child), p.selectItems)(unnestItems)
+
+  private def unnestItems(in: RuntimePlan, items: List[Attribute]): RuntimePlan =
+    val (exprs, fields, listIdx) = planner.bindUnnestItems(in.schema, items)
     val proj  = RuntimePlan.Project(in, exprs.map(BExpr.of(_, in.output)), fields.map(newColumn))
     val elems = listIdx.map(i => newColumn(planner.unnestElementField(exprs, fields, i)))
     val u     = RuntimePlan.Unnest(
