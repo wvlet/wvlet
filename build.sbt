@@ -309,15 +309,29 @@ lazy val wvcLib = project
         // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
         .withBaseName("wvlet")
         .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
-        // Boehm GC's non-moving behavior helps avoid Segmentation Fault in DLLs
-        .withGC(GC.boehm)
+        // Scala Native's default Immix GC. Boehm was used from #925 to avoid a segfault in host
+        // processes, but Scala Native 0.5.13's Boehm glue fails to link on Windows against
+        // vcpkg's bdwgc; see design/platforms.md
+        .withGC(GC.immix)
       // Allow overriding target triple via environment variable for cross-compilation
-      sys.env.get("SCALANATIVE_TARGET_TRIPLE") match {
-        case Some(triple) =>
-          baseConfig.withTargetTriple(triple)
-        case None =>
-          baseConfig
-      }
+      val targetConfig =
+        sys.env.get("SCALANATIVE_TARGET_TRIPLE") match {
+          case Some(triple) =>
+            baseConfig.withTargetTriple(triple)
+          case None =>
+            baseConfig
+        }
+      // Scala Native 0.5.13 still compiles javalib's zlib glue (z.c) but, unlike 0.5.12, leaves
+      // zlib out of wvc-lib's Windows link libraries. A Windows DLL must resolve every symbol at
+      // link time, so link zlib explicitly there (zlib.lib, prepared by native.yml)
+      val windowsTarget = targetConfig
+        .targetTriple
+        .map(_.contains("windows"))
+        .getOrElse(sys.props.getOrElse("os.name", "").startsWith("Windows"))
+      if (windowsTarget)
+        targetConfig.withLinkingOptions(targetConfig.linkingOptions :+ "-lzlib")
+      else
+        targetConfig
     }
   )
   .dependsOn(wvc)

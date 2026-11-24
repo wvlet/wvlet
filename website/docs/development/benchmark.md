@@ -56,6 +56,20 @@ planning and execution of an already compiled query; DuckDB time covers running 
 SQL over JDBC and reading every result row. Row counts are compared too, and a mismatch is
 flagged in the table.
 
+## Columnar engine on Scala Native
+
+`spec/tpch/bench/run_native_bench.sh` runs the `spec/tpch` queries on the engine inside a Scala Native `wvc` binary, one process per query, and prints each run's wall time, peak RSS, and exit status. A crash or an OutOfMemoryError shows up as a non-zero status followed by the process's error output. The wall time covers the whole process: start-up, compilation, planning, execution, and printing the result.
+
+```bash
+# release-fast build; SCALANATIVE_GC=boehm builds the Boehm variant for comparison
+SCALANATIVE_MODE=release-fast SCALANATIVE_GC=immix ./sbt wvc/nativeLink
+cp target/out/native0.5/scala-*/wvc/wvc target/wvc-immix
+# 5 rounds of q1-q22 on the SF1 data that EngineTPCHBench generates (spec/tpch/data for tiny data)
+spec/tpch/bench/run_native_bench.sh target/wvc-immix target/tpch-sf1 5
+```
+
+On Scala Native 0.5.13 (Apple M5 Pro, 18 cores, 48 GB, 5 alternating rounds per GC), all 22 queries completed in all 220 runs. The sum of the per-query median wall times was 6.0 s with Immix and 9.9 s with Boehm. Peak RSS was 981 MB with Immix (median over queries 421 MB) and 583 MB with Boehm (196 MB). Immix's heap grows past the live data, and `GC_MAXIMUM_HEAP_SIZE` bounds it: 768M ran every query at 806 MB peak and about 10% slower, while 512M and 256M ran out of heap on 2 and 15 of 44 runs. The engine's live data grows with the input, so `wvc` ships with no cap. Set `GC_MAXIMUM_HEAP_SIZE` to bound its memory.
+
 ## Manual recipe: `EXPLAIN ANALYZE` on the duckdb CLI
 
 For engine-level numbers, or to compare against hand-written SQL, run the generated SQL directly

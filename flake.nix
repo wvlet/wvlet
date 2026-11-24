@@ -24,7 +24,6 @@
           llvmPackages.lld
           llvmPackages.llvm
           # Required native libraries
-          boehmgc
           curl       # libcurl for uni's NativeHttpChannel, reached via Trino client
           duckdb     # libduckdb, loaded at runtime for DuckDB-backed features (not linked)
           openssl
@@ -44,8 +43,8 @@
         setupHook = ''
           # Set library paths for Scala Native. duckdb / curl are multi-output: libraries live
           # in `.lib`/`.out` and headers in `.dev`, so we have to spell out both outputs explicitly.
-          export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.curl.out}/lib:${pkgs.duckdb.lib}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
-          export C_INCLUDE_PATH="${pkgs.boehmgc.dev}/include:${pkgs.curl.dev}/include:${pkgs.duckdb.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
+          export LIBRARY_PATH="${pkgs.curl.out}/lib:${pkgs.duckdb.lib}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
+          export C_INCLUDE_PATH="${pkgs.curl.dev}/include:${pkgs.duckdb.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
 
           ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
             export MACOSX_DEPLOYMENT_TARGET="${pkgs.stdenv.hostPlatform.darwinMinVersion}"
@@ -64,7 +63,6 @@
             echo "Build dependencies:"
             echo "  clang:   $(clang --version | head -1)"
             echo "  lld:     $(ld.lld --version | head -1)"
-            echo "  gc:      ${pkgs.boehmgc}"
             echo "  curl:    ${pkgs.curl.out}"
             echo "  duckdb:  ${pkgs.duckdb.lib}"
             echo "  openssl: ${pkgs.openssl}"
