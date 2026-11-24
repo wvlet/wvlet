@@ -161,6 +161,20 @@ final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
       idx = (idx + 1) & mask
     -1
 
+  /** [[find]] for one Int32 key column: no virtual key comparison */
+  private def findInt(store: IntStore, x: Array[Int], i: Int, h: Int): Int =
+    var idx = h & mask
+    while true do
+      val e = slots(idx)
+      if e == Empty then
+        return -1
+      if (e >>> 32).toInt == h then
+        val g = e.toInt
+        if store.valueAt(g) == x(i) && !store.isNullAt(g) then
+          return g
+      idx = (idx + 1) & mask
+    -1
+
   private def insert(keys: Array[Vec], i: Int, h: Int): Int =
     val g = count
     if g == groupHash.length then
@@ -193,11 +207,25 @@ final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
       slots(idx) = entry(h, g)
       g += 1
 
-  /** A single Int64 key column without NULLs, whose rows can take the [[findLong]] path */
-  private def longKey(norm: Array[Vec]): Array[Long] =
-    if width == 1 && norm(0).nulls == null then
+  /**
+    * A single Int64 key column, whose rows can take the [[findLong]] path. Without `anyNulls`, only
+    * when it has no NULLs: [[findLong]] never matches NULL keys, which inserting must group
+    */
+  private def longKey(norm: Array[Vec], anyNulls: Boolean = false): Array[Long] =
+    if width == 1 && (anyNulls || norm(0).nulls == null) then
       norm(0) match
         case v: LongVec if stores(0).isInstanceOf[LongStore] =>
+          v.values
+        case _ =>
+          null
+    else
+      null
+
+  /** [[longKey]] for a single Int32 key column, for the [[findInt]] path */
+  private def intKey(norm: Array[Vec], anyNulls: Boolean = false): Array[Int] =
+    if width == 1 && (anyNulls || norm(0).nulls == null) then
+      norm(0) match
+        case v: IntVec if stores(0).isInstanceOf[IntStore] =>
           v.values
         case _ =>
           null
@@ -231,11 +259,22 @@ final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
   private def assignIds(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
     val ids = new Array[Int](n)
     val x   = longKey(norm)
+    val xi  = intKey(norm)
     var i   = 0
     if x != null then
       val ls = stores(0).asInstanceOf[LongStore]
       while i < n do
         val g = findLong(ls, x, i, h(i))
+        ids(i) =
+          if g >= 0 then
+            g
+          else
+            insert(norm, i, h(i))
+        i += 1
+    else if xi != null then
+      val is = stores(0).asInstanceOf[IntStore]
+      while i < n do
+        val g = findInt(is, xi, i, h(i))
         ids(i) =
           if g >= 0 then
             g
@@ -253,20 +292,41 @@ final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
         i += 1
     ids
 
+  end assignIds
+
   /**
     * Group ids of existing keys without inserting new ones: -1 for keys not in the table and for
     * rows with a NULL key column
     */
   def lookup(keys: Array[Vec], n: Int): Array[Int] =
     val norm = normalize(keys)
-    val h    = hashes(norm, n)
-    val ids  = new Array[Int](n)
-    val x    = longKey(norm)
-    var i    = 0
+    lookupNormalized(norm, n, hashes(norm, n))
+
+  /**
+    * [[lookup]] with each row's hash already computed by [[keyHashes]] (of a table with the same
+    * key types), so the keys are not hashed again
+    */
+  def lookup(keys: Array[Vec], n: Int, keyHashes: Array[Int]): Array[Int] = lookupNormalized(
+    normalize(keys),
+    n,
+    keyHashes
+  )
+
+  private def lookupNormalized(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
+    val ids = new Array[Int](n)
+    // Rows with a NULL key are reset to -1 below, so the fast paths may take NULL rows too
+    val x  = longKey(norm, anyNulls = true)
+    val xi = intKey(norm, anyNulls = true)
+    var i  = 0
     if x != null then
       val ls = stores(0).asInstanceOf[LongStore]
       while i < n do
         ids(i) = findLong(ls, x, i, h(i))
+        i += 1
+    else if xi != null then
+      val is = stores(0).asInstanceOf[IntStore]
+      while i < n do
+        ids(i) = findInt(is, xi, i, h(i))
         i += 1
     else
       while i < n do
@@ -283,6 +343,8 @@ final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
           i += 1
       k += 1
     ids
+
+  end lookupNormalized
 
   /** Key values of every group, in group id order */
   def keyVectors(): Array[Vec] = stores.map(_.result(count))
@@ -335,7 +397,12 @@ object GroupTable:
     while i < n do
       counts(h(i) >>> shift) += 1
       i += 1
-    val out = Array.tabulate(parts)(p => new Array[Int](counts(p)))
+    // A loop: Array.tabulate would box every partition number
+    val out = new Array[Array[Int]](parts)
+    var p   = 0
+    while p < parts do
+      out(p) = new Array[Int](counts(p))
+      p += 1
     val pos = new Array[Int](parts)
     i = 0
     while i < n do
@@ -471,10 +538,15 @@ object GroupTable:
     def equalsAt(g: Int, v: Vec, i: Int): Boolean =
       nullsEqual(g, v, i)(values(g) == v.asInstanceOf[IntVec].values(i))
 
+    inline def valueAt(g: Int): Int      = values(g)
+    inline def isNullAt(g: Int): Boolean = nulls != null && nulls(g)
+
     protected def addValue(g: Int, v: Vec, i: Int): Unit =
       values(g) = v.asInstanceOf[IntVec].values(i)
 
     def result(n: Int): Vec = IntVec(t, java.util.Arrays.copyOf(values, n), resultNulls(n))
+
+  end IntStore
 
   final class LongStore(t: PType) extends KeyStore:
     private var values                 = new Array[Long](16)

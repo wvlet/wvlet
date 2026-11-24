@@ -49,6 +49,8 @@ import java.util.concurrent.TimeoutException
   *     all cores). Set 1 for a single-threaded comparison
   *   - `WVLET_ENGINE_BENCH_TIMEOUT`: seconds to wait for all engine runs of one query, warm-up
   *     included (default 300); the remaining queries are skipped after a timeout
+  *   - `WVLET_ENGINE_BENCH_DUCKDB_PROFILE`: set 1 to write DuckDB's JSON profile (per-operator
+  *     timings) of one extra run of each query to `target/engine-bench/<label>-<query>.duckdb.json`
   *   - `WVLET_ENGINE_BENCH_EXPLAIN`: set 1 to write each engine plan to
   *     `target/engine-bench/<suite>-<query>.plan`
   *
@@ -91,7 +93,8 @@ object EngineTPCHBench extends LogSupport:
       queries: Option[Set[String]],
       duckdbThreads: Option[Int],
       timeoutSeconds: Int,
-      explain: Boolean
+      explain: Boolean,
+      duckdbProfile: Boolean = false
   )
 
   object BenchOptions:
@@ -110,7 +113,11 @@ object EngineTPCHBench extends LogSupport:
             .map(_.split(",").map(_.trim.stripSuffix(".wv")).filter(_.nonEmpty).toSet),
           duckdbThreads = sys.env.get("WVLET_ENGINE_BENCH_DUCKDB_THREADS").map(_.toInt),
           timeoutSeconds = sys.env.get("WVLET_ENGINE_BENCH_TIMEOUT").map(_.toInt).getOrElse(300),
-          explain = sys.env.get("WVLET_ENGINE_BENCH_EXPLAIN").exists(v => v == "1" || v == "true")
+          explain = sys.env.get("WVLET_ENGINE_BENCH_EXPLAIN").exists(v => v == "1" || v == "true"),
+          duckdbProfile = sys
+            .env
+            .get("WVLET_ENGINE_BENCH_DUCKDB_PROFILE")
+            .exists(v => v == "1" || v == "true")
         )
       }
 
@@ -167,6 +174,12 @@ object EngineTPCHBench extends LogSupport:
           case Some(q) =>
             val sql = GenSQL.generateSQLFromRelation(q, addHeader = false).sql
             def duckdbOnce(): (Double, Long) = timed(countRows(conn, sql))
+            // Wall time and busy cores of one DuckDB run (DuckDB runs in this process)
+            def duckdbTimed(): (Double, Double) =
+              val cpu0    = processCpuNanos()
+              val (ms, _) = duckdbOnce()
+              val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
+              (ms, cpuMs / math.max(ms, 0.001))
             def engineOnce(): (Double, Long) = timed(engine.execute(q).numRows.toLong)
             // Wall time and busy cores (process CPU time / wall time) of one engine run
             def engineTimed(): (Double, Double) =
@@ -178,8 +191,14 @@ object EngineTPCHBench extends LogSupport:
               if opts.explain then
                 Files.writeString(File(outDir, s"${label}-${name}.plan").toPath, engine.explain(q))
               val (_, duckRows) = duckdbOnce() // warm-up
-              val duck          = (1 to opts.runs).map(_ => duckdbOnce()._1)
-              val task          = worker.submit { () =>
+              val duck          = (1 to opts.runs).map(_ => duckdbTimed())
+              if opts.duckdbProfile then
+                val out = File(outDir, s"${label}-${name}.duckdb.json").getAbsolutePath
+                execute(conn, "set enable_profiling = 'json'")
+                execute(conn, s"set profiling_output = '${out}'")
+                try countRows(conn, sql)
+                finally execute(conn, "pragma disable_profiling")
+              val task = worker.submit { () =>
                 val (_, rows) = engineOnce()
                 (rows, (1 to opts.runs).map(_ => engineTimed()))
               }
@@ -195,12 +214,13 @@ object EngineTPCHBench extends LogSupport:
                     throw e
               val r = QueryTiming(
                 name,
-                duck.sorted,
+                duck.map(_._1).sorted,
                 eng.map(_._1).sorted,
                 duckRows,
                 engineRows,
                 None,
-                eng.map(_._2).sorted
+                eng.map(_._2).sorted,
+                duck.map(_._2).sorted
               )
               info(r.logLine)
               r
@@ -234,12 +254,12 @@ object EngineTPCHBench extends LogSupport:
           .getOrElse("default")}"
     val table = Seq.newBuilder[String]
     table +=
-      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | engine busy cores | rows |"
-    table += "|---|---:|---:|---:|---:|---|"
+      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | DuckDB busy cores | engine busy cores | engine / DuckDB CPU | rows |"
+    table += "|---|---:|---:|---:|---:|---:|---:|---|"
     results.foreach { r =>
       r.error match
         case Some(e) =>
-          table += s"| ${r.name} | | | | | error: ${e.take(80)} |"
+          table += s"| ${r.name} | | | | | | | error: ${e.take(80)} |"
         case None =>
           val rows =
             if r.rowsMatch then
@@ -248,17 +268,22 @@ object EngineTPCHBench extends LogSupport:
               s"MISMATCH duckdb=${r.duckdbRows} engine=${r.engineRows}"
           table +=
             f"| ${r.name} | ${r.duckdbMedian}%.1f | ${r.engineMedian}%.1f | ${r.ratio}%.1fx | ${r
-                .engineCores}%.1f | ${rows} |"
+                .duckdbCores}%.1f | ${r.engineCores}%.1f | ${r.cpuRatio}%.1fx | ${rows} |"
     }
-    table += f"| total | ${duckTotal}%.1f | ${engTotal}%.1f | ${engTotal / duckTotal}%.1fx | | |"
+    val duckCpu = ok.map(r => r.duckdbMedian * r.duckdbCores).sum
+    val engCpu  = ok.map(r => r.engineMedian * r.engineCores).sum
+    table +=
+      f"| total | ${duckTotal}%.1f | ${engTotal}%.1f | ${engTotal / duckTotal}%.1fx | ${duckCpu /
+          duckTotal}%.1f | ${engCpu / engTotal}%.1f | ${engCpu / duckCpu}%.1fx | |"
     info(s"${header}\n${table.result().mkString("\n")}")
 
     val tsv   = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.tsv")
     val lines =
-      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores" +:
+      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio" +:
         results.map { r =>
           f"${r.name}\t${r.duckdbMedian}%.1f\t${r.engineMedian}%.1f\t${r.ratio}%.2f\t${r
-              .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}\t${r.engineCores}%.2f"
+              .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}\t${r.engineCores}%.2f\t${r
+              .duckdbCores}%.2f\t${r.cpuRatio}%.2f"
         }
     Files.writeString(tsv.toPath, lines.mkString("", "\n", "\n"))
     info(s"Wrote ${tsv.getPath}")
@@ -272,10 +297,22 @@ object EngineTPCHBench extends LogSupport:
       duckdbRows: Long,
       engineRows: Long,
       error: Option[String],
-      engineCoresPerRun: Seq[Double] = Nil
+      engineCoresPerRun: Seq[Double] = Nil,
+      duckdbCoresPerRun: Seq[Double] = Nil
   ):
     /** The median busy cores of the engine runs: process CPU time / wall time */
-    def engineCores: Double  = median(engineCoresPerRun)
+    def engineCores: Double = median(engineCoresPerRun)
+
+    /** The median busy cores of the DuckDB runs */
+    def duckdbCores: Double = median(duckdbCoresPerRun)
+
+    /**
+      * Engine CPU time / DuckDB CPU time (median wall time × median busy cores). With the wall-time
+      * ratio, this splits the gap into work done per row and parallelism.
+      */
+    def cpuRatio: Double =
+      (engineMedian * engineCores) / math.max(duckdbMedian * duckdbCores, 0.001)
+
     def duckdbMedian: Double = median(duckdbMs)
     def engineMedian: Double = median(engineMs)
     def ratio: Double        = engineMedian / math.max(duckdbMedian, 0.001)
@@ -289,6 +326,8 @@ object EngineTPCHBench extends LogSupport:
           else
             s"  ROW COUNT MISMATCH duckdb=${duckdbRows} engine=${engineRows}"
         }"
+
+  end QueryTiming
 
   /** The scale factor as written in paths: 1 rather than 1.0, 0.1 as is */
   def sfLabel(sf: Double): String =
