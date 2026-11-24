@@ -108,6 +108,8 @@ class KeyPackerTest extends UniTest:
       runner = runner,
       packKeys = packKeys
     )
+    // The packed keys of these builds are dense: test the hash tables, not the direct index
+    jb.directIndex = false
     jb.ensureBuilt()
     jb.firstMatches(probe, n).toSeq
 

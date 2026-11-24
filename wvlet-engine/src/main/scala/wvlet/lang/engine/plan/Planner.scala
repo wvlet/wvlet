@@ -76,6 +76,8 @@ class Planner(
     )
     if !enabled(Optimization.LateGather) then
       Planner.disableLateGather(pruned)
+    if !enabled(Optimization.JoinDirectIndex) then
+      Planner.disableJoinDirectIndex(pruned)
     if enabled(Optimization.Parallelize) then
       Parallelizer(
         pruned,
@@ -3235,6 +3237,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableLateGather)
     op.sharedInputs.foreach(disableLateGather)
+
+  /** Make the hash joins of a physical plan use hash tables for every key (`join_direct_index`) */
+  private[engine] def disableJoinDirectIndex(op: Operator): Unit =
+    op match
+      case j: HashJoinOp =>
+        j.withDirectIndex(false)
+      case _ =>
+    op.children.foreach(disableJoinDirectIndex)
+    op.sharedInputs.foreach(disableJoinDirectIndex)
 
   /**
     * The keys and the inequality of an ASOF join, each bound over its input: a left row matches the
