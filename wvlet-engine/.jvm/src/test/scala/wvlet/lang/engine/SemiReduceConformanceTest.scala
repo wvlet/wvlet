@@ -85,7 +85,6 @@ class SemiReduceConformanceTest extends UniTest:
       case other =>
         other.toJSON
 
-  /** The VALUES list of an input's (key, id) rows, with typed NULL keys */
   /** The VALUES list of an input's rows, with typed NULLs */
   private def values(name: String): String = arr(fixture(name))
     .map(r =>

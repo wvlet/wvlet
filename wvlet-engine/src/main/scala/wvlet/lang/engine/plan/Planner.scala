@@ -57,10 +57,11 @@ class Planner(
   private[engine] def enabled(o: Optimization): Boolean = options.isEnabled(o)
 
   /** Lower a runtime plan into operators, with runtime join filters when enabled */
-  private[engine] def lower(p: RuntimePlan): Operator = Lowering(
+  private[engine] def lower(p: RuntimePlan, inSet: Boolean = false): Operator = Lowering(
     p,
     joinFilters = enabled(Optimization.RuntimeJoinFilters),
-    presizeAggs = enabled(Optimization.PresizeAggregates)
+    presizeAggs = enabled(Optimization.PresizeAggregates),
+    inSet = inSet
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */
@@ -1411,7 +1412,8 @@ class Planner(
           runtimeOptimizer.reduceSemiJoins(p, keep.map(out(_).id).toSet)
         else
           p
-      val op       = Planner.this.lower(runtimeOptimizer.pushScanFilters(pruned))
+      // A reduced body's readers read only its distinct rows, as do the CTE readers in it
+      val op       = Planner.this.lower(runtimeOptimizer.pushScanFilters(pruned), reduced)
       val pos      = pruned.output.map(_.id).zipWithIndex.toMap
       val selected =
         if pruned.output.size == keep.size then

@@ -30,11 +30,12 @@ import scala.collection.mutable
   * the others: the distinct rows of `X ⋈ Y` projected to X's columns are those of `X ⋉ Y` on the
   * same condition, and a NULL condition drops the pair in both (`formal/WvletFormal/SemiReduce`).
   *
-  * The context passes through deterministic filters and projections, sorts, inner joins, the left
-  * side of semi and anti joins, and UNION ALL; Window, Limit, Sample, aggregate calls, and outer
-  * joins count duplicates and end it. Each split needs at least one equality key, so that the semi
-  * join is a hash join. Q95's `ws_order_number in (from web_returns, ws_wh ...)` no longer expands
-  * every web return by its warehouse pairs.
+  * The context passes through deterministic filters and projections, sorts without a limit, inner
+  * joins, the left side of semi and anti joins, and UNION ALL; Window, Limit, top-N sorts, Sample,
+  * aggregate calls, and outer joins count duplicates and end it. Each split needs at least one
+  * equality key, so that the semi join is a hash join. Q95's
+  * `ws_order_number in (from web_returns, ws_wh ...)` no longer expands every web return by its
+  * warehouse pairs.
   *
   * A shared CTE body is reduced when it is finalized, if every reader reads it in such a context
   * ([[reduceBody]]); the readers' contexts come from [[childContexts]], which lowering follows too.
@@ -67,8 +68,9 @@ object ReduceSemiJoins extends Pass:
         Seq(inSet && deterministic(cond))
       case Project(_, exprs, _) =>
         Seq(inSet && exprs.forall(deterministic))
-      case Sort(_, _, _) =>
-        Seq(inSet)
+      case Sort(_, _, limit) =>
+        // A top-N keeps the first rows, duplicates included
+        Seq(inSet && limit.isEmpty)
       case Join(_, _, kind, lk, rk, residual, _) =>
         val det = (lk ++ rk ++ residual).forall(deterministic)
         kind match

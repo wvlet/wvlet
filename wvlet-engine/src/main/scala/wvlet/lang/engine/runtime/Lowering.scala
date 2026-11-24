@@ -34,10 +34,19 @@ object Lowering:
 
   /**
     * Lower `p`. With `joinFilters`, hash joins whose unmatched probe rows are dropped give the
-    * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]])
+    * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]). With
+    * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]])
     */
-  def apply(p: RuntimePlan, joinFilters: Boolean = false, presizeAggs: Boolean = false): Operator =
-    Lower(joinFilters, presizeAggs).lower(p)
+  def apply(
+      p: RuntimePlan,
+      joinFilters: Boolean = false,
+      presizeAggs: Boolean = false,
+      inSet: Boolean = false
+  ): Operator =
+    val l = Lower(joinFilters, presizeAggs)
+    if inSet then
+      l.markInSet(p)
+    l.lower(p)
 
   /**
     * The group table size of an aggregation of p by `keys`, from [[Stats.groups]]: 0 when unknown
@@ -57,6 +66,9 @@ object Lowering:
     // The nodes not lowered yet that are in a duplicate-insensitive context, set by their parent
     // ([[ReduceSemiJoins.childContexts]]), so that shared CTE readers report it
     private val setNodes = java.util.IdentityHashMap[RuntimePlan, Boolean]()
+
+    /** Lower p as read only for its distinct rows */
+    def markInSet(p: RuntimePlan): Unit = setNodes.put(p, true)
 
     def lower(p: RuntimePlan): Operator =
       val inSet = setNodes.getOrDefault(p, false)

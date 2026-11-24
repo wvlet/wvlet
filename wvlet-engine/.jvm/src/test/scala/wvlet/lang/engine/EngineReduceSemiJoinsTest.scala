@@ -178,6 +178,22 @@ class EngineReduceSemiJoinsTest extends UniTest:
     semiJoins(plan) shouldBe semiJoins(explain(disabled, query))
   }
 
+  test("not reduce the joins below a top-N, which keeps duplicates") {
+    val query =
+      """from orders
+        |where o_orderkey in ({
+        |  from lineitem, part
+        |  where l_partkey = p_partkey
+        |  order by l_orderkey
+        |  limit 5
+        |  select l_orderkey
+        |})
+        |select count(*) as n
+        |""".stripMargin
+    val plan = check(query)
+    semiJoins(plan) shouldBe semiJoins(explain(disabled, query))
+  }
+
   test("match DuckDB for NOT IN over a join") {
     check("""from orders
         |where o_custkey not in ({
