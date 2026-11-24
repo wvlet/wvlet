@@ -132,13 +132,34 @@ private[gpu] object GTable:
 /**
   * A filter that a join passes to one of its inputs: rows whose columns `cols` (cast to `types`)
   * match no row of `values` (the other input's join keys, borrowed) cannot join, so the input may
-  * drop them before it does further work
+  * drop them before it does further work. `origin` is the join that made it: within one loop over
+  * ranges, filters of the same origin and columns hold the same keys
   */
 private[gpu] final case class KeyFilter(
     cols: IndexedSeq[Int],
     types: IndexedSeq[PType],
-    values: Table
+    values: Table,
+    origin: AnyRef
 )
+
+/**
+  * A plan node and the key filters it runs with, compared by identity: the key of a result or hash
+  * table reused across the ranges of a loop
+  */
+private[gpu] final class RunKey(val p: AnyRef, kfs: List[KeyFilter]):
+  private val sig = kfs.map(f => (f.origin, f.cols))
+
+  override def hashCode: Int =
+    System.identityHashCode(p) * 31 +
+      sig.map((o, c) => System.identityHashCode(o) * 17 + c.hashCode).hashCode
+
+  override def equals(o: Any): Boolean =
+    o match
+      case k: RunKey =>
+        (k.p eq p) && k.sig.size == sig.size &&
+        k.sig.zip(sig).forall((a, b) => (a._1 eq b._1) && a._2 == b._2)
+      case _ =>
+        false
 
 private[gpu] object KeyFilter:
   /** Apply a filter only to inputs with more than this many times its number of keys */
@@ -382,11 +403,15 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     * subtrees that read no streamed scan, and the hash tables built over them
     */
   private final class Loop extends AutoCloseable:
-    val results                = java.util.IdentityHashMap[RuntimePlan, GTable]()
-    val hashes                 = java.util.IdentityHashMap[Join, AutoCloseable]()
+    val results = scala.collection.mutable.HashMap.empty[RunKey, GTable]
+    val hashes  = scala.collection.mutable.HashMap.empty[RunKey, AutoCloseable]
+
+    /** Whether a reused subtree is running: its own nodes are not kept separately */
+    var reusing = false
+
     override def close(): Unit =
-      results.values.forEach(_.close())
-      hashes.values.forEach(_.close())
+      results.values.foreach(_.close())
+      hashes.values.foreach(_.close())
 
   // The innermost loop first
   private var loops: List[Loop] = Nil
@@ -518,15 +543,20 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     */
   def exec(p: RuntimePlan, kfs: List[KeyFilter] = Nil): GTable =
     loops match
-      case loop :: _ if !containsBound(p) =>
-        // The same for every range: run once per loop
-        val done = loop.results.get(p)
-        if done != null then
-          share(done)
-        else
-          val t = execProfiled(p, kfs)
-          loop.results.put(p, t)
-          share(t)
+      case loop :: _ if !loop.reusing && !containsBound(p) =>
+        // The same for every range: run once per loop. Only this subtree's result is kept, not
+        // those of its nodes, which run as usual
+        val key = RunKey(p, kfs)
+        loop.results.get(key) match
+          case Some(done) =>
+            share(done)
+          case None =>
+            loop.reusing = true
+            val t =
+              try execProfiled(p, kfs)
+              finally loop.reusing = false
+            loop.results(key) = t
+            share(t)
       case _ =>
         execProfiled(p, kfs)
 
@@ -1094,7 +1124,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
                   .collect { case c: ColRef =>
                     c.index
                   }
-                Option.when(cols.size == keyTypes.size)(KeyFilter(cols, keyTypes, lkt)).toList
+                Option.when(cols.size == keyTypes.size)(KeyFilter(cols, keyTypes, lkt, j)).toList
               case _ =>
                 Nil
           using(exec(j.right, childFilters(j, kfs, 1) ++ own)) { r =>
@@ -1106,6 +1136,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
               )
             try
               using(Table(rk*)) { rkt =>
+                joinKey = RunKey(j, kfs)
                 joinTables(j, l, r, lkt, rkt)
               }
             finally rk.foreach(_.close())
@@ -1186,15 +1217,21 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
         case _ =>
           None
 
+  /**
+    * The join being run and its key filters, set right before [[joinTables]] (which runs no other
+    * node): the key of its hash tables built once per loop
+    */
+  private var joinKey: RunKey = null
+
   /** The hash table over `keys` (the build input's keys) of `j`, built once per loop */
   private def hashOf(j: Join, keys: Table): HashJoin =
     val loop = loops.head
-    loop.hashes.get(j) match
-      case h: HashJoin =>
+    loop.hashes.get(joinKey) match
+      case Some(h: HashJoin) =>
         h
       case _ =>
         val h = HashJoin(keys, false)
-        loop.hashes.put(j, h)
+        loop.hashes(joinKey) = h
         h
 
   /** The inner join pairs (left, right) of `j`'s keys, through a hash table built once per loop */
@@ -1215,8 +1252,8 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
   private def semiByDistinctHash(j: Join, l: GTable, lkt: Table, rkt: Table): GTable =
     val loop = loops.head
     val h    =
-      loop.hashes.get(j) match
-        case h: DistinctHashJoin =>
+      loop.hashes.get(joinKey) match
+        case Some(h: DistinctHashJoin) =>
           h
         case _ =>
           val keys = (0 until rkt.getNumberOfColumns).toArray
@@ -1224,7 +1261,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
             using(rkt.dropDuplicates(keys, Table.DuplicateKeepOption.KEEP_ANY, true))(
               DistinctHashJoin(_, false)
             )
-          loop.hashes.put(j, h)
+          loop.hashes(joinKey) = h
           h
     using(lkt.leftDistinctJoinGatherMap(h)) { map =>
       val view = map.toColumnView(0, map.getRowCount.toInt)

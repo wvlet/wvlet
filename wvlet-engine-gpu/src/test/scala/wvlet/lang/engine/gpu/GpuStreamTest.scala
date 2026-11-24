@@ -74,7 +74,9 @@ class GpuStreamTest extends UniTest:
     Seq("q1", "q6", "q13").foreach { q =>
       (q, onGpu.get(q)) shouldBe (q, Some(true))
     }
-    onGpu.get("q12") shouldBe Some(false)
+    if config.stringLimit < GpuConfig.DefaultStringLimit then
+      // With the test's 4 KB limit, the plan-time check keeps q12 on the CPU
+      onGpu.get("q12") shouldBe Some(false)
   }
 
   for unit <- conformance.units do
