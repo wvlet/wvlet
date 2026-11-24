@@ -24,7 +24,7 @@ DuckDB reached the CLI classpath in two ways: `wvlet-connector` bundled the Duck
 
 - Without DuckDB and Snowflake, the pack is about 56 MB, down from 228 MB.
 - `wvlet catalog diff` without `--profile` still defaults to DuckDB, because the wvlet engine is not a catalog-backed SQL connector. On the lite CLI it reports how to install DuckDB.
-- Flow stages that read another connector's table still stage into DuckDB only. On the lite CLI, choosing a DuckDB engine fails at connector creation with the install message.
+- Flow stages that read another connector's table stage into the wvlet engine or DuckDB (#2337), so the lite CLI runs them on the engine. Choosing a DuckDB engine there fails at connector creation with the install message.
 - Downstream users of the `wvlet-lang` and `wvlet-connector` artifacts who relied on the transitive `duckdb_jdbc` or `snowflake-jdbc` must add `wvlet-connector-duckdb` or `wvlet-connector-snowflake`.
 
 ## Alternatives
