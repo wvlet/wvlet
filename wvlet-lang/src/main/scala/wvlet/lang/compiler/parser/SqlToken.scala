@@ -331,6 +331,9 @@ object SqlToken:
   val keywords       = SqlToken.values.filter(_.tokenType == Keyword).toSeq
   val specialSymbols = SqlToken.values.filter(_.tokenType == Op).toSeq
 
+  /** Reserved keywords that start an expression, so they can also start a select item */
+  val expressionStartKeywords = Set(SqlToken.EXISTS, SqlToken.NOT)
+
   val literalStartKeywords = Seq(
     SqlToken.NULL,
     SqlToken.TRUE,

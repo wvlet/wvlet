@@ -36,7 +36,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   def canStartSelectItem: Boolean =
     tokenType != Keyword || WvletToken.literalStartKeywords.contains(this) ||
-      WvletToken.nonReservedKeywords.contains(this)
+      WvletToken.nonReservedKeywords.contains(this) ||
+      WvletToken.expressionStartKeywords.contains(this)
 
   def isOperator: Boolean            = tokenType == Op
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
@@ -301,6 +302,9 @@ object WvletToken:
     WvletToken.IF,
     WvletToken.MAP
   )
+
+  /** Reserved keywords that start an expression, so they can also start a select item */
+  val expressionStartKeywords = Set(WvletToken.EXISTS, WvletToken.NOT)
 
   val nonReservedKeywords = Set(
     WvletToken.COUNT,

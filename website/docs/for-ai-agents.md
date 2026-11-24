@@ -125,6 +125,7 @@ See the [Query Syntax reference](./syntax/index.md) for every operator.
 | `WITH x AS (q) SELECT ... FROM x` | `with x as { q } from x ...` |
 | `CAST(x AS INT)` | `x::int` |
 | `CASE WHEN c THEN a ELSE b END` | `if c then a else b` |
+| `SELECT EXISTS (SELECT 1 FROM r WHERE r.k = t.k) AS e FROM t` | `from t select exists { from r where r.k = t.k } as e` |
 | `VALUES (1, 'a'), (2, 'b')` | `val t(id, name) = [[1, 'a'], [2, 'b']]` then `from t` |
 
 To convert an existing SQL query, run `wvlet to_wvlet "<sql>"`. For example, `wvlet to_wvlet "select status, count(*) as n from orders group by status having count(*) > 1"` prints:

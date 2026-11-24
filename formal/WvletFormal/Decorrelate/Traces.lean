@@ -6,7 +6,9 @@ them against the engine. An outer table with NULL and duplicate rows meets an in
 NULL keys, NULL values, and duplicate matches, through subqueries whose WHERE has a key equality,
 a key and a residual, a key and a local filter, only a residual, two keys, and an OR of two
 correlations. Each case gives the rows of the engine's plan (`planExists`, `planIn`, `markJoin`), which
-`Rule.lean` proves equal to SQL's.
+`Rule.lean` proves equal to SQL's. A mark case also gives each outer row with its flag, which
+`markJoin_sound` proves is SQL's EXISTS (never unknown): the value of `exists { ... }` as a select
+item.
 
 It also exports the semi and anti join cases of the filter pushdown model (`Pushdown.place` and
 `Pushdown.rewrite`, proved by `rewrite_sound`): a WHERE conjunct next to an EXISTS or NOT EXISTS,
@@ -114,6 +116,8 @@ def jmark : Keys × List Cond → String
   | (ks, lws) =>
     let marked := markJoin ks (filter (andAll lws) rs) ls
     jobj [ ("where", jwhere (markWhere ks lws))
+         , ("flags", jarr (marked.map fun (x, e) =>
+              jarr (L.map (fun i => jvalue (x i)) ++ [if e then "true" else "false"])))
          , ("conds", jarr (markConds.map fun (s, f) =>
               jobj [ ("cond", jstr s)
                    , ("rows", jarr ((marked.filter fun (x, e) => f x e == .true).map (jrow ·.1))) ])) ]

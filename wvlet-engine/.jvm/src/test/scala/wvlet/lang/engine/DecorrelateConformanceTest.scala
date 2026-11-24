@@ -157,10 +157,12 @@ class DecorrelateConformanceTest extends UniTest:
     }
 
   /** The engine's rows equal the model's, and DuckDB's */
-  private def check(query: String, expected: JSONValue): Unit =
+  private def check(query: String, expected: JSONValue): Unit = checkRows(query, rows(expected))
+
+  private def checkRows(query: String, expected: List[List[String]]): Unit =
     debug(query)
     try
-      sorted(rowsOf(query)) shouldBe sorted(rows(expected))
+      sorted(rowsOf(query)) shouldBe sorted(expected)
       withQuery(query)(conformance.assertMatches(query, _))
     catch
       case e: Throwable =>
@@ -216,6 +218,22 @@ class DecorrelateConformanceTest extends UniTest:
         check(query, cond("rows"))
         // A left join with the distinct keys, which keeps every outer row once
         joinKinds(query) shouldBe Seq(JoinKind.Left)
+  }
+
+  test("return the model's mark flags for EXISTS and NOT EXISTS select items") {
+    val cases = arr(fixture("marks")).map(obj)
+    cases.size shouldBe 4
+    for c <- cases do
+      val e     = s"exists ${sub(str(c("where")))}"
+      val flags = rows(c("flags"))
+      flags.size shouldBe rows(fixture("left")).size
+      val query = s"${outer} select a, b, ${e} as e"
+      check(query, c("flags"))
+      joinKinds(query) shouldBe Seq(JoinKind.Left)
+      // NOT EXISTS negates the flag, which is never NULL
+      val notQuery = s"${outer} select a, b, not ${e} as ne"
+      checkRows(notQuery, flags.map(r => r.init :+ (!r.last.toBoolean).toString))
+      joinKinds(notQuery) shouldBe Seq(JoinKind.Left)
   }
 
   /** The bound plan, and the plan after the passes that run up to filter pushdown */
