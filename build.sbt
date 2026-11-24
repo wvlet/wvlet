@@ -15,6 +15,7 @@ val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "2.0.1.0"
 val SNOWFLAKE_JDBC_VERSION = "4.4.1"
 val CAFFEINE_VERSION       = "3.3.1"
+val CUDF_VERSION           = "26.10.2"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // Uni releases are published to repo.wvlet.org first; Maven Central limits release frequency and size
@@ -466,6 +467,28 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .nativeSettings(uniNativeCurlLinking)
   .dependsOn(lang)
+
+// Example GPU executor for the in-process engine: runs the plan subtrees it supports on an NVIDIA
+// GPU through cudf-java. JVM only and optional (not in the CLI pack). cudf ships its native
+// libraries per CUDA version and CPU: set CUDF_CLASSIFIER (default cuda13-arm64, e.g. for a DGX
+// Spark; cuda12 for x86_64 with CUDA 12). See plans/2026-11-24-gpu-engine-executor.md
+lazy val engineGpu = project
+  .in(file("wvlet-engine-gpu"))
+  .settings(
+    buildSettings,
+    name        := "wvlet-engine-gpu",
+    description := "Example GPU executor for the wvlet engine (cudf)",
+    libraryDependencies ++=
+      Seq(
+        ("ai.rapids" % "cudf" % CUDF_VERSION).classifier(
+          sys.env.getOrElse("CUDF_CLASSIFIER", "cuda13-arm64")
+        ),
+        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION % Test
+      ),
+    specRunnerSettings,
+    Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED", "-Xmx16g")
+  )
+  .dependsOn(engine.jvm % "compile->compile;test->test")
 
 // Capability-based Connector traits, the ServiceLoader-based factory registry, and the light
 // built-in connectors (Trino over REST, Slack). Connectors with heavy JDBC drivers live in their

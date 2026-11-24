@@ -85,6 +85,9 @@ class EngineOptimizerToggleTest extends UniTest:
       if o == Optimization.ParallelAggPartitioning then
         // PartitionedAggOpTest checks that both ways give the same partitions
         ignore("Changes how aggregation input is routed to partitions, not the plan")
+      if o == Optimization.GpuOffload then
+        // EnginePlanAcceleratorTest checks that the flag offers plans to an accelerator
+        ignore("Changes plans only with a PlanAccelerator, which these engines don't have")
       if o == Optimization.ConcurrentSharedCTEs then
         // EngineConcurrentSharedCTEsTest checks that the flag starts the results concurrently
         ignore("Changes when shared CTE results are computed, not the plan")

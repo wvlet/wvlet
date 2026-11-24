@@ -1,0 +1,11 @@
+# Sirius memory settings for one DGX Spark (GB10).
+#
+# The GB10's GPU and CPU share 128 GB of LPDDR5X. Sirius's defaults (95% of GPU memory, plus
+# pinned host pools sized from each NUMA node's RAM) count that one memory twice, so cap both.
+# SF10 needs about 10-15 GB of decompressed columns. Raise these for SF100.
+sirius:
+  memory:
+    gpu:
+      usage_limit_fraction: 0.5
+    host:
+      capacity_bytes: 24Gi
