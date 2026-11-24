@@ -48,8 +48,9 @@ import wvlet.lang.engine.vector.Field
 import wvlet.lang.engine.vector.Schema
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
-import scala.util.control.NonFatal
 import wvlet.lang.model.plan.*
+
+import scala.util.control.NonFatal
 
 /**
   * Binds a typed, model-expanded [[Relation]] to a [[RuntimePlan]]: names resolve to column ids
@@ -1034,37 +1035,44 @@ class RuntimeBinder(planner: Planner):
     try
       f(in, items)
     catch
-      case e: ColumnNotFound if items.exists(planner.hasCorrelatedSubquery) =>
+      case e: ColumnNotFound =>
+        // Each correlated subquery plans alone once more to tell, so ask once per item
+        val correlated = items.map(planner.hasCorrelatedSubquery)
+        if !correlated.contains(true) then
+          throw e
+        var current = lowered(in)
         // A subquery correlated to an enclosing query further out stays unbound, as before: the
         // caller (e.g. `isCorrelated` of that query's subquery) sees the same ColumnNotFound
-        try
-          var current   = lowered(in)
-          val rewritten = items.map { item =>
-            if !planner.hasCorrelatedSubquery(item) then
-              item
-            else
-              val (extended, expr) = planner.rewriteSubqueries(
-                plans,
-                current,
-                item,
-                r => lowered(bind(r)),
-                cond => lowered(bind(cond))
-              )
-              current = extended
-              val value =
-                expr match
-                  case s: SingleColumn =>
-                    s.expr
-                  case a: Alias =>
-                    a.expr
-                  case other =>
-                    other
-              SingleColumn(NameExpr.fromString(planner.nameOf(item)), value, item.span)
-          }
-          f(current.plan, rewritten)
-        catch
-          case NonFatal(_) =>
-            throw e
+        val rewritten =
+          try
+            items
+              .zip(correlated)
+              .map {
+                case (item, false) =>
+                  item
+                case (item, true) =>
+                  val (extended, expr) = planner.rewriteSubqueries(
+                    plans,
+                    current,
+                    item,
+                    r => lowered(bind(r)),
+                    cond => lowered(bind(cond))
+                  )
+                  current = extended
+                  val value =
+                    expr match
+                      case s: SingleColumn =>
+                        s.expr
+                      case a: Alias =>
+                        a.expr
+                      case other =>
+                        other
+                  SingleColumn(NameExpr.fromString(planner.nameOf(item)), value, item.span)
+              }
+          catch
+            case NonFatal(_) =>
+              throw e
+        f(current.plan, rewritten)
 
   /**
     * A sort. Subqueries in sort keys bind as plan-time constants through the same `Binder`, as in
