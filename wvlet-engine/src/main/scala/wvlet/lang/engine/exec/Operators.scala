@@ -937,6 +937,13 @@ final class JoinBuild(
     */
   var directIndex: Boolean = true
 
+  /**
+    * Whether a large build concatenates its input, finds its valid rows and key ranges, and fills
+    * its direct index on the runner instead of the calling thread (`parallel_join_build`); set
+    * before the build is made
+    */
+  var parallelBuild: Boolean = true
+
   /** Whether the build probes through a direct index instead of hash tables (for tests) */
   def usesDirectIndex: Boolean = directHeads != null
 
@@ -958,19 +965,32 @@ final class JoinBuild(
       }
 
   private def buildTable(): Unit =
-    build = Operator.materialize(right)
+    val batches = right.drain()
+    val rows    = batches.iterator.map(_.size.toLong).sum
+    // The runner of the build steps after the input (`parallel_join_build`): small builds stay on
+    // the calling thread
+    val steps =
+      if parallelBuild && runner.parallelism > 1 && rows >= JoinBuild.MinParallelRows then
+        runner
+      else
+        TaskRunner.Sequential
+    build =
+      if batches.isEmpty then
+        Batch.empty(right.schema)
+      else if steps eq TaskRunner.Sequential then
+        Batch.concat(right.schema, batches)
+      else
+        JoinBuildSteps.concat(right.schema, batches.toIndexedSeq, steps)
     val rawKeys  = rightKeys.map(_.eval(build)).toArray
     val rawTypes = rightKeys.map(_.ptype)
     // Rows with NULL keys never match
-    val valid = new Array[Int](build.size)
-    var nv    = 0
-    var i     = 0
-    while i < build.size do
-      if !GroupKey.hasNull(rawKeys, i) then
-        valid(nv) = i
-        nv += 1
-      i += 1
-    filters.foreach(f => f.set(rawKeys(f.key), valid, nv))
+    val (valid, nv) = JoinBuildSteps.validRows(rawKeys, build.size, steps)
+    filters.foreach { f =>
+      if steps eq TaskRunner.Sequential then
+        f.set(rawKeys(f.key), valid, nv)
+      else
+        JoinBuildSteps.keyRange(rawKeys(f.key), valid, nv, steps).foreach(f.setRange)
+    }
     if packKeys then
       packer = KeyPacker.of(rawTypes, rawKeys, valid, nv)
     // The key columns the tables hold
@@ -979,9 +999,9 @@ final class JoinBuild(
         (rawKeys, rawTypes)
       else
         (Array[Vec](packer.pack(rawKeys, build.size)), IndexedSeq(PType.Int64))
-    chain = Vec.filledInts(build.size, -1)
+    chain = JoinBuildSteps.filledInts(build.size, -1, steps)
     if directIndex && types.size == 1 then
-      buildDirect(keyVecs(0), types(0), valid, nv)
+      buildDirect(keyVecs(0), types(0), valid, nv, steps)
     if directHeads == null && flatTable && types.size == 1 then
       buildFlat(keyVecs(0), types(0), valid, nv)
     if directHeads == null && flat == null then
@@ -996,7 +1016,7 @@ final class JoinBuild(
     * most [[JoinBuild.DirectRangeFactor]] slots per row, or at most [[JoinBuild.DirectMinSlots]];
     * leaves `directHeads` null otherwise
     */
-  private def buildDirect(key: Vec, t: PType, valid: Array[Int], nv: Int): Unit =
+  private def buildDirect(key: Vec, t: PType, valid: Array[Int], nv: Int, steps: TaskRunner): Unit =
     if nv == 0 || !(t == PType.Int32 || t == PType.Date || t == PType.Int64) then
       return
     val store = GroupTable.KeyStore(t)
@@ -1021,17 +1041,8 @@ final class JoinBuild(
         ints(r).toLong
       else
         longs(r)
-    var lo = Long.MaxValue
-    var hi = Long.MinValue
-    var j  = 0
-    while j < nv do
-      val a = keyAt(valid(j))
-      if a < lo then
-        lo = a
-      if a > hi then
-        hi = a
-      j += 1
-    val range = hi - lo
+    val (lo, hi) = JoinBuildSteps.keyRange(norm, valid, nv, steps).get
+    val range    = hi - lo
     // A negative range overflowed a Long
     if range < 0 ||
       range >=
@@ -1041,19 +1052,71 @@ final class JoinBuild(
         )
     then
       return
-    val heads = Vec.filledInts(range.toInt + 1, -1)
-    var dup   = false
-    // In reverse, so chains enumerate rows in input order
-    j = nv - 1
-    while j >= 0 do
-      val row = valid(j)
-      val k   = (keyAt(row) - lo).toInt
-      val h   = heads(k)
-      if h >= 0 then
-        dup = true
-      chain(row) = h
-      heads(k) = row
-      j -= 1
+    val heads = JoinBuildSteps.filledInts(range.toInt + 1, -1, steps)
+    // Insert rows(from until until) in reverse, so chains enumerate rows in input order; whether
+    // two of them share a key
+    def insert(rows: Array[Int], from: Int, until: Int): Boolean =
+      var dup = false
+      var j   = until - 1
+      while j >= from do
+        val row = rows(j)
+        val k   = (keyAt(row) - lo).toInt
+        val h   = heads(k)
+        if h >= 0 then
+          dup = true
+        chain(row) = h
+        heads(k) = row
+        j -= 1
+      dup
+    val dup =
+      if steps eq TaskRunner.Sequential then
+        insert(valid, 0, nv)
+      else
+        // Split the key range into slices, one task each, so that no two tasks write the same
+        // `heads` slot. Row chunks scatter their rows by slice into `order`, chunk after chunk, so
+        // each slice lists its rows in input order and its chains come out as in a serial build
+        val tasks  = JoinBuildSteps.taskCount(steps)
+        val shift  = math.max(0, 64 - java.lang.Long.numberOfLeadingZeros(range / tasks))
+        val slices = (range >>> shift).toInt + 1
+        val chunks = JoinBuildSteps.chunks(nv, tasks)
+        val counts = Array.ofDim[Int](chunks.length - 1, slices)
+        JoinBuildSteps.runAll(chunks.length - 1, steps) { c =>
+          val cnt = counts(c)
+          var j   = chunks(c)
+          while j < chunks(c + 1) do
+            cnt(((keyAt(valid(j)) - lo) >>> shift).toInt) += 1
+            j += 1
+        }
+        // Where each slice starts in `order`, and where each chunk writes within it
+        val sliceStart = new Array[Int](slices + 1)
+        val pos        = Array.ofDim[Int](chunks.length - 1, slices)
+        var off        = 0
+        var s          = 0
+        while s < slices do
+          sliceStart(s) = off
+          var c = 0
+          while c < counts.length do
+            pos(c)(s) = off
+            off += counts(c)(s)
+            c += 1
+          s += 1
+        sliceStart(slices) = off
+        val order = new Array[Int](nv)
+        JoinBuildSteps.runAll(chunks.length - 1, steps) { c =>
+          val p = pos(c)
+          var j = chunks(c)
+          while j < chunks(c + 1) do
+            val row = valid(j)
+            val sl  = ((keyAt(row) - lo) >>> shift).toInt
+            order(p(sl)) = row
+            p(sl) += 1
+            j += 1
+        }
+        val dups = new Array[Boolean](slices)
+        JoinBuildSteps.runAll(slices, steps) { s =>
+          dups(s) = insert(order, sliceStart(s), sliceStart(s + 1))
+        }
+        dups.contains(true)
     directMin = lo
     directStore = store
     uniqueKeys = !dup
@@ -1315,6 +1378,8 @@ object JoinBuild:
   /** The most slots a direct index takes */
   inline val DirectMaxSlots = 1L << 27
 
+end JoinBuild
+
 /** How a right / full join tracks and emits build rows no probe row matched */
 enum OuterMode:
   /** Tracks its own matches and emits the unmatched rows at the end of its input */
@@ -1358,6 +1423,11 @@ class HashJoinOp(
           ""
         else
           ", hashed"
+      }${
+        if parallelBuild then
+          ""
+        else
+          ", serial build"
       })"
 
   /** The build this join probes */
@@ -1411,6 +1481,13 @@ class HashJoinOp(
 
   def withDirectIndex(enabled: Boolean): this.type =
     joinBuild.directIndex = enabled
+    this
+
+  /** Whether a large build runs its steps on the build runner (`parallel_join_build`) */
+  def parallelBuild: Boolean = joinBuild.parallelBuild
+
+  def withParallelBuild(enabled: Boolean): this.type =
+    joinBuild.parallelBuild = enabled
     this
 
   private def rowsOf(b: Batch, idx: Array[Int], n: Int): Batch =

@@ -153,6 +153,13 @@ enum Optimization(val name: String):
   case JoinDirectIndex extends Optimization("join_direct_index")
 
   /**
+    * A large hash join build concatenates its input, finds its non-NULL keys and key ranges, and
+    * fills its direct index in parallel tasks instead of on the calling thread, while the probe
+    * pipeline waits for it
+    */
+  case ParallelJoinBuild extends Optimization("parallel_join_build")
+
+  /**
     * With `parallelize`, compute the shared CTE results a plan reads at the same time, each drained
     * on a coordinator thread outside the task pool, instead of one by one on the calling thread
     */

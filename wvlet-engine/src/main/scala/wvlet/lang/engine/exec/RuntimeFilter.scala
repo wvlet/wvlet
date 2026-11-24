@@ -65,6 +65,9 @@ final class RuntimeFilter(
         case _ =>
           ()
 
+  /** Set the filter from the [min, max] range of the non-NULL build keys */
+  def setRange(bounds: (Long, Long)): Unit = current = range(bounds._1, bounds._2)
+
   override def toString: String = column
 
 end RuntimeFilter

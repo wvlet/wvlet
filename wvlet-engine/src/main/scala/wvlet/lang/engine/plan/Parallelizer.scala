@@ -119,7 +119,9 @@ object Parallelizer:
             j.schema,
             buildRunner = runner,
             runtimeFilters = j.runtimeFilters
-          ).withLateGather(j.lateGather).withDirectIndex(j.directIndex)
+          ).withLateGather(j.lateGather)
+            .withDirectIndex(j.directIndex)
+            .withParallelBuild(j.parallelBuild)
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
             close = p.close :+ (() => template.right.close())
@@ -338,7 +340,9 @@ object Parallelizer:
               j.schema,
               buildRunner = runner,
               runtimeFilters = j.runtimeFilters
-            ).withLateGather(j.lateGather).withDirectIndex(j.directIndex)
+            ).withLateGather(j.lateGather)
+              .withDirectIndex(j.directIndex)
+              .withParallelBuild(j.parallelBuild)
           case j: NestedLoopJoinOp =>
             NestedLoopJoinOp(r(j.left), r(j.right), j.cond, j.kind, j.schema)
           case s: SetOpOp if !s.all =>
