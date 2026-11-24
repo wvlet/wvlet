@@ -81,7 +81,7 @@ class WvletEngine(
       if lower.endsWith(".parquet") || lower.contains("*.parquet") ||
         lower.endsWith(".metadata.json") || SourceIO.isDirectory(resolved)
       then
-        Some(ParquetSource(name, resolved))
+        Some(ParquetSource(name, resolved, optimizer.isEnabled(Optimization.ParquetFooterCache)))
       else if lower.endsWith(".json") || lower.endsWith(".jsonl") || lower.endsWith(".ndjson") ||
         lower.endsWith(".json.gz") || lower.endsWith(".jsonl.gz")
       then

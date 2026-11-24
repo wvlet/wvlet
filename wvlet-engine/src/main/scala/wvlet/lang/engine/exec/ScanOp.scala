@@ -21,14 +21,16 @@ import wvlet.uni.cloud.parquet.ParquetFilter
   * Reads a table source. `schema` is the output schema (source columns, possibly renamed or
   * requalified); `columns` are the source column positions to read (all when None); `filter` lets
   * the source skip data that can't match (see [[ScanSpec]]), as do the `runtimeFilters` that hash
-  * joins above set once their builds are done
+  * joins above set once their builds are done. With `footerCache`, the scan asks the source to
+  * reuse cached Parquet footers ([[ParquetFooterCache]])
   */
 class ScanOp(
     val source: TableSource,
     val schema: Schema,
     val columns: Option[IndexedSeq[Int]],
     val filter: Option[ParquetFilter],
-    val runtimeFilters: Seq[RuntimeFilter] = Nil
+    val runtimeFilters: Seq[RuntimeFilter] = Nil,
+    val footerCache: Boolean = false
 ) extends Operator:
   override def name: String              = s"Scan[${source.name}]"
   override protected def details: String =
@@ -54,7 +56,8 @@ class ScanOp(
   /** The scan request this operator sends to the source */
   def spec: ScanSpec = ScanSpec(
     columns.map(_.map(source.schema(_).name)),
-    (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _)
+    (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _),
+    footerCache
   )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
@@ -62,19 +65,34 @@ class ScanOp(
   /** The source column name of output position i */
   def sourceColumnName(i: Int): String = source.schema(columns.map(_(i)).getOrElse(i)).name
 
-  def withSchema(s: Schema): ScanOp = ScanOp(source, s, columns, filter, runtimeFilters)
+  def withSchema(s: Schema): ScanOp = ScanOp(
+    source,
+    s,
+    columns,
+    filter,
+    runtimeFilters,
+    footerCache
+  )
 
   /** Read only the given output positions */
   def project(idx: IndexedSeq[Int]): ScanOp =
     val base = columns.getOrElse(source.schema.fields.indices)
-    ScanOp(source, Schema(idx.map(schema(_))), Some(idx.map(base)), filter, runtimeFilters)
+    ScanOp(
+      source,
+      Schema(idx.map(schema(_))),
+      Some(idx.map(base)),
+      filter,
+      runtimeFilters,
+      footerCache
+    )
 
   def withFilter(f: ParquetFilter): ScanOp = ScanOp(
     source,
     schema,
     columns,
     Some(filter.map(_ && f).getOrElse(f)),
-    runtimeFilters
+    runtimeFilters,
+    footerCache
   )
 
   def next(): Batch =

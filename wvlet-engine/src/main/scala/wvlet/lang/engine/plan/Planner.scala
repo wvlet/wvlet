@@ -64,7 +64,8 @@ class Planner(
     joinFilters = enabled(Optimization.RuntimeJoinFilters),
     presizeAggs = enabled(Optimization.PresizeAggregates),
     inSet = inSet,
-    accelerator = accelerator.filter(_ => enabled(Optimization.GpuOffload))
+    accelerator = accelerator.filter(_ => enabled(Optimization.GpuOffload)),
+    footerCache = enabled(Optimization.ParquetFooterCache)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

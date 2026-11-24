@@ -190,6 +190,14 @@ enum Optimization(val name: String):
     */
   case GpuOffload extends Optimization("gpu_offload")
 
+  /**
+    * Keep the parsed footers of local Parquet files across opens, keyed by path and checked against
+    * the file's size and last-modified time ([[wvlet.lang.engine.catalog.ParquetFooterCache]]), so
+    * that planning and each scan don't parse the same footer again (DuckDB's
+    * `parquet_metadata_cache`)
+    */
+  case ParquetFooterCache extends Optimization("parquet_footer_cache")
+
 end Optimization
 
 object Optimization:

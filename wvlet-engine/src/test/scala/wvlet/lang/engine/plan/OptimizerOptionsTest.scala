@@ -70,7 +70,8 @@ class OptimizerOptionsTest extends UniTest:
         "concurrent_shared_ctes",
         "parallel_above_breakers",
         "parallel_agg_partitioning",
-        "gpu_offload"
+        "gpu_offload",
+        "parquet_footer_cache"
       )
   }
 
