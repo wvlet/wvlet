@@ -22,32 +22,32 @@ import wvlet.uni.test.UniTest
 class PrefixLikeTest extends UniTest:
   private val x = ColRef(0, PType.Str, "x")
 
-  private def prefix(
+  private def isPrefix(
       pattern: String,
       negate: Boolean = false,
       caseInsensitive: Boolean = false,
       escape: Option[Char] = None
-  ): Option[String] = PrefixLike.prefix(LikeExpr(x, pattern, negate, caseInsensitive, escape))
+  ): Boolean = PrefixLike.isPrefix(LikeExpr(x, pattern, negate, caseInsensitive, escape))
 
-  test("should read the prefix of a pattern with one trailing %") {
-    prefix("forest%") shouldBe Some("forest")
-    prefix("a%") shouldBe Some("a")
+  test("should take a pattern with one trailing % as a prefix") {
+    isPrefix("forest%") shouldBe true
+    isPrefix("a%") shouldBe true
   }
 
-  test("should not read a prefix from other patterns") {
-    prefix("%") shouldBe None
-    prefix("forest") shouldBe None
-    prefix("%forest") shouldBe None
-    prefix("%forest%") shouldBe None
-    prefix("for%est%") shouldBe None
-    prefix("for_st%") shouldBe None
-    prefix("forest%%") shouldBe None
+  test("should not take other patterns as a prefix") {
+    isPrefix("%") shouldBe false
+    isPrefix("forest") shouldBe false
+    isPrefix("%forest") shouldBe false
+    isPrefix("%forest%") shouldBe false
+    isPrefix("for%est%") shouldBe false
+    isPrefix("for_st%") shouldBe false
+    isPrefix("forest%%") shouldBe false
   }
 
-  test("should not read a prefix from NOT LIKE, ILIKE, or a pattern with an escape character") {
-    prefix("forest%", negate = true) shouldBe None
-    prefix("forest%", caseInsensitive = true) shouldBe None
-    prefix("forest!%%", escape = Some('!')) shouldBe None
+  test("should not take NOT LIKE, ILIKE, or a pattern with an escape character as a prefix") {
+    isPrefix("forest%", negate = true) shouldBe false
+    isPrefix("forest%", caseInsensitive = true) shouldBe false
+    isPrefix("forest!%%", escape = Some('!')) shouldBe false
   }
 
 end PrefixLikeTest

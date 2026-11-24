@@ -199,15 +199,14 @@ object Stats:
       .flatMap { n =>
         compared(c.cond.expr).flatMap(distinct(p, _)).filter(_ >= 1).map(d => math.min(1.0, n / d))
       }
-      .orElse(
-        Option
-          .when(options.isEnabled(Optimization.PrefixLikeSelectivity))(c.cond.expr)
-          .collect {
-            case l: LikeExpr if PrefixLike.prefix(l).isDefined =>
-              PrefixLike.Selectivity
-          }
-      )
-      .getOrElse(CardinalityEstimator.DefaultSelectivity)
+      .getOrElse {
+        c.cond.expr match
+          case l: LikeExpr
+              if options.isEnabled(Optimization.PrefixLikeSelectivity) && PrefixLike.isPrefix(l) =>
+            PrefixLike.Selectivity
+          case _ =>
+            CardinalityEstimator.DefaultSelectivity
+      }
 
   /**
     * The distinct non-NULL values of column k of a computed result, grouped as DISTINCT groups them

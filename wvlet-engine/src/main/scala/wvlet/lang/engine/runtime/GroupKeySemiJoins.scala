@@ -65,11 +65,12 @@ object GroupKeySemiJoins extends Pass:
     node match
       case j @ Join(left, right, kind, lk, rk, _, _) if lk.nonEmpty =>
         val pairs = lk.indices.map(i => (lk(i), rk(i)))
-        // B on the right: every kind that drops B's unmatched rows. An anti join is left out, as a
-        // NOT IN reads B's NULL keys. B stays on the right, so that O, lowered first, takes the
-        // runtime join filters registered for the scan column ids the copy of S shares with it
+        // An anti join is left out, as a NOT IN reads B's NULL keys
         val reduced =
           if kind == JoinKind.Inner || kind == JoinKind.Left || kind == JoinKind.Semi then
+            // B on the right: every kind that drops B's unmatched rows. B stays on the right, so
+            // that O, lowered first, takes the runtime join filters registered for the scan
+            // column ids the copy of S shares with it
             reduce(right, left, pairs, ctx).map(r => j.copy(right = r))
           else if kind == JoinKind.Right && !j.buildLeft then
             // The mirror of a left join, with B on the left. B is lowered first, but no runtime

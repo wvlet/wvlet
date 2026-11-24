@@ -28,14 +28,12 @@ object PrefixLike:
     CardinalityEstimator.DefaultSelectivity * CardinalityEstimator.DefaultSelectivity
 
   /**
-    * The prefix of a non-negated, case-sensitive `x like 'p%'` with a non-empty p and no other
+    * Whether l is a non-negated, case-sensitive `x like 'p%'` with a non-empty p and no other
     * wildcard or escape character
     */
-  def prefix(l: LikeExpr): Option[String] =
+  def isPrefix(l: LikeExpr): Boolean =
     val p = l.pattern
-    Option.when(
-      !l.negate && !l.caseInsensitive && l.escape.isEmpty && p.length > 1 && p.last == '%' &&
-        p.indexOf('%') == p.length - 1 && !p.contains('_')
-    )(p.dropRight(1))
+    !l.negate && !l.caseInsensitive && l.escape.isEmpty && p.length > 1 &&
+    p.indexOf('%') == p.length - 1 && !p.contains('_')
 
 end PrefixLike
