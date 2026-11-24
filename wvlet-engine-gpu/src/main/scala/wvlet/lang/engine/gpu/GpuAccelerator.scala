@@ -27,6 +27,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
+import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.runtime.*
 import wvlet.lang.engine.runtime.RuntimePlan.*
@@ -62,7 +63,7 @@ class GpuAccelerator(config: GpuConfig = GpuConfig.fromEnv())
     // and c_phone this way), so such subtrees stay on the CPU
     // and planning never touches the device: it is initialized when a GPU operator first runs
     if GpuRuntime.isAvailable && GpuPlans.reduces(p) && GpuPlans.supports(p)(using config) then
-      Some(GpuOp(p, () => GpuPlans(cache, config), () => cpu(p)))
+      Some(GpuOp(p, () => GpuPlans(cache, config), () => cpu(p), config))
     else
       None
 
@@ -109,6 +110,17 @@ private[gpu] object GTable:
         t.getRowCount.toInt
       )
     finally t.close()
+
+/**
+  * A filter that a join passes to one of its inputs: rows whose columns `cols` (cast to `types`)
+  * match no row of `values` (the other input's join keys, borrowed) cannot join, so the input may
+  * drop them before it does further work
+  */
+private[gpu] final case class KeyFilter(cols: IndexedSeq[Int], types: IndexedSeq[PType], values: Table)
+
+private[gpu] object KeyFilter:
+  /** Apply a filter only to inputs with more than this many times its number of keys */
+  val MinReduction = 4L
 
 /**
   * How one aggregate call runs in a group-by: its owned input columns (none for count(*)), one
@@ -209,13 +221,17 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
   private def boundsOf(t: GTable): Bounds =
     Bounds(t.bounds, config.isEnabled(GpuFeature.DecimalNarrow))
 
-  def exec(p: RuntimePlan): GTable =
+  /**
+    * Run `p` on the device. Key filters `kfs` (from joins above) may drop output rows whose keys
+    * match none of the filter's values: they are pushed down as far as they stay valid
+    */
+  def exec(p: RuntimePlan, kfs: List[KeyFilter] = Nil): GTable =
     if config.profile then
       // Device time of each node, children included (the device is synchronized after each)
       val start = System.nanoTime()
       depth += 1
       val t =
-        try execNode(p)
+        try execFiltered(p, kfs)
         finally depth -= 1
       ai.rapids.cudf.Cuda.DEFAULT_STREAM.sync()
       info(
@@ -224,7 +240,11 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       )
       t
     else
-      execNode(p)
+      execFiltered(p, kfs)
+
+  private def execFiltered(p: RuntimePlan, kfs: List[KeyFilter]): GTable =
+    val here = kfs.filter(f => pushDown(p, f).isEmpty)
+    here.foldLeft(execNode(p, kfs))(applyFilter)
 
   /** Run `body`, and with profiling on, log its device time */
   private inline def timed[A](label: => String)(body: => A): A =
@@ -237,14 +257,16 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
     else
       body
 
-  private def execNode(p: RuntimePlan): GTable =
+  /** Run `p`, passing the key filters it can push down to its children */
+  private def execNode(p: RuntimePlan, kfs: List[KeyFilter]): GTable =
+    def child0(c: RuntimePlan): GTable = exec(c, childFilters(p, kfs, 0))
     p match
       case s: Scan =>
         scan(s)
       case Filter(child, cond, _) =>
-        using(exec(child))(t => filter(t, cond.lower(positions(child))))
+        using(child0(child))(t => filter(t, cond.lower(positions(child))))
       case Project(child, exprs, columns) =>
-        using(exec(child)) { t =>
+        using(child0(child)) { t =>
           val pos      = positions(child)
           given Bounds = boundsOf(t)
           val lowered  = exprs.map(_.lower(pos))
@@ -257,18 +279,18 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
           )
         }
       case a: Aggregate =>
-        aggregate(a)
+        aggregate(a, child0(a.child))
       case Sort(child, keys, limit) =>
-        using(exec(child))(t => sort(t, child, keys, limit))
+        using(child0(child))(t => sort(t, child, keys, limit))
       case Limit(child, limit, offset) =>
-        using(exec(child)) { t =>
+        using(child0(child)) { t =>
           val from = math.min(offset, t.rows.toLong).toInt
           // limit may be Long.MaxValue (an OFFSET without LIMIT): don't add it to from
           val to = from + math.min(limit, (t.rows - from).toLong).toInt
           GTable(t.cols.map(_.subVector(from, to)), to - from, t.bounds)
         }
       case j: Join =>
-        join(j)
+        join(j, kfs)
       case Values(columns, rows) =>
         // A constant relation (e.g. a subquery result computed at plan time): upload its rows
         GTable(
@@ -276,7 +298,7 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
           rows.size
         )
       case Distinct(child) =>
-        using(exec(child)) { t =>
+        using(child0(child)) { t =>
           using(t.table) { tbl =>
             GTable
               .of(
@@ -357,8 +379,8 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
 
   end sort
 
-  private def aggregate(a: Aggregate): GTable =
-    using(exec(a.child)) { t =>
+  private def aggregate(a: Aggregate, input: GTable): GTable =
+    using(input) { t =>
       val pos      = positions(a.child)
       given Bounds = boundsOf(t)
       val keys     =
@@ -489,74 +511,163 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
       }
     GTable(cols, 1)
 
-  private def join(j: Join): GTable =
-    using(exec(j.left)) { l =>
-      using(exec(j.right)) { r =>
-        val lpos     = positions(j.left)
-        val rpos     = positions(j.right)
-        val lb       = boundsOf(l)
-        val rb       = boundsOf(r)
-        val keyTypes = j.leftKeys.zip(j.rightKeys).map((a, b) => joinKeyType(a.ptype, b.ptype).get)
-        val lk       =
-          buildAll(keyTypes.size)(i =>
-            GpuExprs.evalColumn(j.leftKeys(i).lower(lpos), keyTypes(i), l.cols, l.rows)(using lb)
+  private def join(j: Join, kfs: List[KeyFilter]): GTable =
+    using(exec(j.left, childFilters(j, kfs, 0))) { l =>
+      val lpos     = positions(j.left)
+      val rpos     = positions(j.right)
+      val keyTypes = j.leftKeys.zip(j.rightKeys).map((a, b) => joinKeyType(a.ptype, b.ptype).get)
+      val lk       =
+        buildAll(keyTypes.size)(i =>
+          GpuExprs.evalColumn(j.leftKeys(i).lower(lpos), keyTypes(i), l.cols, l.rows)(using
+            boundsOf(l)
           )
-        val rk =
-          try
-            buildAll(keyTypes.size)(i =>
-              GpuExprs.evalColumn(j.rightKeys(i).lower(rpos), keyTypes(i), r.cols, r.rows)(using
-                rb
+        )
+      try
+        using(Table(lk*)) { lkt =>
+          // Right rows whose keys match no left row never appear in the output of these joins:
+          // let the right input drop them early (e.g. before aggregating all of lineitem in q17).
+          // Only when the left input was reduced (filtered or joined) below its largest table:
+          // keys of a whole table, such as all suppliers, rarely drop any rows (q7, q13)
+          val own =
+            j.kind match
+              case JoinKind.Inner | JoinKind.Left | JoinKind.Semi | JoinKind.Anti
+                  if config.isEnabled(GpuFeature.JoinKeyFilter) &&
+                    l.rows * KeyFilter.MinReduction <= maxSourceRows(j.left) =>
+                val cols = j.rightKeys.map(_.lower(rpos)).collect { case c: ColRef => c.index }
+                Option.when(cols.size == keyTypes.size)(KeyFilter(cols, keyTypes, lkt)).toList
+              case _ =>
+                Nil
+          using(exec(j.right, childFilters(j, kfs, 1) ++ own)) { r =>
+            val rk =
+              buildAll(keyTypes.size)(i =>
+                GpuExprs.evalColumn(j.rightKeys(i).lower(rpos), keyTypes(i), r.cols, r.rows)(using
+                  boundsOf(r)
+                )
               )
-            )
-          catch
-            case e: Throwable =>
-              lk.foreach(_.close())
-              throw e
+            try
+              using(Table(rk*)) { rkt =>
+                joinTables(j, l, r, lkt, rkt)
+              }
+            finally rk.foreach(_.close())
+          }
+        }
+      finally lk.foreach(_.close())
+    }
+
+  private def joinTables(j: Join, l: GTable, r: GTable, lkt: Table, rkt: Table): GTable =
+    val residual = j.residual.map(_.lower(positions(j.inputs)))
+    j.kind match
+      case JoinKind.Inner =>
+        val maps = lkt.innerJoinGatherMaps(rkt, false)
         try
-          using(Table(lk*)) { lkt =>
-            using(Table(rk*)) { rkt =>
-              val residual = j.residual.map(_.lower(positions(j.inputs)))
-              j.kind match
-                case JoinKind.Inner =>
-                  val maps = lkt.innerJoinGatherMaps(rkt, false)
-                  try
-                    val joined = gatherBoth(l, r, maps(0), maps(1), nullify = false)
-                    residual match
-                      case Some(cond) =>
-                        using(joined)(t => filter(t, cond))
-                      case None =>
-                        joined
-                  finally
-                    maps.foreach(_.close())
-                case JoinKind.Left if residual.isEmpty =>
-                  val maps = lkt.leftJoinGatherMaps(rkt, false)
-                  try gatherBoth(l, r, maps(0), maps(1), nullify = true)
-                  finally maps.foreach(_.close())
-                case JoinKind.Left =>
-                  leftWithResidual(l, r, lkt, rkt, residual.get)
-                case JoinKind.Semi | JoinKind.Anti if residual.isEmpty =>
-                  val map =
-                    if j.kind == JoinKind.Semi then
-                      lkt.leftSemiJoinGatherMap(rkt, false)
-                    else
-                      lkt.leftAntiJoinGatherMap(rkt, false)
-                  try
-                    val view = map.toColumnView(0, map.getRowCount.toInt)
-                    try using(l.table)(tbl => GTable.of(tbl.gather(view)).withBounds(l.bounds))
-                    finally view.close()
-                  finally
-                    map.close()
-                case _ =>
-                  semiWithResidual(j, l, r, lkt, rkt, residual.get)
-              end match
+          val joined = gatherBoth(l, r, maps(0), maps(1), nullify = false)
+          residual match
+            case Some(cond) =>
+              using(joined)(t => filter(t, cond))
+            case None =>
+              joined
+        finally
+          maps.foreach(_.close())
+      case JoinKind.Left if residual.isEmpty =>
+        val maps = lkt.leftJoinGatherMaps(rkt, false)
+        try gatherBoth(l, r, maps(0), maps(1), nullify = true)
+        finally maps.foreach(_.close())
+      case JoinKind.Left =>
+        leftWithResidual(l, r, lkt, rkt, residual.get)
+      case JoinKind.Semi | JoinKind.Anti if residual.isEmpty =>
+        val map =
+          if j.kind == JoinKind.Semi then
+            lkt.leftSemiJoinGatherMap(rkt, false)
+          else
+            lkt.leftAntiJoinGatherMap(rkt, false)
+        try
+          val view = map.toColumnView(0, map.getRowCount.toInt)
+          try using(l.table)(tbl => GTable.of(tbl.gather(view)).withBounds(l.bounds))
+          finally view.close()
+        finally
+          map.close()
+      case _ =>
+        semiWithResidual(j, l, r, lkt, rkt, residual.get)
+    end match
+
+  end joinTables
+
+  /**
+    * Where node `p` passes key filter `f` (on its output columns) down: the child index and the
+    * filter on that child's columns, or None to apply it to `p`'s own output
+    */
+  private def pushDown(p: RuntimePlan, f: KeyFilter): Option[(Int, KeyFilter)] =
+    def refs(exprs: IndexedSeq[VExpr]): Option[IndexedSeq[Int]] =
+      val idx = f.cols.map(exprs).collect { case c: ColRef => c.index }
+      Option.when(idx.size == f.cols.size)(idx)
+    p match
+      case Filter(_, _, _) | Distinct(_) | Sort(_, _, None) =>
+        Some((0, f))
+      case Project(child, exprs, _) =>
+        val pos = positions(child)
+        refs(exprs.map(_.lower(pos))).map(c => (0, f.copy(cols = c)))
+      case a: Aggregate if f.cols.forall(_ < a.keys.size) =>
+        // Removing child rows by group key removes whole groups
+        val pos = positions(a.child)
+        refs(a.keys.map(_.lower(pos))).map(c => (0, f.copy(cols = c)))
+      case j: Join =>
+        val n = j.left.output.size
+        j.kind match
+          case JoinKind.Inner | JoinKind.Left | JoinKind.Semi | JoinKind.Anti
+              if f.cols.forall(_ < n) =>
+            // Left rows without a match in the filter produce no output row that passes it
+            Some((0, f))
+          case JoinKind.Inner if f.cols.forall(_ >= n) =>
+            Some((1, f.copy(cols = f.cols.map(_ - n))))
+          case _ =>
+            None
+      case _ =>
+        None
+
+  /** The most rows any table read by `p` has (0 when unknown) */
+  private def maxSourceRows(p: RuntimePlan): Long =
+    p match
+      case s: Scan =>
+        s.source.estimatedRows.getOrElse(0L)
+      case v: Values =>
+        v.rows.size.toLong
+      case other =>
+        other.children.map(maxSourceRows).maxOption.getOrElse(0L)
+
+  private def childFilters(p: RuntimePlan, kfs: List[KeyFilter], child: Int): List[KeyFilter] =
+    kfs.flatMap(f => pushDown(p, f).collect { case (c, g) if c == child => g })
+
+  /**
+    * The rows of `t` (consumed) whose filter columns match a row of the filter's values. Skipped
+    * unless `t` has many more rows than the filter: the semi join would not pay for itself
+    */
+  private def applyFilter(t: GTable, f: KeyFilter): GTable =
+    if t.rows <= KeyFilter.MinReduction * f.values.getRowCount then
+      t
+    else
+      using(t) { in =>
+        val keys =
+          buildAll(f.cols.size) { i =>
+            val c = in.cols(f.cols(i))
+            val d = GpuTypes.dtype(f.types(i))
+            if c.getType == d then
+              c.incRefCount()
+            else
+              c.castTo(d)
+          }
+        try
+          timed(f"key filter of ${in.rows}%,d rows by ${f.values.getRowCount}%,d keys") {
+            using(Table(keys*)) { kt =>
+              val map = kt.leftSemiJoinGatherMap(f.values, false)
+              try
+                val view = map.toColumnView(0, map.getRowCount.toInt)
+                try using(in.table)(tbl => GTable.of(tbl.gather(view)).withBounds(in.bounds))
+                finally view.close()
+              finally map.close()
             }
           }
-        finally
-          lk.foreach(_.close())
-          rk.foreach(_.close())
-        end try
+        finally keys.foreach(_.close())
       }
-    }
 
   /** The rows of both inputs at matching gather-map positions, side by side */
   private def gatherBoth(
@@ -902,7 +1013,7 @@ end GpuPlans
   * Runs a supported plan subtree on the GPU when first read, and returns its rows from the host. If
   * the device fails at run time (e.g. out of memory), the subtree runs on the CPU instead.
   */
-class GpuOp(plan: RuntimePlan, plans: () => GpuPlans, cpu: () => Operator)
+class GpuOp(plan: RuntimePlan, plans: () => GpuPlans, cpu: () => Operator, config: GpuConfig)
     extends Operator
     with LogSupport:
   override val schema: Schema = plan.schema
@@ -936,7 +1047,8 @@ class GpuOp(plan: RuntimePlan, plans: () => GpuPlans, cpu: () => Operator)
     val t    = plans().exec(plan)
     try
       val types = schema.types
-      val vecs  = t.cols.indices.map(i => GpuTypes.toVec(t.cols(i), types(i))).toArray
+      val bulk  = config.isEnabled(GpuFeature.BulkCopy)
+      val vecs  = t.cols.indices.map(i => GpuTypes.toVec(t.cols(i), types(i), bulk)).toArray
       debug(f"GPU subtree: ${t.rows}%,d rows in ${(System.nanoTime() - nano) / 1e6}%.1f ms")
       if t.rows == 0 then
         Iterator.empty

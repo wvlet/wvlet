@@ -52,6 +52,15 @@ enum GpuFeature(val featureName: String):
   /** Left joins with a residual condition (TPC-H q13) */
   case OuterResidual extends GpuFeature("outer_residual")
 
+  /**
+    * Filter a join's right input by the left input's keys before the right input aggregates or
+    * joins further (TPC-H q17, q9)
+    */
+  case JoinKeyFilter extends GpuFeature("join_key_filter")
+
+  /** Copy DECIMAL128 and string results to the host as whole buffers, not one value per row */
+  case BulkCopy extends GpuFeature("bulk_copy")
+
 object GpuFeature:
   def parse(names: String): Set[GpuFeature] = names
     .split(",")
