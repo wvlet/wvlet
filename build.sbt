@@ -486,7 +486,15 @@ lazy val engineGpu = project
         "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION % Test
       ),
     specRunnerSettings,
-    Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED", "-Xmx16g")
+    // The heap shares a DGX Spark's memory with the GPU pool: raise WVLET_GPU_TEST_HEAP for SF100.
+    // Uncached: sbt's task cache doesn't see environment variables
+    Test / javaOptions ++=
+      Def.uncached(
+        Seq(
+          "--enable-native-access=ALL-UNNAMED",
+          s"-Xmx${sys.env.getOrElse("WVLET_GPU_TEST_HEAP", "16g")}"
+        )
+      )
   )
   .dependsOn(engine.jvm % "compile->compile;test->test")
 

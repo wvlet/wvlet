@@ -14,7 +14,9 @@
 package wvlet.lang.engine.gpu
 
 import ai.rapids.cudf.ColumnVector
+import ai.rapids.cudf.CudfColumnSizeOverflowException
 import ai.rapids.cudf.Cuda
+import ai.rapids.cudf.ParquetChunkedReader
 import ai.rapids.cudf.ParquetOptions
 import ai.rapids.cudf.Rmm
 import ai.rapids.cudf.RmmAllocationMode
@@ -73,6 +75,36 @@ enum GpuFeature(val featureName: String):
   /** Copy DECIMAL128 and string results to the host as whole buffers, not one value per row */
   case BulkCopy extends GpuFeature("bulk_copy")
 
+  /**
+    * Run scans of tables over `streamRows` rows in row ranges of `chunkRows`, with the nodes above
+    * them per range, and merge the per-range results (TPC-H SF100's lineitem and orders)
+    */
+  case ChunkedScans extends GpuFeature("chunked_scans")
+
+  /**
+    * Read and cache the string columns of tables over `streamRows` rows in pieces of about
+    * `pieceBytes`, below cudf's 2 GB limit for one string column (`l_shipmode`, `o_comment`)
+    */
+  case StringPieces extends GpuFeature("string_pieces")
+
+  /**
+    * Move the conjuncts of a left join's residual that read only right columns into its right
+    * input, when that input streams: they filter each range (TPC-H q13's `o_comment` at SF100)
+    */
+  case StreamResidual extends GpuFeature("stream_residual")
+
+  /**
+    * Before a subtree runs, evict the cached columns it doesn't read until its estimated memory
+    * fits in the pool
+    */
+  case ReserveMemory extends GpuFeature("reserve_memory")
+
+  /**
+    * Keep a subtree on the CPU when it would concatenate a string column of a streamed table, which
+    * can exceed cudf's 2 GB string column limit
+    */
+  case OffloadLimits extends GpuFeature("offload_limits")
+
 end GpuFeature
 
 object GpuFeature:
@@ -104,24 +136,59 @@ object GpuFeature:
   *   the optional features turned off
   * @param profile
   *   log the device time of each plan node (synchronizing after each, so slower)
+  * @param streamRows
+  *   scans of tables with more rows than this stream in row ranges ([[GpuFeature.ChunkedScans]])
+  * @param streamFraction
+  *   a scan of such a table streams only when its estimated working memory on the whole path
+  *   exceeds this share of the pool, or when a string column of it is too large to concatenate (0:
+  *   always)
+  * @param chunkRows
+  *   the rows of one range of a streamed scan
+  * @param pieceBytes
+  *   the size of one piece of a string column read in pieces ([[GpuFeature.StringPieces]])
+  * @param stringLimit
+  *   string columns of tables over `streamRows` rows with more estimated characters than this are
+  *   cached in pieces and never concatenated, a margin below cudf's 2 GB string column limit
   */
 case class GpuConfig(
     poolFraction: Double = 0.8,
     cacheFraction: Double = 0.5,
     disabled: Set[GpuFeature] = Set.empty,
-    profile: Boolean = false
+    profile: Boolean = false,
+    streamRows: Long = GpuConfig.DefaultStreamRows,
+    streamFraction: Double = 0.9,
+    chunkRows: Int = GpuConfig.DefaultChunkRows,
+    pieceBytes: Long = GpuConfig.DefaultPieceBytes,
+    stringLimit: Long = GpuConfig.DefaultStringLimit
 ):
   def withPoolFraction(f: Double): GpuConfig       = copy(poolFraction = f)
   def withCacheFraction(f: Double): GpuConfig      = copy(cacheFraction = f)
   def withDisabled(fs: Set[GpuFeature]): GpuConfig = copy(disabled = fs)
   def noDisabled(): GpuConfig                      = copy(disabled = Set.empty)
   def withProfile(enabled: Boolean): GpuConfig     = copy(profile = enabled)
+  def withStreamRows(n: Long): GpuConfig           = copy(streamRows = n)
+  def withStreamFraction(f: Double): GpuConfig     = copy(streamFraction = f)
+  def withChunkRows(n: Int): GpuConfig             = copy(chunkRows = n)
+  def withStringLimit(n: Long): GpuConfig          = copy(stringLimit = n)
+  def withPieceBytes(n: Long): GpuConfig           = copy(pieceBytes = n)
   def isEnabled(f: GpuFeature): Boolean            = !disabled.contains(f)
 
 object GpuConfig:
+  /** More rows than TPC-H SF10's largest table (60M), fewer than SF100's orders (150M) */
+  val DefaultStreamRows: Long = 100_000_000L
+
+  /** 32M rows: string columns of up to 60 bytes a row stay below 2 GB per range */
+  val DefaultChunkRows: Int = 1 << 25
+
+  val DefaultPieceBytes: Long = 1L << 30
+
+  /** 1.5 GB */
+  val DefaultStringLimit: Long = 3L << 29
+
   /**
-    * Read `WVLET_GPU_POOL_FRACTION`, `WVLET_GPU_CACHE_FRACTION`, `WVLET_GPU_DISABLE`, and
-    * `WVLET_GPU_PROFILE`, with defaults otherwise
+    * Read `WVLET_GPU_POOL_FRACTION`, `WVLET_GPU_CACHE_FRACTION`, `WVLET_GPU_DISABLE`,
+    * `WVLET_GPU_PROFILE`, `WVLET_GPU_STREAM_ROWS`, `WVLET_GPU_STREAM_FRACTION`,
+    * `WVLET_GPU_CHUNK_ROWS`, and `WVLET_GPU_PIECE_BYTES`, with defaults otherwise
     */
   def fromEnv(): GpuConfig =
     def frac(name: String, default: Double): Double = sys
@@ -134,8 +201,29 @@ object GpuConfig:
       frac("WVLET_GPU_POOL_FRACTION", 0.8),
       frac("WVLET_GPU_CACHE_FRACTION", 0.5),
       sys.env.get("WVLET_GPU_DISABLE").map(GpuFeature.parse).getOrElse(Set.empty),
-      sys.env.get("WVLET_GPU_PROFILE").exists(v => v == "1" || v == "true")
+      sys.env.get("WVLET_GPU_PROFILE").exists(v => v == "1" || v == "true"),
+      positive("WVLET_GPU_STREAM_ROWS").getOrElse(DefaultStreamRows),
+      sys
+        .env
+        .get("WVLET_GPU_STREAM_FRACTION")
+        .flatMap(_.toDoubleOption)
+        .filter(f => f >= 0 && f <= 1)
+        .getOrElse(0.9),
+      positive("WVLET_GPU_CHUNK_ROWS")
+        .map(n => math.min(n, Int.MaxValue).toInt)
+        .getOrElse(DefaultChunkRows),
+      positive("WVLET_GPU_PIECE_BYTES").getOrElse(DefaultPieceBytes)
     )
+
+  end fromEnv
+
+  private def positive(name: String): Option[Long] = sys
+    .env
+    .get(name)
+    .flatMap(_.trim.toLongOption)
+    .filter(_ > 0)
+
+end GpuConfig
 
 /** The CUDA device and its memory pool, initialized once per JVM */
 object GpuRuntime extends LogSupport:
@@ -150,6 +238,9 @@ object GpuRuntime extends LogSupport:
         false
 
   private var poolBytes: Long = 0L
+
+  /** The size of the memory pool, or 0 before [[init]] */
+  def poolSize: Long = synchronized(poolBytes)
 
   /** Initialize the RMM pool (once), and return its size in bytes */
   def init(config: GpuConfig): Long = synchronized {
@@ -168,72 +259,134 @@ object GpuRuntime extends LogSupport:
 end GpuRuntime
 
 /**
+  * A column held on the device as pieces of consecutive rows: one piece, unless it was read in
+  * pieces to stay below cudf's 2 GB string column limit. `bound` is the largest absolute value of a
+  * numeric column (None for others). Owns one reference to each piece.
+  */
+private[gpu] final class CachedColumn(
+    val pieces: IndexedSeq[ColumnVector],
+    val bound: Option[JBigDecimal]
+) extends AutoCloseable:
+  private val starts: Array[Long] = pieces.scanLeft(0L)(_ + _.getRowCount).toArray
+
+  def rows: Long = starts.last
+
+  def sizeBytes: Long = pieces.map(_.getDeviceMemorySize).sum
+
+  /** Another reference to these pieces, which the caller closes */
+  def retain(): CachedColumn =
+    pieces.foreach(_.incRefCount())
+    CachedColumn(pieces, bound)
+
+  /** The whole column as one owned column (a reference when it is one piece) */
+  def whole: ColumnVector = slice(0L, rows)
+
+  /** Rows [from, to) as one owned column */
+  def slice(from: Long, to: Long): ColumnVector =
+    val parts = pieces.indices.filter(i => starts(i) < to && starts(i + 1) > from)
+    if parts.isEmpty then
+      pieces.head.subVector(0, 0)
+    else
+      val cols =
+        GpuPlans.buildAll(parts.size) { k =>
+          val i  = parts(k)
+          val p  = pieces(i)
+          val lo = (math.max(from, starts(i)) - starts(i)).toInt
+          val hi = (math.min(to, starts(i + 1)) - starts(i)).toInt
+          if lo == 0 && hi == p.getRowCount then
+            p.incRefCount()
+          else
+            p.subVector(lo, hi)
+        }
+      if cols.size == 1 then
+        cols.head
+      else
+        try ColumnVector.concatenate(cols*)
+        finally cols.foreach(_.close())
+
+  override def close(): Unit = pieces.foreach(_.close())
+
+end CachedColumn
+
+/**
   * Table columns kept on the device across queries, so that repeated scans skip reading and
   * decoding Parquet (as Sirius's `pin_table` does). Columns are read one at a time on first use and
   * evicted least-recently-used beyond `budgetBytes`. A changed file (size or modification time) is
-  * read again.
+  * read again. A column read with `pieces` (or one too large to read whole) is kept as pieces of
+  * about `pieceBytes`.
   */
-class GpuColumnCache(budgetBytes: Long) extends LogSupport:
+class GpuColumnCache(budgetBytes: Long, pieceBytes: Long = GpuConfig.DefaultPieceBytes)
+    extends LogSupport:
   private case class Key(path: String, column: String, length: Long, modified: Long)
 
-  /** A cached column and the largest absolute value of a numeric column (None for others) */
-  private case class Entry(cv: ColumnVector, bound: Option[JBigDecimal])
-
   // Access order: the first entry is the least recently used
-  private val entries = mutable.LinkedHashMap.empty[Key, Entry]
+  private val entries = mutable.LinkedHashMap.empty[Key, CachedColumn]
   private var bytes   = 0L
 
   private def keyOf(path: String, name: String): Key =
     val f = File(path)
     Key(f.getCanonicalPath, name, f.length(), f.lastModified())
 
-  /** The column of a Parquet file, which the caller must close */
-  def column(path: String, name: String): ColumnVector = entry(path, name, ref = true).cv
+  /** The whole column of a Parquet file, which the caller must close */
+  def column(path: String, name: String, pieces: Boolean = false): ColumnVector =
+    val c = columnRef(path, name, pieces)
+    try c.whole
+    finally c.close()
+
+  /**
+    * The cached column of a Parquet file (read on first use, in pieces when `pieces`), with a
+    * reference for the caller, who closes it: eviction cannot free it while the caller reads it
+    */
+  def columnRef(path: String, name: String, pieces: Boolean = false): CachedColumn = entry(
+    path,
+    name,
+    ref = true,
+    pieces
+  )
 
   /**
     * The largest absolute value of a numeric column of a Parquet file, computed once on the device
     * when the column is cached
     */
-  def bound(path: String, name: String): Option[JBigDecimal] = entry(path, name, ref = false).bound
+  def bound(path: String, name: String, pieces: Boolean = false): Option[JBigDecimal] =
+    entry(path, name, ref = false, pieces).bound
 
   /**
-    * The cache entry of a column, read on first use. With `ref`, its column gets a reference for
-    * the caller while the cache is locked, so that eviction cannot free it first
+    * The cache entry of a column, read on first use. With `ref`, a retained copy, taken while the
+    * cache is locked so that eviction cannot free it first
     */
-  private def entry(path: String, name: String, ref: Boolean): Entry =
+  private def entry(path: String, name: String, ref: Boolean, pieces: Boolean): CachedColumn =
     val key = keyOf(path, name)
     synchronized {
       entries.remove(key) match
         case Some(e) =>
           entries(key) = e
-          if ref then
-            e.cv.incRefCount()
-          return e
+          return if ref then
+            e.retain()
+          else
+            e
         case None =>
     }
-    val cv = read(File(path), name)
-    val e  =
-      try
-        Entry(cv, maxAbs(cv))
-      catch
-        case t: Throwable =>
-          cv.close()
-          throw t
+    val e = read(File(path), name, pieces)
     synchronized {
       entries.get(key) match
         case Some(other) =>
           // Read concurrently by another query
-          cv.close()
+          e.close()
           if ref then
-            other.cv.incRefCount()
-          other
+            other.retain()
+          else
+            other
         case None =>
           entries(key) = e
-          bytes += cv.getDeviceMemorySize
-          if ref then
-            cv.incRefCount()
+          bytes += e.sizeBytes
+          val out =
+            if ref then
+              e.retain()
+            else
+              e
           evict()
-          e
+          out
     }
 
   end entry
@@ -261,34 +414,113 @@ class GpuColumnCache(budgetBytes: Long) extends LogSupport:
     else
       None
 
-  private def read(f: File, name: String): ColumnVector =
+  private def read(f: File, name: String, pieces: Boolean): CachedColumn =
     val nano = System.nanoTime()
+    val cols =
+      if pieces then
+        readPieces(f, name)
+      else
+        try
+          IndexedSeq(readWhole(f, name))
+        catch
+          case e: CudfColumnSizeOverflowException =>
+            debug(s"${f.getName}.${name} exceeds cudf's column size limit: reading it in pieces")
+            readPieces(f, name)
+    try
+      val bounds = cols.map(maxAbs)
+      val c      = CachedColumn(
+        cols,
+        if bounds.forall(_.isDefined) then
+          bounds.flatten.reduceOption(_.max(_))
+        else
+          None
+      )
+      debug(
+        f"Cached ${f.getName}.${name} on the GPU: ${c.sizeBytes / 1e6}%.0f MB in ${cols
+            .size} piece(s), ${(System.nanoTime() - nano) / 1e6}%.0f ms"
+      )
+      c
+    catch
+      case t: Throwable =>
+        cols.foreach(_.close())
+        throw t
+
+  end read
+
+  private def readWhole(f: File, name: String): ColumnVector =
     val opts = ParquetOptions.builder().includeColumn(name).build()
     val t    = Table.readParquet(opts, f)
+    try t.getColumn(0).incRefCount()
+    finally t.close()
+
+  /** The column in pieces of about `pieceBytes` (at least one piece) */
+  private def readPieces(f: File, name: String): IndexedSeq[ColumnVector] =
+    val opts = ParquetOptions.builder().includeColumn(name).build()
+    val out  = IndexedSeq.newBuilder[ColumnVector]
+    var done = List.empty[ColumnVector]
     try
-      val cv = t.getColumn(0).incRefCount()
-      debug(
-        f"Cached ${f.getName}.${name} on the GPU: ${cv.getDeviceMemorySize / 1e6}%.0f MB in ${(
-            System.nanoTime() - nano
-          ) / 1e6}%.0f ms"
-      )
-      cv
-    finally
-      t.close()
+      val r = ParquetChunkedReader(pieceBytes, pieceBytes * 4, opts, f)
+      try
+        while r.hasNext do
+          val t = r.readChunk()
+          try
+            val c = t.getColumn(0).incRefCount()
+            done = c :: done
+            out += c
+          finally
+            t.close()
+      finally r.close()
+      val all = out.result()
+      if all.isEmpty then
+        IndexedSeq(readWhole(f, name))
+      else
+        all
+    catch
+      case e: Throwable =>
+        done.foreach(_.close())
+        throw e
+
+  end readPieces
 
   private def evict(): Unit =
     while bytes > budgetBytes && entries.size > 1 do
-      val (k, Entry(cv, _)) = entries.head
-      entries.remove(k)
-      bytes -= cv.getDeviceMemorySize
-      debug(s"Evicted ${k.column} of ${k.path} from the GPU cache")
-      cv.close()
+      evictHead()
+
+  private def evictHead(): Unit =
+    val (k, c) = entries.head
+    entries.remove(k)
+    bytes -= c.sizeBytes
+    debug(s"Evicted ${k.column} of ${k.path} from the GPU cache")
+    c.close()
+
+  /**
+    * Evict the least recently used columns other than `keep` (path and column name pairs) until the
+    * other columns and `needed` bytes fit in `limit`
+    */
+  def reserve(needed: Long, limit: Long, keep: Set[(String, String)]): Unit = synchronized {
+    val kept           = keep.map((p, c) => (File(p).getCanonicalPath, c))
+    def isKept(k: Key) = kept.contains((k.path, k.column))
+    var others         = entries.iterator.filterNot((k, _) => isKept(k)).map(_._2.sizeBytes).sum
+    val victims        = entries.keysIterator.filterNot(isKept).toList.iterator
+    while others + needed > limit && victims.hasNext do
+      val k = victims.next()
+      val c = entries.remove(k).get
+      bytes -= c.sizeBytes
+      others -= c.sizeBytes
+      debug(s"Evicted ${k.column} of ${k.path} from the GPU cache to reserve memory")
+      c.close()
+  }
+
+  /** Whether the column is cached */
+  def contains(path: String, name: String): Boolean =
+    val key = keyOf(path, name)
+    synchronized(entries.contains(key))
 
   /** Device memory held by cached columns */
   def sizeBytes: Long = synchronized(bytes)
 
   def clear(): Unit = synchronized {
-    entries.values.foreach(_.cv.close())
+    entries.values.foreach(_.close())
     entries.clear()
     bytes = 0
   }
