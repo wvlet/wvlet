@@ -56,6 +56,13 @@ enum Optimization(val name: String):
   case ReorderJoins extends Optimization("reorder_joins")
 
   /**
+    * Where only the set of rows matters (the subquery side of a semi or anti join, the input of a
+    * DISTINCT or of a group-by without aggregates, and a shared CTE all of whose readers are such),
+    * turn an inner join whose needed columns come from one side into a semi join of that side
+    */
+  case ReduceSemiJoins extends Optimization("reduce_semi_joins")
+
+  /**
     * Enumerate the join trees of small inner join graphs exactly, including bushy trees, instead of
     * multi-start greedy search
     */
@@ -144,6 +151,13 @@ enum Optimization(val name: String):
     * rows by `key - min` instead of hashing (DuckDB's perfect hash join)
     */
   case JoinDirectIndex extends Optimization("join_direct_index")
+
+  /**
+    * A large hash join build concatenates its input, finds its non-NULL keys and key ranges, and
+    * fills its direct index in parallel tasks instead of on the calling thread, while the probe
+    * pipeline waits for it
+    */
+  case ParallelJoinBuild extends Optimization("parallel_join_build")
 
   /**
     * With `parallelize`, compute the shared CTE results a plan reads at the same time, each drained

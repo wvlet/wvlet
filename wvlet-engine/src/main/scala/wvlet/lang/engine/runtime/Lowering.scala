@@ -34,14 +34,20 @@ object Lowering:
 
   /**
     * Lower `p`. With `joinFilters`, hash joins whose unmatched probe rows are dropped give the
-    * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]])
+    * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]). With
+    * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]])
     */
   def apply(
       p: RuntimePlan,
       joinFilters: Boolean = false,
       presizeAggs: Boolean = false,
+      inSet: Boolean = false,
       accelerator: Option[PlanAccelerator] = None
-  ): Operator = Lower(joinFilters, presizeAggs, accelerator).lower(p)
+  ): Operator =
+    val l = Lower(joinFilters, presizeAggs, accelerator)
+    if inSet then
+      l.markInSet(p)
+    l.lower(p)
 
   /**
     * The group table size of an aggregation of p by `keys`, from [[Stats.groups]]: 0 when unknown
@@ -62,15 +68,35 @@ object Lowering:
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
+    // The nodes not lowered yet that are in a duplicate-insensitive context, set by their parent
+    // ([[ReduceSemiJoins.childContexts]]), so that shared CTE readers report it
+    private val setNodes = java.util.IdentityHashMap[RuntimePlan, Boolean]()
+
+    /** Lower p as read only for its distinct rows */
+    def markInSet(p: RuntimePlan): Unit = setNodes.put(p, true)
 
     def lower(p: RuntimePlan): Operator =
-      accelerator.flatMap(_.accelerate(p, q => Lowering(q, presizeAggs = presizeAggs))) match
+      val inSet = setNodes.getOrDefault(p, false)
+      val kids  = p.children
+      if kids.nonEmpty then
+        val contexts = ReduceSemiJoins.childContexts(p, inSet)
+        kids
+          .indices
+          .foreach { i =>
+            // A node read twice is in such a context only if both reads are
+            val c = contexts(i) && setNodes.getOrDefault(kids(i), true)
+            setNodes.put(kids(i), c)
+          }
+      // An accelerator takes the whole subtree, or none of it; its CPU fallback lowers p alone
+      accelerator.flatMap(
+        _.accelerate(p, q => Lowering(q, presizeAggs = presizeAggs, inSet = inSet))
+      ) match
         case Some(op) =>
           op
         case None =>
-          lowerOnCPU(p)
+          lowerNode(p, inSet)
 
-    private def lowerOnCPU(p: RuntimePlan): Operator =
+    private def lowerNode(p: RuntimePlan, inSet: Boolean): Operator =
       p match
         case Scan(source, _, read, filter) =>
           ScanOp(source, p.schema, read, filter, scanFilters(p.output))
@@ -83,7 +109,10 @@ object Lowering:
           // The reader reports its condition over the body's columns, which share positions
           val e      = cte.overBody(columns, cond.expr)
           val filter = JoinCondition(BExpr(e), PushDownFilters.remapCounts(cond.expr, e, counts))
-          FilterOp(cte.reader(ref.schema, Some(filter)), cond.lower(positions(ref)))
+          FilterOp(
+            cte.reader(ref.schema, Some(filter), setNodes.getOrDefault(ref, false)),
+            cond.lower(positions(ref))
+          )
         case Filter(child, cond, _) =>
           FilterOp(lower(child), cond.lower(positions(child)))
         case Project(child, exprs, _) =>
@@ -161,7 +190,7 @@ object Lowering:
           val pos = positions(child)
           UnnestOp(lower(child), lists.map(_.lower(pos)), keepInput, p.schema, outer)
         case CTERef(cte, _) =>
-          cte.reader(p.schema)
+          cte.reader(p.schema, None, inSet)
 
     private def scanFilters(columns: IndexedSeq[Column]): Seq[RuntimeFilter] =
       if pending.isEmpty then

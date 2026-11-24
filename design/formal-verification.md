@@ -28,6 +28,7 @@ For every row: update the Lean model first, regenerate the fixture with `cd form
 | `FactorOr` (`Normalize`) or a `VExpr.sig` it matches conjuncts by | `WvletFormal/FactorOr/` | `factor-or-traces` | `./sbt "engineJVM/testOnly *FactorOrConformanceTest"` |
 | How the engine decorrelates EXISTS / IN (`Planner.correlatedJoin` for EXISTS and IN, `planCorrelated`'s conjunct split, `Planner.decorrelateExists`) | `WvletFormal/Decorrelate/` | `decorrelate-traces` | `./sbt "engineJVM/testOnly *DecorrelateConformanceTest"` |
 | How the engine decorrelates a correlated scalar subquery (`Planner.decorrelateScalar`, `emptyGroupValue`) | `WvletFormal/Scalar/` | `scalar-subquery-traces` | `./sbt "engineJVM/testOnly *ScalarSubqueryConformanceTest"` |
+| Where the engine reduces inner joins to semi joins (`ReduceSemiJoins`, its duplicate-insensitive contexts, or the shared CTE readers it trusts) | `WvletFormal/SemiReduce/` | `semi-reduce-traces` | `./sbt "engineJVM/testOnly *SemiReduceConformanceTest"` |
 
 ## Cross-model rules
 

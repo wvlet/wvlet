@@ -59,10 +59,11 @@ class Planner(
   private[engine] def enabled(o: Optimization): Boolean = options.isEnabled(o)
 
   /** Lower a runtime plan into operators, with runtime join filters when enabled */
-  private[engine] def lower(p: RuntimePlan): Operator = Lowering(
+  private[engine] def lower(p: RuntimePlan, inSet: Boolean = false): Operator = Lowering(
     p,
     joinFilters = enabled(Optimization.RuntimeJoinFilters),
     presizeAggs = enabled(Optimization.PresizeAggregates),
+    inSet = inSet,
     accelerator = accelerator.filter(_ => enabled(Optimization.GpuOffload))
   )
 
@@ -81,6 +82,8 @@ class Planner(
       Planner.disableLateGather(pruned)
     if !enabled(Optimization.JoinDirectIndex) then
       Planner.disableJoinDirectIndex(pruned)
+    if !enabled(Optimization.ParallelJoinBuild) then
+      Planner.disableParallelJoinBuild(pruned)
     if enabled(Optimization.Parallelize) then
       Parallelizer(
         pruned,
@@ -1221,9 +1224,11 @@ class Planner(
       extends SharedCTE:
     private val shared = SharedResult(optimizePhysical(op))
 
-    override def reader(schema: Schema, filter: Option[JoinCondition]): Operator = shared.newReader(
-      name
-    )
+    override def reader(
+        schema: Schema,
+        filter: Option[JoinCondition],
+        setContext: Boolean
+    ): Operator = shared.newReader(name)
 
   /** A shared result of `op` (lowered from `body`) for runtime-plan readers */
   private[engine] def sharedInput(name: String, body: RuntimePlan, op: Operator): SharedCTE =
@@ -1252,6 +1257,12 @@ class Planner(
     private var filtered = false
     // The reader filters pushed into the body
     private var pushed = Seq.empty[JoinCondition]
+    // How many readers of the planned query read the result in a duplicate-insensitive context,
+    // and how many don't ([[finalizeCTEs]])
+    private var setReads   = 0
+    private var otherReads = 0
+    // Whether the body's joins were reduced for readers that read only its distinct rows
+    private var reduced = false
     // The exact rows of the result, once materialized for planning
     private var rowCount          = Option.empty[Long]
     private lazy val label        = s"CTE[${name}]"
@@ -1262,6 +1273,13 @@ class Planner(
 
     /** Record that a reader reads these body output positions */
     def need(positions: Iterable[Int]): Unit = needed ++= positions
+
+    /** Record that a reader of the planned query reads in a duplicate-insensitive context or not */
+    def readIn(setContext: Boolean): Unit =
+      if setContext then
+        setReads += 1
+      else
+        otherReads += 1
 
     override def rows: Option[Long] = rowCount
 
@@ -1316,16 +1334,25 @@ class Planner(
       if rowCount.isEmpty then
         rowCount = Some(batches.map(_.size.toLong).sum)
 
-    override def reader(schema: Schema, filter: Option[JoinCondition]): Operator =
+    override def reader(
+        schema: Schema,
+        filter: Option[JoinCondition],
+        setContext: Boolean
+    ): Operator =
       // A reader with the filter of an earlier reader (a plan lowered again) keeps the rows that
       // the result keeps for that reader
       if filtered && !filter.exists(f => readerFilters.contains(Some(f))) then
         throw StatusCode
           .UNEXPECTED_STATE
           .newException(s"${label} is read after its result was filtered for its other readers")
+      // A reduced result has the distinct rows of the body, not its duplicates
+      if reduced && !setContext then
+        throw StatusCode
+          .UNEXPECTED_STATE
+          .newException(s"${label} is read for its duplicates after its joins were reduced")
       if uniqueNames then
         readerFilters += filter
-        ScanOp(CTETable(label, body.schema, this), schema, None, None)
+        ScanOp(CTETable(label, body.schema, this, setContext), schema, None, None)
       else
         // An iterator reads every column and row
         readerFilters += None
@@ -1337,6 +1364,8 @@ class Planner(
               .newException(s"${label} is read by an iterator after it dropped columns")
         }
         CTEIteratorReader(this, schema, label)
+
+    end reader
 
     /** The body positions of the result columns, and the result */
     private def result: (IndexedSeq[Int], SharedResult) =
@@ -1366,6 +1395,8 @@ class Planner(
             runtimeOptimizer.pushFilters(this.body, agreed)
         filtered = agreed.nonEmpty
         pushed = agreed
+        reduced =
+          !needsAll && setReads > 0 && otherReads == 0 && enabled(Optimization.ReduceSemiJoins)
         val keep =
           if needsAll || needed.isEmpty || !enabled(Optimization.PruneColumns) then
             body.output.indices
@@ -1377,11 +1408,17 @@ class Planner(
     private def lower(body: RuntimePlan, keep: IndexedSeq[Int]): Operator =
       val out    = body.output
       val pruned =
-        if keep.size == out.size then
-          body
+        val p =
+          if keep.size == out.size then
+            body
+          else
+            runtimeOptimizer.pruneColumns(body, keep.map(out(_).id).toSet)
+        if reduced then
+          runtimeOptimizer.reduceSemiJoins(p, keep.map(out(_).id).toSet)
         else
-          runtimeOptimizer.pruneColumns(body, keep.map(out(_).id).toSet)
-      val op       = Planner.this.lower(runtimeOptimizer.pushScanFilters(pruned))
+          p
+      // A reduced body's readers read only its distinct rows, as do the CTE readers in it
+      val op       = Planner.this.lower(runtimeOptimizer.pushScanFilters(pruned), reduced)
       val pos      = pruned.output.map(_.id).zipWithIndex.toMap
       val selected =
         if pruned.output.size == keep.size then
@@ -1536,8 +1573,12 @@ class Planner(
     * The result of a deferred CTE, scanned as a table whose parts are its batches. Its schema is
     * the body's; readers rename the columns in their own schema
     */
-  private class CTETable(val name: String, val schema: Schema, val cte: DeferredCTE)
-      extends TableSource:
+  private class CTETable(
+      val name: String,
+      val schema: Schema,
+      val cte: DeferredCTE,
+      val setContext: Boolean = false
+  ) extends TableSource:
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = cte.selector(spec.columns)
       cte.batches.iterator.map(sel)
@@ -1587,6 +1628,7 @@ class Planner(
               case t: CTETable =>
                 // The table schema is the body's
                 t.cte.need(s.columns.getOrElse(t.schema.fields.indices))
+                t.cte.readIn(t.setContext)
               case t: SharedTable =>
                 collect(t.shared.op)
               case _ =>
@@ -3249,6 +3291,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableJoinDirectIndex)
     op.sharedInputs.foreach(disableJoinDirectIndex)
+
+  /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
+  private[engine] def disableParallelJoinBuild(op: Operator): Unit =
+    op match
+      case j: HashJoinOp =>
+        j.withParallelBuild(false)
+      case _ =>
+    op.children.foreach(disableParallelJoinBuild)
+    op.sharedInputs.foreach(disableParallelJoinBuild)
 
   /**
     * The keys and the inequality of an ASOF join, each bound over its input: a left row matches the
