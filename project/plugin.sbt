@@ -18,7 +18,7 @@ val SCALAJS_VERSION = sys.env.getOrElse("SCALAJS_VERSION", "1.23.0")
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % SCALAJS_VERSION)
 
 // For Scala Native
-addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12")
+addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.13")
 
 // Cross-platform (JVM/JS/Native) crossProject support
 // (replaces org.portable-scala sbt-scalajs-crossproject & sbt-scala-native-crossproject
