@@ -1263,7 +1263,9 @@ class HashJoinOp(
 ) extends Operator:
   override def children: Seq[Operator] = Seq(left, right)
   override def name: String            = s"HashJoin[${kind}]"
-  override protected def details       =
+  // `hashed` marks `join_direct_index` disabled, as `eager` marks `late_gather`. Whether a build
+  // actually uses a direct index depends on its key range, known only once it is built
+  override protected def details =
     s"(${leftKeys.map(_.sig).mkString(",")} = ${rightKeys.map(_.sig).mkString(",")}${residual
         .map(r => s", residual=${r.sig}")
         .getOrElse("")}${Operator.eagerTag(lateGather)}${
