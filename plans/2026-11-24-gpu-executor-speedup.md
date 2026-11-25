@@ -50,5 +50,5 @@ Lane: Standard. This is a multi-part performance change to an optional example m
   - `implied_filters`: q7 128 to 28 ms.
   - `prune_columns`: q13 107 to 76 ms.
 - Dropped: pushing residual conjuncts below the join made q13 slower, because the filter copied its strings once more.
-- Not done: cudf AST fusion (q1's remaining 127 ms is about one third filter copy, one third argument kernels, one third group-by) and sorted-key group-by (q18, about 20 ms by a microbenchmark).
+- Not done here: cudf AST fusion (q1's remaining 127 ms is about one third filter copy, one third argument kernels, one third group-by) and sorted-key group-by (q18, about 20 ms by a microbenchmark). Both landed later; see [the SF10 gaps plan](2026-11-24-gpu-sf10-gaps.md).
 
