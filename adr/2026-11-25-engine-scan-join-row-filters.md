@@ -1,6 +1,6 @@
 # ADR: Selective runtime join filters go into uni's Parquet row filter
 
-Date: 2026-11-25
+Date: 2026-11-25 · PR #2411
 
 ## Context
 
