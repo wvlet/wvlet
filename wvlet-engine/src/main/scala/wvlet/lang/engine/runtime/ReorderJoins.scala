@@ -76,8 +76,40 @@ object ReorderJoins extends Pass:
       case _ =>
         p.children.exists(readsComputedCTE)
 
-  /** The join tree of an [[RuntimePlan.InnerJoins]] node */
+  /**
+    * The join tree of an [[RuntimePlan.InnerJoins]] node. With `commute_left_joins`, an input that
+    * is a LEFT join whose right input no condition reads joins above the tree instead, over its
+    * left input's place in the tree: `(A ⟕ B) ⋈ C` has the rows of `(A ⋈ C) ⟕ B` when the
+    * conditions of the inner joins read no column of `B` (formal/WvletFormal/LeftJoinCommute). The
+    * tree then outputs the columns of `B` last
+    */
   def order(j: InnerJoins, ctx: OptimizerContext): RuntimePlan =
+    val i =
+      if ctx.options.isEnabled(Optimization.CommuteLeftJoins) then
+        val read = j.conds.flatMap(_.cond.refs).toSet
+        j.inputs
+          .indexWhere {
+            case l: Join =>
+              l.kind == JoinKind.Left && l.right.output.forall(c => !read.contains(c.id))
+            case _ =>
+              false
+          }
+      else
+        -1
+    if i < 0 then
+      orderTree(j, ctx)
+    else
+      val l = j.inputs(i).asInstanceOf[Join]
+      ctx.fired(Optimization.CommuteLeftJoins.name)
+      val tree = order(j.copy(inputs = j.inputs.updated(i, l.left)), ctx)
+      // The LEFT join's build side, chosen again over the joined rows of its left input
+      val buildLeft =
+        l.leftKeys.nonEmpty &&
+          JoinOrderOptimizer.swapBuild(ctx.options, Stats.rows(l.right), Stats.rows(tree))
+      l.copy(left = tree, buildLeft = buildLeft)
+
+  /** The join tree of an [[RuntimePlan.InnerJoins]] node without LEFT joins to move */
+  private def orderTree(j: InnerJoins, ctx: OptimizerContext): RuntimePlan =
     val options = ctx.options
     val inputs  = j.inputs
     val owner   = inputs.indices.flatMap(i => inputs(i).output.map(_.id -> i)).toMap
@@ -116,7 +148,7 @@ object ReorderJoins extends Pass:
     else
       Filter(tree, and(remaining))
 
-  end order
+  end orderTree
 
   private def and(conds: Seq[BExpr]): BExpr = BExpr(conds.map(_.expr).reduce(AndExpr(_, _)))
 

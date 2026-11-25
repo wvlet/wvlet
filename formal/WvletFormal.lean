@@ -29,6 +29,8 @@ import WvletFormal.Algebra.Bag
 import WvletFormal.Pushdown.Rule
 import WvletFormal.Pushdown.Necessity
 import WvletFormal.Pushdown.Traces
+import WvletFormal.LeftJoinCommute.Rule
+import WvletFormal.LeftJoinCommute.Traces
 import WvletFormal.NotIn.Rule
 import WvletFormal.NotIn.Necessity
 import WvletFormal.NotIn.Traces
