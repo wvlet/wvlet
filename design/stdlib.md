@@ -10,8 +10,16 @@ The stdlib is freshness-gated in CI. After changing `wvlet-stdlib/module/standar
 - The Trino catalog: `./sbt "runnerJVM/Test/runMain wvlet.lang.runner.StdLibTrinoFunctionCatalogGenerator"`
 - The docs reference page: `./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.StdLibDocGenerator"`
 - The engine's function names (`WvletEngineFunctionNames`, after adding or removing an engine function): `./sbt "engineJVM/Test/runMain wvlet.lang.engine.EngineFunctionNamesGenerator"`
+- The Snowflake SQL of the stdlib specs (`spec/snowflake-sql/`, after a change to a stdlib function or a stdlib spec): `./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.SnowflakeSqlGolden"`
 
-`StdLibCatalogFreshnessTest`, `StdLibDocFreshnessTest`, and `EngineFunctionNamesTest` fail on drift and print the exact command to run.
+`StdLibCatalogFreshnessTest`, `StdLibDocFreshnessTest`, `EngineFunctionNamesTest`, and `SnowflakeSqlGoldenTest` fail on drift and print the exact command to run.
+
+## Snowflake variants
+
+CI has no Snowflake account ([ADR](../adr/2026-11-25-snowflake-local-verification.md)), so Snowflake SQL is checked in two steps:
+
+- In CI, `SnowflakeSqlGoldenTest` pins the Snowflake SQL generated for `spec/basic/stdlib_*.wv` in `spec/snowflake-sql/`, so every change to it shows in the PR diff. A function with no `in snowflake` variant falls back to another engine's variant on Snowflake (`dialectCompatible`), and the golden SQL shows which one.
+- Before adding or changing an `in snowflake` variant, run the stdlib specs on Snowflake with your own account and note the result in the PR: `SNOWFLAKE_ACCOUNT=... SNOWFLAKE_USER=... SNOWFLAKE_PASSWORD=... SNOWFLAKE_DATABASE=... ./sbt "runnerJVM/testOnly *SnowflakeStdLibSpec"` (`SNOWFLAKE_SCHEMA`, `SNOWFLAKE_WAREHOUSE`, and `SNOWFLAKE_ROLE` are optional). Without the variables it is skipped. The specs query literal tables only.
 
 ## Dialect contexts
 

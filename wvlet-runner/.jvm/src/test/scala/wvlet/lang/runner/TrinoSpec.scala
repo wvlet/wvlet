@@ -27,66 +27,62 @@ import wvlet.lang.runner.connector.trino.TestTrinoServer
 
 import scala.util.control.NonFatal
 
-trait TrinoSpecRunner(specPath: String, specFilter: String => Boolean = _ => true) extends UniTest:
-
-  // Launch embedded Trino with an in-memory catalog
-  private val server  = TestTrinoServer().withCustomMemoryPlugin
-  private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
-  private val profile = Profile(
-    name = s"local-trino@${server.address}",
-    connectors = Seq(
-      ConnectorConfig(
-        name = "trino",
-        `type` = "trino",
-        user = Some("test"),
-        password = Some(""),
-        host = Some(server.address),
-        catalog = Some("memory"),
-        schema = Some("main"),
-        properties = Map("useSSL" -> false)
-      )
-    )
-  )
-
-  private val dbConnectorProvider = ConnectorProvider(workEnv)
-  private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
+/**
+  * Runs the .wv specs of a folder through a database connector, one test per file. Subclasses build
+  * the connection, then call [[runSpecs]] from their constructor
+  */
+trait ConnectorSpecRunner(specPath: String, specFilter: String => Boolean) extends UniTest:
+  protected val workEnv: WorkEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
+  private var resources: Seq[AutoCloseable] = Nil
 
   override def afterAll: Unit =
     // Close in reverse creation order
-    Control.closeResources(queryExecutor, dbConnectorProvider, server)
+    Control.closeResources(resources*)
 
-  private val compiler = Compiler(
-    CompilerOptions(
-      sourceFolders = List(specPath),
-      workEnv = workEnv,
-      catalog = Some("memory"),
-      schema = Some("main")
+  /**
+    * Register a test for each spec file matching specFilter, compiled for and run on the profile's
+    * connector. `owned` are closed after the tests, after the executor and connectors
+    */
+  protected def runSpecs(
+      profile: Profile,
+      catalog: String,
+      schema: String,
+      owned: AutoCloseable*
+  ): Unit =
+    val dbConnectorProvider = ConnectorProvider(workEnv)
+    val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
+    resources = Seq(queryExecutor, dbConnectorProvider) ++ owned
+    val compiler = Compiler(
+      CompilerOptions(
+        sourceFolders = List(specPath),
+        workEnv = workEnv,
+        catalog = Some(catalog),
+        schema = Some(schema)
+      )
     )
-  )
+    // Ensure the compiler knows the target database
+    compiler.setDefaultCatalog(
+      dbConnectorProvider.getConnector(profile).getCatalog(catalog, schema)
+    )
 
-  // Ensure the compiler knows we are targeting Trino
-  compiler.setDefaultCatalog(dbConnectorProvider.getConnector(profile).getCatalog("memory", "main"))
+    for
+      unit <- compiler.localCompilationUnits
+      if specFilter(unit.sourceFile.fileName)
+    do
+      test(unit.sourceFile.relativeFilePath.replaceAll("/", ":")) {
+        try
+          trace(s"compiling: ${unit.sourceFile}")
+          val compileResult = compiler.compileSingleUnit(unit)
+          trace(s"compiled: ${unit.sourceFile}")
+          val result = queryExecutor.executeSingle(unit, compileResult.context.withDebugRun(true))
+          debug(result.toPrettyBox(maxWidth = Some(120)))
+          handleResult(result)
+        catch
+          case NonFatal(e) =>
+            handleError(e)
+      }
 
-  // Compile .wv files and run the specs in the folder matching specFilter
-  for
-    unit <- compiler.localCompilationUnits
-    if specFilter(unit.sourceFile.fileName)
-  do
-    test(unit.sourceFile.relativeFilePath.replaceAll("/", ":")) {
-      try
-        handleResult(runSpec(unit))
-      catch
-        case NonFatal(e) =>
-          handleError(e)
-    }
-
-  protected def runSpec(unit: CompilationUnit): QueryResult =
-    trace(s"compiling: ${unit.sourceFile}")
-    val compileResult = compiler.compileSingleUnit(unit)
-    trace(s"compiled: ${unit.sourceFile}")
-    val result = queryExecutor.executeSingle(unit, compileResult.context.withDebugRun(true))
-    debug(result.toPrettyBox(maxWidth = Some(120)))
-    result
+  end runSpecs
 
   protected def handleResult(result: QueryResult): Unit =
     result
@@ -106,6 +102,34 @@ trait TrinoSpecRunner(specPath: String, specFilter: String => Boolean = _ => tru
       fail(e.getMessage)
     case e: Throwable =>
       throw e
+
+end ConnectorSpecRunner
+
+abstract class TrinoSpecRunner(specPath: String, specFilter: String => Boolean = _ => true)
+    extends ConnectorSpecRunner(specPath, specFilter):
+
+  // Launch embedded Trino with an in-memory catalog
+  private val server = TestTrinoServer().withCustomMemoryPlugin
+  runSpecs(
+    Profile(
+      name = s"local-trino@${server.address}",
+      connectors = Seq(
+        ConnectorConfig(
+          name = "trino",
+          `type` = "trino",
+          user = Some("test"),
+          password = Some(""),
+          host = Some(server.address),
+          catalog = Some("memory"),
+          schema = Some("main"),
+          properties = Map("useSSL" -> false)
+        )
+      )
+    ),
+    catalog = "memory",
+    schema = "main",
+    server
+  )
 
 end TrinoSpecRunner
 
