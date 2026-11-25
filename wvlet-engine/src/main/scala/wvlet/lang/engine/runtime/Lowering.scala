@@ -343,6 +343,7 @@ object Lowering:
                 },
               p.schema
             )
+          end if
         case Unnest(child, lists, keepInput, outer, _) =>
           val pos = positions(child)
           UnnestOp(lower(child), lists.map(_.lower(pos)), keepInput, p.schema, outer)
