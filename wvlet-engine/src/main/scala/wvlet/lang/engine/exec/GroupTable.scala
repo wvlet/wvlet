@@ -84,12 +84,14 @@ end GroupKey
   * with a NULL key as unmatched (join semantics).
   *
   * With `longDecimals`, decimal key columns are stored and compared as unscaled Long values
-  * ([[GroupTable.DecimalStore]]) instead of boxed BigDecimals.
+  * ([[GroupTable.DecimalStore]]) instead of boxed BigDecimals. With `stableCodes`, groups whose
+  * string keys carry codes shared across batches are keyed by the codes ([[StrVec.dict]]).
   */
 final class GroupTable(
     keyTypes: IndexedSeq[PType],
     expectedGroups: Int = 0,
-    longDecimals: Boolean = false
+    longDecimals: Boolean = false,
+    stableCodes: Boolean = false
 ) extends GroupIndex:
   import GroupTable.*
 
@@ -108,7 +110,11 @@ final class GroupTable(
   if expectedGroups > 0 then
     stores.foreach(_.reserve(expectedGroups))
 
-  def numGroups: Int = count
+  def numGroups: Int =
+    if coded != null then
+      coded.numGroups
+    else
+      count
 
   private def normalize(keys: Array[Vec]): Array[Vec] =
     val out = new Array[Vec](width)
@@ -246,8 +252,11 @@ final class GroupTable(
   def keyHashes(keys: Array[Vec], n: Int): Array[Int] = hashes(normalize(keys), n)
 
   def groupIds(keys: Array[Vec], n: Int): Array[Int] =
-    val norm = normalize(keys)
-    val ids  = dictionaryIds(norm, n, null)
+    val norm    = normalize(keys)
+    val byCodes = stableCodeIds(keys, norm, n)
+    if byCodes != null then
+      return byCodes
+    val ids = dictionaryIds(norm, n, null)
     if ids != null then
       return ids
     if hashBuf == null || hashBuf.length < n then
@@ -261,12 +270,121 @@ final class GroupTable(
     * key types), so the keys are not hashed again
     */
   def groupIds(keys: Array[Vec], n: Int, keyHashes: Array[Int]): Array[Int] =
-    val norm = normalize(keys)
-    val ids  = dictionaryIds(norm, n, keyHashes)
+    val norm    = normalize(keys)
+    val byCodes = stableCodeIds(keys, norm, n)
+    if byCodes != null then
+      return byCodes
+    val ids = dictionaryIds(norm, n, keyHashes)
     if ids != null then
       ids
     else
       assignIds(norm, n, keyHashes)
+
+  // While the groups are keyed by codes (`stableCodes`): the index over the codes of the string
+  // keys (as Int32 columns) and the other key columns, and the dicts of the string keys (null for
+  // the other keys). The key stores stay empty until [[decode]]
+  private var coded: GroupIndex               = null
+  private var codeDicts: Array[Array[String]] = null
+  // Whether the groups left the codes for good
+  private var decoded = false
+
+  /** Whether the groups are keyed by the codes of their string keys (for tests) */
+  private[exec] def usesStableCodes: Boolean = coded != null
+
+  /**
+    * Group ids through the codes of string keys that carry a `dict` ([[StrVec.dict]],
+    * `join_build_string_codes`). The codes identify values across batches, so the groups are keyed
+    * by the codes and the other key columns alone, as packed Int64 keys when they pack
+    * ([[PackedGroupTable]]): no row's strings are hashed or compared, and [[keyVectors]] reads each
+    * group's strings from the dicts.
+    *
+    * Only with `stableCodes`, from a first batch whose string keys all carry a `dict`. A later
+    * batch with other dicts or without them moves the groups to the key columns ([[decode]]) and
+    * takes the other paths from then on, as does every batch when this returns null
+    */
+  private def stableCodeIds(keys: Array[Vec], norm: Array[Vec], n: Int): Array[Int] =
+    if !stableCodes || decoded then
+      return null
+    if coded == null && count > 0 then
+      return null
+    var hasStr = false
+    var same   = true
+    var k      = 0
+    while k < width do
+      if stores(k).isInstanceOf[StrStore] then
+        norm(k) match
+          case v: StrVec if v.dict != null =>
+            if codeDicts != null && (codeDicts(k) ne v.dict) then
+              same = false
+            hasStr = true
+          case _ =>
+            same = false
+      k += 1
+    if !same || !hasStr then
+      if coded != null then
+        decode()
+      return null
+    if coded == null then
+      codeDicts =
+        Array.tabulate(width) { k =>
+          if stores(k).isInstanceOf[StrStore] then
+            norm(k).asInstanceOf[StrVec].dict
+          else
+            null
+        }
+      val types = keyTypes
+        .indices
+        .map { k =>
+          if codeDicts(k) != null then
+            PType.Int32
+          else
+            keyTypes(k)
+        }
+      coded = PackedGroupTable.forKeys(types, expectedGroups, pack = true, longDecimals)
+    val codeKeys =
+      Array.tabulate(width) { k =>
+        if codeDicts(k) != null then
+          GroupTable.codeVec(norm(k).asInstanceOf[StrVec], n)
+        else
+          keys(k)
+      }
+    coded.groupIds(codeKeys, n)
+
+  end stableCodeIds
+
+  /** The key columns of the code-keyed groups, in id order, with their strings from the dicts */
+  private def codedKeyVectors(): Array[Vec] =
+    val cols = coded.keyVectors()
+    Array.tabulate(width) { k =>
+      val d = codeDicts(k)
+      if d == null then
+        cols(k)
+      else
+        val c     = cols(k).asInstanceOf[IntVec]
+        val m     = c.size
+        val codes = new Array[Int](m)
+        val out   = new Array[String](m)
+        var i     = 0
+        while i < m do
+          if c.isNull(i) then
+            codes(i) = -1
+          else
+            codes(i) = c.values(i)
+            out(i) = d(codes(i))
+          i += 1
+        StrVec(out, c.nulls, codes, d.length, d)
+    }
+
+  /** Re-add the code-keyed groups by their key columns, in id order, so their ids stay valid */
+  private def decode(): Unit =
+    val cols = codedKeyVectors()
+    val m    = coded.numGroups
+    coded = null
+    codeDicts = null
+    decoded = true
+    if m > 0 then
+      val norm = normalize(cols)
+      assignIds(norm, m, hashes(norm, m))
 
   // Per batch, the group of each combination of dictionary codes seen so far (-1 when not yet),
   // and each row's combination (-1 when a key has no code), reused across batches
@@ -412,6 +530,8 @@ final class GroupTable(
     * group holding NULL there, as in GROUP BY (`IS NOT DISTINCT FROM`)
     */
   def lookup(keys: Array[Vec], n: Int, nullsMatch: Boolean = false): Array[Int] =
+    if coded != null then
+      decode()
     val norm = normalize(keys)
     lookupNormalized(norm, n, hashes(norm, n), nullsMatch)
 
@@ -420,6 +540,8 @@ final class GroupTable(
     * key types), so the keys are not hashed again
     */
   def lookup(keys: Array[Vec], n: Int, keyHashes: Array[Int], nullsMatch: Boolean): Array[Int] =
+    if coded != null then
+      decode()
     lookupNormalized(normalize(keys), n, keyHashes, nullsMatch)
 
   private def lookupNormalized(
@@ -463,7 +585,11 @@ final class GroupTable(
   end lookupNormalized
 
   /** Key values of every group, in group id order */
-  def keyVectors(): Array[Vec] = stores.map(_.result(count))
+  def keyVectors(): Array[Vec] =
+    if coded != null then
+      codedKeyVectors()
+    else
+      stores.map(_.result(count))
 
 end GroupTable
 
@@ -559,6 +685,19 @@ object GroupTable:
     h
 
   inline def mixInto(h: Array[Int], i: Int, x: Int): Unit = h(i) = h(i) * 31 + x
+
+  /** The codes of the first n rows of `v` as Int32 values, NULL where a row has no code */
+  private[exec] def codeVec(v: StrVec, n: Int): IntVec =
+    val codes                 = v.codes
+    var nulls: Array[Boolean] = null
+    var i                     = 0
+    while i < n do
+      if codes(i) < 0 then
+        if nulls == null then
+          nulls = new Array[Boolean](n)
+        nulls(i) = true
+      i += 1
+    IntVec(PType.Int32, codes, nulls)
 
   inline def hashLong(x: Long): Int = (x ^ (x >>> 32)).toInt
 

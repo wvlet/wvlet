@@ -848,8 +848,14 @@ class HashAggOp(
         0
       else
         expectedGroups
-    val table = PackedGroupTable.forKeys(keys.map(_.ptype), presize, packKeys, longDecimalKeys)
-    val accs  = aggs.map(_.newAccumulator())
+    val table = PackedGroupTable.forKeys(
+      keys.map(_.ptype),
+      presize,
+      packKeys,
+      longDecimalKeys,
+      stableCodes = true
+    )
+    val accs = aggs.map(_.newAccumulator())
     if presize > 0 then
       accs.foreach(_.ensureGroups(presize))
     var zeros: Array[Int] = Array.emptyIntArray
@@ -944,7 +950,13 @@ class DistinctOp(val child: Operator) extends Operator:
       if b == null then
         return null
       if table == null then
-        table = PackedGroupTable.forKeys(child.schema.types, 0, packKeys, longDecimalKeys)
+        table = PackedGroupTable.forKeys(
+          child.schema.types,
+          0,
+          packKeys,
+          longDecimalKeys,
+          stableCodes = true
+        )
       val before = table.numGroups
       val ids    = table.groupIds(b.columns, b.size)
       // Keep the first row of every new group
@@ -961,6 +973,8 @@ class DistinctOp(val child: Operator) extends Operator:
       if k > 0 then
         out = b.gather(keep, k)
     out
+
+  end next
 
 end DistinctOp
 
@@ -1141,6 +1155,13 @@ final class JoinBuild(
     */
   var parallelBuild: Boolean = true
 
+  /**
+    * Whether a build of at most [[JoinBuild.MaxCodedRows]] rows encodes its string columns over
+    * their distinct values ([[StrVec.encode]]), so that probe outputs carry codes shared by every
+    * batch (`join_build_string_codes`); set before the build is made
+    */
+  var stringCodes: Boolean = true
+
   /** Whether the build probes through a direct index instead of hash tables (for tests) */
   def usesDirectIndex: Boolean = directHeads != null
 
@@ -1178,6 +1199,8 @@ final class JoinBuild(
         Batch.concat(right.schema, batches)
       else
         JoinBuildSteps.concat(right.schema, batches.toIndexedSeq, steps)
+    if stringCodes then
+      build = JoinBuild.encodeStrings(build)
     val rawKeys  = rightKeys.map(_.eval(build)).toArray
     val rawTypes = rightKeys.map(_.ptype)
     // Rows with NULL keys never match, unless NULLs are equal (`IS NOT DISTINCT FROM`)
@@ -1582,6 +1605,32 @@ object JoinBuild:
   /** The most slots a direct index takes */
   inline val DirectMaxSlots = 1L << 27
 
+  /** The most rows of a build whose string columns are encoded (`join_build_string_codes`) */
+  inline val MaxCodedRows = 1 << 20
+
+  /**
+    * The build with its string columns encoded over their distinct values ([[StrVec.encode]]), when
+    * it has at most [[MaxCodedRows]] rows: probe outputs gather the codes, which then identify
+    * values across batches. Columns already carrying a `dict` stay as they are
+    */
+  private[exec] def encodeStrings(build: Batch): Batch =
+    if build.size == 0 || build.size > MaxCodedRows then
+      build
+    else
+      val cols    = build.columns
+      var changed = false
+      val out     = cols.map {
+        case v: StrVec if v.dict == null =>
+          changed = true
+          StrVec.encode(v, build.size)
+        case v =>
+          v
+      }
+      if changed then
+        Batch(out, build.size)
+      else
+        build
+
 end JoinBuild
 
 /** How a right / full join tracks and emits build rows no probe row matched */
@@ -1700,6 +1749,13 @@ class HashJoinOp(
 
   def withParallelBuild(enabled: Boolean): this.type =
     joinBuild.parallelBuild = enabled
+    this
+
+  /** Whether the build encodes its string columns (`join_build_string_codes`) */
+  def stringCodes: Boolean = joinBuild.stringCodes
+
+  def withStringCodes(enabled: Boolean): this.type =
+    joinBuild.stringCodes = enabled
     this
 
   private def rowsOf(b: Batch, idx: Array[Int], n: Int): Batch =

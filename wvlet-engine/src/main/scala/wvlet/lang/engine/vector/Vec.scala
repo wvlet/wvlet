@@ -312,13 +312,19 @@ final class DoubleVec(val values: Array[Double], val nulls: Array[Boolean]) exte
   * rows (null without them), each in [0, `dictSize`) or -1 when unknown (a NULL row, a
   * PLAIN-encoded row, or gathered padding). Two rows of one vector with the same code >= 0 hold
   * equal strings, so grouping can look up each code once ([[wvlet.lang.engine.exec.GroupTable]]).
-  * Codes mean nothing across vectors.
+  * Codes mean nothing across vectors, unless the vectors share a `dict`.
+  *
+  * A non-null `dict` holds the distinct values the codes stand for (`dict(codes(i)) == values(i)`,
+  * `dictSize == dict.length`, -1 only for NULL rows), and vectors with the same `dict` instance
+  * share the coding, so a code identifies a value across batches. Hash-join builds encode their
+  * string columns this way ([[StrVec.encode]], `join_build_string_codes`).
   */
 final class StrVec(
     val values: Array[String],
     val nulls: Array[Boolean],
     val codes: Array[Int] = null,
-    val dictSize: Int = 0
+    val dictSize: Int = 0,
+    val dict: Array[String] = null
 ) extends Vec:
   def ptype: PType     = PType.Str
   def size: Int        = values.length
@@ -341,9 +347,38 @@ final class StrVec(
       StrVec(out, outNulls)
     else
       val outCodes = StrVec.gatherCodes(codes, idx, n)
-      StrVec(out, outNulls, outCodes, dictSize)
+      StrVec(out, outNulls, outCodes, dictSize, dict)
 
 object StrVec:
+  /**
+    * `v` with codes over its distinct values and their `dict`, so that the vectors gathered from it
+    * share one coding; `v` itself when it has more than `maxDistinct` distinct values
+    */
+  def encode(v: StrVec, maxDistinct: Int): StrVec =
+    val n     = v.size
+    val ids   = java.util.HashMap[String, Integer]()
+    val codes = new Array[Int](n)
+    val dict  = scala.collection.mutable.ArrayBuffer.empty[String]
+    var i     = 0
+    while i < n do
+      val s = v.values(i)
+      if s == null || v.isNull(i) then
+        codes(i) = -1
+      else
+        val c = ids.get(s)
+        if c != null then
+          codes(i) = c.intValue
+        else
+          if dict.size >= maxDistinct then
+            return v
+          ids.put(s, dict.size)
+          codes(i) = dict.size
+          dict += s
+      i += 1
+    StrVec(v.values, v.nulls, codes, dict.size, dict.toArray)
+
+  end encode
+
   /** The codes at the given positions, -1 for padding (idx -1) */
   private def gatherCodes(codes: Array[Int], idx: Array[Int], n: Int): Array[Int] =
     val out = new Array[Int](n)
@@ -357,6 +392,8 @@ object StrVec:
           -1
       i += 1
     out
+
+end StrVec
 
 /** Boxed values: wide decimals (java.math.BigDecimal), and nested or untyped values */
 final class ObjVec(val ptype: PType, val values: Array[AnyRef], val nulls: Array[Boolean])
