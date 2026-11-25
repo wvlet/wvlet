@@ -185,12 +185,16 @@ class EngineDecimalFloatScanFiltersTest extends UniTest:
     )
     // Selective id windows (10% each), so that the row filter runs: around the NaN row (2048), the
     // zero crossing, and the -0.0 row (16384)
-    val windows = Seq("id between 1024 and 3071", "id between 9216 and 11263", "id between 15360 and 17407")
+    val windows = Seq(
+      "id between 1024 and 3071",
+      "id between 9216 and 11263",
+      "id between 15360 and 17407"
+    )
     for
       w <- windows
       q <- queries
     do
-      val query    = s"from '${file}' where ${w} and (${q}) select id order by id"
+      val query = s"from '${file}' where ${w} and (${q}) select id order by id"
       explain(query) shouldContain "row_filter="
       val expected = rows(noRowFilters, query)
       debug(s"${w} and ${q}: ${expected.size} rows")
