@@ -119,6 +119,15 @@ class EngineScanRowFiltersTest extends UniTest:
     sameRows(q).size shouldBe 1000 / 21 + 1
   }
 
+  test("count the rows of a row filter by a column it reads anyway") {
+    val q    = "from $t where d >= '2020-12-01'::date select n = _.count"
+    val plan = explain(on, q)
+    // Not the first column (id), which the scan would then decode for every matching row
+    plan shouldContain "Scan[scan_row_filters](columns=d filter="
+    // Day offsets 335 until 400 (December), in 2 of the 2.5 cycles of 400 rows
+    sameRows(q) shouldBe Seq("130")
+  }
+
   test("return the same rows with the toggle on and off") {
     Seq(
       "from $t where id < 250 or id >= 990 select id",

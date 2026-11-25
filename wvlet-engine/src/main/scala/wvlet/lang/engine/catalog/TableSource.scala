@@ -201,37 +201,40 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
         false
     }
 
-  /** From the file's column statistics, for signed integer and date columns */
+  // Column statistics of the single file, summed over its row groups, read once per source
+  private lazy val fileStatistics: Map[String, ColumnStatistics] =
+    try
+      val opened = openFile(footerCache)
+      try opened.columnStatistics
+      finally opened.file.close()
+    catch
+      case _: Exception =>
+        Map.empty
+
+  /**
+    * From the file's column statistics, for signed integer and date columns (canFilterOn excludes
+    * UINT64, whose statistics are ordered unsigned)
+    */
   override def columnRange(column: String): Option[(Long, Long)] =
-    if !isSingleFile || !canFilterOn(column) then
-      None
-    else
-      def asLong(v: Any): Option[Long] =
-        v match
-          case i: Int =>
-            Some(i.toLong)
-          case l: Long =>
-            Some(l)
-          case d: java.time.LocalDate =>
-            Some(d.toEpochDay)
-          case _ =>
-            None
-      schema.fields.find(_.name == column).map(_.ptype) match
-        case Some(PType.Int32 | PType.Int64 | PType.Date) =>
-          try
-            val opened = openFile(footerCache)
-            try
-              for
-                s   <- opened.columnStatistics.get(column)
-                min <- s.min.flatMap(asLong)
-                max <- s.max.flatMap(asLong)
-              yield (min, max)
-            finally opened.file.close()
-          catch
-            case _: Exception =>
-              None
+    def asLong(v: Any): Option[Long] =
+      v match
+        case i: Int =>
+          Some(i.toLong)
+        case l: Long =>
+          Some(l)
+        case d: java.time.LocalDate =>
+          Some(d.toEpochDay)
         case _ =>
           None
+    schema.fields.find(_.name == column).map(_.ptype) match
+      case Some(PType.Int32 | PType.Int64 | PType.Date) if isSingleFile && canFilterOn(column) =>
+        for
+          s   <- fileStatistics.get(column)
+          min <- s.min.flatMap(asLong)
+          max <- s.max.flatMap(asLong)
+        yield (min, max)
+      case _ =>
+        None
 
   override lazy val estimatedRows: Option[Long] =
     try
@@ -289,24 +292,11 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
           val rows    = f.numRows
           val stats   = opened.columnStatistics.get(column)
           val nonNull = stats.flatMap(_.numNulls).map(n => rows - n).getOrElse(rows).toDouble
-          def asLong(v: Any): Option[Long] =
-            v match
-              case i: Int =>
-                Some(i.toLong)
-              case l: Long =>
-                Some(l)
-              case d: java.time.LocalDate =>
-                Some(d.toEpochDay)
-              case _ =>
-                None
           schema.fields.find(_.name == column).map(_.ptype) match
-            // canFilterOn excludes UINT64, whose statistics are ordered unsigned
-            case Some(PType.Int32 | PType.Int64 | PType.Date) if canFilterOn(column) =>
-              for
-                s   <- stats
-                min <- s.min.flatMap(asLong)
-                max <- s.max.flatMap(asLong)
-              yield math.min(nonNull, max.toDouble - min.toDouble + 1)
+            case Some(PType.Int32 | PType.Int64 | PType.Date) =>
+              columnRange(column).map((min, max) =>
+                math.min(nonNull, max.toDouble - min.toDouble + 1)
+              )
             case Some(PType.Str) if rows <= ParquetSource.DistinctScanLimit =>
               val seen = scala.collection.mutable.HashSet.empty[Any]
               scan(ScanSpec(Some(Seq(column)), footerCache = footerCache)).foreach { b =>
