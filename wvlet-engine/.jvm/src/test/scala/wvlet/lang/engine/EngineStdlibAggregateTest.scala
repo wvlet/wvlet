@@ -44,6 +44,17 @@ class EngineStdlibAggregateTest extends UniTest:
     )
   }
 
+  test("map_agg skips NULL keys and keeps NULL values as DuckDB") {
+    check(
+      "from [['a', 'k1', 1], ['a', 'k2', null], ['a', null, 3], ['b', null, 4], ['c', 'k1', 5]] " +
+        "as kv(g, k, v)\ngroup by g\nagg k.map_agg(v) as m"
+    )
+    check(
+      "from [[1, 'x'], [2, 'y'], [null, 'z']] as kv(k, v)\ngroup by 'all'\n" +
+        "agg k.map_agg(v) as m, k.map_agg(v).size as n"
+    )
+  }
+
   test("aggregates over integer columns match DuckDB") {
     check(
       "from [[1, 2], [2, 5], [3, 4], [7, 1]] as t(x, y)\n" +

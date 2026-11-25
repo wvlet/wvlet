@@ -370,6 +370,7 @@ A column reference after `group by` also has an array type, so aggregation funct
 | `max` | A | all |  |
 | `min_by(expr: sql)` | A | all |  |
 | `max_by(expr: sql)` | A | all |  |
+| `map_agg(value: sql)` | map[A,any] | duckdb, trino | Map each grouped key (this column) to the value of the same row, e.g. key.map_agg(value). Rows with a NULL key are skipped; NULL values are kept; a group with no key gives NULL. Keys must be unique: a duplicate is an error on DuckDB and the engine, while Trino keeps one value. Use a column as the key: DuckDB's variant repeats the key expression |
 | `to_array` | array[A] | all |  |
 | `bool_and` | boolean | all | Aggregate boolean values of a grouped column |
 | `bool_or` | boolean | all |  |
