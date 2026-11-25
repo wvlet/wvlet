@@ -12,7 +12,7 @@ Scan[lineitem](columns=l_orderkey,l_extendedprice,l_discount,l_returnflag filter
   Scan[nation](columns=n_nationkey,n_name) -> [n_nationkey:int, n_name:string]
   ↓ Morsel[parallelism=N] -> [n_nationkey:int, n_name:string]
 ↙ HashJoin[Inner](#6 = #0) -> [o_custkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), c_custkey:long, c_name:string, c_address:string, c_nationkey:int, c_phone:string, c_acctbal:decimal(15,2), c_comment:string, n_nationkey:int, n_name:string]
-↓ HashAgg(keys=[#3, #4, #8, #7, #11, #5, #9], aggs=[agg:sum((#1*(lit(1:int)-#2)))]) -> [c_custkey:long, c_name:string, c_acctbal:decimal(15,2), c_phone:string, n_name:string, c_address:string, c_comment:string, __partial_0:decimal(38,4)]
+↓ HashAgg(keys=[#3, #4, #8, #7, #11, #5, #9], aggs=[agg:sum((#1*(lit(1.00:decimal(16,2))-#2)))]) -> [c_custkey:long, c_name:string, c_acctbal:decimal(15,2), c_phone:string, n_name:string, c_address:string, c_comment:string, __partial_0:decimal(38,4)]
 ↓ Morsel[parallelism=N] -> [c_custkey:long, c_name:string, c_acctbal:decimal(15,2), c_phone:string, n_name:string, c_address:string, c_comment:string, __partial_0:decimal(38,4)]
 ↓ PartitionedAgg[parallelism=N](keys=[#0, #1, #2, #3, #4, #5, #6], aggs=[agg:sum(#7)]) -> [c_custkey:long, c_name:string, c_acctbal:decimal(15,2), c_phone:string, n_name:string, c_address:string, c_comment:string, __final_0:decimal(38,4)]
 ↓ Project(#0, #1, #2, #3, #4, #5, #6, #7) -> [c_custkey:long, c_name:string, c_acctbal:decimal(15,2), c_phone:string, n_name:string, c_address:string, c_comment:string, agg:sum((#14*(lit(1:int)-#15))):decimal(38,4)]

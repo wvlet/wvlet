@@ -5,7 +5,7 @@ Scan[catalog_sales](columns=cs_item_sk join_filter=cs_item_sk) -> [cs_item_sk:lo
     Scan[inventory](columns=inv_date_sk,inv_item_sk,inv_quantity_on_hand filter=And(Compare(inv_quantity_on_hand,GtEq,100),Compare(inv_quantity_on_hand,LtEq,500)) join_filter=inv_item_sk) -> [inv_date_sk:long, inv_item_sk:long, inv_quantity_on_hand:int]
     ↓ Filter(((#2>=lit(100:int)) and (#2<=lit(500:int))), keep=0,1) -> [inv_date_sk:long, inv_item_sk:long]
       Scan[item](columns=i_item_sk,i_item_id,i_item_desc,i_current_price,i_manufact_id filter=Or(Or(Or(Compare(i_manufact_id,Eq,677),Compare(i_manufact_id,Eq,940)),Compare(i_manufact_id,Eq,694)),Compare(i_manufact_id,Eq,808))) -> [i_item_sk:long, i_item_id:string, i_item_desc:string, i_current_price:decimal(7,2), i_manufact_id:long]
-      ↓ Filter((((cast(#3 as decimal(12,2))>=lit(68.00:decimal(12,2))) and (cast(#3 as decimal(21,2))<=cast((lit(68:int)+lit(30:int)) as decimal(21,2)))) and in(#4,677,940,694,808,false)), keep=0,1,2,3) -> [i_item_sk:long, i_item_id:string, i_item_desc:string, i_current_price:decimal(7,2)]
+      ↓ Filter((((cast(#3 as decimal(12,2))>=lit(68.00:decimal(12,2))) and (cast(#3 as decimal(21,2))<=lit(98.00:decimal(21,2)))) and in(#4,677,940,694,808,false)), keep=0,1,2,3) -> [i_item_sk:long, i_item_id:string, i_item_desc:string, i_current_price:decimal(7,2)]
       ↓ Morsel[parallelism=N] -> [i_item_sk:long, i_item_id:string, i_item_desc:string, i_current_price:decimal(7,2)]
     ↙ HashJoin[Inner](#1 = #0) -> [inv_date_sk:long, inv_item_sk:long, i_item_sk:long, i_item_id:string, i_item_desc:string, i_current_price:decimal(7,2)]
     ↓ Project(#2, #3, #4, #5, #0) -> [i_item_sk:long, i_item_id:string, i_item_desc:string, i_current_price:decimal(7,2), inv_date_sk:long]

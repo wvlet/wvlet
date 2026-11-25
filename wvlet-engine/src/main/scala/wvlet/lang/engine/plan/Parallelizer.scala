@@ -17,6 +17,8 @@ import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
 
+import scala.collection.mutable
+
 /**
   * Runs scan pipelines (a splittable scan with the filters, projections, and hash join probes over
   * it) as [[MorselOp]]s, so that parts of the scan are read and processed concurrently. Operators
@@ -35,12 +37,18 @@ object Parallelizer:
       runner: TaskRunner,
       aboveBreakers: Boolean = true,
       parallelPartitioning: Boolean = true,
-      concurrentBuilds: Boolean = true
+      concurrentBuilds: Boolean = true,
+      sharedPartials: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
     else
-      given AboveBreakers = AboveBreakers(aboveBreakers, parallelPartitioning, concurrentBuilds)
+      given AboveBreakers = AboveBreakers(
+        aboveBreakers,
+        parallelPartitioning,
+        concurrentBuilds,
+        sharedPartials
+      )
       rewrite(op, runner)
 
   /**
@@ -51,7 +59,8 @@ object Parallelizer:
   private case class AboveBreakers(
       enabled: Boolean,
       parallelPartitioning: Boolean,
-      concurrentBuilds: Boolean
+      concurrentBuilds: Boolean,
+      sharedPartials: Boolean
   )
 
   /**
@@ -253,7 +262,8 @@ object Parallelizer:
             runner,
             prepareSteps(p, runner),
             p.close,
-            o.parallelPartitioning
+            o.parallelPartitioning,
+            o.sharedPartials
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -423,16 +433,28 @@ private[plan] object TwoPhaseAgg:
 
   /**
     * The partial aggregates of `calls`, and for each call the indexes of the partial aggregates it
-    * reads (a sum and a count for avg, the call itself otherwise)
+    * reads (a sum and a count for avg, the call itself otherwise). With `shared`, identical partial
+    * aggregates are computed once (`shared_agg_partials`): `avg(x)` reads the partials of `sum(x)`
+    * and `count(x)` of the same aggregation
     */
-  def decompose(calls: Seq[AggCall]): (IndexedSeq[AggCall], IndexedSeq[IndexedSeq[Int]]) =
-    val partials             = IndexedSeq.newBuilder[AggCall]
+  def decompose(
+      calls: Seq[AggCall],
+      shared: Boolean = false
+  ): (IndexedSeq[AggCall], IndexedSeq[IndexedSeq[Int]]) =
+    val partials             = mutable.ArrayBuffer.empty[AggCall]
     val sources              = IndexedSeq.newBuilder[IndexedSeq[Int]]
-    var next                 = 0
     def add(c: AggCall): Int =
-      partials += c
-      next += 1
-      next - 1
+      // Matched with ==, not by sig, which leaves out RowFn closures
+      val i =
+        if shared then
+          partials.indexOf(c)
+        else
+          -1
+      if i >= 0 then
+        i
+      else
+        partials += c
+        partials.size - 1
     calls.foreach { c =>
       lower(c) match
         case "avg" | "mean" =>
@@ -449,7 +471,9 @@ private[plan] object TwoPhaseAgg:
         case _ =>
           sources += IndexedSeq(add(c))
     }
-    (partials.result(), sources.result())
+    (partials.toIndexedSeq, sources.result())
+
+  end decompose
 
   /** The aggregate combining the partial results `in` of partial aggregate `c` */
   def merge(c: AggCall, in: VExpr): AggCall =
@@ -482,11 +506,12 @@ private[plan] object TwoPhaseAgg:
       runner: TaskRunner,
       prepare: List[() => Unit],
       release: List[() => Unit],
-      parallelPartitioning: Boolean
+      parallelPartitioning: Boolean,
+      sharedPartials: Boolean
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
-    val (partialAggs, rel) = decompose(a.aggs)
+    val (partialAggs, rel) = decompose(a.aggs, sharedPartials)
     val srcs               = rel.map(_.map(_ + nk))
     val partialSchema      = Schema(
       a.schema.fields.take(nk) ++

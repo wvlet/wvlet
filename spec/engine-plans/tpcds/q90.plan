@@ -1,6 +1,6 @@
 -- q90#1
 Scan[time_dim](columns=t_time_sk,t_hour filter=Compare(t_hour,GtEq,8) join_filter=t_time_sk) -> [t_time_sk:long, t_hour:long]
-↓ Filter(((#1>=lit(8:long)) and (#1<=(lit(8:int)+lit(1:int)))), keep=0) -> [t_time_sk:long]
+↓ Filter(((#1>=lit(8:long)) and (#1<=lit(9:long))), keep=0) -> [t_time_sk:long]
   Scan[web_sales](columns=ws_sold_time_sk,ws_ship_hdemo_sk,ws_web_page_sk join_filter=ws_ship_hdemo_sk,ws_web_page_sk) -> [ws_sold_time_sk:long, ws_ship_hdemo_sk:long, ws_web_page_sk:long]
     Scan[household_demographics](columns=hd_demo_sk,hd_dep_count filter=Compare(hd_dep_count,Eq,6)) -> [hd_demo_sk:long, hd_dep_count:long]
     ↓ Filter((#1=lit(6:long)), keep=0) -> [hd_demo_sk:long]
@@ -20,7 +20,7 @@ Scan[time_dim](columns=t_time_sk,t_hour filter=Compare(t_hour,GtEq,8) join_filte
 ↓ Project(#0) -> [amc:long]
 ↓ Project(#0) -> [amc:long]
   Scan[time_dim](columns=t_time_sk,t_hour filter=Compare(t_hour,GtEq,19) join_filter=t_time_sk) -> [t_time_sk:long, t_hour:long]
-  ↓ Filter(((#1>=lit(19:long)) and (#1<=(lit(19:int)+lit(1:int)))), keep=0) -> [t_time_sk:long]
+  ↓ Filter(((#1>=lit(19:long)) and (#1<=lit(20:long))), keep=0) -> [t_time_sk:long]
     Scan[web_sales](columns=ws_sold_time_sk,ws_ship_hdemo_sk,ws_web_page_sk join_filter=ws_ship_hdemo_sk,ws_web_page_sk) -> [ws_sold_time_sk:long, ws_ship_hdemo_sk:long, ws_web_page_sk:long]
       Scan[household_demographics](columns=hd_demo_sk,hd_dep_count filter=Compare(hd_dep_count,Eq,6)) -> [hd_demo_sk:long, hd_dep_count:long]
       ↓ Filter((#1=lit(6:long)), keep=0) -> [hd_demo_sk:long]

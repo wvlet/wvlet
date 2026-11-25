@@ -6,7 +6,7 @@ Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_sales_price 
 ↙ HashJoin[Inner](#1 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2), i_item_sk:long, i_manager_id:long]
 ↓ Project(#5, #0, #2, #3) -> [i_manager_id:long, ss_sold_date_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
   Scan[date_dim](columns=d_date_sk,d_month_seq,d_moy) -> [d_date_sk:long, d_month_seq:long, d_moy:long]
-  ↓ Filter(in_exprs(#1,lit(1200:long),(lit(1200:int)+lit(1:int)),(lit(1200:int)+lit(2:int)),(lit(1200:int)+lit(3:int)),(lit(1200:int)+lit(4:int)),(lit(1200:int)+lit(5:int)),(lit(1200:int)+lit(6:int)),(lit(1200:int)+lit(7:int)),(lit(1200:int)+lit(8:int)),(lit(1200:int)+lit(9:int)),(lit(1200:int)+lit(10:int)),(lit(1200:int)+lit(11:int)),false), keep=0,2) -> [d_date_sk:long, d_moy:long]
+  ↓ Filter(in_exprs(#1,lit(1200:long),lit(1201:long),lit(1202:long),lit(1203:long),lit(1204:long),lit(1205:long),lit(1206:long),lit(1207:long),lit(1208:long),lit(1209:long),lit(1210:long),lit(1211:long),false), keep=0,2) -> [d_date_sk:long, d_moy:long]
   ↓ Morsel[parallelism=N] -> [d_date_sk:long, d_moy:long]
 ↙ HashJoin[Inner](#1 = #0) -> [i_manager_id:long, ss_sold_date_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2), d_date_sk:long, d_moy:long]
   Scan[store](columns=s_store_sk) -> [s_store_sk:long]

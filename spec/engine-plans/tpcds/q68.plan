@@ -9,7 +9,7 @@
     ↓ Morsel[parallelism=N] -> [s_store_sk:long]
   ↙ HashJoin[Inner](#4 = #0) -> [ss_sold_date_sk:long, ss_customer_sk:long, ss_hdemo_sk:long, ss_addr_sk:long, ss_store_sk:long, ss_ticket_number:long, ss_ext_sales_price:decimal(7,2), ss_ext_list_price:decimal(7,2), ss_ext_tax:decimal(7,2), hd_demo_sk:long, s_store_sk:long]
     Scan[date_dim](columns=d_date_sk,d_year,d_dom filter=And(Compare(d_dom,GtEq,1),Compare(d_dom,LtEq,2))) -> [d_date_sk:long, d_year:long, d_dom:long]
-    ↓ Filter((((#2>=lit(1:long)) and (#2<=lit(2:long))) and in_exprs(#1,lit(1999:long),(lit(1999:int)+lit(1:int)),(lit(1999:int)+lit(2:int)),false)), keep=0) -> [d_date_sk:long]
+    ↓ Filter((((#2>=lit(1:long)) and (#2<=lit(2:long))) and in_exprs(#1,lit(1999:long),lit(2000:long),lit(2001:long),false)), keep=0) -> [d_date_sk:long]
     ↓ Morsel[parallelism=N] -> [d_date_sk:long]
   ↙ HashJoin[Inner](#0 = #0) -> [ss_sold_date_sk:long, ss_customer_sk:long, ss_hdemo_sk:long, ss_addr_sk:long, ss_store_sk:long, ss_ticket_number:long, ss_ext_sales_price:decimal(7,2), ss_ext_list_price:decimal(7,2), ss_ext_tax:decimal(7,2), hd_demo_sk:long, s_store_sk:long, d_date_sk:long]
     Scan[customer_address](columns=ca_address_sk,ca_city) -> [ca_address_sk:long, ca_city:string]

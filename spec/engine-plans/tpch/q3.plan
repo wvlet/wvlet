@@ -11,7 +11,7 @@ Scan[lineitem](columns=l_orderkey,l_extendedprice,l_discount,l_shipdate filter=C
   ↓ Morsel[parallelism=N] -> [o_orderkey:long, o_orderdate:date, o_shippriority:int]
 ↙ HashJoin[Inner](#0 = #0) -> [l_orderkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), o_orderkey:long, o_orderdate:date, o_shippriority:int]
 ↓ Project(#4, #5, #0, #1, #2) -> [o_orderdate:date, o_shippriority:int, l_orderkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
-↓ HashAgg(keys=[#2, #0, #1], aggs=[agg:sum((#3*(lit(1:int)-#4)))]) -> [l_orderkey:long, o_orderdate:date, o_shippriority:int, __partial_0:decimal(38,4)]
+↓ HashAgg(keys=[#2, #0, #1], aggs=[agg:sum((#3*(lit(1.00:decimal(16,2))-#4)))]) -> [l_orderkey:long, o_orderdate:date, o_shippriority:int, __partial_0:decimal(38,4)]
 ↓ Morsel[parallelism=N] -> [l_orderkey:long, o_orderdate:date, o_shippriority:int, __partial_0:decimal(38,4)]
 ↓ PartitionedAgg[parallelism=N](keys=[#0, #1, #2], aggs=[agg:sum(#3)]) -> [l_orderkey:long, o_orderdate:date, o_shippriority:int, __final_0:decimal(38,4)]
 ↓ Project(#0, #1, #2, #3) -> [l_orderkey:long, o_orderdate:date, o_shippriority:int, agg:sum((#22*(lit(1:int)-#23))):decimal(38,4)]

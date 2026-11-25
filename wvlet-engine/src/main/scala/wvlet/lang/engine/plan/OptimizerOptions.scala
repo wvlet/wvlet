@@ -232,6 +232,27 @@ enum Optimization(val name: String):
     */
   case ParquetFooterCache extends Optimization("parquet_footer_cache")
 
+  /**
+    * A non-trivial subexpression repeated across the expressions of a projection, filter,
+    * aggregation, or window is computed once, in a projection below it
+    * ([[wvlet.lang.engine.runtime.CommonSubexpressions]]), as DuckDB's and DataFusion's common
+    * subexpression elimination do
+    */
+  case CommonSubexpressions extends Optimization("common_subexpressions")
+
+  /**
+    * Two-phase aggregation computes identical partial aggregates once: `avg(x)` (a sum and a count)
+    * reuses the partials of `sum(x)` and `count(x)` in the same aggregation
+    */
+  case SharedAggPartials extends Optimization("shared_agg_partials")
+
+  /**
+    * Row-independent subexpressions are evaluated once when lowering, and integral constants added
+    * to or subtracted from decimals become decimals at the result scale
+    * ([[wvlet.lang.engine.runtime.FoldConstants]])
+    */
+  case FoldConstants extends Optimization("fold_constants")
+
 end Optimization
 
 object Optimization:

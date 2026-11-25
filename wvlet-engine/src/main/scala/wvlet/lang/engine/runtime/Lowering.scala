@@ -17,9 +17,11 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.Planner
 import wvlet.lang.engine.plan.ScanFilters
 import wvlet.lang.engine.vector.PType
+import wvlet.lang.engine.vector.Schema
 import wvlet.uni.cloud.parquet.ParquetFilter
 
 import scala.collection.mutable
@@ -50,9 +52,20 @@ object Lowering:
       accelerator: Option[PlanAccelerator] = None,
       footerCache: Boolean = false,
       windowTopN: Boolean = false,
-      windowKernels: Boolean = false
+      windowKernels: Boolean = false,
+      commonSubexpressions: Boolean = false,
+      foldConstants: Boolean = false
   ): Operator =
-    val l = Lower(joinFilters, presizeAggs, accelerator, footerCache, windowTopN, windowKernels)
+    val l = Lower(
+      joinFilters,
+      presizeAggs,
+      accelerator,
+      footerCache,
+      windowTopN,
+      windowKernels,
+      commonSubexpressions,
+      foldConstants
+    )
     if inSet then
       l.markInSet(p)
     l.lower(p)
@@ -75,7 +88,9 @@ object Lowering:
       accelerator: Option[PlanAccelerator],
       footerCache: Boolean,
       windowTopN: Boolean,
-      windowKernels: Boolean
+      windowKernels: Boolean,
+      commonSubexpressions: Boolean,
+      foldConstants: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -102,13 +117,41 @@ object Lowering:
       accelerator.flatMap(
         _.accelerate(
           p,
-          q => Lowering(q, presizeAggs = presizeAggs, inSet = inSet, footerCache = footerCache)
+          q =>
+            Lowering(
+              q,
+              presizeAggs = presizeAggs,
+              inSet = inSet,
+              footerCache = footerCache,
+              commonSubexpressions = commonSubexpressions,
+              foldConstants = foldConstants
+            )
         )
       ) match
         case Some(op) =>
           op
         case None =>
           lowerNode(p, inSet)
+
+    end lower
+
+    /** A bound expression over an input whose column of id `i` is at `pos(i)`, folded if enabled */
+    private def expr(e: BExpr, pos: Array[Int]): VExpr =
+      val x = e.lower(pos)
+      if foldConstants then
+        FoldConstants(x)
+      else
+        x
+
+    /**
+      * The input with the common subexpressions of `exprs` appended ([[CommonSubexpressions]]), and
+      * the expressions over it
+      */
+    private def shared(input: Operator, exprs: IndexedSeq[VExpr]): (Operator, IndexedSeq[VExpr]) =
+      if commonSubexpressions then
+        CommonSubexpressions.share(input, exprs)
+      else
+        (input, exprs)
 
     private def lowerNode(p: RuntimePlan, inSet: Boolean): Operator =
       p match
@@ -143,10 +186,17 @@ object Lowering:
                 other
           FilterOp(window, filter)
         case Filter(child, cond, _) =>
-          FilterOp(lower(child), cond.lower(positions(child)))
+          val in             = lower(child)
+          val (input, conds) = shared(in, IndexedSeq(expr(cond, positions(child))))
+          if input eq in then
+            FilterOp(in, conds.head)
+          else
+            // Without the shared columns
+            FilterOp(input, conds.head, Array.range(0, in.schema.size))
         case Project(child, exprs, _) =>
-          val pos = positions(child)
-          ProjectOp(lower(child), exprs.map(_.lower(pos)), p.schema)
+          val pos         = positions(child)
+          val (input, es) = shared(lower(child), exprs.map(expr(_, pos)))
+          ProjectOp(input, es, p.schema)
         case Sort(child, keys, limit) =>
           val pos = positions(child)
           SortOp(lower(child), keys.map(_.lower(pos)), limit)
@@ -188,10 +238,21 @@ object Lowering:
           )
         case Aggregate(child, keys, calls, _) =>
           val pos = positions(child)
+          val ks  = keys.map(expr(_, pos))
+          val cs  = calls.map(c =>
+            c.lower(pos).copy(args = c.args.map(expr(_, pos)), filter = c.filter.map(expr(_, pos)))
+          )
+          // Keys, then each call's arguments and filter
+          val (input, es) = shared(lower(child), ks ++ cs.flatMap(c => c.args ++ c.filter))
+          val it          = es.iterator.drop(ks.size)
+          val calls2      = cs.map { c =>
+            val args = c.args.map(_ => it.next())
+            c.copy(args = args, filter = c.filter.map(_ => it.next()))
+          }
           HashAggOp(
-            lower(child),
-            keys.map(_.lower(pos)),
-            calls.map(_.lower(pos)),
+            input,
+            es.take(ks.size),
+            calls2,
             p.schema,
             if presizeAggs then
               expectedGroups(child, keys)
@@ -214,7 +275,56 @@ object Lowering:
           Planner.sampleFilter(lower(child), percentage)
         case Window(child, calls, _) =>
           val pos = positions(child)
-          WindowOp(lower(child), calls.map(_.lower(pos)), p.schema, runningKernels = windowKernels)
+          val ws  = calls.map { c =>
+            c.lower(pos)
+              .copy(
+                args = c.args.map(expr(_, pos)),
+                partitionBy = c.partitionBy.map(expr(_, pos)),
+                orderBy = c.orderBy.map(k => k.lower(pos).copy(expr = expr(k.expr, pos)))
+              )
+          }
+          // Each call's arguments, partition keys, and sort keys
+          val in          = lower(child)
+          val (input, es) = shared(
+            in,
+            ws.flatMap(w => w.args ++ w.partitionBy ++ w.orderBy.map(_.expr))
+          )
+          val it     = es.iterator
+          val calls2 = ws.map { w =>
+            w.copy(
+              args = w.args.map(_ => it.next()),
+              partitionBy = w.partitionBy.map(_ => it.next()),
+              orderBy = w.orderBy.map(_.copy(expr = it.next()))
+            )
+          }
+          if input eq in then
+            WindowOp(in, calls2, p.schema, runningKernels = windowKernels)
+          else
+            // The window appends its results to its input: drop the shared columns after it
+            val width  = in.schema.size
+            val extra  = input.schema.size - width
+            val result = p.schema.fields.drop(width)
+            val w      = WindowOp(
+              input,
+              calls2,
+              Schema(input.schema.fields ++ result),
+              runningKernels = windowKernels
+            )
+            ProjectOp(
+              w,
+              p.schema
+                .fields
+                .indices
+                .map { i =>
+                  val j =
+                    if i < width then
+                      i
+                    else
+                      i + extra
+                  ColRef(j, p.schema(i).ptype, p.schema(i).name)
+                },
+              p.schema
+            )
         case Unnest(child, lists, keepInput, outer, _) =>
           val pos = positions(child)
           UnnestOp(lower(child), lists.map(_.lower(pos)), keepInput, p.schema, outer)

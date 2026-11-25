@@ -1,6 +1,6 @@
 -- q51#1
 Scan[date_dim](columns=d_date_sk,d_date,d_month_seq filter=Compare(d_month_seq,GtEq,1200) join_filter=d_date_sk) -> [d_date_sk:long, d_date:date, d_month_seq:long]
-↓ Filter(((#2>=lit(1200:long)) and (#2<=(lit(1200:int)+lit(11:int)))), keep=0,1) -> [d_date_sk:long, d_date:date]
+↓ Filter(((#2>=lit(1200:long)) and (#2<=lit(1211:long))), keep=0,1) -> [d_date_sk:long, d_date:date]
   Scan[web_sales](columns=ws_sold_date_sk,ws_item_sk,ws_sales_price filter=IsNotNull(ws_item_sk)) -> [ws_sold_date_sk:long, ws_item_sk:long, ws_sales_price:decimal(7,2)]
   ↓ Filter(is_null(#1,true)) -> [ws_sold_date_sk:long, ws_item_sk:long, ws_sales_price:decimal(7,2)]
   ↓ Morsel[parallelism=N] -> [ws_sold_date_sk:long, ws_item_sk:long, ws_sales_price:decimal(7,2)]
@@ -16,7 +16,7 @@ Scan[date_dim](columns=d_date_sk,d_date,d_month_seq filter=Compare(d_month_seq,G
   Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_sales_price filter=IsNotNull(ss_item_sk) join_filter=ss_sold_date_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_sales_price:decimal(7,2)]
   ↓ Filter(is_null(#1,true)) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_sales_price:decimal(7,2)]
     Scan[date_dim](columns=d_date_sk,d_date,d_month_seq filter=Compare(d_month_seq,GtEq,1200)) -> [d_date_sk:long, d_date:date, d_month_seq:long]
-    ↓ Filter(((#2>=lit(1200:long)) and (#2<=(lit(1200:int)+lit(11:int)))), keep=0,1) -> [d_date_sk:long, d_date:date]
+    ↓ Filter(((#2>=lit(1200:long)) and (#2<=lit(1211:long))), keep=0,1) -> [d_date_sk:long, d_date:date]
     ↓ Morsel[parallelism=N] -> [d_date_sk:long, d_date:date]
   ↙ HashJoin[Inner](#0 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_sales_price:decimal(7,2), d_date_sk:long, d_date:date]
   ↓ HashAgg(keys=[#1, #4], aggs=[agg:sum(#2)]) -> [ss_item_sk:long, d_date:date, __partial_0:decimal(38,2)]

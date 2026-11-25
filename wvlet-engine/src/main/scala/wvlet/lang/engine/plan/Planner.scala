@@ -67,7 +67,9 @@ class Planner(
     accelerator = accelerator.filter(_ => enabled(Optimization.GpuOffload)),
     footerCache = enabled(Optimization.ParquetFooterCache),
     windowTopN = enabled(Optimization.WindowTopN),
-    windowKernels = enabled(Optimization.RunningWindowKernels)
+    windowKernels = enabled(Optimization.RunningWindowKernels),
+    commonSubexpressions = enabled(Optimization.CommonSubexpressions),
+    foldConstants = enabled(Optimization.FoldConstants)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */
@@ -93,7 +95,8 @@ class Planner(
         TaskRunner.default,
         aboveBreakers = enabled(Optimization.ParallelAboveBreakers),
         parallelPartitioning = enabled(Optimization.ParallelAggPartitioning),
-        concurrentBuilds = enabled(Optimization.ConcurrentJoinBuilds)
+        concurrentBuilds = enabled(Optimization.ConcurrentJoinBuilds),
+        sharedPartials = enabled(Optimization.SharedAggPartials)
       )
     else
       pruned

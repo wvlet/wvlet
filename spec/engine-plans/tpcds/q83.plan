@@ -70,6 +70,7 @@
   ↓ Project(#0, #1) -> [item_id:string, wr_item_qty:long]
   ↓ Project(#0, #1) -> [item_id:string, wr_item_qty:long]
 ↙ HashJoin[Inner](#0 = #0) -> [item_id:string, sr_item_qty:long, item_id:string, cr_item_qty:long, item_id:string, wr_item_qty:long]
-↓ Project(#0, #1, ((((#1*lit(1.0000:decimal(5,4)))/((#1+#3)+#5))/lit(3.0000:decimal(5,4)))*lit(100:int)), #3, ((((#3*lit(1.0000:decimal(5,4)))/((#1+#3)+#5))/lit(3.0000:decimal(5,4)))*lit(100:int)), #5, ((((#5*lit(1.0000:decimal(5,4)))/((#1+#3)+#5))/lit(3.0000:decimal(5,4)))*lit(100:int)), (((#1+#3)+#5)/lit(3.0:decimal(2,1)))) -> [item_id:string, sr_item_qty:long, sr_dev:double, cr_item_qty:long, cr_dev:double, wr_item_qty:long, wr_dev:double, average:double]
+↓ Project(#0, #1, #3, #5, ((#1+#3)+#5)) -> [item_id:string, sr_item_qty:long, cr_item_qty:long, wr_item_qty:long, __cse_0:long]
+↓ Project(#0, #1, ((((#1*lit(1.0000:decimal(5,4)))/#4)/lit(3.0000:decimal(5,4)))*lit(100:int)), #2, ((((#2*lit(1.0000:decimal(5,4)))/#4)/lit(3.0000:decimal(5,4)))*lit(100:int)), #3, ((((#3*lit(1.0000:decimal(5,4)))/#4)/lit(3.0000:decimal(5,4)))*lit(100:int)), (#4/lit(3.0:decimal(2,1)))) -> [item_id:string, sr_item_qty:long, sr_dev:double, cr_item_qty:long, cr_dev:double, wr_item_qty:long, wr_dev:double, average:double]
 ↓ Morsel[parallelism=N] -> [item_id:string, sr_item_qty:long, sr_dev:double, cr_item_qty:long, cr_dev:double, wr_item_qty:long, wr_dev:double, average:double]
 ↓ Sort[parallelism=N](#0, #1, limit=100) -> [item_id:string, sr_item_qty:long, sr_dev:double, cr_item_qty:long, cr_dev:double, wr_item_qty:long, wr_dev:double, average:double]

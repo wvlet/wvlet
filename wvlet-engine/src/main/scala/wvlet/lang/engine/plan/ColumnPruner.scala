@@ -367,46 +367,54 @@ object VExprs:
 
   /** Replace each column reference of an expression with `f` of it */
   def mapRefs(e: VExpr, f: ColRef => VExpr): VExpr =
-    def r(x: VExpr): VExpr = mapRefs(x, f)
     e match
       case c: ColRef =>
         f(c)
+      case other =>
+        mapChildren(other, mapRefs(_, f))
+
+  /**
+    * The expression with each child replaced by `f` of it (leaves as they are). Throws
+    * IllegalStateException for an expression type it doesn't know
+    */
+  def mapChildren(e: VExpr, f: VExpr => VExpr): VExpr =
+    e match
       case _ if e.children.isEmpty =>
         e
       case x: RowFn =>
-        x.copy(args = x.args.map(r))
+        x.copy(args = x.args.map(f))
       case x: CastExpr =>
-        x.copy(child = r(x.child))
+        x.copy(child = f(x.child))
       case x: Arith =>
-        x.copy(left = r(x.left), right = r(x.right))
+        x.copy(left = f(x.left), right = f(x.right))
       case x: Negate =>
-        x.copy(child = r(x.child))
+        x.copy(child = f(x.child))
       case x: Compare =>
-        x.copy(left = r(x.left), right = r(x.right))
+        x.copy(left = f(x.left), right = f(x.right))
       case x: NullSafeDistinct =>
-        x.copy(left = r(x.left), right = r(x.right))
+        x.copy(left = f(x.left), right = f(x.right))
       case x: AndExpr =>
-        x.copy(left = r(x.left), right = r(x.right))
+        x.copy(left = f(x.left), right = f(x.right))
       case x: OrExpr =>
-        x.copy(left = r(x.left), right = r(x.right))
+        x.copy(left = f(x.left), right = f(x.right))
       case x: NotExpr =>
-        x.copy(child = r(x.child))
+        x.copy(child = f(x.child))
       case x: IsNullExpr =>
-        x.copy(child = r(x.child))
+        x.copy(child = f(x.child))
       case x: InList =>
-        x.copy(child = r(x.child))
+        x.copy(child = f(x.child))
       case x: InExprs =>
-        x.copy(child = r(x.child), list = x.list.map(r))
+        x.copy(child = f(x.child), list = x.list.map(f))
       case x: CaseWhen =>
-        x.copy(whens = x.whens.map((c, v) => (r(c), r(v))), elseExpr = x.elseExpr.map(r))
+        x.copy(whens = x.whens.map((c, v) => (f(c), f(v))), elseExpr = x.elseExpr.map(f))
       case x: Coalesce =>
-        x.copy(args = x.args.map(r))
+        x.copy(args = x.args.map(f))
       case x: LikeExpr =>
-        x.copy(child = r(x.child))
+        x.copy(child = f(x.child))
       case other =>
         throw IllegalStateException(s"Unsupported expression for column remapping: ${other}")
     end match
 
-  end mapRefs
+  end mapChildren
 
 end VExprs

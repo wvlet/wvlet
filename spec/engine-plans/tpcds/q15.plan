@@ -10,7 +10,7 @@ Scan[catalog_sales](columns=cs_sold_date_sk,cs_bill_customer_sk,cs_sales_price j
   Scan[customer_address](columns=ca_address_sk,ca_state,ca_zip) -> [ca_address_sk:long, ca_state:string, ca_zip:string]
   ↓ Morsel[parallelism=N] -> [ca_address_sk:long, ca_state:string, ca_zip:string]
 ↙ HashJoin[Inner](#5 = #0) -> [cs_sold_date_sk:long, cs_bill_customer_sk:long, cs_sales_price:decimal(7,2), d_date_sk:long, c_customer_sk:long, c_current_addr_sk:long, ca_address_sk:long, ca_state:string, ca_zip:string]
-↓ Filter(((in(substring(#8,cast(lit(1:int) as long),cast(lit(5:int) as long)),85669,80348,86475,88274,83405,85460,86197,85392,81792,false) or in(#7,CA,WA,GA,false)) or (cast(#2 as decimal(12,2))>lit(500.00:decimal(12,2)))), keep=2,8) -> [cs_sales_price:decimal(7,2), ca_zip:string]
+↓ Filter(((in(substring(#8,lit(1:long),lit(5:long)),85669,80348,86475,88274,83405,85460,86197,85392,81792,false) or in(#7,CA,WA,GA,false)) or (cast(#2 as decimal(12,2))>lit(500.00:decimal(12,2)))), keep=2,8) -> [cs_sales_price:decimal(7,2), ca_zip:string]
 ↓ HashAgg(keys=[#1], aggs=[agg:sum(#0)]) -> [ca_zip:string, __partial_0:decimal(38,2)]
 ↓ Morsel[parallelism=N] -> [ca_zip:string, __partial_0:decimal(38,2)]
 ↓ PartitionedAgg[parallelism=N](keys=[#0], aggs=[agg:sum(#1)]) -> [ca_zip:string, __final_0:decimal(38,2)]
