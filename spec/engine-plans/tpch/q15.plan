@@ -1,7 +1,6 @@
 -- q15#1
 Scan[supplier](columns=s_suppkey,s_name,s_address,s_phone join_filter=s_suppkey) -> [s_suppkey:long, s_name:string, s_address:string, s_phone:string]
-    Scan[lineitem](columns=l_suppkey,l_extendedprice,l_discount,l_shipdate filter=And(Compare(l_shipdate,GtEq,1996-01-01),Compare(l_shipdate,Lt,1996-04-01))) -> [l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipdate:date]
-    ↓ Filter(((#3>=lit(9496:date)) and (#3<lit(9587:date))), keep=0,1,2) -> [l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
+    Scan[lineitem](columns=l_suppkey,l_extendedprice,l_discount filter=And(Compare(l_shipdate,GtEq,1996-01-01),Compare(l_shipdate,Lt,1996-04-01)) row_filter=And(Compare(l_shipdate,GtEq,1996-01-01),Compare(l_shipdate,Lt,1996-04-01))) -> [l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
     ↓ HashAgg(keys=[#0], aggs=[agg:sum((#1*(lit(1.00:decimal(16,2))-#2)))]) -> [supplier_no:long, __partial_0:decimal(38,4)]
     ↓ Morsel[parallelism=N] -> [supplier_no:long, __partial_0:decimal(38,4)]
     ↓ PartitionedAgg[parallelism=N](keys=[#0], aggs=[agg:sum(#1)]) -> [supplier_no:long, __final_0:decimal(38,4)]
