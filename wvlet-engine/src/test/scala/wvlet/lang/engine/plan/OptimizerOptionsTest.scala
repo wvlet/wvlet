@@ -78,6 +78,7 @@ class OptimizerOptionsTest extends UniTest:
         "window_top_n",
         "running_window_kernels",
         "window_sort_kernels",
+        "window_share_partitions",
         "parallelize",
         "late_gather",
         "short_circuit_filters",

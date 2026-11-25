@@ -92,6 +92,68 @@ class WindowOpTest extends UniTest:
     actual shouldBe expected
   }
 
+  /** Calls over two windows, (g, s) ordered by v and g without ORDER BY, interleaved */
+  private val sharedCalls = IndexedSeq(
+    call("row_number", Nil, Seq(g, s), order, None, PType.Int64),
+    call("avg", Seq(v), Seq(g), Nil, None, PType.Float64),
+    call("sum", Seq(v), Seq(g, s), order, None, PType.Int64),
+    call("max", Seq(v), Seq(g, s), order, Some(FrameSpec(true, None, Some(0))), PType.Int64),
+    call("count", Seq(v), Seq(g), Nil, None, PType.Int64),
+    call("lag", Seq(v), Seq(g, s), order, None, PType.Int64),
+    call("sum", Seq(v), Seq(g, s), order, Some(FrameSpec(true, Some(-2), Some(0))), PType.Int64),
+    // Same keys in another direction: a window of its own
+    call("rank", Nil, Seq(g, s), Seq(SortKey(v, false, true)), None, PType.Int64)
+  )
+
+  private def sharedRows(
+      cs: IndexedSeq[WindowCall],
+      parallel: Boolean,
+      share: Boolean,
+      topN: Option[WindowOp.TopN] = None
+  ): Seq[String] =
+    val op = WindowOp(
+      BatchesOp(schema, batches),
+      cs,
+      Schema(schema.fields ++ cs.indices.map(i => Field(s"w${i}", cs(i).ptype))),
+      if parallel then
+        runner
+      else
+        TaskRunner.Sequential
+      ,
+      minParallelRows = 0,
+      topN = topN,
+      runningKernels = true,
+      sortKernels = true,
+      sharePartitions = share
+    )
+    try
+      op.drain()
+        .flatMap(b => (0 until b.size).map(i => b.row(i).map(String.valueOf).mkString(",")))
+        .sorted
+    finally op.close()
+
+  test("should group window calls by equal PARTITION BY and ORDER BY") {
+    WindowOp.callGroups(sharedCalls, share = true) shouldBe
+      Seq(IndexedSeq(0, 2, 3, 5, 6), IndexedSeq(1, 4), IndexedSeq(7))
+    WindowOp.callGroups(sharedCalls, share = false) shouldBe sharedCalls.indices.map(IndexedSeq(_))
+  }
+
+  test("should give the same values when calls share their partitions") {
+    for parallel <- Seq(false, true) do
+      val expected = sharedRows(sharedCalls, parallel, share = false)
+      expected.size shouldBe 10000
+      sharedRows(sharedCalls, parallel, share = true) shouldBe expected
+    // A rank bound keeps the same top rows of each partition for every call of the window
+    val ranked = IndexedSeq(
+      call("row_number", Nil, Seq(g, s), order, None, PType.Int64),
+      call("rank", Nil, Seq(g, s), order, None, PType.Int64)
+    )
+    val top      = Some(WindowOp.TopN(3, ties = false))
+    val expected = sharedRows(ranked, parallel = true, share = false, top)
+    (expected.size < 10000) shouldBe true
+    sharedRows(ranked, parallel = true, share = true, top) shouldBe expected
+  }
+
   test("should partition rows in parallel as GroupTable.partitionRows does") {
     val n        = 100000
     val keys     = LongVec(PType.Int64, Array.tabulate(n)(i => (i % 40000).toLong), null)

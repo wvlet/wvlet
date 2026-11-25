@@ -229,7 +229,8 @@ object ColumnPruner:
             schema,
             topN = w.topN,
             runningKernels = w.runningKernels,
-            sortKernels = w.sortKernels
+            sortKernels = w.sortKernels,
+            sharePartitions = w.sharePartitions
           ),
           kept ++ (width until w.schema.size)
         )
