@@ -89,6 +89,8 @@ class OptimizerOptionsTest extends UniTest:
         "shared_agg_partials",
         "adaptive_partial_aggs",
         "pack_agg_keys",
+        "stream_pack_agg_keys",
+        "long_decimal_keys",
         "fold_constants",
         "fold_bound_constants",
         "unwrap_casts",

@@ -82,11 +82,18 @@ end GroupKey
   * and keys are compared in place against the stored key columns, so no per-row key objects are
   * allocated. NULL key values are equal to each other (GROUP BY semantics); [[lookup]] treats rows
   * with a NULL key as unmatched (join semantics).
+  *
+  * With `longDecimals`, decimal key columns are stored and compared as unscaled Long values
+  * ([[GroupTable.DecimalStore]]) instead of boxed BigDecimals.
   */
-final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
+final class GroupTable(
+    keyTypes: IndexedSeq[PType],
+    expectedGroups: Int = 0,
+    longDecimals: Boolean = false
+) extends GroupIndex:
   import GroupTable.*
 
-  private val stores: Array[KeyStore] = keyTypes.map(KeyStore.apply).toArray
+  private val stores: Array[KeyStore] = keyTypes.map(KeyStore(_, longDecimals)).toArray
   private val width                   = stores.length
   private var count                   = 0
   // Each slot packs (hash << 32 | group id), or is Empty: a probe compares the hash without
@@ -355,6 +362,19 @@ final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
 
 end GroupTable
 
+/** Dense group ids of the distinct keys of streamed batches, in first-seen order */
+trait GroupIndex:
+  def numGroups: Int
+
+  /**
+    * The group id of each of the first n rows of `keys`, adding new keys as groups with the next
+    * ids. NULL key values are equal to each other
+    */
+  def groupIds(keys: Array[Vec], n: Int): Array[Int]
+
+  /** Key values of every group, in group id order */
+  def keyVectors(): Array[Vec]
+
 object GroupTable:
   /** An unused slot: no entry has a negative group id */
   private inline val Empty = -1L
@@ -494,8 +514,10 @@ object GroupTable:
   end KeyStore
 
   object KeyStore:
-    def apply(t: PType): KeyStore =
+    def apply(t: PType, longDecimals: Boolean = false): KeyStore =
       t match
+        case d: PType.Decimal if longDecimals =>
+          DecimalStore(d)
         case PType.Int32 | PType.Date =>
           IntStore(t)
         case PType.Int64 | PType.Timestamp | PType.TimestampTz =>
@@ -684,6 +706,108 @@ object GroupTable:
     def result(n: Int): Vec = BoolVec(java.util.Arrays.copyOf(values, n), resultNulls(n))
 
   end BoolStore
+
+  /**
+    * Decimals of one type as their unscaled values at its scale: a Long while the value fits, and a
+    * BigDecimal otherwise. A value has one representation, so values are equal exactly when their
+    * representations are
+    */
+  final class DecimalStore(t: PType.Decimal) extends KeyStore:
+    private var values = new Array[Long](16)
+    // The values that don't fit in a Long, or null while none has been added
+    private var big: Array[AnyRef]     = null
+    protected def capacity: Int        = values.length
+    protected def grow(cap: Int): Unit =
+      values = java.util.Arrays.copyOf(values, cap)
+      if big != null then
+        big = java.util.Arrays.copyOf(big, cap)
+
+    def normalize(v: Vec): Vec =
+      v match
+        case x: LongVec if x.ptype == t =>
+          x
+        case x: ObjVec if x.ptype == t =>
+          x
+        case other =>
+          canonical(other, t)
+
+    /** Row i of a non-LongVec vector, rescaled to this type's scale */
+    private def rescaled(v: Vec, i: Int): java.math.BigDecimal = ValueOps.rescale(
+      ValueOps.toBigDecimal(v.get(i)),
+      t.scale
+    )
+
+    private inline def fitsLong(d: java.math.BigDecimal): Boolean =
+      d.unscaledValue().bitLength() < 64
+
+    def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
+      val ns = v.nulls
+      var i  = 0
+      v match
+        case lv: LongVec =>
+          val x = lv.values
+          while i < n do
+            if ns == null || !ns(i) then
+              mixInto(h, i, hashLong(x(i)))
+            i += 1
+        case _ =>
+          while i < n do
+            if !v.isNull(i) then
+              val d = rescaled(v, i)
+              mixInto(
+                h,
+                i,
+                if fitsLong(d) then
+                  hashLong(d.unscaledValue().longValue())
+                else
+                  d.hashCode
+              )
+            i += 1
+
+    def equalsAt(g: Int, v: Vec, i: Int): Boolean =
+      nullsEqual(g, v, i) {
+        val narrow = big == null || big(g) == null
+        v match
+          case lv: LongVec =>
+            narrow && values(g) == lv.values(i)
+          case _ =>
+            val d = rescaled(v, i)
+            if fitsLong(d) then
+              narrow && values(g) == d.unscaledValue().longValue()
+            else
+              !narrow && d == big(g)
+      }
+
+    protected def addValue(g: Int, v: Vec, i: Int): Unit =
+      v match
+        case lv: LongVec =>
+          values(g) = lv.values(i)
+        case _ =>
+          val d = rescaled(v, i)
+          if fitsLong(d) then
+            values(g) = d.unscaledValue().longValue()
+          else
+            if big == null then
+              big = new Array[AnyRef](values.length)
+            big(g) = d
+
+    def result(n: Int): Vec =
+      if big == null then
+        LongVec(t, java.util.Arrays.copyOf(values, n), resultNulls(n))
+      else
+        val b = VecBuilder(t, n)
+        var i = 0
+        while i < n do
+          if nulls != null && nulls(i) then
+            b.addNull()
+          else if big(i) != null then
+            b.add(big(i))
+          else
+            b.add(java.math.BigDecimal.valueOf(values(i), t.scale))
+          i += 1
+        b.result()
+
+  end DecimalStore
 
   /** Any other type, through boxed engine values and their equals / hashCode */
   final class ObjStore(t: PType) extends KeyStore:

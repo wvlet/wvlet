@@ -44,7 +44,9 @@ object Parallelizer:
       adaptivePartials: Boolean = true,
       setOpJoins: Boolean = true,
       packAggKeys: Boolean = true,
-      unionPipelines: Boolean = true
+      unionPipelines: Boolean = true,
+      streamPackAggKeys: Boolean = true,
+      longDecimalKeys: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -57,7 +59,9 @@ object Parallelizer:
         adaptivePartials,
         setOpJoins,
         packAggKeys,
-        unionPipelines
+        unionPipelines,
+        streamPackAggKeys,
+        longDecimalKeys
       )
       rewrite(op, runner)
 
@@ -74,7 +78,9 @@ object Parallelizer:
       adaptivePartials: Boolean,
       setOpJoins: Boolean,
       packAggKeys: Boolean,
-      unionPipelines: Boolean
+      unionPipelines: Boolean,
+      streamPackAggKeys: Boolean,
+      longDecimalKeys: Boolean
   )
 
   /**
@@ -375,7 +381,9 @@ object Parallelizer:
             o.parallelPartitioning,
             o.sharedPartials,
             o.adaptivePartials,
-            o.packAggKeys
+            o.packAggKeys,
+            o.streamPackAggKeys,
+            o.longDecimalKeys
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -694,7 +702,9 @@ private[plan] object TwoPhaseAgg:
       parallelPartitioning: Boolean,
       sharedPartials: Boolean,
       adaptivePartials: Boolean = false,
-      packAggKeys: Boolean = false
+      packAggKeys: Boolean = false,
+      streamPackAggKeys: Boolean = false,
+      longDecimalKeys: Boolean = false
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -723,14 +733,20 @@ private[plan] object TwoPhaseAgg:
               sizer.hint(x),
               sizer.report,
               skip
-            )
+            ).withKeyOptions(streamPackAggKeys, longDecimalKeys)
         )
       ),
       partialSchema,
       runner,
       prepare,
       release,
-      tail.map(t => (x: Operator) => HashAggOp(t(x), a.keys, partialAggs, partialSchema))
+      tail.map(t =>
+        (x: Operator) =>
+          HashAggOp(t(x), a.keys, partialAggs, partialSchema).withKeyOptions(
+            streamPackAggKeys,
+            longDecimalKeys
+          )
+      )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
     // Combine partial results by key
