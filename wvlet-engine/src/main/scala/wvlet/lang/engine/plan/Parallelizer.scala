@@ -47,7 +47,9 @@ object Parallelizer:
       unionPipelines: Boolean = true,
       streamPackAggKeys: Boolean = true,
       longDecimalKeys: Boolean = true,
-      fusedAccumulators: Boolean = true
+      fusedAccumulators: Boolean = true,
+      oneRowPartials: Boolean = true,
+      sizeFinalAggsByRows: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -63,7 +65,9 @@ object Parallelizer:
         unionPipelines,
         streamPackAggKeys,
         longDecimalKeys,
-        fusedAccumulators
+        fusedAccumulators,
+        oneRowPartials,
+        sizeFinalAggsByRows
       )
       rewrite(op, runner)
 
@@ -83,7 +87,9 @@ object Parallelizer:
       unionPipelines: Boolean,
       streamPackAggKeys: Boolean,
       longDecimalKeys: Boolean,
-      fusedAccumulators: Boolean
+      fusedAccumulators: Boolean,
+      oneRowPartials: Boolean,
+      sizeFinalAggsByRows: Boolean
   )
 
   /**
@@ -388,7 +394,9 @@ object Parallelizer:
             o.packAggKeys,
             o.streamPackAggKeys,
             o.longDecimalKeys,
-            o.fusedAccumulators
+            o.fusedAccumulators,
+            o.oneRowPartials,
+            o.sizeFinalAggsByRows
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -712,7 +720,9 @@ private[plan] object TwoPhaseAgg:
       packAggKeys: Boolean = false,
       streamPackAggKeys: Boolean = false,
       longDecimalKeys: Boolean = false,
-      fusedAccumulators: Boolean = true
+      fusedAccumulators: Boolean = true,
+      oneRowPartials: Boolean = true,
+      sizeFinalAggsByRows: Boolean = true
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -743,6 +753,7 @@ private[plan] object TwoPhaseAgg:
               skip
             ).withKeyOptions(streamPackAggKeys, longDecimalKeys)
               .withFusedAccumulators(fusedAccumulators)
+              .withOneRowPartials(oneRowPartials)
         )
       ),
       partialSchema,
@@ -774,8 +785,9 @@ private[plan] object TwoPhaseAgg:
           runner,
           expectedGroups = a.expectedGroups,
           parallelPartitioning = parallelPartitioning,
-          packKeys = packAggKeys
-        )
+          packKeys = packAggKeys,
+          skip = skip
+        ).withSizeByRows(sizeFinalAggsByRows)
       else
         HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)
     // Restore the original output: keys, then each aggregate in its original type

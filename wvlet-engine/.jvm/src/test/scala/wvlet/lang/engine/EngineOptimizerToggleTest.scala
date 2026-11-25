@@ -151,6 +151,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
         // FusedAccumulatorsTest that the fused loop gives the same counts and sums
         ignore("Changes how hash aggregations fold their aggregates, not the plan")
+      if o == Optimization.OneRowPartials || o == Optimization.SizeFinalAggsByRows then
+        // EngineAdaptivePartialAggsTest checks that the flags reach the aggregations, and
+        // PartialAggSkipTest that one-row partial results give the same groups
+        ignore("Changes how two-phase aggregations build and size their groups, not the plan")
       if o == Optimization.DictionaryFilters then
         // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
         // evaluation keeps the same rows

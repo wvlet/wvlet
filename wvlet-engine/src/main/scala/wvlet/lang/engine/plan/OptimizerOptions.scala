@@ -541,6 +541,20 @@ enum Optimization(val name: String):
     */
   case CaseAggFilters extends Optimization("case_agg_filters")
 
+  /**
+    * Partial aggregates that stop grouping ([[AdaptivePartialAggs]]) emit each row's partial
+    * results from the aggregates' arguments (a sum's value, a count's 0 or 1) instead of folding
+    * every passed-through batch into new accumulators with one group per row (TPC-DS q78, q97)
+    */
+  case OneRowPartials extends Optimization("one_row_partials")
+
+  /**
+    * Once the partial aggregates of a two-phase aggregation stopped grouping, the final partitioned
+    * aggregation sizes each partition's group table for the partition's rows, instead of its share
+    * of the estimated groups, so near-unique keys don't regrow the tables (TPC-DS q97, q78)
+    */
+  case SizeFinalAggsByRows extends Optimization("size_final_aggs_by_rows")
+
 end Optimization
 
 object Optimization:

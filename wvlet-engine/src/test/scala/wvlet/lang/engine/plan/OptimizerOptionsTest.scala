@@ -117,7 +117,9 @@ class OptimizerOptionsTest extends UniTest:
         "masked_case_when",
         "join_tree_build_estimates",
         "const_case_select",
-        "case_agg_filters"
+        "case_agg_filters",
+        "one_row_partials",
+        "size_final_aggs_by_rows"
       )
   }
 

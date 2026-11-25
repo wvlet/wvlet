@@ -143,7 +143,9 @@ class Planner(
           streamPackAggKeys = enabled(Optimization.StreamPackAggKeys),
           longDecimalKeys = enabled(Optimization.LongDecimalKeys),
           unionPipelines = enabled(Optimization.UnionAllPipelines),
-          fusedAccumulators = enabled(Optimization.FusedAccumulators)
+          fusedAccumulators = enabled(Optimization.FusedAccumulators),
+          oneRowPartials = enabled(Optimization.OneRowPartials),
+          sizeFinalAggsByRows = enabled(Optimization.SizeFinalAggsByRows)
         )
       else
         pruned

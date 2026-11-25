@@ -62,7 +62,11 @@ class PartialAggSkipTest extends UniTest:
     AggCall("sum", Seq(x), false, None, PType.Int64),
     AggCall("sum", Seq(d), false, Some(f), sumDec),
     AggCall("min", Seq(x), false, None, PType.Int64),
-    AggCall("max", Seq(d), false, None, dec)
+    AggCall("max", Seq(d), false, None, dec),
+    AggCall("count_if", Seq(f), false, Some(f), PType.Int64),
+    AggCall("sum", Seq(CastExpr(x, PType.Float64)), false, Some(f), PType.Float64),
+    // No direct one-row form: folded by an accumulator
+    AggCall("min", Seq(x), false, Some(f), PType.Int64)
   )
 
   private val partialSchema = Schema(
@@ -100,14 +104,18 @@ class PartialAggSkipTest extends UniTest:
       .toSeq
 
   /** The final aggregate over the partial aggregate's output, as one row per key */
-  private def aggregate(batches: Seq[Batch], skip: PartialAggSkip): Map[Any, Seq[Any]] =
+  private def aggregate(
+      batches: Seq[Batch],
+      skip: PartialAggSkip,
+      oneRowPartials: Boolean = true
+  ): Map[Any, Seq[Any]] =
     val partial = HashAggOp(
       BatchesOp(in, batches),
       IndexedSeq(k),
       partials,
       partialSchema,
       skip = skip
-    )
+    ).withOneRowPartials(oneRowPartials)
     val out =
       try partial.drain()
       finally partial.close()
@@ -131,9 +139,12 @@ class PartialAggSkipTest extends UniTest:
     val batches  = input(5000, 300)
     val expected = aggregate(batches, null)
     // Stops after the second batch, or after the first
-    for minRows <- Seq(600L, 0L) do
+    for
+      minRows <- Seq(600L, 0L)
+      oneRows <- Seq(true, false)
+    do
       val skip = PartialAggSkip(minRows = minRows, minRatio = 0.5)
-      aggregate(batches, skip) shouldBe expected
+      aggregate(batches, skip, oneRows) shouldBe expected
       skip.skipping shouldBe true
   }
 
