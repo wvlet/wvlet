@@ -49,7 +49,12 @@ object ReorderJoins extends Pass:
           if lk.nonEmpty =>
         // An outer hash join builds on its left input when the right one is much larger, as
         // `Planner.joinOn` decides it
-        if JoinOrderOptimizer.swapBuild(ctx.options, Stats.rows(right), Stats.rows(left)) then
+        if JoinOrderOptimizer.swapBuild(
+            ctx.options,
+            Stats.buildRows(right, ctx.options),
+            Stats.buildRows(left, ctx.options)
+          )
+        then
           j.copy(buildLeft = true)
         else
           j
@@ -62,8 +67,8 @@ object ReorderJoins extends Pass:
         // never match
         val swap = JoinOrderOptimizer.swapSemiBuild(
           ctx.options,
-          Stats.rows(right),
-          Stats.rows(left),
+          Stats.buildRows(right, ctx.options),
+          Stats.buildRows(left, ctx.options),
           Stats.aggregates(right)
         )
         if swap == buildLeft then
@@ -116,7 +121,8 @@ object ReorderJoins extends Pass:
       // The LEFT join's build side, chosen again over the estimated rows of the joined tree
       // (Stats.rows reads only the probe side's source rows)
       val buildLeft =
-        l.leftKeys.nonEmpty && JoinOrderOptimizer.swapBuild(ctx.options, Stats.rows(l.right), rows)
+        l.leftKeys.nonEmpty &&
+          JoinOrderOptimizer.swapBuild(ctx.options, Stats.buildRows(l.right, ctx.options), rows)
       // Every row of the tree is kept, with its matches
       (l.copy(left = tree, buildLeft = buildLeft), rows)
 

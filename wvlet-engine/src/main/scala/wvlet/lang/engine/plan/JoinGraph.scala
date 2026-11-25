@@ -13,9 +13,6 @@
  */
 package wvlet.lang.engine.plan
 
-import wvlet.lang.engine.exec.Operator
-import wvlet.lang.model.expr.*
-
 /**
   * A condition over several inputs of a join graph, or over none (a constant), with the inputs it
   * reads. An equality has its two sides with the inputs each side reads
@@ -56,63 +53,3 @@ case class JoinGraph[P, C](
     rows: IndexedSeq[Double],
     edges: List[JoinEdge[C]]
 )
-
-object JoinGraph:
-
-  /**
-    * Build a join graph over leaves whose operators (`op`) give the estimates, pushing single-input
-    * conditions to their inputs. The graph's inputs are the leaves with their conditions pushed, in
-    * input order.
-    *
-    * @param conds
-    *   each condition paired with the expression to read its inputs from (e.g., with uncorrelated
-    *   scalar subqueries replaced by constants)
-    * @param refs
-    *   the inputs an expression reads
-    * @param push
-    *   applies conditions to an input
-    * @param selectivity
-    *   the estimated fraction of the rows of an input passing a condition
-    */
-  def build[P](
-      leaves: List[P],
-      op: P => Operator,
-      conds: List[(Expression, Expression)],
-      refs: Expression => Set[Int],
-      push: (P, List[Expression]) => P,
-      selectivity: (Operator, Expression) => Double
-  ): JoinGraph[P, Expression] =
-    val condRefs = conds.map((c, e) => (c, refs(e)))
-    // Push and estimate one input at a time, as the conditions bind (and may plan subqueries)
-    val pushed = leaves
-      .indices
-      .map { i =>
-        val local = condRefs.collect {
-          case (c, r) if r == Set(i) =>
-            c
-        }
-        val p =
-          if local.isEmpty then
-            leaves(i)
-          else
-            push(leaves(i), local)
-        val leaf = op(leaves(i))
-        (p, CardinalityEstimator.rows(op(p)) * local.map(selectivity(leaf, _)).product)
-      }
-    val edges = conds
-      .zip(condRefs)
-      .collect {
-        case ((c, e), (_, r)) if r.size != 1 =>
-          val sides =
-            (c, e) match
-              case (ceq: Eq, eq: Eq) =>
-                Some(JoinEdge.Sides(ceq.left, refs(eq.left), ceq.right, refs(eq.right)))
-              case _ =>
-                None
-          JoinEdge(c, r, sides)
-      }
-    JoinGraph(pushed.map(_._1), pushed.map(_._2), edges)
-
-  end build
-
-end JoinGraph

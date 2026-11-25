@@ -477,6 +477,17 @@ enum Optimization(val name: String):
     */
   case MaskedCaseWhen extends Optimization("masked_case_when")
 
+  /**
+    * Choose the build side of the joins planned outside the join search (EXISTS / IN semi and anti
+    * joins, outer joins, and the semi joins of `reduce_semi_joins` and `group_key_semi_joins`) from
+    * join-tree estimates ([[wvlet.lang.engine.runtime.Stats.treeRows]]): filters by their
+    * selectivity and inner joins as the join search estimates them, instead of the probe source's
+    * rows. The semi joins of `reduce_semi_joins` and `group_key_semi_joins` then build on the
+    * smaller side by any margin, as `semi_join_build_side` does for subqueries (TPC-DS q16 builds
+    * its EXISTS join on the filtered outer orders instead of catalog_sales)
+    */
+  case JoinTreeBuildEstimates extends Optimization("join_tree_build_estimates")
+
 end Optimization
 
 object Optimization:

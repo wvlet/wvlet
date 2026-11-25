@@ -17,7 +17,6 @@ import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.CmpOp
 import wvlet.lang.engine.expr.Compare
-import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.plan.Optimization
 
 import scala.collection.mutable
@@ -263,8 +262,9 @@ object ReduceSemiJoins extends Pass:
           val residual = shared.filterNot(keyConds).map(_.cond).reduceOption(and)
           val right    = joinOf(g.map(inputs), inner)
           Some((left: RuntimePlan) =>
-            // Build on the smaller side, by the ratio of other joins: a much larger group probes
-            // a table of the kept rows (a RIGHT SEMI join)
+            // Build on the smaller side (by the ratio of other joins without
+            // `join_tree_build_estimates`): a larger group probes a table of the kept rows (a
+            // RIGHT SEMI join)
             Join(
               left,
               right,
@@ -272,11 +272,7 @@ object ReduceSemiJoins extends Pass:
               keys.map(_._2._1),
               keys.map(_._2._2),
               residual,
-              buildLeft = JoinOrderOptimizer.swapBuild(
-                ctx.options,
-                Stats.rows(right),
-                Stats.rows(left)
-              )
+              buildLeft = Stats.swapsSemiBuild(left, right, ctx.options)
             )
           )
       }

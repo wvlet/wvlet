@@ -743,6 +743,12 @@ class RuntimeBinder(planner: Planner):
   private object plans extends JoinPlanBuilder[Lowered] with AggPlanBuilder[Lowered]:
     override def op(p: Lowered): Operator = p.op
 
+    override def buildRows(p: Lowered): Double =
+      if planner.enabled(Optimization.JoinTreeBuildEstimates) then
+        Stats.buildRows(p.plan, planner.options)
+      else
+        CardinalityEstimator.rows(p.op)
+
     override def join(
         left: Lowered,
         right: Lowered,
@@ -947,9 +953,13 @@ class RuntimeBinder(planner: Planner):
         innerRows match
           case Some(n) =>
             // Exact rows: no aggregation to discount
-            planner.swapSemiBuild(n, CardinalityEstimator.rows(p.op), aggregates = false)
+            planner.swapSemiBuild(n, buildRows(p), aggregates = false)
           case None =>
-            planner.swapSemiBuild(inner.op, CardinalityEstimator.rows(p.op))
+            planner.swapSemiBuild(
+              buildRows(inner),
+              buildRows(p),
+              CardinalityEstimator.aggregates(inner.op)
+            )
       )
 
     /** A semi or anti join of p with `inner`, on keys over each one's columns */

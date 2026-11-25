@@ -254,11 +254,48 @@ object Stats:
     )
 
   /**
+    * Estimated rows of p for choosing a join's build side outside the join search: [[treeRows]]
+    * with `join_tree_build_estimates`, and [[rows]] (the probe source's rows) otherwise
+    */
+  def buildRows(p: RuntimePlan, options: OptimizerOptions): Double =
+    if options.isEnabled(Optimization.JoinTreeBuildEstimates) then
+      treeRows(p, options)
+    else
+      rows(p)
+
+  /**
+    * Whether a semi / anti join builds on its left (outer) input, from the [[buildRows]] of each
+    * side: with `join_tree_build_estimates` by any margin ([[JoinOrderOptimizer.swapSemiBuild]]),
+    * otherwise by [[JoinOrderOptimizer.SwapBuildRatio]]
+    */
+  def swapsSemiBuild(left: RuntimePlan, right: RuntimePlan, options: OptimizerOptions): Boolean =
+    if options.isEnabled(Optimization.JoinTreeBuildEstimates) then
+      JoinOrderOptimizer.swapSemiBuild(
+        options,
+        buildRows(right, options),
+        buildRows(left, options),
+        aggregates(right)
+      )
+    else
+      JoinOrderOptimizer.swapBuild(options, rows(right), rows(left))
+
+  /**
     * Estimated rows of p as [[aggregatedRows]] reads the plan below an aggregation: inner hash
-    * joins as the join search estimates them, filters by their conjuncts' selectivity
+    * joins as the join search estimates them, filters by their conjuncts' selectivity. With
+    * `join_tree_build_estimates`, plan-time rows count exactly, a union as the sum of its inputs,
+    * and RIGHT and FULL joins by the side their rows come from
     */
   private[runtime] def treeRows(p: RuntimePlan, options: OptimizerOptions): Double =
+    lazy val tree = options.isEnabled(Optimization.JoinTreeBuildEstimates)
     p match
+      case Values(columns, batch) if tree && !(columns.isEmpty && batch.size == 1) =>
+        math.max(1.0, batch.size.toDouble)
+      case Union(inputs, _) if tree =>
+        inputs.map(treeRows(_, options)).sum
+      case Join(_, right, JoinKind.Right, lk, _, _, _) if tree && lk.nonEmpty =>
+        treeRows(right, options)
+      case Join(left, right, JoinKind.Full, lk, _, _, _) if tree && lk.nonEmpty =>
+        math.max(treeRows(left, options), treeRows(right, options))
       case Filter(child, cond, literalCounts) =>
         treeRows(child, options) *
           conjunctionSelectivity(
@@ -292,6 +329,9 @@ object Stats:
         treeRows(left, options)
       case other =>
         rows(other)
+    end match
+
+  end treeRows
 
   /**
     * Estimated fraction of the rows of p passing all of `conds`: with `range_selectivity`, the

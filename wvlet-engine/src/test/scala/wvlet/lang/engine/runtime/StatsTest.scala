@@ -107,9 +107,11 @@ class StatsTest extends UniTest:
     Stats.selectivity(ref, like("forest%"), off) shouldBe 0.3
   }
 
-  test("estimate an aggregated star join from the joins and filters below the aggregation") {
-    // A fact table of 1M rows with 1000 distinct dimension keys, joined with a dimension of
-    // 1000 rows filtered to one (`d = 3`), then grouped by the fact key
+  /**
+    * A fact table of 1M rows with 1000 distinct dimension keys, joined with a dimension of 1000
+    * rows filtered to one (`d = 3`)
+    */
+  private def starJoin: RuntimePlan =
     val f     = Column(ColumnId(1), "f", PType.Int64)
     val d     = Column(ColumnId(2), "d", PType.Int64)
     val fact  = RuntimePlan.CTERef(Computed(Some(1000), None, rowCount = 1000000), IndexedSeq(f))
@@ -119,7 +121,7 @@ class StatsTest extends UniTest:
       BExpr(dimEq),
       Map(dimEq.sig -> 1)
     )
-    val join = RuntimePlan.Join(
+    RuntimePlan.Join(
       fact,
       dim,
       wvlet.lang.engine.exec.JoinKind.Inner,
@@ -128,7 +130,11 @@ class StatsTest extends UniTest:
       None,
       buildLeft = false
     )
-    val agg = RuntimePlan.Aggregate(
+
+  test("estimate an aggregated star join from the joins and filters below the aggregation") {
+    // The star join grouped by the fact key
+    val join = starJoin
+    val agg  = RuntimePlan.Aggregate(
       join,
       IndexedSeq(BExpr(ColRef(1, PType.Int64, "f"))),
       IndexedSeq.empty,
@@ -144,6 +150,24 @@ class StatsTest extends UniTest:
       agg,
       OptimizerOptions().withDisabled(Optimization.AggregateInputRows)
     ) shouldBe None
+  }
+
+  test("choose a semi join's build side from join-tree estimates") {
+    // EXISTS over the star join, whose subquery reads 1M rows
+    val sub    = Column(ColumnId(4), "s", PType.Int64)
+    val subRef = RuntimePlan.CTERef(Computed(None, None, rowCount = 1000000), IndexedSeq(sub))
+    val on     = OptimizerOptions()
+    val off    = on.withDisabled(Optimization.JoinTreeBuildEstimates)
+    // The star join keeps 1M * 1 / 1000 rows, while Stats.rows reads the fact table's rows
+    Stats.buildRows(starJoin, on) shouldBe 1000.0
+    Stats.buildRows(starJoin, off) shouldBe 1e6
+    // Building on the star join's rows, which the subquery's scan probes
+    Stats.swapsSemiBuild(starJoin, subRef, on) shouldBe true
+    Stats.swapsSemiBuild(starJoin, subRef, off) shouldBe false
+    // Plan-time rows count exactly
+    val values = RuntimePlan.Values(IndexedSeq(sub), Batch(Array(longs(Some(1), Some(2))), 2))
+    Stats.buildRows(values, on) shouldBe 2.0
+    Stats.buildRows(values, off) shouldBe 1e3
   }
 
 end StatsTest

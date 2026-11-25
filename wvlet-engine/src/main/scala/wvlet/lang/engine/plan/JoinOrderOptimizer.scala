@@ -58,6 +58,12 @@ trait JoinTreeBuilder[P]:
   /** Rows of `p` for which a condition over its columns is true */
   def filter(p: P, cond: VExpr): P
 
+  /**
+    * Estimated rows of `p` for choosing the build side of a join planned outside the join search:
+    * the probe source's rows of its operators unless a plan form estimates join trees
+    */
+  def buildRows(p: P): Double = CardinalityEstimator.rows(op(p))
+
 /** Builds operator trees */
 trait OperatorTreeBuilder extends JoinTreeBuilder[Operator]:
   override def op(p: Operator): Operator = p
