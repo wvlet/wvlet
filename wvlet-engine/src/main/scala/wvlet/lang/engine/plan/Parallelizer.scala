@@ -398,7 +398,8 @@ end Parallelizer
 private[plan] object TwoPhaseAgg:
   private def lower(c: AggCall): String = c.name.toLowerCase
 
-  private def isCount(c: AggCall): Boolean =
+  /** Whether `c` counts rows, so that it is 0 rather than NULL over no rows */
+  private[plan] def isCount(c: AggCall): Boolean =
     lower(c) match
       case "count" | "count_star" | "count_if" | "countif" =>
         true
@@ -462,12 +463,9 @@ private[plan] object TwoPhaseAgg:
         CastExpr(e, t)
     src match
       case IndexedSeq(s, n) =>
-        Arith(ArithOp.Div, as(s, PType.Float64), as(n, PType.Float64), PType.Float64)
+        as(Arith(ArithOp.Div, as(s, PType.Float64), as(n, PType.Float64), PType.Float64), c.ptype)
       case IndexedSeq(i) =>
         as(i, c.ptype)
-
-  /** Whether `c` counts rows, so that it is 0 rather than NULL over no rows */
-  def counts(c: AggCall): Boolean = isCount(c)
 
   def plan(
       a: HashAggOp,

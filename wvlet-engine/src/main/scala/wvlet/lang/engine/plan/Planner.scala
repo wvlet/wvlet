@@ -2165,15 +2165,10 @@ class Planner(
             .map { (c, src) =>
               val v = TwoPhaseAgg.finish(c, src.map(j => col(ks.size + j)))
               // A count over no rows (the grand total of an empty input) is 0
-              val e =
-                if TwoPhaseAgg.counts(c) then
-                  Coalesce(Seq(v, Const(0L, PType.Int64)), PType.Int64)
-                else
-                  v
-              if e.ptype == c.ptype then
-                e
+              if TwoPhaseAgg.isCount(c) then
+                Coalesce(Seq(v, Const(0L, PType.Int64)), PType.Int64)
               else
-                CastExpr(e, c.ptype)
+                v
             }
           builder.project(readers(set)(), keyOut ++ callOut, out)
         }
