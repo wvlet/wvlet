@@ -256,6 +256,18 @@ class SelectionTest extends UniTest:
     ) shouldBe false
   }
 
+  test("should keep a per-entry part's cost for ordering and selecting") {
+    val like = DictionaryPredicates.wrap(LikeExpr(d0, "v%", negate = false))
+    val cmp  = Compare(CmpOp.Lt, a, int(3))
+    val node = Selection.compile(AndExpr(like, cmp), reorder = true, dictionaryPositions = true)
+    node match
+      case Selection.Conj(IndexedSeq(Selection.Leaf(`cmp`, _), Selection.DictLeaf(_, c))) =>
+        c shouldBe Selection.cost(like)
+      case other =>
+        fail(s"Unexpected ${other}")
+    Selection.worthSelecting(node) shouldBe true
+  }
+
   test("should wrap an OR over one string column as one per-entry part") {
     val either = OrExpr(
       Compare(CmpOp.Eq, d0, Const("v1", PType.Str)),

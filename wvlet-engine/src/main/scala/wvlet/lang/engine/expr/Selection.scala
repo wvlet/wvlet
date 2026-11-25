@@ -55,9 +55,10 @@ object Selection:
 
   /**
     * A condition over one dictionary-coded string column, run per dictionary entry of the selected
-    * rows ([[DictionaryPredicates.selectPerEntry]])
+    * rows ([[DictionaryPredicates.selectPerEntry]]), with the estimated cost per row of a [[Leaf]]
+    * of it, for ordering and for the rows without codes
     */
-  case class DictLeaf(expr: PerDictEntry) extends Node
+  case class DictLeaf(expr: PerDictEntry, cost: Int) extends Node
 
   /** The condition as nested ANDs and ORs over leaves, the parts reordered when `reorder` */
   def compile(cond: VExpr, reorder: Boolean, dictionaryPositions: Boolean = false): Node =
@@ -80,7 +81,7 @@ object Selection:
         case _: OrExpr =>
           Disj(order(disjuncts(e).map(build)))
         case p: PerDictEntry if dictionaryPositions =>
-          DictLeaf(p)
+          DictLeaf(p, cost(p))
         case other =>
           Leaf(other, cost(other))
     def order(parts: List[Node]): IndexedSeq[Node] =
@@ -110,8 +111,8 @@ object Selection:
     n match
       case Leaf(_, c) =>
         c
-      case DictLeaf(_) =>
-        0
+      case DictLeaf(_, c) =>
+        c
       case Conj(ps) =>
         ps.map(nodeCost).sum
       case Disj(ps) =>
@@ -121,7 +122,7 @@ object Selection:
     n match
       case Leaf(e, _) =>
         !isSafe(e)
-      case DictLeaf(e) =>
+      case DictLeaf(e, _) =>
         !isSafe(e)
       case Conj(ps) =>
         ps.exists(canThrow)
@@ -225,8 +226,8 @@ object Selection:
     n match
       case Leaf(e, c) =>
         leaf(e, c, b, sel)
-      case DictLeaf(e) =>
-        dictLeaf(e, b, sel)
+      case DictLeaf(e, c) =>
+        dictLeaf(e, c, b, sel)
       case Conj(parts) =>
         var cur = sel
         var i   = 0
@@ -290,6 +291,8 @@ object Selection:
     n match
       case Leaf(_, c) =>
         c
+      case DictLeaf(_, c) =>
+        c
       case _ =>
         0
 
@@ -329,14 +332,14 @@ object Selection:
 
   end leaf
 
-  private def dictLeaf(e: PerDictEntry, b: Batch, sel: Array[Int]): Array[Int] =
+  private def dictLeaf(e: PerDictEntry, c: Int, b: Batch, sel: Array[Int]): Array[Int] =
     if sel != null && sel.length == 0 then
       sel
     else
       e.selectPositions(b, sel) match
         case null =>
-          // No usable codes: as any cheap leaf
-          leaf(e, 0, b, sel)
+          // No usable codes: as a leaf of the same cost
+          leaf(e, c, b, sel)
         case r if r.length == sizeOf(sel, b.size) =>
           null
         case r =>

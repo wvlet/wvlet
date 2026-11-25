@@ -197,7 +197,8 @@ object DictionaryPredicates:
 
   /**
     * The positions of `sel` (all of 0 until `size` when null) at which `local`, evaluated once per
-    * dictionary entry of `s` found there, is TRUE; null when a selected non-NULL row has no code
+    * dictionary entry of `s` found there, is TRUE; null when a selected non-NULL row has no code,
+    * or, over the whole batch, when it has more entries than half the rows (as [[evalPerEntry]])
     */
   private[expr] def selectPerEntry(
       local: VExpr,
@@ -214,7 +215,12 @@ object DictionaryPredicates:
     // slot(code) is 1 + the entry's position in `reps`, 0 when not seen yet
     val slot = new Array[Int](s.dictSize)
     // One entry per code seen, and one for NULL rows
-    val reps      = new Array[Int](math.min(n, s.dictSize + 1))
+    val reps  = new Array[Int](math.min(n, s.dictSize + 1))
+    val limit =
+      if sel == null then
+        n / 2
+      else
+        reps.length
     var nullEntry = -1
     var m         = 0
     var i         = 0
@@ -227,11 +233,15 @@ object DictionaryPredicates:
       val c = codes(p)
       if c >= 0 then
         if slot(c) == 0 then
+          if m >= limit then
+            return null
           reps(m) = p
           m += 1
           slot(c) = m
       else if s.isNull(p) then
         if nullEntry < 0 then
+          if m >= limit then
+            return null
           nullEntry = m
           reps(m) = p
           m += 1
