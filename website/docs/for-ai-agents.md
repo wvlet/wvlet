@@ -73,7 +73,7 @@ Keywords are lower-case. Each operator takes the output of the previous line as 
 | `where` | Filter rows; repeat it as often as needed | `where status = 'paid'` |
 | `select` | Choose output columns (optional) | `select id, amount` |
 | `select distinct` | Unique rows of the selected columns | `select distinct status` |
-| `add` | Append a computed column | `add amount * 1.1 as with_tax` |
+| `add` | Add a computed column on the right; `add to left` puts it first | `add amount * 1.1 as with_tax`, `add to left id * 100 as key` |
 | `exclude` | Drop columns | `exclude status, amount` |
 | `rename` | Rename a column | `rename amount as price` |
 | `shift` | Move columns to the left | `shift amount` |

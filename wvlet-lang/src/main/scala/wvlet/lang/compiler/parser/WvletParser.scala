@@ -2415,8 +2415,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Filter(input, cond, spanFrom(t))
       case WvletToken.ADD =>
         addColumnsExpr(input)
-      case WvletToken.PREPEND =>
-        prependColumnsExpr(input)
       case WvletToken.EXCLUDE =>
         excludeColumnExpr(input)
       case WvletToken.RENAME =>
@@ -2594,16 +2592,33 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         NoJoinCriteria
   }
 
-  def addColumnsExpr(input: Relation): AddColumnsToRelation = node {
-    val t     = consume(WvletToken.ADD)
+  /**
+    * Parses `add exprs`, `add to right exprs`, and `add to left exprs`. Columns go to the right by
+    * default; `add to left` places them before the input columns.
+    */
+  def addColumnsExpr(input: Relation): Relation = node {
+    val t      = consume(WvletToken.ADD)
+    val toLeft =
+      scanner.lookAhead().token match
+        case WvletToken.TO =>
+          consume(WvletToken.TO)
+          val tt = scanner.lookAhead()
+          tt.token match
+            case WvletToken.LEFT =>
+              consume(WvletToken.LEFT)
+              true
+            case WvletToken.RIGHT =>
+              consume(WvletToken.RIGHT)
+              false
+            case _ =>
+              unexpected(tt)
+        case _ =>
+          false
     val items = selectItems()
-    AddColumnsToRelation(input, items, spanFrom(t))
-  }
-
-  def prependColumnsExpr(input: Relation): PrependColumnsToRelation = node {
-    val t     = consume(WvletToken.PREPEND)
-    val items = selectItems()
-    PrependColumnsToRelation(input, items, spanFrom(t))
+    if toLeft then
+      PrependColumnsToRelation(input, items, spanFrom(t))
+    else
+      AddColumnsToRelation(input, items, spanFrom(t))
   }
 
   def excludeColumnExpr(input: Relation): ExcludeColumnsFromRelation = node {
