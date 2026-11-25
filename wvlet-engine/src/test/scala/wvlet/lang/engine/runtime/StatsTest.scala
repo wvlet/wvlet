@@ -46,6 +46,34 @@ class StatsTest extends UniTest:
     Stats.resultDistinct(Seq(Batch(Array(longs(None, None)), 2)), 0, PType.Int64) shouldBe 0
   }
 
+  test("count the distinct integers of a result with a set of longs as a group table does") {
+    val ints = IntVec(
+      PType.Int32,
+      Array(0, 5, -3, 5, 0, 7, 9),
+      Array(false, false, false, false, false, true, false)
+    )
+    val ls = Seq(
+      Batch(Array(longs(Some(0L), Some(Long.MinValue), Some(-1L), None)), 4),
+      Batch(Array(longs(Some(Long.MaxValue), Some(0L), Some(-1L), Some(42L))), 4),
+      Batch(Array(longs()), 0)
+    )
+    val many = Seq(
+      Batch(
+        Array(LongVec(PType.Int64, Array.tabulate(5000)(i => (i % 1234).toLong * 7919L), null)),
+        5000
+      )
+    )
+    for (bs, t, expected) <- Seq(
+        (Seq(Batch(Array(ints), 7)), PType.Int32, 4L),
+        (ls, PType.Int64, 5L),
+        (many, PType.Int64, 1234L),
+        (batches, PType.Int64, 3L)
+      )
+    do
+      Stats.resultDistinct(bs, 0, t, primitive = true) shouldBe expected
+      Stats.resultDistinct(bs, 0, t, primitive = false) shouldBe expected
+  }
+
   test("count the rows a condition keeps, dropping those where it is NULL") {
     Stats.resultRows(batches, Compare(CmpOp.Gt, x, Const(1L, PType.Int64))) shouldBe Some(3)
     Stats.resultRows(batches, Compare(CmpOp.Ne, x, Const(2L, PType.Int64))) shouldBe Some(2)

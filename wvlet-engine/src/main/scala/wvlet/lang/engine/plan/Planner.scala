@@ -1305,7 +1305,17 @@ class Planner(
 
   /** A shared result of `op` (lowered from `body`) for runtime-plan readers */
   private[engine] def sharedInput(name: String, body: RuntimePlan, op: Operator): SharedCTE =
-    SharedInput(name, body, op)
+    // An aggregation over joins in the body (the finest set of chained grouping sets) computed
+    // below them, which the runtime passes over the plan reading this input don't reach
+    val eager =
+      if enabled(Optimization.EagerGroupingSets) then
+        runtimeOptimizer.eagerAggregation(body)
+      else
+        body
+    if eager eq body then
+      SharedInput(name, body, op)
+    else
+      SharedInput(name, eager, lower(runtimeOptimizer.pushScanFilters(eager)))
 
   /**
     * A CTE read more than once. Its body is bound when it is first read, and lowered once every
@@ -1379,7 +1389,14 @@ class Planner(
             Option
               .when(k >= 0)(k)
               .map { k =>
-                Stats.resultDistinct(batches, k, body.schema(position).ptype).toDouble
+                Stats
+                  .resultDistinct(
+                    batches,
+                    k,
+                    body.schema(position).ptype,
+                    primitive = enabled(Optimization.PrimitiveResultDistinct)
+                  )
+                  .toDouble
               }
           }
         )

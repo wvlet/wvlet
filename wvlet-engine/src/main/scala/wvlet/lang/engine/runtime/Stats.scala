@@ -31,6 +31,8 @@ import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.vector.Batch
+import wvlet.lang.engine.vector.IntVec
+import wvlet.lang.engine.vector.LongVec
 import wvlet.lang.engine.vector.PType
 
 import scala.util.control.NonFatal
@@ -402,7 +404,15 @@ object Stats:
     * The distinct non-NULL values of column k of a computed result, grouped as DISTINCT groups them
     * (where NULL is a group of its own)
     */
-  def resultDistinct(batches: Seq[Batch], k: Int, ptype: PType): Long =
+  def resultDistinct(batches: Seq[Batch], k: Int, ptype: PType, primitive: Boolean = true): Long =
+    val live = batches.filter(_.size > 0)
+    if primitive && live.forall(b => b.column(k).isInstanceOf[LongVec | IntVec]) then
+      primitiveDistinct(live, k)
+    else
+      groupDistinct(live, k, ptype)
+
+  /** The distinct non-NULL values of column k by a [[GroupTable]] (DISTINCT's grouping) */
+  private def groupDistinct(batches: Seq[Batch], k: Int, ptype: PType): Long =
     val groups  = GroupTable(IndexedSeq(ptype))
     var hasNull = false
     batches.foreach { b =>
@@ -418,6 +428,61 @@ object Stats:
       else
         0
     )
+
+  /**
+    * The distinct non-NULL values of integer column k (every batch's column a [[LongVec]] or
+    * [[IntVec]]), counted in an open-addressing set of longs sized for every row: a GroupTable
+    * assigns a group id per row and grows as it goes, which took about 15 ms per plan for TPC-DS
+    * q01's 540K `ctr_customer_sk` at SF10 (`primitive_result_distinct`)
+    */
+  private def primitiveDistinct(batches: Seq[Batch], k: Int): Long =
+    val rows = batches.map(_.size.toLong).sum
+    // At most half full; 0 marks an empty slot, so a 0 value is counted on the side
+    val bits    = math.max(4, 64 - java.lang.Long.numberOfLeadingZeros(math.max(1L, rows * 2 - 1)))
+    val slots   = Array.ofDim[Long](1 << bits)
+    val mask    = slots.length - 1
+    var count   = 0L
+    var hasZero = false
+    inline def add(v: Long): Unit =
+      if v == 0L then
+        hasZero = true
+      else
+        var i = ((v * 0x9e3779b97f4a7c15L) >>> (64 - bits)).toInt
+        while slots(i) != 0L && slots(i) != v do
+          i = (i + 1) & mask
+        if slots(i) == 0L then
+          slots(i) = v
+          count += 1
+    batches.foreach { b =>
+      val n = b.size
+      b.column(k) match
+        case v: LongVec =>
+          val values = v.values
+          val nulls  = v.nulls
+          var i      = 0
+          while i < n do
+            if nulls == null || !nulls(i) then
+              add(values(i))
+            i += 1
+        case v: IntVec =>
+          val values = v.values
+          val nulls  = v.nulls
+          var i      = 0
+          while i < n do
+            if nulls == null || !nulls(i) then
+              add(values(i).toLong)
+            i += 1
+        case other =>
+          throw IllegalStateException(s"Not an integer column: ${other}")
+    }
+    count + (
+      if hasZero then
+        1
+      else
+        0
+    )
+
+  end primitiveDistinct
 
   /**
     * The rows of a computed result for which `cond` (over the batch columns) is TRUE, as FilterOp

@@ -44,7 +44,7 @@ class EngineEagerAggregationTest extends UniTest:
     plan
 
   /** The query matches DuckDB with the rewrite on and off, and returns the plans on and off */
-  private def check(query: String): (String, String) =
+  private def check(query: String, disabled: WvletEngine = disabled): (String, String) =
     val on = conformance.compareQuery(query)
     on.matched shouldBe true
     on.message.startsWith("skipped") shouldBe false
@@ -120,6 +120,24 @@ class EngineEagerAggregationTest extends UniTest:
         |order by c_name
         |""".stripMargin)
     aggregations(on) shouldBe aggregations(off)
+  }
+
+  test("aggregate the finest set of a rollup over a join before the join") {
+    // The finest set's aggregation is a shared input of the coarser sets, which the runtime
+    // passes over the query don't reach
+    val noGroupingSets = conformance
+      .engine
+      .withOptimizer(options.withDisabled(Optimization.EagerGroupingSets))
+    val (on, off) = check(
+      """from lineitem, part
+        |where l_partkey = p_partkey
+        |group by rollup(p_brand, p_type)
+        |select p_brand, p_type, sum(l_quantity) as q, count(*) as n, avg(l_extendedprice) as p
+        |order by p_brand nulls first, p_type nulls first
+        |""".stripMargin,
+      noGroupingSets
+    )
+    aggregations(on) shouldBe aggregations(off) + 1
   }
 
 end EngineEagerAggregationTest
