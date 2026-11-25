@@ -112,7 +112,9 @@ class OptimizerOptionsTest extends UniTest:
         "eager_aggregation",
         "fused_accumulators",
         "masked_case_when",
-        "join_tree_build_estimates"
+        "join_tree_build_estimates",
+        "const_case_select",
+        "case_agg_filters"
       )
   }
 

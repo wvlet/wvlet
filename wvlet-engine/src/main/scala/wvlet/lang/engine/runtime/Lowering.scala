@@ -53,7 +53,10 @@ object Lowering:
     * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
     * ([[ScanOp.dictionaryCodes]]) With `maskedCaseWhen`, a CASE of one WHEN without ELSE masks its
     * THEN vector ([[MaskCaseWhen]]). With `windowSharePartitions`, window calls with the same
-    * PARTITION BY and ORDER BY are partitioned and sorted once ([[WindowOp.callGroups]])
+    * PARTITION BY and ORDER BY are partitioned and sorted once ([[WindowOp.callGroups]]). With
+    * `constCaseSelect`, a CASE of one WHEN with constant THEN and ELSE picks one per row
+    * ([[MaskCaseWhen]]). With `caseAggFilters`, an aggregate of a CASE of one WHEN without ELSE
+    * aggregates its THEN value with the condition as FILTER ([[CaseAggFilters]])
     */
   def apply(
       p: RuntimePlan,
@@ -73,7 +76,9 @@ object Lowering:
       dictionaryCodes: Boolean = false,
       selectiveRowFilters: Boolean = false,
       maskedCaseWhen: Boolean = false,
-      windowSharePartitions: Boolean = false
+      windowSharePartitions: Boolean = false,
+      constCaseSelect: Boolean = false,
+      caseAggFilters: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -91,7 +96,9 @@ object Lowering:
       dictionaryCodes,
       selectiveRowFilters,
       maskedCaseWhen,
-      windowSharePartitions
+      windowSharePartitions,
+      constCaseSelect,
+      caseAggFilters
     )
     if inSet then
       l.markInSet(p)
@@ -127,7 +134,9 @@ object Lowering:
       dictionaryCodes: Boolean,
       selectiveRowFilters: Boolean,
       maskedCaseWhen: Boolean,
-      windowSharePartitions: Boolean
+      windowSharePartitions: Boolean,
+      constCaseSelect: Boolean,
+      caseAggFilters: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -168,7 +177,9 @@ object Lowering:
               scanRowFilters = scanRowFilters,
               dictionaryCodes = dictionaryCodes,
               selectiveRowFilters = selectiveRowFilters,
-              maskedCaseWhen = maskedCaseWhen
+              maskedCaseWhen = maskedCaseWhen,
+              constCaseSelect = constCaseSelect,
+              caseAggFilters = caseAggFilters
             )
         )
       ) match
@@ -187,10 +198,7 @@ object Lowering:
           FoldConstants(x)
         else
           x
-      if maskedCaseWhen then
-        MaskCaseWhen(folded)
-      else
-        folded
+      MaskCaseWhen(folded, mask = maskedCaseWhen, consts = constCaseSelect)
 
     /**
       * The input with the common subexpressions of `exprs` appended ([[CommonSubexpressions]]), and
@@ -323,9 +331,15 @@ object Lowering:
         case Aggregate(child, keys, calls, _) =>
           val pos = positions(child)
           val ks  = keys.map(expr(_, pos))
-          val cs  = calls.map(c =>
-            c.lower(pos).copy(args = c.args.map(expr(_, pos)), filter = c.filter.map(expr(_, pos)))
-          )
+          val cs  = calls.map { c =>
+            val l = c
+              .lower(pos)
+              .copy(args = c.args.map(expr(_, pos)), filter = c.filter.map(expr(_, pos)))
+            if caseAggFilters then
+              CaseAggFilters(l)
+            else
+              l
+          }
           // Keys, then each call's arguments and filter
           val (input, es) = shared(lower(child), ks ++ cs.flatMap(c => c.args ++ c.filter))
           val it          = es.iterator.drop(ks.size)

@@ -176,6 +176,48 @@ class CaseWhenTest extends UniTest:
     maskedCalls shouldBe evaluated
   }
 
+  test("should pick constant THEN and ELSE values per row, with a NULL condition taking ELSE") {
+    def select(t: Const, e: Const, ptype: PType): Vec =
+      val plain = CaseWhen(Seq(is(1) -> t), Some(e), ptype)
+      val v     = eval(plain.copy(selectConsts = true), sel)
+      rows(v) shouldBe rows(eval(plain, sel))
+      v
+    val ints = select(Const(1, PType.Int32), Const(0, PType.Int32), PType.Int32)
+    ints shouldMatch { case _: IntVec =>
+    }
+    rows(ints) shouldBe Seq(1, 0, 0, 0)
+    // Constants cast to the output type
+    rows(select(Const(1, PType.Int32), Const(0L, PType.Int64), PType.Int64)) shouldBe
+      Seq(1L, 0L, 0L, 0L)
+    rows(select(Const(1.5, PType.Float64), Const(0.0, PType.Float64), PType.Float64)) shouldBe
+      Seq(1.5, 0.0, 0.0, 0.0)
+    rows(select(Const("y", PType.Str), Const("n", PType.Str), PType.Str)) shouldBe
+      Seq("y", "n", "n", "n")
+    rows(select(Const(true, PType.Bool), Const(false, PType.Bool), PType.Bool)) shouldBe
+      Seq(true, false, false, false)
+    val d = select(Const(JBigDecimal("1.5"), PType.decimal(2, 1)), Const(0, PType.Int32), dec2)
+    d shouldMatch {
+      case l: LongVec if l.ptype == dec2 =>
+    }
+    rows(d) shouldBe
+      Seq(JBigDecimal("1.50"), JBigDecimal("0.00"), JBigDecimal("0.00"), JBigDecimal("0.00"))
+  }
+
+  test("should match the branch choice for a NULL or non-constant ELSE and wide decimals") {
+    val wide = PType.decimal(38, 2)
+    Seq(
+      CaseWhen(Seq(is(1) -> Const(1, PType.Int32)), Some(Const(null, PType.Int32)), PType.Int32),
+      CaseWhen(Seq(is(1) -> Const(1, PType.Int32)), Some(selRef), PType.Int32),
+      CaseWhen(
+        Seq(is(1) -> Const(JBigDecimal("1"), wide)),
+        Some(Const(JBigDecimal("0"), wide)),
+        wide
+      )
+    ).foreach { c =>
+      rows(eval(c.copy(selectConsts = true), sel)) shouldBe rows(eval(c, sel))
+    }
+  }
+
 end CaseWhenTest
 
 class LogicalKernelsTest extends UniTest:
