@@ -76,7 +76,7 @@ final class PackedGroupTable(
       else
         packing.get.unpack(packed.keyVectors()(0).asInstanceOf[LongVec], count)
     val presize = math.max(expectedGroups, count * 2)
-    AggKeyPacking.covering(keyTypes, packing, keys, n, longDecimals) match
+    AggKeyPacking.covering(keyTypes, Option(current).map((_, count)), keys, n, longDecimals) match
       case Some(next) =>
         val table = GroupTable(IndexedSeq(PType.Int64), presize)
         if count > 0 then

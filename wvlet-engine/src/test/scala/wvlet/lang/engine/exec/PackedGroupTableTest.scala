@@ -71,6 +71,23 @@ class PackedGroupTableTest extends UniTest:
     packed.isPacked shouldBe false
   }
 
+  test("should repack from the actual values, not from a column that had only NULLs") {
+    val t2    = IndexedSeq(PType.Int64, PType.Int32)
+    val base  = 1L << 60
+    val nulls = Array[Vec](
+      LongVec(PType.Int64, new Array[Long](2), Array(true, true)),
+      IntVec(PType.Int32, Array(1, 1000), null)
+    )
+    val large = Array[Vec](
+      LongVec(PType.Int64, Array(base, base + 5, base), null),
+      IntVec(PType.Int32, Array(1, 1, 1), null)
+    )
+    val batches = Seq((nulls, 2), (large, 3))
+    val packed  = PackedGroupTable(t2)
+    grouped(packed, batches) shouldBe grouped(GroupTable(t2), batches)
+    packed.isPacked shouldBe true
+  }
+
   test("should fall back when a key isn't in the representation of its type") {
     val t2 = IndexedSeq(PType.Int32, dec)
     // A decimal column of another scale is rescaled by the unpacked table

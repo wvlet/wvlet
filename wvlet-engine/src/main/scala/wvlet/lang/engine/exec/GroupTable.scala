@@ -731,18 +731,14 @@ object GroupTable:
         case other =>
           canonical(other, t)
 
-    /** Row i of a non-LongVec vector at this scale, when its unscaled value needs over 64 bits */
-    private def wide(v: Vec, i: Int): java.math.BigDecimal =
-      val d = ValueOps.rescale(ValueOps.toBigDecimal(v.get(i)), t.scale)
-      if d.unscaledValue().bitLength() < 64 then
-        null
-      else
-        d
+    /** Row i of a non-LongVec vector, rescaled to this type's scale */
+    private def rescaled(v: Vec, i: Int): java.math.BigDecimal = ValueOps.rescale(
+      ValueOps.toBigDecimal(v.get(i)),
+      t.scale
+    )
 
-    private def unscaled(v: Vec, i: Int): Long = ValueOps
-      .rescale(ValueOps.toBigDecimal(v.get(i)), t.scale)
-      .unscaledValue()
-      .longValue()
+    private inline def fitsLong(d: java.math.BigDecimal): Boolean =
+      d.unscaledValue().bitLength() < 64
 
     def hashInto(v: Vec, n: Int, h: Array[Int]): Unit =
       val ns = v.nulls
@@ -757,12 +753,12 @@ object GroupTable:
         case _ =>
           while i < n do
             if !v.isNull(i) then
-              val d = wide(v, i)
+              val d = rescaled(v, i)
               mixInto(
                 h,
                 i,
-                if d == null then
-                  hashLong(unscaled(v, i))
+                if fitsLong(d) then
+                  hashLong(d.unscaledValue().longValue())
                 else
                   d.hashCode
               )
@@ -770,15 +766,16 @@ object GroupTable:
 
     def equalsAt(g: Int, v: Vec, i: Int): Boolean =
       nullsEqual(g, v, i) {
+        val narrow = big == null || big(g) == null
         v match
           case lv: LongVec =>
-            (big == null || big(g) == null) && values(g) == lv.values(i)
+            narrow && values(g) == lv.values(i)
           case _ =>
-            val d = wide(v, i)
-            if d == null then
-              (big == null || big(g) == null) && values(g) == unscaled(v, i)
+            val d = rescaled(v, i)
+            if fitsLong(d) then
+              narrow && values(g) == d.unscaledValue().longValue()
             else
-              big != null && d == big(g)
+              !narrow && d == big(g)
       }
 
     protected def addValue(g: Int, v: Vec, i: Int): Unit =
@@ -786,9 +783,9 @@ object GroupTable:
         case lv: LongVec =>
           values(g) = lv.values(i)
         case _ =>
-          val d = wide(v, i)
-          if d == null then
-            values(g) = unscaled(v, i)
+          val d = rescaled(v, i)
+          if fitsLong(d) then
+            values(g) = d.unscaledValue().longValue()
           else
             if big == null then
               big = new Array[AnyRef](values.length)

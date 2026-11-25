@@ -44,9 +44,6 @@ final class AggKeyPacking private (
         s
     }
 
-  /** The smallest and the largest value column k covers */
-  private[exec] def covered(k: Int): (Long, Long) = (mins(k), mins(k) + spans(k))
-
   /** The packed key of each of the first n rows; every value must be within the packed ranges */
   def pack(keys: Array[Vec], n: Int): LongVec =
     val out = tryPack(keys, n)
@@ -184,14 +181,16 @@ object AggKeyPacking:
         None
 
   /**
-    * A packing covering the ranges of `prev` (when given) and the first n rows of `keys`, with room
-    * for values about one range beyond each end of every column when the codes still fit, so a
-    * grouping that streams its input repacks its groups only a few times. None when a key column
-    * isn't in the representation of its type or the codes don't fit in 63 bits
+    * A packing covering the first `groups._2` rows of `groups._1` (the keys grouped so far, when
+    * given) and the first n rows of `keys`, with room for values about one range beyond each end of
+    * every column when the codes still fit, so a grouping that streams its input repacks its groups
+    * only a few times. The ranges are those of the actual values, so earlier room doesn't carry
+    * over. None when a key column isn't in the representation of its type or the codes don't fit in
+    * 63 bits
     */
   def covering(
       types: IndexedSeq[PType],
-      prev: Option[AggKeyPacking],
+      groups: Option[(Array[Vec], Int)],
       keys: Array[Vec],
       n: Int,
       decimals: Boolean
@@ -201,14 +200,8 @@ object AggKeyPacking:
     val width = types.size
     val mins  = Array.fill(width)(Long.MaxValue)
     val maxs  = Array.fill(width)(Long.MinValue)
-    prev.foreach { p =>
-      var k = 0
-      while k < width do
-        val (lo, hi) = p.covered(k)
-        mins(k) = lo
-        maxs(k) = hi
-        k += 1
-    }
+    if !groups.forall((g, count) => widen(types, g, count, mins, maxs)) then
+      return None
     if !widen(types, keys, n, mins, maxs) then
       return None
     val wideMins = mins.clone()
