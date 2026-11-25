@@ -5,7 +5,8 @@ Where `PushDownFilters` (wvlet-engine runtime) moves a WHERE conjunct that sits 
 join, and the proofs that every move keeps the rows.
 
 The pass moves a conjunct into the preserved input of a LEFT or RIGHT join when it reads only that
-input, into the left input of a semi or anti join (whose output has only left columns), and into
+input (with `outer_to_inner`, a LEFT join under a conjunct that is never TRUE on a NULL-padded right
+row becomes an inner join, and the conjunct one of its conditions; see `rejectsNull`), into the left input of a semi or anti join (whose output has only left columns), and into
 the condition list of an inner join tree, which `ReorderJoins` places later. A conjunct that reads
 no column reads "only" any input, so it moves too. Over a FULL join, and over the null-supplying
 input of an outer join, it stays above: there, NULL-padded rows can satisfy it (`c is null`) or a
@@ -16,6 +17,7 @@ import WvletFormal.Algebra.Bag
 namespace Wvlet.Pushdown
 
 open Wvlet.Algebra
+open Wvlet.Rewrite (Value Tri)
 
 /-- Where a conjunct goes. -/
 inductive Place where
@@ -25,6 +27,8 @@ inductive Place where
   | right
   /-- One more condition of the inner join tree. -/
   | cond
+  /-- The LEFT join becomes an inner join tree, with the conjunct one of its conditions. -/
+  | inner
   /-- It stays in a filter above the join. -/
   | above
   deriving DecidableEq, Repr
@@ -32,12 +36,139 @@ inductive Place where
 /-- The conjunct reads only columns of `cols`. -/
 def readsOnly (p : Cond) (cols : List Col) : Bool := p.reads.all (· ∈ cols)
 
+/-! ### NULL-rejecting conditions -/
+
+/-- The term is a column of `R`. -/
+def strictTerm (R : List Col) : Term → Bool
+  | .col c => c ∈ R
+  | .lit _ => false
+
+/-- The condition is unknown (NULL) on every row whose columns of `R` are all NULL: a comparison
+with a column of `R` as an operand, `IN` over a non-empty list (over no values it is FALSE), and
+`not`, `and`, `or` of such conditions. -/
+def strict (R : List Col) : Cond → Bool
+  | .eq a b => strictTerm R a || strictTerm R b
+  | .lt a b => strictTerm R a || strictTerm R b
+  | .inList a vs => strictTerm R a && !vs.isEmpty
+  | .isNull _ => false
+  | .not p => strict R p
+  | .and p q => strict R p && strict R q
+  | .or p q => strict R p && strict R q
+
+/-- The condition is never TRUE on a row whose columns of `R` are all NULL: a strict condition,
+`c is not null` for a column `c` of `R`, an `and` with such a side, and an `or` of two such
+conditions. `PushDownFilters`' `rejectsNull` (engine) recognizes the same forms. -/
+def rejectsNull (R : List Col) : Cond → Bool
+  | .eq a b => strict R (.eq a b)
+  | .lt a b => strict R (.lt a b)
+  | .inList a vs => strict R (.inList a vs)
+  | .isNull _ => false
+  | .not (.isNull a) => strictTerm R a
+  | .not p => strict R (.not p)
+  | .and p q => rejectsNull R p || rejectsNull R q
+  | .or p q => rejectsNull R p && rejectsNull R q
+
+/-- Every column of `R` is NULL in the row. -/
+def NullOn (R : List Col) (z : Row) : Prop := ∀ c ∈ R, z c = .null
+
+theorem strictTerm_eval {R : List Col} {z : Row} (hz : NullOn R z) {t : Term}
+    (h : strictTerm R t = true) : t.eval z = .null := by
+  cases t with
+  | col c => exact hz c (by simpa [strictTerm] using h)
+  | lit v => simp [strictTerm] at h
+
+theorem eqTri_null_right (a : Value) : eqTri a .null = .unknown := by cases a <;> rfl
+
+theorem ltTri_null_left (a : Value) : ltTri .null a = .unknown := by cases a <;> rfl
+
+theorem ltTri_null_right (a : Value) : ltTri a .null = .unknown := by
+  cases a <;> rfl
+
+theorem inTri_null : ∀ (vs : List Value), vs.isEmpty = false → inTri .null vs = .unknown
+  | [], h => by simp at h
+  | [_], _ => rfl
+  | y :: y' :: ys, _ => by
+    have ih := inTri_null (y' :: ys) rfl
+    show (eqTri .null y).or (inTri .null (y' :: ys)) = .unknown
+    rw [ih]
+    rfl
+
+theorem strict_eval {R : List Col} {z : Row} (hz : NullOn R z) :
+    ∀ {p : Cond}, strict R p = true → p.eval z = .unknown
+  | .eq a b, h => by
+    simp only [strict, Bool.or_eq_true] at h
+    rcases h with h | h
+    · simp only [Cond.eval, strictTerm_eval hz h]; rfl
+    · simp only [Cond.eval, strictTerm_eval hz h, eqTri_null_right]
+  | .lt a b, h => by
+    simp only [strict, Bool.or_eq_true] at h
+    rcases h with h | h
+    · simp only [Cond.eval, strictTerm_eval hz h, ltTri_null_left]
+    · simp only [Cond.eval, strictTerm_eval hz h, ltTri_null_right]
+  | .inList a vs, h => by
+    simp only [strict, Bool.and_eq_true, Bool.not_eq_true'] at h
+    simp only [Cond.eval, strictTerm_eval hz h.1, inTri_null vs h.2]
+  | .isNull _, h => by simp [strict] at h
+  | .not p, h => by
+    simp only [Cond.eval, strict_eval hz (p := p) (by simpa [strict] using h)]
+    rfl
+  | .and p q, h => by
+    simp only [strict, Bool.and_eq_true] at h
+    simp only [Cond.eval, strict_eval hz h.1, strict_eval hz h.2]
+    rfl
+  | .or p q, h => by
+    simp only [strict, Bool.and_eq_true] at h
+    simp only [Cond.eval, strict_eval hz h.1, strict_eval hz h.2]
+    rfl
+
+theorem strict_holds {R : List Col} {z : Row} (hz : NullOn R z) {p : Cond}
+    (h : strict R p = true) : p.holds z = false := by
+  simp [Cond.holds, strict_eval hz h]
+
+/-- A NULL-rejecting condition is never TRUE on a row whose columns of `R` are NULL. -/
+theorem rejectsNull_holds {R : List Col} {z : Row} (hz : NullOn R z) :
+    ∀ {p : Cond}, rejectsNull R p = true → p.holds z = false
+  | .eq a b, h => strict_holds hz h
+  | .lt a b, h => strict_holds hz h
+  | .inList a vs, h => strict_holds hz h
+  | .isNull _, h => by simp [rejectsNull] at h
+  | .not (.isNull a), h => by
+    simp only [Cond.holds, Cond.eval, strictTerm_eval hz (by simpa [rejectsNull] using h)]
+    rfl
+  | .not (.eq a b), h => strict_holds hz h
+  | .not (.lt a b), h => strict_holds hz h
+  | .not (.inList a vs), h => strict_holds hz h
+  | .not (.not p), h => strict_holds hz h
+  | .not (.and p q), h => strict_holds hz h
+  | .not (.or p q), h => strict_holds hz h
+  | .and p q, h => by
+    simp only [rejectsNull, Bool.or_eq_true] at h
+    rw [Cond.holds_and]
+    rcases h with h | h
+    · simp [rejectsNull_holds hz h]
+    · simp [rejectsNull_holds hz h]
+  | .or p q, h => by
+    simp only [rejectsNull, Bool.and_eq_true] at h
+    have hp := rejectsNull_holds hz h.1
+    have hq := rejectsNull_holds hz h.2
+    simp only [Cond.holds, beq_eq_false_iff_ne, ne_eq] at hp hq ⊢
+    simp only [Cond.eval]
+    rw [Tri.or_eq_true]
+    exact fun h' => h'.elim hp hq
+
+/-- A left row padded with NULLs has NULL in every right column. -/
+theorem nullOn_pad {L R : List Col} (disj : ∀ c ∈ R, c ∉ L) (x : Row) :
+    NullOn R (Row.merge L x Row.null) := fun c hc => by
+  simp [Row.merge, disj c hc, Row.null]
+
 /-- `PushDownFilters`' choice for a conjunct `p` over a join of kind `k` whose inputs have the
 columns `L` and `R`. -/
 def place (k : JoinKind) (L R : List Col) (p : Cond) : Place :=
   match k with
   | .inner => .cond
-  | .left | .semi | .anti => if readsOnly p L then .left else .above
+  | .left =>
+    if readsOnly p L then .left else if rejectsNull R p then .inner else .above
+  | .semi | .anti => if readsOnly p L then .left else .above
   | .right => if readsOnly p R then .right else .above
   | .full => .above
 
@@ -47,6 +178,7 @@ def rewrite (k : JoinKind) (L R : List Col) (on p : Cond) (ls rs : Rel) : Rel :=
   | .left => join k L on (filter p ls) rs
   | .right => join k L on ls (filter p rs)
   | .cond => join k L (.and on p) ls rs
+  | .inner => innerJoin L (.and on p) ls rs
   | .above => filter p (join k L on ls rs)
 
 theorem readsOnly_spec {p : Cond} {cols : List Col} (h : readsOnly p cols = true) :
@@ -158,6 +290,46 @@ theorem right_right (L R : List Col) (disj : ∀ c ∈ R, c ∉ L) (on p : Cond)
   funext y
   exact filter_padded _ (holds_merge_right disj h Row.null y) (filter_map_merge_right disj h y _)
 
+/-- Under a conjunct that rejects the NULL-padded rows, a LEFT join returns the rows of the inner
+join: each unmatched left row's padded row fails the conjunct. -/
+theorem filter_left_inner (L R : List Col) (disj : ∀ c ∈ R, c ∉ L) (on p : Cond)
+    (h : rejectsNull R p = true) (ls rs : Rel) :
+    filter p (leftJoin L on ls rs) = filter p (innerJoin L on ls rs) := by
+  unfold leftJoin innerJoin
+  rw [filter_flatMap, filter_flatMap]
+  congr 1
+  funext x
+  by_cases he : (matchesOf L on x rs).isEmpty
+  · have hnil : matchesOf L on x rs = [] := List.isEmpty_iff.mp he
+    simp [hnil, filter, rejectsNull_holds (nullOn_pad disj x) h]
+  · simp [he]
+
+theorem left_inner (L R : List Col) (disj : ∀ c ∈ R, c ∉ L) (on p : Cond)
+    (h : rejectsNull R p = true) (ls rs : Rel) :
+    innerJoin L (.and on p) ls rs = filter p (leftJoin L on ls rs) := by
+  rw [filter_left_inner L R disj on p h, inner_cond]
+
+/-- The same over an inner join tree that has the LEFT join as its left input (`from l left join
+r on ..., t where q`): a condition `q` of the tree that rejects NULLs on the right columns of the
+LEFT join drops every row built from a padded row, so the LEFT join can be an inner join. Its
+columns `R` are among the tree's left columns `L2`. -/
+theorem tree_left_inner (L R L2 : List Col) (disj : ∀ c ∈ R, c ∉ L) (sub : ∀ c ∈ R, c ∈ L2)
+    (on q : Cond) (h : rejectsNull R q = true) (ls rs ts : Rel) :
+    innerJoin L2 q (innerJoin L on ls rs) ts = innerJoin L2 q (leftJoin L on ls rs) ts := by
+  unfold innerJoin leftJoin
+  rw [List.flatMap_assoc, List.flatMap_assoc]
+  congr 1
+  funext x
+  by_cases he : (matchesOf L on x rs).isEmpty
+  · have hnil : matchesOf L on x rs = [] := List.isEmpty_iff.mp he
+    have hz : NullOn R (Row.merge L x Row.null) := nullOn_pad disj x
+    have hq : ∀ y, q.holds (Row.merge L2 (Row.merge L x Row.null) y) = false := fun y =>
+      rejectsNull_holds (fun c hc => by rw [merge_left _ _ (sub c hc)]; exact hz c hc) h
+    simp only [hnil]
+    simp [matchesOf, hq]
+  · simp only [Bool.not_eq_true] at he
+    simp only [he, Bool.false_eq_true, ↓reduceIte]
+
 /-- A semi or anti join outputs its left rows themselves, so any conjunct over its output moves
 into the left input. -/
 theorem semi_left (L : List Col) (on p : Cond) (ls rs : Rel) :
@@ -190,7 +362,9 @@ theorem rewrite_sound (k : JoinKind) (L R : List Col) (disj : ∀ c ∈ R, c ∉
   | left =>
     by_cases h : readsOnly p L = true
     · simpa [rewrite, place, h, join] using left_left L on p h ls rs
-    · simp [rewrite, place, h]
+    · by_cases hr : rejectsNull R p = true
+      · simpa [rewrite, place, h, hr, join] using left_inner L R disj on p hr ls rs
+      · simp [rewrite, place, h, hr]
   | semi =>
     by_cases h : readsOnly p L = true
     · simpa [rewrite, place, h, join] using semi_left L on p ls rs

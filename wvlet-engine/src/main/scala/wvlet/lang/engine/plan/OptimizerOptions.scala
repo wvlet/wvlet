@@ -52,6 +52,13 @@ enum Optimization(val name: String):
     */
   case JoinKeyFilters extends Optimization("join_key_filters")
 
+  /**
+    * With `push_down_filters`, turn a LEFT join into an inner join when a filter over it, or a
+    * condition of the inner join tree it is an input of, is never TRUE on a NULL-padded row, so
+    * that [[ReorderJoins]] orders its inputs with the other inner joins (TPC-DS q93)
+    */
+  case OuterToInner extends Optimization("outer_to_inner")
+
   /** Cost-based order of inner joins; disabled, the inputs are joined in written order */
   case ReorderJoins extends Optimization("reorder_joins")
 

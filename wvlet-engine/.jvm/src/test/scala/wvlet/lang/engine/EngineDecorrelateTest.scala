@@ -404,9 +404,13 @@ class EngineDecorrelateTest extends UniTest:
         |  select avg(s_acctbal) from supplier s2 where s2.s_nationkey = s1.s_nationkey
         |)""".stripMargin
     val p = runtimePlan(query)
-    leftJoins(p) shouldBe 1
+    // The comparison with the scalar rejects the padded rows, so outer_to_inner makes it inner
+    leftJoins(p) shouldBe 0
+    joinKinds(p) shouldContain JoinKind.Inner
     nodes(p).exists(_.isInstanceOf[Aggregate]) shouldBe true
     sameRows(query).size shouldBe 48
+    val o = engine.optimizer.withDisabled(Optimization.OuterToInner)
+    leftJoins(withQuery(query)(engine.withOptimizer(o).runtimePlan(_))) shouldBe 1
   }
 
   test("give count of a correlated group without rows as 0") {

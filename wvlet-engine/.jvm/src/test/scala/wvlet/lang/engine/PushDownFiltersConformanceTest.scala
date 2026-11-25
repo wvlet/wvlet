@@ -97,7 +97,9 @@ class PushDownFiltersConformanceTest extends UniTest:
 
   private val left  = inlineTable(rows(fixture("left")))
   private val right = inlineTable(rows(fixture("right")))
+  private val third = inlineTable(rows(fixture("third")))
   private val cases = arr(fixture("cases")).map(obj)
+  private val trees = arr(fixture("tree")).map(obj)
 
   private val options = OptimizerOptions().withValidatePlans(true)
   private val engine  = WvletEngine(optimizer = options)
@@ -171,9 +173,22 @@ class PushDownFiltersConformanceTest extends UniTest:
       case other =>
         fail(s"Unexpected join kind ${other}")
 
+  private def hasLeftJoin(p: RuntimePlan): Boolean = nodes(p).exists {
+    case j: Join =>
+      j.kind == JoinKind.Left
+    case _ =>
+      false
+  }
+
   /** Checks where the WHERE conjunct of the query ended up */
   private def checkPlace(p: RuntimePlan, kind: String, place: String): Unit =
-    if kind == "inner" then
+    if place == "inner" then
+      // The LEFT join became an inner join tree, with the conjunct one of its conditions
+      kind shouldBe "left"
+      hasLeftJoin(p) shouldBe false
+      nodes(p).exists(_.isInstanceOf[InnerJoins]) shouldBe true
+      hasFilter(p) shouldBe false
+    else if kind == "inner" then
       // The conjunct is one more condition of the inner join tree, which ReorderJoins places
       // (along with the equalities to constants the pass infers)
       place shouldBe "cond"
@@ -230,6 +245,31 @@ class PushDownFiltersConformanceTest extends UniTest:
         case e: Throwable =>
           warn(
             s"Mismatch for ${kind} join on ${str(c("on"))} where ${str(c("where"))} (${place}):\n${p
+                .explain}"
+          )
+          throw e
+    end for
+  }
+
+  test("turn a LEFT join inside an inner join tree into an inner join as the model does") {
+    trees.size shouldBe 18
+    for c <- trees do
+      val place = str(c("place"))
+      // The WHERE binds into the conditions of the inner join tree, as in TPC-DS q93
+      val query =
+        s"""from ${left} as l(a, b)
+           |left join { from ${right} as r(c, d) } on ${str(c("on"))}, ${third} as t(e)
+           |where ${str(c("where"))}
+           |select a, b, c, d, e""".stripMargin
+      val (_, p) = pushed(query)
+      debug(s"${query}\n${p.explain}")
+      try
+        hasLeftJoin(p) shouldBe (place == "left")
+        sorted(rowsOf(query)) shouldBe sorted(rows(c("rows")))
+      catch
+        case e: Throwable =>
+          warn(
+            s"Mismatch for the tree on ${str(c("on"))} where ${str(c("where"))} (${place}):\n${p
                 .explain}"
           )
           throw e
