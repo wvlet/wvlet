@@ -1472,11 +1472,17 @@ class Planner(
           runtimeOptimizer.reduceSemiJoins(p, keep.map(out(_).id).toSet)
         else
           p
-      // The readers' filters can make an aggregation of the body worth computing below its joins
-      // (TPC-DS q04, q11: `d_year in (2001, 2002)`). A reduced body's readers read only its
+      // The readers' filters pushed into the body can make an aggregation of it worth computing
+      // below its joins (TPC-DS q04, q11: `d_year in (2001, 2002)`); optimizeRuntime already ran
+      // the pass over the body without them. A reduced body's readers read only its
       // distinct rows, as do the CTE readers in it
       val op = Planner.this.lower(
-        runtimeOptimizer.pushScanFilters(runtimeOptimizer.eagerAggregation(pruned)),
+        runtimeOptimizer.pushScanFilters(
+          if pushed.isEmpty then
+            pruned
+          else
+            runtimeOptimizer.eagerAggregation(pruned)
+        ),
         reduced
       )
       val pos      = pruned.output.map(_.id).zipWithIndex.toMap

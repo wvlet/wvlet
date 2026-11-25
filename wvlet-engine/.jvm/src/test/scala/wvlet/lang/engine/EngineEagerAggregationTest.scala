@@ -101,6 +101,17 @@ class EngineEagerAggregationTest extends UniTest:
     aggregations(on) shouldBe aggregations(off)
   }
 
+  test("not aggregate calls that could fail on rows the join drops") {
+    // A division by a column could fail on an order without a customer, which the join drops
+    val (on, off) = check("""from orders, customer
+        |where o_custkey = c_custkey
+        |group by c_name
+        |select c_name, sum(o_totalprice / o_custkey) as s
+        |order by c_name
+        |""".stripMargin)
+    aggregations(on) shouldBe aggregations(off)
+  }
+
   test("not aggregate before a join with a selective side") {
     val (on, off) = check("""from orders, customer
         |where o_custkey = c_custkey and c_mktsegment = 'BUILDING'

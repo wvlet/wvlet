@@ -14,11 +14,15 @@
 package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.exec.JoinKind
+import wvlet.lang.engine.expr.Arith
+import wvlet.lang.engine.expr.ArithOp
+import wvlet.lang.engine.expr.CastExpr
 import wvlet.lang.engine.expr.CmpOp
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.expr.Const
 import wvlet.lang.engine.expr.InList
+import wvlet.lang.engine.expr.Negate
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.VExprs
@@ -97,8 +101,37 @@ object EagerAggregation extends Pass:
 
   /** Whether the partial results of `c` combine with another aggregate */
   private def supported(c: AggregateCall): Boolean =
-    !c.distinct && c.order.isEmpty && c.exprs.forall(deterministic) &&
+    !c.distinct && c.order.isEmpty && c.exprs.forall(e => safe(e.expr)) &&
       (isCount(c) || Set("sum", "min", "max").contains(lower(c)))
+
+  /**
+    * Whether `e` can't fail on any row: the partial aggregation evaluates the calls on rows of A
+    * that the join would drop, as DuckDB's PARTIAL_AGGREGATE_PUSHDOWN checks too. Columns,
+    * constants, `+`, `-`, `*`, negation, division by a nonzero constant, and casts that widen a
+    * number
+    */
+  private def safe(e: VExpr): Boolean =
+    e match
+      case _: ColRef | _: Const =>
+        true
+      case Negate(child) =>
+        safe(child)
+      case Arith(ArithOp.Add | ArithOp.Sub | ArithOp.Mul, l, r, _) =>
+        safe(l) && safe(r)
+      case Arith(ArithOp.Div | ArithOp.IntDiv | ArithOp.Mod, l, Const(v: Number, _), _) =>
+        v.doubleValue != 0 && safe(l)
+      case CastExpr(child, to, tryCast) =>
+        val widens =
+          (child.ptype, to) match
+            case (PType.Int32 | PType.Int64 | _: PType.Decimal, PType.Float64) =>
+              true
+            case (PType.Int32, PType.Int64) =>
+              true
+            case _ =>
+              false
+        (tryCast || widens) && safe(child)
+      case _ =>
+        false
 
   private def rewrite(
       a: Aggregate,
@@ -189,16 +222,9 @@ object EagerAggregation extends Pass:
     if groups.isEmpty || !reduces then
       None
     else
-      val keyCols  = groups.map(c => Column(newId(), c.name, c.ptype, c.qualifiers))
-      val m        = groups.map(_.id).zip(keyCols).toMap
-      val partials = a
-        .calls
-        .map { c =>
-          if isCount(c) then
-            c.copy(ptype = PType.Int64)
-          else
-            c
-        }
+      val keyCols     = groups.map(c => Column(newId(), c.name, c.ptype, c.qualifiers))
+      val m           = groups.map(_.id).zip(keyCols).toMap
+      val partials    = a.calls
       val partialCols = partials
         .zip(a.columns.drop(a.keys.size))
         .map((p, out) => Column(newId(), out.name, p.ptype))
