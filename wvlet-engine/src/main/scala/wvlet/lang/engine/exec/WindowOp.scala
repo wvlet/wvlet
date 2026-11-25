@@ -139,22 +139,31 @@ class WindowOp(
         new Array[Boolean](n)
       else
         null
-    val evals = calls
-      .indices
-      .map(i =>
-        CallEval(
-          calls(i),
-          all,
-          if i == 0 then
-            kept
-          else
-            null
+    val outCols = new Array[Vec](calls.size)
+    // One group at a time, so only one group's arguments and sort keys stay in memory
+    WindowOp
+      .callGroups(calls, sharePartitions)
+      .foreach { g =>
+        val orderBy = calls(g.head).orderBy
+        val keyVecs = orderBy.map(_.expr.eval(all)).toArray
+        val cmp     = SortOp.comparator(keyVecs, orderBy)
+        val evals   = g.map(i =>
+          CallEval(
+            calls(i),
+            all,
+            if i == 0 then
+              kept
+            else
+              null
+            ,
+            cmp
+          )
         )
-      )
-    WindowOp.callGroups(calls, sharePartitions).foreach(g => evaluateGroup(g.map(evals), all))
-    val outCols = evals.map(_.out.result())
-    val full    = Batch(all.columns ++ outCols, n)
-    val out     =
+        evaluateGroup(evals, all, keyVecs, cmp)
+        g.indices.foreach(j => outCols(g(j)) = evals(j).out.result())
+      }
+    val full = Batch(all.columns ++ outCols, n)
+    val out  =
       if kept == null then
         full
       else
@@ -264,15 +273,18 @@ class WindowOp(
   end partitions
 
   /**
-    * The state of one window call over the input `all`: its output column, its arguments, and its
-    * ORDER BY comparator. `evalRows` writes the values of one sorted partition, and marks its rows
-    * in `kept` unless null
+    * The state of one window call over the input `all`: its output column and its arguments. `cmp`
+    * compares rows by the call's ORDER BY keys. `evalRows` writes the values of one sorted
+    * partition, and marks its rows in `kept` unless null
     */
-  private final class CallEval(val c: WindowCall, all: Batch, kept: Array[Boolean]):
+  private final class CallEval(
+      val c: WindowCall,
+      all: Batch,
+      kept: Array[Boolean],
+      cmp: SortOp.RowComparator
+  ):
     val out: WindowOp.OutColumn        = WindowOp.OutColumn(c.ptype, all.size)
     val args: Array[Vec]               = c.args.map(_.eval(all)).toArray
-    val keyVecs: Array[Vec]            = c.orderBy.map(_.expr.eval(all)).toArray
-    val cmp: SortOp.RowComparator      = SortOp.comparator(keyVecs, c.orderBy)
     def peers(a: Int, b: Int): Boolean = c.orderBy.isEmpty || cmp.compareRows(a, b) == 0
 
     def evalRows(rows: Array[Int]): Unit =
@@ -404,11 +416,16 @@ class WindowOp(
 
   /**
     * Evaluates calls with the same PARTITION BY and ORDER BY (one call unless `sharePartitions`):
-    * the rows are partitioned and sorted once, by the first call's keys, and every call reads the
+    * the rows are partitioned and sorted once, by `keyVecs` and `cmp`, and every call reads the
     * same sorted partitions. Each call's values equal the ones of evaluating it alone, as its
     * partitions are the same rows in the same order
     */
-  private def evaluateGroup(evals: IndexedSeq[CallEval], all: Batch): Unit =
+  private def evaluateGroup(
+      evals: IndexedSeq[CallEval],
+      all: Batch,
+      keyVecs: Array[Vec],
+      cmp: SortOp.RowComparator
+  ): Unit =
     val first    = evals.head
     val c        = first.c
     val n        = all.size
@@ -419,8 +436,8 @@ class WindowOp(
       c,
       partKeys,
       rows,
-      first.keyVecs,
-      first.cmp,
+      keyVecs,
+      cmp,
       hashes
     ).foreach { part =>
       var e = 0
