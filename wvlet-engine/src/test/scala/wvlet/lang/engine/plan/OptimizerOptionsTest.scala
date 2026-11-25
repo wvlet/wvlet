@@ -107,7 +107,8 @@ class OptimizerOptionsTest extends UniTest:
         "decimal_float_scan_filters",
         "range_selectivity",
         "left_group_key_semi_joins",
-        "eager_aggregation"
+        "eager_aggregation",
+        "fused_accumulators"
       )
   }
 

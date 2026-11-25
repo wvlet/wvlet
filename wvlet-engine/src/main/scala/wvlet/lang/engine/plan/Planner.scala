@@ -138,7 +138,8 @@ class Planner(
           packAggKeys = enabled(Optimization.PackAggKeys),
           streamPackAggKeys = enabled(Optimization.StreamPackAggKeys),
           longDecimalKeys = enabled(Optimization.LongDecimalKeys),
-          unionPipelines = enabled(Optimization.UnionAllPipelines)
+          unionPipelines = enabled(Optimization.UnionAllPipelines),
+          fusedAccumulators = enabled(Optimization.FusedAccumulators)
         )
       else
         pruned
@@ -146,6 +147,8 @@ class Planner(
     val longDecimals = enabled(Optimization.LongDecimalKeys)
     if !streamPack || !longDecimals then
       Planner.setAggKeyOptions(physical, streamPack, longDecimals)
+    if !enabled(Optimization.FusedAccumulators) then
+      Planner.disableFusedAccumulators(physical)
     physical
 
   end optimizePhysical
@@ -3517,6 +3520,21 @@ object Planner:
       case _ =>
     op.children.foreach(setAggKeyOptions(_, pack, longDecimals))
     op.sharedInputs.foreach(setAggKeyOptions(_, pack, longDecimals))
+
+  /**
+    * Make the hash aggregations of a physical plan, and those of its partitioned aggregations,
+    * update each aggregate on its own (`fused_accumulators`). The partial aggregates that two-phase
+    * aggregations create per part get the option from [[Parallelizer]]
+    */
+  private[engine] def disableFusedAccumulators(op: Operator): Unit =
+    op match
+      case a: HashAggOp =>
+        a.withFusedAccumulators(false)
+      case a: PartitionedAggOp =>
+        a.withFusedAccumulators(false)
+      case _ =>
+    op.children.foreach(disableFusedAccumulators)
+    op.sharedInputs.foreach(disableFusedAccumulators)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =

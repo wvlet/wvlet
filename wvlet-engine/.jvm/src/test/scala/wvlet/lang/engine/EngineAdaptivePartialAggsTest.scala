@@ -25,8 +25,8 @@ import wvlet.uni.test.UniTest
 /**
   * `adaptive_partial_aggs` reaches the partial aggregates of two-phase aggregations, and
   * `pack_agg_keys` the partitioned aggregations, and `stream_pack_agg_keys` / `long_decimal_keys`
-  * every aggregation; their results are checked in PartialAggSkipTest, AggKeyPackingTest, and
-  * PackedGroupTableTest
+  * every aggregation, and `fused_accumulators` the hash aggregations; their results are checked in
+  * PartialAggSkipTest, AggKeyPackingTest, PackedGroupTableTest, and FusedAccumulatorsTest
   */
 class EngineAdaptivePartialAggsTest extends UniTest:
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
@@ -79,6 +79,18 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options, decimals).contains(false) shouldBe false
     flags(options.withDisabled(Optimization.LongDecimalKeys), decimals).contains(true) shouldBe
       false
+  }
+
+  test("fold the aggregates of hash aggregations in one pass with fused_accumulators") {
+    val fused: PartialFunction[Operator, Boolean] = {
+      case a: HashAggOp =>
+        a.fuseAccumulators
+      case a: PartitionedAggOp =>
+        a.fuseAccumulators
+    }
+    flags(options, fused) shouldContain true
+    flags(options, fused).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.FusedAccumulators), fused).contains(true) shouldBe false
   }
 
 end EngineAdaptivePartialAggsTest

@@ -317,7 +317,8 @@ object Aggregates:
   // ---------------------------------------------------------------------------------------
 
   final class CountStar extends Accumulator:
-    private var counts: Array[Long]       = new Array[Long](0)
+    // Read by FusedAccumulators, which adds the rows of a batch to it
+    private[exec] var counts: Array[Long] = new Array[Long](0)
     def ptype: PType                      = PType.Int64
     protected def grow(newCap: Int): Unit = counts = java.util.Arrays.copyOf(counts, newCap)
     def update(groups: Array[Int], n: Int, args: Array[Vec]): Unit =
@@ -333,7 +334,8 @@ object Aggregates:
     )
 
   final class CountNonNull extends Accumulator:
-    private var counts: Array[Long]       = new Array[Long](0)
+    // Read by FusedAccumulators, which adds the rows of a batch without nulls to it
+    private[exec] var counts: Array[Long] = new Array[Long](0)
     def ptype: PType                      = PType.Int64
     protected def grow(newCap: Int): Unit = counts = java.util.Arrays.copyOf(counts, newCap)
     def update(groups: Array[Int], n: Int, args: Array[Vec]): Unit =
@@ -442,14 +444,41 @@ object Aggregates:
       nullsOf(numGroups)
     )
 
-  /** Decimal sums on unscaled longs, switching a group to BigDecimal on overflow */
+  /**
+    * Decimal sums on unscaled longs. A group's sum is `big(g) + sums(g)`: when adding to `sums(g)`
+    * would overflow, its value moves into the BigDecimal part `big(g)` ([[spill]]) and `sums(g)`
+    * starts again from the added value, so that every row can keep adding to `sums(g)`
+    */
   final class SumDecimal(val ptype: PType.Decimal) extends SeenAccumulator:
-    private var sums: Array[Long]         = new Array[Long](0)
+    // Read by FusedAccumulators, which adds the rows of a batch to them
+    private[exec] var sums: Array[Long]   = new Array[Long](0)
     private var big: Array[JBigDecimal]   = new Array[JBigDecimal](0)
     protected def grow(newCap: Int): Unit =
       sums = java.util.Arrays.copyOf(sums, newCap)
       big = java.util.Arrays.copyOf(big, newCap)
       growSeen(newCap)
+
+    private[exec] def seenFlags: Array[Boolean] = seen
+
+    /**
+      * The unscaled values of `v` that [[FusedAccumulators]] can add to `sums`: `v` has no nulls
+      * and holds unscaled Longs at this sum's scale. Otherwise null
+      */
+    private[exec] def fusableValues(v: Vec): Array[Long] =
+      if v.ptype == PType.Null || v.nulls != null then
+        null
+      else
+        Kernels.asUnscaled(v, ptype.scale)
+
+    /** Add `y` to group g whose Long part `sums(g) + y` overflows */
+    private[exec] def spill(g: Int, y: Long): Unit =
+      val x = JBigDecimal.valueOf(sums(g), ptype.scale)
+      big(g) =
+        if big(g) == null then
+          x
+        else
+          big(g).add(x)
+      sums(g) = y
 
     def update(groups: Array[Int], n: Int, args: Array[Vec]): Unit =
       val v = args(0)
@@ -461,23 +490,21 @@ object Aggregates:
         if v.nulls == null || !v.nulls(i) then
           val g = groups(i)
           seen(g) = true
-          if u != null && big(g) == null then
+          if u != null then
             val x = sums(g)
             val y = u(i)
             val z = x + y
             if ((x ^ z) & (y ^ z)) < 0 then
-              big(g) = JBigDecimal.valueOf(x, ptype.scale).add(JBigDecimal.valueOf(y, ptype.scale))
+              spill(g, y)
             else
               sums(g) = z
           else
-            val add =
-              if u != null then
-                JBigDecimal.valueOf(u(i), ptype.scale)
+            val add = ValueOps.rescale(ValueOps.toBigDecimal(v.get(i)), ptype.scale)
+            big(g) =
+              if big(g) == null then
+                add
               else
-                ValueOps.rescale(ValueOps.toBigDecimal(v.get(i)), ptype.scale)
-            if big(g) == null then
-              big(g) = JBigDecimal.valueOf(sums(g), ptype.scale)
-            big(g) = big(g).add(add)
+                big(g).add(add)
         i += 1
 
     def result(numGroups: Int): Vec =
@@ -487,7 +514,7 @@ object Aggregates:
         if !seen(g) then
           b.addNull()
         else if big(g) != null then
-          b.addBig(big(g))
+          b.addBig(big(g).add(JBigDecimal.valueOf(sums(g), ptype.scale)))
         else
           b.addUnscaled(sums(g))
         g += 1

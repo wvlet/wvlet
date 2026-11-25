@@ -64,6 +64,14 @@ class PartitionedAggOp(
     longDecimalKeys = enabled
     this
 
+  /** Whether the partitions' hash aggregations fuse their accumulators (`fused_accumulators`) */
+  var fuseAccumulators: Boolean = true
+
+  /** Set [[fuseAccumulators]] */
+  def withFusedAccumulators(enabled: Boolean): this.type =
+    fuseAccumulators = enabled
+    this
+
   def next(): Batch =
     if result == null then
       result = aggregate()
@@ -83,6 +91,7 @@ class PartitionedAggOp(
         val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, math.min(groups, rows))
           // The keys are packed here from the partition's exact ranges, when they can be
           .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
+          .withFusedAccumulators(fuseAccumulators)
         try op.drain()
         finally op.close()
       val keyVecs =
