@@ -109,6 +109,8 @@ class Planner(
       Planner.disableLateGather(pruned)
     if !enabled(Optimization.ScanJoinRowFilters) then
       Planner.disableSourceJoinFilters(pruned)
+    if !enabled(Optimization.JoinRowFiltersFirst) then
+      Planner.disableJoinFiltersFirst(pruned)
     if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) ||
       !enabled(Optimization.DictionaryFilters)
     then
@@ -3488,6 +3490,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableSourceJoinFilters)
     op.sharedInputs.foreach(disableSourceJoinFilters)
+
+  /** Keep the scans' own row filter conjuncts ahead of the per-row join filters */
+  private[engine] def disableJoinFiltersFirst(op: Operator): Unit =
+    op match
+      case s: ScanOp =>
+        s.joinFiltersFirst = false
+      case _ =>
+    op.children.foreach(disableJoinFiltersFirst)
+    op.sharedInputs.foreach(disableJoinFiltersFirst)
 
   /** Set how the filters of a physical plan evaluate AND / OR (`short_circuit_filters`) */
   private[engine] def configureFilters(

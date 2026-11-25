@@ -230,6 +230,14 @@ enum Optimization(val name: String):
   case ScanJoinRowFilters extends Optimization("scan_join_row_filters")
 
   /**
+    * With `scan_join_row_filters`, the per-row join filters go ahead of a scan's own row filter
+    * conjuncts when they are expected to keep fewer rows: uni tests the conjuncts in order, each
+    * decoding its column for the rows the ones before it kept. TPC-H q19's `l_partkey` filter keeps
+    * far fewer lineitem rows than its `l_shipmode` and `l_shipinstruct` conjuncts
+    */
+  case JoinRowFiltersFirst extends Optimization("join_row_filters_first")
+
+  /**
     * Pre-size the group tables and aggregate state of hash aggregations from estimated group
     * counts, so they grow less often
     */

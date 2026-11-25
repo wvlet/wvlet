@@ -17,10 +17,14 @@ import wvlet.lang.compiler.*
 import wvlet.lang.engine.catalog.ColumnPartRange
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.exec.Operator
+import wvlet.lang.engine.exec.RuntimeFilter
 import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.vector.LongVec
+import wvlet.lang.engine.vector.PType
 import wvlet.lang.model.plan.*
+import wvlet.uni.cloud.parquet.ParquetFilter
 import wvlet.uni.test.UniTest
 
 import java.nio.file.Files
@@ -232,6 +236,41 @@ class EngineScanRowFiltersTest extends UniTest:
       r shouldBe rows(noJoin, q)
       r shouldBe rows(off, q)
     }
+  }
+
+  test("test runtime join filters keeping fewer rows before the scan's own row filter") {
+    // 21 build keys spread over the 10 row groups keep 0.1% of the ids, and `d < 2020-11-01` 305
+    // of the 400 dates (76%)
+    val src  = ParquetSource("t", joinFile)
+    val ids  = (0L until 20480L).filter(_ % 997 == 0).toArray
+    val days = java.time.LocalDate.of(2020, 11, 1)
+    def scan(passRate: Double, first: Boolean): ScanOp =
+      val rf = RuntimeFilter(0, "id", (_, _) => None, rows = true)
+      rf.set(LongVec(PType.Int64, ids, null), ids.indices.toArray, ids.length)
+      ScanOp(src, src.schema, None, None, Seq(rf), rowFilter = Some(ParquetFilter.col("d") < days))
+        .withRowFilterPassRate(passRate)
+        .withJoinFiltersFirst(first)
+    def rowFilter(s: ScanOp): String     = s.spec.rowFilter.map(_.toString).getOrElse("")
+    def scannedIds(s: ScanOp): Seq[Long] =
+      val out = Seq.newBuilder[Long]
+      var b   = s.next()
+      while b != null do
+        val v = b.column(0)
+        (0 until b.size).foreach(i => out += v.get(i).asInstanceOf[Long])
+        b = s.next()
+      s.close()
+      out.result()
+    val joinFirst = rowFilter(scan(0.76, first = true))
+    debug(joinFirst)
+    joinFirst.indexOf("In(") < joinFirst.indexOf("Compare(d,") shouldBe true
+    // The scan's own filter stays first when it keeps fewer rows, or with the toggle off
+    Seq(scan(0.0001, first = true), scan(0.76, first = false)).foreach { s =>
+      val f = rowFilter(s)
+      f.indexOf("Compare(d,") < f.indexOf("In(") shouldBe true
+    }
+    val expected = ids.filter(i => i % 400 < 305).toSeq
+    scannedIds(scan(0.76, first = true)) shouldBe expected
+    scannedIds(scan(0.76, first = false)) shouldBe expected
   }
 
   test("read the range of a column in each row group") {
