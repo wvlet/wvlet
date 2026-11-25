@@ -12,8 +12,9 @@ The [Wvlet Playground](https://wvlet.org/wvlet/playground/) runs Wvlet queries i
 - **Tables**: the TPC-H tables and their column types; click a table to read it. Choose the scale factor (0.001 to 0.1) in the header.
 - **SQL**: the SQL that Wvlet generates for the query, in the DuckDB, Trino, Snowflake, Hive, or BigQuery dialect.
 - **SQL to Wvlet**: switch the editor to **SQL** to write SQL and see the equivalent Wvlet query. Switching converts the editor text between the two languages when it can.
-- **Plan** and **Engine**: the logical plan the compiler builds, and the engine's physical plan.
-- **Result**: the rows in a table you can sort by clicking a column header, with column types, row counts, and the run time.
+- **Plan**: the compiler's logical plan in data-flow order. Click a node's line number to select its source in the editor; **Columns** shows each node's output columns.
+- **Engine**: how the engine plans the query, in three stages: **Bound** (the runtime plan before optimization), **Optimized** (after the logical passes), and **Operators** (the physical operators that run). It lists the optimizer rules that changed the plan, and **Optimizations** turns individual optimizations off, to see how the plan and the run time change.
+- **Result**: the rows in a table you can sort by clicking a column header, with column types, row counts, and the run time. Doubles are rounded to 6 decimal places.
 
 ## Keys
 

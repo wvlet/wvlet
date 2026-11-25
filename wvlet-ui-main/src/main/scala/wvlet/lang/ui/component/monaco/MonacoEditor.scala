@@ -49,6 +49,7 @@ class MonacoEditor(
   def setDarkMode(dark: Boolean): Unit                = js.native
   def setLanguage(lang: String): Unit                 = js.native
   def focus(): Unit                                   = js.native
+  def revealLine(line: Int): Unit                     = js.native
 
 // uni's RxElement does not extend LogSupport (airframe's did). EditorBase brings it back as
 // a mixin so subclasses (WvletMonacoEditor, QueryEditor, SQLPreview) keep their warn/info calls

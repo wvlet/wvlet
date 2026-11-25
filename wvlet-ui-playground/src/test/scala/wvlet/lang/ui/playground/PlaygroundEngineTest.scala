@@ -49,6 +49,53 @@ class PlaygroundEngineTest extends UniTest:
     engine.run(text, position = LinePosition(16, 1)).error shouldBe None
   }
 
+  test("should run a query its SQL dialect can't express") {
+    val out = engine.run(
+      Examples.find("04_joins/06_asof_join.wv").get.text,
+      dialect = SqlDialect.Trino
+    )
+    out.error shouldBe None
+    out.sql shouldContain "Cannot generate Trino SQL"
+    out.result.get.rows.size shouldBe 4
+  }
+
+  test("should round doubles for display") {
+    PlaygroundEngine.formatDouble(35893.86530718333) shouldBe "35893.865307"
+    PlaygroundEngine.formatDouble(2.0) shouldBe "2.0"
+    PlaygroundEngine.formatDouble(0.1 + 0.2) shouldBe "0.3"
+  }
+
+  test("should show the engine's plan stages and fired rules") {
+    val out = engine.run(
+      "from lineitem join orders on l_orderkey = o_orderkey where o_totalprice > 1000 count"
+    )
+    out.error shouldBe None
+    out.boundPlan.nonEmpty shouldBe true
+    out.runtimePlan.nonEmpty shouldBe true
+    out.firedRules.nonEmpty shouldBe true
+  }
+
+  test("should run with optimizations turned off") {
+    val q   = "from lineitem join orders on l_orderkey = o_orderkey where o_totalprice > 1000 count"
+    val on  = engine.run(q)
+    val off = engine.run(q, disabled = wvlet.lang.engine.plan.Optimization.values.toSet)
+    off.error shouldBe None
+    off.result.get.rows shouldBe on.result.get.rows
+    off.firedRules shouldBe Nil
+  }
+
+  test("should parse plan lines") {
+    val l = PlanLine.parse("  ↙ 3) InnerJoin: - (line:3.1)\n    - JoinOn(Eq(a, b))\n    - false")
+    l.size shouldBe 2
+    l.head.name shouldBe "InnerJoin"
+    l.head.sourceLine shouldBe Some(3)
+    l(1).isAttribute shouldBe true
+    val r = PlanLine.parse("↓ Filter((#1 > 3)) -> [a#1, b#2]").head
+    r.name shouldBe "Filter"
+    r.detail shouldBe "((#1 > 3))"
+    r.outputs shouldBe "[a#1, b#2]"
+  }
+
   test("should show SQL in other dialects") {
     val out = engine.run("from nation limit 3", dialect = SqlDialect.Trino)
     out.sql shouldContain "limit 3"
