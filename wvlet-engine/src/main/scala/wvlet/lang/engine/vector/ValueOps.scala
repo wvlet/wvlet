@@ -37,6 +37,11 @@ object ValueOps:
         i != 0
       case l: Long =>
         l != 0
+      // Non-zero numbers are true, NaN included, as in DuckDB
+      case d: Double =>
+        d != 0.0
+      case b: JBigDecimal =>
+        b.signum != 0
       case other =>
         throw castError(other, "boolean")
 
@@ -60,10 +65,12 @@ object ValueOps:
         l
       case i: Int =>
         i.toLong
+      // DuckDB rounds a double half to even, and rejects values outside the long range
       case d: Double =>
-        if d.isNaN || d.isInfinite then
+        val r = Math.rint(d)
+        if r.isNaN || r < -9.223372036854775808e18 || r >= 9.223372036854775808e18 then
           throw castError(d, "long")
-        math.round(d)
+        r.toLong
       case b: JBigDecimal =>
         b.setScale(0, RoundingMode.HALF_UP).longValueExact()
       case b: Boolean =>

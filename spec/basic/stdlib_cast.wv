@@ -1,0 +1,25 @@
+-- to_int / to_long truncate fractional values toward zero on every engine, and numeric
+-- to_boolean is true for non-zero values
+from [
+  [2.5, 1],
+  [-2.5, 2],
+  [2.7, 3],
+  [-2.7, 4],
+  [3.5, 5],
+  [0.0, 6],
+] as casts(n, id)
+select
+  n.to_int as di,
+  n.to_double.to_long as dl,
+  n.to_boolean as xb,
+  n.to_double.to_boolean as db,
+order by id
+
+test _.rows should be [
+  [2, 2, true, true],
+  [-2, -2, true, true],
+  [2, 2, true, true],
+  [-2, -2, true, true],
+  [3, 3, true, true],
+  [0, 0, false, false],
+]

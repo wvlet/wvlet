@@ -115,11 +115,11 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 
 | Function | Returns | Engines | Description |
 |----------|---------|---------|-------------|
-| `to_int` | int | all |  |
+| `to_int` | int | all | Truncate toward zero (2.5 -> 2, -2.5 -> -2); use round to round |
 | `to_long` | long | all |  |
 | `to_float` | float | all |  |
 | `to_double` | double | all |  |
-| `to_boolean` | boolean | all |  |
+| `to_boolean` | boolean | all | Non-zero is true, NaN included |
 | `to_string` | string | all |  |
 | `or_else(other: float)` | float | all |  |
 | `abs` | float | all |  |
@@ -150,11 +150,11 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 
 | Function | Returns | Engines | Description |
 |----------|---------|---------|-------------|
-| `to_int` | int | all |  |
+| `to_int` | int | all | Truncate toward zero (2.5 -> 2, -2.5 -> -2); use round to round |
 | `to_long` | long | all |  |
 | `to_float` | float | all |  |
 | `to_double` | double | all |  |
-| `to_boolean` | boolean | all |  |
+| `to_boolean` | boolean | all | Non-zero is true, NaN included |
 | `to_string` | string | all |  |
 | `or_else(other: double)` | double | all |  |
 | `abs` | double | all |  |
@@ -178,11 +178,11 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 
 | Function | Returns | Engines | Description |
 |----------|---------|---------|-------------|
-| `to_int` | int | all |  |
+| `to_int` | int | all | Truncate toward zero (2.5 -> 2, -2.5 -> -2); use round to round |
 | `to_long` | long | all |  |
 | `to_float` | float | all |  |
 | `to_double` | double | all |  |
-| `to_boolean` | boolean | all |  |
+| `to_boolean` | boolean | all | Non-zero is true, NaN included |
 | `to_string` | string | all |  |
 | `or_else(other: decimal)` | decimal | all |  |
 | `abs` | decimal | all |  |

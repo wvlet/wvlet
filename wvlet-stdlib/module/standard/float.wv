@@ -1,16 +1,22 @@
 package wvlet.standard
 
 trait float = {
-  def to_int: int = sql"cast(${this} as bigint)"
-  def to_int in bigquery: int = sql"cast(${this} as int64)"
-  def to_long: long = sql"cast(${this} as bigint)"
-  def to_long in bigquery: long = sql"cast(${this} as int64)"
+  -- Truncate toward zero (2.5 -> 2, -2.5 -> -2); use round to round
+  def to_int: int = sql"cast(trunc(${this}) as bigint)"
+  def to_int in trino: int = sql"cast(truncate(${this}) as bigint)"
+  def to_int in hive: int = sql"cast(${this} as bigint)"
+  def to_int in bigquery: int = sql"cast(trunc(${this}) as int64)"
+  def to_long: long = sql"cast(trunc(${this}) as bigint)"
+  def to_long in trino: long = sql"cast(truncate(${this}) as bigint)"
+  def to_long in hive: long = sql"cast(${this} as bigint)"
+  def to_long in bigquery: long = sql"cast(trunc(${this}) as int64)"
   def to_float: float = sql"cast(${this} as double)"
   def to_float in bigquery: float = sql"cast(${this} as float64)"
   def to_double: double = sql"cast(${this} as double)"
   def to_double in bigquery: double = sql"cast(${this} as float64)"
+  -- Non-zero is true, NaN included
   def to_boolean: boolean = sql"cast(${this} as boolean)"
-  def to_boolean in bigquery: boolean = sql"cast(${this} as bool)"
+  def to_boolean in bigquery: boolean = sql"(${this} != 0)"
   def to_string: string = sql"cast(${this} as varchar)"
   def to_string in hive: string = sql"cast(${this} as string)"
   def to_string in bigquery: string = sql"cast(${this} as string)"
