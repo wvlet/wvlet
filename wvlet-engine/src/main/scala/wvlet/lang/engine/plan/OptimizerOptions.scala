@@ -85,6 +85,15 @@ enum Optimization(val name: String):
   case ReduceSemiJoins extends Optimization("reduce_semi_joins")
 
   /**
+    * Replace a semi join of a table with itself on an equal key and a different value (`t1.k = t2.k
+    * and t1.x <> t2.x`, both sides whole scans) by a semi join on the key with the keys whose group
+    * holds two different values (`group by k having min(x) <> max(x)`), or, where only the distinct
+    * keys matter, by those keys alone (TPC-DS q95). Applied by [[ReduceSemiJoins]]' walk, so it
+    * needs `reduce_semi_joins` too
+    */
+  case SelfJoinAggregate extends Optimization("self_join_aggregate")
+
+  /**
     * Filter the input of an aggregation that a join reads by a group key to the keys a small
     * relation on the join's other side holds, with a semi join, so that the groups the join can
     * never match are not computed

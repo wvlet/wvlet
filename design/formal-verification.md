@@ -30,6 +30,7 @@ For every row: update the Lean model first, regenerate the fixture with `cd form
 | How the engine decorrelates EXISTS / IN (`Planner.correlatedJoin` for EXISTS and IN, `planCorrelated`'s conjunct split, `Planner.decorrelateExists`) | `WvletFormal/Decorrelate/` | `decorrelate-traces` | `./sbt "engineJVM/testOnly *DecorrelateConformanceTest"` |
 | How the engine decorrelates a correlated scalar subquery (`Planner.decorrelateScalar`, `emptyGroupValue`) | `WvletFormal/Scalar/` | `scalar-subquery-traces` | `./sbt "engineJVM/testOnly *ScalarSubqueryConformanceTest"` |
 | Where the engine reduces inner joins to semi joins (`ReduceSemiJoins`, its duplicate-insensitive contexts, or the shared CTE readers it trusts) | `WvletFormal/SemiReduce/` | `semi-reduce-traces` | `./sbt "engineJVM/testOnly *SemiReduceConformanceTest"` |
+| Which self semi joins on a key with a different value become `group by k having min(x) <> max(x)` (`SelfJoinAggregate`: the matched shape, NULL handling, the keys-only form in a duplicate-insensitive context) | `WvletFormal/SelfJoinAggregate/` | `self-join-aggregate-traces` | `./sbt "engineJVM/testOnly *SelfJoinAggregateConformanceTest"` |
 
 ## Cross-model rules
 

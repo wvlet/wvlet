@@ -282,7 +282,7 @@ class Planner(
       computeSharedResults(joined.toSeq.flatMap(_.sharedResult))
       joined.foreach(_.materialize())
       // A separate run, so that firedRules counts the rules of the plan once
-      val optimizer                            = Optimizer.default(options, semiJoins)
+      val optimizer = Optimizer.default(options, semiJoins, Some(() => runtimeBinder.newColumnId()))
       val sharedReadsJoined                    = java.util.IdentityHashMap[SharedInput, Boolean]()
       def readsJoined(p: RuntimePlan): Boolean =
         p match
@@ -492,7 +492,10 @@ class Planner(
   private lazy val runtimeBinder = RuntimeBinder(this)
 
   /** The logical passes over runtime plans */
-  private lazy val runtimeOptimizer = Optimizer.default(options)
+  private lazy val runtimeOptimizer = Optimizer.default(
+    options,
+    newColumnId = Some(() => runtimeBinder.newColumnId())
+  )
 
   /** Plan a relation into operators: bind it to the runtime plan, optimize, and lower it */
   private[engine] def planRelation(r: Relation): Operator = lower(runtimePlan(r))

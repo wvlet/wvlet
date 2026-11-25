@@ -39,9 +39,15 @@ trait Pass:
 /**
   * The options of an optimizer run, and the rules that fired so far. `replanSemiJoinBuilds` is set
   * for the run that re-plans a query once its shared CTEs are computed: [[ReorderJoins]] then also
-  * chooses again the build side of the semi and anti joins that read one
+  * chooses again the build side of the semi and anti joins that read one. `newColumnId` gives ids
+  * of new columns, unique within the query (the binder's); passes that add columns don't fire
+  * without it
   */
-class OptimizerContext(val options: OptimizerOptions, val replanSemiJoinBuilds: Boolean = false):
+class OptimizerContext(
+    val options: OptimizerOptions,
+    val replanSemiJoinBuilds: Boolean = false,
+    val newColumnId: Option[() => ColumnId] = None
+):
   private val counts = mutable.LinkedHashMap.empty[String, Int]
 
   def isEnabled(r: Rule): Boolean = options.isEnabled(r.optimization)
@@ -109,9 +115,10 @@ end RuleBatch
 class Optimizer(
     val passes: Seq[Pass],
     options: OptimizerOptions,
-    replanSemiJoinBuilds: Boolean = false
+    replanSemiJoinBuilds: Boolean = false,
+    newColumnId: Option[() => ColumnId] = None
 ):
-  private val ctx = OptimizerContext(options, replanSemiJoinBuilds)
+  private val ctx = OptimizerContext(options, replanSemiJoinBuilds, newColumnId)
 
   def run(p: RuntimePlan): RuntimePlan =
     passes.foldLeft(p) { (plan, pass) =>
@@ -173,14 +180,18 @@ object Optimizer:
   )
 
   /**
-    * The default passes. With `replanSemiJoinBuilds`, for a re-plan over computed shared CTEs
-    * ([[OptimizerContext]])
+    * The default passes. With `replanSemiJoinBuilds`, for a re-plan over computed shared CTEs; with
+    * `newColumnId`, the ids of new columns ([[OptimizerContext]])
     */
-  def default(options: OptimizerOptions, replanSemiJoinBuilds: Boolean = false): Optimizer =
-    Optimizer(defaultPasses, options, replanSemiJoinBuilds)
+  def default(
+      options: OptimizerOptions,
+      replanSemiJoinBuilds: Boolean = false,
+      newColumnId: Option[() => ColumnId] = None
+  ): Optimizer = Optimizer(defaultPasses, options, replanSemiJoinBuilds, newColumnId)
 
   /** An optimizer running a single pass, for per-rule tests */
-  def only(pass: Pass, options: OptimizerOptions = OptimizerOptions()): Optimizer = Optimizer(
-    Seq(pass),
-    options
-  )
+  def only(
+      pass: Pass,
+      options: OptimizerOptions = OptimizerOptions(),
+      newColumnId: Option[() => ColumnId] = None
+  ): Optimizer = Optimizer(Seq(pass), options, newColumnId = newColumnId)

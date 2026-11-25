@@ -126,6 +126,8 @@ lake exe factor-or-traces   # regenerate the OR factoring conformance fixture
 | `WvletFormal/Scalar/Traces.lean`, `ScalarSubqueryTraces.lean` | — | exports the scalar subquery conformance fixture |
 | `WvletFormal/SemiReduce/Rule.lean` | `projHas`: a row's projection to columns `K` occurs in a relation; the semi-join reduction of `ReduceSemiJoins` (an inner join whose needed columns `K` are the left input's, read where only the set of rows matters) | `innerJoin_proj_iff_semiJoin`: `X ⋈ Y` and `X ⋉ Y` on the same ON condition have the same rows projected to `K`, as sets, a NULL condition dropping the pair in both; `semiJoin_reduce`, `antiJoin_reduce`, `notIn_reduce`: so IN / EXISTS, NOT EXISTS, and NOT IN (whose NULL handling reads only the set of values, `inTri_congr`) over either input keep the same rows |
 | `WvletFormal/SemiReduce/Traces.lean`, `SemiReduceTraces.lean` | — | exports the semi-join reduction conformance fixture |
+| `WvletFormal/SelfJoinAggregate/Rule.lean` | `multi`: a key's group holds two different non-NULL values; `having`: `group by k having min(x) <> max(x)` without NULL keys; `Lineage` / `Covers`: the left rows agree with rows of the table / read all of it; the self join `l ⋉ T on l.k = T.k and l.x <> T.x` of `SelfJoinAggregate` | `semiJoin_eq`: when every left row is a row of T, the self join keeps exactly the left rows with a non-NULL x that the semi join on k with `having` keeps, in order, duplicates included; `keys_eq`: when the left side reads all of T, the self join's distinct keys are `having`'s. Gap: that `min(x) <> max(x)` says the same as `multi` is not modeled |
+| `WvletFormal/SelfJoinAggregate/Traces.lean`, `SelfJoinAggregateTraces.lean` | — | exports the self-join aggregation conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -247,6 +249,13 @@ behavior as traces:
   `SemiReduceConformanceTest` (engineJVM) runs each query with `reduce_semi_joins` on and off,
   compares rows with the model and DuckDB, and checks that the rule turned the subquery's inner
   join into a semi join.
+- `lake exe self-join-aggregate-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/self-join-aggregate-traces.json`:
+  a table `t(k, x, id)` with NULL keys, NULL values, and repeated values, with the rows that
+  EXISTS, IN, and `select distinct t1.k` keep over `t as t1 ⋉ t as t2 on t1.k = t2.k and t1.x <>
+  t2.x`, its left side whole or filtered. `SelfJoinAggregateConformanceTest` (engineJVM) runs each
+  query with `self_join_aggregate` on and off, compares rows with the model and DuckDB, and checks
+  that the rule turned the whole-table self join into an aggregation and left the filtered ones.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator

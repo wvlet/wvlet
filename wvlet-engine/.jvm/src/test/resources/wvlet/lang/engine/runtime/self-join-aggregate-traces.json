@@ -1,0 +1,15 @@
+{
+  "generatedBy": "formal: lake exe self-join-aggregate-traces (do not edit by hand)",
+  "t": [[null, 1, 0], [null, 2, 1], [1, 1, 2], [1, 1, 3], [2, 1, 4], [2, 2, 5], [3, null, 6], [3, 5, 7], [4, null, 8], [4, 1, 9], [4, 2, 10], [5, 7, 11]],
+  "cases": [
+    {"consumer": "exists", "extra": "", "rows": [4, 5, 9, 10], "join_rows": [4, 5, 9, 10]},
+    {"consumer": "exists", "extra": "t1.id > 5", "rows": [9, 10], "join_rows": [9, 10]},
+    {"consumer": "exists", "extra": "t1.x <> 2", "rows": [4, 9], "join_rows": [4, 9]},
+    {"consumer": "in", "extra": "", "rows": [4, 5, 8, 9, 10], "join_rows": [4, 5, 8, 9, 10]},
+    {"consumer": "in", "extra": "t1.id > 5", "rows": [8, 9, 10], "join_rows": [8, 9, 10]},
+    {"consumer": "in", "extra": "t1.x <> 2", "rows": [4, 5, 8, 9, 10], "join_rows": [4, 5, 8, 9, 10]},
+    {"consumer": "distinct", "extra": "", "rows": [2, 4], "join_rows": [2, 4]},
+    {"consumer": "distinct", "extra": "t1.id > 5", "rows": [4], "join_rows": [4]},
+    {"consumer": "distinct", "extra": "t1.x <> 2", "rows": [2, 4], "join_rows": [2, 4]}
+  ]
+}
