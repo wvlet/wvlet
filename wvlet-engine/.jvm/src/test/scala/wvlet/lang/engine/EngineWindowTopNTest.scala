@@ -14,6 +14,7 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
+import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.uni.test.UniTest
@@ -84,6 +85,31 @@ class EngineWindowTopNTest extends UniTest:
     explain("""from 'spec/tpch/data/lineitem.parquet'
         |select l_returnflag, dense_rank() over (order by l_quantity) as rk
         |where rk <= 3""".stripMargin) shouldNotContain "top="
+  }
+
+  test("fold running window aggregates in primitive values with running_window_kernels") {
+    val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
+    def windowKernels(o: OptimizerOptions): Seq[Boolean] =
+      val unit = CompilationUnit.fromWvletString(
+        """from 'spec/tpch/data/lineitem.parquet'
+          |select l_orderkey,
+          |  sum(l_quantity) over (partition by l_orderkey order by l_linenumber) as running"""
+          .stripMargin
+      )
+      val r         = compiler.compileSingleUnit(unit)
+      given Context = r.context
+      val query     = EngineTPCHBench.queryOf(unit).getOrElse(fail("No query"))
+      def collect(op: wvlet.lang.engine.exec.Operator): Seq[Boolean] =
+        (
+          op match
+            case w: wvlet.lang.engine.exec.WindowOp =>
+              Seq(w.runningKernels)
+            case _ =>
+              Nil
+        ) ++ op.children.flatMap(collect)
+      collect(WvletEngine(optimizer = o).physicalPlan(GenSQL.expand(query, summon[Context])))
+    windowKernels(options) shouldBe Seq(true)
+    windowKernels(options.withDisabled(Optimization.RunningWindowKernels)) shouldBe Seq(false)
   }
 
 end EngineWindowTopNTest

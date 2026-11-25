@@ -90,7 +90,8 @@ class WindowOp(
     runner: TaskRunner = TaskRunner.Sequential,
     minParallelRows: Int = WindowOp.MinParallelRows,
     runningFrames: Boolean = true,
-    val topN: Option[WindowOp.TopN] = None
+    val topN: Option[WindowOp.TopN] = None,
+    val runningKernels: Boolean = false
 ) extends Operator:
   private var result: Iterator[Batch]  = null
   override def children: Seq[Operator] = Seq(child)
@@ -501,6 +502,8 @@ class WindowOp(
       out: WindowOp.OutColumn,
       peers: (Int, Int) => Boolean
   ): Unit =
+    if runningKernels && WindowOp.runningPrimitive(c, rows, args, out, peers) then
+      return
     val size = rows.length
     val acc  = Aggregates.accumulator(c.name, c.args.map(_.ptype), c.ptype)
     acc.ensureGroups(1)
@@ -867,6 +870,137 @@ class WindowOp(
 end WindowOp
 
 object WindowOp:
+
+  /**
+    * A running count, sum, min, or max (a frame from the partition start) over `rows`, folded in
+    * primitive values: count(*) and count(x) over any column, sum over Int64, Decimal (of the
+    * result scale), and Float64 columns, min / max over Int64 and Decimal columns. Each row's value
+    * is the fold of the rows up to its frame end, as `aggregateRunning` computes it with an
+    * accumulator. The caller passes only running frames ([[isRunningFrame]]). Returns false,
+    * possibly after writing some rows, for other calls and columns, and when a Long sum overflows;
+    * the caller then computes every row of the partition
+    */
+  def runningPrimitive(
+      c: WindowCall,
+      rows: Array[Int],
+      args: Array[Vec],
+      out: OutColumn,
+      peers: (Int, Int) => Boolean
+  ): Boolean =
+    val name = c.name.toLowerCase
+    val arg  = args.headOption.orNull
+    val kind =
+      name match
+        case "count" | "count_star" if c.ptype == PType.Int64 && args.length <= 1 =>
+          0
+        case "sum" if args.length == 1 =>
+          (arg, c.ptype) match
+            case (v: LongVec, PType.Int64) if v.ptype == PType.Int64 =>
+              1
+            case (v: LongVec, d: PType.Decimal)
+                if v.ptype.isInstanceOf[PType.Decimal] &&
+                  v.ptype.asInstanceOf[PType.Decimal].scale == d.scale =>
+              2
+            case (_: DoubleVec, PType.Float64) =>
+              3
+            case _ =>
+              -1
+        case "min" | "max" if args.length == 1 =>
+          arg match
+            case v: LongVec if v.ptype == c.ptype =>
+              if c.ptype == PType.Int64 then
+                4
+              else if c.ptype.isInstanceOf[PType.Decimal] then
+                5
+              else
+                -1
+            case _ =>
+              -1
+        case _ =>
+          -1
+    if kind < 0 then
+      return false
+    val toEnd   = c.frame.exists(_.end.isEmpty)
+    val byPeers = !toEnd && c.frame.forall(!_.rows)
+    val rowsEnd =
+      c.frame match
+        case Some(f) if f.rows && f.end.nonEmpty =>
+          f.end.get
+        case _ =>
+          0L
+    val size  = rows.length
+    val longs =
+      arg match
+        case v: LongVec =>
+          v.values
+        case _ =>
+          null
+    val doubles =
+      arg match
+        case v: DoubleVec =>
+          v.values
+        case _ =>
+          null
+    val isMax    = name == "max"
+    var count    = 0L // non-NULL rows folded (all rows for count(*))
+    var l        = 0L
+    var d        = 0.0
+    var fed      = 0
+    var lastEnd  = Int.MinValue
+    var k        = 0
+    var overflow = false
+    while k < size && !overflow do
+      val e =
+        if toEnd then
+          size - 1
+        else if byPeers then
+          if k <= lastEnd then
+            lastEnd
+          else
+            var x = k
+            while x + 1 < size && peers(rows(k), rows(x + 1)) do
+              x += 1
+            x
+        else
+          math.max(-1L, math.min(size - 1L, k + rowsEnd)).toInt
+      while fed <= e && !overflow do
+        val r = rows(fed)
+        if arg == null || !arg.isNull(r) then
+          kind match
+            case 0     =>
+            case 1 | 2 =>
+              val s = l + longs(r)
+              // Overflow when both operands have the sign the sum lacks
+              if ((l ^ s) & (longs(r) ^ s)) < 0 then
+                overflow = true
+              l = s
+            case 3 =>
+              d += doubles(r)
+            case _ =>
+              val v = longs(r)
+              if count == 0 || (isMax && v > l) || (!isMax && v < l) then
+                l = v
+          count += 1
+        fed += 1
+      lastEnd = e
+      val i = rows(k)
+      if kind == 0 then
+        out.setLong(i, count)
+      else if count == 0 then
+        out.setNull(i)
+      else
+        kind match
+          case 1 | 4 =>
+            out.setLong(i, l)
+          case 2 | 5 =>
+            out.setUnscaled(i, l)
+          case _ =>
+            out.setDouble(i, d)
+      k += 1
+    end while
+    !overflow
+
+  end runningPrimitive
 
   /**
     * Keep only the rows of each partition that rank within `limit` by the ORDER BY keys: the first

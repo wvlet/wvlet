@@ -38,7 +38,9 @@ object Lowering:
     * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]). With
     * `footerCache`, Parquet scans reuse cached footers
     * ([[wvlet.lang.engine.catalog.ParquetFooterCache]]). With `windowTopN`, a filter bounding the
-    * rank of a window keeps only the top rows of each partition ([[WindowOp.topNOf]])
+    * rank of a window keeps only the top rows of each partition ([[WindowOp.topNOf]]). With
+    * `windowKernels`, running window aggregates fold primitive values
+    * ([[WindowOp.runningPrimitive]])
     */
   def apply(
       p: RuntimePlan,
@@ -47,9 +49,10 @@ object Lowering:
       inSet: Boolean = false,
       accelerator: Option[PlanAccelerator] = None,
       footerCache: Boolean = false,
-      windowTopN: Boolean = false
+      windowTopN: Boolean = false,
+      windowKernels: Boolean = false
   ): Operator =
-    val l = Lower(joinFilters, presizeAggs, accelerator, footerCache, windowTopN)
+    val l = Lower(joinFilters, presizeAggs, accelerator, footerCache, windowTopN, windowKernels)
     if inSet then
       l.markInSet(p)
     l.lower(p)
@@ -71,7 +74,8 @@ object Lowering:
       presizeAggs: Boolean,
       accelerator: Option[PlanAccelerator],
       footerCache: Boolean,
-      windowTopN: Boolean
+      windowTopN: Boolean,
+      windowKernels: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -132,7 +136,8 @@ object Lowering:
                   op.child,
                   op.calls,
                   op.schema,
-                  topN = WindowOp.topNOf(op.calls, op.child.schema.size, filter)
+                  topN = WindowOp.topNOf(op.calls, op.child.schema.size, filter),
+                  runningKernels = op.runningKernels
                 )
               case other =>
                 other
@@ -209,7 +214,7 @@ object Lowering:
           Planner.sampleFilter(lower(child), percentage)
         case Window(child, calls, _) =>
           val pos = positions(child)
-          WindowOp(lower(child), calls.map(_.lower(pos)), p.schema)
+          WindowOp(lower(child), calls.map(_.lower(pos)), p.schema, runningKernels = windowKernels)
         case Unnest(child, lists, keepInput, outer, _) =>
           val pos = positions(child)
           UnnestOp(lower(child), lists.map(_.lower(pos)), keepInput, p.schema, outer)
