@@ -26,9 +26,9 @@ Available on all values:
 | Function | Description |
 |----------|-------------|
 | `x.to_string` | Cast to string |
-| `x.to_int` / `x.to_long` | Cast to a 64-bit integer |
+| `x.to_int` / `x.to_long` | Cast to a 64-bit integer; fractional values truncate toward zero (2.5 → 2, -2.5 → -2) |
 | `x.to_float` / `x.to_double` | Cast to a 64-bit floating point number |
-| `x.to_boolean` | Cast to boolean |
+| `x.to_boolean` | Cast to boolean; a number is true when non-zero |
 | `x.to_date` | Cast to date |
 | `x.to_timestamp` | Cast to timestamp |
 
