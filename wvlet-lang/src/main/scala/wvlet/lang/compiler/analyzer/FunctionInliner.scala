@@ -25,6 +25,7 @@ import wvlet.lang.compiler.SymbolInfo
 import wvlet.lang.compiler.TermName
 import wvlet.lang.compiler.TypeName
 import wvlet.lang.compiler.TypeSymbolInfo
+import wvlet.lang.compiler.WvletEngineFunctionNames
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.DataType
@@ -141,19 +142,48 @@ object FunctionInliner extends ContextLogSupport:
         List(other)
 
   /**
-    * The dialect preference of a method definition for the current compile target: 2 when one of
-    * its `in <context>` scopes names the target engine, 1 when it is dialect-neutral, and 0 when it
-    * is scoped to a different engine.
+    * The dialect preference of a method definition for the current compile target: higher when one
+    * of its `in <context>` scopes names a more specific context in the target's
+    * [[DBType.dialectContextChain]] (`in wvlet` over `in duckdb` on the wvlet engine, 2 for the
+    * target's own context elsewhere), 1 when it is dialect-neutral, and 0 when it is scoped to a
+    * different engine. A generated engine catalog (`= native` defs bundled in the standard library)
+    * is not inherited through the chain unless the target engine binds the name: the wvlet engine
+    * runs the hand-written `in duckdb` variants but not every DuckDB function
     */
   private def dialectScore(m: MethodSymbolInfo, context: Context): Int =
-    val dbName       = context.dbType.dialectContextName
+    val chain        = context.dbType.dialectContextChain
     val contextNames = m.defContexts.map(_.contextType.leafName.toLowerCase)
-    if contextNames.contains(dbName) then
-      2
-    else if contextNames.isEmpty then
+    if contextNames.isEmpty then
       1
     else
-      0
+      chain.indexWhere(contextNames.contains) match
+        case -1 =>
+          0
+        case 0 =>
+          chain.size + 1
+        case _
+            if m.compilationUnit.isPreset && isEngineNative(m) && !(
+              context.dbType.checksFunctionNames &&
+                WvletEngineFunctionNames.names.contains(m.name.name.toLowerCase)
+            ) =>
+          0
+        case i =>
+          chain.size + 1 - i
+
+  /**
+    * Drop the variants scoped to other engines. A target that checks function names
+    * ([[DBType.checksFunctionNames]]) drops them even when nothing else is left, so that a call
+    * only another engine defines stays unresolved and is reported; other targets keep the whole
+    * pool as a lenient fallback
+    */
+  private def dialectCompatible(
+      pool: List[MethodSymbolInfo],
+      context: Context
+  ): List[MethodSymbolInfo] =
+    if context.dbType.checksFunctionNames then
+      pool.filter(dialectScore(_, context) > 0)
+    else
+      preferNonZero(pool, dialectScore(_, context))
 
   private def preferNonZero(
       pool: List[MethodSymbolInfo],
@@ -201,11 +231,16 @@ object FunctionInliner extends ContextLogSupport:
       knownArgs: List[FunctionArg],
       context: Context
   ): Option[MethodSymbolInfo] =
-    val candidates = symbolInfos
+    val all = symbolInfos
       .flatMap(flattenSymbolInfos)
       .collect { case m: MethodSymbolInfo =>
         m
       }
+    val candidates =
+      if context.dbType.checksFunctionNames then
+        dialectCompatible(all, context)
+      else
+        all
     candidates match
       case Nil =>
         None
@@ -224,7 +259,7 @@ object FunctionInliner extends ContextLogSupport:
             0
 
         val arityCompatible = preferNonZero(multiple, arityScore)
-        val dialectPool     = preferNonZero(arityCompatible, dialectScore(_, context))
+        val dialectPool     = dialectCompatible(arityCompatible, context)
         // A stable sort keeps the lookup order (locals, then source file name order) among
         // equally ranked variants
         dialectPool.sortBy(m => (variantRank(m, context), -arityScore(m))).headOption
@@ -246,7 +281,7 @@ object FunctionInliner extends ContextLogSupport:
       .collect { case m: MethodSymbolInfo =>
         m
       }
-    val pool = preferNonZero(candidates, dialectScore(_, context)).filter(_.ft.args.isEmpty)
+    val pool = dialectCompatible(candidates, context).filter(_.ft.args.isEmpty)
     pool.sortBy(variantRank(_, context)).headOption
 
   /**

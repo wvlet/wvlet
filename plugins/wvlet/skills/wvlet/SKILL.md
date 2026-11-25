@@ -19,6 +19,8 @@ here matches the compiler version this skill ships with.
 2. Check it without a database: `wvlet compile -f query.wv` (or `wvlet compile "<query>"`).
    Errors name the line and column. Add `--target trino` for another SQL dialect.
 3. Run it: `wvlet run -f query.wv`, or `wvlet run "from 'data.parquet' limit 10"`.
+   On the default wvlet engine, a function it does not bind fails at compile time with
+   `FUNCTION_NOT_FOUND`: use the standard library function the message names, or `-t duckdb`.
 4. Grow it by appending lines and re-running; never rewrite a working query to add a step.
 5. Pin the result with `test` assertions after the query (see
    [references/testing.md](references/testing.md)).

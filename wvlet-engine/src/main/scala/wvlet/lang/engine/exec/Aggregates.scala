@@ -165,6 +165,9 @@ object Aggregates:
 
   def isAggregate(name: String): Boolean = names.contains(name.toLowerCase)
 
+  /** Every aggregate function name the engine binds, lowercase */
+  def aggregateNames: Set[String] = names
+
   /** Result type of an aggregate over the given argument types (DuckDB rules) */
   def resultType(name: String, argTypes: Seq[PType]): PType =
     name.toLowerCase match

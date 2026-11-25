@@ -4,6 +4,10 @@ type db_context
 
 type duckdb extends db_context
 
+-- The in-process wvlet engine. It runs the hand-written `in duckdb` variants (their SQL is DuckDB
+-- SQL), but not the generated DuckDB catalog: calls must name a function the engine binds
+type wvlet extends duckdb
+
 type trino extends db_context
 
 type hive extends db_context

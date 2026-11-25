@@ -51,6 +51,7 @@ Raise `minCovered` when adding support; never lower it.
 - `./sbt "engineJVM/testOnly *EngineStdlibCoverageCheck"` runs every stdlib function visible to the DuckDB dialect on the engine and on DuckDB and counts matches. This is the primary measure, because the stdlib is Wvlet's engine-neutral function contract. Report: `target/engine-stdlib-coverage.txt`.
 - `./sbt "engineJVM/testOnly *EngineFunctionCoverageCheck"` counts DuckDB catalog names the engine binds (`EngineFunctions`), a compatibility measure. Report: `target/engine-function-coverage.txt`.
 - Add new functions under stdlib names, not by porting DuckDB names as public API; see [stdlib](stdlib.md).
+- After adding or removing an engine function name, regenerate the compiler's copy of the list (`EngineFunctionNamesTest` prints the command). The compiler rejects calls outside it on the `wvlet` target ([dialect contexts](stdlib.md#dialect-contexts)). `EngineConformance` compiles for `DBType.Wvlet`, so a wrongly rejected call fails the conformance suites.
 
 ## Benchmarks
 

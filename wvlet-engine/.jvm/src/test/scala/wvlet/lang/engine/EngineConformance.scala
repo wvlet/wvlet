@@ -13,6 +13,8 @@
  */
 package wvlet.lang.engine
 
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.vector.*
@@ -51,8 +53,14 @@ class EngineConformance(
   val engine = WvletEngine(baseDir = specPath, optimizer = optimizer, accelerator = accelerator)
   setupEngine(engine)
 
+  // Compile for the engine's own dialect, so that its compile-time function check runs on every
+  // conformance query; the `in duckdb` stdlib variants it inherits keep the SQL DuckDB runs the same
   private val compiler = Compiler(
-    CompilerOptions(sourceFolders = List(specPath), workEnv = WorkEnv(specPath))
+    CompilerOptions(
+      sourceFolders = List(specPath),
+      workEnv = WorkEnv(specPath),
+      dbType = DBType.Wvlet
+    )
   )
 
   def units: Seq[CompilationUnit] = compiler.localCompilationUnits.sortBy(_.sourceFile.fileName)
@@ -90,7 +98,15 @@ class EngineConformance(
   private[engine] def queries[A](unit: CompilationUnit)(
       f: Context ?=> (String, Relation) => A
   ): Seq[A] =
-    val r                            = compiler.compileSingleUnit(unit)
+    val r = compiler.compileSingleUnit(unit)
+    // A function the engine binds must never be rejected at compile time
+    r.failureReport
+      .values
+      .collect {
+        case e: WvletLangException if e.statusCode == StatusCode.FUNCTION_NOT_FOUND =>
+          e
+      }
+      .foreach(e => throw e)
     given ctx: Context               = r.context
     val results                      = Seq.newBuilder[A]
     var idx                          = 0
@@ -132,7 +148,7 @@ class EngineConformance(
     d
 
   private lazy val queryCompiler = Compiler(
-    CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(specPath))
+    CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(specPath), dbType = DBType.Wvlet)
   )
 
   /**

@@ -20,6 +20,16 @@ engine-specific functions. Map values run but can return results that
 differ from DuckDB.
 :::
 
+## Functions
+
+Queries on the engine can call the [standard library](../syntax/stdlib.md) functions and the functions the engine implements. The engine has its own `wvlet` dialect context: it runs the DuckDB variants of the standard library (`def ... in duckdb`), and an engine-only variant can be written as `def ... in wvlet`. A function it lacks, such as DuckDB's `array_unique`, fails at compile time instead of at run time:
+
+```
+[FUNCTION_NOT_FOUND] Function array_unique is not supported by the wvlet engine. Use a standard library function, or run the query on the DuckDB connector (a profile with type: duckdb)
+```
+
+When the name is another engine's function that a standard library function covers, the message names that function instead (for example, `count_approx_distinct` for Trino's `approx_distinct`). Calls inside `sql"..."` fragments are not checked until the engine runs them.
+
 ## Usage
 
 The engine is the default of `wvlet run` and `wv` when neither `-t` nor `--profile` is given

@@ -68,6 +68,21 @@ class TraitDefTest extends UniTest:
     t.parents.map(_.fullName) shouldBe List("recent", "labeled")
   }
 
+  test("end the parent list of a body-less type at the next statement") {
+    val plan = parse("""type duckdb extends db_context
+        |
+        |type wvlet extends duckdb
+        |
+        |type trino extends db_context
+        |""".stripMargin)
+    val types = List.newBuilder[TypeDef]
+    plan.traverse { case t: TypeDef =>
+      types += t
+    }
+    types.result().map(t => t.name.name -> t.parents.map(_.fullName)) shouldBe
+      List("duckdb" -> List("db_context"), "wvlet" -> List("duckdb"), "trino" -> List("db_context"))
+  }
+
   test("parse mixin parents on a table declaration (#2012)") {
     val t = firstTypeDef(parse("""table events extends timestamped, auditable = {
         |  id: int

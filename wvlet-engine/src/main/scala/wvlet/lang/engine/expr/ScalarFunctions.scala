@@ -34,6 +34,9 @@ object ScalarFunctions:
 
   def isDefined(name: String): Boolean = registry.contains(name.toLowerCase)
 
+  /** Every name in the scalar registry, lowercase */
+  def names: Set[String] = registry.keySet
+
   private def arity(name: String, args: Seq[VExpr], n: Int*): Unit =
     if !n.contains(args.size) then
       throw StatusCode
