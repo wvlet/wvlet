@@ -285,6 +285,35 @@ object MaskCaseWhen:
 end MaskCaseWhen
 
 /**
+  * Mark every string IN list of an expression to compare `substring(s, k, n)` regions with its
+  * values without building the substrings (`substring_in_lists`, [[InList.substringRegions]]).
+  * Parts of unknown expression types stay as they are
+  */
+object SubstringInLists:
+  def apply(e: VExpr): VExpr =
+    if !contains(e) then
+      e
+    else
+      try
+        VExprs.mapChildren(e, apply) match
+          case x: InList if x.child.ptype == PType.Str =>
+            x.copy(substringRegions = true)
+          case other =>
+            other
+      catch
+        case _: IllegalStateException =>
+          e
+
+  private def contains(e: VExpr): Boolean =
+    e match
+      case x: InList if x.child.ptype == PType.Str =>
+        true
+      case _ =>
+        e.children.exists(contains)
+
+end SubstringInLists
+
+/**
   * `case_agg_filters`: an aggregate of a CASE of one WHEN without ELSE (or ELSE NULL), as in TPC-DS
   * q02's `sum(case when d_day_name = 'Sunday' then sales_price else null end)`, aggregates the THEN
   * value with the condition as its FILTER, so the rows the condition drops are never folded. The

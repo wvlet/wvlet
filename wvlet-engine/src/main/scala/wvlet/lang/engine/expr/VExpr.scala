@@ -261,10 +261,17 @@ case class IsNullExpr(child: VExpr, negate: Boolean) extends VExpr:
 /**
   * `x IN (constants...)`, with SQL NULL semantics: unknown for a NULL `x`, or for a missing `x`
   * when a value is NULL. Over no values at all (an empty subquery), IN is FALSE and NOT IN TRUE,
-  * NULL `x` included
+  * NULL `x` included. With `substringRegions` (`substring_in_lists`), `substring(s, k, n) IN ('a',
+  * ...)` with constant `k >= 1` and `n >= 0` and string values compares each string's region with
+  * the values, without building the substrings ([[SubstringInList]], TPC-H q22)
   */
-case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate: Boolean)
-    extends VExpr:
+case class InList(
+    child: VExpr,
+    values: Set[Any],
+    hasNullValue: Boolean,
+    negate: Boolean,
+    substringRegions: Boolean = false
+) extends VExpr:
   override def children: Seq[VExpr] = Seq(child)
   def ptype: PType                  = PType.Bool
   // Passes match conditions by signature (FactorOr, PushDownFilters), so a NULL in the list is
@@ -279,7 +286,17 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
     val vs = values.iterator.map(VExpr.valueSig) ++ nullMarker
     s"in(${child.sig},${vs.mkString(",")},${negate})"
 
+  // The substring the values are compared against by region, when `substringRegions` applies
+  private lazy val region: SubstringInList =
+    if substringRegions then
+      SubstringInList.of(child, values)
+    else
+      null
+
   def eval(b: Batch): Vec =
+    val r = region
+    if r != null then
+      return r.eval(b, hasNullValue, negate)
     val v                     = child.eval(b)
     val o                     = new Array[Boolean](b.size)
     var nulls: Array[Boolean] = null
@@ -306,6 +323,136 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
     BoolVec(o, nulls)
 
 end InList
+
+/**
+  * `substring(s, start, len) IN (values)` evaluated by looking up the region of each string in a
+  * hash table of the values, so that no substring is built: the region's hash is `String.hashCode`
+  * over its chars. `start >= 1` and `len >= 0` are constants and the values are non-null strings.
+  * The region follows SQL substring over code points: a string without surrogate chars up to the
+  * region's end has its code points at its char positions, and any other string falls back to
+  * building the substring
+  */
+final class SubstringInList private (
+    str: VExpr,
+    start: Long,
+    len: Long,
+    fallback: VExpr,
+    values: Set[Any],
+    // Open addressing over the values' hash codes: a power-of-two table with free slots
+    slots: Array[String],
+    hashes: Array[Int]
+):
+  private val mask = slots.length - 1
+
+  /** The IN result with InList's NULL semantics; `values` is non-empty */
+  def eval(b: Batch, hasNullValue: Boolean, negate: Boolean): Vec =
+    val v                     = str.eval(b)
+    val n                     = b.size
+    val o                     = new Array[Boolean](n)
+    var nulls: Array[Boolean] = null
+    // The region's char positions in strings without surrogates before its end
+    val begin = start - 1
+    val end   = begin + len
+    var i     = 0
+    while i < n do
+      val x = v.get(i)
+      if x == null then
+        if nulls == null then
+          nulls = new Array[Boolean](n)
+        nulls(i) = true
+      else
+        val s     = x.asInstanceOf[String]
+        val limit = math.min(s.length.toLong, end).toInt
+        val from  = math.min(begin, limit.toLong).toInt
+        var plain = true
+        var h     = 0
+        var k     = 0
+        while plain && k < limit do
+          val c = s.charAt(k)
+          if Character.isSurrogate(c) then
+            plain = false
+          else if k >= from then
+            h = 31 * h + c
+          k += 1
+        val found =
+          if plain then
+            contains(s, from, limit - from, h)
+          else
+            // Code points differ from chars: compare the substring as built
+            fallbackMatch(b, i)
+        if !found && hasNullValue then
+          if nulls == null then
+            nulls = new Array[Boolean](n)
+          nulls(i) = true
+        else
+          o(i) = found != negate
+      end if
+      i += 1
+    end while
+    BoolVec(o, nulls)
+
+  end eval
+
+  // Whether the region of s at [from, from + length), whose hash is h, is a value
+  private def contains(s: String, from: Int, length: Int, h: Int): Boolean =
+    var slot  = SubstringInList.mix(h) & mask
+    var found = false
+    var done  = false
+    while !done do
+      val c = slots(slot)
+      if c == null then
+        done = true
+      else if hashes(slot) == h && c.length == length && s.regionMatches(from, c, 0, length) then
+        found = true
+        done = true
+      else
+        slot =
+          (
+            slot + 1
+          ) & mask
+    found
+
+  // The substring of row i built by the substring function, for strings with surrogates (rare)
+  private def fallbackMatch(b: Batch, i: Int): Boolean = values.contains(
+    fallback.eval(b.take(Array(i), 1)).get(0)
+  )
+
+end SubstringInList
+
+object SubstringInList:
+  private def mix(h: Int): Int = h ^ (h >>> 16)
+
+  /**
+    * The region lookup for an InList over `child` with `values`, or null when `child` isn't
+    * `substring(s, start, len)` with constants `start >= 1` and `len >= 0`, or a value isn't a
+    * non-null string, or there are no values
+    */
+  def of(child: VExpr, values: Set[Any]): SubstringInList =
+    child match
+      case RowFn("substring", Seq(s, Const(k: Long, _), Const(l: Long, _)), PType.Str, _, false)
+          if k >= 1 && l >= 0 && s.ptype == PType.Str && values.nonEmpty &&
+            values.forall(_.isInstanceOf[String]) =>
+        // At most half full, so that every probe reaches a free slot
+        val size   = Integer.highestOneBit(math.max(1, values.size) * 2) * 2
+        val slots  = new Array[String](size)
+        val hashes = new Array[Int](size)
+        values.foreach { x =>
+          val str  = x.asInstanceOf[String]
+          val h    = str.hashCode
+          var slot = mix(h) & (size - 1)
+          while slots(slot) != null do
+            slot =
+              (
+                slot + 1
+              ) & (size - 1)
+          slots(slot) = str
+          hashes(slot) = h
+        }
+        SubstringInList(s, k, l, child, values, slots, hashes)
+      case _ =>
+        null
+
+end SubstringInList
 
 /** `x IN (exprs...)` for non-constant lists: an OR of equalities */
 case class InExprs(child: VExpr, list: Seq[VExpr], negate: Boolean) extends VExpr:
@@ -1291,7 +1438,12 @@ object Kernels:
                 val y = b(i)
                 val z = x + y
                 // Overflow iff both operands have the same sign and the result's sign differs
-                if ((x ^ z) & (y ^ z)) < 0 then
+                if (
+                    (
+                      x ^ z
+                    ) & (y ^ z)
+                  ) < 0
+                then
                   ok = false
                 o(i) = z
                 i += 1
@@ -1300,7 +1452,12 @@ object Kernels:
                 val x = a(i)
                 val y = b(i)
                 val z = x - y
-                if ((x ^ y) & (x ^ z)) < 0 then
+                if (
+                    (
+                      x ^ y
+                    ) & (x ^ z)
+                  ) < 0
+                then
                   ok = false
                 o(i) = z
                 i += 1
@@ -1341,7 +1498,10 @@ object Kernels:
       var resultNulls = nulls
       var i           = 0
       while i < n do
-        if (nulls == null || !nulls(i)) && a(i) != null && b(i) != null then
+        if (
+            nulls == null || !nulls(i)
+          ) && a(i) != null && b(i) != null
+        then
           val x              = a(i)
           val y              = b(i)
           val z: JBigDecimal =
@@ -1466,7 +1626,10 @@ object Kernels:
           var i  = 0
           while i < n do
             // NULL slots may hold null strings
-            o(i) = (nulls != null && nulls(i)) || (x(i).equals(y) == eq)
+            o(i) =
+              (
+                nulls != null && nulls(i)
+              ) || (x(i).equals(y) == eq)
             i += 1
         else if nulls == null then
           cmpLoop(op, n, o, i => x(i).compareTo(y))
@@ -1616,7 +1779,10 @@ object Kernels:
           val aFalse = !av(i) & !aN
           val bFalse = !bv(i) & !bN
           o(i) = av(i) & !aN & bv(i) & !bN
-          val isNull = !(aFalse | bFalse) & (aN | bN)
+          val isNull =
+            !(
+              aFalse | bFalse
+            ) & (aN | bN)
           nulls(i) = isNull
           any = any | isNull
           i += 1
@@ -1624,7 +1790,10 @@ object Kernels:
         while i < n do
           val aN = an(i)
           val bN = bn(i)
-          val t  = (av(i) & !aN) | (bv(i) & !bN)
+          val t  =
+            (
+              av(i) & !aN
+            ) | (bv(i) & !bN)
           o(i) = t
           val isNull = !t & (aN | bN)
           nulls(i) = isNull
