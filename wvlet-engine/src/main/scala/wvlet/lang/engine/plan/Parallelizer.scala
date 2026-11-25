@@ -396,7 +396,8 @@ object Parallelizer:
               w.schema,
               runner,
               topN = w.topN,
-              runningKernels = w.runningKernels
+              runningKernels = w.runningKernels,
+              sortKernels = w.sortKernels
             )
           case other =>
             other

@@ -211,7 +211,14 @@ object ColumnPruner:
           )
         val schema = Schema(kept.map(w.child.schema(_)).toIndexedSeq ++ w.schema.fields.drop(width))
         (
-          WindowOp(child, calls, schema, topN = w.topN, runningKernels = w.runningKernels),
+          WindowOp(
+            child,
+            calls,
+            schema,
+            topN = w.topN,
+            runningKernels = w.runningKernels,
+            sortKernels = w.sortKernels
+          ),
           kept ++ (width until w.schema.size)
         )
 
