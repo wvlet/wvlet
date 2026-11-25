@@ -392,29 +392,10 @@ val packQuick = taskKey[Unit]("Run pack task quickly for faster development")
 
 // Pack settings shared by the lite (cli) and full (cliFull) JVM CLI distributions
 def cliPackSettings: Seq[Setting[?]] = Seq(
-  // Build the web UI assets (pnpm + Vite) before packing. In sbt 2, sbt-pack 1.0.0's
-  // `pack` no longer lives in the `Runtime` scope, so we can't wrap it via
-  // `(Runtime / pack).toTask`. Instead, run the asset build as a `pack`-time dependency
-  // through a dedicated task key.
-  packUiAssets := {
-    // Install pnpm dependencies
-    scala
-      .sys
-      .process
-      .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
-      .!
-    // Trigger compilation from Scala.js to JS
-    val _ = (uiMain / Compile / fullLinkJS).value
-    // Package the web assets using Vite.js
-    scala
-      .sys
-      .process
-      .Process(List("pnpm", "run", "--silent", "build-ui"), (ThisBuild / baseDirectory).value)
-      .!
-  },
   // Non-UI pack for faster development iteration
   packQuick := Def.uncached(pack.value),
-  pack      := Def.uncached(pack.dependsOn(packUiAssets).value),
+  // Both packs share cli's UI asset build, so packing them together runs pnpm/Vite once
+  pack := Def.uncached(pack.dependsOn(LocalProject("cli") / packUiAssets).value),
   packMain  :=
     Map(
       // Wvlet REPL launcher
@@ -441,6 +422,26 @@ lazy val cli = project
     // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
     Test / fork          := true,
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
+    // Build the web UI assets (pnpm + Vite) before packing. In sbt 2, sbt-pack 1.0.0's
+    // `pack` no longer lives in the `Runtime` scope, so we can't wrap it via
+    // `(Runtime / pack).toTask`. Instead, run the asset build as a `pack`-time dependency
+    // through a dedicated task key.
+    packUiAssets := {
+      // Install pnpm dependencies
+      scala
+        .sys
+        .process
+        .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
+        .!
+      // Trigger compilation from Scala.js to JS
+      val _ = (uiMain / Compile / fullLinkJS).value
+      // Package the web assets using Vite.js
+      scala
+        .sys
+        .process
+        .Process(List("pnpm", "run", "--silent", "build-ui"), (ThisBuild / baseDirectory).value)
+        .!
+    },
     cliPackSettings
   )
   .dependsOn(server, connectorDuckDB % Test, connectorSnowflake % Test)
