@@ -170,8 +170,8 @@ class ScanOp(
   /**
     * The per-row runtime filters, set by now, that the source's row filter tests instead of
     * [[narrow]], as `In` conjuncts in ascending order of the fraction of rows they are expected to
-    * keep. A filter's fraction is the share of its column's [min, max] (from the footer statistics)
-    * that it accepts, assuming the values spread evenly. The filters expected to keep at most
+    * keep. A filter's fraction comes from the row-group statistics of its column ([[passRate]]),
+    * assuming the values spread evenly within each row group. The filters expected to keep at most
     * [[ScanOp.MaxConjunctPassRate]] go in together, and only when all of them are expected to keep
     * at most [[ScanOp.MaxSourcePassRate]] of the rows (multiplying their fractions): uni decodes
     * the first conjunct's column for every row, the next ones for the rows still passing, and the
