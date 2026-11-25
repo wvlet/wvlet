@@ -15,11 +15,13 @@ package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.model.plan.Relation
 import wvlet.uni.json.JSON
 import wvlet.uni.json.JSON.JSONArray
+import wvlet.uni.json.JSON.JSONBoolean
 import wvlet.uni.json.JSON.JSONNull
 import wvlet.uni.json.JSON.JSONObject
 import wvlet.uni.json.JSON.JSONString
@@ -36,6 +38,10 @@ import scala.util.Using
   * both inputs are filtered by it instead. This test runs each traced join with `join_key_filters`
   * on and off: both must return the model's rows (and DuckDB's), and with the rule on the conjunct
   * must also filter the other input.
+  *
+  * The `probe` traces replay the model of runtime join filters (`Probe.lean`): the join inputs
+  * whose rows a filter over the other input's keys may drop are exactly those
+  * `Lowering.filteredProbe` gives a filter.
   */
 class JoinKeyFilterConformanceTest extends UniTest:
 
@@ -180,6 +186,42 @@ class JoinKeyFilterConformanceTest extends UniTest:
         |where lk > 1""".stripMargin
     explain(engine, query) shouldBe explain(off, query)
     rows(engine, query) shouldBe Seq("2|12")
+  }
+
+  test("give runtime join filters to exactly the probe inputs the model proves sound") {
+    val probes = arr(fixture("probe")).map(obj)
+    probes.size shouldBe 10
+    val sound =
+      probes
+        .filter(p =>
+          p("sound") match
+            case JSONBoolean(b) =>
+              b
+            case other =>
+              fail(s"Expected a JSON boolean: ${other.toJSON}")
+        )
+        .map(p => (str(p("kind")), str(p("side"))))
+        .toSet
+    val kinds = Map(
+      "inner" -> JoinKind.Inner,
+      "left"  -> JoinKind.Left,
+      "right" -> JoinKind.Right,
+      "semi"  -> JoinKind.Semi,
+      "anti"  -> JoinKind.Anti
+    )
+    val filtered =
+      for
+        (name, kind) <- kinds.toSeq
+        buildLeft    <- Seq(false, true)
+        probeIsLeft  <- runtime.Lowering.filteredProbe(kind, buildLeft)
+      yield (
+        name,
+        if probeIsLeft then
+          "left"
+        else
+          "right"
+      )
+    filtered.toSet shouldBe sound
   }
 
 end JoinKeyFilterConformanceTest

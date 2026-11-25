@@ -23,24 +23,44 @@ import wvlet.uni.cloud.parquet.ParquetFilter
   * the scan and the join) get one, so the scan may skip such rows. The build sets the filter once
   * built, before the probe side starts reading; a scan that starts earlier reads without it.
   *
+  * With `rows` (`row_join_filters`), the build also sets a [[RowKeyFilter]] over its keys, which
+  * the scan applies to every row it reads, from the first batch read after the build is done.
+  *
   * `range(min, max)` translates the range of integer key values (epoch days for dates, micros for
   * timestamps) into the scan's filter, or None when it can't be expressed.
   */
 final class RuntimeFilter(
     val key: Int,
     val column: String,
-    range: (Long, Long) => Option[ParquetFilter]
+    range: (Long, Long) => Option[ParquetFilter],
+    val rows: Boolean = false
 ):
   @volatile
   private var current: Option[ParquetFilter] = None
+
+  @volatile
+  private var perRow: RowKeyFilter = null
+
+  /** The per-row filter, once the build has set it (null otherwise) */
+  def rowFilter: RowKeyFilter = perRow
 
   /** The filter, once the build has set it */
   def filter: Option[ParquetFilter] = current
 
   /** Set the filter from the build keys at rows `rows(0 until n)`, which are all non-NULL */
-  def set(keys: Vec, rows: Array[Int], n: Int): Unit = JoinBuildSteps
-    .keyRange(keys, rows, n, TaskRunner.Sequential)
-    .foreach(setRange)
+  def set(keys: Vec, rows: Array[Int], n: Int): Unit = RuntimeFilter.setAll(
+    Seq(this),
+    keys,
+    rows,
+    n,
+    TaskRunner.Sequential
+  )
+
+  /** Set the range filter and, with `rows`, the per-row filter `perRow` */
+  private def set(bounds: (Long, Long), perRow: => Option[RowKeyFilter]): Unit =
+    setRange(bounds)
+    if rows then
+      perRow.foreach(this.perRow = _)
 
   /** Set the filter from the [min, max] range of the non-NULL build keys */
   def setRange(bounds: (Long, Long)): Unit = current = range(bounds._1, bounds._2)
@@ -48,3 +68,22 @@ final class RuntimeFilter(
   override def toString: String = column
 
 end RuntimeFilter
+
+object RuntimeFilter:
+  /**
+    * Set the filters of one build key `keys` (at rows `rows(0 until n)`, all non-NULL), computing
+    * its range and its per-row filter once for all of them (a probe-side UNION ALL gives each input
+    * scan its own filter)
+    */
+  def setAll(
+      filters: Seq[RuntimeFilter],
+      keys: Vec,
+      rows: Array[Int],
+      n: Int,
+      runner: TaskRunner
+  ): Unit = JoinBuildSteps
+    .keyRange(keys, rows, n, runner)
+    .foreach { bounds =>
+      lazy val perRow = RowKeyFilter.of(keys, rows, n, bounds._1, bounds._2)
+      filters.foreach(_.set(bounds, perRow))
+    }

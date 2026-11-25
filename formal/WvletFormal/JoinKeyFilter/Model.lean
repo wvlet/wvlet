@@ -12,6 +12,10 @@ three-valued truth (TRUE, FALSE, UNKNOWN); a filter keeps the rows where it is T
 The rule: a conjunct over the key of the preserved input, pushed into that input, is also applied
 to the other input over that input's key. `Sound.lean` proves that it keeps the filtered join's
 rows for inner, LEFT, RIGHT, semi, and anti joins.
+
+The same model covers runtime join filters (`runtime_join_filters`, `row_join_filters` in the
+engine's `Lowering`): `Probe.lean` proves which join inputs may drop rows whose key is no key of
+the other input.
 -/
 
 namespace Wvlet.JoinKeyFilter

@@ -6,8 +6,13 @@ them against the engine's `PushDownFilters`. Each case is a join of two fixed in
 NULLs and duplicates), a join kind, a conjunct over the preserved input's key (either input's key
 for an inner join), and the rows of the filtered join (`sound_left`, `sound_right`,
 `sound_inner_right`: the same as joining the two inputs each filtered by the conjunct).
+
+`probe` lists, for each join kind and input, whether a runtime join filter may drop that input's
+rows whose key is no key of the other input (`Probe.lean`), evaluated on the same inputs, for
+replay against the engine's `Lowering.filteredProbe`.
 -/
 import WvletFormal.JoinKeyFilter.Findings
+import WvletFormal.JoinKeyFilter.Probe
 
 namespace Wvlet.JoinKeyFilter.Traces
 
@@ -76,14 +81,36 @@ def caseJson (k : Kind) (side : String) (p : PredE) : String :=
   jobj [("kind", jstr (kindName k)), ("side", jstr side), ("pred", jstr (p.sql "{k}")),
     ("rows", jarr (out.map fun o => jarr [jopt (o.1.map Row.id), jopt (o.2.map Row.id)]))]
 
+/-- The exact runtime filter of a build: TRUE on its non-NULL keys. -/
+def keysOf (rows : List Row) : Pred := fun v =>
+  match v with
+  | none => .ff
+  | some a => if rows.any (fun r => r.key == some a) then .tt else .ff
+
+/-- Whether filtering the `side` input by the other input's keys keeps the join's rows. -/
+def probeSound (k : Kind) (side : String) : Bool :=
+  let θ : Residual := fun _ _ => true
+  let filtered :=
+    if side == "left" then join θ k (keep (keysOf rs) ls) rs
+    else join θ k ls (keep (keysOf ls) rs)
+  decide (filtered = join θ k ls rs)
+
+def allKinds : List Kind := [.inner, .left, .right, .semi, .anti]
+
+def probeJson (k : Kind) (side : String) : String :=
+  jobj [("kind", jstr (kindName k)), ("side", jstr side),
+    ("sound", if probeSound k side then "true" else "false")]
+
 /-- The fixture document. -/
 def fixture : String :=
   let cases := kinds.flatMap fun (k, side) => preds.map fun p => caseJson k side p
+  let probes := allKinds.flatMap fun k => ["left", "right"].map fun side => probeJson k side
   "{\n" ++
   "  \"generatedBy\": \"formal: lake exe join-key-filter-traces (do not edit by hand)\",\n" ++
   "  \"left\": " ++ jrowsIn ls ++ ",\n" ++
   "  \"right\": " ++ jrowsIn rs ++ ",\n" ++
-  "  \"cases\": [\n" ++ ",\n".intercalate (cases.map ("    " ++ ·)) ++ "\n  ]\n" ++
+  "  \"cases\": [\n" ++ ",\n".intercalate (cases.map ("    " ++ ·)) ++ "\n  ],\n" ++
+  "  \"probe\": [\n" ++ ",\n".intercalate (probes.map ("    " ++ ·)) ++ "\n  ]\n" ++
   "}\n"
 
 end Wvlet.JoinKeyFilter.Traces

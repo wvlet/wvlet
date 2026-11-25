@@ -36,9 +36,10 @@ object Lowering:
 
   /**
     * Lower `p`. With `joinFilters`, hash joins whose unmatched probe rows are dropped give the
-    * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]). With
-    * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]). With
-    * `footerCache`, Parquet scans reuse cached footers
+    * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]), and with
+    * `rowJoinFilters` a per-row test of their keys too ([[wvlet.lang.engine.exec.RowKeyFilter]]).
+    * With `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]).
+    * With `footerCache`, Parquet scans reuse cached footers
     * ([[wvlet.lang.engine.catalog.ParquetFooterCache]]). With `windowTopN`, a filter bounding the
     * rank of a window keeps only the top rows of each partition ([[WindowOp.topNOf]]). With
     * `windowKernels`, running window aggregates fold primitive values
@@ -48,6 +49,7 @@ object Lowering:
   def apply(
       p: RuntimePlan,
       joinFilters: Boolean = false,
+      rowJoinFilters: Boolean = false,
       presizeAggs: Boolean = false,
       inSet: Boolean = false,
       accelerator: Option[PlanAccelerator] = None,
@@ -60,6 +62,7 @@ object Lowering:
   ): Operator =
     val l = Lower(
       joinFilters,
+      rowJoinFilters,
       presizeAggs,
       accelerator,
       footerCache,
@@ -87,6 +90,7 @@ object Lowering:
 
   private class Lower(
       joinFilters: Boolean,
+      rowJoinFilters: Boolean,
       presizeAggs: Boolean,
       accelerator: Option[PlanAccelerator],
       footerCache: Boolean,
@@ -362,43 +366,56 @@ object Lowering:
       * right joins, and left / anti joins building on the left (a right join / right anti join over
       * swapped inputs)
       */
-    private def runtimeFilters(j: Join): Seq[RuntimeFilter] =
-      val probeIsLeft: Option[Boolean] =
-        (j.kind, j.buildLeft) match
-          case (JoinKind.Inner | JoinKind.Semi, buildLeft) =>
-            Some(!buildLeft)
-          case (JoinKind.Right, false) =>
-            Some(true)
-          case (JoinKind.Left | JoinKind.Anti, true) =>
-            Some(false)
-          case _ =>
-            None
-      probeIsLeft
-        .toSeq
-        .flatMap { left =>
-          val (probe, probeKeys, buildKeys) =
-            if left then
-              (j.left, j.leftKeys, j.rightKeys)
-            else
-              (j.right, j.rightKeys, j.leftKeys)
-          probeKeys
-            .indices
-            .flatMap { k =>
-              probeKeys(k).expr match
-                case c: ColRef if c.ptype == buildKeys(k).ptype && rangeType(c.ptype) =>
-                  scanColumns(probe, c.index).map { (id, column) =>
-                    val f = RuntimeFilter(k, column, rangeFilter(column, c.ptype))
-                    pending(id) = f :: pending.getOrElse(id, Nil)
-                    f
-                  }
-                case _ =>
-                  Nil
-            }
-        }
+    private def runtimeFilters(j: Join): Seq[RuntimeFilter] = filteredProbe(j.kind, j.buildLeft)
+      .toSeq
+      .flatMap { left =>
+        val (probe, probeKeys, buildKeys) =
+          if left then
+            (j.left, j.leftKeys, j.rightKeys)
+          else
+            (j.right, j.rightKeys, j.leftKeys)
+        probeKeys
+          .indices
+          .flatMap { k =>
+            probeKeys(k).expr match
+              case c: ColRef if c.ptype == buildKeys(k).ptype && rangeType(c.ptype) =>
+                scanColumns(probe, c.index).map { (id, column) =>
+                  val f = RuntimeFilter(
+                    k,
+                    column,
+                    rangeFilter(column, c.ptype),
+                    rows = rowJoinFilters
+                  )
+                  pending(id) = f :: pending.getOrElse(id, Nil)
+                  f
+                }
+              case _ =>
+                Nil
+          }
+      }
 
     end runtimeFilters
 
   end Lower
+
+  /**
+    * Whether the probe input of a join of `kind` (building on the left input when `buildLeft`) is
+    * its left input (Some(true)) or its right one (Some(false)), when the join drops unmatched
+    * probe rows, so that a scan on the probe side may drop rows whose key is no build key; None
+    * otherwise. Inner, semi, and right joins over the left input; left / anti joins building on the
+    * left (a right join / right anti join over swapped inputs). The formal model
+    * `JoinKeyFilter.Probe` proves these sides sound, and `JoinKeyFilterConformanceTest` replays it
+    */
+  private[engine] def filteredProbe(kind: JoinKind, buildLeft: Boolean): Option[Boolean] =
+    (kind, buildLeft) match
+      case (JoinKind.Inner | JoinKind.Semi, buildLeft) =>
+        Some(!buildLeft)
+      case (JoinKind.Right, false) =>
+        Some(true)
+      case (JoinKind.Left | JoinKind.Anti, true) =>
+        Some(false)
+      case _ =>
+        None
 
   /**
     * Whether a range of build keys of type `t` translates to a row-group filter. Join keys are cast

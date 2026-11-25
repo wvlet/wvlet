@@ -152,6 +152,13 @@ enum Optimization(val name: String):
   case RuntimeJoinFilters extends Optimization("runtime_join_filters")
 
   /**
+    * Also drop probe rows whose key is not a build key, per row in the probe scan: a bitmap over
+    * dense integer keys or a Bloom filter ([[wvlet.lang.engine.exec.RowKeyFilter]]), paused when it
+    * keeps most rows. Needs `runtime_join_filters`
+    */
+  case RowJoinFilters extends Optimization("row_join_filters")
+
+  /**
     * Pre-size the group tables and aggregate state of hash aggregations from estimated group
     * counts, so they grow less often
     */
