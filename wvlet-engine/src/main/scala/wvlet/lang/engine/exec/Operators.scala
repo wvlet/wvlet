@@ -841,14 +841,44 @@ class HashAggOp(
       i += 1
     acc.update(gs, cnt, argVecs.map(_.gather(idx, cnt)))
 
+  /**
+    * Whether passed-through rows take their partial results from the aggregates' arguments
+    * ([[OneRowPartials]], `one_row_partials`) instead of folding each batch into new accumulators
+    */
+  var oneRowPartials: Boolean = true
+
+  /** Set [[oneRowPartials]] */
+  def withOneRowPartials(enabled: Boolean): this.type =
+    oneRowPartials = enabled
+    this
+
   /** Row i of b as its own group: the keys of b and each aggregate over one row */
   private def passThrough(b: Batch): Batch =
     val n = b.size
+    if !oneRowPartials then
+      if rowIds.length < n then
+        rowIds = Array.tabulate(n)(identity)
+      val accs = aggs.map(_.newAccumulator())
+      update(accs, rowIds, n, b)
+      return Batch(keys.map(_.eval(b)).toArray ++ accs.map(_.result(n)), n)
     if rowIds.length < n then
-      rowIds = Array.tabulate(n)(identity)
-    val accs = aggs.map(_.newAccumulator())
-    update(accs, rowIds, n, b)
-    Batch(keys.map(_.eval(b)).toArray ++ accs.map(_.result(n)), n)
+      rowIds = new Array[Int](n)
+      var i = 0
+      while i < n do
+        rowIds(i) = i
+        i += 1
+    val values = aggs.map { a =>
+      val args = a.args.map(_.eval(b)).toArray
+      val d    = OneRowPartials.of(a, args, b)
+      if d != null then
+        d
+      else
+        // No direct one-row result: fold the batch with one group per row
+        val acc = a.newAccumulator()
+        updateOne(a, acc, rowIds, n, b, args)
+        acc.result(n)
+    }
+    Batch(keys.map(_.eval(b)).toArray ++ values, n)
 
   def next(): Batch =
     if passing then

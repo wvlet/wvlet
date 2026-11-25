@@ -47,7 +47,8 @@ object Parallelizer:
       unionPipelines: Boolean = true,
       streamPackAggKeys: Boolean = true,
       longDecimalKeys: Boolean = true,
-      fusedAccumulators: Boolean = true
+      fusedAccumulators: Boolean = true,
+      oneRowPartials: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -63,7 +64,8 @@ object Parallelizer:
         unionPipelines,
         streamPackAggKeys,
         longDecimalKeys,
-        fusedAccumulators
+        fusedAccumulators,
+        oneRowPartials
       )
       rewrite(op, runner)
 
@@ -83,7 +85,8 @@ object Parallelizer:
       unionPipelines: Boolean,
       streamPackAggKeys: Boolean,
       longDecimalKeys: Boolean,
-      fusedAccumulators: Boolean
+      fusedAccumulators: Boolean,
+      oneRowPartials: Boolean
   )
 
   /**
@@ -388,7 +391,8 @@ object Parallelizer:
             o.packAggKeys,
             o.streamPackAggKeys,
             o.longDecimalKeys,
-            o.fusedAccumulators
+            o.fusedAccumulators,
+            o.oneRowPartials
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -712,7 +716,8 @@ private[plan] object TwoPhaseAgg:
       packAggKeys: Boolean = false,
       streamPackAggKeys: Boolean = false,
       longDecimalKeys: Boolean = false,
-      fusedAccumulators: Boolean = true
+      fusedAccumulators: Boolean = true,
+      oneRowPartials: Boolean = true
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -743,6 +748,7 @@ private[plan] object TwoPhaseAgg:
               skip
             ).withKeyOptions(streamPackAggKeys, longDecimalKeys)
               .withFusedAccumulators(fusedAccumulators)
+              .withOneRowPartials(oneRowPartials)
         )
       ),
       partialSchema,

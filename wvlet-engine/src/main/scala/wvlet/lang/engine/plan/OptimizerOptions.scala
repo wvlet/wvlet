@@ -557,6 +557,13 @@ enum Optimization(val name: String):
     */
   case CaseAggFilters extends Optimization("case_agg_filters")
 
+  /**
+    * Partial aggregates that stop grouping ([[AdaptivePartialAggs]]) emit each row's partial
+    * results from the aggregates' arguments (a sum's value, a count's 0 or 1) instead of folding
+    * every passed-through batch into new accumulators with one group per row (TPC-DS q78, q97)
+    */
+  case OneRowPartials extends Optimization("one_row_partials")
+
 end Optimization
 
 object Optimization:
