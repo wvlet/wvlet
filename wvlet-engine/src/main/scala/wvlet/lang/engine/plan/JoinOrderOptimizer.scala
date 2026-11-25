@@ -122,12 +122,17 @@ class JoinOrderOptimizer(options: OptimizerOptions):
     * the conditions left to apply over it
     */
   def plan[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): (P, List[C]) =
+    val (tree, remaining, _) = planWithRows(g, search)
+    (tree, remaining)
+
+  /** [[plan]], with the estimated rows of the tree before the remaining conditions */
+  def planWithRows[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): (P, List[C], Double) =
     val exact =
       if enabled(Optimization.ReorderJoins) && enabled(Optimization.ExactJoinOrder) then
-        JoinEnumerator(options).plan(g, search)
+        JoinEnumerator(options).planWithRows(g, search)
       else
         None
-    exact.getOrElse(greedyPlan(g, search))
+    exact.getOrElse(greedyPlanWithRows(g, search))
 
   /**
     * The cheapest left-deep join tree of multi-start greedy search: every input is tried as the
@@ -135,27 +140,34 @@ class JoinOrderOptimizer(options: OptimizerOptions):
     * tree and the conditions left to apply over it
     */
   def greedyPlan[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): (P, List[C]) =
+    val (tree, remaining, _) = greedyPlanWithRows(g, search)
+    (tree, remaining)
+
+  private def greedyPlanWithRows[P, C, K](
+      g: JoinGraph[P, C],
+      search: JoinSearch[P, C, K]
+  ): (P, List[C], Double) =
     val bySize =
       if enabled(Optimization.ReorderJoins) then
         g.inputs.indices.sortBy(i => -g.rows(i))
       else
         g.inputs.indices.take(1)
-    val trees                = bySize.map(greedy(g, search, _))
-    val best                 = trees.indices.minBy(k => (trees(k)._3, k))
-    val (tree, remaining, _) = trees(best)
-    (tree, remaining)
+    val trees                   = bySize.map(greedy(g, search, _))
+    val best                    = trees.indices.minBy(k => (trees(k)._3, k))
+    val (tree, remaining, _, n) = trees(best)
+    (tree, remaining, n)
 
   /**
     * A left-deep join tree from `start`, joining next the connected input that gives the fewest
     * rows. Returns the tree, the conditions left to apply, and its cost: the estimated rows of
     * every intermediate result (C_out, which DuckDB's join order optimizer minimizes) plus the rows
-    * of every hash table built
+    * of every hash table built, and its estimated rows
     */
   private def greedy[P, C, K](
       g: JoinGraph[P, C],
       search: JoinSearch[P, C, K],
       start: Int
-  ): (P, List[C], Double) =
+  ): (P, List[C], Double, Double) =
     val rows        = g.rows
     var remaining   = g.edges
     val joined      = mutable.Set.empty[Int]
@@ -216,7 +228,7 @@ class JoinOrderOptimizer(options: OptimizerOptions):
         remaining = remaining.filterNot(ready.contains)
       cost += currentRows
     end while
-    (current, remaining.map(_.cond), cost)
+    (current, remaining.map(_.cond), cost, currentRows)
 
   end greedy
 

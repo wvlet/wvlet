@@ -63,6 +63,14 @@ enum Optimization(val name: String):
   case ReorderJoins extends Optimization("reorder_joins")
 
   /**
+    * Move a LEFT join that is an input of an inner join tree above the tree when no condition of
+    * the tree reads its right input, so that the inner joins reduce its left input before it probes
+    * or builds (TPC-DS q80, q40). Its build side is then chosen over the joined tree's estimated
+    * rows. Only with `reorder_joins`, which otherwise keeps the written order
+    */
+  case CommuteLeftJoins extends Optimization("commute_left_joins")
+
+  /**
     * Where only the set of rows matters (the subquery side of a semi or anti join, the input of a
     * DISTINCT or of a group-by without aggregates, and a shared CTE all of whose readers are such),
     * turn an inner join whose needed columns come from one side into a semi join of that side
