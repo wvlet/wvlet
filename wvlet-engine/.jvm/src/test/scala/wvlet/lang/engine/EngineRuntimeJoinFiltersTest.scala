@@ -17,6 +17,7 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.plan.Optimization
+import wvlet.lang.engine.runtime.Lowering
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.uni.test.UniTest
 
@@ -26,6 +27,10 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
   private val engine  = WvletEngine(optimizer = options)
   private val off     = engine.withOptimizer(options.withDisabled(Optimization.RuntimeJoinFilters))
   private val noRows  = engine.withOptimizer(options.withDisabled(Optimization.RowJoinFilters))
+  private val probeOnly = engine.withOptimizer(
+    options.withDisabled(Optimization.BuildSideJoinFilters)
+  )
+
   // Per-row filters stay in the engine's ScanOp.narrow, which counts the rows they drop
   private val inEngine = engine.withOptimizer(options.withDisabled(Optimization.ScanJoinRowFilters))
   EngineTPCHBench
@@ -100,6 +105,69 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
     filters("partsupp") shouldContain "Compare(ps_partkey,GtEq,"
     rows.nonEmpty shouldBe true
     run(off, q)._1 shouldBe rows
+  }
+
+  test("filter the preserved build side of an outer join in a union all input") {
+    // The TPC-DS q05 shape: the LEFT join builds on its small preserved input, supplier, and the
+    // join with part above the union builds first, so its keys filter the supplier scan
+    val q =
+      """select u.k, u.n from (
+        |  select l_suppkey k, l_linenumber n from lineitem
+        |  union all
+        |  select s_suppkey k, ps_partkey n from supplier
+        |  left join partsupp on s_suppkey = ps_suppkey
+        |) u join part on u.k = p_partkey
+        |where p_name like 'forest%' order by 1, 2""".stripMargin
+    explain(engine, q) shouldContain "join_filter=s_suppkey"
+    explain(probeOnly, q) shouldNotContain "join_filter=s_suppkey"
+    val (rows, filters) = run(engine, q)
+    debug(filters)
+    filters("supplier") shouldContain "Compare(s_suppkey,GtEq,"
+    rows.nonEmpty shouldBe true
+    run(probeOnly, q)._1 shouldBe rows
+    run(off, q)._1 shouldBe rows
+  }
+
+  test("leave the NULL-padded input of an outer join below the probe side unfiltered") {
+    // partsupp supplies the LEFT join's padded rows: dropping its rows would pad suppliers that
+    // matched them instead of dropping those output rows
+    val q =
+      """select u.k, u.s from (
+        |  select l_partkey k, l_suppkey s from lineitem
+        |  union all
+        |  select ps_partkey k, s_suppkey s from supplier
+        |  left join partsupp on s_suppkey = ps_suppkey
+        |) u join part on u.k = p_partkey
+        |where p_name like 'forest%' order by 1, 2""".stripMargin
+    val (rows, filters) = run(engine, q)
+    filters("partsupp") shouldNotContain "ps_partkey"
+    run(off, q)._1 shouldBe rows
+  }
+
+  test("pass filters only into the inputs a join keeps the rows of") {
+    // (kind, buildLeft, fromLeft) -> without / with build_side_join_filters
+    val expected = Seq(
+      (JoinKind.Inner, false, true)  -> (true, true),
+      (JoinKind.Inner, true, true)   -> (false, false),
+      (JoinKind.Inner, true, false)  -> (true, true),
+      (JoinKind.Inner, false, false) -> (false, false),
+      (JoinKind.Left, false, true)   -> (true, true),
+      (JoinKind.Left, true, true)    -> (false, true),
+      (JoinKind.Left, true, false)   -> (false, false),
+      (JoinKind.Left, false, false)  -> (false, false),
+      (JoinKind.Semi, true, true)    -> (false, true),
+      (JoinKind.Anti, true, true)    -> (false, true),
+      (JoinKind.Right, true, false)  -> (true, true),
+      (JoinKind.Right, false, false) -> (false, true),
+      (JoinKind.Right, false, true)  -> (false, false),
+      (JoinKind.Right, true, true)   -> (false, false),
+      (JoinKind.Full, false, true)   -> (false, false),
+      (JoinKind.Full, true, false)   -> (false, false)
+    )
+    expected.foreach { case ((kind, buildLeft, fromLeft), (probeOnly, withBuild)) =>
+      Lowering.passesFilter(kind, buildLeft, fromLeft, buildSides = false) shouldBe probeOnly
+      Lowering.passesFilter(kind, buildLeft, fromLeft, buildSides = true) shouldBe withBuild
+    }
   }
 
   test("leave the probe side of joins that keep unmatched probe rows unfiltered") {

@@ -72,6 +72,7 @@ class OptimizerOptionsTest extends UniTest:
         "selective_scan_row_filters",
         "runtime_join_filters",
         "row_join_filters",
+        "build_side_join_filters",
         "scan_join_row_filters",
         "presize_aggregates",
         "window_top_n",

@@ -62,7 +62,7 @@
         ↓ Project(#1, #0, #2, #3, lit(0.00:decimal(7,2)), lit(0.00:decimal(7,2))) -> [wsr_web_site_sk:long, date_sk:long, sales_price:decimal(7,2), profit:decimal(7,2), return_amt:decimal(7,2), net_loss:decimal(7,2)]
         ↓ Morsel[parallelism=N] -> [wsr_web_site_sk:long, date_sk:long, sales_price:decimal(7,2), profit:decimal(7,2), return_amt:decimal(7,2), net_loss:decimal(7,2)]
           Scan[web_sales](columns=ws_item_sk,ws_web_site_sk,ws_order_number join_filter=ws_item_sk,ws_order_number) -> [ws_item_sk:long, ws_web_site_sk:long, ws_order_number:long]
-            Scan[web_returns](columns=wr_returned_date_sk,wr_item_sk,wr_order_number,wr_return_amt,wr_net_loss) -> [wr_returned_date_sk:long, wr_item_sk:long, wr_order_number:long, wr_return_amt:decimal(7,2), wr_net_loss:decimal(7,2)]
+            Scan[web_returns](columns=wr_returned_date_sk,wr_item_sk,wr_order_number,wr_return_amt,wr_net_loss join_filter=wr_returned_date_sk) -> [wr_returned_date_sk:long, wr_item_sk:long, wr_order_number:long, wr_return_amt:decimal(7,2), wr_net_loss:decimal(7,2)]
             ↓ Morsel[parallelism=N] -> [wr_returned_date_sk:long, wr_item_sk:long, wr_order_number:long, wr_return_amt:decimal(7,2), wr_net_loss:decimal(7,2)]
           ↙ HashJoin[Right](#0,#2 = #1,#2) -> [ws_item_sk:long, ws_web_site_sk:long, ws_order_number:long, wr_returned_date_sk:long, wr_item_sk:long, wr_order_number:long, wr_return_amt:decimal(7,2), wr_net_loss:decimal(7,2)]
           ↓ Project(#3, #6, #7, #1) -> [wr_returned_date_sk:long, wr_return_amt:decimal(7,2), wr_net_loss:decimal(7,2), ws_web_site_sk:long]

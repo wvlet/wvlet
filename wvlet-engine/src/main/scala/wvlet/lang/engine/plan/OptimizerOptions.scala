@@ -214,6 +214,15 @@ enum Optimization(val name: String):
   case RowJoinFilters extends Optimization("row_join_filters")
 
   /**
+    * Runtime join filters also reach the scans of the preserved build input of a LEFT, RIGHT, semi,
+    * or anti join below the probe side, not only its probe input: dropping a build row there only
+    * drops output rows whose key has no match above. Such a filter is set before the scan reads
+    * when the join above builds first (an outer join in a UNION ALL input, TPC-DS q05's
+    * `web_returns`); a scan that starts earlier reads without it. Needs `runtime_join_filters`
+    */
+  case BuildSideJoinFilters extends Optimization("build_side_join_filters")
+
+  /**
     * Per-row runtime join filters expected to keep few rows of a single-file Parquet probe scan go
     * into its row filter as `In` conjuncts, so that uni decodes the other columns only for the rows
     * they accept, instead of decoding every row and dropping them after. Needs `row_join_filters`

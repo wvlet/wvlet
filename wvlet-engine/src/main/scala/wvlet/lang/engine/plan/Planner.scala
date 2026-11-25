@@ -63,6 +63,7 @@ class Planner(
     p,
     joinFilters = enabled(Optimization.RuntimeJoinFilters),
     rowJoinFilters = enabled(Optimization.RowJoinFilters),
+    buildSideJoinFilters = enabled(Optimization.BuildSideJoinFilters),
     presizeAggs = enabled(Optimization.PresizeAggregates),
     inSet = inSet,
     accelerator = accelerator.filter(_ => enabled(Optimization.GpuOffload)),
