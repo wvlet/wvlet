@@ -136,8 +136,7 @@ class ScanFiltersTest extends UniTest:
     // A column the source can't filter rows by exactly
     ScanFilters.exact(eq, _ => None) shouldBe None
     // Floating-point and decimal translations are only implied (x < 0.0 becomes x <= 0.0)
-    ScanFilters.exact(Compare(CmpOp.Lt, x, Const(0.0, PType.Float64)), _ => Some("x")) shouldBe
-      None
+    ScanFilters.exact(Compare(CmpOp.Lt, x, Const(0.0, PType.Float64)), _ => Some("x")) shouldBe None
   }
 
   test("should order row filters most selective first") {
