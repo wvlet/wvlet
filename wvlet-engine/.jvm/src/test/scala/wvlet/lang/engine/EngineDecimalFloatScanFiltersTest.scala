@@ -150,12 +150,14 @@ class EngineDecimalFloatScanFiltersTest extends UniTest:
 
   test("should move exact decimal and floating-point conjuncts into the row filter") {
     val plan = explain(
-      s"from '${file}' where d64 >= 81.9 and d32 < 0.5 and x < 10.0 and d128 > 0.0 and x > 1.0" +
-        " select id"
+      s"from '${file}' where id < 1024 and d64 >= 81.9 and d32 < 0.5 and x < 10.0 and d128 > 0.0" +
+        " and x > 1.0 select id"
     )
     debug(plan)
     plan shouldContain "row_filter="
     val rowFilter = plan.split("row_filter=")(1).split(" -> ")(0)
+    // Decimal and floating-point conjuncts follow the estimated one
+    rowFilter.indexOf("Compare(id,") < rowFilter.indexOf("Compare(d64,") shouldBe true
     rowFilter shouldContain "Compare(d64,GtEq,81.9"
     rowFilter shouldContain "Compare(d32,Lt,0.5"
     rowFilter shouldContain "Compare(x,Lt,10.0)"
@@ -181,10 +183,17 @@ class EngineDecimalFloatScanFiltersTest extends UniTest:
       "x > 10237.0",
       "x != 5.0 and d64 < 0.0"
     )
-    for q <- queries do
-      val query    = s"from '${file}' where ${q} select id order by id"
+    // Selective id windows (10% each), so that the row filter runs: around the NaN row (2048), the
+    // zero crossing, and the -0.0 row (16384)
+    val windows = Seq("id between 1024 and 3071", "id between 9216 and 11263", "id between 15360 and 17407")
+    for
+      w <- windows
+      q <- queries
+    do
+      val query    = s"from '${file}' where ${w} and (${q}) select id order by id"
+      explain(query) shouldContain "row_filter="
       val expected = rows(noRowFilters, query)
-      debug(s"${q}: ${expected.size} rows")
+      debug(s"${w} and ${q}: ${expected.size} rows")
       rows(on, query) shouldBe expected
   }
 
