@@ -137,7 +137,7 @@ object ReorderJoins extends Pass:
         // (`aggregate_input_rows`), scaled by the same local conditions
         val estimate = Stats
           .aggregatedRows(inputs(i), ctx.options)
-          .map(r => rows * math.min(1.0, r / math.max(1.0, Stats.rows(inputs(i)))))
+          .map(r => rows * r / math.max(1.0, Stats.rows(inputs(i))))
           .getOrElse(rows)
         if estimate < rows then
           ctx.fired(Optimization.AggregateInputRows.name)
