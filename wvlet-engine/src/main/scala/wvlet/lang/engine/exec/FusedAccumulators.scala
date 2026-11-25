@@ -16,16 +16,24 @@ package wvlet.lang.engine.exec
 import wvlet.lang.engine.vector.Vec
 
 /**
-  * Folds the counts and decimal sums of one aggregation in a single pass over a batch's rows
-  * (`fused_accumulators`). Each accumulator on its own is one loop of `state(groups(i)) += x`: with
-  * few groups, consecutive rows update the same slot, so the loop waits on the store of the
-  * previous row. One loop updating every accumulator's slot per row lets those independent updates
-  * overlap, and reads each row's group id once.
+  * Folds the counts and decimal sums of one aggregation in a single pass over the rows of a batch
+  * with few groups (`fused_accumulators`). Each accumulator on its own is one loop of
+  * `state(groups(i)) += x`: with few groups, consecutive rows update the same slot, so the loop
+  * waits on the store of the previous row. One loop updating every accumulator's slot per row lets
+  * those independent updates overlap, and reads each row's group id once.
   *
   * Fused: `count(*)`, `count(x)` of a batch without NULLs, and decimal `sum(x)` of a batch without
   * NULLs whose values are unscaled Longs, all without FILTER. The rest update on their own
   */
 private[exec] object FusedAccumulators:
+
+  /**
+    * Batches fold fused when they have at least this many rows per group. A single-thread probe
+    * (2048-row batches, uniform groups) gained 1.6x at 4 groups and 1.1x at 32-128, and lost from
+    * 256 groups on, where rows rarely update the same slot one after another
+    */
+  private val FewGroupsRatio = 16
+
   /**
     * Fold the rows of a batch into the fusable accumulators among `accs` (those with `fusable(a)`),
     * whose arguments are `args(a)`, and return which accumulators were folded, or null when fewer
@@ -40,6 +48,8 @@ private[exec] object FusedAccumulators:
       n: Int,
       numGroups: Int
   ): Array[Boolean] =
+    if numGroups.toLong * FewGroupsRatio > n then
+      return null
     val m      = accs.size
     val folded = new Array[Boolean](m)
     val counts = new Array[Array[Long]](m)
@@ -73,18 +83,14 @@ private[exec] object FusedAccumulators:
     if nc + ns < 2 then
       null
     else
-      if numGroups.toLong * 4 <= n then
-        fewGroups(counts, nc, sums, slots, values, ns, groups, n, numGroups)
-      else
-        manyGroups(counts, nc, sums, slots, values, ns, groups, n)
+      fewGroups(counts, nc, sums, slots, values, ns, groups, n, numGroups)
       folded
 
   end update
 
   /**
-    * With few groups, the rows count into one array, whose per-group increase then goes to the
-    * other counts and marks the groups the sums saw: the loop updates one count per row and no
-    * `seen` flags
+    * The rows count into one array, whose per-group increase then goes to the other counts and
+    * marks the groups the sums saw: the loop updates one count per row and no `seen` flags
     */
   private def fewGroups(
       counts: Array[Array[Long]],
@@ -134,40 +140,5 @@ private[exec] object FusedAccumulators:
       g += 1
 
   end fewGroups
-
-  /** Each row updates every count and sum, and marks its group seen for every sum */
-  private def manyGroups(
-      counts: Array[Array[Long]],
-      nc: Int,
-      sums: Array[Aggregates.SumDecimal],
-      slots: Array[Array[Long]],
-      values: Array[Array[Long]],
-      ns: Int,
-      groups: Array[Int],
-      n: Int
-  ): Unit =
-    val seen = Array.tabulate(ns)(j => sums(j).seenFlags)
-    var i    = 0
-    while i < n do
-      val g = groups(i)
-      var c = 0
-      while c < nc do
-        counts(c)(g) += 1
-        c += 1
-      var j = 0
-      while j < ns do
-        val s = slots(j)
-        val x = s(g)
-        val y = values(j)(i)
-        val z = x + y
-        if ((x ^ z) & (y ^ z)) < 0 then
-          sums(j).spill(g, y)
-        else
-          s(g) = z
-        seen(j)(g) = true
-        j += 1
-      i += 1
-
-  end manyGroups
 
 end FusedAccumulators
