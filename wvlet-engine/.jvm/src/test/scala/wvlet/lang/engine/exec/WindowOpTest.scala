@@ -250,7 +250,8 @@ class WindowOpTest extends UniTest:
         Field("m", dec),
         Field("dt", PType.Date),
         Field("b", PType.Bool),
-        Field("s", PType.Str)
+        Field("s", PType.Str),
+        Field("ms", dec)
       )
     )
     val cols = Array[Vec](
@@ -291,11 +292,18 @@ class WindowOpTest extends UniTest:
         Array.fill(n)(rnd.nextInt(6) == 0)
       ),
       BoolVec(Array.fill(n)(rnd.nextInt(10) != 0), Array.fill(n)(rnd.nextInt(8) == 0)),
-      StrVec(Array.fill(n)(s"s${rnd.nextInt(100)}"), Array.fill(n)(rnd.nextInt(5) == 0))
+      StrVec(Array.fill(n)(s"s${rnd.nextInt(100)}"), Array.fill(n)(rnd.nextInt(5) == 0)),
+      // Unscaled decimals whose sums fit in a Long
+      LongVec(
+        dec,
+        Array.fill(n)(rnd.nextInt(100000).toLong - 50000),
+        Array.fill(n)(rnd.nextInt(10) == 0)
+      )
     )
     def col(i: Int)                       = ColRef(i, in.fields(i).ptype, in.fields(i).name)
     val (pr, or, xr, dr, mr, dtr, br, sr) =
       (col(0), col(1), col(2), col(3), col(4), col(5), col(6), col(7))
+    val msr                             = col(8)
     val aggs: Seq[(String, Seq[VExpr])] = Seq(
       "count_star"     -> Nil,
       "count"          -> Seq(dr),
@@ -304,6 +312,7 @@ class WindowOpTest extends UniTest:
       "sum"            -> Seq(xr),
       "sum"            -> Seq(dr),
       "sum"            -> Seq(mr),
+      "sum"            -> Seq(msr),
       "sum_if"         -> Seq(dr, br),
       "product"        -> Seq(dr),
       "avg"            -> Seq(dr),
@@ -311,6 +320,11 @@ class WindowOpTest extends UniTest:
       "min"            -> Seq(dtr),
       "max"            -> Seq(sr),
       "max"            -> Seq(dr),
+      "min"            -> Seq(xr),
+      "max"            -> Seq(xr),
+      "min"            -> Seq(msr),
+      "max"            -> Seq(msr),
+      "max"            -> Seq(mr),
       "first"          -> Seq(sr),
       "last"           -> Seq(xr),
       "max_by"         -> Seq(sr, xr),
@@ -352,23 +366,25 @@ class WindowOpTest extends UniTest:
       )
     cs.foreach(c => WindowOp.isRunningFrame(c) shouldBe true)
     // Peers hold the input order after the stable sort, so both paths see the same rows in order
-    def eval(running: Boolean): Seq[Batch] =
+    def eval(running: Boolean, kernels: Boolean = false): Seq[Batch] =
       val op = WindowOp(
         BatchesOp(in, Seq(Batch(cols, n))),
         cs.toIndexedSeq,
         Schema(in.fields ++ cs.indices.map(i => Field(s"w${i}", cs(i).ptype))),
-        runningFrames = running
+        runningFrames = running,
+        runningKernels = kernels
       )
       try op.drain()
       finally op.close()
     val expected = eval(running = false)
-    val actual   = eval(running = true)
-    actual.size shouldBe expected.size
-    for
-      (a, e) <- actual.zip(expected)
-      c      <- a.columns.indices
-    do
-      sameVec(a.columns(c), e.columns(c))
+    // The accumulator fold, and the primitive fold (running_window_kernels) where it applies
+    for actual <- Seq(eval(running = true), eval(running = true, kernels = true)) do
+      actual.size shouldBe expected.size
+      for
+        (a, e) <- actual.zip(expected)
+        c      <- a.columns.indices
+      do
+        sameVec(a.columns(c), e.columns(c))
   }
 
   /** Evaluates `cs` over one batch, folding frames incrementally or recomputing each frame */

@@ -210,7 +210,10 @@ object ColumnPruner:
             )
           )
         val schema = Schema(kept.map(w.child.schema(_)).toIndexedSeq ++ w.schema.fields.drop(width))
-        (WindowOp(child, calls, schema, topN = w.topN), kept ++ (width until w.schema.size))
+        (
+          WindowOp(child, calls, schema, topN = w.topN, runningKernels = w.runningKernels),
+          kept ++ (width until w.schema.size)
+        )
 
       case j: HashJoinOp =>
         pruneHashJoin(j, required)

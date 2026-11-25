@@ -164,6 +164,13 @@ enum Optimization(val name: String):
     */
   case WindowTopN extends Optimization("window_top_n")
 
+  /**
+    * Running window counts, sums, mins, and maxes (frames from the partition start) over primitive
+    * columns are folded in primitive values, instead of through an accumulator and a result vector
+    * per row
+    */
+  case RunningWindowKernels extends Optimization("running_window_kernels")
+
   /** Parallel scan pipelines and two-phase / partitioned aggregation */
   case Parallelize extends Optimization("parallelize")
 
