@@ -12,6 +12,8 @@ Select DuckDB's in-memory database (catalog: memory, schema: main) with `-t duck
 default; `wvlet build` and `wvlet flow` run on the wvlet engine unless `-t duckdb` (or a DuckDB
 profile) is given.
 
+On the JVM CLI, DuckDB is in the full package `wvlet-cli-full-(version).tar.gz`; see [Installation](install.md#jvm-cli). The npm CLI includes DuckDB.
+
 
 ## Usage Examples
 

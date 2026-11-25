@@ -12,7 +12,8 @@ Wvlet is available as a command-line tool in two distributions:
 |---|---|---|
 | Requires | Node.js 22+ | JDK 17+ (Homebrew installs OpenJDK) |
 | `wvlet version`, `compile`, `to_wvlet`, `run` | ✓ | ✓ |
-| DuckDB for `wvlet run` | Included | Included |
+| DuckDB (`-t duckdb`) | Included | Full package only |
+| Snowflake connector | — | Full package only |
 | `wv` REPL, `wvlet build`, `flow`, `catalog`, `ui` | — | ✓ |
 | Updates | Update notice + `wvlet upgrade` | `brew upgrade wvlet` |
 
@@ -56,7 +57,12 @@ which wvlet   # should point to the npm global bin directory
 
 ## JVM CLI
 
-The JVM CLI includes the [wv REPL](repl.md), [Web UI](ui.md), model builds, and flows, in addition to the [wvlet command](cli.md).
+The JVM CLI includes the [wv REPL](repl.md), [Web UI](ui.md), model builds, and flows, in addition to the [wvlet command](cli.md). Each release ships it in two packages with the same `wv` and `wvlet` commands:
+
+- `wvlet-cli-(version).tar.gz` (about 60 MB, installed by Homebrew): queries run on the in-process [wvlet engine](wvlet-engine.md), [Trino](trino.md), and remote wvlet servers.
+- `wvlet-cli-full-(version).tar.gz` (about 230 MB): adds the [DuckDB](duckdb.md) and [Snowflake](snowflake.md) connectors, whose JDBC drivers make up most of its size. Use it for `-t duckdb`, `.duckdb` files, DuckDB extensions, `sql"..."` blocks run on DuckDB, or Snowflake profiles.
+
+Without the full package, selecting DuckDB or Snowflake fails with an error that names the full package.
 
 ### macOS (Homebrew)
 
@@ -64,7 +70,7 @@ The JVM CLI includes the [wv REPL](repl.md), [Web UI](ui.md), model builds, and 
 brew install wvlet/wvlet/wvlet
 ```
 
-This installs the `wv` and `wvlet` commands, along with OpenJDK as a dependency. To upgrade, run `brew upgrade wvlet` (run `brew update` first if the latest version is not picked up).
+This installs the `wv` and `wvlet` commands of the `wvlet-cli` package (without DuckDB and Snowflake), along with OpenJDK as a dependency. For DuckDB or Snowflake, use the full release package below. To upgrade, run `brew upgrade wvlet` (run `brew update` first if the latest version is not picked up).
 
 :::info
 The formula for homebrew can be found at
@@ -73,7 +79,7 @@ https://github.com/wvlet/homebrew-wvlet
 
 ### Linux, Windows, and Other Platforms
 
-Download a binary package wvlet-cli-(version).tar.gz from the release page https://github.com/wvlet/wvlet/releases
+Download a binary package, `wvlet-cli-(version).tar.gz` or `wvlet-cli-full-(version).tar.gz` (with DuckDB and Snowflake), from the release page https://github.com/wvlet/wvlet/releases
 
 You can find the `wv` and `wvlet` commands in the bin directory of the package. Add the bin directory to your PATH environment variable.
 

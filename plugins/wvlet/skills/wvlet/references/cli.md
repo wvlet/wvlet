@@ -4,8 +4,10 @@
 
 - `npm install -g @wvlet/cli` (Node.js 22+): `wvlet version`, `compile`, `to_wvlet`, `run`
   with DuckDB included and no JDK.
-- `brew install wvlet/wvlet/wvlet` or a release package: the full JVM CLI, which adds the `wv`
-  REPL, `wvlet build`, `flow`, `catalog`, and `ui`.
+- `brew install wvlet/wvlet/wvlet` or a release package: the JVM CLI, which adds the `wv`
+  REPL, `wvlet build`, `flow`, `catalog`, and `ui`. DuckDB (`-t duckdb`) and Snowflake on the
+  JVM CLI need the full package `wvlet-cli-full-<version>.tar.gz` from the GitHub release; the
+  default package reports this when they are selected.
 
 ## Commands
 

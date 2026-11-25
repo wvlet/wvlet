@@ -75,6 +75,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   client.jvm,
   spec,
   cli,
+  cliFull,
   cliCore.jvm,
   testUtil
 )
@@ -389,6 +390,48 @@ def nativeCrossProject(
 
 val packQuick = taskKey[Unit]("Run pack task quickly for faster development")
 
+// Pack settings shared by the lite (cli) and full (cliFull) JVM CLI distributions
+def cliPackSettings: Seq[Setting[?]] = Seq(
+  // Build the web UI assets (pnpm + Vite) before packing. In sbt 2, sbt-pack 1.0.0's
+  // `pack` no longer lives in the `Runtime` scope, so we can't wrap it via
+  // `(Runtime / pack).toTask`. Instead, run the asset build as a `pack`-time dependency
+  // through a dedicated task key.
+  packUiAssets := {
+    // Install pnpm dependencies
+    scala
+      .sys
+      .process
+      .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
+      .!
+    // Trigger compilation from Scala.js to JS
+    val _ = (uiMain / Compile / fullLinkJS).value
+    // Package the web assets using Vite.js
+    scala
+      .sys
+      .process
+      .Process(List("pnpm", "run", "--silent", "build-ui"), (ThisBuild / baseDirectory).value)
+      .!
+  },
+  // Non-UI pack for faster development iteration
+  packQuick := Def.uncached(pack.value),
+  pack      := Def.uncached(pack.dependsOn(packUiAssets).value),
+  packMain  :=
+    Map(
+      // Wvlet REPL launcher
+      "wv" -> "wvlet.lang.cli.WvletREPLMain",
+      // wvlet compiler/run/ui server command launcher
+      "wvlet" -> "wvlet.lang.cli.WvletMain"
+    ),
+  packJvmVersionSpecificOpts := {
+    val jvmOpts = Seq("--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED")
+    Map("wv" -> Map(25 -> jvmOpts), "wvlet" -> Map(25 -> jvmOpts))
+  },
+  packResourceDir ++= Map((ThisBuild / baseDirectory).value / "wvlet-ui-main/dist" -> "web")
+)
+
+// The lite JVM CLI (wvlet-cli-<version>.tar.gz): runs on the wvlet engine, Trino, and the other
+// built-in connectors. DuckDB and Snowflake are in the full CLI (cliFull); tests still use them,
+// e.g., DuckDB as the conformance oracle. See adr/2026-11-23-optional-connector-modules.md
 lazy val cli = project
   .in(file("wvlet-cli"))
   .enablePlugins(PackPlugin)
@@ -398,48 +441,17 @@ lazy val cli = project
     // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
     Test / fork          := true,
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
-    // Build the web UI assets (pnpm + Vite) before packing. In sbt 2, sbt-pack 1.0.0's
-    // `pack` no longer lives in the `Runtime` scope, so we can't wrap it via
-    // `(Runtime / pack).toTask`. Instead, run the asset build as a `pack`-time dependency
-    // through a dedicated task key.
-    packUiAssets := {
-      // Install pnpm dependencies
-      scala
-        .sys
-        .process
-        .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
-        .!
-      // Trigger compilation from Scala.js to JS
-      val _ = (uiMain / Compile / fullLinkJS).value
-      // Package the web assets using Vite.js
-      scala
-        .sys
-        .process
-        .Process(List("pnpm", "run", "--silent", "build-ui"), (ThisBuild / baseDirectory).value)
-        .!
-    },
-    // Non-UI pack for faster development iteration
-    packQuick := Def.uncached(pack.value),
-    pack      := Def.uncached(pack.dependsOn(packUiAssets).value),
-    packMain  :=
-      Map(
-        // Wvlet REPL launcher
-        "wv" -> "wvlet.lang.cli.WvletREPLMain",
-        // wvlet compiler/run/ui server command launcher
-        "wvlet" -> "wvlet.lang.cli.WvletMain"
-      ),
-    packJvmVersionSpecificOpts := {
-      val jvmOpts = Seq(
-        "--sun-misc-unsafe-memory-access=allow",
-        "--enable-native-access=ALL-UNNAMED"
-      )
-      Map("wv" -> Map(25 -> jvmOpts), "wvlet" -> Map(25 -> jvmOpts))
-    },
-    packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
+    cliPackSettings
   )
-  // The CLI still bundles the optional connectors; the lite/full pack split comes next (see
-  // adr/2026-11-23-optional-connector-modules.md)
-  .dependsOn(server, connectorDuckDB, connectorSnowflake)
+  .dependsOn(server, connectorDuckDB % Test, connectorSnowflake % Test)
+
+// The full JVM CLI (wvlet-cli-full-<version>.tar.gz): the lite CLI plus the optional DuckDB and
+// Snowflake connector modules, which register themselves through META-INF/services
+lazy val cliFull = project
+  .in(file("wvlet-cli-full"))
+  .enablePlugins(PackPlugin)
+  .settings(buildSettings, noPublish, name := "wvlet-cli-full", cliPackSettings)
+  .dependsOn(cli, connectorDuckDB, connectorSnowflake)
 
 /**
   * Shared test helpers that wrap uni-test (e.g., AirSpec-DI-style `initDesign` + per-test
@@ -530,7 +542,7 @@ lazy val connector = project
   )
   .dependsOn(lang.jvm)
 
-// DuckDB connector (and the `generic` fallback that runs on DuckDB). Optional at runtime: it
+// DuckDB connector (and the `generic` fallback that runs on DuckDB). Bundled only in cliFull: it
 // registers through META-INF/services, and also enables DuckDB file schema inference in
 // wvlet-lang by putting duckdb_jdbc on the classpath
 lazy val connectorDuckDB = project

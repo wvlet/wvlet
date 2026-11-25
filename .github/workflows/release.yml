@@ -35,17 +35,21 @@ jobs:
           check-latest: true
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - name: Build wvlet-cli
-        run: ./sbt cli/packArchiveTgz
+      - name: Build wvlet-cli and wvlet-cli-full
+        # The lite CLI (default, also used by Homebrew) and the full CLI with the optional
+        # DuckDB and Snowflake connectors
+        run: ./sbt cli/packArchiveTgz cliFull/packArchiveTgz
       - name: Get the release version name
         run: |
           # Strip v from tag name
           VERSION=${GITHUB_REF_NAME#v}
           echo Version: $VERSION
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-      - name: Upload wvlet-cli-(version).tgz to GitHub release
+      - name: Upload wvlet-cli-(version).tar.gz and wvlet-cli-full-(version).tar.gz to GitHub release
         run: |
-          gh release upload "$GITHUB_REF_NAME" "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
+          gh release upload "$GITHUB_REF_NAME" \
+          "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
+          "wvlet-cli-full/target/wvlet-cli-full-${VERSION}.tar.gz" \
           --clobber --repo="$GITHUB_REPOSITORY"
   homebrew:
     name: Update homebrew-wvlet
