@@ -14,6 +14,7 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
+import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.uni.test.UniTest
 
@@ -26,12 +27,27 @@ class EngineGroupingSetsTest extends UniTest:
     OptimizerOptions().withValidatePlans(true)
   )
 
-  override def afterAll: Unit = conformance.close()
+  // One aggregation per grouping set over the whole input, as without `chain_grouping_sets`
+  private val unchained = EngineConformance(
+    "wvlet-engine/.jvm/src/test/resources/engine-spec/grouping-sets",
+    Nil,
+    _ => (),
+    OptimizerOptions().withValidatePlans(true).withDisabled(Optimization.ChainGroupingSets)
+  )
 
-  for unit <- conformance.units do
-    test(unit.sourceFile.fileName) {
-      val results = conformance.run(unit)
-      results.size shouldBe 8
+  override def afterAll: Unit =
+    conformance.close()
+    unchained.close()
+
+  private val expectedQueries = Map("rollup.wv" -> 8, "chained.wv" -> 6)
+
+  for
+    (c, label) <- Seq(conformance -> "", unchained -> " without chain_grouping_sets")
+    unit       <- c.units
+  do
+    test(s"${unit.sourceFile.fileName}${label}") {
+      val results = c.run(unit)
+      results.size shouldBe expectedQueries(unit.sourceFile.fileName)
       results.foreach { r =>
         debug(s"${r.name}: ${r.message}")
         if !r.matched || r.message.startsWith("skipped") then

@@ -405,12 +405,69 @@ private[plan] object TwoPhaseAgg:
       case _ =>
         false
 
-  def supports(a: HashAggOp): Boolean = a
-    .aggs
-    .forall { c =>
-      !c.distinct && c.order.isEmpty &&
-      (isCount(c) || Set("sum", "min", "max", "avg", "mean").contains(lower(c)))
+  def supports(a: HashAggOp): Boolean = supportsCalls(a.aggs)
+
+  /** Whether every aggregate's partial results combine with another aggregate */
+  def supportsCalls(calls: Seq[AggCall]): Boolean = calls.forall { c =>
+    !c.distinct && c.order.isEmpty &&
+    (isCount(c) || Set("sum", "min", "max", "avg", "mean").contains(lower(c)))
+  }
+
+  /**
+    * The partial aggregates of `calls`, and for each call the indexes of the partial aggregates it
+    * reads (a sum and a count for avg, the call itself otherwise)
+    */
+  def decompose(calls: Seq[AggCall]): (IndexedSeq[AggCall], IndexedSeq[IndexedSeq[Int]]) =
+    val partials             = IndexedSeq.newBuilder[AggCall]
+    val sources              = IndexedSeq.newBuilder[IndexedSeq[Int]]
+    var next                 = 0
+    def add(c: AggCall): Int =
+      partials += c
+      next += 1
+      next - 1
+    calls.foreach { c =>
+      lower(c) match
+        case "avg" | "mean" =>
+          // Decimals sum exactly; other numbers sum as doubles, as Avg does (no overflow)
+          val sumType =
+            c.args.headOption.map(_.ptype) match
+              case Some(d: PType.Decimal) =>
+                Aggregates.resultType("sum", Seq(d))
+              case _ =>
+                PType.Float64
+          val s = add(AggCall("sum", c.args, false, c.filter, sumType))
+          val n = add(AggCall("count", c.args, false, c.filter, PType.Int64))
+          sources += IndexedSeq(s, n)
+        case _ =>
+          sources += IndexedSeq(add(c))
     }
+    (partials.result(), sources.result())
+
+  /** The aggregate combining the partial results `in` of partial aggregate `c` */
+  def merge(c: AggCall, in: VExpr): AggCall =
+    if isCount(c) then
+      AggCall("sum", Seq(in), false, None, PType.Int64)
+    else
+      AggCall(lower(c), Seq(in), false, None, c.ptype)
+
+  /**
+    * The value of `c` from its combined partial results `src` (as `decompose` gave them), in the
+    * type of `c`
+    */
+  def finish(c: AggCall, src: IndexedSeq[VExpr]): VExpr =
+    def as(e: VExpr, t: PType): VExpr =
+      if e.ptype == t then
+        e
+      else
+        CastExpr(e, t)
+    src match
+      case IndexedSeq(s, n) =>
+        Arith(ArithOp.Div, as(s, PType.Float64), as(n, PType.Float64), PType.Float64)
+      case IndexedSeq(i) =>
+        as(i, c.ptype)
+
+  /** Whether `c` counts rows, so that it is 0 rather than NULL over no rows */
+  def counts(c: AggCall): Boolean = isCount(c)
 
   def plan(
       a: HashAggOp,
@@ -424,33 +481,9 @@ private[plan] object TwoPhaseAgg:
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
-    val partials             = IndexedSeq.newBuilder[AggCall]
-    val sources              = IndexedSeq.newBuilder[IndexedSeq[Int]]
-    var next                 = nk
-    def add(c: AggCall): Int =
-      partials += c
-      next += 1
-      next - 1
-    a.aggs
-      .foreach { c =>
-        lower(c) match
-          case "avg" | "mean" =>
-            // Decimals sum exactly; other numbers sum as doubles, as Avg does (no overflow)
-            val sumType =
-              c.args.headOption.map(_.ptype) match
-                case Some(d: PType.Decimal) =>
-                  Aggregates.resultType("sum", Seq(d))
-                case _ =>
-                  PType.Float64
-            val s = add(AggCall("sum", c.args, false, c.filter, sumType))
-            val n = add(AggCall("count", c.args, false, c.filter, PType.Int64))
-            sources += IndexedSeq(s, n)
-          case _ =>
-            sources += IndexedSeq(add(c))
-      }
-    val partialAggs   = partials.result()
-    val srcs          = sources.result()
-    val partialSchema = Schema(
+    val (partialAggs, rel) = decompose(a.aggs)
+    val srcs               = rel.map(_.map(_ + nk))
+    val partialSchema      = Schema(
       a.schema.fields.take(nk) ++
         partialAggs.zipWithIndex.map((c, i) => Field(s"__partial_${i}", c.ptype))
     )
@@ -467,15 +500,7 @@ private[plan] object TwoPhaseAgg:
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
     // Combine partial results by key
-    val finalAggs = partialAggs
-      .zipWithIndex
-      .map { (c, j) =>
-        val in = col(nk + j)
-        if isCount(c) then
-          AggCall("sum", Seq(in), false, None, PType.Int64)
-        else
-          AggCall(lower(c), Seq(in), false, None, c.ptype)
-      }
+    val finalAggs   = partialAggs.zipWithIndex.map((c, j) => merge(c, col(nk + j)))
     val finalSchema = Schema(
       a.schema.fields.take(nk) ++
         finalAggs.zipWithIndex.map((c, i) => Field(s"__final_${i}", c.ptype))
@@ -495,27 +520,9 @@ private[plan] object TwoPhaseAgg:
       else
         HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)
     // Restore the original output: keys, then each aggregate in its original type
-    def fcol(i: Int): VExpr           = ColRef(i, finalSchema(i).ptype, finalSchema(i).name)
-    def as(e: VExpr, t: PType): VExpr =
-      if e.ptype == t then
-        e
-      else
-        CastExpr(e, t)
-    val outputs = (0 until nk).map(fcol) ++
-      a.aggs
-        .zip(srcs)
-        .map { (c, src) =>
-          src match
-            case IndexedSeq(s, n) =>
-              Arith(
-                ArithOp.Div,
-                as(fcol(s), PType.Float64),
-                as(fcol(n), PType.Float64),
-                PType.Float64
-              )
-            case IndexedSeq(i) =>
-              as(fcol(i), c.ptype)
-        }
+    def fcol(i: Int): VExpr = ColRef(i, finalSchema(i).ptype, finalSchema(i).name)
+    val outputs             = (0 until nk).map(fcol) ++
+      a.aggs.zip(srcs).map((c, src) => finish(c, src.map(fcol)))
     ProjectOp(combined, outputs.toIndexedSeq, a.schema)
 
   end plan

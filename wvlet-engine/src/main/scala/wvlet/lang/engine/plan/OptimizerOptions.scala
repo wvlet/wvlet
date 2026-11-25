@@ -70,6 +70,13 @@ enum Optimization(val name: String):
   case GroupKeySemiJoins extends Optimization("group_key_semi_joins")
 
   /**
+    * Plan ROLLUP / CUBE (grouping sets whose key union is one of the sets) by aggregating the input
+    * once, by the finest set, into partial results, then each coarser set from the partial results
+    * of its smallest finer set, instead of one aggregation over the whole input per set
+    */
+  case ChainGroupingSets extends Optimization("chain_grouping_sets")
+
+  /**
     * Estimate a prefix pattern `x like 'p%'` as the range `x >= 'p' and x < next(p)` it is, two
     * range conditions of the default selectivity each, instead of one
     */

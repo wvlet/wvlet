@@ -659,9 +659,11 @@ class EngineRuntimePlanTest extends UniTest:
   }
 
   test("bind grouping sets as a union of aggregations over a shared input") {
-    val p = runtimePlan("""from lineitem
+    val unchained = engine.withOptimizer(runtime.withDisabled(Optimization.ChainGroupingSets))
+    val p         =
+      withQuery("""from lineitem
         |group by rollup(l_returnflag, l_linestatus)
-        |select l_returnflag, l_linestatus, count(*)""".stripMargin)
+        |select l_returnflag, l_linestatus, count(*)""".stripMargin)(unchained.runtimePlan(_))
     debug(p.explain)
     p match
       case RuntimePlan.Project(RuntimePlan.Union(sets, _), _, _) =>
@@ -682,6 +684,46 @@ class EngineRuntimePlanTest extends UniTest:
       case other =>
         fail(s"Unexpected plan:\n${other.explain}")
     PlanValidator.violations(p) shouldBe Nil
+  }
+
+  /** The number of keys of the topmost aggregation in `p` */
+  private def firstAggKeys(p: RuntimePlan): Option[Int] =
+    p match
+      case RuntimePlan.Aggregate(_, keys, _, _) =>
+        Some(keys.size)
+      case other =>
+        other.children.view.flatMap(firstAggKeys).headOption
+
+  test("bind each coarser grouping set over the partial results of a finer set") {
+    val query =
+      """from lineitem
+        |group by rollup(l_returnflag, l_linestatus)
+        |select l_returnflag, l_linestatus, count(*), avg(l_quantity)""".stripMargin
+    val p = runtimePlan(query)
+    debug(p.explain)
+    p match
+      case RuntimePlan.Project(RuntimePlan.Union(sets, _), _, _) =>
+        // The finest set aggregates the input; each coarser set merges the set above it
+        sets.map {
+          case RuntimePlan.Project(r: RuntimePlan.CTERef, _, _) =>
+            // Partial results read again by a coarser set are shared
+            r.cte.name shouldBe "GroupingSetPartials"
+            firstAggKeys(r.cte.body)
+          case RuntimePlan.Project(
+                a @ RuntimePlan.Aggregate(r: RuntimePlan.CTERef, _, _, _),
+                _,
+                _
+              ) =>
+            r.cte.name shouldBe "GroupingSetPartials"
+            firstAggKeys(a)
+          case other =>
+            fail(s"Unexpected grouping set:\n${other.explain}")
+        } shouldBe IndexedSeq(Some(2), Some(1), Some(0))
+      case other =>
+        fail(s"Unexpected plan:\n${other.explain}")
+    p.explain shouldNotContain "GroupingSetInput"
+    PlanValidator.violations(p) shouldBe Nil
+    matchesDuckDB(query)
   }
 
   test("apply a subquery condition over a join tree as a semi join over the ordered tree") {
