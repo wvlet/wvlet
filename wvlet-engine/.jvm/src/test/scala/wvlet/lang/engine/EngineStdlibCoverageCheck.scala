@@ -33,7 +33,7 @@ import java.nio.file.Path
 class EngineStdlibCoverageCheck extends UniTest:
 
   /** Stdlib functions that run on the engine and match DuckDB must not drop below this count */
-  private val minCovered = 312
+  private val minCovered = 313
 
   private val conformance     = EngineConformance(".", Nil, _ => ())
   override def afterAll: Unit = conformance.close()

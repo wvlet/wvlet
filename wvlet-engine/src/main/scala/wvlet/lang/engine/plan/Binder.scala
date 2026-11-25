@@ -574,8 +574,19 @@ class Binder(
       else
         name
     val filter = f.filter.map(x => input.bindExpr(x))
+    // ORDER BY inside the call (array_agg(x ORDER BY y)): the keys follow the values in args
+    val keys = f.args.flatMap(_.orderBy).map(s => planner.sortKey(s, input.bindExpr(s.sortKey)))
     // Some aggregates take constant arguments after the value (quantiles, string_agg separator)
-    AggCall(fname, args, distinct, filter, Aggregates.resultType(fname, args.map(_.ptype)))
+    AggCall(
+      fname,
+      args ++ keys.map(_.expr),
+      distinct,
+      filter,
+      Aggregates.resultType(fname, args.map(_.ptype)),
+      keys.map(k => SortDir(k.ascending, k.nullsFirst))
+    )
+
+  end aggCall
 
   // --- plain expressions ------------------------------------------------------------------
 

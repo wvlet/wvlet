@@ -40,4 +40,18 @@ class StdlibAggregateDialectTest extends UniTest:
     generateSQL(mapAgg, DBType.Trino) shouldContain "map_agg(k, v) as m"
   }
 
+  private val ordered =
+    "from [['a', 1]] as ev(item, ts)\ngroup by 'all'\nagg item.to_array(ts) as items\n"
+
+  test("order to_array inside the call on DuckDB, Trino, and BigQuery") {
+    generateSQL(ordered, DBType.DuckDB) shouldContain "array_agg(item order by ts) as items"
+    generateSQL(ordered, DBType.Trino) shouldContain "array_agg(item order by ts) as items"
+    generateSQL(ordered, DBType.BigQuery) shouldContain "array_agg(item order by ts) as items"
+  }
+
+  test("order to_array with WITHIN GROUP on Snowflake") {
+    generateSQL(ordered, DBType.Snowflake) shouldContain
+      "array_agg(item) within group (order by ts) as items"
+  }
+
 end StdlibAggregateDialectTest

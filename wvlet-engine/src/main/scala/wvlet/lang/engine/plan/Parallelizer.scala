@@ -408,7 +408,8 @@ private[plan] object TwoPhaseAgg:
   def supports(a: HashAggOp): Boolean = a
     .aggs
     .forall { c =>
-      !c.distinct && (isCount(c) || Set("sum", "min", "max", "avg", "mean").contains(lower(c)))
+      !c.distinct && c.order.isEmpty &&
+      (isCount(c) || Set("sum", "min", "max", "avg", "mean").contains(lower(c)))
     }
 
   def plan(

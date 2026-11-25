@@ -55,6 +55,16 @@ class EngineStdlibAggregateTest extends UniTest:
     )
   }
 
+  test("to_array(order_by) collects values in key order as DuckDB") {
+    val rows =
+      "from [['a', 'x', 3], ['a', 'y', 1], ['a', null, 2], ['a', 'z', null], ['b', 'w', 5], " +
+        "['c', null, null]] as ev(g, item, ts)\n"
+    check(rows + "group by g\nagg item.to_array(ts) as items, item.to_array(ts).size as n")
+    // string_agg is order-sensitive too: DuckDB SQL with ORDER BY inside the call
+    check(rows + "group by g\nagg sql\"string_agg(item, ',' order by ts desc)\" as s")
+    check(rows + "group by g\nagg item.to_array(ts) as items, ts.to_array(item) as by_item")
+  }
+
   test("aggregates over integer columns match DuckDB") {
     check(
       "from [[1, 2], [2, 5], [3, 4], [7, 1]] as t(x, y)\n" +

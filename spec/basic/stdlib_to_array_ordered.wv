@@ -1,0 +1,15 @@
+-- x.to_array(key) collects the grouped values in ascending key order
+from [
+  ['a', 'x', 3],
+  ['a', 'y', 1],
+  ['a', 'z', 2],
+  ['b', 'w', 5],
+] as ev(g, item, ts)
+group by g
+agg item.to_array(ts) as items
+order by g
+
+test _.rows should be [
+  ['a', ['y', 'z', 'x']],
+  ['b', ['w']],
+]

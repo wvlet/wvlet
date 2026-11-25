@@ -52,6 +52,12 @@ trait array[A] = {
 
   def to_array: array[A] = sql"array_agg(${this})"
   def to_array in hive: array[A] = sql"collect_list(${this})"
+  -- Collect the values in ascending order of the given key, e.g. item.to_array(ts). Rows with equal
+  -- keys may come in any order
+  def to_array(order_by: sql) in duckdb: array[A] = sql"array_agg(${this} order by ${order_by})"
+  def to_array(order_by: sql) in trino: array[A] = sql"array_agg(${this} order by ${order_by})"
+  def to_array(order_by: sql) in snowflake: array[A] = sql"array_agg(${this}) within group (order by ${order_by})"
+  def to_array(order_by: sql) in bigquery: array[A] = sql"array_agg(${this} order by ${order_by})"
 
   -- Aggregate boolean values of a grouped column
   def bool_and: boolean = sql"bool_and(${this})"
