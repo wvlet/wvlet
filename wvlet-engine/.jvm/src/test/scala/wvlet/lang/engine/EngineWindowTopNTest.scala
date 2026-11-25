@@ -93,9 +93,9 @@ class EngineWindowTopNTest extends UniTest:
         |where rk <= 3""".stripMargin) shouldNotContain "top="
   }
 
-  test("pass running_window_kernels and window_sort_kernels to the window operators") {
+  test("pass the window kernel and partition sharing flags to the window operators") {
     val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
-    def windowKernels(o: OptimizerOptions): Seq[(Boolean, Boolean)] =
+    def windowKernels(o: OptimizerOptions): Seq[(Boolean, Boolean, Boolean)] =
       val unit = CompilationUnit.fromWvletString(
         """from 'spec/tpch/data/lineitem.parquet'
           |select l_orderkey,
@@ -105,19 +105,48 @@ class EngineWindowTopNTest extends UniTest:
       val r         = compiler.compileSingleUnit(unit)
       given Context = r.context
       val query     = EngineTPCHBench.queryOf(unit).getOrElse(fail("No query"))
-      def collect(op: wvlet.lang.engine.exec.Operator): Seq[(Boolean, Boolean)] =
+      def collect(op: wvlet.lang.engine.exec.Operator): Seq[(Boolean, Boolean, Boolean)] =
         (
           op match
             case w: wvlet.lang.engine.exec.WindowOp =>
-              Seq((w.runningKernels, w.sortKernels))
+              Seq((w.runningKernels, w.sortKernels, w.sharePartitions))
             case _ =>
               Nil
         ) ++ op.children.flatMap(collect)
       collect(WvletEngine(optimizer = o).physicalPlan(GenSQL.expand(query, summon[Context])))
-    windowKernels(options) shouldBe Seq((true, true))
+    windowKernels(options) shouldBe Seq((true, true, true))
     windowKernels(options.withDisabled(Optimization.RunningWindowKernels)) shouldBe
-      Seq((false, true))
-    windowKernels(options.withDisabled(Optimization.WindowSortKernels)) shouldBe Seq((true, false))
+      Seq((false, true, true))
+    windowKernels(options.withDisabled(Optimization.WindowSortKernels)) shouldBe
+      Seq((true, false, true))
+    windowKernels(options.withDisabled(Optimization.WindowSharePartitions)) shouldBe
+      Seq((true, true, false))
+  }
+
+  test("share the partitions of window calls over the same window after lowering") {
+    val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
+    val unit     = CompilationUnit.fromWvletString("""from 'spec/tpch/data/lineitem.parquet'
+        |select l_orderkey,
+        |  max(l_quantity) over (partition by l_orderkey order by l_linenumber) as q,
+        |  max(l_extendedprice) over (partition by l_orderkey order by l_linenumber) as p,
+        |  rank() over (partition by l_orderkey order by l_quantity) as r""".stripMargin)
+    val r         = compiler.compileSingleUnit(unit)
+    given Context = r.context
+    val query     = EngineTPCHBench.queryOf(unit).getOrElse(fail("No query"))
+    def windows(op: wvlet.lang.engine.exec.Operator): Seq[wvlet.lang.engine.exec.WindowOp] =
+      (
+        op match
+          case w: wvlet.lang.engine.exec.WindowOp =>
+            Seq(w)
+          case _ =>
+            Nil
+      ) ++ op.children.flatMap(windows)
+    val ws = windows(
+      WvletEngine(optimizer = options).physicalPlan(GenSQL.expand(query, summon[Context]))
+    )
+    ws.map(w =>
+      wvlet.lang.engine.exec.WindowOp.callGroups(w.calls, w.sharePartitions).map(_.size)
+    ) shouldBe Seq(Seq(2, 1))
   }
 
 end EngineWindowTopNTest

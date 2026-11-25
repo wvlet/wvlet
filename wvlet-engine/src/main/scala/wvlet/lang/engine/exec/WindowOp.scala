@@ -83,7 +83,9 @@ object WindowCall:
   * partition start are folded incrementally (see `aggregateRunning`); `runningFrames = false`
   * recomputes every frame instead, which tests use as the reference. With `sortKernels`, a
   * partition ordered by one integer or date key is sorted as packed (key, position) longs
-  * ([[WindowOp.sortByPrimitiveKey]]) instead of through the row comparator.
+  * ([[WindowOp.sortByPrimitiveKey]]) instead of through the row comparator. With `sharePartitions`,
+  * calls with the same PARTITION BY and ORDER BY are partitioned and sorted once
+  * ([[WindowOp.callGroups]]).
   */
 class WindowOp(
     val child: Operator,
@@ -94,7 +96,8 @@ class WindowOp(
     runningFrames: Boolean = true,
     val topN: Option[WindowOp.TopN] = None,
     val runningKernels: Boolean = false,
-    val sortKernels: Boolean = false
+    val sortKernels: Boolean = false,
+    val sharePartitions: Boolean = false
 ) extends Operator:
   private var result: Iterator[Batch]  = null
   override def children: Seq[Operator] = Seq(child)
@@ -136,10 +139,10 @@ class WindowOp(
         new Array[Boolean](n)
       else
         null
-    val outCols = calls
+    val evals = calls
       .indices
       .map(i =>
-        evaluate(
+        CallEval(
           calls(i),
           all,
           if i == 0 then
@@ -148,8 +151,10 @@ class WindowOp(
             null
         )
       )
-    val full = Batch(all.columns ++ outCols, n)
-    val out  =
+    WindowOp.callGroups(calls, sharePartitions).foreach(g => evaluateGroup(g.map(evals), all))
+    val outCols = evals.map(_.out.result())
+    val full    = Batch(all.columns ++ outCols, n)
+    val out     =
       if kept == null then
         full
       else
@@ -258,25 +263,17 @@ class WindowOp(
 
   end partitions
 
-  /** The values of call c for every row; marks the rows it evaluates in `kept` unless null */
-  private def evaluate(c: WindowCall, all: Batch, kept: Array[Boolean]): Vec =
-    val n                              = all.size
-    val out                            = WindowOp.OutColumn(c.ptype, n)
-    val args                           = c.args.map(_.eval(all)).toArray
-    val keyVecs                        = c.orderBy.map(_.expr.eval(all)).toArray
-    val cmp                            = SortOp.comparator(keyVecs, c.orderBy)
+  /**
+    * The state of one window call over the input `all`: its output column, its arguments, and its
+    * ORDER BY comparator. `evalRows` writes the values of one sorted partition, and marks its rows
+    * in `kept` unless null
+    */
+  private final class CallEval(val c: WindowCall, all: Batch, kept: Array[Boolean]):
+    val out: WindowOp.OutColumn        = WindowOp.OutColumn(c.ptype, all.size)
+    val args: Array[Vec]               = c.args.map(_.eval(all)).toArray
+    val keyVecs: Array[Vec]            = c.orderBy.map(_.expr.eval(all)).toArray
+    val cmp: SortOp.RowComparator      = SortOp.comparator(keyVecs, c.orderBy)
     def peers(a: Int, b: Int): Boolean = c.orderBy.isEmpty || cmp.compareRows(a, b) == 0
-    val partKeys                       = c.partitionBy.map(_.eval(all)).toArray
-
-    // Rows of distinct partitions write distinct slots of `out`, so parts can run concurrently
-    def evalPart(rows: Array[Int], hashes: Array[Int]): Unit = partitions(
-      c,
-      partKeys,
-      rows,
-      keyVecs,
-      cmp,
-      hashes
-    ).foreach(evalRows)
 
     def evalRows(rows: Array[Int]): Unit =
       val size = rows.length
@@ -403,6 +400,35 @@ class WindowOp(
       end match
     end evalRows
 
+  end CallEval
+
+  /**
+    * Evaluates calls with the same PARTITION BY and ORDER BY (one call unless `sharePartitions`):
+    * the rows are partitioned and sorted once, by the first call's keys, and every call reads the
+    * same sorted partitions. Each call's values equal the ones of evaluating it alone, as its
+    * partitions are the same rows in the same order
+    */
+  private def evaluateGroup(evals: IndexedSeq[CallEval], all: Batch): Unit =
+    val first    = evals.head
+    val c        = first.c
+    val n        = all.size
+    val partKeys = c.partitionBy.map(_.eval(all)).toArray
+
+    // Rows of distinct partitions write distinct slots of `out`, so parts can run concurrently
+    def evalPart(rows: Array[Int], hashes: Array[Int]): Unit = partitions(
+      c,
+      partKeys,
+      rows,
+      first.keyVecs,
+      first.cmp,
+      hashes
+    ).foreach { part =>
+      var e = 0
+      while e < evals.length do
+        evals(e).evalRows(part)
+        e += 1
+    }
+
     if c.partitionBy.isEmpty || n < minParallelRows || runner.parallelism <= 1 then
       val rows = new Array[Int](n)
       var i    = 0
@@ -422,9 +448,8 @@ class WindowOp(
         .filter(_.nonEmpty)
         .map(rows => runner.submit(() => evalPart(rows, hashes)))
         .foreach(_.get())
-    out.result()
 
-  end evaluate
+  end evaluateGroup
 
   /** Inclusive positions of the frame of the k-th row of a partition */
   private def frameRange(
@@ -880,6 +905,28 @@ class WindowOp(
 end WindowOp
 
 object WindowOp:
+
+  /**
+    * The indexes of `calls`, grouped by equal PARTITION BY and ORDER BY in the order of each
+    * group's first call; one group per call unless `share`. Expressions are compared with `==`, not
+    * `sig`: the signature of a row function leaves out its closure
+    */
+  def callGroups(calls: IndexedSeq[WindowCall], share: Boolean): Seq[IndexedSeq[Int]] =
+    if !share then
+      calls.indices.map(IndexedSeq(_))
+    else
+      val groups = scala
+        .collection
+        .mutable
+        .LinkedHashMap
+        .empty[(Seq[VExpr], Seq[SortKey]), IndexedSeq[Int]]
+      calls
+        .indices
+        .foreach { i =>
+          val key = (calls(i).partitionBy, calls(i).orderBy)
+          groups(key) = groups.getOrElse(key, IndexedSeq.empty) :+ i
+        }
+      groups.values.toSeq
 
   /**
     * A running count, sum, min, or max (a frame from the partition start) over `rows`, folded in

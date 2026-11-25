@@ -52,7 +52,8 @@ object Lowering:
     * are estimated to keep at most [[ScanFilters.MaxRowFilterSelectivity]] of its rows. With
     * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
     * ([[ScanOp.dictionaryCodes]]) With `maskedCaseWhen`, a CASE of one WHEN without ELSE masks its
-    * THEN vector ([[MaskCaseWhen]])
+    * THEN vector ([[MaskCaseWhen]]). With `windowSharePartitions`, window calls with the same
+    * PARTITION BY and ORDER BY are partitioned and sorted once ([[WindowOp.callGroups]])
     */
   def apply(
       p: RuntimePlan,
@@ -71,7 +72,8 @@ object Lowering:
       scanRowFilters: Boolean = false,
       dictionaryCodes: Boolean = false,
       selectiveRowFilters: Boolean = false,
-      maskedCaseWhen: Boolean = false
+      maskedCaseWhen: Boolean = false,
+      windowSharePartitions: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -88,7 +90,8 @@ object Lowering:
       scanRowFilters,
       dictionaryCodes,
       selectiveRowFilters,
-      maskedCaseWhen
+      maskedCaseWhen,
+      windowSharePartitions
     )
     if inSet then
       l.markInSet(p)
@@ -123,7 +126,8 @@ object Lowering:
       scanRowFilters: Boolean,
       dictionaryCodes: Boolean,
       selectiveRowFilters: Boolean,
-      maskedCaseWhen: Boolean
+      maskedCaseWhen: Boolean,
+      windowSharePartitions: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -237,7 +241,8 @@ object Lowering:
                   op.schema,
                   topN = WindowOp.topNOf(op.calls, op.child.schema.size, filter),
                   runningKernels = op.runningKernels,
-                  sortKernels = op.sortKernels
+                  sortKernels = op.sortKernels,
+                  sharePartitions = op.sharePartitions
                 )
               case other =>
                 other
@@ -384,7 +389,8 @@ object Lowering:
               calls2,
               p.schema,
               runningKernels = windowKernels,
-              sortKernels = windowSortKernels
+              sortKernels = windowSortKernels,
+              sharePartitions = windowSharePartitions
             )
           else
             // The window appends its results to its input: drop the shared columns after it
@@ -396,7 +402,8 @@ object Lowering:
               calls2,
               Schema(input.schema.fields ++ result),
               runningKernels = windowKernels,
-              sortKernels = windowSortKernels
+              sortKernels = windowSortKernels,
+              sharePartitions = windowSharePartitions
             )
             ProjectOp(
               w,

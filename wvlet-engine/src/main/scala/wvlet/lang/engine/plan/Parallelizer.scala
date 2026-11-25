@@ -594,7 +594,8 @@ object Parallelizer:
               runner,
               topN = w.topN,
               runningKernels = w.runningKernels,
-              sortKernels = w.sortKernels
+              sortKernels = w.sortKernels,
+              sharePartitions = w.sharePartitions
             )
           case other =>
             other

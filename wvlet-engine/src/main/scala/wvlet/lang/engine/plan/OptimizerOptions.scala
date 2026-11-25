@@ -255,6 +255,12 @@ enum Optimization(val name: String):
     */
   case WindowSortKernels extends Optimization("window_sort_kernels")
 
+  /**
+    * Window calls with the same PARTITION BY and ORDER BY are partitioned and sorted once, and
+    * every call reads the same sorted partitions
+    */
+  case WindowSharePartitions extends Optimization("window_share_partitions")
+
   /** Parallel scan pipelines and two-phase / partitioned aggregation */
   case Parallelize extends Optimization("parallelize")
 

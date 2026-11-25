@@ -76,7 +76,8 @@ class Planner(
     scanRowFilters = enabled(Optimization.ScanRowFilters),
     dictionaryCodes = enabled(Optimization.DictionaryGroupKeys),
     selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters),
-    maskedCaseWhen = enabled(Optimization.MaskedCaseWhen)
+    maskedCaseWhen = enabled(Optimization.MaskedCaseWhen),
+    windowSharePartitions = enabled(Optimization.WindowSharePartitions)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */
