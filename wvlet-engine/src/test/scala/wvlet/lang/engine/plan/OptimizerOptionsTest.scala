@@ -65,6 +65,7 @@ class OptimizerOptionsTest extends UniTest:
         "push_scan_filters",
         "runtime_join_filters",
         "presize_aggregates",
+        "window_top_n",
         "parallelize",
         "late_gather",
         "join_direct_index",

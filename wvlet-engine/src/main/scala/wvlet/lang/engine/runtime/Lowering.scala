@@ -37,7 +37,8 @@ object Lowering:
     * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]). With
     * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]). With
     * `footerCache`, Parquet scans reuse cached footers
-    * ([[wvlet.lang.engine.catalog.ParquetFooterCache]])
+    * ([[wvlet.lang.engine.catalog.ParquetFooterCache]]). With `windowTopN`, a filter bounding the
+    * rank of a window keeps only the top rows of each partition ([[WindowOp.topNOf]])
     */
   def apply(
       p: RuntimePlan,
@@ -45,9 +46,10 @@ object Lowering:
       presizeAggs: Boolean = false,
       inSet: Boolean = false,
       accelerator: Option[PlanAccelerator] = None,
-      footerCache: Boolean = false
+      footerCache: Boolean = false,
+      windowTopN: Boolean = false
   ): Operator =
-    val l = Lower(joinFilters, presizeAggs, accelerator, footerCache)
+    val l = Lower(joinFilters, presizeAggs, accelerator, footerCache, windowTopN)
     if inSet then
       l.markInSet(p)
     l.lower(p)
@@ -68,7 +70,8 @@ object Lowering:
       joinFilters: Boolean,
       presizeAggs: Boolean,
       accelerator: Option[PlanAccelerator],
-      footerCache: Boolean
+      footerCache: Boolean,
+      windowTopN: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -120,6 +123,20 @@ object Lowering:
             cte.reader(ref.schema, Some(filter), setNodes.getOrDefault(ref, false)),
             cond.lower(positions(ref))
           )
+        case Filter(w: Window, cond, _) if windowTopN =>
+          val filter = cond.lower(positions(w))
+          val window =
+            lower(w) match
+              case op: WindowOp =>
+                WindowOp(
+                  op.child,
+                  op.calls,
+                  op.schema,
+                  topN = WindowOp.topNOf(op.calls, op.child.schema.size, filter)
+                )
+              case other =>
+                other
+          FilterOp(window, filter)
         case Filter(child, cond, _) =>
           FilterOp(lower(child), cond.lower(positions(child)))
         case Project(child, exprs, _) =>

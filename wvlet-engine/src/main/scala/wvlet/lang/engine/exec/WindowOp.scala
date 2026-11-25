@@ -89,7 +89,8 @@ class WindowOp(
     val schema: Schema,
     runner: TaskRunner = TaskRunner.Sequential,
     minParallelRows: Int = WindowOp.MinParallelRows,
-    runningFrames: Boolean = true
+    runningFrames: Boolean = true,
+    val topN: Option[WindowOp.TopN] = None
 ) extends Operator:
   private var result: Iterator[Batch]  = null
   override def children: Seq[Operator] = Seq(child)
@@ -99,7 +100,18 @@ class WindowOp(
     else
       "Window"
 
-  override protected def details = s"(${calls.map(_.sig).mkString(", ")})"
+  override protected def details =
+    val top = topN
+      .map(t =>
+        s", top=${t.limit}${
+            if t.ties then
+              " with ties"
+            else
+              ""
+          }"
+      )
+      .getOrElse("")
+    s"(${calls.map(_.sig).mkString(", ")}${top})"
 
   def next(): Batch =
     if result == null then
@@ -114,9 +126,50 @@ class WindowOp(
     val n   = all.size
     if n == 0 then
       return Iterator.empty
-    val outCols = calls.map(c => evaluate(c, all))
-    val out     = Batch(all.columns ++ outCols, n)
-    Iterator.range(0, n, Batch.DefaultSize).map(from => out.slice(from, from + Batch.DefaultSize))
+    // With topN, the rows the first call ranks within the limit: the only rows output
+    val kept =
+      if topN.isDefined then
+        new Array[Boolean](n)
+      else
+        null
+    val outCols = calls
+      .indices
+      .map(i =>
+        evaluate(
+          calls(i),
+          all,
+          if i == 0 then
+            kept
+          else
+            null
+        )
+      )
+    val full = Batch(all.columns ++ outCols, n)
+    val out  =
+      if kept == null then
+        full
+      else
+        var count = 0
+        var i     = 0
+        while i < n do
+          if kept(i) then
+            count += 1
+          i += 1
+        val rows = new Array[Int](count)
+        var j    = 0
+        i = 0
+        while i < n do
+          if kept(i) then
+            rows(j) = i
+            j += 1
+          i += 1
+        full.gather(rows, count)
+    val size = out.size
+    Iterator
+      .range(0, size, Batch.DefaultSize)
+      .map(from => out.slice(from, from + Batch.DefaultSize))
+
+  end compute
 
   /**
     * The window partitions among `rows` (ascending row indexes of the input), each sorted by the
@@ -180,7 +233,13 @@ class WindowOp(
     val out = new Array[Array[Int]](numGroups)
     g = 0
     while g < numGroups do
-      val part = java.util.Arrays.copyOfRange(ordered, start(g), start(g + 1))
+      val all  = java.util.Arrays.copyOfRange(ordered, start(g), start(g + 1))
+      val part =
+        topN match
+          case Some(t) =>
+            WindowOp.topRows(all, t, cmp)
+          case None =>
+            all
       if c.orderBy.nonEmpty then
         IndexSort.sort(part, cmp)
       out(g) = part
@@ -189,7 +248,8 @@ class WindowOp(
 
   end partitions
 
-  private def evaluate(c: WindowCall, all: Batch): Vec =
+  /** The values of call c for every row; marks the rows it evaluates in `kept` unless null */
+  private def evaluate(c: WindowCall, all: Batch, kept: Array[Boolean]): Vec =
     val n                              = all.size
     val out                            = WindowOp.OutColumn(c.ptype, n)
     val args                           = c.args.map(_.eval(all)).toArray
@@ -209,6 +269,12 @@ class WindowOp(
 
     def evalRows(rows: Array[Int]): Unit =
       val size = rows.length
+      if kept != null then
+        // Rows of distinct partitions are distinct slots
+        var k = 0
+        while k < size do
+          kept(rows(k)) = true
+          k += 1
       c.name match
         case "row_number" =>
           var k = 0
@@ -801,6 +867,124 @@ class WindowOp(
 end WindowOp
 
 object WindowOp:
+
+  /**
+    * Keep only the rows of each partition that rank within `limit` by the ORDER BY keys: the first
+    * `limit` rows, and with `ties` every row tied with the last of them (rank() <= limit). Valid
+    * when every call is a row_number() or rank() over the same window, whose values depend only on
+    * the rows before them, and a filter above drops the other rows
+    */
+  case class TopN(limit: Long, ties: Boolean)
+
+  /**
+    * The rows of `part` within the top `t.limit` by `cmp`, in no particular order: a bounded
+    * max-heap finds the limit-th row, then with ties every row not after it is kept
+    */
+  def topRows(part: Array[Int], t: TopN, cmp: SortOp.RowComparator): Array[Int] =
+    val n = part.length
+    if t.limit >= n then
+      return part
+    if t.limit <= 0 then
+      return Array.emptyIntArray
+    val k    = t.limit.toInt
+    val heap = new Array[Int](k)
+    // Rows in the ORDER BY order, then in input order (`part` is ascending), as the stable sort
+    // without a top-N orders them
+    def after(a: Int, b: Int): Boolean =
+      val c = cmp.compareRows(a, b)
+      c > 0 || c == 0 && a > b
+    // Max-heap by `after`: heap(0) is the last of the k first rows seen so far
+    def siftDown(from: Int): Unit =
+      var i    = from
+      var done = false
+      while !done do
+        val l       = 2 * i + 1
+        var largest = i
+        if l < k && after(heap(l), heap(largest)) then
+          largest = l
+        if l + 1 < k && after(heap(l + 1), heap(largest)) then
+          largest = l + 1
+        if largest == i then
+          done = true
+        else
+          val x = heap(i)
+          heap(i) = heap(largest)
+          heap(largest) = x
+          i = largest
+    System.arraycopy(part, 0, heap, 0, k)
+    var i = k / 2 - 1
+    while i >= 0 do
+      siftDown(i)
+      i -= 1
+    i = k
+    while i < n do
+      if after(heap(0), part(i)) then
+        heap(0) = part(i)
+        siftDown(0)
+      i += 1
+    if !t.ties then
+      heap
+    else
+      val last = heap(0)
+      val out  = Array.newBuilder[Int]
+      out.sizeHint(k)
+      i = 0
+      while i < n do
+        if cmp.compareRows(part(i), last) <= 0 then
+          out += part(i)
+        i += 1
+      out.result()
+
+  end topRows
+
+  /**
+    * The top-N a filter `cond` over the output of a window op with `calls` over `width` input
+    * columns allows: when every call is a row_number() or rank() over the same window with ORDER
+    * BY, and a conjunct of `cond` bounds one call's value by a constant (`r <= k`, `r < k`,
+    * `r = k`)
+    */
+  def topNOf(calls: Seq[WindowCall], width: Int, cond: VExpr): Option[TopN] =
+    val first                              = calls.headOption
+    def sameWindow(c: WindowCall): Boolean = first.exists { f =>
+      c.partitionBy.map(_.sig) == f.partitionBy.map(_.sig) &&
+      c.orderBy.map(k => (k.expr.sig, k.ascending, k.nullsFirst)) ==
+        f.orderBy.map(k => (k.expr.sig, k.ascending, k.nullsFirst))
+    }
+    val eligible =
+      calls.nonEmpty &&
+        calls.forall(c => (c.name == "row_number" || c.name == "rank") && sameWindow(c)) &&
+        first.exists(_.orderBy.nonEmpty)
+    def conjuncts(e: VExpr): List[VExpr] =
+      e match
+        case AndExpr(l, r) =>
+          conjuncts(l) ++ conjuncts(r)
+        case other =>
+          List(other)
+    def bound(op: CmpOp, k: Long): Option[Long] =
+      op match
+        case CmpOp.Le | CmpOp.Eq =>
+          Some(k)
+        case CmpOp.Lt =>
+          Some(k - 1)
+        case _ =>
+          None
+    def limitOf(e: VExpr): Option[Long] =
+      e match
+        case Compare(op, ColRef(i, _, _), Const(v: (Int | Long), _)) if i >= width =>
+          bound(op, v.asInstanceOf[Number].longValue)
+        case Compare(op, Const(v: (Int | Long), _), ColRef(i, _, _)) if i >= width =>
+          bound(op.flip, v.asInstanceOf[Number].longValue)
+        case _ =>
+          None
+    if !eligible then
+      None
+    else
+      conjuncts(cond)
+        .flatMap(limitOf)
+        .minOption
+        .map(l => TopN(math.max(0L, l), ties = calls.exists(_.name == "rank")))
+
+  end topNOf
 
   /**
     * Aggregates whose accumulator folds rows one at a time in row order and whose `result` leaves

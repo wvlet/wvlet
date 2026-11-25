@@ -98,7 +98,7 @@
 ↙ UnionAll -> [i_category:string, i_class:string, i_brand:string, i_product_name:string, d_year:long, d_qoy:long, d_moy:long, s_store_id:string, agg:sum(coalesce((#13*#10),lit(0:int))):decimal(38,2)]
 ↓ Project(#0, #1, #2, #3, #4, #5, #6, #7, #8) -> [i_category:string, i_class:string, i_brand:string, i_product_name:string, d_year:long, d_qoy:long, d_moy:long, s_store_id:string, sumsales:decimal(38,2)]
 ↓ Project(#0, #1, #2, #3, #4, #5, #6, #7, #8) -> [i_category:string, i_class:string, i_brand:string, i_product_name:string, d_year:long, d_qoy:long, d_moy:long, s_store_id:string, sumsales:decimal(38,2)]
-↓ Window[parallelism=N](win:rank() over(#0;#8 desc;None)) -> [i_category:string, i_class:string, i_brand:string, i_product_name:string, d_year:long, d_qoy:long, d_moy:long, s_store_id:string, sumsales:decimal(38,2), __wv_win0:long]
+↓ Window[parallelism=N](win:rank() over(#0;#8 desc;None), top=100 with ties) -> [i_category:string, i_class:string, i_brand:string, i_product_name:string, d_year:long, d_qoy:long, d_moy:long, s_store_id:string, sumsales:decimal(38,2), __wv_win0:long]
 ↓ Filter((#9<=lit(100:long))) -> [i_category:string, i_class:string, i_brand:string, i_product_name:string, d_year:long, d_qoy:long, d_moy:long, s_store_id:string, sumsales:decimal(38,2), __wv_win0:long]
 ↓ Project(#0, #1, #2, #3, #4, #5, #6, #7, #8, #9) -> [i_category:string, i_class:string, i_brand:string, i_product_name:string, d_year:long, d_qoy:long, d_moy:long, s_store_id:string, sumsales:decimal(38,2), rk:long]
 ↓ Project(#0, #1, #2, #3, #4, #5, #6, #7, #8, #9) -> [i_category:string, i_class:string, i_brand:string, i_product_name:string, d_year:long, d_qoy:long, d_moy:long, s_store_id:string, sumsales:decimal(38,2), rk:long]
