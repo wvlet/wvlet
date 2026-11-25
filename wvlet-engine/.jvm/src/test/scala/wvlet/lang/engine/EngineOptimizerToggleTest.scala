@@ -177,6 +177,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineCaseAggFiltersTest checks that the flag reaches the CASE expressions, and
         // CaseWhenTest that picking constants gives the same values as the branch choice
         ignore("Changes how CASE expressions build their output, not the plan")
+      if o == Optimization.SubstringInLists then
+        // EngineSubstringInListsTest checks that the flag reaches the filters, and
+        // SubstringInListTest that region lookups give the same rows as built substrings
+        ignore("Changes how string IN lists test substrings, not the plan")
       if o == Optimization.RowJoinFilters then
         // EngineRuntimeJoinFiltersTest checks that the flag sets per-row filters on probe scans
         ignore("Changes which rows the probe scans emit, not the plan")

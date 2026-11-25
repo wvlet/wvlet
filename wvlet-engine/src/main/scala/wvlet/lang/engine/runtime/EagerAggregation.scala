@@ -325,7 +325,7 @@ object EagerAggregation extends Pass:
         Some(1)
       case Compare(CmpOp.Eq, _: Const, x) if isCol(x) =>
         Some(1)
-      case InList(x, values, _, false) if isCol(x) =>
+      case InList(x, values, _, false, _) if isCol(x) =>
         Some(values.size)
       case o: OrExpr =>
         val ds = FactorOr.disjuncts(o).map(constants(_, id))

@@ -79,7 +79,8 @@ class Planner(
     maskedCaseWhen = enabled(Optimization.MaskedCaseWhen),
     windowSharePartitions = enabled(Optimization.WindowSharePartitions),
     constCaseSelect = enabled(Optimization.ConstCaseSelect),
-    caseAggFilters = enabled(Optimization.CaseAggFilters)
+    caseAggFilters = enabled(Optimization.CaseAggFilters),
+    substringInLists = enabled(Optimization.SubstringInLists)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

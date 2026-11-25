@@ -538,7 +538,7 @@ object PushDownFilters extends Pass:
     e match
       case Compare(_, a, b) =>
         isColumnOf(a, cols) || isColumnOf(b, cols)
-      case InList(c, values, hasNullValue, _) =>
+      case InList(c, values, hasNullValue, _, _) =>
         isColumnOf(c, cols) && (values.nonEmpty || hasNullValue)
       case NotExpr(c) =>
         strict(c, cols)

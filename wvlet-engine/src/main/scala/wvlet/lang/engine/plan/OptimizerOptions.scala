@@ -572,6 +572,13 @@ enum Optimization(val name: String):
     */
   case OneRowPartials extends Optimization("one_row_partials")
 
+  /**
+    * `substring(s, k, n) IN ('a', ...)` with constant `k >= 1` and `n` looks up each string's
+    * region in a hash table of the values, without building the substrings (TPC-H q22's
+    * `c_phone.substring(1, 2).in(...)`)
+    */
+  case SubstringInLists extends Optimization("substring_in_lists")
+
 end Optimization
 
 object Optimization:

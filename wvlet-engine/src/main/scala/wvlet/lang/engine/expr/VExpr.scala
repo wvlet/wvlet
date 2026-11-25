@@ -261,10 +261,17 @@ case class IsNullExpr(child: VExpr, negate: Boolean) extends VExpr:
 /**
   * `x IN (constants...)`, with SQL NULL semantics: unknown for a NULL `x`, or for a missing `x`
   * when a value is NULL. Over no values at all (an empty subquery), IN is FALSE and NOT IN TRUE,
-  * NULL `x` included
+  * NULL `x` included. With `substringRegions` (`substring_in_lists`), `substring(s, k, n) IN ('a',
+  * ...)` with constant `k >= 1` and `n >= 0` and string values compares each string's region with
+  * the values, without building the substrings ([[SubstringInList]], TPC-H q22)
   */
-case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate: Boolean)
-    extends VExpr:
+case class InList(
+    child: VExpr,
+    values: Set[Any],
+    hasNullValue: Boolean,
+    negate: Boolean,
+    substringRegions: Boolean = false
+) extends VExpr:
   override def children: Seq[VExpr] = Seq(child)
   def ptype: PType                  = PType.Bool
   // Passes match conditions by signature (FactorOr, PushDownFilters), so a NULL in the list is
@@ -279,7 +286,21 @@ case class InList(child: VExpr, values: Set[Any], hasNullValue: Boolean, negate:
     val vs = values.iterator.map(VExpr.valueSig) ++ nullMarker
     s"in(${child.sig},${vs.mkString(",")},${negate})"
 
+  // The substring the values are compared against by region, when `substringRegions` applies
+  private lazy val region: SubstringInList =
+    if substringRegions then
+      SubstringInList.of(child, values)
+    else
+      null
+
   def eval(b: Batch): Vec =
+    val r = region
+    if r != null then
+      r.eval(b, hasNullValue, negate)
+    else
+      eachValue(b)
+
+  private def eachValue(b: Batch): Vec =
     val v                     = child.eval(b)
     val o                     = new Array[Boolean](b.size)
     var nulls: Array[Boolean] = null

@@ -56,7 +56,9 @@ object Lowering:
     * PARTITION BY and ORDER BY are partitioned and sorted once ([[WindowOp.callGroups]]). With
     * `constCaseSelect`, a CASE of one WHEN with constant THEN and ELSE picks one per row
     * ([[MaskCaseWhen]]). With `caseAggFilters`, an aggregate of a CASE of one WHEN without ELSE
-    * aggregates its THEN value with the condition as FILTER ([[CaseAggFilters]])
+    * aggregates its THEN value with the condition as FILTER ([[CaseAggFilters]]). With
+    * `substringInLists`, `substring(s, k, n) IN (strings)` compares string regions with the values
+    * ([[SubstringInLists]])
     */
   def apply(
       p: RuntimePlan,
@@ -78,7 +80,8 @@ object Lowering:
       maskedCaseWhen: Boolean = false,
       windowSharePartitions: Boolean = false,
       constCaseSelect: Boolean = false,
-      caseAggFilters: Boolean = false
+      caseAggFilters: Boolean = false,
+      substringInLists: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -98,7 +101,8 @@ object Lowering:
       maskedCaseWhen,
       windowSharePartitions,
       constCaseSelect,
-      caseAggFilters
+      caseAggFilters,
+      substringInLists
     )
     if inSet then
       l.markInSet(p)
@@ -136,7 +140,8 @@ object Lowering:
       maskedCaseWhen: Boolean,
       windowSharePartitions: Boolean,
       constCaseSelect: Boolean,
-      caseAggFilters: Boolean
+      caseAggFilters: Boolean,
+      substringInLists: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -179,7 +184,8 @@ object Lowering:
               selectiveRowFilters = selectiveRowFilters,
               maskedCaseWhen = maskedCaseWhen,
               constCaseSelect = constCaseSelect,
-              caseAggFilters = caseAggFilters
+              caseAggFilters = caseAggFilters,
+              substringInLists = substringInLists
             )
         )
       ) match
@@ -198,7 +204,11 @@ object Lowering:
           FoldConstants(x)
         else
           x
-      MaskCaseWhen(folded, mask = maskedCaseWhen, consts = constCaseSelect)
+      val masked = MaskCaseWhen(folded, mask = maskedCaseWhen, consts = constCaseSelect)
+      if substringInLists then
+        SubstringInLists(masked)
+      else
+        masked
 
     /**
       * The input with the common subexpressions of `exprs` appended ([[CommonSubexpressions]]), and

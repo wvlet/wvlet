@@ -79,7 +79,7 @@ object ScanFilters:
             else
               ParquetFilter.IsNull(name)
           }
-        case InList(c: ColRef, values, _, false) =>
+        case InList(c: ColRef, values, _, false, _) =>
           columnName(c.index).flatMap(equalities(_, c.ptype, values.toSeq, numeric))
         case _ =>
           None
@@ -285,7 +285,7 @@ object ScanFilters:
         Some(c.ptype)
       case Compare(_, _, c: ColRef) =>
         Some(c.ptype)
-      case InList(c: ColRef, _, _, _) =>
+      case InList(c: ColRef, _, _, _, _) =>
         Some(c.ptype)
       case IsNullExpr(c: ColRef, _) =>
         Some(c.ptype)
