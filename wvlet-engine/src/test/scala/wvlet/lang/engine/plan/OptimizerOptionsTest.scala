@@ -110,7 +110,8 @@ class OptimizerOptionsTest extends UniTest:
         "left_group_key_semi_joins",
         "eager_aggregation",
         "fused_accumulators",
-        "masked_case_when"
+        "masked_case_when",
+        "join_tree_build_estimates"
       )
   }
 

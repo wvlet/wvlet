@@ -51,7 +51,7 @@ import scala.util.control.NonFatal
 class Planner(
     catalog: EngineCatalog,
     sources: SourceResolver,
-    options: OptimizerOptions = OptimizerOptions(),
+    private[engine] val options: OptimizerOptions = OptimizerOptions(),
     accelerator: Option[PlanAccelerator] = None
 )(using ctx: Context)
     extends LogSupport:
@@ -89,13 +89,6 @@ class Planner(
     */
   private[engine] def swapSemiBuild(rows: Double, otherRows: Double, aggregates: Boolean): Boolean =
     JoinOrderOptimizer.swapSemiBuild(options, rows, otherRows, aggregates)
-
-  /** [[swapSemiBuild]] over the estimated rows of a subquery's operator */
-  private[engine] def swapSemiBuild(subquery: Operator, otherRows: Double): Boolean = swapSemiBuild(
-    CardinalityEstimator.rows(subquery),
-    otherRows,
-    CardinalityEstimator.aggregates(subquery)
-  )
 
   /**
     * The physical passes over a lowered subquery computed at plan time, as [[plan]] runs them for a
@@ -2693,7 +2686,13 @@ class Planner(
         res: List[VExpr]
     ) =
       // Build on the body unless it is larger than p
-      val buildLeft = lk.nonEmpty && swapSemiBuild(b.op(body), CardinalityEstimator.rows(b.op(p)))
+      val buildLeft =
+        lk.nonEmpty &&
+          swapSemiBuild(
+            b.buildRows(body),
+            b.buildRows(p),
+            CardinalityEstimator.aggregates(b.op(body))
+          )
       b.join(p, body, kind, lk, rk, res.reduceOption((x, y) => AndExpr(x, y)), buildLeft)
     s match
       case SubqueryConjunct.Exists(_, negate) =>
@@ -3137,13 +3136,6 @@ class Planner(
       case other =>
         throw IllegalStateException(s"Not an equality: ${other}")
 
-  /** Estimated fraction of the rows of op passing a condition */
-  private def selectivity(op: Operator, c: Expression): Double = CardinalityEstimator.selectivity(
-    op,
-    c,
-    e => Binder(this, BindScope(op.schema)).bind(e)
-  )
-
   /** The operator join kind of a join that is not part of an inner join tree */
   private[engine] def joinKind(j: Join): JoinKind =
     j.joinType match
@@ -3236,7 +3228,7 @@ class Planner(
             lk,
             rk,
             residual,
-            buildLeft = swapsOuterBuild(kind, builder.op(left), builder.op(right))
+            buildLeft = swapsOuterBuild(kind, builder, left, right)
           )
     end match
 
@@ -3244,12 +3236,23 @@ class Planner(
 
   /**
     * Whether an outer hash join builds on its left input, as the right (build) input is estimated
-    * to be much larger
+    * to be much larger: by `builder.buildRows`, or by the probe source's rows when the right input
+    * aggregates ([[wvlet.lang.engine.runtime.Stats.outerBuildRows]])
     */
-  private def swapsOuterBuild(kind: JoinKind, left: Operator, right: Operator): Boolean =
+  private def swapsOuterBuild[P](
+      kind: JoinKind,
+      builder: JoinTreeBuilder[P],
+      left: P,
+      right: P
+  ): Boolean =
+    def rows(p: P): Double =
+      if CardinalityEstimator.aggregates(builder.op(right)) then
+        CardinalityEstimator.rows(builder.op(p))
+      else
+        builder.buildRows(p)
     kind match
       case JoinKind.Left | JoinKind.Right | JoinKind.Full =>
-        swapBuild(CardinalityEstimator.rows(right), CardinalityEstimator.rows(left))
+        swapBuild(rows(right), rows(left))
       case _ =>
         false
 
@@ -3280,7 +3283,7 @@ class Planner(
       lk,
       rk,
       None,
-      buildLeft = swapsOuterBuild(kind, left, right)
+      buildLeft = swapsOuterBuild(kind, builder, leftPlan, rightPlan)
     )
     val lw     = left.schema.size
     val keyIdx = names.map { n =>

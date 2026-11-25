@@ -152,31 +152,6 @@ object CardinalityEstimator:
     math.max(1.0, leftRows * rightRows / divisor)
 
   /**
-    * Estimated fraction of the rows of op passing a condition: 1 / ndv for column = constant (n /
-    * ndv for IN lists of n constants), as in DuckDB, and [[DefaultSelectivity]] otherwise. `bind`
-    * binds an expression over the schema of op
-    */
-  def selectivity(op: Operator, c: Expression, bind: Expression => VExpr): Double =
-    def distinct(e: Expression): Option[Double] =
-      try
-        keyDistinct(op, bind(e)).filter(_ >= 1)
-      catch
-        case _: Exception =>
-          None
-    val s =
-      c match
-        // x = null is `x is null` in wvlet
-        case Eq(a, l: Literal, _) if !l.isInstanceOf[NullLiteral] =>
-          distinct(a).map(1 / _)
-        case Eq(l: Literal, b, _) if !l.isInstanceOf[NullLiteral] =>
-          distinct(b).map(1 / _)
-        case In(a, list, _) if list.forall(isNonNullLiteral) =>
-          distinct(a).map(n => math.min(1.0, list.size / n))
-        case _ =>
-          None
-    s.getOrElse(DefaultSelectivity)
-
-  /**
     * The number of literals a condition compares an expression to, when it is `x = literal` (1) or
     * `x in (n literals)` (n): the conditions whose selectivity reads the distinct count of x
     */

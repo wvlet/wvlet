@@ -15,7 +15,6 @@ package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.expr.ColRef
-import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 
@@ -186,11 +185,7 @@ object GroupKeySemiJoins extends Pass:
                   IndexedSeq(g),
                   IndexedSeq(BExpr.ref(s.s)),
                   None,
-                  buildLeft = JoinOrderOptimizer.swapBuild(
-                    ctx.options,
-                    Stats.rows(keyed),
-                    Stats.rows(child)
-                  )
+                  buildLeft = Stats.swapsSemiBuild(child, keyed, ctx.options)
                 )
                 a.copy(child = semi)
               }
