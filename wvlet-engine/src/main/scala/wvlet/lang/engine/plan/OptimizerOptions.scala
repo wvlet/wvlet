@@ -470,6 +470,13 @@ enum Optimization(val name: String):
     */
   case FusedAccumulators extends Optimization("fused_accumulators")
 
+  /**
+    * A CASE of one WHEN without ELSE (or ELSE NULL) is its THEN vector with NULL where the
+    * condition isn't true, sharing the THEN values, instead of a per-row branch choice that copies
+    * them (TPC-DS q02's seven `sum(case when d_day_name = '...' then sales_price end)` inputs)
+    */
+  case MaskedCaseWhen extends Optimization("masked_case_when")
+
 end Optimization
 
 object Optimization:

@@ -58,6 +58,16 @@ class CompareTest extends UniTest:
       Seq(false, null, true)
   }
 
+  test("should test string equality with a constant, with and without NULL rows") {
+    val c = ColRef(0, PType.Str, "s")
+    val x = StrVec(Array("Sunday", "Monday", "Sun", "Sundays"), null)
+    eval(Compare(CmpOp.Eq, c, Const("Sunday", PType.Str)), x) shouldBe
+      Seq(true, false, false, false)
+    eval(Compare(CmpOp.Ne, Const("Sunday", PType.Str), c), x) shouldBe Seq(false, true, true, true)
+    val y = StrVec(Array(null, "b"), Array(true, false))
+    eval(Compare(CmpOp.Eq, c, Const("b", PType.Str)), y) shouldBe Seq(null, true)
+  }
+
   test("should reuse the constant vector for batches of the same size") {
     val k = Const(1L, PType.Int64)
     val b = Batch.ofRows(4)

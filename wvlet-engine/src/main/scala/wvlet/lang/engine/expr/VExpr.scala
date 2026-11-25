@@ -328,14 +328,40 @@ case class Materialized(v: Vec) extends VExpr:
   def eval(b: Batch): Vec = v
   def sig: String         = s"materialized@${System.identityHashCode(v)}"
 
-/** CASE WHEN c1 THEN r1 ... ELSE e END; results are cast to ptype */
-case class CaseWhen(whens: Seq[(VExpr, VExpr)], elseExpr: Option[VExpr], ptype: PType)
-    extends VExpr:
+/**
+  * CASE WHEN c1 THEN r1 ... ELSE e END; results are cast to ptype. With `maskNulls`
+  * (`masked_case_when`), a CASE of one WHEN without ELSE (or ELSE NULL) is its THEN vector with the
+  * rows whose condition doesn't hold set to NULL, sharing the THEN values instead of copying them
+  * through the per-row branch choice (TPC-DS q02's `sum(case when d_day_name = 'Sunday' then
+  * sales_price else null end)`)
+  */
+case class CaseWhen(
+    whens: Seq[(VExpr, VExpr)],
+    elseExpr: Option[VExpr],
+    ptype: PType,
+    maskNulls: Boolean = false
+) extends VExpr:
   override def children: Seq[VExpr] = whens.flatMap(w => Seq(w._1, w._2)) ++ elseExpr.toSeq
   def sig: String                   =
     s"case(${whens.map((c, r) => s"${c.sig}->${r.sig}").mkString(",")};${elseExpr.map(_.sig)})"
 
+  /** Whether eval masks the THEN vector of the only WHEN ([[CaseWhen.masked]]) */
+  private val masked: Boolean =
+    maskNulls && whens.size == 1 &&
+      elseExpr.forall {
+        case Const(null, _) =>
+          true
+        case _ =>
+          false
+      }
+
   def eval(b: Batch): Vec =
+    if masked then
+      CaseWhen.masked(b, whens.head._1, whens.head._2, ptype).getOrElse(evalBranches(b))
+    else
+      evalBranches(b)
+
+  private def evalBranches(b: Batch): Vec =
     val n = b.size
     val m = whens.size
     // The branch each row takes; m is the ELSE branch
@@ -367,11 +393,66 @@ case class CaseWhen(whens: Seq[(VExpr, VExpr)], elseExpr: Option[VExpr], ptype: 
       elseExpr.foreach(e => srcs(m) = CaseWhen.evalBranch(e, b, ptype))
     CaseWhen.fill(ptype, n, chosen, srcs, picked)
 
-  end eval
+  end evalBranches
 
 end CaseWhen
 
 object CaseWhen:
+  /**
+    * CASE WHEN cond THEN value END: the value vector with NULL where cond isn't true. The value is
+    * evaluated only when some row takes it, as with the branch choice. None for layouts without
+    * typed arrays (wide decimals, nested values), which take the branch choice
+    */
+  private def masked(b: Batch, cond: VExpr, value: VExpr, ptype: PType): Option[Vec] =
+    val n     = b.size
+    val c     = Kernels.asBool(cond.eval(b))
+    val cv    = c.values
+    val cn    = c.nulls
+    val nulls = new Array[Boolean](n)
+    var taken = 0
+    var i     = 0
+    while i < n do
+      val t = cv(i) && (cn == null || !cn(i))
+      nulls(i) = !t
+      if t then
+        taken += 1
+      i += 1
+    if taken == 0 then
+      Some(Vec.nullVec(ptype, n))
+    else
+      evalBranch(value, b, ptype) match
+        case null =>
+          Some(Vec.nullVec(ptype, n))
+        case v if taken == n =>
+          Some(v)
+        case v if v.size == n && hasLayout(v, ptype) =>
+          val vn = v.nulls
+          if vn != null then
+            i = 0
+            while i < n do
+              nulls(i) = nulls(i) || vn(i)
+              i += 1
+          v match
+            case x: BoolVec =>
+              Some(BoolVec(x.values, nulls))
+            case x: IntVec =>
+              Some(IntVec(ptype, x.values, nulls))
+            case x: LongVec =>
+              Some(LongVec(ptype, x.values, nulls))
+            case x: DoubleVec =>
+              Some(DoubleVec(x.values, nulls))
+            case x: StrVec =>
+              // Without codes: a NULL row would need code -1
+              Some(StrVec(x.values, nulls))
+            case _ =>
+              None
+        case _ =>
+          None
+      end match
+    end if
+
+  end masked
+
   /** A branch's values cast to ptype, or null for a NULL literal (which yields NULL rows) */
   private[expr] def evalBranch(e: VExpr, b: Batch, ptype: PType): Vec =
     e match
@@ -1252,7 +1333,15 @@ object Kernels:
         val x     = a.values
         val y     = v.toString
         val nulls = a.nulls
-        if nulls == null then
+        if op == CmpOp.Eq || op == CmpOp.Ne then
+          // equals checks identity and length before the bytes; compareTo walks the common prefix
+          val eq = op == CmpOp.Eq
+          var i  = 0
+          while i < n do
+            // NULL slots may hold null strings
+            o(i) = (nulls != null && nulls(i)) || (x(i).equals(y) == eq)
+            i += 1
+        else if nulls == null then
           cmpLoop(op, n, o, i => x(i).compareTo(y))
         else
           // NULL slots may hold null strings

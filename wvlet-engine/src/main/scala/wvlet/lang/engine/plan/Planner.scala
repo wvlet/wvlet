@@ -75,7 +75,8 @@ class Planner(
     windowSortKernels = enabled(Optimization.WindowSortKernels),
     scanRowFilters = enabled(Optimization.ScanRowFilters),
     dictionaryCodes = enabled(Optimization.DictionaryGroupKeys),
-    selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters)
+    selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters),
+    maskedCaseWhen = enabled(Optimization.MaskedCaseWhen)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */
