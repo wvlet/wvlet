@@ -70,7 +70,8 @@ class MorselOp(
         splits.rows(k)
       else
         -1L
-    val part = IteratorOp(scan.schema, splits.parts(k), scan.name, rows)
+    val src  = splits.parts(k)
+    val part = IteratorOp(scan.schema, () => src().map(scan.narrow), scan.name, rows)
     val op   = pipeline(part)
     try op.drain()
     finally op.close()

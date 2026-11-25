@@ -62,6 +62,7 @@ class Planner(
   private[engine] def lower(p: RuntimePlan, inSet: Boolean = false): Operator = Lowering(
     p,
     joinFilters = enabled(Optimization.RuntimeJoinFilters),
+    rowJoinFilters = enabled(Optimization.RowJoinFilters),
     presizeAggs = enabled(Optimization.PresizeAggregates),
     inSet = inSet,
     accelerator = accelerator.filter(_ => enabled(Optimization.GpuOffload)),
@@ -3397,6 +3398,8 @@ object Planner:
         f.lateGather = false
       case j: HashJoinOp =>
         j.lateGather = false
+      case s: ScanOp =>
+        s.lateGather = false
       case _ =>
     op.children.foreach(disableLateGather)
     op.sharedInputs.foreach(disableLateGather)

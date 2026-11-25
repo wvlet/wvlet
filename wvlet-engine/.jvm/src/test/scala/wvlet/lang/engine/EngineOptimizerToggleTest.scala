@@ -101,6 +101,9 @@ class EngineOptimizerToggleTest extends UniTest:
       if o == Optimization.ParquetFooterCache then
         // ParquetFooterCacheTest checks that the flag reuses parsed footers
         ignore("Changes how often Parquet footers are parsed, not the plan")
+      if o == Optimization.RowJoinFilters then
+        // EngineRuntimeJoinFiltersTest checks that the flag sets per-row filters on probe scans
+        ignore("Changes which rows the probe scans emit, not the plan")
       val changed = EnginePlanGolden
         .suites
         .zip(baselinePlans)

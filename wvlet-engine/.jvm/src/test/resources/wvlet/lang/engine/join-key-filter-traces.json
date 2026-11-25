@@ -39,5 +39,17 @@
     {"kind": "anti", "side": "left", "pred": "{k} in (1, 4)", "rows": []},
     {"kind": "anti", "side": "left", "pred": "{k} is null", "rows": [[0, null]]},
     {"kind": "anti", "side": "left", "pred": "coalesce({k}, 1) = 1", "rows": [[0, null]]}
+  ],
+  "probe": [
+    {"kind": "inner", "side": "left", "sound": true},
+    {"kind": "inner", "side": "right", "sound": true},
+    {"kind": "left", "side": "left", "sound": false},
+    {"kind": "left", "side": "right", "sound": true},
+    {"kind": "right", "side": "left", "sound": true},
+    {"kind": "right", "side": "right", "sound": false},
+    {"kind": "semi", "side": "left", "sound": true},
+    {"kind": "semi", "side": "right", "sound": true},
+    {"kind": "anti", "side": "left", "sound": false},
+    {"kind": "anti", "side": "right", "sound": true}
   ]
 }

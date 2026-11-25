@@ -25,6 +25,7 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
   private val options = OptimizerOptions().withValidatePlans(true)
   private val engine  = WvletEngine(optimizer = options)
   private val off     = engine.withOptimizer(options.withDisabled(Optimization.RuntimeJoinFilters))
+  private val noRows  = engine.withOptimizer(options.withDisabled(Optimization.RowJoinFilters))
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -121,6 +122,60 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
       options.withDisabled(Optimization.GroupKeySemiJoins)
     )
     explain(noGroupKeySemiJoins, q) shouldNotContain "join_filter=l_orderkey"
+  }
+
+  /** Run the query, returning its rows and the per-row filters its scans applied */
+  private def runRows(e: WvletEngine, sql: String): (Seq[IndexedSeq[Any]], Seq[RowKeyFilter]) =
+    withQuery(sql) { r =>
+      val op   = e.physicalPlan(r)
+      val rows = op
+        .drain()
+        .flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).toIndexedSeq))
+      op.close()
+      (rows, scans(op).flatMap(_.runtimeFilters).flatMap(f => Option(f.rowFilter)).distinct)
+    }
+
+  test("drop probe rows whose key is no build key, per row") {
+    val (rows, filters) = runRows(engine, innerJoin)
+    filters.nonEmpty shouldBe true
+    filters.map(_.droppedRows).sum > 0 shouldBe true
+    rows.nonEmpty shouldBe true
+    rows shouldBe runRows(noRows, innerJoin)._1
+    rows shouldBe run(off, innerJoin)._1
+  }
+
+  test("keep the rows of semi, right, and anti joins and of NULL keys") {
+    val queries = Seq(
+      """select l_orderkey, l_linenumber from lineitem
+        |where l_orderkey in (select o_orderkey from orders where o_orderdate < date '1992-03-01')
+        |order by 1, 2""".stripMargin,
+      // Probe rows and build rows with NULL keys never match
+      """select a.k, b.n from (select case when l_linenumber = 1 then null else l_partkey end k
+        |  from lineitem) a
+        |join (select case when p_size < 10 then null else p_partkey end k, p_size n
+        |  from part where p_size < 20) b on a.k = b.k
+        |order by 1, 2""".stripMargin,
+      """select o_orderkey from orders
+        |where not exists (select 1 from lineitem where l_orderkey = o_orderkey and l_quantity > 49)
+        |order by 1 limit 50""".stripMargin,
+      """select c_custkey, o_orderkey from orders
+        |right join (select c_custkey from customer where c_nationkey = 3) c on o_custkey = c_custkey
+        |order by 1, 2""".stripMargin
+    )
+    queries.foreach { q =>
+      val rows = runRows(engine, q)._1
+      rows.nonEmpty shouldBe true
+      rows shouldBe runRows(noRows, q)._1
+    }
+  }
+
+  test("narrow probe batches with eager gathers when late_gather is off") {
+    val eager = engine.withOptimizer(options.withDisabled(Optimization.LateGather))
+    runRows(eager, innerJoin)._1 shouldBe runRows(noRows, innerJoin)._1
+  }
+
+  test("turn off per-row filters with row_join_filters") {
+    runRows(noRows, innerJoin)._2 shouldBe Nil
   }
 
   test("turn off with runtime_join_filters") {
