@@ -234,12 +234,12 @@ object Parallelizer:
     * in input order, each cast to the union's columns, so that the operators above the union (hash
     * join probes over one shared build, partial aggregates) run on the parts of every input. None
     * when an input is no pipeline or has a tail (right / full joins), which runs after its own
-    * parts
+    * parts; checked before building the inputs' pipelines, as [[startsPipeline]] does
     */
   private def unionPipeline(u: UnionAllOp, runner: TaskRunner)(using
       AboveBreakers
   ): Option[Pipeline] =
-    if u.inputs.isEmpty || !u.inputs.forall(startsPipeline) then
+    if !startsPipeline(u) then
       None
     else
       val inputs = u.inputs.map(pipeline(_, runner))
@@ -312,7 +312,27 @@ object Parallelizer:
       case j: NestedLoopJoinOp =>
         j.kind == JoinKind.Cross && j.cond.isEmpty && startsPipeline(j.left)
       case u: UnionAllOp =>
-        breakers.unionPipelines && u.inputs.nonEmpty && u.inputs.forall(startsPipeline)
+        breakers.unionPipelines && u.inputs.nonEmpty &&
+        u.inputs.forall(i => startsPipeline(i) && !hasTail(i))
+      case _ =>
+        false
+
+  /**
+    * Whether the pipeline that [[startsPipeline]] finds in op has a tail: a right / full join whose
+    * unmatched build rows are emitted after every part
+    */
+  private def hasTail(op: Operator): Boolean =
+    op match
+      case f: FilterOp =>
+        hasTail(f.child)
+      case p: ProjectOp =>
+        hasTail(p.child)
+      case j: HashJoinOp =>
+        isOuterBuild(j.kind) || hasTail(j.left)
+      case j: NestedLoopJoinOp =>
+        hasTail(j.left)
+      case u: UnionAllOp =>
+        u.inputs.exists(hasTail)
       case _ =>
         false
 

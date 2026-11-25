@@ -149,6 +149,28 @@ class UnionAllPipelinesTest extends UniTest:
     rows(op).sortBy(_.toString) shouldBe rows(agg).sortBy(_.toString)
   }
 
+  test("keep the union's own pipelines when an input emits unmatched build rows after its parts") {
+    def plan: Operator =
+      val right = join(JoinKind.Right)
+      val u     = UnionAllOp(Seq(right, join(JoinKind.Inner)), right.schema)
+      val b     = build
+      HashJoinOp(
+        u,
+        b,
+        IndexedSeq(ColRef(2, PType.Int64, "dk")),
+        IndexedSeq(ColRef(0, PType.Int64, "dk")),
+        JoinKind.Inner,
+        None,
+        Schema(u.schema.fields ++ b.schema.fields)
+      )
+    val op = parallel(plan)
+    // The right join's tail runs after its own parts, so the join above runs over the union
+    op shouldMatch { case _: HashJoinOp =>
+    }
+    op.explain() shouldContain "UnionAll"
+    rows(op).sortBy(_.toString) shouldBe rows(plan).sortBy(_.toString)
+  }
+
   test("keep the union's own pipelines without the toggle, or with nothing above it") {
     parallel(join(JoinKind.Inner), unionPipelines = false).explain() shouldContain "UnionAll"
     val op = parallel(union)

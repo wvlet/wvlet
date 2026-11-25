@@ -107,6 +107,13 @@ class MorselOp(
     try op.drain()
     finally op.close()
 
+  /** Starts submitting the parts of seg */
+  private def openParts(seg: Segment, s: ScanSplits): Unit =
+    opened += s
+    openSegment = seg
+    splits = s
+    nextPart = 0
+
   /** Opens the next segment: its parts, or one run of it on the calling thread */
   private def openNext(): Boolean =
     if nextSegment >= segments.size then
@@ -116,10 +123,7 @@ class MorselOp(
       nextSegment += 1
       seg.scan.source.scanSplits(seg.scan.spec) match
         case Some(s) =>
-          opened += s
-          openSegment = seg
-          splits = s
-          nextPart = 0
+          openParts(seg, s)
         case None =>
           inFlight.enqueue(Item.OnCaller(seg))
       true
@@ -129,7 +133,13 @@ class MorselOp(
     while more && running < window do
       if splits != null && nextPart < splits.parts.size then
         val (seg, s, k) = (openSegment, splits, nextPart)
-        inFlight.enqueue(Item.Task(runner.submit(() => runPart(seg, s, k))))
+        // The segment's last part closes its splits once its batches are taken
+        val last =
+          if k == s.parts.size - 1 then
+            s
+          else
+            null
+        inFlight.enqueue(Item.Task(runner.submit(() => runPart(seg, s, k)), last))
         running += 1
         nextPart += 1
       else
@@ -143,12 +153,10 @@ class MorselOp(
       prepare.foreach(_())
       if segments.size == 1 then
         val s = segments.head
+        nextSegment = 1
         s.scan.source.scanSplits(s.scan.spec) match
           case Some(sp) =>
-            opened += sp
-            openSegment = s
-            splits = sp
-            nextSegment = 1
+            openParts(s, sp)
           case None =>
             // A single run is both the only part and the tail
             sequential = tail.getOrElse(s.pipeline)(s.scan)
@@ -169,9 +177,13 @@ class MorselOp(
         current = runTail().iterator
       else
         inFlight.dequeue() match
-          case Item.Task(h) =>
+          case Item.Task(h, last) =>
             running -= 1
             current = h.get().iterator
+            if last != null then
+              // Every part of its segment has finished: release what the splits hold
+              last.close()
+              opened -= last
           case Item.OnCaller(seg) =>
             streaming = seg.pipeline(seg.scan)
     current.next()
@@ -185,7 +197,7 @@ class MorselOp(
       streaming.close()
       streaming = null
     // Parts that haven't started are dropped; running ones finish before the sources close
-    val tasks = inFlight.collect { case Item.Task(h) =>
+    val tasks = inFlight.collect { case Item.Task(h, _) =>
       h
     }
     tasks.foreach(_.cancel())
@@ -208,5 +220,6 @@ object MorselOp:
   case class Segment(scan: ScanOp, pipeline: Operator => Operator)
 
   private enum Item:
-    case Task(handle: TaskRunner.Handle[Seq[Batch]])
+    /** A part; `last`, when it is its segment's last part, the segment's splits */
+    case Task(handle: TaskRunner.Handle[Seq[Batch]], last: ScanSplits)
     case OnCaller(segment: Segment)
