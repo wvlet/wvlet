@@ -259,7 +259,7 @@ object Stats:
     */
   def buildRows(p: RuntimePlan, options: OptimizerOptions): Double =
     if options.isEnabled(Optimization.JoinTreeBuildEstimates) then
-      treeRows(p, options)
+      treeRows(p, options, build = true)
     else
       rows(p)
 
@@ -293,52 +293,56 @@ object Stats:
 
   /**
     * Estimated rows of p as [[aggregatedRows]] reads the plan below an aggregation: inner hash
-    * joins as the join search estimates them, filters by their conjuncts' selectivity. With
-    * `join_tree_build_estimates`, plan-time rows count exactly, a union as the sum of its inputs,
-    * and RIGHT and FULL joins by the side their rows come from
+    * joins as the join search estimates them, filters by their conjuncts' selectivity. For a build
+    * side (`build`, with `join_tree_build_estimates`), plan-time rows count exactly, a union as the
+    * sum of its inputs, and RIGHT and FULL joins by the side their rows come from
     */
-  private[runtime] def treeRows(p: RuntimePlan, options: OptimizerOptions): Double =
-    lazy val tree = options.isEnabled(Optimization.JoinTreeBuildEstimates)
+  private[runtime] def treeRows(
+      p: RuntimePlan,
+      options: OptimizerOptions,
+      build: Boolean = false
+  ): Double =
+    lazy val tree = build && options.isEnabled(Optimization.JoinTreeBuildEstimates)
     p match
       case Values(columns, batch) if tree && !(columns.isEmpty && batch.size == 1) =>
         math.max(1.0, batch.size.toDouble)
       case Union(inputs, _) if tree =>
-        inputs.map(treeRows(_, options)).sum
+        inputs.map(treeRows(_, options, build)).sum
       case Join(_, right, JoinKind.Right, lk, _, _, _) if tree && lk.nonEmpty =>
-        treeRows(right, options)
+        treeRows(right, options, build)
       case Join(left, right, JoinKind.Full, lk, _, _, _) if tree && lk.nonEmpty =>
-        math.max(treeRows(left, options), treeRows(right, options))
+        math.max(treeRows(left, options, build), treeRows(right, options, build))
       case Filter(child, cond, literalCounts) =>
-        treeRows(child, options) *
+        treeRows(child, options, build) *
           conjunctionSelectivity(
             child,
             FactorOr.conjuncts(cond.expr).map(c => JoinCondition(BExpr(c), literalCounts)),
             options
           )
       case Project(child, _, _) =>
-        treeRows(child, options)
+        treeRows(child, options, build)
       case Sort(child, _, limit) =>
-        val r = treeRows(child, options)
+        val r = treeRows(child, options, build)
         limit.map(l => math.min(l.toDouble, r)).getOrElse(r)
       case Limit(child, limit, _) =>
-        math.min(limit.toDouble, treeRows(child, options))
+        math.min(limit.toDouble, treeRows(child, options, build))
       case Aggregate(child, keys, _, _) =>
         if keys.isEmpty then
           1.0
         else
-          val r = treeRows(child, options)
+          val r = treeRows(child, options, build)
           groups(child, keys.map(_.expr)).map(math.min(_, r)).getOrElse(r)
       case Join(left, right, JoinKind.Inner, lk, rk, _, _) if lk.nonEmpty =>
         CardinalityEstimator.joinOutputRows(
-          treeRows(left, options),
+          treeRows(left, options, build),
           lk.map(k => distinct(left, k.expr)),
-          treeRows(right, options),
+          treeRows(right, options, build),
           rk.map(k => distinct(right, k.expr))
         )
       case Join(left, _, JoinKind.Left | JoinKind.Semi | JoinKind.Anti, lk, _, _, _)
           if lk.nonEmpty =>
         // Every output row comes from a left row, as for rows
-        treeRows(left, options)
+        treeRows(left, options, build)
       case other =>
         rows(other)
     end match

@@ -745,7 +745,7 @@ class RuntimeBinder(planner: Planner):
 
     override def buildRows(p: Lowered): Double =
       if planner.enabled(Optimization.JoinTreeBuildEstimates) then
-        Stats.buildRows(p.plan, planner.options)
+        Stats.treeRows(p.plan, planner.options, build = true)
       else
         CardinalityEstimator.rows(p.op)
 
