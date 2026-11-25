@@ -118,7 +118,8 @@ object Selection:
         case _: ColRef | _: Const | _: Materialized =>
           true
         case _: Compare | _: NullSafeDistinct | _: IsNullExpr | _: InList | _: LikeExpr |
-            _: AndExpr | _: OrExpr | _: NotExpr | _: InExprs | _: Coalesce | _: CaseWhen =>
+            _: AndExpr | _: OrExpr | _: NotExpr | _: InExprs | _: Coalesce | _: CaseWhen |
+            _: PerDictEntry =>
           true
         case Arith(op, _, _, PType.Float64) =>
           op == ArithOp.Add || op == ArithOp.Sub || op == ArithOp.Mul
@@ -154,7 +155,7 @@ object Selection:
           false
     val self =
       e match
-        case _: ColRef | _: Const | _: Materialized =>
+        case _: ColRef | _: Const | _: Materialized | _: PerDictEntry =>
           0
         case Compare(_, l, _) =>
           if isPrimitive(l.ptype) then

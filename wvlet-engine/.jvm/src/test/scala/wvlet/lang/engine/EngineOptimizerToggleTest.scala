@@ -139,6 +139,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
         // FusedAccumulatorsTest that the fused loop gives the same counts and sums
         ignore("Changes how hash aggregations fold their aggregates, not the plan")
+      if o == Optimization.DictionaryFilters then
+        // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
+        // evaluation keeps the same rows
+        ignore("Changes how filters evaluate dictionary-coded strings, not the plan")
       if o == Optimization.ParquetFooterCache then
         // ParquetFooterCacheTest checks that the flag reuses parsed footers
         ignore("Changes how often Parquet footers are parsed, not the plan")

@@ -114,11 +114,14 @@ class Planner(
       Planner.disableLateGather(pruned)
     if !enabled(Optimization.ScanJoinRowFilters) then
       Planner.disableSourceJoinFilters(pruned)
-    if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) then
+    if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) ||
+      !enabled(Optimization.DictionaryFilters)
+    then
       Planner.configureFilters(
         pruned,
         shortCircuit = enabled(Optimization.ShortCircuitFilters),
-        reorder = enabled(Optimization.ReorderConjuncts)
+        reorder = enabled(Optimization.ReorderConjuncts),
+        dictionary = enabled(Optimization.DictionaryFilters)
       )
     if !enabled(Optimization.JoinDirectIndex) then
       Planner.disableJoinDirectIndex(pruned)
@@ -3485,15 +3488,17 @@ object Planner:
   private[engine] def configureFilters(
       op: Operator,
       shortCircuit: Boolean,
-      reorder: Boolean
+      reorder: Boolean,
+      dictionary: Boolean
   ): Unit =
     op match
       case f: FilterOp =>
         f.shortCircuit = shortCircuit
         f.reorderConjuncts = reorder
+        f.dictionaryFilters = dictionary
       case _ =>
-    op.children.foreach(configureFilters(_, shortCircuit, reorder))
-    op.sharedInputs.foreach(configureFilters(_, shortCircuit, reorder))
+    op.children.foreach(configureFilters(_, shortCircuit, reorder, dictionary))
+    op.sharedInputs.foreach(configureFilters(_, shortCircuit, reorder, dictionary))
 
   /** Make the hash joins of a physical plan use hash tables for every key (`join_direct_index`) */
   private[engine] def disableJoinDirectIndex(op: Operator): Unit =

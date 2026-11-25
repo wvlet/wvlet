@@ -146,17 +146,31 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
   /** Whether the parts of AND / OR run cheapest first (`reorder_conjuncts`) */
   var reorderConjuncts: Boolean = true
 
+  /**
+    * Whether parts of the condition over one dictionary-coded string column run once per dictionary
+    * entry (`dictionary_filters`, [[DictionaryPredicates]])
+    */
+  var dictionaryFilters: Boolean = true
+
   /** The evaluation settings of `f`, for a copy of it over another input */
   def withSettingsOf(f: FilterOp): this.type =
     lateGather = f.lateGather
     shortCircuit = f.shortCircuit
     reorderConjuncts = f.reorderConjuncts
+    dictionaryFilters = f.dictionaryFilters
     this
+
+  // The condition as evaluated, prepared on the first batch after the settings are final
+  private lazy val evalCond: VExpr =
+    if dictionaryFilters then
+      DictionaryPredicates.wrap(cond)
+    else
+      cond
 
   // Prepared on the first batch, after the settings are final
   private lazy val selection: Selection.Node =
     if shortCircuit then
-      val node = Selection.compile(cond, reorderConjuncts)
+      val node = Selection.compile(evalCond, reorderConjuncts)
       if Selection.worthSelecting(node) then
         node
       else
@@ -203,7 +217,7 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
       val r =
         selection match
           case null =>
-            val mask = Kernels.trueMask(cond.eval(b))
+            val mask = Kernels.trueMask(evalCond.eval(b))
             if lateGather then
               in.takeWhere(mask)
             else
