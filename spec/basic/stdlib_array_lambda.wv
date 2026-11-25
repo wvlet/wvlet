@@ -21,3 +21,24 @@ select
 order by id
 test _.rows should be [[1, '10,20', 3, 'bb'], [2, '30,40,50', 12, 'ccc']]
 ;
+
+-- Predicates and folds with an initial value
+select [1, 5, 9] as a
+select
+  a.exists(x -> x > 8) as some_large,
+  a.exists(x -> x > 9) as none_large,
+  a.forall(x -> x > 0) as all_positive,
+  a.forall(x -> x > 1) as not_all,
+  a.reduce(10, (acc, x) -> acc + x) as from_ten,
+  a.reduce('', (acc, x) -> acc + x.to_string) as digits,
+  -- An empty array: exists is false, forall is true, and reduce gives the initial value
+  a.filter(x -> x > 9).exists(x -> x > 0) as empty_exists,
+  a.filter(x -> x > 9).forall(x -> x > 0) as empty_forall,
+  a.filter(x -> x > 9).reduce(0, (acc, x) -> acc + x) as empty_sum,
+  -- NULL elements: a true or false result wins over NULL, as SQL or / and
+  [1, null].exists(x -> x > 0) as null_exists_true,
+  [1, null].exists(x -> x > 5) is null as null_exists_unknown,
+  [1, null].forall(x -> x > 5) as null_forall_false,
+  [1, null].forall(x -> x > 0) is null as null_forall_unknown
+test _.rows should be [[true, false, true, false, 25, '159', false, true, 0, true, true, false, true]]
+;

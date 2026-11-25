@@ -125,6 +125,7 @@ Existing Wvlet stdlib style (wvlet-stdlib/module/standard/*.wv): snake_case meth
 | zip | — | list_zip (list of unnamed structs) | zip (array of rows; pads with NULL) | — (unnest(a, b)) | arrays_zip (struct fields named after the inputs) | — | — | |
 | map with a lambda | — | list_transform / array_transform / apply | transform | — | transform | TRANSFORM | — (unnest + array subquery) | `transform` in 3 engines; DuckDB's lambda may take an index as a second parameter |
 | filter with a lambda | — | list_filter / array_filter / filter | filter | — | filter | FILTER | — | `filter` everywhere with lambdas |
+| any / every element matches | — | — (fold the lambda results: list_reduce(list_transform(l, f), lambda a, b: a or b, false)) | any_match / all_match / none_match | — (`x = ANY(arr)` for equality only) | exists / forall | — (FILTER + ARRAY_SIZE, or REDUCE) | — (EXISTS over UNNEST) | `exists` / `forall` in Spark and Scala; ClickHouse arrayExists / arrayAll; Trino and Spark return NULL when no element decides and one gives NULL |
 | fold with a lambda | — | list_reduce(l, f [, init]) (first element when no init; empty list is an error) | reduce(a, init, f, finish) | — | aggregate / reduce(a, init, f [, finish]) | REDUCE(a, init, f) | — | `reduce` in 4 sources; only DuckDB has a no-initial form |
 | filter by mask | — | list_where(values, mask) | — | — | — | — | — | DuckDB only |
 | select by indexes | — | list_select(values, indexes) (1-based) | — | — | — | — | — | DuckDB only |

@@ -1241,7 +1241,7 @@ object Typer extends Phase("typer") with LogSupport:
 
   end typeExpression
 
-  /** Higher-order functions whose lambda takes (accumulator, element), both of the element type */
+  /** Higher-order functions whose lambda takes (accumulator, element) */
   private val reduceFunctions = Set("reduce", "list_reduce", "array_reduce")
 
   /**
@@ -1253,31 +1253,43 @@ object Typer extends Phase("typer") with LogSupport:
     typeExpression(f.base)
     val (lambdaArgs, valueArgs) = f.args.partition(_.value.isInstanceOf[LambdaExpr])
     valueArgs.foreach(typeExpression)
-    // The list and the function name, for the list-and-lambda shapes only: xs.f(lambda) and
-    // f(xs, lambda). Other shapes (e.g. Trino's reduce(xs, init, f, g)) leave the parameter types
-    // unknown
-    val listAndName: Option[(Expression, String)] =
+    // The list, the function name, and a reduce's initial value, for the list-and-lambda shapes
+    // only: xs.f(lambda), xs.reduce(init, lambda), f(xs, lambda), and DuckDB's
+    // list_reduce(xs, lambda, init). Other shapes (e.g. Trino's reduce(xs, init, f, g)) leave the
+    // parameter types unknown
+    val shape: Option[(Expression, String, Option[Expression])] =
       (f.base, f.args.map(_.value)) match
         case (d: DotRef, List(_: LambdaExpr)) =>
-          Some((d.qualifier, d.name.leafName))
+          Some((d.qualifier, d.name.leafName, None))
+        case (d: DotRef, List(init, _: LambdaExpr)) if reduceFunctions(d.name.leafName) =>
+          Some((d.qualifier, d.name.leafName, Some(init)))
         case (id: Identifier, List(list, _: LambdaExpr)) =>
-          Some((list, id.leafName))
+          Some((list, id.leafName, None))
+        case (id: Identifier, List(list, _: LambdaExpr, init)) if reduceFunctions(id.leafName) =>
+          Some((list, id.leafName, Some(init)))
         case _ =>
           None
     val elemType: DataType =
-      listAndName.map(_._1.dataType) match
+      shape.map(_._1.dataType) match
         case Some(DataType.ArrayType(e)) =>
           e
         case _ =>
           DataType.UnknownType
-    val isReduce = listAndName.exists((_, name) => reduceFunctions.contains(name))
+    val isReduce = shape.exists((_, name, _) => reduceFunctions.contains(name))
+    // The accumulator of a reduce starts from the initial value, or from the first element
+    val accType = shape.flatMap(_._3).map(_.dataType).getOrElse(elemType)
     lambdaArgs.foreach { arg =>
       val lambda     = arg.value.asInstanceOf[LambdaExpr]
       val paramTypes = lambda
         .args
         .indices
         .map { i =>
-          if i == 0 || isReduce then
+          if isReduce then
+            if i == 0 then
+              accType
+            else
+              elemType
+          else if i == 0 then
             elemType
           else
             // e.g. the element index of DuckDB's list_transform(xs, (x, i) -> ...)

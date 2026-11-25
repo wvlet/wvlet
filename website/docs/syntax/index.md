@@ -607,6 +607,11 @@ The lambda parameter takes the element type of the array, so `s` above is a stri
 - `xs.transform(x -> ...)`: apply the lambda to each element.
 - `xs.filter(x -> ...)`: keep the elements for which the lambda returns true.
 - `xs.reduce((acc, x) -> ...)`: fold the elements from the first one. An empty array is an error.
+- `xs.reduce(init, (acc, x) -> ...)`: fold the elements from an initial value, which an empty array returns. The accumulator takes the type of the initial value, e.g. `prices.reduce('', (acc, p) -> acc + p.to_string)`.
+- `xs.exists(x -> ...)`: true if the lambda is true for some element; false for an empty array.
+- `xs.forall(x -> ...)`: true if the lambda is true for every element; true for an empty array.
+
+Like SQL `or` and `and`, `exists` and `forall` return NULL when no element decides the answer and the lambda gives NULL for some element, e.g. `[1, null].exists(x -> x > 5)`.
 
 To pass multiple arguments to the lambda function, wrap the parameters in parentheses:
 

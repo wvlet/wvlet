@@ -391,6 +391,9 @@ A column reference after `group by` also has an array type, so aggregation funct
 | `transform(f: sql)` | array[any] | duckdb, trino | Apply the lambda to each element |
 | `filter(f: sql)` | array[A] | duckdb, trino | Keep the elements for which the lambda returns true |
 | `reduce(f: sql)` | A | duckdb, trino | Fold the elements from the first one with a two-argument lambda (acc, x) -> ..., e.g. [1, 2, 3].reduce((a, b) -> a + b) = 6. An empty array is an error |
+| `reduce(init: any, f: sql)` | any | duckdb, trino | Fold the elements from an initial value with (acc, x) -> ..., e.g. [1, 2, 3].reduce(10, (acc, x) -> acc + x) = 16. An empty array gives the initial value |
+| `exists(f: sql)` | boolean | duckdb, trino | True if the lambda is true for some element, e.g. [1, 5].exists(x -> x > 3). False for an empty array. When no element gives true and some give NULL, the result is NULL, as SQL `or` |
+| `forall(f: sql)` | boolean | duckdb, trino | True if the lambda is true for every element, e.g. [1, 5].forall(x -> x > 0). True for an empty array. When no element gives false and some give NULL, the result is NULL, as SQL `and` |
 | `lag` | A | all | Value of the column at a preceding row of the window |
 | `lag(offset: int)` | A | all |  |
 | `lag(offset: int, default: any)` | A | all |  |
