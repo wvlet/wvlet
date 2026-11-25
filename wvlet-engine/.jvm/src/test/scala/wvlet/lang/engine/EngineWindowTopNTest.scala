@@ -21,7 +21,8 @@ import wvlet.uni.test.UniTest
 
 /**
   * Filters bounding a row_number() or rank() keep the top rows of each partition (`window_top_n`),
-  * with the rows DuckDB returns, on the sequential and parallel window paths
+  * with the rows DuckDB returns, on the sequential and parallel window paths, with and without
+  * streamed chunks (`window_top_n_stream`)
   */
 class EngineWindowTopNTest extends UniTest:
   private val dir      = "wvlet-engine/.jvm/src/test/resources/engine-spec/window-top-n"
@@ -30,7 +31,9 @@ class EngineWindowTopNTest extends UniTest:
   private val variants = Seq(
     ""                      -> EngineConformance(dir, Nil, _ => (), options),
     " without window_top_n" ->
-      EngineConformance(dir, Nil, _ => (), options.withDisabled(Optimization.WindowTopN))
+      EngineConformance(dir, Nil, _ => (), options.withDisabled(Optimization.WindowTopN)),
+    " without window_top_n_stream" ->
+      EngineConformance(dir, Nil, _ => (), options.withDisabled(Optimization.WindowTopNStream))
   )
 
   override def afterAll: Unit =
@@ -74,7 +77,8 @@ class EngineWindowTopNTest extends UniTest:
         |select l_returnflag, l_quantity,
         |  rank() over (partition by l_returnflag order by l_quantity desc) as rk
         |where rk <= 3""".stripMargin
-    explain(ranked) shouldContain "top=3 with ties"
+    explain(ranked) shouldContain "top=3 with ties, streamed"
+    explain(ranked, options.withDisabled(Optimization.WindowTopNStream)) shouldNotContain "streamed"
     explain(ranked, options.withDisabled(Optimization.WindowTopN)) shouldNotContain "top="
     // Window expressions repeated across calls aren't shared, which would hide the bound's window
     explain("""from 'spec/tpch/data/lineitem.parquet'

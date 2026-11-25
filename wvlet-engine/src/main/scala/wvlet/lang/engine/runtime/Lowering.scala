@@ -58,7 +58,8 @@ object Lowering:
     * ([[MaskCaseWhen]]). With `caseAggFilters`, an aggregate of a CASE of one WHEN without ELSE
     * aggregates its THEN value with the condition as FILTER ([[CaseAggFilters]]). With
     * `substringInLists`, `substring(s, k, n) IN (strings)` compares string regions with the values
-    * ([[SubstringInLists]])
+    * ([[SubstringInLists]]). With `windowTopNStream`, a window under a rank bound keeps each input
+    * chunk's top rows as it reads them ([[wvlet.lang.engine.exec.WindowTopN.keepTop]])
     */
   def apply(
       p: RuntimePlan,
@@ -81,7 +82,8 @@ object Lowering:
       windowSharePartitions: Boolean = false,
       constCaseSelect: Boolean = false,
       caseAggFilters: Boolean = false,
-      substringInLists: Boolean = false
+      substringInLists: Boolean = false,
+      windowTopNStream: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -102,7 +104,8 @@ object Lowering:
       windowSharePartitions,
       constCaseSelect,
       caseAggFilters,
-      substringInLists
+      substringInLists,
+      windowTopNStream
     )
     if inSet then
       l.markInSet(p)
@@ -141,7 +144,8 @@ object Lowering:
       windowSharePartitions: Boolean,
       constCaseSelect: Boolean,
       caseAggFilters: Boolean,
-      substringInLists: Boolean
+      substringInLists: Boolean,
+      windowTopNStream: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -260,7 +264,8 @@ object Lowering:
                   topN = WindowOp.topNOf(op.calls, op.child.schema.size, filter),
                   runningKernels = op.runningKernels,
                   sortKernels = op.sortKernels,
-                  sharePartitions = op.sharePartitions
+                  sharePartitions = op.sharePartitions,
+                  streamTopN = windowTopNStream
                 )
               case other =>
                 other
