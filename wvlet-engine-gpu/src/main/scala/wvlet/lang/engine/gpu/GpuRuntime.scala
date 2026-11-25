@@ -404,27 +404,38 @@ class GpuColumnCache(budgetBytes: Long, pieceBytes: Long = GpuConfig.DefaultPiec
     * values: built once on the device. The caller must close the returned codes and values.
     */
   def dictionary(path: String, name: String): Option[(ColumnVector, ColumnVector)] =
-    val key = keyOf(path, name)
-    using(columnRef(path, name)) { c =>
-      synchronized {
-        // Evicted meanwhile: don't keep a dictionary that eviction would no longer release
-        if !entries.contains(key) || c.pieces.size != 1 then
-          None
-        else
-          val d = dicts.getOrElseUpdate(
-            key, {
-              val built = GpuDictionary.build(c.pieces.head)
-              built.foreach { b =>
-                bytes += b.sizeBytes
-              }
-              built
+    val key                            = keyOf(path, name)
+    def refs(d: Option[GpuDictionary]) = d.map(b => (b.codes.incRefCount(), b.values.incRefCount()))
+    synchronized(dicts.get(key)) match
+      case Some(d) =>
+        synchronized(refs(d))
+      case None =>
+        using(columnRef(path, name)) { c =>
+          if c.pieces.size != 1 then
+            None
+          else
+            // Built outside the lock: other queries keep using the cache meanwhile
+            val built = GpuDictionary.build(c.pieces.head)
+            synchronized {
+              dicts.get(key) match
+                case Some(other) =>
+                  // Built concurrently by another query
+                  built.foreach(_.close())
+                  refs(other)
+                case None if !entries.contains(key) =>
+                  // Evicted meanwhile: eviction would no longer release a dictionary kept now
+                  try refs(built)
+                  finally built.foreach(_.close())
+                case None =>
+                  dicts(key) = built
+                  built.foreach(b => bytes += b.sizeBytes)
+                  val out = refs(built)
+                  evict()
+                  out
             }
-          )
-          val out = d.map(b => (b.codes.incRefCount(), b.values.incRefCount()))
-          evict()
-          out
-      }
-    }
+        }
+
+  end dictionary
 
   /** Drop what is kept for a column being evicted */
   private def forget(k: Key): Unit =
@@ -587,13 +598,15 @@ class GpuColumnCache(budgetBytes: Long, pieceBytes: Long = GpuConfig.DefaultPiec
   def reserve(needed: Long, limit: Long, keep: Set[(String, String)]): Unit = synchronized {
     val kept           = keep.map((p, c) => (File(p).getCanonicalPath, c))
     def isKept(k: Key) = kept.contains((k.path, k.column))
-    var others         = entries.iterator.filterNot((k, _) => isKept(k)).map(_._2.sizeBytes).sum
-    val victims        = entries.keysIterator.filterNot(isKept).toList.iterator
+    // A column's device memory includes its dictionary
+    def size(k: Key) = entries(k).sizeBytes + dicts.get(k).flatten.map(_.sizeBytes).getOrElse(0L)
+    var others       = entries.keysIterator.filterNot(isKept).map(size).sum
+    val victims      = entries.keysIterator.filterNot(isKept).toList.iterator
     while others + needed > limit && victims.hasNext do
       val k = victims.next()
+      others -= size(k)
       val c = entries.remove(k).get
       bytes -= c.sizeBytes
-      others -= c.sizeBytes
       forget(k)
       debug(s"Evicted ${k.column} of ${k.path} from the GPU cache to reserve memory")
       c.close()
