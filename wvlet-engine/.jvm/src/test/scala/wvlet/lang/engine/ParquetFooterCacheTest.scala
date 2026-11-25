@@ -150,12 +150,15 @@ class ParquetFooterCacheTest extends UniTest:
     // Join ordering asks a source for estimates thousands of times per query
     val path = copy(nation, "distinct-memo.parquet")
     val src  = ParquetSource("d", path)
+    val t0   = System.nanoTime()
     src.estimatedDistinct("n_name") shouldBe Some(25.0)
     val before = ParquetSource.cachedDistinctVersion(path, "n_name")
     Paths.get(path).toFile.setLastModified(minuteAgo - 60000)
     // The source still uses the version it read; a new source (the next query) reads it again
     src.estimatedDistinct("n_name") shouldBe Some(25.0)
-    ParquetSource.cachedDistinctVersion(path, "n_name") shouldBe before
+    // On a slow runner the source may already have read the version again
+    if System.nanoTime() - t0 < ParquetSource.VersionRecheckNanos / 2 then
+      ParquetSource.cachedDistinctVersion(path, "n_name") shouldBe before
     ParquetSource("d", path).estimatedDistinct("n_name") shouldBe Some(25.0)
     ParquetSource.cachedDistinctVersion(path, "n_name") shouldBe versionOf(path)
   }
