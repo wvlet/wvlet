@@ -95,7 +95,8 @@ class OptimizerOptionsTest extends UniTest:
         "set_op_joins",
         "or_implied_filters",
         "union_all_pipelines",
-        "semi_join_build_side"
+        "semi_join_build_side",
+        "decimal_float_scan_filters"
       )
   }
 

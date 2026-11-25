@@ -260,7 +260,7 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
       val f                      = openFile(spec.footerCache).file
       val groups                 =
         try
-          f.selectRowGroups(options)
+          ParquetSource.selectRowGroups(f, spec, options)
         catch
           case e: Throwable =>
             f.close()
@@ -279,7 +279,17 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
     val (cols, types, options) = readOptions(spec)
     if isSingleFile then
       val f  = openFile(spec.footerCache).file
-      val it = f.readBatches(options)
+      val it =
+        try
+          if spec.filter.exists(DecimalStats.hasDecimalCompare(_, f.schema)) then
+            // Read only the row groups the decimal statistics don't skip either
+            ParquetSource.selectRowGroups(f, spec, options).iterator.map(f.readRowGroup(_, options))
+          else
+            f.readBatches(options)
+        catch
+          case e: Throwable =>
+            f.close()
+            throw e
       ParquetSource.closing(it.map(b => ParquetSource.toBatch(b, cols, types)), () => f.close())
     else
       val ds = ParquetSource.openDataset(path)
@@ -330,6 +340,23 @@ object ParquetSource:
     .synchronized {
       Option(distinctCache.get((path, column))).map(_.version)
     }
+
+  /**
+    * The row groups of `f` that neither uni's row-group filter nor the decimal statistics
+    * ([[DecimalStats]]) of `spec.filter` skip
+    */
+  def selectRowGroups(
+      f: ParquetFile,
+      spec: ScanSpec,
+      options: ParquetReadOptions
+  ): IndexedSeq[Int] =
+    val groups = f.selectRowGroups(options)
+    spec.filter match
+      case Some(filter) if DecimalStats.hasDecimalCompare(filter, f.schema) =>
+        val meta = f.rowGroups
+        groups.filter(g => DecimalStats.mayMatch(filter, f.schema, meta(g)))
+      case _ =>
+        groups
 
   /** The columns, their engine types, and uni read options of a scan over `schema` */
   def readOptions(schema: Schema, spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =

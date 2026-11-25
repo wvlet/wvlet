@@ -5,7 +5,7 @@ Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_sales_price join_filter
   ↓ Morsel[parallelism=N] -> [d_date_sk:long, d_day_name:string]
 ↙ HashJoin[Inner](#0 = #0) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2), d_date_sk:long, d_day_name:string]
 ↓ Project(#4, #1, #2) -> [d_day_name:string, ss_store_sk:long, ss_sales_price:decimal(7,2)]
-  Scan[store](columns=s_store_sk,s_store_id,s_store_name,s_gmt_offset) -> [s_store_sk:long, s_store_id:string, s_store_name:string, s_gmt_offset:decimal(5,2)]
+  Scan[store](columns=s_store_sk,s_store_id,s_store_name,s_gmt_offset filter=Compare(s_gmt_offset,Eq,-5.00)) -> [s_store_sk:long, s_store_id:string, s_store_name:string, s_gmt_offset:decimal(5,2)]
   ↓ Filter((#3=lit(-5.00:decimal(5,2))), keep=0,1,2) -> [s_store_sk:long, s_store_id:string, s_store_name:string]
   ↓ Morsel[parallelism=N] -> [s_store_sk:long, s_store_id:string, s_store_name:string]
 ↙ HashJoin[Inner](#1 = #0) -> [d_day_name:string, ss_store_sk:long, ss_sales_price:decimal(7,2), s_store_sk:long, s_store_id:string, s_store_name:string]

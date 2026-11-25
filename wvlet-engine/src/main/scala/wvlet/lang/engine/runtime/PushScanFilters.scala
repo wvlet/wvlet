@@ -41,7 +41,8 @@ object PushScanFilters extends Pass:
         val pos = columns.map(_.id.value).zipWithIndex.toMap
         val f2  = ScanFilters.toParquet(
           cond.expr,
-          id => pos.get(id).map(s.sourceColumnName).filter(source.canFilterOn)
+          id => pos.get(id).map(s.sourceColumnName).filter(source.canFilterOn),
+          ctx.options.isEnabled(Optimization.DecimalFloatScanFilters)
         )
         if f2 == filter then
           p

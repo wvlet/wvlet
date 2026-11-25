@@ -31,16 +31,22 @@ object ColumnPruner:
 
   /**
     * What the pass does: drop unused columns (`pruneColumns`), and attach the filters directly over
-    * Parquet scans for row-group skipping (`scanFilters`)
+    * Parquet scans for row-group skipping (`scanFilters`), also on decimal and floating-point
+    * columns with `numericScanFilters`
     */
-  private case class Mode(pruneColumns: Boolean, scanFilters: Boolean)
+  private case class Mode(pruneColumns: Boolean, scanFilters: Boolean, numericScanFilters: Boolean)
 
   /**
     * Prune a whole plan. The output schema is unchanged. With `pruneColumns = false`, every column
     * is kept and only the scan filters are attached
     */
-  def apply(op: Operator, pruneColumns: Boolean = true, scanFilters: Boolean = true): Operator =
-    given Mode = Mode(pruneColumns, scanFilters)
+  def apply(
+      op: Operator,
+      pruneColumns: Boolean = true,
+      scanFilters: Boolean = true,
+      numericScanFilters: Boolean = true
+  ): Operator =
+    given Mode = Mode(pruneColumns, scanFilters, numericScanFilters)
     val all    = (0 until op.schema.size).toArray
     try
       if !pruneColumns && !scanFilters then
@@ -100,7 +106,11 @@ object ColumnPruner:
             // A scan of the runtime plan has its filter already (PushScanFilters)
             case s: ScanOp if mode.scanFilters && s.source.supportsFilter && s.filter.isEmpty =>
               ScanFilters
-                .toParquet(f.cond, i => Some(s.sourceColumnName(i)).filter(s.source.canFilterOn))
+                .toParquet(
+                  f.cond,
+                  i => Some(s.sourceColumnName(i)).filter(s.source.canFilterOn),
+                  mode.numericScanFilters
+                )
                 .map(s.withFilter)
                 .getOrElse(s)
             case other =>

@@ -368,6 +368,14 @@ enum Optimization(val name: String):
     */
   case SemiJoinBuildSide extends Optimization("semi_join_build_side")
 
+  /**
+    * With `push_scan_filters`, comparisons of decimal columns with constants, and `<`, `<=` and `=`
+    * of floating-point columns, also skip Parquet row groups by their min/max statistics
+    * ([[ScanFilters]]). Floating-point `>` and `>=` stay out: writers leave NaN out of the
+    * statistics while the engine orders NaN above every number
+    */
+  case DecimalFloatScanFilters extends Optimization("decimal_float_scan_filters")
+
 end Optimization
 
 object Optimization:
