@@ -31,7 +31,10 @@ import scala.collection.mutable
   *
   * Only comparisons whose Parquet statistics order matches the engine's order are translated:
   * integers, dates, timestamps and booleans, and string equality (Parquet orders strings by UTF-8
-  * bytes while the engine compares UTF-16 code units). With `numeric`, also:
+  * bytes while the engine compares UTF-16 code units). A timestamp constant T (micros) bounds `=`,
+  * `<=` and `>` by T + 999ns: the engine floors TIMESTAMP(NANOS) values to micros, so a row at T +
+  * 500ns equals T. For MILLIS and MICROS columns, which uni compares exactly, this is the same
+  * filter. With `numeric`, also:
   *
   *   - Decimal comparisons, with the constant as a `java.math.BigDecimal`. uni doesn't skip row
   *     groups by decimal statistics, so [[wvlet.lang.engine.catalog.DecimalStats]] checks them for
@@ -360,20 +363,32 @@ object ScanFilters:
           case _ =>
             None
       val col = ParquetFilter.col(column)
-      value.flatMap { v =>
-        op match
-          case CmpOp.Eq =>
-            Some(col === v)
-          case CmpOp.Lt =>
-            Some(col < v)
-          case CmpOp.Le =>
-            Some(col <= v)
-          case CmpOp.Gt =>
-            Some(col > v)
-          case CmpOp.Ge =>
-            Some(col >= v)
-          case CmpOp.Ne =>
-            None
+      value.flatMap {
+        // The engine floors TIMESTAMP(NANOS) values to micros, while uni compares the nanos in
+        // the statistics: every nanosecond of the constant's micro equals it to the engine
+        case t: Instant if op == CmpOp.Eq || op == CmpOp.Le || op == CmpOp.Gt =>
+          val last = t.plusNanos(999)
+          op match
+            case CmpOp.Eq =>
+              Some(col >= t && col <= last)
+            case CmpOp.Le =>
+              Some(col <= last)
+            case _ =>
+              Some(col > last)
+        case v =>
+          op match
+            case CmpOp.Eq =>
+              Some(col === v)
+            case CmpOp.Lt =>
+              Some(col < v)
+            case CmpOp.Le =>
+              Some(col <= v)
+            case CmpOp.Gt =>
+              Some(col > v)
+            case CmpOp.Ge =>
+              Some(col >= v)
+            case CmpOp.Ne =>
+              None
       }
 
   /**
