@@ -20,7 +20,7 @@ Scan[customer_address](columns=ca_address_sk,ca_zip join_filter=ca_address_sk) -
   Scan[store](columns=s_store_sk,s_zip) -> [s_store_sk:long, s_zip:string]
   ↓ Morsel[parallelism=N] -> [s_store_sk:long, s_zip:string]
 ↙ HashJoin[Inner](#0 = #0) -> [ss_store_sk:long, ss_ext_sales_price:decimal(7,2), i_brand_id:long, i_brand:string, i_manufact_id:long, i_manufact:string, ca_zip:string, s_store_sk:long, s_zip:string]
-↓ Filter((substring(#6,cast(lit(1:int) as long),cast(lit(5:int) as long))!=substring(#8,cast(lit(1:int) as long),cast(lit(5:int) as long))), keep=1,2,3,4,5) -> [ss_ext_sales_price:decimal(7,2), i_brand_id:long, i_brand:string, i_manufact_id:long, i_manufact:string]
+↓ Filter((substring(#6,lit(1:long),lit(5:long))!=substring(#8,lit(1:long),lit(5:long))), keep=1,2,3,4,5) -> [ss_ext_sales_price:decimal(7,2), i_brand_id:long, i_brand:string, i_manufact_id:long, i_manufact:string]
 ↓ HashAgg(keys=[#2, #1, #3, #4], aggs=[agg:sum(#0)]) -> [i_brand:string, i_brand_id:long, i_manufact_id:long, i_manufact:string, __partial_0:decimal(38,2)]
 ↓ Morsel[parallelism=N] -> [i_brand:string, i_brand_id:long, i_manufact_id:long, i_manufact:string, __partial_0:decimal(38,2)]
 ↓ PartitionedAgg[parallelism=N](keys=[#0, #1, #2, #3], aggs=[agg:sum(#4)]) -> [i_brand:string, i_brand_id:long, i_manufact_id:long, i_manufact:string, __final_0:decimal(38,2)]

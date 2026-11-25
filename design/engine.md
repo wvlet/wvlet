@@ -8,6 +8,8 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 - `Planner` (`wvlet.lang.engine.plan`) keeps the shared pieces the binder calls, generic over a plan builder: correlated joins, decorrelation, join ordering, and parallelization.
 - Logical passes (`PushDownFilters`, `PruneColumns`, `ReorderJoins`, `GroupKeySemiJoins`, `ShareSubplans`, `Normalize`, ...) run in `Optimizer` over the runtime plan. Rules with three-valued-logic subtleties have Lean models; see [formal verification](formal-verification.md).
 - `WvletEngine.runtimePlan` uses a new `Planner` per call; share one `Planner` when building plans by hand in tests.
+- `Lowering` rewrites expressions over positions, after the logical passes: `fold_constants` folds row-independent subexpressions and pre-scales decimal constants, and `common_subexpressions` computes a subexpression repeated across a Project, Filter, Aggregate, or Window once in a Project below it (`CommonSubexpressions`). It shares only subexpressions evaluated for every row in at least one place, never volatile functions, and matches with `==`, not `sig`.
+- Two-phase aggregation merges identical partial aggregates (`shared_agg_partials`), so `avg(x)` reuses `sum(x)` and `count(x)`.
 
 ## Optimizer toggles
 

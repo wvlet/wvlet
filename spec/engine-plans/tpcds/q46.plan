@@ -8,7 +8,7 @@
     ↓ Morsel[parallelism=N] -> [ca_address_sk:long, ca_city:string]
   ↙ HashJoin[Inner](#3 = #0) -> [ss_sold_date_sk:long, ss_customer_sk:long, ss_hdemo_sk:long, ss_addr_sk:long, ss_store_sk:long, ss_ticket_number:long, ss_coupon_amt:decimal(7,2), ss_net_profit:decimal(7,2), hd_demo_sk:long, ca_address_sk:long, ca_city:string]
     Scan[date_dim](columns=d_date_sk,d_year,d_dow filter=Or(Compare(d_dow,Eq,6),Compare(d_dow,Eq,0))) -> [d_date_sk:long, d_year:long, d_dow:long]
-    ↓ Filter((in(#2,6,0,false) and in_exprs(#1,lit(1999:long),(lit(1999:int)+lit(1:int)),(lit(1999:int)+lit(2:int)),false)), keep=0) -> [d_date_sk:long]
+    ↓ Filter((in(#2,6,0,false) and in_exprs(#1,lit(1999:long),lit(2000:long),lit(2001:long),false)), keep=0) -> [d_date_sk:long]
     ↓ Morsel[parallelism=N] -> [d_date_sk:long]
   ↙ HashJoin[Inner](#0 = #0) -> [ss_sold_date_sk:long, ss_customer_sk:long, ss_hdemo_sk:long, ss_addr_sk:long, ss_store_sk:long, ss_ticket_number:long, ss_coupon_amt:decimal(7,2), ss_net_profit:decimal(7,2), hd_demo_sk:long, ca_address_sk:long, ca_city:string, d_date_sk:long]
     Scan[store](columns=s_store_sk,s_city filter=Or(Compare(s_city,Eq,Fairview),Compare(s_city,Eq,Midway))) -> [s_store_sk:long, s_city:string]
