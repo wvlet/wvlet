@@ -742,8 +742,10 @@ private[plan] object TwoPhaseAgg:
       release,
       tail.map(t =>
         (x: Operator) =>
-          HashAggOp(t(x), a.keys, partialAggs, partialSchema)
-            .withKeyOptions(streamPackAggKeys, longDecimalKeys)
+          HashAggOp(t(x), a.keys, partialAggs, partialSchema).withKeyOptions(
+            streamPackAggKeys,
+            longDecimalKeys
+          )
       )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
