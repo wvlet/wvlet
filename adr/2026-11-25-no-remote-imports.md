@@ -1,6 +1,6 @@
 # ADR: Modules resolve from local folders, not remote repositories
 
-Date: 2026-11-25 · PR #TBD
+Date: 2026-11-25 · PR #2432
 
 ## Context
 
