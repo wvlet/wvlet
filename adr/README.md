@@ -10,7 +10,8 @@ The language-wide design principles (left-to-right flow, modularity, composabili
 - Start with `# ADR: <title>`, then `Date: YYYY-MM-DD · PR #<number>`
 - Sections: **Context**, **Decision**, **Consequences** (add worked examples when they clarify the decision)
 - Add the new record at the top of the index below in the same PR: the index is newest first, and entries with the same date are ordered by file name
-- `./sbt "langJVM/testOnly *AdrIndexTest"` checks the order and that every record has exactly one entry
+- `.gitattributes` merges `adr/README.md` with `merge=union`, so a local merge or rebase keeps both sides' new entries; the result can be mis-sorted or duplicated, so re-sort it before pushing
+- `./sbt "langJVM/testOnly *AdrIndexTest"` (run in CI on every change under `adr/`) fails when the index is not newest first, a record is listed more than once or not at all, or an entry points to a missing file
 
 ## Index
 

@@ -38,6 +38,8 @@ jobs:
               - SCALA_VERSION
               # The bundled AI-agent skill is compiled and run by SkillSnippetTest
               - 'plugins/**'
+              # AdrIndexTest checks the ADR index order and completeness
+              - 'adr/**'
               - 'website/docs/for-ai-agents.md'
   code_format:
     name: Code format
