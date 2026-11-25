@@ -35,16 +35,20 @@ class EngineGroupKeySemiJoinsTest extends UniTest:
     .withOptimizer(options.withDisabled(Optimization.PrefixLikeSelectivity))
 
   // q20's aggregation is in an IN subquery, which `count_in_subqueries` would compute at plan time,
-  // out of the explained plan
-  private val noCountIn = conformance
+  // out of the explained plan; without range estimates, whose lineitem estimate moves the
+  // aggregation's join side
+  private def noRange(o: OptimizerOptions) = conformance
     .engine
-    .withOptimizer(options.withDisabled(Optimization.CountInSubqueries))
+    .withOptimizer(o.withDisabled(Optimization.RangeSelectivity))
 
-  private val noCountInPrefixLike = conformance
+  private val noLeft = conformance
     .engine
-    .withOptimizer(
-      options.withDisabled(Optimization.CountInSubqueries, Optimization.PrefixLikeSelectivity)
-    )
+    .withOptimizer(options.withDisabled(Optimization.LeftGroupKeySemiJoins))
+
+  private val noCountInRange = noRange(options.withDisabled(Optimization.CountInSubqueries))
+  private val noCountInRangePrefixLike = noRange(
+    options.withDisabled(Optimization.CountInSubqueries, Optimization.PrefixLikeSelectivity)
+  )
 
   override def afterAll: Unit = conformance.close()
 
@@ -153,9 +157,24 @@ class EngineGroupKeySemiJoinsTest extends UniTest:
       conformance.queries(unit) { (name, q) =>
         conformance.assertMatches(name, q)
         conformance.assertMatches(name, q, target = noPrefixLike)
-        semiJoins(noCountIn.explain(q)) - semiJoins(noCountInPrefixLike.explain(q))
+        semiJoins(noCountInRange.explain(q)) - semiJoins(noCountInRangePrefixLike.explain(q))
       }
     added shouldBe Seq(1)
+  }
+
+  test("reduce an aggregation on the left of an inner join") {
+    // The per-part sums are the larger input, so they probe the few parts; the inputs swap so
+    // that the aggregation is reduced on the right, as left_group_key_semi_joins does
+    val query =
+      s"""from ${perPart}
+         |join {
+         |  from part where p_brand = 'Brand#23' and p_container = 'MED BOX'
+         |} as p on t.l_partkey = p.p_partkey
+         |select p.p_partkey, q
+         |order by p.p_partkey
+         |""".stripMargin
+    added(query) shouldBe 1
+    semiJoins(explain(noLeft, query)) shouldBe 0
   }
 
   test("not reduce an aggregation on the preserved side of a left join") {

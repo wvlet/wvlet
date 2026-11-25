@@ -71,7 +71,23 @@ object GroupKeySemiJoins extends Pass:
             // B on the right: every kind that drops B's unmatched rows. B stays on the right, so
             // that O, lowered first, takes the runtime join filters registered for the scan
             // column ids the copy of S shares with it
-            reduce(right, left, pairs, ctx).map(r => j.copy(right = r))
+            reduce(right, left, pairs, ctx)
+              .map(r => j.copy(right = r))
+              .orElse(
+                // B on the left of an inner join (`left_group_key_semi_joins`): the inputs swap,
+                // with the same build input, so that B is again on the right, and a projection
+                // restores the column order
+                Option
+                  .when(
+                    kind == JoinKind.Inner &&
+                      ctx.options.isEnabled(Optimization.LeftGroupKeySemiJoins)
+                  )(())
+                  .flatMap(_ => reduce(left, right, pairs.map(_.swap), ctx))
+                  .map { l =>
+                    val swapped = Join(right, l, kind, rk, lk, j.residual, !j.buildLeft)
+                    Project(swapped, j.output.map(BExpr.ref), j.output)
+                  }
+              )
           else if kind == JoinKind.Right && !j.buildLeft then
             // The mirror of a left join, with B on the left. B is lowered first, but no runtime
             // join filter from above reaches through a right join into its build side O, so the
@@ -87,6 +103,7 @@ object GroupKeySemiJoins extends Pass:
             node
       case _ =>
         node
+    end match
 
   end walk
 
@@ -275,7 +292,7 @@ object GroupKeySemiJoins extends Pass:
                 // Counted from the result once the CTE is computed
                 Stats.filteredRows(child, conds, options)
               case _ =>
-                r * conds.map(Stats.selectivity(child, _, options)).product
+                r * Stats.conjunctionSelectivity(child, conds, options)
           (rows, scan)
         }
       case Project(child, exprs, _) if exprs.forall(deterministic) =>

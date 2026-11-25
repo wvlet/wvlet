@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.runtime
 
+import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.exec.GroupTable
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.expr.AndExpr
@@ -120,43 +121,75 @@ object Stats:
         rows(child)
 
   /** Distinct values of column `id` of p from source statistics, if traceable */
-  def distinct(p: RuntimePlan, id: ColumnId): Option[Double] =
-    p match
-      case s @ Scan(source, columns, _, _) =>
-        val i = columns.indexWhere(_.id == id)
-        Option.when(i >= 0)(i).flatMap(i => source.estimatedDistinct(s.sourceColumnName(i)))
-      case Filter(child, _, _) =>
-        distinct(child, id)
-      case Sample(child, _) =>
-        distinct(child, id)
-      case Project(child, exprs, columns) =>
-        val i = columns.indexWhere(_.id == id)
-        if i < 0 then
+  def distinct(p: RuntimePlan, id: ColumnId): Option[Double] = sourceStat(
+    p,
+    id,
+    _.estimatedDistinct(_),
+    // Counted from the result once it is computed, as the CTE table's `estimatedDistinct`
+    // returns it to CardinalityEstimator
+    _.distinct(_)
+  )
+
+  /**
+    * [min, max] of integer or date (days) column `id` of p from source statistics, if traceable
+    * (not for shared CTE results)
+    */
+  def range(p: RuntimePlan, id: ColumnId): Option[(Long, Long)] = sourceStat(
+    p,
+    id,
+    _.columnRange(_),
+    (_, _) => None
+  )
+
+  /**
+    * A statistic of the source column that column `id` of p reads: `scan` of a source column, `cte`
+    * of a shared CTE result column, traced through filters, samples, plain projections and hash
+    * joins
+    */
+  private def sourceStat[A](
+      p: RuntimePlan,
+      id: ColumnId,
+      scan: (TableSource, String) => Option[A],
+      cte: (SharedCTE, Int) => Option[A]
+  ): Option[A] =
+    def trace(p: RuntimePlan, id: ColumnId): Option[A] =
+      p match
+        case s @ Scan(source, columns, _, _) =>
+          val i = columns.indexWhere(_.id == id)
+          Option.when(i >= 0)(i).flatMap(i => scan(source, s.sourceColumnName(i)))
+        case Filter(child, _, _) =>
+          trace(child, id)
+        case Sample(child, _) =>
+          trace(child, id)
+        case Project(child, exprs, columns) =>
+          val i = columns.indexWhere(_.id == id)
+          if i < 0 then
+            None
+          else
+            exprs(i).expr match
+              case c: ColRef =>
+                trace(child, ColumnId(c.index))
+              case _ =>
+                None
+        case Join(left, right, _, lk, _, _, _) =>
+          // A hash join; a nested loop join doesn't trace its columns
+          if lk.isEmpty then
+            None
+          else if left.output.exists(_.id == id) then
+            trace(left, id)
+          else
+            trace(right, id)
+        case CTERef(shared, columns) =>
+          val i = columns.indexWhere(_.id == id)
+          Option.when(i >= 0)(i).flatMap(cte(shared, _))
+        case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
+            InnerJoins(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) | Window(_, _, _) |
+            Unnest(_, _, _, _, _) | AsOfJoin(_, _, _, _, _, _, _, _) =>
+          // As CardinalityEstimator does over operators
           None
-        else
-          exprs(i).expr match
-            case c: ColRef =>
-              distinct(child, ColumnId(c.index))
-            case _ =>
-              None
-      case Join(left, right, _, lk, _, _, _) =>
-        // A hash join; a nested loop join doesn't trace its columns
-        if lk.isEmpty then
-          None
-        else if left.output.exists(_.id == id) then
-          distinct(left, id)
-        else
-          distinct(right, id)
-      case CTERef(cte, columns) =>
-        // Counted from the result once it is computed, as the CTE table's `estimatedDistinct`
-        // returns it to CardinalityEstimator
-        val i = columns.indexWhere(_.id == id)
-        Option.when(i >= 0)(i).flatMap(cte.distinct)
-      case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
-          InnerJoins(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) | Window(_, _, _) |
-          Unnest(_, _, _, _, _) | AsOfJoin(_, _, _, _, _, _, _, _) =>
-        // As CardinalityEstimator does over operators
-        None
+    trace(p, id)
+
+  end sourceStat
 
   /**
     * Estimated groups of an aggregation of p by `keys`: the product of the keys' distinct values,
@@ -190,7 +223,7 @@ object Stats:
           cte.filteredRows(BExpr(cte.overBody(columns, all))).map(_.toDouble)
         case _ =>
           None
-    counted.getOrElse(rows(p) * conds.map(selectivity(p, _, options)).product)
+    counted.getOrElse(rows(p) * conjunctionSelectivity(p, conds, options))
 
   /**
     * Estimated rows of an aggregation, possibly under filters, projections, sorts and limits (an
@@ -225,10 +258,11 @@ object Stats:
     p match
       case Filter(child, cond, literalCounts) =>
         treeRows(child, options) *
-          FactorOr
-            .conjuncts(cond.expr)
-            .map(c => selectivity(child, JoinCondition(BExpr(c), literalCounts), options))
-            .product
+          conjunctionSelectivity(
+            child,
+            FactorOr.conjuncts(cond.expr).map(c => JoinCondition(BExpr(c), literalCounts)),
+            options
+          )
       case Project(child, _, _) =>
         treeRows(child, options)
       case Sort(child, _, limit) =>
@@ -255,6 +289,26 @@ object Stats:
         treeRows(left, options)
       case other =>
         rows(other)
+
+  /**
+    * Estimated fraction of the rows of p passing all of `conds`: with `range_selectivity`, the
+    * range comparisons of each integer or date column with known [min, max] as one interval
+    * ([[RangeSelectivity.conjunction]]), and the [[selectivity]] of each other condition
+    */
+  def conjunctionSelectivity(
+      p: RuntimePlan,
+      conds: Seq[JoinCondition],
+      options: OptimizerOptions
+  ): Double =
+    if options.isEnabled(Optimization.RangeSelectivity) then
+      RangeSelectivity.conjunction(
+        conds,
+        _.cond.expr,
+        id => range(p, ColumnId(id)),
+        selectivity(p, _, options)
+      )
+    else
+      conds.map(selectivity(p, _, options)).product
 
   /**
     * Estimated fraction of the rows of p passing a condition: 1 / ndv for `x = literal` (n / ndv

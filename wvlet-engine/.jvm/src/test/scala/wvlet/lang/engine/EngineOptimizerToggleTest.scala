@@ -57,7 +57,9 @@ class EngineOptimizerToggleTest extends UniTest:
   private val withoutCountIn: Set[Optimization] = Set(
     Optimization.ReplanSemiJoinBuilds,
     Optimization.ReplanSharedInputs,
-    Optimization.SelfJoinAggregate
+    Optimization.SelfJoinAggregate,
+    // TPC-H q20's aggregation is in an IN subquery computed at plan time
+    Optimization.LeftGroupKeySemiJoins
   )
 
   for o <- Optimization.values do
