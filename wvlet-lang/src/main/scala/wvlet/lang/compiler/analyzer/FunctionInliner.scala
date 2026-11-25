@@ -723,7 +723,7 @@ object FunctionInliner extends ContextLogSupport:
   /**
     * A SQL-style implicit alias (`select c1 total`) is parsed as a partial query application, since
     * Wvlet requires `as` to name a column. When the name follows an operator taking a column list
-    * (select, select distinct, add, prepend, agg), return a hint suggesting the alias forms.
+    * (select, select distinct, add, add to left, agg), return a hint suggesting the alias forms.
     */
   private def aliasHint(p: PartialQueryApply): String =
     val endsWithColumnList =

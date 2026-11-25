@@ -135,7 +135,7 @@ class FunctionInlineTest extends UniTest:
         "select c1 + 1 total",
         "select distinct c1 total",
         "add c1 * 2 total",
-        "prepend c1 * 2 total",
+        "add to left c1 * 2 total",
         "agg c1.sum total",
         "group by c1 agg c1.count total"
       )
