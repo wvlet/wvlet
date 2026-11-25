@@ -34,4 +34,24 @@ class ValueOpsTest extends UniTest:
     ValueOps.toStr(1, PType.Int32) shouldBe "1"
   }
 
+  test("should cast doubles to longs rounding half to even and reject out-of-range values") {
+    ValueOps.toLong(2.5) shouldBe 2L
+    ValueOps.toLong(3.5) shouldBe 4L
+    ValueOps.toLong(-2.5) shouldBe -2L
+    ValueOps.toLong(-9.223372036854775808e18) shouldBe Long.MinValue
+    for d <- Seq(9.223372036854775808e18, -9.3e18, Double.NaN, Double.PositiveInfinity) do
+      intercept[Exception] {
+        ValueOps.toLong(d)
+      }
+  }
+
+  test("should cast non-zero numbers to true") {
+    ValueOps.toBoolean(0.0) shouldBe false
+    ValueOps.toBoolean(-0.0) shouldBe false
+    ValueOps.toBoolean(0.1) shouldBe true
+    ValueOps.toBoolean(Double.NaN) shouldBe true
+    ValueOps.toBoolean(java.math.BigDecimal("0.00")) shouldBe false
+    ValueOps.toBoolean(java.math.BigDecimal("-0.5")) shouldBe true
+  }
+
 end ValueOpsTest

@@ -34,7 +34,8 @@ class StdlibCastDialectTest extends UniTest:
 
   private val query =
     """from [[2.5]] as t(x)
-      |select x.to_int as a, x.to_double.to_long as b, x.to_double.to_boolean as c
+      |select x.to_int as a, x.to_double.to_long as b, x.to_double.to_boolean as c,
+      |  x.to_float.to_long as f, x.to_long as l, x.to_boolean as xb
       |""".stripMargin
 
   test("truncate before casting on engines that round") {
@@ -46,13 +47,16 @@ class StdlibCastDialectTest extends UniTest:
     val trino = generateSQL(query, DBType.Trino)
     trino shouldContain "cast(truncate(x) as bigint) as a"
     trino shouldContain "cast(truncate(cast(x as double)) as bigint) as b"
+    trino shouldContain "cast(truncate(cast(x as double)) as bigint) as f"
 
     val snowflake = generateSQL(query, DBType.Snowflake)
     snowflake shouldContain "cast(trunc(x) as bigint) as a"
+    snowflake shouldContain "cast(trunc(x) as bigint) as l"
 
     val bigquery = generateSQL(query, DBType.BigQuery)
     bigquery shouldContain "cast(trunc(x) as int64) as a"
     bigquery shouldContain "(cast(x as float64) != 0) as c"
+    bigquery shouldContain "(x != 0) as xb"
   }
 
   test("keep Hive's cast, which already truncates") {

@@ -6,6 +6,7 @@ trait double = {
   def to_int in trino: int = sql"cast(truncate(${this}) as bigint)"
   def to_int in hive: int = sql"cast(${this} as bigint)"
   def to_int in bigquery: int = sql"cast(trunc(${this}) as int64)"
+  -- Truncate toward zero (2.5 -> 2, -2.5 -> -2); use round to round
   def to_long: long = sql"cast(trunc(${this}) as bigint)"
   def to_long in trino: long = sql"cast(truncate(${this}) as bigint)"
   def to_long in hive: long = sql"cast(${this} as bigint)"
