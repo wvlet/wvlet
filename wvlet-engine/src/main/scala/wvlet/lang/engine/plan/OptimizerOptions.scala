@@ -520,6 +520,20 @@ enum Optimization(val name: String):
     */
   case JoinTreeBuildEstimates extends Optimization("join_tree_build_estimates")
 
+  /**
+    * A CASE of one WHEN whose THEN and ELSE are non-NULL constants picks one of the two per row
+    * from the condition, instead of the per-row branch choice (TPC-DS q97's `sum(case when c then 1
+    * else 0 end)`)
+    */
+  case ConstCaseSelect extends Optimization("const_case_select")
+
+  /**
+    * An aggregate (sum, count, min, max, avg) of a CASE of one WHEN without ELSE aggregates its
+    * THEN value with the condition as its FILTER, so the rows the condition drops aren't folded
+    * (TPC-DS q02, q59, q43: `sum(case when d_day_name = '...' then sales_price else null end)`)
+    */
+  case CaseAggFilters extends Optimization("case_agg_filters")
+
 end Optimization
 
 object Optimization:

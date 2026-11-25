@@ -333,13 +333,17 @@ case class Materialized(v: Vec) extends VExpr:
   * (`masked_case_when`), a CASE of one WHEN without ELSE (or ELSE NULL) is its THEN vector with the
   * rows whose condition doesn't hold set to NULL, sharing the THEN values instead of copying them
   * through the per-row branch choice (TPC-DS q02's `sum(case when d_day_name = 'Sunday' then
-  * sales_price else null end)`)
+  * sales_price else null end)`). With `selectConsts` (`const_case_select`), a CASE of one WHEN
+  * whose THEN and ELSE are non-NULL constants picks one of the two values per row from the
+  * condition, without the branch choice's per-row source index (TPC-DS q97's `sum(case when c then
+  * 1 else 0 end)`)
   */
 case class CaseWhen(
     whens: Seq[(VExpr, VExpr)],
     elseExpr: Option[VExpr],
     ptype: PType,
-    maskNulls: Boolean = false
+    maskNulls: Boolean = false,
+    selectConsts: Boolean = false
 ) extends VExpr:
   override def children: Seq[VExpr] = whens.flatMap(w => Seq(w._1, w._2)) ++ elseExpr.toSeq
   def sig: String                   =
@@ -355,8 +359,37 @@ case class CaseWhen(
           false
       }
 
+  /**
+    * The THEN and ELSE values, cast to ptype, as one-row vectors of a typed layout, when eval picks
+    * between them per row ([[CaseWhen.select]]); otherwise null
+    */
+  private val consts: (Vec, Vec) =
+    if !selectConsts || whens.size != 1 then
+      null
+    else
+      (whens.head._2, elseExpr) match
+        case (Const(t, tt), Some(Const(e, et))) if t != null && e != null =>
+          // A constant that doesn't cast keeps the branch choice, which casts it only when some
+          // row takes it
+          try
+            val tv = Kernels.castTo(Vec.constant(tt, t, 1), ptype)
+            val ev = Kernels.castTo(Vec.constant(et, e, 1), ptype)
+            if CaseWhen.hasLayout(tv, ptype) && CaseWhen.hasLayout(ev, ptype) && tv.nulls == null &&
+              ev.nulls == null
+            then
+              (tv, ev)
+            else
+              null
+          catch
+            case scala.util.control.NonFatal(_) =>
+              null
+        case _ =>
+          null
+
   def eval(b: Batch): Vec =
-    if masked then
+    if consts != null then
+      CaseWhen.select(b, whens.head._1, consts._1, consts._2, ptype)
+    else if masked then
       CaseWhen.masked(b, whens.head._1, whens.head._2, ptype)
     else
       evalBranches(b)
@@ -398,6 +431,91 @@ case class CaseWhen(
 end CaseWhen
 
 object CaseWhen:
+  /**
+    * CASE WHEN cond THEN a ELSE b END for constants a and b (one-row vectors of the output layout):
+    * a where cond is true, b elsewhere (false or NULL)
+    */
+  private def select(b: Batch, cond: VExpr, a: Vec, e: Vec, ptype: PType): Vec =
+    val n  = b.size
+    val c  = Kernels.asBool(cond.eval(b))
+    val cv = c.values
+    val cn = c.nulls
+    (a, e) match
+      case (x: BoolVec, y: BoolVec) =>
+        val t   = x.values(0)
+        val f   = y.values(0)
+        val out = new Array[Boolean](n)
+        var i   = 0
+        while i < n do
+          out(i) =
+            if taken(cv, cn, i) then
+              t
+            else
+              f
+          i += 1
+        BoolVec(out, null)
+      case (x: IntVec, y: IntVec) =>
+        val t   = x.values(0)
+        val f   = y.values(0)
+        val out = new Array[Int](n)
+        var i   = 0
+        while i < n do
+          out(i) =
+            if taken(cv, cn, i) then
+              t
+            else
+              f
+          i += 1
+        IntVec(ptype, out, null)
+      case (x: LongVec, y: LongVec) =>
+        val t   = x.values(0)
+        val f   = y.values(0)
+        val out = new Array[Long](n)
+        var i   = 0
+        while i < n do
+          out(i) =
+            if taken(cv, cn, i) then
+              t
+            else
+              f
+          i += 1
+        LongVec(ptype, out, null)
+      case (x: DoubleVec, y: DoubleVec) =>
+        val t   = x.values(0)
+        val f   = y.values(0)
+        val out = new Array[Double](n)
+        var i   = 0
+        while i < n do
+          out(i) =
+            if taken(cv, cn, i) then
+              t
+            else
+              f
+          i += 1
+        DoubleVec(out, null)
+      case (x: StrVec, y: StrVec) =>
+        val t   = x.values(0)
+        val f   = y.values(0)
+        val out = new Array[String](n)
+        var i   = 0
+        while i < n do
+          out(i) =
+            if taken(cv, cn, i) then
+              t
+            else
+              f
+          i += 1
+        StrVec(out, null)
+      case _ =>
+        throw IllegalStateException(s"No select kernel for ${a} and ${e}")
+    end match
+
+  end select
+
+  /** Whether row i of a condition is true (not false or NULL) */
+  private inline def taken(cv: Array[Boolean], cn: Array[Boolean], i: Int): Boolean =
+    cv(i) && (cn == null || !cn(i))
+
   /**
     * CASE WHEN cond THEN value END: the value vector with NULL where cond isn't true. The value is
     * evaluated only when some row takes it, as with the branch choice. Layouts without typed arrays
@@ -568,7 +686,7 @@ object CaseWhen:
   end fill
 
   /** True when the vector stores values in the typed array of the output type */
-  private def hasLayout(v: Vec, ptype: PType): Boolean =
+  private[expr] def hasLayout(v: Vec, ptype: PType): Boolean =
     v match
       case _: BoolVec =>
         ptype == PType.Bool

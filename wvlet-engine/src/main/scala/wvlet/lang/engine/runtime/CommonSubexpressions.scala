@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.runtime
 
+import wvlet.lang.engine.exec.AggCall
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.ProjectOp
 import wvlet.lang.engine.expr.*
@@ -255,17 +256,19 @@ end FoldConstants
 
 /**
   * Mark every CASE WHEN of an expression to mask the THEN vector of a single WHEN without ELSE
-  * (`masked_case_when`, [[CaseWhen.maskNulls]]). Parts of unknown expression types stay as they are
+  * (`masked_case_when`, [[CaseWhen.maskNulls]]) and to pick between constant THEN and ELSE values
+  * per row (`const_case_select`, [[CaseWhen.selectConsts]]). Parts of unknown expression types stay
+  * as they are
   */
 object MaskCaseWhen:
-  def apply(e: VExpr): VExpr =
-    if !contains(e) then
+  def apply(e: VExpr, mask: Boolean = true, consts: Boolean = false): VExpr =
+    if !(mask || consts) || !contains(e) then
       e
     else
       try
-        VExprs.mapChildren(e, apply) match
+        VExprs.mapChildren(e, apply(_, mask, consts)) match
           case c: CaseWhen =>
-            c.copy(maskNulls = true)
+            c.copy(maskNulls = c.maskNulls || mask, selectConsts = c.selectConsts || consts)
           case other =>
             other
       catch
@@ -280,3 +283,37 @@ object MaskCaseWhen:
         e.children.exists(contains)
 
 end MaskCaseWhen
+
+/**
+  * `case_agg_filters`: an aggregate of a CASE of one WHEN without ELSE (or ELSE NULL), as in TPC-DS
+  * q02's `sum(case when d_day_name = 'Sunday' then sales_price else null end)`, aggregates the THEN
+  * value with the condition as its FILTER, so the rows the condition drops are never folded. The
+  * aggregates here skip NULL inputs, so the rows the CASE would set to NULL are the rows the FILTER
+  * drops
+  */
+object CaseAggFilters:
+  private val names: Set[String] = Set("sum", "count", "min", "max", "avg", "mean")
+
+  def apply(c: AggCall): AggCall =
+    if !names.contains(c.name) || c.distinct || c.order.nonEmpty || c.args.size != 1 then
+      c
+    else
+      c.args.head match
+        case CaseWhen(Seq((cond, value)), elseExpr, ptype, _, _) if elseExpr.forall(isNull) =>
+          val arg =
+            if value.ptype == ptype then
+              value
+            else
+              CastExpr(value, ptype)
+          c.copy(args = Seq(arg), filter = Some(c.filter.map(AndExpr(_, cond)).getOrElse(cond)))
+        case _ =>
+          c
+
+  private def isNull(e: VExpr): Boolean =
+    e match
+      case Const(null, _) =>
+        true
+      case _ =>
+        false
+
+end CaseAggFilters

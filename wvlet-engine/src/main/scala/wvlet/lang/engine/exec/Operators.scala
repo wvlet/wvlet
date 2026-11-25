@@ -753,12 +753,19 @@ class HashAggOp(
 
   /** Folds the rows of b, in groups `groups`, into `accs` sized for `numGroups` groups */
   private def update(accs: IndexedSeq[Accumulator], groups: Array[Int], numGroups: Int, b: Batch) =
-    // With fusion, arguments are evaluated up front and the fusable accumulators fold first
+    // With fusion, the arguments of aggregates without FILTER (the ones fusion may fold) are
+    // evaluated up front and the fusable accumulators fold first
     var args: Array[Array[Vec]] = null
     var folded: Array[Boolean]  = null
     if fuseAccumulators && accs.size > 1 then
       accs.foreach(_.ensureGroups(numGroups))
-      args = aggs.map(_.args.map(_.eval(b)).toArray).toArray
+      args =
+        Array.tabulate(aggs.size)(a =>
+          if unfiltered(a) then
+            aggs(a).args.map(_.eval(b)).toArray
+          else
+            null
+        )
       folded = FusedAccumulators.update(accs, unfiltered, args, groups, b.size, numGroups)
     var a = 0
     while a < accs.size do
@@ -788,7 +795,8 @@ class HashAggOp(
       evaluated: Array[Vec]
   ): Unit =
     acc.ensureGroups(numGroups)
-    val argVecs =
+    // Without a FILTER row, the arguments aren't evaluated
+    def argVecs =
       if evaluated != null then
         evaluated
       else
@@ -802,22 +810,36 @@ class HashAggOp(
           if mask(i) then
             cnt += 1
           i += 1
-        if idx.length < cnt then
-          idx = new Array[Int](cnt)
-          gs = new Array[Int](cnt)
-        var j = 0
-        i = 0
-        while i < b.size do
-          if mask(i) then
-            idx(j) = i
-            gs(j) = groups(i)
-            j += 1
-          i += 1
-        acc.update(gs, cnt, argVecs.map(_.gather(idx, cnt)))
+        if cnt == b.size then
+          acc.update(groups, b.size, argVecs)
+        else if cnt > 0 then
+          gatherUpdate(acc, groups, b.size, mask, cnt, argVecs)
       case None =>
         acc.update(groups, b.size, argVecs)
 
   end updateOne
+
+  /** Folds the `cnt` rows of a batch of n rows where mask holds into acc */
+  private def gatherUpdate(
+      acc: Accumulator,
+      groups: Array[Int],
+      n: Int,
+      mask: Array[Boolean],
+      cnt: Int,
+      argVecs: Array[Vec]
+  ): Unit =
+    if idx.length < cnt then
+      idx = new Array[Int](cnt)
+      gs = new Array[Int](cnt)
+    var j = 0
+    var i = 0
+    while i < n do
+      if mask(i) then
+        idx(j) = i
+        gs(j) = groups(i)
+        j += 1
+      i += 1
+    acc.update(gs, cnt, argVecs.map(_.gather(idx, cnt)))
 
   /** Row i of b as its own group: the keys of b and each aggregate over one row */
   private def passThrough(b: Batch): Batch =
