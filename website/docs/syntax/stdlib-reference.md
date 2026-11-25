@@ -228,7 +228,7 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `like(pattern: string)` | boolean | all |  |
 | `substring(start: int)` | string | all | Substring from the 1-origin start position (to the end, or of the given length) |
 | `substring(start: int, length: int)` | string | all |  |
-| `regexp_extract(pattern: string)` | string | all | Extract the first substring matching the regular expression |
+| `regexp_extract(pattern: string)` | string | all | Extract the first substring matching the regular expression (the whole match, or the given capture group). NULL when the pattern does not match; an empty match is '' |
 | `regexp_extract(pattern: string, group_index: int)` | string | all |  |
 | `starts_with(prefix: string)` | boolean | all |  |
 | `translate(source: string, target: string)` | string | all | Replace each character of `source` with the character at the same position in `target`; characters of `source` with no counterpart in `target` are removed |

@@ -34,6 +34,7 @@ Apply these rules in order:
 - The meaning is written in the function's doc comment and checked by the engine conformance probes. The recurring decisions:
   - Indexes and positions are 1-based.
   - Regex functions search for a match, except functions named `*_full_match`. `regexp_extract_all` defaults to the whole match (group 0).
+  - `regexp_extract` returns NULL when the pattern does not match, as Trino, Snowflake, and BigQuery do; a match keeps its text, even an empty one. DuckDB and Hive return `''`, so their variants return the extract only on a match (PR for the 2026-11-23 dbt gap report).
   - `day_of_week` is ISO: 1 = Monday through 7. It already is today.
   - Day and month names are full English names.
   - `diff_*` counts unit boundaries crossed, as the DuckDB, Snowflake, and BigQuery `DATE_DIFF` variants do today. Hive's `months_between`-based variants truncate to complete months and are a follow-up.

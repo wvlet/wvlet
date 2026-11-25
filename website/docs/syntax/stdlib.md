@@ -61,7 +61,7 @@ Available on all values:
 | `s.starts_with(prefix)` / `s.ends_with(suffix)` | Prefix/suffix test |
 | `s.like(pattern)` | SQL LIKE match |
 | `s.regexp_like(pattern)` | True if the regex matches |
-| `s.regexp_extract(pattern)` | First substring matching the regex |
+| `s.regexp_extract(pattern)` | First substring matching the regex, or NULL when nothing matches |
 | `s.regexp_extract(pattern, group)` | Regex capture group |
 | `s.regexp_replace(pattern, replacement)` | Replace every regex match |
 | `s.split(separator)` | Split into an `array[string]` |

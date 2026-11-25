@@ -43,7 +43,8 @@ trait string = {
   def substring(start:int): string = sql"substring(${this},${start})"
   def substring(start:int,length:int): string = sql"substring(${this},${start},${length})"
 
-  -- Extract the first substring matching the regular expression
+  -- Extract the first substring matching the regular expression (the whole match, or the given
+  -- capture group). NULL when the pattern does not match; an empty match is ''
   def regexp_extract(pattern:string): string = sql"regexp_extract(${this},${pattern})"
   def regexp_extract(pattern:string, group_index:int): string = sql"regexp_extract(${this},${pattern},${group_index})"
 
@@ -93,6 +94,9 @@ trait string in duckdb = {
   def jaro_winkler_similarity(other:string): double = sql"jaro_winkler_similarity(${this},${other})"
   -- Edit distance between two strings
   def levenshtein(other:string): int = sql"levenshtein(${this},${other})"
+  -- DuckDB's regexp_extract returns '' when nothing matches, so return it only on a match
+  def regexp_extract(pattern:string): string = sql"case when regexp_matches(${this},${pattern}) then regexp_extract(${this},${pattern}) end"
+  def regexp_extract(pattern:string, group_index:int): string = sql"case when regexp_matches(${this},${pattern}) then regexp_extract(${this},${pattern},${group_index}) end"
   -- Extract a JSON value from a string holding JSON text
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
   def json_extract_string(path:string): string = sql"json_extract_string(${this},${path})"
@@ -149,6 +153,10 @@ trait string in hive = {
   def regexp_like(pattern:string): boolean = sql"${this} rlike ${pattern}"
   -- Replace every substring matching the regular expression with the replacement
   def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement})"
+  -- Hive's regexp_extract returns '' when nothing matches and defaults to group 1, so return it
+  -- only on a match and pass group 0 for the whole match
+  def regexp_extract(pattern:string): string = sql"case when ${this} rlike ${pattern} then regexp_extract(${this},${pattern},0) end"
+  def regexp_extract(pattern:string, group_index:int): string = sql"case when ${this} rlike ${pattern} then regexp_extract(${this},${pattern},${group_index}) end"
   -- 1-origin position of the first occurrence of the substring (0 if not found)
   def strpos(substr:string): int = sql"instr(${this},${substr})"
   def contains(substr:string): boolean = sql"instr(${this},${substr}) > 0"

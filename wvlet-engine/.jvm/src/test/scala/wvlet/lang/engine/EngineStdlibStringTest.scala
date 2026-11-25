@@ -50,6 +50,15 @@ class EngineStdlibStringTest extends UniTest:
     )
   }
 
+  test("regexp_extract returns NULL on no match as DuckDB") {
+    val q =
+      "from [['a1b22'], ['abc'], [''], [null]] as t(s)\n" +
+        "select s, s.regexp_extract('\\d+') as d, s.regexp_extract('([a-z])(\\d+)', 2) as g, " +
+        "s.regexp_extract('x*') as e, s.regexp_extract('(a)|b', 1) as p, " +
+        "s.regexp_extract('\\d+') is null as none"
+    check(q)
+  }
+
   test("regexp_split keeps empty strings as DuckDB") {
     check(
       "from [['a,b,,c,'], [''], ['abc'], [',a'], [null]] as t(s)\n" +
