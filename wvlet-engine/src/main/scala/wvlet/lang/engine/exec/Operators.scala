@@ -156,7 +156,11 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
   // Prepared on the first batch, after the settings are final
   private lazy val selection: Selection.Node =
     if shortCircuit then
-      Selection.compile(cond, reorderConjuncts)
+      val node = Selection.compile(cond, reorderConjuncts)
+      if Selection.worthSelecting(node) then
+        node
+      else
+        null
     else
       null
 
@@ -198,7 +202,7 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
           b.select(keep)
       val r =
         selection match
-          case null | _: Selection.Leaf =>
+          case null =>
             val mask = Kernels.trueMask(cond.eval(b))
             if lateGather then
               in.takeWhere(mask)

@@ -156,4 +156,15 @@ class SelectionTest extends UniTest:
     Selection.isSafe(Arith(ArithOp.Add, a, b, PType.Int32)) shouldBe false
   }
 
+  test("should select only when some part is costly") {
+    val cmp  = Compare(CmpOp.Lt, a, int(3))
+    val like = LikeExpr(s, "x%", negate = false)
+    Selection.worthSelecting(Selection.compile(AndExpr(cmp, cmp), reorder = true)) shouldBe false
+    Selection.worthSelecting(Selection.compile(AndExpr(cmp, like), reorder = true)) shouldBe true
+    Selection.worthSelecting(
+      Selection.compile(OrExpr(cmp, AndExpr(cmp, like)), reorder = true)
+    ) shouldBe true
+    Selection.worthSelecting(Selection.compile(like, reorder = true)) shouldBe false
+  }
+
 end SelectionTest

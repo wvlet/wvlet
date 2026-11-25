@@ -252,17 +252,42 @@ object Selection:
       sel
 
   /**
-    * The selected share of rows above which a leaf runs on the whole batch: gathering the selected
-    * rows of its columns costs about as much as a cheap comparison, so only costly leaves gather a
-    * large share
+    * The highest cost of a cheap leaf (a comparison of primitive values or strings): a vectorized
+    * pass over the whole batch costs less than gathering the selected rows for it
+    */
+  val CheapCost = 4
+
+  /**
+    * Whether selecting is worth it for `n`: some leaf is costly. With cheap leaves only, building
+    * position arrays costs more than the full-batch masks it saves (TPC-H q6, q10)
+    */
+  def worthSelecting(n: Node): Boolean =
+    n match
+      case _: Leaf =>
+        false
+      case Conj(ps) =>
+        ps.exists(p => worthSelecting(p) || leafCost(p) > CheapCost)
+      case Disj(ps) =>
+        ps.exists(p => worthSelecting(p) || leafCost(p) > CheapCost)
+
+  private def leafCost(n: Node): Int =
+    n match
+      case Leaf(_, c) =>
+        c
+      case _ =>
+        0
+
+  /**
+    * The selected share of rows above which a leaf runs on the whole batch: cheap leaves always do,
+    * costly ones gather the selected rows of their columns when few enough remain
     */
   private def denseShare(cost: Int): Double =
-    if cost <= 2 then
-      0.3
-    else if cost <= 6 then
-      0.6
+    if cost <= CheapCost then
+      0.0
+    else if cost <= 8 then
+      0.5
     else
-      0.9
+      0.8
 
   private def leaf(e: VExpr, c: Int, b: Batch, sel: Array[Int]): Array[Int] =
     if sel == null then
