@@ -221,6 +221,22 @@ class EnginePushDownFiltersTest extends UniTest:
     sameRows(query)
   }
 
+  test("order the inputs of a converted left join with the inner joins before it") {
+    // The binder's inner join tree of orders and customer is the LEFT join's left input; the
+    // converted join merges it, so nation can join customer first
+    val query =
+      """from orders
+        |join customer on o_custkey = c_custkey
+        |left join nation on c_nationkey = n_nationkey
+        |where n_name = 'FRANCE'
+        |select o_orderkey""".stripMargin
+    val (p, _) = pushed(bound(query))
+    find(p) { case InnerJoins(inputs, _) =>
+      inputs.size
+    } shouldBe Some(3)
+    sameRows(query)
+  }
+
   test("turn nested left joins into inner joins when an ON condition rejects the inner one") {
     // n_name = 'FRANCE' rejects the padded rows of the join with nation; its ON condition
     // c_nationkey = n_nationkey then rejects those of the join with customer

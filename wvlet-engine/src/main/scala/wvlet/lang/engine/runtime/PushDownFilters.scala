@@ -162,7 +162,8 @@ object PushDownFilters extends Pass:
           // A conjunct drops every NULL-padded row: the LEFT join is an inner join tree of its
           // inputs, on its ON condition and the conjuncts
           ctx.fired(Optimization.OuterToInner.name)
-          push(InnerJoins(IndexedSeq(j.left, j.right), onConditions(j)), conds)
+          val (inputs, joinConds) = innerTree(j)
+          push(InnerJoins(inputs, joinConds), conds)
         case j: Join =>
           val keyed = joinKeys(j)
           val ids   = (q: RuntimePlan) => q.output.map(_.id).toSet
@@ -235,7 +236,7 @@ object PushDownFilters extends Pass:
               all ++ inferred(all)
             else
               all
-          if withInferred.size > joinConds.size then
+          if added.nonEmpty || withInferred.size > all.size then
             ctx.fired(name)
           val newInputs = inputs.map(push(_, Nil))
           if !flattened && withInferred.size == joinConds.size &&
@@ -321,10 +322,9 @@ object PushDownFilters extends Pass:
       if i < 0 then
         (inputs, conds)
       else
-        val j = inputs(i).asInstanceOf[Join]
         ctx.fired(Optimization.OuterToInner.name)
-        // A LEFT join outputs its left columns, then its right ones, as the two inputs do
-        withInnerInputs(inputs.patch(i, Seq(j.left, j.right), 1), conds ++ onConditions(j))
+        val (tree, treeConds) = innerTree(inputs(i).asInstanceOf[Join])
+        withInnerInputs(inputs.patch(i, tree, 1), conds ++ treeConds)
 
     /** Whether conjuncts carry across join keys (`join_key_filters`) */
     private val carryKeys = enabled && ctx.options.isEnabled(Optimization.JoinKeyFilters)
@@ -459,19 +459,33 @@ object PushDownFilters extends Pass:
     }
 
   /**
-    * The ON condition of a join as conditions of an inner join tree: its key equalities, then its
-    * residual's conjuncts
+    * A join as the inputs and conditions of an inner join tree: its two inputs, each replaced by
+    * its own inputs and conditions when it is an inner join tree (a join before the LEFT join), so
+    * that [[ReorderJoins]] orders them all together, and its ON condition: its key equalities, then
+    * its residual's conjuncts. A join outputs its left columns, then its right ones, as the inputs
+    * do in order
     */
-  private def onConditions(j: Join): IndexedSeq[JoinCondition] =
-    val keys = j.leftKeys.lazyZip(j.rightKeys).map((l, r) => Compare(CmpOp.Eq, l.expr, r.expr))
-    (keys ++ j.residual.toSeq.flatMap(r => conjuncts(r.expr))).map(e => JoinCondition(BExpr(e)))
+  private def innerTree(j: Join): (IndexedSeq[RuntimePlan], IndexedSeq[JoinCondition]) =
+    def parts(p: RuntimePlan): (IndexedSeq[RuntimePlan], IndexedSeq[JoinCondition]) =
+      p match
+        case InnerJoins(inputs, conds) =>
+          (inputs, conds)
+        case other =>
+          (IndexedSeq(other), IndexedSeq.empty)
+    val (l, lc) = parts(j.left)
+    val (r, rc) = parts(j.right)
+    val keys    = j.leftKeys.lazyZip(j.rightKeys).map((a, b) => Compare(CmpOp.Eq, a.expr, b.expr))
+    val on      = (keys ++ j.residual.toSeq.flatMap(e => conjuncts(e.expr))).map(e =>
+      JoinCondition(BExpr(e))
+    )
+    (l ++ r, lc ++ rc ++ on)
 
   /**
     * Whether a condition is never TRUE on a row whose columns of `cols` are all NULL (the Lean
     * model's `rejectsNull`, formal/WvletFormal/Pushdown/Rule.lean): a [[strict]] condition, `c is
     * not null` for such a column `c`, an `and` with such a side, or an `or` of two such conditions
     */
-  private[runtime] def rejectsNull(e: VExpr, cols: Set[ColumnId]): Boolean =
+  private def rejectsNull(e: VExpr, cols: Set[ColumnId]): Boolean =
     strict(e, cols) || (
       e match
         case IsNullExpr(c, true) =>
