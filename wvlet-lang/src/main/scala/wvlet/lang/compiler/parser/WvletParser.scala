@@ -1591,19 +1591,19 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   def importStatement(): Import = node {
     val d: Import = importRef()
-    scanner.lookAhead().token match
-      case WvletToken.FROM =>
-        // Remote module sources were removed (adr/2026-11-25-no-remote-imports.md). Reject the
-        // clause instead of parsing `from "..."` as the start of a query that reads a file
-        val t = scanner.lookAhead()
-        throw StatusCode
-          .SYNTAX_ERROR
-          .newException(
-            "import ... from \"...\" is not supported. Modules resolve from the local project folder",
-            t.sourceLocation
-          )
-      case _ =>
-        d
+    val t         = scanner.lookAhead()
+    // Remote module sources were removed (adr/2026-11-25-no-remote-imports.md). Reject a
+    // `from` on the import's own line; a `from` on a later line starts the next query
+    if t.token == WvletToken.FROM &&
+      src.offsetToLine(t.offset) == src.offsetToLine(lastToken.offset)
+    then
+      throw StatusCode
+        .SYNTAX_ERROR
+        .newException(
+          "import ... from \"...\" is not supported. Modules resolve from the local project folder",
+          t.sourceLocation
+        )
+    d
   }
 
   def importRef(): Import = node {
