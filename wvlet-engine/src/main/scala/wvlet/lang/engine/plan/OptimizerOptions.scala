@@ -564,6 +564,14 @@ enum Optimization(val name: String):
     */
   case OneRowPartials extends Optimization("one_row_partials")
 
+  /**
+    * The partial aggregates of two-phase aggregations route their rows to the final aggregation's
+    * key partitions inside each scan part ([[wvlet.lang.engine.exec.PartitionRouteOp]]), so the
+    * partitions are ready when the last part finishes instead of being routed after it (TPC-DS q97,
+    * q78, q75)
+    */
+  case RoutePartialsInParts extends Optimization("route_partials_in_parts")
+
 end Optimization
 
 object Optimization:

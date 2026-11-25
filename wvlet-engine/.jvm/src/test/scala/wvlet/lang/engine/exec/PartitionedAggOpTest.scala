@@ -64,6 +64,39 @@ class PartitionedAggOpTest extends UniTest:
         .sorted
     finally op.close()
 
+  test("should aggregate rows routed to partitions by PartitionRouteOp") {
+    val expected = rows(HashAggOp(BatchesOp(schema, batches), keys, aggs, outSchema))
+    val parts    = GroupTable.partitionCount(runner.parallelism)
+    def routed   = PartitionRouteOp(BatchesOp(schema, batches), keys.size, parts, true)
+    // Every routed batch holds the rows of one partition, with their key hashes
+    val hasher = GroupTable(keys.map(_.ptype), 0, true)
+    val pieces = routed.drain()
+    pieces.map(_.size).sum shouldBe batches.map(_.size).sum
+    pieces.foreach { b =>
+      val p = PartitionRouteOp.partitionOf(b, parts)
+      val h = hasher.keyHashes(Array(b.column(0), b.column(1)), b.size)
+      b.column(b.numColumns - 1).asInstanceOf[IntVec].values.toSeq shouldBe h.toSeq
+      h.forall(x => (x >>> (32 - Integer.numberOfTrailingZeros(parts))) == p) shouldBe true
+    }
+    for
+      minRows <- Seq(0, Int.MaxValue)
+      pack    <- Seq(false, true)
+    do
+      val actual = rows(
+        PartitionedAggOp(
+          routed,
+          keys,
+          aggs,
+          outSchema,
+          runner,
+          minParallelRows = minRows,
+          packKeys = pack,
+          preRouted = true
+        )
+      )
+      actual shouldBe expected
+  }
+
   test("should return the same groups as a sequential aggregation") {
     val expected = rows(HashAggOp(BatchesOp(schema, batches), keys, aggs, outSchema))
     val actual   = rows(

@@ -48,7 +48,8 @@ object Parallelizer:
       streamPackAggKeys: Boolean = true,
       longDecimalKeys: Boolean = true,
       fusedAccumulators: Boolean = true,
-      oneRowPartials: Boolean = true
+      oneRowPartials: Boolean = true,
+      routePartials: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -65,7 +66,8 @@ object Parallelizer:
         streamPackAggKeys,
         longDecimalKeys,
         fusedAccumulators,
-        oneRowPartials
+        oneRowPartials,
+        routePartials
       )
       rewrite(op, runner)
 
@@ -86,7 +88,8 @@ object Parallelizer:
       streamPackAggKeys: Boolean,
       longDecimalKeys: Boolean,
       fusedAccumulators: Boolean,
-      oneRowPartials: Boolean
+      oneRowPartials: Boolean,
+      routePartials: Boolean
   )
 
   /**
@@ -392,7 +395,8 @@ object Parallelizer:
             o.streamPackAggKeys,
             o.longDecimalKeys,
             o.fusedAccumulators,
-            o.oneRowPartials
+            o.oneRowPartials,
+            o.routePartials
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -717,9 +721,18 @@ private[plan] object TwoPhaseAgg:
       streamPackAggKeys: Boolean = false,
       longDecimalKeys: Boolean = false,
       fusedAccumulators: Boolean = true,
-      oneRowPartials: Boolean = true
+      oneRowPartials: Boolean = true,
+      routePartials: Boolean = false
   ): Operator =
     val nk = a.keys.size
+    // With `routePartials`, each part routes its partial results to the final key partitions
+    val route                         = routePartials && nk > 0
+    val parts                         = GroupTable.partitionCount(runner.parallelism)
+    def routed(x: Operator): Operator =
+      if route then
+        PartitionRouteOp(x, nk, parts, longDecimalKeys)
+      else
+        x
     // Partial aggregates, and for each original aggregate the partial columns it reads
     val (partialAggs, rel) = decompose(a.aggs, sharedPartials)
     val srcs               = rel.map(_.map(_ + nk))
@@ -738,28 +751,36 @@ private[plan] object TwoPhaseAgg:
       segments.map(s =>
         s.copy(pipeline =
           x =>
-            HashAggOp(
-              s.pipeline(x),
-              a.keys,
-              partialAggs,
-              partialSchema,
-              sizer.hint(x),
-              sizer.report,
-              skip
-            ).withKeyOptions(streamPackAggKeys, longDecimalKeys)
-              .withFusedAccumulators(fusedAccumulators)
-              .withOneRowPartials(oneRowPartials)
+            routed(
+              HashAggOp(
+                s.pipeline(x),
+                a.keys,
+                partialAggs,
+                partialSchema,
+                sizer.hint(x),
+                sizer.report,
+                skip
+              ).withKeyOptions(streamPackAggKeys, longDecimalKeys)
+                .withFusedAccumulators(fusedAccumulators)
+                .withOneRowPartials(oneRowPartials)
+            )
         )
       ),
-      partialSchema,
+      if route then
+        Schema(partialSchema.fields :+ Field(PartitionRouteOp.HashColumn, PType.Int32))
+      else
+        partialSchema
+      ,
       runner,
       prepare,
       release,
       tail.map(t =>
         (x: Operator) =>
-          HashAggOp(t(x), a.keys, partialAggs, partialSchema)
-            .withKeyOptions(streamPackAggKeys, longDecimalKeys)
-            .withFusedAccumulators(fusedAccumulators)
+          routed(
+            HashAggOp(t(x), a.keys, partialAggs, partialSchema)
+              .withKeyOptions(streamPackAggKeys, longDecimalKeys)
+              .withFusedAccumulators(fusedAccumulators)
+          )
       )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
@@ -780,7 +801,8 @@ private[plan] object TwoPhaseAgg:
           runner,
           expectedGroups = a.expectedGroups,
           parallelPartitioning = parallelPartitioning,
-          packKeys = packAggKeys
+          packKeys = packAggKeys,
+          preRouted = route
         )
       else
         HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)

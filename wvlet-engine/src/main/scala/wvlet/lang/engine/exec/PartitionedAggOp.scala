@@ -35,6 +35,10 @@ import scala.collection.mutable
   * With `packKeys`, each partition whose key columns are integers or dates that fit in one Int64
   * groups by the packed key ([[AggKeyPacking]], from the ranges of the partition's rows) and
   * unpacks the key columns of its groups.
+  *
+  * With `preRouted` (`route_partials_in_parts`), the input comes from a [[PartitionRouteOp]] over
+  * the same partition count: every batch holds the rows of one partition, so its batches are
+  * collected by partition without hashing or copying their rows again.
   */
 class PartitionedAggOp(
     val child: Operator,
@@ -45,7 +49,8 @@ class PartitionedAggOp(
     minParallelRows: Int = PartitionedAggOp.MinParallelRows,
     val expectedGroups: Int = 0,
     parallelPartitioning: Boolean = true,
-    val packKeys: Boolean = false
+    val packKeys: Boolean = false,
+    val preRouted: Boolean = false
 ) extends Operator:
   require(keys.nonEmpty, "PartitionedAggOp needs grouping keys")
 
@@ -141,7 +146,14 @@ class PartitionedAggOp(
       }
       out
     val routed: Seq[Array[mutable.ArrayBuffer[Batch]]] =
-      if parallelPartitioning && input.size > 1 then
+      if preRouted then
+        val out = Array.fill(parts)(mutable.ArrayBuffer.empty[Batch])
+        input.foreach { b =>
+          if b.size > 0 then
+            out(PartitionRouteOp.partitionOf(b, parts)) += b.compact()
+        }
+        Seq(out)
+      else if parallelPartitioning && input.size > 1 then
         // Contiguous runs of input batches, about two per thread, routed as tasks
         val runs = math.min(input.size, runner.parallelism * 2)
         val step = (input.size + runs - 1) / runs
