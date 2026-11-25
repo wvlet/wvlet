@@ -1,0 +1,10 @@
+-- Comments
+-- `--` starts a line comment. `---` starts a Markdown doc comment block.
+
+---
+Orders placed in 1995, the year the TPC-H "current date" falls in
+---
+from orders
+-- Dates compare with string literals cast to date
+where o_orderdate between '1995-01-01'::date and '1995-12-31'::date
+count

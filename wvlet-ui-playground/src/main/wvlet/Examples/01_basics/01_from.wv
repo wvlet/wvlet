@@ -1,0 +1,3 @@
+-- Read a table
+-- A query starts with `from`. Without `select`, every column is returned.
+from nation

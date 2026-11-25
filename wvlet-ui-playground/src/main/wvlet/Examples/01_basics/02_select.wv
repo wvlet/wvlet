@@ -1,0 +1,4 @@
+-- Choose columns with select
+-- `select` comes last (or not at all). Use `as` or `name = expr` to name a column.
+from nation
+select n_nationkey, n_name, region_key = n_regionkey

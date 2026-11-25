@@ -1,0 +1,8 @@
+-- Running totals
+from orders
+where o_custkey = 1000
+select
+  o_orderdate,
+  o_totalprice,
+  sum(o_totalprice) over (partition by o_custkey order by o_orderdate) as running_total
+order by o_orderdate

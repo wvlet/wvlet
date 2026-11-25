@@ -1,0 +1,3 @@
+-- Rename columns
+from nation
+rename n_name as nation, n_regionkey as region

@@ -1,0 +1,352 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package wvlet.lang.ui.playground
+
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.WvletLangException
+import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.ValSymbolInfo
+import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.codegen.WvletGenerator
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.query.QuerySelector
+import wvlet.lang.compiler.transform.ExpressionEvaluator
+import wvlet.lang.engine.EngineResult
+import wvlet.lang.engine.WvletEngine
+import wvlet.lang.engine.catalog.EngineCatalog
+import wvlet.lang.engine.catalog.MemTable
+import wvlet.lang.engine.catalog.TpchGen
+import wvlet.lang.engine.vector.ValueOps
+import wvlet.lang.model.plan.*
+import wvlet.uni.log.LogLevel
+import wvlet.uni.log.LogSupport
+
+import scala.collection.mutable
+import scala.util.control.NonFatal
+
+/** The language typed in the editor */
+enum InputMode(val label: String, val editorLanguage: String):
+  case Wvlet extends InputMode("Wvlet", "wvlet")
+  case SQL   extends InputMode("SQL", "sql")
+
+/** SQL dialects the playground can show the generated SQL in */
+enum SqlDialect(val label: String, val dbType: DBType):
+  case DuckDB    extends SqlDialect("DuckDB", DBType.DuckDB)
+  case Trino     extends SqlDialect("Trino", DBType.Trino)
+  case Snowflake extends SqlDialect("Snowflake", DBType.Snowflake)
+  case Hive      extends SqlDialect("Hive", DBType.Hive)
+  case BigQuery  extends SqlDialect("BigQuery", DBType.BigQuery)
+
+/** A column of a result: its name and engine type name */
+case class ResultColumn(name: String, typeName: String):
+  def isNumeric: Boolean =
+    val t = typeName.toLowerCase
+    t == "int" || t == "long" || t == "double" || t.startsWith("decimal")
+
+/** Query result rows rendered as display strings (None for NULL) */
+case class ResultTable(
+    columns: Seq[ResultColumn],
+    rows: IndexedSeq[IndexedSeq[Option[String]]],
+    totalRows: Int
+):
+  def isTruncated: Boolean = totalRows > rows.size
+
+/** What the playground shows for one run: the translations, the plans, and the rows or error */
+case class RunOutput(
+    sql: String = "",
+    wvlet: String = "",
+    logicalPlan: String = "",
+    physicalPlan: String = "",
+    result: Option[ResultTable] = None,
+    error: Option[String] = None,
+    elapsedMillis: Double = 0,
+    statement: String = ""
+):
+  def hasError: Boolean = error.nonEmpty
+
+/**
+  * Compiles and runs queries of the playground on the in-process columnar engine, over TPC-H tables
+  * generated in memory ([[TpchGen]]). It needs no server and no DuckDB, so it runs in the browser.
+  *
+  * @param scaleFactor
+  *   the TPC-H scale factor of the generated tables
+  */
+class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFactor)
+    extends LogSupport:
+  val tables: Seq[MemTable] = TpchGen.tables(scaleFactor)
+  private val engine        = WvletEngine()
+  tables.foreach(engine.catalog.register)
+
+  // One compiler per dialect: the catalog's dialect decides the SQL a compiler generates. The
+  // `wvlet` one compiles the queries the engine runs
+  private val compilers = mutable.Map.empty[DBType, Compiler]
+
+  private def compilerFor(dbType: DBType): Compiler = compilers.getOrElseUpdate(
+    dbType, {
+      val c = Compiler(
+        CompilerOptions(
+          sourceFolders = Nil,
+          workEnv = WorkEnv(".", logLevel = LogLevel.WARN),
+          dbType = dbType
+        )
+      )
+      c.setDefaultCatalog(EngineCatalog.toCompileCatalog(tables, dbType))
+      c.setDefaultSchema(EngineCatalog.SchemaName)
+      c
+    }
+  )
+
+  /** Columns of the generated tables, for the schema browser */
+  def tableSchemas: Seq[(String, Seq[ResultColumn])] = tables.map { t =>
+    t.name -> t.schema.fields.map(f => ResultColumn(f.name, f.ptype.name))
+  }
+
+  /** Row counts of the generated tables */
+  def tableRows(name: String): Long = tables
+    .find(_.name == name)
+    .flatMap(_.estimatedRows)
+    .getOrElse(0L)
+
+  /**
+    * Compile `text` and run the statement at `position` (the last one when empty) on the engine.
+    *
+    * @param selection
+    *   which part of the statement at `position` to run: the statement, the innermost subquery, or
+    *   its schema (describe)
+    */
+  def run(
+      text: String,
+      mode: InputMode = InputMode.Wvlet,
+      dialect: SqlDialect = SqlDialect.DuckDB,
+      position: LinePosition = LinePosition.NoPosition,
+      selection: QuerySelection = QuerySelection.Single,
+      rowLimit: Int = PlaygroundEngine.defaultRowLimit
+  ): RunOutput =
+    val start   = System.nanoTime()
+    def elapsed = (System.nanoTime() - start) / 1e6
+    var out     = RunOutput()
+    val unit    = newUnit(text, mode)
+    try
+      val r = compilerFor(DBType.Wvlet).compileSingleUnit(unit)
+      if r.hasFailures then
+        throw r.failureException
+      given ctx: Context = r
+        .context
+        .withCompilationUnit(unit)
+        .withDebugRun(false)
+        .newContext(Symbol.NoSymbol)
+      val selected = QuerySelector.selectQuery(unit, position, selection)
+      out = out.copy(
+        statement = statementText(unit, selected),
+        logicalPlan = LogicalPlanPrinter.print(selected),
+        wvlet =
+          if mode == InputMode.SQL then
+            toWvlet(text)
+          else
+            ""
+      )
+      out = out.copy(sql = translate(text, mode, dialect, position, selection))
+      val relations = runnable(unit, selected)
+      relations.lastOption match
+        case None =>
+          out.copy(result = Some(ResultTable(Nil, IndexedSeq.empty, 0)), elapsedMillis = elapsed)
+        case Some(rel) =>
+          val expanded = GenSQL.expand(rel, ctx)
+          out = out.copy(physicalPlan = engine.physicalPlan(expanded).explain())
+          val res = engine.execute(rel)
+          out.copy(result = Some(toTable(res, rowLimit)), elapsedMillis = elapsed)
+    catch
+      case e: WvletLangException =>
+        out.copy(error = Some(e.getMessage), elapsedMillis = elapsed)
+      // A column the engine can't bind is a mistake in the query, not a playground failure
+      case e: wvlet.lang.engine.plan.ColumnNotFound =>
+        out.copy(error = Some(s"[COLUMN_NOT_FOUND] ${e.getMessage}"), elapsedMillis = elapsed)
+      case NonFatal(e) =>
+        warn(e)
+        out.copy(
+          error = Some(s"${e.getClass.getSimpleName}: ${e.getMessage}"),
+          elapsedMillis = elapsed
+        )
+    finally
+      // Each run compiles a new unit on a long-lived compiler: release it, or the vals it defined
+      // stay in the compiler and hide the next run's (`Table not found: holding` on a re-run)
+      compilerFor(DBType.Wvlet).releaseUnit(unit)
+    end try
+
+  end run
+
+  /** Convert a SQL query to Wvlet */
+  def toWvlet(sql: String): String =
+    val unit = CompilationUnit.fromSqlString(sql)
+    // Parse only: the Wvlet text follows the SQL as written
+    val r = Compiler.parseOnly(compilerFor(DBType.Wvlet).compilerOptions).compileSingleUnit(unit)
+    if r.hasFailures then
+      throw r.failureException
+    given ctx: Context = r.context.withCompilationUnit(unit)
+    WvletGenerator(CodeFormatterConfig(sqlDBType = DBType.DuckDB)).print(unit.resolvedPlan)
+
+  // The SQL of the selected statement in `dialect`
+  private def translate(
+      text: String,
+      mode: InputMode,
+      dialect: SqlDialect,
+      position: LinePosition,
+      selection: QuerySelection
+  ): String =
+    val unit     = newUnit(text, mode)
+    val compiler = compilerFor(dialect.dbType)
+    try
+      val r = compiler.compileSingleUnit(unit)
+      if r.hasFailures then
+        throw r.failureException
+      given ctx: Context = r
+        .context
+        .withCompilationUnit(unit)
+        .withDebugRun(false)
+        .newContext(Symbol.NoSymbol)
+      val selected = QuerySelector.selectQuery(unit, position, selection)
+      // Drop the `-- wvlet version=..., src=...` header line of each statement
+      GenSQL
+        .generateSQL(unit, targetPlan = Some(selected))
+        .linesIterator
+        .filterNot(_.startsWith("-- wvlet version="))
+        .mkString("\n")
+    finally
+      compiler.releaseUnit(unit)
+
+  private def newUnit(text: String, mode: InputMode): CompilationUnit =
+    mode match
+      case InputMode.Wvlet =>
+        CompilationUnit.fromWvletString(text)
+      case InputMode.SQL =>
+        CompilationUnit.fromSqlString(text)
+
+  private def statementText(unit: CompilationUnit, plan: LogicalPlan): String =
+    plan match
+      case _: PackageDef =>
+        ""
+      case p =>
+        val text = unit.sourceFile.getContentAsString
+        val s    = p.span
+        if s.nonEmpty && s.start >= 0 && s.end <= text.length then
+          text.slice(s.start, s.end).linesIterator.nextOption().getOrElse("").trim
+        else
+          ""
+
+  // The queries to run for the selected plan, after defining the vals it reads
+  private def runnable(unit: CompilationUnit, selected: LogicalPlan)(using
+      ctx: Context
+  ): Seq[Relation] =
+    val out                          = Seq.newBuilder[Relation]
+    def loop(p: ExecutionPlan): Unit =
+      p match
+        case ExecuteTasks(tasks) =>
+          tasks.foreach(loop)
+        case ExecuteQuery(r: Relation) =>
+          out += r
+        case ExecuteSave(_, q) =>
+          loop(q)
+        case ExecuteValDef(v) =>
+          val expr = ExpressionEvaluator.eval(v.expr)
+          v.symbol.symbolInfo = ValSymbolInfo(
+            ctx.owner,
+            v.symbol,
+            v.name,
+            expr.dataType,
+            expr,
+            ctx.compilationUnit
+          )
+          ctx.enter(v.symbol)
+        case _ =>
+    // Vals defined anywhere in the file are visible to the selected statement
+    if !selected.isInstanceOf[PackageDef] then
+      ExecutionPlanner
+        .plan(unit, ctx)
+        .match
+          case ExecuteTasks(ts) =>
+            ts.foreach {
+              case v: ExecuteValDef =>
+                loop(v)
+              case _ =>
+            }
+          case v: ExecuteValDef =>
+            loop(v)
+          case _ =>
+    loop(ExecutionPlanner.plan(unit, selected))
+    out.result()
+
+  end runnable
+
+  private def toTable(res: EngineResult, rowLimit: Int): ResultTable =
+    val types = res.schema.types
+    val cols  = res.schema.fields.map(f => ResultColumn(f.name, f.ptype.name))
+    val rows  =
+      res
+        .rows
+        .take(rowLimit)
+        .map { r =>
+          r.indices
+            .map { i =>
+              Option(r(i)).map(v => PlaygroundEngine.display(ValueOps.toExternal(v, types(i))))
+            }
+        }
+        .toIndexedSeq
+    ResultTable(cols, rows, res.numRows)
+
+end PlaygroundEngine
+
+object PlaygroundEngine:
+  val defaultScaleFactor: Double = 0.01
+  val defaultRowLimit: Int       = 1000
+
+  /** Scale factors offered in the UI */
+  val scaleFactors: Seq[Double] = Seq(0.001, 0.01, 0.05, 0.1)
+
+  /** Render an engine value as text, as the CLI prints it */
+  def display(v: Any): String =
+    v match
+      case null =>
+        "null"
+      case s: String =>
+        s
+      case xs: Seq[?] =>
+        xs.map(x => quoteIfString(x)).mkString("[", ", ", "]")
+      case xs: Array[?] =>
+        display(xs.toSeq)
+      case m: Map[?, ?] =>
+        m.map((k, x) => s"${quoteIfString(k)}: ${quoteIfString(x)}").mkString("{", ", ", "}")
+      case d: Double =>
+        if d == d.toLong.toDouble && !d.isInfinite && math.abs(d) < 1e15 then
+          s"${d.toLong}.0"
+        else
+          d.toString
+      case other =>
+        other.toString
+
+  private def quoteIfString(x: Any): String =
+    x match
+      case s: String =>
+        s"'${s}'"
+      case other =>
+        display(other)
+
+end PlaygroundEngine

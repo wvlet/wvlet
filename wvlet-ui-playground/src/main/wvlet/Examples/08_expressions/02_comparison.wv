@@ -1,0 +1,9 @@
+-- Comparison operators
+-- =, !=, <, <=, >, >=, between, in, like, is null
+from part
+where p_size between 10 and 20
+where p_container in ('SM BOX', 'LG BOX')
+where p_type like 'PROMO%'
+where p_brand != 'Brand#11'
+select p_partkey, p_size, p_container, p_type, p_brand
+limit 10

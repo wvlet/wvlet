@@ -1,0 +1,3 @@
+-- Remove duplicate rows with dedup
+from [[1, 'a'], [1, 'a'], [2, 'b']] as t(id, name)
+dedup

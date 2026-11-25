@@ -1,0 +1,4 @@
+-- Unique values with select distinct
+from lineitem
+select distinct l_returnflag, l_linestatus
+order by l_returnflag, l_linestatus

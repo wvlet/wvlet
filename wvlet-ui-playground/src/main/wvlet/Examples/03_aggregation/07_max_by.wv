@@ -1,0 +1,8 @@
+-- Value at the max of another column
+-- `a.max_by(b)` returns `a` of the row with the largest `b`.
+from customer
+group by c_mktsegment
+agg
+  c_name.max_by(c_acctbal) as richest,
+  c_acctbal.max as balance
+order by c_mktsegment

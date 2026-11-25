@@ -1,0 +1,6 @@
+-- Filter rows with where
+-- Each operator takes the output of the line above, so several `where` lines act as AND.
+from customer
+where c_mktsegment = 'BUILDING'
+where c_acctbal > 9000
+select c_name, c_mktsegment, c_acctbal

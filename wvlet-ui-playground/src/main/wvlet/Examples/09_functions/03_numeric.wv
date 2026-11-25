@@ -1,0 +1,9 @@
+-- Numeric functions
+select
+  2.567.round(1) as rounded,
+  -3.2.ceil as ceil,
+  -3.2.floor as floor,
+  16.0.sqrt as sqrt,
+  2.0.power(10) as pow,
+  100.0.ln.round(3) as ln,
+  17.mod(5) as mod

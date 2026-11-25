@@ -1,0 +1,8 @@
+-- Rows only in the first input with except
+from region
+select r_regionkey
+except {
+  from nation
+  where n_name like 'A%'
+  select n_regionkey
+}

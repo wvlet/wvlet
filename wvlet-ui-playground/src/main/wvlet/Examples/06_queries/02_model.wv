@@ -1,0 +1,13 @@
+-- Reusable queries with model
+-- A model is a named query that other queries read like a table.
+model revenue_by_nation = {
+  from lineitem
+  join supplier on l_suppkey = s_suppkey
+  join nation on s_nationkey = n_nationkey
+  group by n_name
+  agg (l_extendedprice * (1 - l_discount)).sum as revenue
+}
+
+from revenue_by_nation
+order by revenue desc
+limit 5

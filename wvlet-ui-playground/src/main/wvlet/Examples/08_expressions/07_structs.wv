@@ -1,0 +1,5 @@
+-- Struct values
+select {id: 123, name: 'wvlet'} as obj
+select
+  obj.id,
+  obj.name

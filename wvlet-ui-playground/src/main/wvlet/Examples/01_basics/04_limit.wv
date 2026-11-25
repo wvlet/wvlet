@@ -1,0 +1,4 @@
+-- Keep the first rows with limit
+from orders
+order by o_totalprice desc
+limit 5

@@ -1,0 +1,9 @@
+-- Conditional aggregation
+-- Count or sum only the rows that match a condition.
+from lineitem
+group by l_shipmode
+agg
+  _.count as total,
+  sum(if l_returnflag = 'R' then 1 else 0) as returned,
+  sum(if l_returnflag = 'R' then l_extendedprice else 0) as returned_value
+order by l_shipmode

@@ -1,0 +1,8 @@
+-- Compare with a scalar subquery
+-- Parts priced above the average retail price.
+from part
+where p_retailprice > {
+  from part
+  agg p_retailprice.avg
+}
+count

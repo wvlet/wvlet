@@ -1,0 +1,7 @@
+-- Expand arrays into rows with unnest
+from [
+  ['John', [7, 10, 9]],
+  ['Mary', [4, 8, 9]]
+] as tests(student, scores)
+cross join unnest(scores) as t(score)
+select student, score

@@ -1,0 +1,10 @@
+-- Name an inline table with val
+-- `val` defines a constant or a table you can read with `from`.
+val fruit(id, name, price) = [
+  [1, 'apple', 100],
+  [2, 'banana', 50],
+  [3, 'cherry', 300]
+]
+
+from fruit
+order by price desc

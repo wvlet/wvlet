@@ -1,0 +1,8 @@
+-- Filter groups (SQL HAVING)
+-- A `where` after `agg` filters the groups.
+from orders
+group by o_custkey
+agg _.count as orders, o_totalprice.sum as total
+where orders >= 25
+order by total desc
+limit 10

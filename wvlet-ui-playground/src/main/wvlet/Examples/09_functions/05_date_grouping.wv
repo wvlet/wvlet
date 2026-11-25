@@ -1,0 +1,6 @@
+-- Group by time periods
+from orders
+group by year = o_orderdate.year, quarter = o_orderdate.quarter
+agg _.count as orders, o_totalprice.sum as revenue
+order by year, quarter
+limit 12

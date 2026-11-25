@@ -1,0 +1,8 @@
+-- Type casts
+-- `expr::type` is SQL cast(expr as type).
+select
+  '42'::int as i,
+  3.99::int as truncated,
+  '2024-11-25'::date as d,
+  12::string as s,
+  1.5::double * 2 as x

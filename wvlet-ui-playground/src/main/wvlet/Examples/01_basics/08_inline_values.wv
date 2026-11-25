@@ -1,0 +1,8 @@
+-- Inline table values
+-- Rows written as arrays work like SQL VALUES. Name the columns with `as t(...)`.
+from [
+  [1, 'apple', 100],
+  [2, 'banana', 50],
+  [3, 'cherry', 300]
+] as fruit(id, name, price)
+where price >= 100

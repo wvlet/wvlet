@@ -1,0 +1,6 @@
+-- Cross join
+-- Every combination of the two inputs.
+from region
+cross join [['small'], ['large']] as size(label)
+select r_name, label
+order by r_name, label

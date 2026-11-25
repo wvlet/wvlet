@@ -1,0 +1,31 @@
+-- TPC-H Q18: Large volume customer
+from
+    customer,
+    orders,
+    lineitem
+where
+    o_orderkey.in(
+        from lineitem
+        group by l_orderkey
+        where l_quantity.sum > 300
+        select l_orderkey
+    )
+    and c_custkey = o_custkey
+    and o_orderkey = l_orderkey
+group by
+    c_name,
+    c_custkey,
+    o_orderkey,
+    o_orderdate,
+    o_totalprice
+select
+    c_name,
+    c_custkey,
+    o_orderkey,
+    o_orderdate,
+    o_totalprice,
+    l_quantity.sum
+order by
+    o_totalprice desc,
+    o_orderdate
+limit 100

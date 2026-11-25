@@ -1,0 +1,8 @@
+-- Collect values into arrays and strings
+from nation
+join region on n_regionkey = r_regionkey
+group by r_name
+agg
+  n_name.to_array as nations,
+  n_name.string_agg(', ') as nation_list
+order by r_name

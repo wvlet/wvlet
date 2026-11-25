@@ -1,0 +1,5 @@
+-- Null handling
+from [[1, null], [2, 'b'], [3, null]] as t(id, name)
+add name.is_null as missing
+add name.or_else('(none)') as name_or_default
+add coalesce(name, '?') as coalesced

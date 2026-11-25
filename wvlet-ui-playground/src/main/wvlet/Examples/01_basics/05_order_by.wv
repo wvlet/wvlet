@@ -1,0 +1,6 @@
+-- Sort rows with order by
+-- Sort by several keys; `desc` sorts in descending order.
+from supplier
+order by s_nationkey, s_acctbal desc
+select s_name, s_nationkey, s_acctbal
+limit 10

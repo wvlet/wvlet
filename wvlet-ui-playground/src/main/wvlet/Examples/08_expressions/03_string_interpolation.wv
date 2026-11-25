@@ -1,0 +1,7 @@
+-- String interpolation and concatenation
+-- s"...${expr}..." builds strings; + concatenates when either side is a string.
+from nation
+select
+  s"${n_name} (region ${n_regionkey})" as label,
+  'nation-' + n_nationkey as id
+limit 5

@@ -1,0 +1,8 @@
+-- Rows in both inputs with intersect
+from nation
+select n_regionkey
+intersect {
+  from region
+  where r_name in ('ASIA', 'EUROPE')
+  select r_regionkey
+}
