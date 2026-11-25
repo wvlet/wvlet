@@ -242,25 +242,35 @@ Flow orchestration is experimental — see [Flow & Stage Syntax](./syntax/flow) 
 
 ### Managing Queries As A Reusable Module
 
-:::warning
-This feature will be available in 2025.
-:::
+Queries saved as `.wv` files in a local folder work as a module. Models defined in one file can be referenced from other files in the same folder, and `package` / `import` organize them into namespaces:
 
-Queries saved as `.wv` files can be managed in local folders or GitHub repositories as modules. Import and reuse queries in other queries. 
-
-Example:
 ```wvlet
--- import queries from a GitHub repository
-import github.com/my_project/my_query_library
+-- lib/persons.wv
+package example
 
--- Call a query from the imported module
-from my_query(p1, p2, ...)
+model adults = {
+  from persons
+  where age >= 18
+}
 ```
+
+```wvlet
+-- report.wv
+import example.*
+
+from adults
+```
+
+Mark models with `with { materialized: 'table' }` and run `wvlet build` to persist them in dependency order, like a dbt project. See [Model Pipelines](./syntax/model-pipelines).
+
+:::warning
+Importing modules directly from GitHub repositories (`import example.* from "github.com/..."`) is not supported yet.
+:::
 
 ### Incremental Processing
 
 :::warning
-Incremental processing feature is planned to be available in 2025.
+Incremental processing feature is planned to be available in 2027.
 :::
 
 Build reproducible data processing pipelines with incremental processing. 
