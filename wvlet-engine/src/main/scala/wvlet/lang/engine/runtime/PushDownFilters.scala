@@ -27,6 +27,7 @@ import wvlet.lang.engine.expr.NotExpr
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.RowFn
 import wvlet.lang.engine.expr.ScalarFunctions
+import wvlet.lang.engine.expr.Selection
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.VExprs
@@ -131,6 +132,15 @@ object PushDownFilters extends Pass:
               // a group shares, so they can't fail on rows the filter would have dropped
               moved(conds)
               push(child, own ++ conds)
+            else if throughFilters && conds.nonEmpty && throughOwnFilters &&
+              conds.exists(c => Selection.isSafe(c.expr))
+            then
+              // A conjunct that can't throw has the same value wherever it is evaluated, so it
+              // keeps the same rows below the filter. One that can stays above, where the filter
+              // drops the rows it would fail on (`x <> 0` before `y / x > 1`)
+              val (safe, unsafe) = conds.partition(c => Selection.isSafe(c.expr))
+              moved(safe)
+              filter(push(child, own ++ safe), unsafe)
             else
               val pushed =
                 push(child, own) match
@@ -341,6 +351,12 @@ object PushDownFilters extends Pass:
 
     /** Whether conjuncts carry across join keys (`join_key_filters`) */
     private val carryKeys = enabled && ctx.options.isEnabled(Optimization.JoinKeyFilters)
+
+    /**
+      * Whether pushed conjuncts that can't throw move below filters (`cte_filters_through_filters`)
+      */
+    private val throughOwnFilters =
+      enabled && ctx.options.isEnabled(Optimization.CTEFiltersThroughFilters)
 
     /**
       * The conjuncts among `conds` that read only key columns of one input of a hash join (the left

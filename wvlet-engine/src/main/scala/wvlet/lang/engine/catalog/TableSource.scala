@@ -329,14 +329,10 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
     * query)
     */
   override def estimatedDistinct(column: String): Option[Double] =
-    // Stat before computing, so that the entry describes the file read or an older version
-    def version = ParquetFooterCache
-      .fileVersion(path)
-      .filterNot((_, mtime) => ParquetFooterCache.isRecentWrite(mtime))
     if !isSingleFile then
       None
     else
-      version match
+      fileVersion() match
         case None =>
           // A file whose rewrites can't be told apart: not shared with other queries
           localDistinct.synchronized(localDistinct.getOrElseUpdate(column, computeDistinct(column)))
@@ -349,6 +345,28 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
               val d = computeDistinct(column)
               ParquetSource.putDistinct(path, column, v, d)
               d
+
+  // The file version (None: not trusted) and when it was read (System.nanoTime)
+  @volatile
+  private var checkedVersion: (Long, Option[(Long, Long)]) = null
+
+  /**
+    * The version (size, last-modified) of the file, read again at most every
+    * [[ParquetSource.VersionRecheckNanos]]: join ordering asks for estimates thousands of times per
+    * query (TPC-DS q64, 18 joins), and a stat each time took most of the planning time. Read before
+    * computing an estimate, so that the entry describes the file read or an older version
+    */
+  private def fileVersion(): Option[(Long, Long)] =
+    val now     = System.nanoTime()
+    val checked = checkedVersion
+    if checked != null && now - checked._1 < ParquetSource.VersionRecheckNanos then
+      checked._2
+    else
+      val v = ParquetFooterCache
+        .fileVersion(path)
+        .filterNot((_, mtime) => ParquetFooterCache.isRecentWrite(mtime))
+      checkedVersion = (now, v)
+      v
 
   // Estimates of a file without a trusted version, kept for this source only
   private val localDistinct = scala.collection.mutable.HashMap.empty[String, Option[Double]]
@@ -454,6 +472,12 @@ object ParquetSource:
 
   /** Up to how many rows a string column is read to count its distinct values */
   val DistinctScanLimit: Long = 1000000
+
+  /**
+    * How long a source reuses the file version it read for its distinct-count estimates: a source
+    * registered in a catalog, which outlives a query, sees a rewrite after at most this long
+    */
+  val VersionRecheckNanos: Long = 1000000000L
 
   /** Up to how many (file, column) distinct-count estimates are kept */
   val MaxDistinctEntries: Int = 4096

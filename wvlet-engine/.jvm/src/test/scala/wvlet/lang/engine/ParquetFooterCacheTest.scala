@@ -146,6 +146,20 @@ class ParquetFooterCacheTest extends UniTest:
     (after == before) shouldBe false
   }
 
+  test("should read the file version once per source for repeated estimates") {
+    // Join ordering asks a source for estimates thousands of times per query
+    val path = copy(nation, "distinct-memo.parquet")
+    val src  = ParquetSource("d", path)
+    src.estimatedDistinct("n_name") shouldBe Some(25.0)
+    val before = ParquetSource.cachedDistinctVersion(path, "n_name")
+    Paths.get(path).toFile.setLastModified(minuteAgo - 60000)
+    // The source still uses the version it read; a new source (the next query) reads it again
+    src.estimatedDistinct("n_name") shouldBe Some(25.0)
+    ParquetSource.cachedDistinctVersion(path, "n_name") shouldBe before
+    ParquetSource("d", path).estimatedDistinct("n_name") shouldBe Some(25.0)
+    ParquetSource.cachedDistinctVersion(path, "n_name") shouldBe versionOf(path)
+  }
+
   test("should not cache distinct-count estimates of a just-written file or a symbolic link") {
     val recent = copy(nation, "distinct-recent.parquet", mtime = None)
     ParquetSource("d", recent).estimatedDistinct("n_name") shouldBe Some(25.0)

@@ -142,6 +142,13 @@ enum Optimization(val name: String):
   case PushDownCTEFilters extends Optimization("push_down_cte_filters")
 
   /**
+    * Move the readers' filters pushed into a shared CTE body below the body's own filters when they
+    * can't throw, so they reach the joins and scans under them (TPC-DS q64: `syear in (1999, 2000)`
+    * below the `cd_marital_status <>` filter, down to `date_dim`)
+    */
+  case CTEFiltersThroughFilters extends Optimization("cte_filters_through_filters")
+
+  /**
     * Compute the shared CTEs that joins of the query read once they are planned, and order those
     * joins again with the exact row counts
     */

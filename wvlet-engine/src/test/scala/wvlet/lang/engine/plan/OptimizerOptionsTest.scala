@@ -60,6 +60,7 @@ class OptimizerOptionsTest extends UniTest:
         "prefetch_scalar_subqueries",
         "share_ctes",
         "push_down_cte_filters",
+        "cte_filters_through_filters",
         "replan_materialized_ctes",
         "replan_bound_cte_joins",
         "replan_semi_join_builds",
