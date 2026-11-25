@@ -1040,13 +1040,17 @@ final class JoinBuild(
     val rawKeys  = rightKeys.map(_.eval(build)).toArray
     val rawTypes = rightKeys.map(_.ptype)
     // Rows with NULL keys never match, unless NULLs are equal (`IS NOT DISTINCT FROM`)
-    val (valid, nv) =
-      val (v, n) = JoinBuildSteps.validRows(rawKeys, build.size, steps)
-      if nullsEqual && n < build.size then
-        nullKeys = true
-        (Array.tabulate(build.size)(identity), build.size)
+    nullKeys = nullsEqual && rawKeys.exists(k => k.nulls != null && k.nulls.contains(true))
+    // With NULL keys equal, every row is valid: no key columns to check for NULLs
+    val (valid, nv) = JoinBuildSteps.validRows(
+      if nullKeys then
+        Array.empty
       else
-        (v, n)
+        rawKeys
+      ,
+      build.size,
+      steps
+    )
     filters
       .groupBy(_.key)
       .foreach((k, fs) => RuntimeFilter.setAll(fs, rawKeys(k), valid, nv, steps))

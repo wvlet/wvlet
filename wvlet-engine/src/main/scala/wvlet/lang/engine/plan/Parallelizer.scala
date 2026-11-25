@@ -117,7 +117,7 @@ object Parallelizer:
     op match
       case s: ScanOp if s.source.canSplit =>
         Some(Pipeline(s, x => x, None, Nil, Nil))
-      case s: SetOpOp if breakers.setOpJoins && !s.all && s.schema.size > 0 =>
+      case s: SetOpOp if convertsToJoin(s) =>
         // As a semi / anti join, so that operators above it (count(*)) join its pipeline
         pipeline(setOpJoin(s, runner), runner)
       case a: HashAggOp if breakers.enabled && a.keys.nonEmpty =>
@@ -317,6 +317,10 @@ object Parallelizer:
       case _ =>
         agg
 
+  /** Whether [[setOpJoin]] turns s into a semi / anti join (`set_op_joins`) */
+  private def convertsToJoin(s: SetOpOp)(using o: AboveBreakers): Boolean =
+    o.setOpJoins && !s.all && s.schema.size > 0
+
   /**
     * INTERSECT / EXCEPT (without ALL) as a semi / anti hash join of the left input's distinct rows
     * with the right input, on every column with NULLs equal (`set_op_joins`), as DuckDB plans them.
@@ -325,7 +329,7 @@ object Parallelizer:
     */
   private def setOpJoin(op: Operator, runner: TaskRunner)(using o: AboveBreakers): Operator =
     op match
-      case s: SetOpOp if o.setOpJoins && !s.all && s.schema.size > 0 =>
+      case s: SetOpOp if convertsToJoin(s) =>
         val left  = setOpJoin(s.left, runner)
         val right = setOpJoin(s.right, runner)
         val probe =
@@ -377,7 +381,7 @@ object Parallelizer:
 
   private def rewrite(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     op match
-      case s: SetOpOp if summon[AboveBreakers].setOpJoins && !s.all && s.schema.size > 0 =>
+      case s: SetOpOp if convertsToJoin(s) =>
         rewrite(setOpJoin(s, runner), runner)
       case _ =>
         rewriteOp(op, runner)
