@@ -152,25 +152,32 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
     */
   var dictionaryFilters: Boolean = true
 
+  /**
+    * Whether per-entry parts of an AND / OR select positions over the surviving rows only
+    * (`dictionary_selection`, [[Selection.DictLeaf]])
+    */
+  var dictionarySelection: Boolean = true
+
   /** The evaluation settings of `f`, for a copy of it over another input */
   def withSettingsOf(f: FilterOp): this.type =
     lateGather = f.lateGather
     shortCircuit = f.shortCircuit
     reorderConjuncts = f.reorderConjuncts
     dictionaryFilters = f.dictionaryFilters
+    dictionarySelection = f.dictionarySelection
     this
 
   // The condition as evaluated, prepared on the first batch after the settings are final
   private lazy val evalCond: VExpr =
     if dictionaryFilters then
-      DictionaryPredicates.wrap(cond)
+      DictionaryPredicates.wrap(cond, whole = dictionarySelection && shortCircuit)
     else
       cond
 
   // Prepared on the first batch, after the settings are final
   private lazy val selection: Selection.Node =
     if shortCircuit then
-      val node = Selection.compile(evalCond, reorderConjuncts)
+      val node = Selection.compile(evalCond, reorderConjuncts, dictionarySelection)
       if Selection.worthSelecting(node) then
         node
       else

@@ -155,6 +155,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
         // evaluation keeps the same rows
         ignore("Changes how filters evaluate dictionary-coded strings, not the plan")
+      if o == Optimization.DictionarySelection then
+        // EngineDictionaryFiltersTest checks that the flag reaches the filters, and SelectionTest
+        // that per-entry selection keeps the same rows
+        ignore("Changes how filters select rows of dictionary-coded strings, not the plan")
       if o == Optimization.ParquetFooterCache then
         // ParquetFooterCacheTest checks that the flag reuses parsed footers
         ignore("Changes how often Parquet footers are parsed, not the plan")

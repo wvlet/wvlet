@@ -167,4 +167,109 @@ class SelectionTest extends UniTest:
     Selection.worthSelecting(Selection.compile(like, reorder = true)) shouldBe false
   }
 
+  // Columns 0, 1: dictionary-coded strings over 6 and 4 entries with some NULLs, and some rows of
+  // column 1 without codes when `uncoded`
+  private def dictBatch(uncoded: Boolean = false): Batch =
+    def strs(entries: Int, withUncoded: Boolean): StrVec =
+      val codes  = Array.fill(n)(rnd.nextInt(entries))
+      val nulls  = Array.fill(n)(rnd.nextInt(9) == 0)
+      val values =
+        Array.tabulate(n)(i =>
+          if nulls(i) then
+            null
+          else
+            s"v${codes(i)}"
+        )
+      (0 until n).foreach { i =>
+        if nulls(i) || (withUncoded && rnd.nextInt(5) == 0) then
+          codes(i) = -1
+      }
+      StrVec(values, nulls, codes, entries)
+    Batch(Array(strs(6, false), strs(4, uncoded)), n)
+
+  private val d0 = ColRef(0, PType.Str, "d0")
+  private val d1 = ColRef(1, PType.Str, "d1")
+
+  private def randomDictCond(depth: Int): VExpr =
+    if depth == 0 || rnd.nextInt(4) == 0 then
+      val c =
+        if rnd.nextBoolean() then
+          d0
+        else
+          d1
+      rnd.nextInt(4) match
+        case 0 =>
+          Compare(CmpOp.Eq, c, Const(s"v${rnd.nextInt(6)}", PType.Str))
+        case 1 =>
+          Compare(CmpOp.Ne, c, Const(s"v${rnd.nextInt(6)}", PType.Str))
+        case 2 =>
+          IsNullExpr(c, negate = rnd.nextBoolean())
+        case _ =>
+          OrExpr(
+            Compare(CmpOp.Eq, c, Const(s"v${rnd.nextInt(6)}", PType.Str)),
+            Compare(CmpOp.Eq, c, Const(s"v${rnd.nextInt(6)}", PType.Str))
+          )
+    else
+      rnd.nextInt(3) match
+        case 0 | 1 =>
+          AndExpr(randomDictCond(depth - 1), randomDictCond(depth - 1))
+        case _ =>
+          OrExpr(randomDictCond(depth - 1), randomDictCond(depth - 1))
+
+  test("should select dictionary-coded rows per entry as the whole-batch evaluation does") {
+    for _ <- 0 until 300 do
+      val cond  = DictionaryPredicates.wrap(randomDictCond(4), whole = rnd.nextBoolean())
+      val batch = dictBatch(uncoded = rnd.nextInt(4) == 0)
+      val node  = Selection.compile(cond, reorder = true, dictionaryPositions = true)
+      val idx   = Selection.select(node, batch)
+      val got   =
+        if idx == null then
+          0 until batch.size
+        else
+          idx.toSeq
+      got shouldBe expected(cond, batch)
+  }
+
+  test("should select per entry over a subset of the rows") {
+    val batch = dictBatch()
+    val cond  = DictionaryPredicates.wrap(Compare(CmpOp.Ne, d0, Const("v1", PType.Str)))
+    val sel   = (0 until n by 3).toArray
+    val got   =
+      cond match
+        case p: PerDictEntry =>
+          p.selectPositions(batch, sel).toSeq
+        case other =>
+          fail(s"Unexpected ${other}")
+    got shouldBe sel.toSeq.filter(expected(cond, batch).toSet)
+  }
+
+  test("should select when an AND has two per-entry parts") {
+    val eq0  = DictionaryPredicates.wrap(Compare(CmpOp.Eq, d0, Const("v1", PType.Str)))
+    val eq1  = DictionaryPredicates.wrap(Compare(CmpOp.Eq, d1, Const("v2", PType.Str)))
+    val cond = OrExpr(AndExpr(eq0, eq1), AndExpr(eq1, eq0))
+    Selection.worthSelecting(
+      Selection.compile(cond, reorder = true, dictionaryPositions = true)
+    ) shouldBe true
+    Selection.worthSelecting(Selection.compile(cond, reorder = true)) shouldBe false
+    Selection.worthSelecting(
+      Selection.compile(OrExpr(eq0, eq1), reorder = true, dictionaryPositions = true)
+    ) shouldBe false
+  }
+
+  test("should wrap an OR over one string column as one per-entry part") {
+    val either = OrExpr(
+      Compare(CmpOp.Eq, d0, Const("v1", PType.Str)),
+      Compare(CmpOp.Eq, d0, Const("v2", PType.Str))
+    )
+    DictionaryPredicates.wrap(either, whole = true) match
+      case p: PerDictEntry =>
+        p.inner shouldBe either
+      case other =>
+        fail(s"Unexpected ${other}")
+    DictionaryPredicates.wrap(either) match
+      case OrExpr(_: PerDictEntry, _: PerDictEntry) =>
+      case other                                    =>
+        fail(s"Unexpected ${other}")
+  }
+
 end SelectionTest

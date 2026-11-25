@@ -101,6 +101,7 @@ class OptimizerOptionsTest extends UniTest:
         "long_decimal_keys",
         "dictionary_group_keys",
         "dictionary_filters",
+        "dictionary_selection",
         "join_build_string_codes",
         "fold_constants",
         "fold_bound_constants",
