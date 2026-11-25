@@ -82,8 +82,11 @@ class EngineAdaptivePartialAggsTest extends UniTest:
   }
 
   test("fold the aggregates of hash aggregations in one pass with fused_accumulators") {
-    val fused: PartialFunction[Operator, Boolean] = { case a: HashAggOp =>
-      a.fuseAccumulators
+    val fused: PartialFunction[Operator, Boolean] = {
+      case a: HashAggOp =>
+        a.fuseAccumulators
+      case a: PartitionedAggOp =>
+        a.fuseAccumulators
     }
     flags(options, fused) shouldContain true
     flags(options, fused).contains(false) shouldBe false

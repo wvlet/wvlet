@@ -103,13 +103,18 @@ private[exec] object FusedAccumulators:
       n: Int,
       numGroups: Int
   ): Unit =
+    // Without a count, a zeroed scratch array counts the batch's rows, which are then its increase
     val rows =
       if nc > 0 then
         counts(0)
       else
         new Array[Long](numGroups)
-    val before = java.util.Arrays.copyOf(rows, numGroups)
-    var i      = 0
+    val before =
+      if nc > 0 then
+        java.util.Arrays.copyOf(rows, numGroups)
+      else
+        null
+    var i = 0
     while i < n do
       val g = groups(i)
       rows(g) += 1
@@ -127,7 +132,11 @@ private[exec] object FusedAccumulators:
       i += 1
     var g = 0
     while g < numGroups do
-      val added = rows(g) - before(g)
+      val added =
+        if before == null then
+          rows(g)
+        else
+          rows(g) - before(g)
       if added != 0 then
         var c = 1
         while c < nc do

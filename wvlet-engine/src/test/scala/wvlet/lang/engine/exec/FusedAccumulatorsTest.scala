@@ -52,10 +52,6 @@ class FusedAccumulatorsTest extends UniTest:
     AggCall("sum", Seq(x), true, None, sumDec)
   )
 
-  private val schema = Schema(
-    Field("k", PType.Int64) +: aggs.indices.map(i => Field(s"a${i}", aggs(i).ptype))
-  )
-
   /**
     * Batches over `groups` keys: `y` has NULLs in every other batch, and `w` holds values near the
     * Long range, so that its sums overflow the unscaled Longs. Group 0 only appears in the last
@@ -100,10 +96,16 @@ class FusedAccumulatorsTest extends UniTest:
 
   end input
 
-  private def aggregate(batches: Seq[Batch], fuse: Boolean): Map[Any, Seq[Any]] =
-    val op = HashAggOp(BatchesOp(in, batches), IndexedSeq(k), aggs, schema).withFusedAccumulators(
-      fuse
+  private def aggregate(
+      batches: Seq[Batch],
+      fuse: Boolean,
+      calls: IndexedSeq[AggCall] = aggs
+  ): Map[Any, Seq[Any]] =
+    val outSchema = Schema(
+      Field("k", PType.Int64) +: calls.indices.map(i => Field(s"a${i}", calls(i).ptype))
     )
+    val op = HashAggOp(BatchesOp(in, batches), IndexedSeq(k), calls, outSchema)
+      .withFusedAccumulators(fuse)
     val out =
       try op.drain()
       finally op.close()
@@ -116,6 +118,14 @@ class FusedAccumulatorsTest extends UniTest:
     val batches = input(20000, 1024, groups = 4)
     val fused   = aggregate(batches, fuse = true)
     fused shouldBe aggregate(batches, fuse = false)
+    fused.size shouldBe 4
+  }
+
+  test("should fold decimal sums without a count over few groups as separate accumulators do") {
+    val batches = input(20000, 1024, groups = 4)
+    val sums    = IndexedSeq(aggs(0), aggs(2), aggs(4))
+    val fused   = aggregate(batches, fuse = true, sums)
+    fused shouldBe aggregate(batches, fuse = false, sums)
     fused.size shouldBe 4
   }
 

@@ -3520,13 +3520,15 @@ object Planner:
     op.sharedInputs.foreach(setAggKeyOptions(_, pack, longDecimals))
 
   /**
-    * Make the hash aggregations of a physical plan update each aggregate on its own
-    * (`fused_accumulators`). The partial aggregates that two-phase aggregations create per part get
-    * the option from [[Parallelizer]]
+    * Make the hash aggregations of a physical plan, and those of its partitioned aggregations,
+    * update each aggregate on its own (`fused_accumulators`). The partial aggregates that two-phase
+    * aggregations create per part get the option from [[Parallelizer]]
     */
   private[engine] def disableFusedAccumulators(op: Operator): Unit =
     op match
       case a: HashAggOp =>
+        a.withFusedAccumulators(false)
+      case a: PartitionedAggOp =>
         a.withFusedAccumulators(false)
       case _ =>
     op.children.foreach(disableFusedAccumulators)
