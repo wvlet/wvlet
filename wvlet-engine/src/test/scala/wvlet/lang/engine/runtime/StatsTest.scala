@@ -52,15 +52,19 @@ class StatsTest extends UniTest:
     Stats.resultRows(batches, Compare(CmpOp.Eq, x, Const(null, PType.Int64))) shouldBe Some(0)
   }
 
-  /** A computed CTE of 1000 rows whose reads have the given statistics */
-  private class Computed(distinctCount: Option[Double], passing: Option[Long]) extends SharedCTE:
+  /** A computed CTE of `rowCount` rows whose reads have the given statistics */
+  private class Computed(
+      distinctCount: Option[Double],
+      passing: Option[Long],
+      rowCount: Long = 1000
+  ) extends SharedCTE:
     val name = "t"
     val body = RuntimePlan.Values(
       IndexedSeq(Column(ColumnId(1), "k", PType.Int64)),
       Batch(Array(longs()), 0)
     )
 
-    override def rows: Option[Long]                      = Some(1000)
+    override def rows: Option[Long]                      = Some(rowCount)
     override def distinct(position: Int): Option[Double] = distinctCount
     override def filteredRows(cond: BExpr): Option[Long] = passing
     def reader(schema: Schema, filter: Option[JoinCondition], setContext: Boolean): Operator =
@@ -101,6 +105,45 @@ class StatsTest extends UniTest:
     Stats.selectivity(ref, like("forest%", negate = true), on) shouldBe 0.3
     val off = on.withDisabled(Optimization.PrefixLikeSelectivity)
     Stats.selectivity(ref, like("forest%"), off) shouldBe 0.3
+  }
+
+  test("estimate an aggregated star join from the joins and filters below the aggregation") {
+    // A fact table of 1M rows with 1000 distinct dimension keys, joined with a dimension of
+    // 1000 rows filtered to one (`d = 3`), then grouped by the fact key
+    val f     = Column(ColumnId(1), "f", PType.Int64)
+    val d     = Column(ColumnId(2), "d", PType.Int64)
+    val fact  = RuntimePlan.CTERef(Computed(Some(1000), None, rowCount = 1000000), IndexedSeq(f))
+    val dimEq = Compare(CmpOp.Eq, ColRef(2, PType.Int64, "d"), Const(3L, PType.Int64))
+    val dim   = RuntimePlan.Filter(
+      RuntimePlan.CTERef(Computed(Some(1000), None), IndexedSeq(d)),
+      BExpr(dimEq),
+      Map(dimEq.sig -> 1)
+    )
+    val join = RuntimePlan.Join(
+      fact,
+      dim,
+      wvlet.lang.engine.exec.JoinKind.Inner,
+      IndexedSeq(BExpr(ColRef(1, PType.Int64, "f"))),
+      IndexedSeq(BExpr(ColRef(2, PType.Int64, "d"))),
+      None,
+      buildLeft = false
+    )
+    val agg = RuntimePlan.Aggregate(
+      join,
+      IndexedSeq(BExpr(ColRef(1, PType.Int64, "f"))),
+      IndexedSeq.empty,
+      IndexedSeq(Column(ColumnId(3), "f", PType.Int64))
+    )
+    // Stats.rows passes the fact table's rows through the join and the aggregation
+    Stats.rows(agg) shouldBe 1e6
+    // 1M rows * 1 dimension row / 1000 distinct keys
+    Stats.aggregatedRows(agg, OptimizerOptions()) shouldBe Some(1000.0)
+    // Not an aggregation, or the toggle off: no estimate
+    Stats.aggregatedRows(join, OptimizerOptions()) shouldBe None
+    Stats.aggregatedRows(
+      agg,
+      OptimizerOptions().withDisabled(Optimization.AggregateInputRows)
+    ) shouldBe None
   }
 
 end StatsTest

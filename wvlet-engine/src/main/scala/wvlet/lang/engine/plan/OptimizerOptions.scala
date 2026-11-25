@@ -113,6 +113,13 @@ enum Optimization(val name: String):
   /** Build the hash table on the smaller input of a join */
   case SwapBuildSide extends Optimization("swap_build_side")
 
+  /**
+    * Estimate an aggregated input of an inner join graph from the joins and filters below its
+    * aggregation, instead of the rows of its probe source, so that a join with an aggregated star
+    * join builds on the aggregate (TPC-DS q73, q34, q68, q46)
+    */
+  case AggregateInputRows extends Optimization("aggregate_input_rows")
+
   /** Evaluate uncorrelated scalar subqueries over the same input as one query */
   case PrefetchScalarSubqueries extends Optimization("prefetch_scalar_subqueries")
 

@@ -55,6 +55,7 @@ class OptimizerOptionsTest extends UniTest:
         "prefix_like_selectivity",
         "exact_join_order",
         "swap_build_side",
+        "aggregate_input_rows",
         "prefetch_scalar_subqueries",
         "share_ctes",
         "push_down_cte_filters",
