@@ -24,8 +24,9 @@ import wvlet.uni.test.UniTest
 
 /**
   * `adaptive_partial_aggs` reaches the partial aggregates of two-phase aggregations, and
-  * `pack_agg_keys` the partitioned aggregations; their results are checked in PartialAggSkipTest
-  * and AggKeyPackingTest
+  * `pack_agg_keys` the partitioned aggregations, and `stream_pack_agg_keys` / `long_decimal_keys`
+  * every aggregation; their results are checked in PartialAggSkipTest, AggKeyPackingTest, and
+  * PackedGroupTableTest
   */
 class EngineAdaptivePartialAggsTest extends UniTest:
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
@@ -57,6 +58,27 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     }
     flags(options, packs) shouldBe Seq(true)
     flags(options.withDisabled(Optimization.PackAggKeys), packs) shouldBe Seq(false)
+  }
+
+  test("pack the keys of streaming aggregations with stream_pack_agg_keys") {
+    val packs: PartialFunction[Operator, Boolean] = { case a: HashAggOp =>
+      a.packKeys
+    }
+    flags(options, packs) shouldContain true
+    flags(options, packs).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.StreamPackAggKeys), packs).contains(true) shouldBe false
+  }
+
+  test("key decimals by unscaled values with long_decimal_keys") {
+    val decimals: PartialFunction[Operator, Boolean] = {
+      case a: HashAggOp =>
+        a.longDecimalKeys
+      case a: PartitionedAggOp =>
+        a.longDecimalKeys
+    }
+    flags(options, decimals).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.LongDecimalKeys), decimals).contains(true) shouldBe
+      false
   }
 
 end EngineAdaptivePartialAggsTest

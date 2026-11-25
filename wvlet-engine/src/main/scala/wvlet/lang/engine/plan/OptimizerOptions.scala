@@ -315,6 +315,19 @@ enum Optimization(val name: String):
   case PackAggKeys extends Optimization("pack_agg_keys")
 
   /**
+    * Streaming aggregations and DISTINCTs by several integer, date, or decimal keys group by one
+    * packed Int64 key, from the key ranges seen so far, repacking their groups when a key falls
+    * outside them
+    */
+  case StreamPackAggKeys extends Optimization("stream_pack_agg_keys")
+
+  /**
+    * Decimal grouping keys are hashed and compared as their unscaled Long values instead of boxed
+    * BigDecimals, and decimals of precision up to 18 can be packed with other keys
+    */
+  case LongDecimalKeys extends Optimization("long_decimal_keys")
+
+  /**
     * Row-independent subexpressions are evaluated once when lowering, and integral constants added
     * to or subtracted from decimals become decimals at the result scale
     * ([[wvlet.lang.engine.runtime.FoldConstants]])

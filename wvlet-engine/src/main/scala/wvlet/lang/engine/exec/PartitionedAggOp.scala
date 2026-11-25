@@ -56,6 +56,14 @@ class PartitionedAggOp(
 
   private var result: Iterator[Batch] = null
 
+  /** Whether decimal keys are grouped and packed as their unscaled Long values */
+  var longDecimalKeys: Boolean = true
+
+  /** Set [[longDecimalKeys]] */
+  def withLongDecimalKeys(enabled: Boolean): this.type =
+    longDecimalKeys = enabled
+    this
+
   def next(): Batch =
     if result == null then
       result = aggregate()
@@ -73,10 +81,12 @@ class PartitionedAggOp(
       val rows = batches.map(_.size).sum
       def run(in: Schema, bs: Seq[Batch], ks: IndexedSeq[VExpr], out: Schema): Seq[Batch] =
         val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, math.min(groups, rows))
+          // The keys are packed here from the partition's exact ranges, when they can be
+          .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
         try op.drain()
         finally op.close()
       val keyVecs =
-        if packKeys && AggKeyPacking.packable(keys.map(_.ptype)) then
+        if packKeys && AggKeyPacking.packable(keys.map(_.ptype), longDecimalKeys) then
           batches.map(b => (keys.map(_.eval(b)).toArray, b.size))
         else
           Nil
@@ -84,7 +94,7 @@ class PartitionedAggOp(
         if keyVecs.isEmpty then
           None
         else
-          AggKeyPacking.of(keys.map(_.ptype), keyVecs)
+          AggKeyPacking.of(keys.map(_.ptype), keyVecs, longDecimalKeys)
       packing match
         case Some(packing) =>
           // The packed key as one more input column, whose groups unpack into the key columns
@@ -106,7 +116,7 @@ class PartitionedAggOp(
     val parts = GroupTable.partitionCount(runner.parallelism)
     // The rows of each input batch in each partition
     def route(batches: IndexedSeq[Batch]): Array[mutable.ArrayBuffer[Batch]] =
-      val hasher = GroupTable(keys.map(_.ptype))
+      val hasher = GroupTable(keys.map(_.ptype), 0, longDecimalKeys)
       val out    = Array.fill(parts)(mutable.ArrayBuffer.empty[Batch])
       batches.foreach { deferred =>
         // Copying each partition's rows from compact columns is cheaper than composing every

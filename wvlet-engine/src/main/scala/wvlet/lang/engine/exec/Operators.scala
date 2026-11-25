@@ -702,6 +702,21 @@ class HashAggOp(
   override protected def details       =
     s"(keys=[${keys.map(_.sig).mkString(", ")}], aggs=[${aggs.map(_.sig).mkString(", ")}])"
 
+  /**
+    * Whether several integer, date, or decimal keys group by one packed key
+    * (`stream_pack_agg_keys`)
+    */
+  var packKeys: Boolean = true
+
+  /** Whether decimal keys are grouped by their unscaled Long values (`long_decimal_keys`) */
+  var longDecimalKeys: Boolean = true
+
+  /** Set [[packKeys]] and [[longDecimalKeys]] */
+  def withKeyOptions(pack: Boolean, longDecimals: Boolean): this.type =
+    packKeys = pack
+    longDecimalKeys = longDecimals
+    this
+
   // Scratch arrays reused across batches: accumulators read group ids only during update
   private var idx: Array[Int] = Array.emptyIntArray
   private var gs: Array[Int]  = Array.emptyIntArray
@@ -772,7 +787,7 @@ class HashAggOp(
         0
       else
         expectedGroups
-    val table = GroupTable(keys.map(_.ptype), presize)
+    val table = PackedGroupTable.forKeys(keys.map(_.ptype), presize, packKeys, longDecimalKeys)
     val accs  = aggs.map(_.newAccumulator())
     if presize > 0 then
       accs.foreach(_.ensureGroups(presize))
@@ -845,7 +860,20 @@ class UnionAllOp(val inputs: Seq[Operator], val schema: Schema) extends Operator
 
 /** Removes duplicate rows */
 class DistinctOp(val child: Operator) extends Operator:
-  private val table                    = GroupTable(child.schema.types)
+  private var table: GroupIndex = null
+
+  /** Whether several integer, date, or decimal columns group by one packed key */
+  var packKeys: Boolean = true
+
+  /** Whether decimal columns are grouped by their unscaled Long values */
+  var longDecimalKeys: Boolean = true
+
+  /** Set [[packKeys]] and [[longDecimalKeys]] */
+  def withKeyOptions(pack: Boolean, longDecimals: Boolean): this.type =
+    packKeys = pack
+    longDecimalKeys = longDecimals
+    this
+
   def schema: Schema                   = child.schema
   override def children: Seq[Operator] = Seq(child)
   def next(): Batch                    =
@@ -854,6 +882,8 @@ class DistinctOp(val child: Operator) extends Operator:
       val b = child.next()
       if b == null then
         return null
+      if table == null then
+        table = PackedGroupTable.forKeys(child.schema.types, 0, packKeys, longDecimalKeys)
       val before = table.numGroups
       val ids    = table.groupIds(b.columns, b.size)
       // Keep the first row of every new group
@@ -870,6 +900,8 @@ class DistinctOp(val child: Operator) extends Operator:
       if k > 0 then
         out = b.gather(keep, k)
     out
+
+end DistinctOp
 
 /** INTERSECT / EXCEPT with set (distinct) or bag (ALL) semantics */
 class SetOpOp(

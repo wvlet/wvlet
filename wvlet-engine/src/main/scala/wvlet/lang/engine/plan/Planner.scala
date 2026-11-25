@@ -117,21 +117,29 @@ class Planner(
       Planner.disableJoinDirectIndex(pruned)
     if !enabled(Optimization.ParallelJoinBuild) then
       Planner.disableParallelJoinBuild(pruned)
-    if enabled(Optimization.Parallelize) then
-      Parallelizer(
-        pruned,
-        TaskRunner.default,
-        aboveBreakers = enabled(Optimization.ParallelAboveBreakers),
-        parallelPartitioning = enabled(Optimization.ParallelAggPartitioning),
-        concurrentBuilds = enabled(Optimization.ConcurrentJoinBuilds),
-        sharedPartials = enabled(Optimization.SharedAggPartials),
-        adaptivePartials = enabled(Optimization.AdaptivePartialAggs),
-        setOpJoins = enabled(Optimization.SetOpJoins),
-        packAggKeys = enabled(Optimization.PackAggKeys),
-        unionPipelines = enabled(Optimization.UnionAllPipelines)
-      )
-    else
-      pruned
+    val physical =
+      if enabled(Optimization.Parallelize) then
+        Parallelizer(
+          pruned,
+          TaskRunner.default,
+          aboveBreakers = enabled(Optimization.ParallelAboveBreakers),
+          parallelPartitioning = enabled(Optimization.ParallelAggPartitioning),
+          concurrentBuilds = enabled(Optimization.ConcurrentJoinBuilds),
+          sharedPartials = enabled(Optimization.SharedAggPartials),
+          adaptivePartials = enabled(Optimization.AdaptivePartialAggs),
+          setOpJoins = enabled(Optimization.SetOpJoins),
+          packAggKeys = enabled(Optimization.PackAggKeys),
+          streamPackAggKeys = enabled(Optimization.StreamPackAggKeys),
+          longDecimalKeys = enabled(Optimization.LongDecimalKeys),
+          unionPipelines = enabled(Optimization.UnionAllPipelines)
+        )
+      else
+        pruned
+    val streamPack   = enabled(Optimization.StreamPackAggKeys)
+    val longDecimals = enabled(Optimization.LongDecimalKeys)
+    if !streamPack || !longDecimals then
+      Planner.setAggKeyOptions(physical, streamPack, longDecimals)
+    physical
 
   end optimizePhysical
 
@@ -3457,6 +3465,23 @@ object Planner:
       case _ =>
     op.children.foreach(disableJoinDirectIndex)
     op.sharedInputs.foreach(disableJoinDirectIndex)
+
+  /**
+    * Set how the aggregations and DISTINCTs of a physical plan key their groups
+    * (`stream_pack_agg_keys`, `long_decimal_keys`). The partial aggregates that two-phase
+    * aggregations create per part get the options from [[Parallelizer]]
+    */
+  private[engine] def setAggKeyOptions(op: Operator, pack: Boolean, longDecimals: Boolean): Unit =
+    op match
+      case a: HashAggOp =>
+        a.withKeyOptions(pack, longDecimals)
+      case d: DistinctOp =>
+        d.withKeyOptions(pack, longDecimals)
+      case a: PartitionedAggOp =>
+        a.withLongDecimalKeys(longDecimals)
+      case _ =>
+    op.children.foreach(setAggKeyOptions(_, pack, longDecimals))
+    op.sharedInputs.foreach(setAggKeyOptions(_, pack, longDecimals))
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =
