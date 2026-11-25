@@ -74,6 +74,8 @@ class OptimizerOptionsTest extends UniTest:
         "window_sort_kernels",
         "parallelize",
         "late_gather",
+        "short_circuit_filters",
+        "reorder_conjuncts",
         "join_direct_index",
         "parallel_join_build",
         "concurrent_join_builds",

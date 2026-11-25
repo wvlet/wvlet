@@ -129,9 +129,7 @@ object Parallelizer:
         val source = BreakerSource(aggregate(a, runner), "Aggregate")
         Some(Pipeline(ScanOp(source, a.schema, None, None), x => x, None, Nil, List(source.close)))
       case f: FilterOp =>
-        pipeline(f.child, runner).map(
-          _.map(x => FilterOp(x, f.cond, f.keep).withLateGather(f.lateGather))
-        )
+        pipeline(f.child, runner).map(_.map(x => FilterOp(x, f.cond, f.keep).withSettingsOf(f)))
       case pr: ProjectOp =>
         pipeline(pr.child, runner).map(
           _.map(
@@ -408,7 +406,7 @@ object Parallelizer:
           case a: HashAggOp =>
             aggregate(a, runner)
           case f: FilterOp =>
-            FilterOp(r(f.child), f.cond, f.keep).withLateGather(f.lateGather)
+            FilterOp(r(f.child), f.cond, f.keep).withSettingsOf(f)
           case p: ProjectOp =>
             ProjectOp(r(p.child), p.exprs, p.schema)
           case l: LimitOp if l.child.isInstanceOf[DistinctOp] =>

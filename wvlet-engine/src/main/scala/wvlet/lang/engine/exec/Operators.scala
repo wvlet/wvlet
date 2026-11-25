@@ -138,6 +138,32 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
     lateGather = enabled
     this
 
+  /**
+    * Whether AND / OR conditions run each part only on the surviving rows (`short_circuit_filters`)
+    */
+  var shortCircuit: Boolean = true
+
+  /** Whether the parts of AND / OR run cheapest first (`reorder_conjuncts`) */
+  var reorderConjuncts: Boolean = true
+
+  /** The evaluation settings of `f`, for a copy of it over another input */
+  def withSettingsOf(f: FilterOp): this.type =
+    lateGather = f.lateGather
+    shortCircuit = f.shortCircuit
+    reorderConjuncts = f.reorderConjuncts
+    this
+
+  // Prepared on the first batch, after the settings are final
+  private lazy val selection: Selection.Node =
+    if shortCircuit then
+      val node = Selection.compile(cond, reorderConjuncts)
+      if Selection.worthSelecting(node) then
+        node
+      else
+        null
+    else
+      null
+
   val schema: Schema =
     if keep == null then
       child.schema
@@ -151,7 +177,17 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
           ""
         else
           s", keep=${keep.mkString(",")}"
-      }${Operator.eagerTag(lateGather)})"
+      }${Operator.eagerTag(lateGather)}${selectionTag})"
+
+  // Marks a disabled short_circuit_filters / reorder_conjuncts on an AND / OR condition
+  private def selectionTag: String =
+    cond match
+      case _: AndExpr | _: OrExpr if !shortCircuit =>
+        ", full_eval"
+      case _: AndExpr | _: OrExpr if !reorderConjuncts =>
+        ", written_order"
+      case _ =>
+        ""
 
   def next(): Batch =
     var out: Batch = null
@@ -159,20 +195,32 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
       val b = child.next()
       if b == null then
         return null
-      val mask = Kernels.trueMask(cond.eval(b))
-      val in   =
+      val in =
         if keep == null then
           b
         else
           b.select(keep)
       val r =
-        if lateGather then
-          in.takeWhere(mask)
-        else
-          in.filter(mask)
+        selection match
+          case null =>
+            val mask = Kernels.trueMask(cond.eval(b))
+            if lateGather then
+              in.takeWhere(mask)
+            else
+              in.filter(mask)
+          case node =>
+            val idx = Selection.select(node, b)
+            if idx == null then
+              in
+            else if lateGather then
+              in.take(idx, idx.length)
+            else
+              in.gather(idx, idx.length)
       if r.size > 0 then
         out = r
     out
+
+  end next
 
 end FilterOp
 

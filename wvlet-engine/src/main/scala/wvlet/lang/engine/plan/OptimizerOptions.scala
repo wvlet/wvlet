@@ -216,6 +216,20 @@ enum Optimization(val name: String):
   case LateGather extends Optimization("late_gather")
 
   /**
+    * A filter over AND / OR evaluates each conjunct only on the rows the earlier ones kept (each
+    * disjunct only on the rows not yet accepted), and stops when no row remains (DuckDB's
+    * `ExpressionExecutor::Select`)
+    */
+  case ShortCircuitFilters extends Optimization("short_circuit_filters")
+
+  /**
+    * With `short_circuit_filters`, the conjuncts and disjuncts of a filter run cheapest first by a
+    * static cost (primitive comparisons before string, IN, LIKE, and function calls); parts that
+    * can throw stay in place
+    */
+  case ReorderConjuncts extends Optimization("reorder_conjuncts")
+
+  /**
     * A hash join over a single integer key whose build values span a dense range indexes its build
     * rows by `key - min` instead of hashing (DuckDB's perfect hash join)
     */
