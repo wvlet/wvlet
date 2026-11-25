@@ -104,7 +104,9 @@ object ShareSubplans:
         case RuntimePlan.Aggregate(child, keys, calls, cols) =>
           val c  = canon(child)
           val k  = exprs(keys)
-          val cs = calls.map(a => (a.name, exprs(a.args), a.distinct, a.filter.map(expr), a.ptype))
+          val cs = calls.map(a =>
+            (a.name, exprs(a.args), a.distinct, a.filter.map(expr), a.ptype, a.order)
+          )
           ("aggregate", c, k, cs, define(cols))
         case RuntimePlan.Join(left, right, kind, lk, rk, residual, buildLeft) =>
           val l = canon(left)

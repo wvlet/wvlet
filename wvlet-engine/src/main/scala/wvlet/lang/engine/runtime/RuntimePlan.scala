@@ -19,6 +19,7 @@ import wvlet.lang.engine.exec.AsOfOp
 import wvlet.lang.engine.exec.FrameSpec
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.exec.Operator
+import wvlet.lang.engine.exec.SortDir
 import wvlet.lang.engine.exec.SortKey
 import wvlet.lang.engine.exec.WindowCall
 import wvlet.lang.engine.expr.ColRef
@@ -87,7 +88,9 @@ case class AggregateCall(
     args: Seq[BExpr],
     distinct: Boolean,
     filter: Option[BExpr],
-    ptype: PType
+    ptype: PType,
+    // ORDER BY directions; the keys are the last order.size args, as in AggCall
+    order: Seq[SortDir] = Nil
 ):
   /** The expressions the call reads */
   def exprs: Seq[BExpr] = args ++ filter
@@ -98,7 +101,8 @@ case class AggregateCall(
     args.map(_.lower(position)),
     distinct,
     filter.map(_.lower(position)),
-    ptype
+    ptype,
+    order
   )
 
   override def toString: String =
@@ -107,7 +111,26 @@ case class AggregateCall(
         "distinct "
       else
         ""
-    s"${name}(${d}${args.mkString(", ")})${filter.map(f => s" filter ${f}").getOrElse("")}"
+    val o =
+      if order.isEmpty then
+        ""
+      else
+        s" order by ${args
+            .takeRight(order.size)
+            .zip(order)
+            .map((k, x) =>
+              s"${k}${
+                  if x.ascending then
+                    ""
+                  else
+                    " desc"
+                }"
+            )
+            .mkString(", ")}"
+    val vs = args.dropRight(order.size)
+    s"${name}(${d}${vs.mkString(", ")}${o})${filter.map(f => s" filter ${f}").getOrElse("")}"
+
+end AggregateCall
 
 object AggregateCall:
   /** Bind an aggregate call over input positions to the ids of the columns at those positions */
@@ -116,7 +139,8 @@ object AggregateCall:
     c.args.map(BExpr.of(_, input)),
     c.distinct,
     c.filter.map(BExpr.of(_, input)),
-    c.ptype
+    c.ptype,
+    c.order
   )
 
 /**

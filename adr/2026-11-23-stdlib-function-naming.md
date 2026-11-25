@@ -81,6 +81,11 @@ Apply these rules in order:
   - Rows with a NULL key are skipped and NULL values are kept, as Trino does; a group with no key gives NULL. Keys must be unique: DuckDB and the engine raise an error on a duplicate, Trino keeps one value.
   - DuckDB has no `map_agg`, so its variant is `map(list(k) filter (where k is not null), list(v) filter (where k is not null))`. Absent on Snowflake (OBJECT_AGG drops NULL values), Hive, BigQuery, and PostgreSQL, which have no map aggregate.
 
+- **Ordered aggregation** (user-approved, 2026-11-24):
+  - `x.to_array(key)` collects the grouped values in ascending order of `key`, as an overload of the existing `to_array`. It is `array_agg(x ORDER BY key)` on DuckDB, Trino, and BigQuery, and `ARRAY_AGG(x) WITHIN GROUP (ORDER BY key)` on Snowflake. Absent on Hive, whose `collect_list` has no ordering.
+  - The engine implements ORDER BY inside aggregate calls instead of dropping it, so `string_agg(x, ',' ORDER BY y)` in SQL input is ordered too.
+  - NULL elements follow the existing `to_array`: DuckDB, Trino, and the engine keep them, Snowflake drops them, and BigQuery rejects them.
+
 Later families (JSON, lists, maps, structs) add their rows to this ADR in the PR that introduces them, each with a comparison row.
 
 ### The engine's own SQL names

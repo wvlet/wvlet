@@ -67,6 +67,32 @@ class ShareSubplansTest extends UniTest:
     ShareSubplans.key(project(0.0)) shouldNotBe ShareSubplans.key(project(-0.0))
   }
 
+  test("give aggregates that differ only in their ORDER BY different keys") {
+    def agg(order: Seq[wvlet.lang.engine.exec.SortDir]) =
+      val cols = IndexedSeq(
+        Column(ColumnId(1), "a", PType.Int64),
+        Column(ColumnId(2), "b", PType.Int64)
+      )
+      val scan = RuntimePlan.Scan(t, cols)
+      val call = AggregateCall(
+        "array_agg",
+        cols.map(BExpr.ref),
+        distinct = false,
+        filter = None,
+        PType.AnyT,
+        order
+      )
+      RuntimePlan.Aggregate(
+        scan,
+        IndexedSeq.empty,
+        IndexedSeq(call),
+        IndexedSeq(Column(ColumnId(3), "x", PType.AnyT))
+      )
+    val asc = wvlet.lang.engine.exec.SortDir(ascending = true, nullsFirst = false)
+    ShareSubplans.key(agg(Seq(asc))) shouldNotBe
+      ShareSubplans.key(agg(Seq(asc.copy(ascending = false))))
+  }
+
   test("give no key to plans with outer references") {
     val scan  = RuntimePlan.Scan(t, IndexedSeq(Column(ColumnId(1), "a", PType.Int64)))
     val outer = BExpr(Compare(CmpOp.Gt, ColRef(1, PType.Int64, "a"), ColRef(99, PType.Int64, "x")))

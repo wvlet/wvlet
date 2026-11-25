@@ -40,31 +40,69 @@ abstract class Accumulator:
 
   protected def grow(newCap: Int): Unit
 
+/** Direction of an aggregate's ORDER BY key: ascending or not, and where NULLs go */
+case class SortDir(ascending: Boolean, nullsFirst: Boolean)
+
 /**
   * An aggregate call: function name, bound argument expressions, DISTINCT, and an optional FILTER
-  * condition
+  * condition. With an ORDER BY (`array_agg(x ORDER BY y)`), `order` holds one direction per key,
+  * and the keys are the last `order.size` expressions of `args`, so plan rewrites remap them with
+  * the values
   */
 case class AggCall(
     name: String,
     args: Seq[VExpr],
     distinct: Boolean,
     filter: Option[VExpr],
-    ptype: PType
+    ptype: PType,
+    order: Seq[SortDir] = Nil
 ):
+  /** The aggregated value arguments, without the ORDER BY keys */
+  def valueArgs: Seq[VExpr] = args.dropRight(order.size)
+
   def sig: String =
     s"agg:${name}(${
         if distinct then
           "distinct "
         else
           ""
-      }${args.map(_.sig).mkString(",")})${filter.map(f => s" filter ${f.sig}").getOrElse("")}"
+      }${valueArgs.map(_.sig).mkString(",")}${
+        if order.isEmpty then
+          ""
+        else
+          args
+            .takeRight(order.size)
+            .zip(order)
+            .map((k, d) =>
+              s"${k.sig}${
+                  if d.ascending then
+                    ""
+                  else
+                    " desc"
+                }${
+                  if d.nullsFirst then
+                    " nulls first"
+                  else
+                    ""
+                }"
+            )
+            .mkString(" order by ", ",", "")
+      })${filter.map(f => s" filter ${f.sig}").getOrElse("")}"
 
   def newAccumulator(): Accumulator =
-    val acc = Aggregates.accumulator(name, args.map(_.ptype), ptype)
-    if distinct then
-      DistinctAccumulator(acc)
+    val vs  = valueArgs.map(_.ptype)
+    val acc = Aggregates.accumulator(name, vs, ptype)
+    val a   =
+      if distinct then
+        DistinctAccumulator(acc)
+      else
+        acc
+    if order.isEmpty then
+      a
     else
-      acc
+      OrderedAccumulator(a, vs, order)
+
+end AggCall
 
 object Aggregates:
 
@@ -1279,6 +1317,79 @@ object Aggregates:
   end Mode
 
 end Aggregates
+
+/**
+  * Buffers each group's rows (values, then ORDER BY keys) and feeds them to `inner` sorted by the
+  * keys when the result is read, for order-sensitive aggregates such as `array_agg(x ORDER BY y)`.
+  * The sort is stable, so ties keep their input order
+  */
+final class OrderedAccumulator(inner: Accumulator, valueTypes: Seq[PType], order: Seq[SortDir])
+    extends Accumulator:
+  private val numValues = valueTypes.size
+  private var rows      = new Array[mutable.ArrayBuffer[Array[Any]]](0)
+  def ptype: PType      = inner.ptype
+
+  protected def grow(newCap: Int): Unit =
+    inner.ensureGroups(newCap)
+    rows = java.util.Arrays.copyOf(rows, newCap)
+
+  def update(groups: Array[Int], n: Int, args: Array[Vec]): Unit =
+    var i = 0
+    while i < n do
+      val g = groups(i)
+      if rows(g) == null then
+        rows(g) = mutable.ArrayBuffer.empty[Array[Any]]
+      rows(g) += Array.tabulate(args.length)(j => args(j).get(i))
+      i += 1
+
+  private val rowOrdering: Ordering[Array[Any]] =
+    (x, y) =>
+      var c = 0
+      var k = 0
+      while c == 0 && k < order.size do
+        val d = order(k)
+        val a = x(numValues + k)
+        val b = y(numValues + k)
+        c =
+          if a == null && b == null then
+            0
+          else if a == null then
+            if d.nullsFirst then
+              -1
+            else
+              1
+          else if b == null then
+            if d.nullsFirst then
+              1
+            else
+              -1
+          else
+            val r = ValueOps.compare(a, b)
+            if d.ascending then
+              r
+            else
+              -r
+        k += 1
+      c
+
+  // Feed one group at a time and release its rows, so the sorted copy is never the whole input
+  def result(numGroups: Int): Vec =
+    var g = 0
+    while g < numGroups && g < rows.length do
+      val r = rows(g)
+      if r != null then
+        r.sortInPlace()(using rowOrdering)
+        val n = r.size
+        inner.update(
+          Array.fill(n)(g),
+          n,
+          Array.tabulate(numValues)(j => Vec.fromValues(valueTypes(j), r.view.map(_(j)).toSeq))
+        )
+        rows(g) = null
+      g += 1
+    inner.result(numGroups)
+
+end OrderedAccumulator
 
 /** Feeds each distinct (group, argument values) once into the inner accumulator */
 final class DistinctAccumulator(inner: Accumulator) extends Accumulator:
