@@ -714,6 +714,11 @@ class HashAggOp(
     if done then
       return null
     done = true
+    val adaptive = skip != null && keys.nonEmpty
+    if adaptive && skip.skipping then
+      // Grouping stopped before this part started
+      passing = true
+      return next()
     val presize =
       if keys.isEmpty then
         0
@@ -723,14 +728,11 @@ class HashAggOp(
     val accs  = aggs.map(_.newAccumulator())
     if presize > 0 then
       accs.foreach(_.ensureGroups(presize))
-    val adaptive          = skip != null && keys.nonEmpty
     var zeros: Array[Int] = Array.emptyIntArray
     var rows              = 0L
-    var b                 =
-      if adaptive && skip.skipping then
-        null
-      else
-        child.next()
+    // Whether grouping stopped before the input ended: the rest of it passes through
+    var stopped = false
+    var b       = child.next()
     while b != null do
       val groups =
         if keys.isEmpty then
@@ -746,14 +748,15 @@ class HashAggOp(
           table.numGroups
       update(accs, groups, numGroups, b)
       rows += b.size
+      stopped = adaptive && skip.shouldStop(rows, table.numGroups)
       b =
-        if adaptive && skip.shouldStop(rows, table.numGroups) then
+        if stopped then
           null
         else
           child.next()
     end while
-    passing = adaptive && skip.skipping
-    if adaptive && !passing then
+    passing = stopped
+    if adaptive && !stopped then
       skip.report(rows, table.numGroups)
     val numGroups =
       if keys.isEmpty then
