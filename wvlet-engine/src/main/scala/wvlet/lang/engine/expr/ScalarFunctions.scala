@@ -650,6 +650,14 @@ object ScalarFunctions:
           a.iterator.drop(1).filter(_ != null).map(_.toString).mkString(a(0).toString)
       }
     }
+    // A NULL format or argument gives NULL, as in DuckDB
+    reg("printf") { args =>
+      if args.isEmpty then
+        arity("printf", args, 1)
+      fn("printf", args.map(str), PType.Str)(a =>
+        TextFunctions.printf(a(0).asInstanceOf[String], a.toSeq.drop(1).map(_.asInstanceOf[String]))
+      )
+    }
     reg("replace") { args =>
       fn("replace", args.map(str), PType.Str)(a =>
         a(0).asInstanceOf[String].replace(a(1).asInstanceOf[String], a(2).asInstanceOf[String])

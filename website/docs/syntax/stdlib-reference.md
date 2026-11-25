@@ -260,6 +260,11 @@ Shared by all numeric types (int, long, float, real, double, decimal).
 | `json_extract_string(path: string)` | string | duckdb, trino, hive, snowflake, bigquery |  |
 | `to_timestamp(format: string)` | timestamp | duckdb, trino, bigquery | Parse the string as a timestamp with strftime codes (e.g. '%Y-%m-%d %H:%M:%S'); the whole string must match. try_to_timestamp returns NULL where to_timestamp fails |
 | `try_to_timestamp(format: string)` | timestamp | duckdb, trino, bigquery |  |
+| `format(a: any)` | string | duckdb, trino, hive, bigquery | printf-style formatting with this string as the format: each %s takes the next argument's text and %% is a literal %, e.g. '%s:%s'.format(a, b). Pass strings (to_string others); other specifiers are engine-specific. A NULL argument gives NULL. Up to 5 arguments |
+| `format(a: any, b: any)` | string | duckdb, trino, hive, bigquery |  |
+| `format(a: any, b: any, c: any)` | string | duckdb, trino, hive, bigquery |  |
+| `format(a: any, b: any, c: any, d: any)` | string | duckdb, trino, hive, bigquery |  |
+| `format(a: any, b: any, c: any, d: any, e: any)` | string | duckdb, trino, hive, bigquery |  |
 
 ## Date Values
 

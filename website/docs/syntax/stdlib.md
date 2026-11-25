@@ -61,6 +61,7 @@ Available on all values:
 | `s.starts_with(prefix)` / `s.ends_with(suffix)` | Prefix/suffix test |
 | `s.like(pattern)` | SQL LIKE match |
 | `s.regexp_like(pattern)` | True if the regex matches |
+| `fmt.format(a, ...)` | printf-style: `'%s:%s'.format(a, b)` fills each `%s` with the next argument (up to 5) and `%%` is `%`; a NULL argument gives NULL. Not on Snowflake |
 | `s.regexp_extract(pattern)` | First substring matching the regex, or NULL when nothing matches |
 | `s.regexp_extract(pattern, group)` | Regex capture group |
 | `s.regexp_replace(pattern, replacement)` | Replace every regex match |

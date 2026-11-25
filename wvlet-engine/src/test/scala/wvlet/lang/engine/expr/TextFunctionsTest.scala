@@ -71,4 +71,19 @@ class TextFunctionsTest extends UniTest:
     TextFunctions.nfcNormalize("abc") shouldBe "abc"
   }
 
+  test("printf fills %s and %% and rejects other specifiers") {
+    TextFunctions.printf("%s:%s", Seq("a", "b")) shouldBe "a:b"
+    TextFunctions.printf("100%% %s", Seq("x")) shouldBe "100% x"
+    TextFunctions.printf("no args", Seq("x")) shouldBe "no args"
+    intercept[Exception] {
+      TextFunctions.printf("%s %s", Seq("a"))
+    }
+    intercept[Exception] {
+      TextFunctions.printf("%d", Seq("1"))
+    }
+    intercept[Exception] {
+      TextFunctions.printf("50%", Seq.empty)
+    }
+  }
+
 end TextFunctionsTest

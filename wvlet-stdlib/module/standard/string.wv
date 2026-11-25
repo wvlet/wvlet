@@ -104,6 +104,14 @@ trait string in duckdb = {
   -- string must match. try_to_timestamp returns NULL where to_timestamp fails
   def to_timestamp(format:string): timestamp = sql"strptime(${this},${format})"
   def try_to_timestamp(format:string): timestamp = sql"try_strptime(${this},${format})"
+  -- printf-style formatting with this string as the format: each %s takes the next argument's
+  -- text and %% is a literal %, e.g. '%s:%s'.format(a, b). Pass strings (to_string others); other
+  -- specifiers are engine-specific. A NULL argument gives NULL. Up to 5 arguments
+  def format(a:any): string = sql"printf(${this},${a})"
+  def format(a:any, b:any): string = sql"printf(${this},${a},${b})"
+  def format(a:any, b:any, c:any): string = sql"printf(${this},${a},${b},${c})"
+  def format(a:any, b:any, c:any, d:any): string = sql"printf(${this},${a},${b},${c},${d})"
+  def format(a:any, b:any, c:any, d:any, e:any): string = sql"printf(${this},${a},${b},${c},${d},${e})"
 }
 
 trait string in trino = {
@@ -147,6 +155,15 @@ trait string in trino = {
   -- name %M, and the day name %W
   def to_timestamp(format:string): timestamp = sql"date_parse(${this},replace(replace(replace(${format},'%M','%i'),'%B','%M'),'%A','%W'))"
   def try_to_timestamp(format:string): timestamp = sql"try(date_parse(${this},replace(replace(replace(${format},'%M','%i'),'%B','%M'),'%A','%W')))"
+  -- printf-style formatting with this string as the format: each %s takes the next argument's
+  -- text and %% is a literal %, e.g. '%s:%s'.format(a, b). Pass strings (to_string others); other
+  -- specifiers are engine-specific. A NULL argument gives NULL. Up to 5 arguments
+  -- Trino's format prints a NULL argument as 'null', so return NULL first
+  def format(a:any): string = sql"case when ${a} is null then null else format(${this},${a}) end"
+  def format(a:any, b:any): string = sql"case when ${a} is null or ${b} is null then null else format(${this},${a},${b}) end"
+  def format(a:any, b:any, c:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null then null else format(${this},${a},${b},${c}) end"
+  def format(a:any, b:any, c:any, d:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null or ${d} is null then null else format(${this},${a},${b},${c},${d}) end"
+  def format(a:any, b:any, c:any, d:any, e:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null or ${d} is null or ${e} is null then null else format(${this},${a},${b},${c},${d},${e}) end"
 }
 
 trait string in hive = {
@@ -181,6 +198,15 @@ trait string in hive = {
   -- Extract a JSON value from a string holding JSON text (JSONPath, e.g. '$.a.b')
   def json_extract(path:string): json = sql"get_json_object(${this},${path})"
   def json_extract_string(path:string): string = sql"get_json_object(${this},${path})"
+  -- printf-style formatting with this string as the format: each %s takes the next argument's
+  -- text and %% is a literal %, e.g. '%s:%s'.format(a, b). Pass strings (to_string others); other
+  -- specifiers are engine-specific. A NULL argument gives NULL. Up to 5 arguments
+  -- Hive's printf prints a NULL argument as 'null', so return NULL first
+  def format(a:any): string = sql"case when ${a} is null then null else printf(${this},${a}) end"
+  def format(a:any, b:any): string = sql"case when ${a} is null or ${b} is null then null else printf(${this},${a},${b}) end"
+  def format(a:any, b:any, c:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null then null else printf(${this},${a},${b},${c}) end"
+  def format(a:any, b:any, c:any, d:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null or ${d} is null then null else printf(${this},${a},${b},${c},${d}) end"
+  def format(a:any, b:any, c:any, d:any, e:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null or ${d} is null or ${e} is null then null else printf(${this},${a},${b},${c},${d},${e}) end"
 }
 
 trait string in snowflake = {
@@ -257,6 +283,14 @@ trait string in bigquery = {
   -- Parse the string as a timestamp with strftime codes
   def to_timestamp(format:string): timestamp = sql"parse_timestamp(${format},${this})"
   def try_to_timestamp(format:string): timestamp = sql"safe.parse_timestamp(${format},${this})"
+  -- printf-style formatting with this string as the format: each %s takes the next argument's
+  -- text and %% is a literal %, e.g. '%s:%s'.format(a, b). Pass strings (to_string others); other
+  -- specifiers are engine-specific. A NULL argument gives NULL. Up to 5 arguments
+  def format(a:any): string = sql"format(${this},${a})"
+  def format(a:any, b:any): string = sql"format(${this},${a},${b})"
+  def format(a:any, b:any, c:any): string = sql"format(${this},${a},${b},${c})"
+  def format(a:any, b:any, c:any, d:any): string = sql"format(${this},${a},${b},${c},${d})"
+  def format(a:any, b:any, c:any, d:any, e:any): string = sql"format(${this},${a},${b},${c},${d},${e})"
 }
 
 -- uuid(): a random version-4 UUID as a lowercase string, e.g.

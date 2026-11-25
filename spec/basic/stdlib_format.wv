@@ -1,0 +1,15 @@
+-- printf-style s.format: %s takes the next argument and %% is a literal %; a NULL argument
+-- gives NULL on every engine
+from [
+  ['user', '42', 1],
+  ['item', null, 2],
+] as keys(kind, id, n)
+select
+  '%s:%s'.format(kind, id) as k,
+  '%s 100%%'.format(kind) as p,
+order by n
+
+test _.rows should be [
+  ['user:42', 'user 100%'],
+  [null, 'item 100%'],
+]

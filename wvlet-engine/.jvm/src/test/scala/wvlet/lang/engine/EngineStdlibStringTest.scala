@@ -59,6 +59,14 @@ class EngineStdlibStringTest extends UniTest:
     check(q)
   }
 
+  test("format fills %s and %% as DuckDB, with NULL in giving NULL") {
+    check(
+      "from [['a', 'b'], ['日本', ''], [null, 'x'], ['c', null]] as p(a, b)\n" +
+        "select a, b, '%s:%s'.format(a, b) as k, '%s'.format(a) as one, '100%% %s'.format(b) as pct, " +
+        "'[%s|%s|%s|%s|%s]'.format(a, b, a, b, a) as five, '%s'.format(true) as t"
+    )
+  }
+
   test("regexp_split keeps empty strings as DuckDB") {
     check(
       "from [['a,b,,c,'], [''], ['abc'], [',a'], [null]] as t(s)\n" +
