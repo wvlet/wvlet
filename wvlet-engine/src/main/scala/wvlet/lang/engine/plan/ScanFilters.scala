@@ -293,6 +293,48 @@ object ScanFilters:
         None
 
   /** The top-level conjuncts of `cond` */
+  /**
+    * The filters implied by `cond` when it is an `or` reading several input positions: for each
+    * position that every branch tests with conjuncts reading only it, the `or` over the branches of
+    * those conjuncts (TPC-H q19's `(p_brand = 'Brand#12' and p_size <= 5 ...) or (p_brand =
+    * 'Brand#23' and ...)` implies `p_brand = 'Brand#12' or p_brand = 'Brand#23' or ...`). A row for
+    * which `cond` is TRUE has one branch TRUE, so it passes each implied filter: they may drop rows
+    * before `cond` runs, but not replace it. Nil otherwise
+    */
+  def columnImplied(cond: VExpr): List[VExpr] =
+    def branches(e: VExpr): List[VExpr] =
+      e match
+        case OrExpr(a, b) =>
+          branches(a) ++ branches(b)
+        case other =>
+          List(other)
+    def refs(e: VExpr): Set[Int] =
+      val bits = mutable.BitSet()
+      VExprs.collectRefs(e, bits)
+      bits.toSet
+    cond match
+      case _: OrExpr if refs(cond).size > 1 =>
+        // Per branch, its single-position conjuncts by position
+        val byPos = branches(cond).map { b =>
+          conjuncts(b)
+            .flatMap(c =>
+              refs(c)
+                .toList
+                .match
+                  case List(i) =>
+                    Some(i -> c);
+                  case _ =>
+                    None
+            )
+            .groupMap(_._1)(_._2)
+        }
+        val common = byPos.map(_.keySet).reduce(_ intersect _)
+        common.toList.sorted.map(i => byPos.map(_(i).reduce(AndExpr(_, _))).reduce(OrExpr(_, _)))
+      case _ =>
+        Nil
+
+  end columnImplied
+
   def conjuncts(cond: VExpr): List[VExpr] =
     cond match
       case AndExpr(a, b) =>

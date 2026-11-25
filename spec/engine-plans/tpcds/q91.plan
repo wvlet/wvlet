@@ -1,7 +1,7 @@
 -- q91#1
   Scan[household_demographics](columns=hd_demo_sk,hd_buy_potential join_filter=hd_demo_sk) -> [hd_demo_sk:long, hd_buy_potential:string]
   ↓ Filter(like(#1,Unknown%,false,false), keep=0) -> [hd_demo_sk:long]
-    Scan[customer_demographics](columns=cd_demo_sk,cd_marital_status,cd_education_status filter=Or(And(Compare(cd_marital_status,Eq,M),Compare(cd_education_status,Eq,Unknown)),And(Compare(cd_marital_status,Eq,W),Compare(cd_education_status,Eq,Advanced Degree))) join_filter=cd_demo_sk) -> [cd_demo_sk:long, cd_marital_status:string, cd_education_status:string]
+    Scan[customer_demographics](columns=cd_demo_sk,cd_marital_status,cd_education_status filter=Or(And(Compare(cd_marital_status,Eq,M),Compare(cd_education_status,Eq,Unknown)),And(Compare(cd_marital_status,Eq,W),Compare(cd_education_status,Eq,Advanced Degree))) row_filter=And(Or(Compare(cd_marital_status,Eq,M),Compare(cd_marital_status,Eq,W)),Or(Compare(cd_education_status,Eq,Unknown),Compare(cd_education_status,Eq,Advanced Degree))) join_filter=cd_demo_sk) -> [cd_demo_sk:long, cd_marital_status:string, cd_education_status:string]
     ↓ Filter((((#1=lit(M:string)) and (#2=lit(Unknown:string))) or ((#1=lit(W:string)) and (#2=lit(Advanced Degree:string))))) -> [cd_demo_sk:long, cd_marital_status:string, cd_education_status:string]
       Scan[customer_address](columns=ca_address_sk,ca_gmt_offset filter=Compare(ca_gmt_offset,Eq,-7.00) join_filter=ca_address_sk) -> [ca_address_sk:long, ca_gmt_offset:decimal(5,2)]
       ↓ Filter((#1=lit(-7.00:decimal(5,2))), keep=0) -> [ca_address_sk:long]

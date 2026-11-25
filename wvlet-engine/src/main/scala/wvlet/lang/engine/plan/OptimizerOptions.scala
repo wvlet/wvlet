@@ -497,6 +497,16 @@ enum Optimization(val name: String):
     */
   case JoinTreeBuildEstimates extends Optimization("join_tree_build_estimates")
 
+  /**
+    * With `scan_row_filters`, an `or` conjunct of a filter over a scan that reads several columns
+    * also gives the scan's row filter, for each column that every branch tests, the `or` over the
+    * branches of their conjuncts on that column ([[ScanFilters.columnImplied]]), as DuckDB derives
+    * them: uni decodes the other columns only for the rows those keep. The `or` stays in the
+    * engine's filter, so the rows are the same (TPC-H q19's part filter keeps 0.24% of the rows but
+    * reads three columns, so it was estimated to keep 30% and decoded every row)
+    */
+  case ColumnImpliedRowFilters extends Optimization("column_implied_row_filters")
+
 end Optimization
 
 object Optimization:

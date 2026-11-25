@@ -37,6 +37,9 @@ class EngineScanRowFiltersTest extends UniTest:
   private val off     = on.withOptimizer(options.withDisabled(Optimization.ScanRowFilters))
   private val noJoin  = on.withOptimizer(options.withDisabled(Optimization.ScanJoinRowFilters))
   private val loose   = on.withOptimizer(options.withDisabled(Optimization.SelectiveScanRowFilters))
+  private val noImplied = on.withOptimizer(
+    options.withDisabled(Optimization.ColumnImpliedRowFilters)
+  )
 
   /**
     * 1000 rows in row groups of 100 (so that scans split into morsels), with integer, date,
@@ -266,6 +269,39 @@ class EngineScanRowFiltersTest extends UniTest:
       }
     filters.exists(_.contains("In(")) shouldBe false
     sameRows(q).size shouldBe 600
+  }
+
+  test("give the row filter the per-column filters implied by a multi-column or") {
+    // TPC-H q19's shape: each branch tests k, mode and qty
+    val q =
+      """from $t
+        |where (k = 1 and mode = 'm1' and qty < 10) or (k = 2 and mode in ('m2', 'm3') and qty < 20)
+        |select id""".stripMargin
+    val plan      = explain(on, q)
+    val rowFilter = plan.linesIterator.find(_.contains("row_filter=")).getOrElse("")
+    rowFilter shouldContain "Compare(k,Eq,1)"
+    rowFilter shouldContain "Compare(mode,Eq,m1)"
+    // The or itself (with its decimal comparisons) stays in the engine's filter
+    plan shouldContain "Filter("
+    explain(noImplied, q) shouldNotContain "row_filter="
+    val r = rows(on, q)
+    r shouldBe rows(noImplied, q)
+    r shouldBe rows(off, q)
+    r.nonEmpty shouldBe true
+  }
+
+  test("return the same rows with column-implied row filters on and off") {
+    Seq(
+      // A branch without a test of mode implies nothing for it
+      "from $t where (k = 1 and mode = 'm1') or (k = 2) select id",
+      "from $t where (k = 1 and mode is null) or (k = 3 and flag) select id, mode",
+      "from $t where (d < '2020-02-01'::date and k = 1) or (d > '2020-12-01'::date and k > 4) select id",
+      "from $t where (id < 100 and mode = 'm0') or (id > 900 and (mode = 'm4' or mode is null)) select id"
+    ).foreach { q =>
+      val r = rows(on, q)
+      r shouldBe rows(noImplied, q)
+      r shouldBe rows(off, q)
+    }
   }
 
 end EngineScanRowFiltersTest

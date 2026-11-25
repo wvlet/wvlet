@@ -52,7 +52,8 @@ object Lowering:
     * are estimated to keep at most [[ScanFilters.MaxRowFilterSelectivity]] of its rows. With
     * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
     * ([[ScanOp.dictionaryCodes]]) With `maskedCaseWhen`, a CASE of one WHEN without ELSE masks its
-    * THEN vector ([[MaskCaseWhen]])
+    * THEN vector ([[MaskCaseWhen]]). With `columnImpliedRowFilters`, a row filter also takes the
+    * per-column filters implied by a multi-column `or` conjunct ([[ScanFilters.columnImplied]])
     */
   def apply(
       p: RuntimePlan,
@@ -71,7 +72,8 @@ object Lowering:
       scanRowFilters: Boolean = false,
       dictionaryCodes: Boolean = false,
       selectiveRowFilters: Boolean = false,
-      maskedCaseWhen: Boolean = false
+      maskedCaseWhen: Boolean = false,
+      columnImpliedRowFilters: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -88,7 +90,8 @@ object Lowering:
       scanRowFilters,
       dictionaryCodes,
       selectiveRowFilters,
-      maskedCaseWhen
+      maskedCaseWhen,
+      columnImpliedRowFilters
     )
     if inSet then
       l.markInSet(p)
@@ -123,7 +126,8 @@ object Lowering:
       scanRowFilters: Boolean,
       dictionaryCodes: Boolean,
       selectiveRowFilters: Boolean,
-      maskedCaseWhen: Boolean
+      maskedCaseWhen: Boolean,
+      columnImpliedRowFilters: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -164,7 +168,8 @@ object Lowering:
               scanRowFilters = scanRowFilters,
               dictionaryCodes = dictionaryCodes,
               selectiveRowFilters = selectiveRowFilters,
-              maskedCaseWhen = maskedCaseWhen
+              maskedCaseWhen = maskedCaseWhen,
+              columnImpliedRowFilters = columnImpliedRowFilters
             )
         )
       ) match
@@ -247,9 +252,19 @@ object Lowering:
             case scan: ScanOp =>
               val conds = ScanFilters.conjuncts(expr(cond, positions(s)))
               val name  = (i: Int) => Some(scan.sourceColumnName(i)).filter(s.source.canRowFilterOn)
-              val (moved, kept) = conds.partitionMap(c =>
+              val (exactMoved, exactKept) = conds.partitionMap(c =>
                 ScanFilters.exact(c, name).map(f => (c, f)).toLeft(c)
               )
+              // A multi-column `or` stays in the engine when it implies per-column row filters
+              val implied =
+                if columnImpliedRowFilters then
+                  conds.map(c => c -> ScanFilters.columnImplied(c)).filter(_._2.nonEmpty).toMap
+                else
+                  Map.empty[VExpr, List[VExpr]]
+              val moved =
+                exactMoved.filterNot((c, _) => implied.contains(c)) ++
+                  implied.values.flatten.flatMap(c => ScanFilters.exact(c, name).map(f => (c, f)))
+              val kept = exactKept ++ exactMoved.map(_._1).filter(implied.contains)
               // Filter-first decode pays per row for the row filter and the selective gathers, and
               // saves only on the rows it drops: filters keeping many rows stay in the engine
               val selective =
