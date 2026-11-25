@@ -64,7 +64,7 @@
 ↙ Scan[CTE[all_sales]]() -> [d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2)]
 ↓ Filter((#0=lit(2002:long))) -> [d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2)]
   Scan[CTE[all_sales]]() -> [d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2)]
-  ↓ Filter((#0=(lit(2002:int)-lit(1:int)))) -> [d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2)]
+  ↓ Filter((#0=lit(2001:long))) -> [d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2)]
   ↓ Morsel[parallelism=N] -> [d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2)]
 ↙ HashJoin[Inner](#1,#2,#3,#4 = #1,#2,#3,#4) -> [d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2), d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2)]
 ↓ Filter(((cast(#5 as decimal(17,2))/cast(#12 as decimal(17,2)))<lit(0.9:double)), keep=0,1,2,3,4,5,6,7,12,13) -> [d_year:long, i_brand_id:long, i_class_id:long, i_category_id:long, i_manufact_id:long, sales_cnt:long, sales_amt:decimal(38,2), d_year:long, sales_cnt:long, sales_amt:decimal(38,2)]

@@ -627,7 +627,18 @@ class Binder(
         i += 1
       sb.toString
 
+  private val foldBoundConstants = planner.enabled(Optimization.FoldBoundConstants)
+  private val unwrapCasts        = planner.enabled(Optimization.UnwrapCasts)
+
+  /** Bind an expression, folded by [[BoundExprSimplifier]] when `fold_bound_constants` is on */
   def bindExpr(e: Expression): VExpr =
+    val x = bindPlain(e)
+    if foldBoundConstants then
+      BoundExprSimplifier.fold(x)
+    else
+      x
+
+  private def bindPlain(e: Expression): VExpr =
     e match
       case i: Identifier if subst.contains(i.leafName) =>
         bind(subst(i.leafName))
@@ -897,7 +908,7 @@ class Binder(
       case other =>
         error(s"Unsupported expression in the engine: ${other.nodeName} (${other})", e)
 
-  end bindExpr
+  end bindPlain
 
   private def currentMicros(): Long = System.currentTimeMillis() * 1000L
 
@@ -1014,6 +1025,8 @@ class Binder(
           PType.common(a, b)
     if t == PType.AnyT then
       Compare(op, l, r)
+    else if unwrapCasts then
+      BoundExprSimplifier.unwrapCompare(op, castTo(l, t), castTo(r, t))
     else
       Compare(op, castTo(l, t), castTo(r, t))
 
@@ -1228,9 +1241,15 @@ class Binder(
     val t     = bound.map(_.ptype).foldLeft(target.ptype)(PType.common)
     val tgt   = castTo(target, t)
     if bound.forall(_.isInstanceOf[Const]) then
-      val values  = bound.map(b => castTo(b, t).asInstanceOf[Const].value)
-      val hasNull = values.contains(null)
-      InList(tgt, values.filter(_ != null).toSet, hasNull, negate)
+      val values    = bound.map(b => castTo(b, t).asInstanceOf[Const].value)
+      val hasNull   = values.contains(null)
+      val set       = values.filter(_ != null).toSet
+      val unwrapped =
+        if unwrapCasts then
+          BoundExprSimplifier.unwrapInList(tgt, set, hasNull, negate)
+        else
+          None
+      unwrapped.getOrElse(InList(tgt, set, hasNull, negate))
     else
       InExprs(tgt, bound.map(b => castTo(b, t)), negate)
 

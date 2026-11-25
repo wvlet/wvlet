@@ -279,6 +279,20 @@ enum Optimization(val name: String):
     */
   case FoldConstants extends Optimization("fold_constants")
 
+  /**
+    * Expressions over literals become literals as they are bound (`1200 + 11`, `cast(1 + 10 as
+    * decimal(21,2))`), so that filter pushdown and scan filters see the folded bounds
+    * ([[BoundExprSimplifier.fold]])
+    */
+  case FoldBoundConstants extends Optimization("fold_bound_constants")
+
+  /**
+    * A comparison of a lossless cast with literals (`cast(x as decimal(12,2)) > 50.00`) compares
+    * the uncast expression with the literals converted to its type, when they convert exactly
+    * ([[BoundExprSimplifier.unwrapCompare]])
+    */
+  case UnwrapCasts extends Optimization("unwrap_casts")
+
 end Optimization
 
 object Optimization:

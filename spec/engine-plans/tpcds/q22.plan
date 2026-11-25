@@ -1,7 +1,7 @@
 -- q22#1
   (shared)
     Scan[inventory](columns=inv_date_sk,inv_item_sk,inv_quantity_on_hand join_filter=inv_date_sk,inv_item_sk) -> [inv_date_sk:long, inv_item_sk:long, inv_quantity_on_hand:int]
-      Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,GtEq,1200)) -> [d_date_sk:long, d_month_seq:long]
+      Scan[date_dim](columns=d_date_sk,d_month_seq filter=And(Compare(d_month_seq,GtEq,1200),Compare(d_month_seq,LtEq,1211))) -> [d_date_sk:long, d_month_seq:long]
       ↓ Filter(((#1>=lit(1200:long)) and (#1<=lit(1211:long))), keep=0) -> [d_date_sk:long]
       ↓ Morsel[parallelism=N] -> [d_date_sk:long]
     ↙ HashJoin[Inner](#0 = #0) -> [inv_date_sk:long, inv_item_sk:long, inv_quantity_on_hand:int, d_date_sk:long]

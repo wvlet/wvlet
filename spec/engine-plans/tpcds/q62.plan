@@ -11,7 +11,7 @@ Scan[web_sales](columns=ws_sold_date_sk,ws_ship_date_sk,ws_web_site_sk,ws_ship_m
   Scan[web_site](columns=web_site_sk,web_name) -> [web_site_sk:long, web_name:string]
   ↓ Morsel[parallelism=N] -> [web_site_sk:long, web_name:string]
 ↙ HashJoin[Inner](#2 = #0) -> [ws_sold_date_sk:long, ws_ship_date_sk:long, ws_web_site_sk:long, ws_ship_mode_sk:long, ws_warehouse_sk:long, w_substr:string, w_warehouse_sk:long, sm_ship_mode_sk:long, sm_type:string, web_site_sk:long, web_name:string]
-  Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,GtEq,1200)) -> [d_date_sk:long, d_month_seq:long]
+  Scan[date_dim](columns=d_date_sk,d_month_seq filter=And(Compare(d_month_seq,GtEq,1200),Compare(d_month_seq,LtEq,1211))) -> [d_date_sk:long, d_month_seq:long]
   ↓ Filter(((#1>=lit(1200:long)) and (#1<=lit(1211:long))), keep=0) -> [d_date_sk:long]
   ↓ Morsel[parallelism=N] -> [d_date_sk:long]
 ↙ HashJoin[Inner](#1 = #0) -> [ws_sold_date_sk:long, ws_ship_date_sk:long, ws_web_site_sk:long, ws_ship_mode_sk:long, ws_warehouse_sk:long, w_substr:string, w_warehouse_sk:long, sm_ship_mode_sk:long, sm_type:string, web_site_sk:long, web_name:string, d_date_sk:long]

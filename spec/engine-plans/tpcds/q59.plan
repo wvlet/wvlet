@@ -1,5 +1,5 @@
 -- q59#1
-Scan[date_dim](columns=d_month_seq,d_week_seq filter=Compare(d_month_seq,GtEq,1212) join_filter=d_week_seq) -> [d_month_seq:long, d_week_seq:long]
+Scan[date_dim](columns=d_month_seq,d_week_seq filter=And(Compare(d_month_seq,GtEq,1212),Compare(d_month_seq,LtEq,1223)) join_filter=d_week_seq) -> [d_month_seq:long, d_week_seq:long]
 ↓ Filter(((#0>=lit(1212:long)) and (#0<=lit(1223:long))), keep=1) -> [d_week_seq:long]
     (shared)
       Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_sales_price join_filter=ss_sold_date_sk) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
