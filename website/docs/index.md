@@ -263,9 +263,7 @@ from adults
 
 Mark models with `with { materialized: 'table' }` and run `wvlet build` to persist them in dependency order, like a dbt project. See [Model Pipelines](./syntax/model-pipelines).
 
-:::warning
-Importing modules directly from GitHub repositories (`import example.* from "github.com/..."`) is not supported yet.
-:::
+Modules resolve from the local project folder. To share models across projects, such as one pipeline template run for many tenants, keep the shared `.wv` files in the same repository or vendor them in (a copy or a git submodule), and pass per-tenant settings as model parameters.
 
 ### Incremental Processing
 

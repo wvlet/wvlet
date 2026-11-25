@@ -13,6 +13,8 @@
  */
 package wvlet.lang.compiler.parser
 
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.model.plan.CallTool
 import wvlet.lang.model.plan.PackageDef
@@ -32,6 +34,17 @@ class ParserTest extends UniTest:
         t.name.fullName shouldBe "A"
       }
     }
+  }
+
+  test("should reject import with a remote from source") {
+    val p = WvletParser(
+      CompilationUnit.fromWvletString("""import example.* from "github.com/wvlet/example"""")
+    )
+    val e = intercept[WvletLangException] {
+      p.parse()
+    }
+    e.statusCode shouldBe StatusCode.SYNTAX_ERROR
+    e.getMessage shouldContain "is not supported"
   }
 
   test("parse json scan") {

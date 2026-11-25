@@ -788,10 +788,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case e: ExecuteExpr =>
           group(wl("execute", expr(e.expr)))
         case i: Import =>
-          val importRef  = expr(i.importRef)
-          val alias      = i.alias.map(a => wl("as", expr(a)))
-          val fromSource = i.fromSource.map(x => wl("from", expr(x)))
-          group(wl("import", importRef, alias, fromSource))
+          val importRef = expr(i.importRef)
+          val alias     = i.alias.map(a => wl("as", expr(a)))
+          group(wl("import", importRef, alias))
         case v: ValDef =>
           val name             = v.name.name
           val body             = expr(v.expr)

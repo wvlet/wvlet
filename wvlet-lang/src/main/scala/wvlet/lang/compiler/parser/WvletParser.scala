@@ -1593,9 +1593,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val d: Import = importRef()
     scanner.lookAhead().token match
       case WvletToken.FROM =>
-        consume(WvletToken.FROM)
-        val source = stringLiteral()
-        d.copy(fromSource = Some(source), span = d.span.extendTo(lastToken.span))
+        // Remote module sources were removed (adr/2026-11-25-no-remote-imports.md). Reject the
+        // clause instead of parsing `from "..."` as the start of a query that reads a file
+        val t = scanner.lookAhead()
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            "import ... from \"...\" is not supported. Modules resolve from the local project folder",
+            t.sourceLocation
+          )
       case _ =>
         d
   }
@@ -1608,19 +1614,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.DOT =>
         consume(WvletToken.DOT)
         val w = consume(WvletToken.STAR)
-        Import(
-          DotRef(qid, Wildcard(w.span), DataType.UnknownType, qid.span),
-          None,
-          None,
-          spanFrom(i)
-        )
+        Import(DotRef(qid, Wildcard(w.span), DataType.UnknownType, qid.span), None, spanFrom(i))
       case WvletToken.AS =>
         // alias
         consume(WvletToken.AS)
         val alias = identifier()
-        Import(qid, Some(alias), None, spanFrom(i))
+        Import(qid, Some(alias), spanFrom(i))
       case _ =>
-        Import(qid, None, None, spanFrom(i))
+        Import(qid, None, spanFrom(i))
   }
 
   def typeDef(): TypeDef = node {

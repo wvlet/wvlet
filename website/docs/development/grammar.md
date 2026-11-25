@@ -32,7 +32,7 @@ statement : importStatement
           | showCommand queryOp*
           | executeCommand expression
 
-importStatement: 'import' importRef (from str)?
+importStatement: 'import' importRef
 importRef      : qualifiedId ('.' '*')?
                | qualifiedId 'as' identifier
 
