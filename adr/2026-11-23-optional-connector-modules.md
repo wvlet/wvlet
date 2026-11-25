@@ -18,11 +18,12 @@ DuckDB reached the CLI classpath in two ways: `wvlet-connector` bundled the Duck
   - `wvlet compile` keeps the DuckDB SQL dialect but skips the catalog when the connector is missing.
   - `wvlet ui` defaults to the wvlet engine, like `run` and `wv`.
   - `wvlet catalog` asks the connector for its default catalog (`defaultCatalogName`) and its function and type dialect (`functionDialect`), instead of checking for DuckDB and Generic by name.
-- Distribution: a lite CLI by default, plus a full CLI with the optional connectors, attached to the same release. Versions always match, and `brew upgrade` keeps the full CLI whole. Until the full pack exists, the CLI keeps depending on both modules, so its contents do not change.
+- Distribution: a lite CLI by default (`wvlet-cli-<version>.tar.gz`, sbt project `cli`), plus a full CLI with the optional connectors (`wvlet-cli-full-<version>.tar.gz`, sbt project `cliFull`), attached to the same release. Versions always match, and `brew upgrade` keeps the full CLI whole.
 
 ## Consequences
 
-- Without DuckDB and Snowflake, the pack is about 56 MB, down from 228 MB.
+- Without DuckDB and Snowflake, the pack's `lib/` is 56 MB, down from 228 MB; the full pack stays at 228 MB.
+- Homebrew installs the lite CLI. A separate `wvlet-full` formula in wvlet/homebrew-wvlet for the full CLI is a follow-up; until it exists, the full CLI is the release tarball.
 - `wvlet catalog diff` without `--profile` still defaults to DuckDB, because the wvlet engine is not a catalog-backed SQL connector. On the lite CLI it reports how to install DuckDB.
 - Flow stages that read another connector's table stage into the wvlet engine or DuckDB (#2337), so the lite CLI runs them on the engine. Choosing a DuckDB engine there fails at connector creation with the install message.
 - Downstream users of the `wvlet-lang` and `wvlet-connector` artifacts who relied on the transitive `duckdb_jdbc` or `snowflake-jdbc` must add `wvlet-connector-duckdb` or `wvlet-connector-snowflake`.

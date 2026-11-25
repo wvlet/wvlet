@@ -12,6 +12,8 @@ cd wvlet
 ./sbt
 ## This will install wv command to your ~/local/bin
 sbt:wvlet> cli/packInstall
+## Or install the full CLI with the DuckDB and Snowflake connectors
+sbt:wvlet> cliFull/packInstall
 ```
 
 You can find the wvlet command in `~/local/bin/wv`. For convenience, you can set `PATH` environment variable like this:

@@ -139,7 +139,7 @@ select status, count(*) as n
 
 ## How do I run Wvlet?
 
-Install the CLI with npm (`npm install -g @wvlet/cli`, Node.js 22+). It provides `wvlet version`, `compile`, `to_wvlet`, and `run` (DuckDB included, no JDK needed). The full JVM CLI, which adds the `wv` REPL, `wvlet build`, `flow`, `catalog`, and `ui`, is installed with Homebrew (`brew install wvlet/wvlet/wvlet`) or a release package; see [Installation](./usage/install.md). The commands:
+Install the CLI with npm (`npm install -g @wvlet/cli`, Node.js 22+). It provides `wvlet version`, `compile`, `to_wvlet`, and `run` (DuckDB included, no JDK needed). The JVM CLI, which adds the `wv` REPL, `wvlet build`, `flow`, `catalog`, and `ui`, is installed with Homebrew (`brew install wvlet/wvlet/wvlet`) or a release package; DuckDB (`-t duckdb`) and Snowflake on the JVM CLI need the full package `wvlet-cli-full-<version>.tar.gz`; see [Installation](./usage/install.md). The commands:
 
 - `wv` (JVM CLI only): an interactive shell (REPL). `wv -c "from 'data.csv' count"` runs one query and exits.
 - `wvlet`: batch commands.
