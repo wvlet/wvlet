@@ -30,6 +30,11 @@ class EngineReduceSemiJoinsTest extends UniTest:
     .engine
     .withOptimizer(options.withDisabled(Optimization.ReduceSemiJoins))
 
+  // Self semi joins on a key with a different value become aggregations (`self_join_aggregate`)
+  private val noSelfJoinAggregate = conformance
+    .engine
+    .withOptimizer(options.withDisabled(Optimization.SelfJoinAggregate))
+
   override def afterAll: Unit = conformance.close()
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
@@ -75,7 +80,9 @@ class EngineReduceSemiJoinsTest extends UniTest:
     semiJoins(plan) shouldBe semiJoins(explain(disabled, query)) + 1
   }
 
-  test("keep a cross-side non-equality as the residual of the semi join") {
+  test(
+    "keep a cross-side non-equality as the residual of the semi join, or aggregate a self join"
+  ) {
     val query =
       """from orders
         |where o_orderkey in ({
@@ -85,7 +92,8 @@ class EngineReduceSemiJoinsTest extends UniTest:
         |})
         |select count(*) as n
         |""".stripMargin
-    check(query) shouldContain "residual="
+    check(query) shouldContain "agg:min("
+    explain(noSelfJoinAggregate, query) shouldContain "residual="
   }
 
   test("reduce a shared CTE whose readers all test membership") {
@@ -104,8 +112,8 @@ class EngineReduceSemiJoinsTest extends UniTest:
         |  })
         |select count(*) as n, sum(o_totalprice) as total
         |""".stripMargin
-    val plan = check(query)
-    plan shouldContain "residual="
+    check(query) shouldContain "agg:min("
+    explain(noSelfJoinAggregate, query) shouldContain "residual="
   }
 
   test("keep a shared CTE's duplicates when one reader counts them") {

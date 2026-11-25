@@ -50,6 +50,7 @@ class OptimizerOptionsTest extends UniTest:
         "reorder_joins",
         "commute_left_joins",
         "reduce_semi_joins",
+        "self_join_aggregate",
         "group_key_semi_joins",
         "chain_grouping_sets",
         "prefix_like_selectivity",

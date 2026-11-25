@@ -51,12 +51,13 @@ class EngineOptimizerToggleTest extends UniTest:
 
   /**
     * Optimizations whose TPC-H and TPC-DS plans `count_in_subqueries` replaces: the shared CTEs
-    * they re-plan are read by IN subqueries that it computes at plan time (TPC-DS q14, q95). They
-    * are compared with it disabled on both sides
+    * they re-plan or rewrite are read by IN subqueries that it computes at plan time (TPC-DS q14,
+    * q95). They are compared with it disabled on both sides
     */
   private val withoutCountIn: Set[Optimization] = Set(
     Optimization.ReplanSemiJoinBuilds,
-    Optimization.ReplanSharedInputs
+    Optimization.ReplanSharedInputs,
+    Optimization.SelfJoinAggregate
   )
 
   for o <- Optimization.values do

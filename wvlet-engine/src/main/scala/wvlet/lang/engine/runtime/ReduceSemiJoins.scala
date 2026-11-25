@@ -39,6 +39,7 @@ import scala.collection.mutable
   *
   * A shared CTE body is reduced when it is finalized, if every reader reads it in such a context
   * ([[reduceBody]]); the readers' contexts come from [[childContexts]], which lowering follows too.
+  * The walk also applies [[SelfJoinAggregate]] to the semi joins it meets or makes.
   */
 object ReduceSemiJoins extends Pass:
   import RuntimePlan.*
@@ -119,12 +120,15 @@ object ReduceSemiJoins extends Pass:
             semi(p, None, needed, ctx)
           case _ =>
             None
-    reduced match
+    reduced.foreach(_ => ctx.fired(name))
+    val node = reduced.getOrElse(p)
+    // A semi join of a table with itself, possibly one just reduced, as a group-by of the table
+    SelfJoinAggregate.rewrite(node, inSet, needed, ctx) match
       case Some(r) =>
-        ctx.fired(name)
+        ctx.fired(Optimization.SelfJoinAggregate.name)
         walkChildren(r, inSet, needed, ctx)
       case None =>
-        walkChildren(p, inSet, needed, ctx)
+        walkChildren(node, inSet, needed, ctx)
 
   private def walkChildren(
       p: RuntimePlan,

@@ -63,9 +63,12 @@ import scala.util.control.NonFatal
 class RuntimeBinder(planner: Planner):
   private var lastId = 0
 
-  private def newColumn(f: Field): Column =
+  private def newColumn(f: Field): Column = Column(newColumnId(), f.name, f.ptype, f.qualifiers)
+
+  /** The id of a new column, unique within the query, for the optimizer's new columns too */
+  def newColumnId(): ColumnId =
     lastId += 1
-    Column(ColumnId(lastId), f.name, f.ptype, f.qualifiers)
+    ColumnId(lastId)
 
   private def columnsOf(s: Schema): IndexedSeq[Column] = s.fields.map(newColumn)
 
