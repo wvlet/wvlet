@@ -15,8 +15,15 @@ package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.engine.catalog.ParquetSource
+import wvlet.lang.engine.catalog.ScanSpec
+import wvlet.lang.engine.exec.BatchesOp
 import wvlet.lang.engine.exec.HashJoinOp
+import wvlet.lang.engine.exec.JoinBuild
 import wvlet.lang.engine.exec.Operator
+import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.vector.PType
+import wvlet.lang.engine.vector.StrVec
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.model.plan.*
@@ -117,6 +124,24 @@ class EngineJoinBuildStringCodesTest extends UniTest:
     joinCodes(on, q) shouldContain true
     joinCodes(on, q).contains(false) shouldBe false
     joinCodes(off, q).contains(true) shouldBe false
+  }
+
+  test("encode the repeating dictionary-coded strings of a build") {
+    val src     = ParquetSource("item", s"${dir}/item.parquet")
+    val batches =
+      src.scan(ScanSpec(Some(Seq("item", "cat", "brand")), dictionaryCodes = true)).toSeq
+    val in    = BatchesOp(src.schema, batches)
+    val build = JoinBuild(in, IndexedSeq(ColRef(0, PType.Int64, "item")))
+    build.ensureBuilt()
+    val cat   = build.build.column(1).asInstanceOf[StrVec]
+    val brand = build.build.column(2).asInstanceOf[StrVec]
+    cat.dict.toSet shouldBe (0 until 5).map(i => s"cat${i}").toSet
+    brand.dictSize shouldBe 40
+    (0 until brand.size).foreach(i => brand.dict(brand.codes(i)) shouldBe brand.values(i))
+    val off = JoinBuild(BatchesOp(in.schema, batches), IndexedSeq(ColRef(0, PType.Int64, "item")))
+    off.stringCodes = false
+    off.ensureBuilt()
+    off.build.column(2).asInstanceOf[StrVec].dict shouldBe null
   }
 
   test("group by strings from join builds and an integer key as by their values") {

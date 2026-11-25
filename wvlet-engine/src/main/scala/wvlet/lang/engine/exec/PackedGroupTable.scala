@@ -119,6 +119,6 @@ object PackedGroupTable:
     if pack && AggKeyPacking.packable(keyTypes, longDecimals) then
       new PackedGroupTable(keyTypes, expectedGroups, longDecimals)
     else
-      GroupTable(keyTypes, expectedGroups, longDecimals, stableCodes)
+      GroupTable(keyTypes, expectedGroups, longDecimals, stableCodes, packCodes = pack)
 
 end PackedGroupTable

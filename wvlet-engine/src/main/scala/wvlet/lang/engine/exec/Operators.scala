@@ -1100,7 +1100,8 @@ final class JoinBuild(
     filters: Seq[RuntimeFilter] = Nil,
     packKeys: Boolean = true,
     flatTable: Boolean = true,
-    nullsEqual: Boolean = false
+    nullsEqual: Boolean = false,
+    outputsBuild: Boolean = true
 ):
   @volatile
   private var built = false
@@ -1156,9 +1157,9 @@ final class JoinBuild(
   var parallelBuild: Boolean = true
 
   /**
-    * Whether a build of at most [[JoinBuild.MaxCodedRows]] rows encodes its string columns over
-    * their distinct values ([[StrVec.encode]]), so that probe outputs carry codes shared by every
-    * batch (`join_build_string_codes`); set before the build is made
+    * Whether a build of at most [[JoinBuild.MaxCodedRows]] rows encodes its dictionary-encoded
+    * string columns over their distinct values ([[JoinBuild.encodeStrings]]), so that probe outputs
+    * carry codes shared by every batch (`join_build_string_codes`); set before the build is made
     */
   var stringCodes: Boolean = true
 
@@ -1199,8 +1200,9 @@ final class JoinBuild(
         Batch.concat(right.schema, batches)
       else
         JoinBuildSteps.concat(right.schema, batches.toIndexedSeq, steps)
-    if stringCodes then
-      build = JoinBuild.encodeStrings(build)
+    // Joins that output only probe columns never pass the codes on
+    if stringCodes && outputsBuild then
+      build = JoinBuild.encodeStrings(build, batches, steps)
     val rawKeys  = rightKeys.map(_.eval(build)).toArray
     val rawTypes = rightKeys.map(_.ptype)
     // Rows with NULL keys never match, unless NULLs are equal (`IS NOT DISTINCT FROM`)
@@ -1609,24 +1611,66 @@ object JoinBuild:
   inline val MaxCodedRows = 1 << 20
 
   /**
-    * The build with its string columns encoded over their distinct values ([[StrVec.encode]]), when
-    * it has at most [[MaxCodedRows]] rows: probe outputs gather the codes, which then identify
-    * values across batches. Columns already carrying a `dict` stay as they are
+    * The most rows of a build whose string columns without Parquet dictionary codes are encoded
+    * too, hashing each row (small dimensions such as TPC-DS `call_center`)
     */
-  private[exec] def encodeStrings(build: Batch): Batch =
+  inline val MaxPlainCodedRows = 1 << 16
+
+  /**
+    * The build (the concatenation of `batches`) with its string columns encoded over their distinct
+    * values ([[StrVec.encodeParts]]), when it has at most [[MaxCodedRows]] rows: probe outputs
+    * gather the codes, which then identify values across batches. Each dictionary entry of a batch
+    * carrying Parquet dictionary codes (`dictionary_group_keys` scans) is hashed once; up to
+    * [[MaxPlainCodedRows]] rows, rows without codes are hashed one by one.
+    *
+    * All or nothing: the build keeps the codes only when every string column encodes (repeating
+    * values: at most half the rows distinct), since an aggregation takes the codes only when all
+    * its string keys carry them, and builds hold only the columns their joins use. Otherwise probe
+    * outputs would gather codes no aggregation reads. A large build with a column that a Parquet
+    * writer left PLAIN (ids, names) is left as it is without encoding any column. Columns already
+    * carrying a `dict` stay as they are
+    */
+  private[exec] def encodeStrings(
+      build: Batch,
+      batches: Seq[Batch],
+      steps: TaskRunner = TaskRunner.Sequential
+  ): Batch =
     if build.size == 0 || build.size > MaxCodedRows then
       build
     else
-      val cols    = build.columns
-      var changed = false
-      val out     = cols.map {
-        case v: StrVec if v.dict == null =>
-          changed = true
-          StrVec.encode(v, build.size)
-        case v =>
-          v
+      val cols = build.columns
+      val out  = cols.clone()
+      val strs = cols
+        .indices
+        .filter { k =>
+          cols(k) match
+            case v: StrVec =>
+              v.dict == null
+            case _ =>
+              false
+        }
+      val hashPlain = build.size <= MaxPlainCodedRows
+      // A large build with a string column without Parquet codes keeps no codes at all
+      def plain(k: Int): Boolean = batches.exists { b =>
+        b.column(k) match
+          case p: StrVec =>
+            !p.hasCodes
+          case _ =>
+            true
       }
-      if changed then
+      if strs.isEmpty || (!hashPlain && strs.exists(plain)) then
+        return build
+      // One task per string column, on the build runner for large builds
+      JoinBuildSteps.runAll(strs.size, steps) { j =>
+        val k = strs(j)
+        out(k) = StrVec.encodeParts(
+          cols(k).asInstanceOf[StrVec],
+          batches.map(_.column(k)),
+          math.max(1, build.size / 2),
+          hashPlain
+        )
+      }
+      if strs.forall(k => out(k) ne cols(k)) then
         Batch(out, build.size)
       else
         build
@@ -1700,7 +1744,8 @@ class HashJoinOp(
         trackMatches = kind.tracksBuildMatches,
         runner = buildRunner,
         filters = runtimeFilters,
-        nullsEqual = nullsEqual
+        nullsEqual = nullsEqual,
+        outputsBuild = !kind.outputsProbeOnly
       )
 
   /** The same join over another left input, sharing this join's build */

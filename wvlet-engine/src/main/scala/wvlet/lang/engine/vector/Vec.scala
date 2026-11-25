@@ -317,15 +317,33 @@ final class DoubleVec(val values: Array[Double], val nulls: Array[Boolean]) exte
   * A non-null `dict` holds the distinct values the codes stand for (`dict(codes(i)) == values(i)`,
   * `dictSize == dict.length`, -1 only for NULL rows), and vectors with the same `dict` instance
   * share the coding, so a code identifies a value across batches. Hash-join builds encode their
-  * string columns this way ([[StrVec.encode]], `join_build_string_codes`).
+  * dictionary-encoded string columns this way ([[StrVec.encodeParts]], `join_build_string_codes`).
   */
 final class StrVec(
     val values: Array[String],
     val nulls: Array[Boolean],
-    val codes: Array[Int] = null,
+    initCodes: Array[Int] = null,
     val dictSize: Int = 0,
-    val dict: Array[String] = null
+    val dict: Array[String] = null,
+    codeSource: Array[Int] = null,
+    codeIndex: Array[Int] = null
 ) extends Vec:
+  // The codes, gathered from `codeSource` at `codeIndex` on first use: most gathered vectors (join
+  // outputs, filtered scans) never read them. Racing first uses compute equal arrays
+  @volatile
+  private var gatheredCodes: Array[Int] = initCodes
+
+  /** The dictionary codes of the rows, or null without them */
+  def codes: Array[Int] =
+    var c = gatheredCodes
+    if c == null && codeSource != null then
+      c = StrVec.gatherCodes(codeSource, codeIndex, values.length)
+      gatheredCodes = c
+    c
+
+  /** Whether the rows carry codes, without gathering them */
+  def hasCodes: Boolean = gatheredCodes != null || codeSource != null
+
   def ptype: PType     = PType.Str
   def size: Int        = values.length
   def get(i: Int): Any =
@@ -343,44 +361,102 @@ final class StrVec(
         out(i) = values(k)
       i += 1
     val outNulls = Vec.nullsWithPadding(nulls, idx, n)
-    if codes == null then
-      StrVec(out, outNulls)
+    val c        = gatheredCodes
+    if c != null then
+      StrVec(out, outNulls, null, dictSize, dict, c, java.util.Arrays.copyOf(idx, n))
+    else if codeSource != null then
+      // Positions in the codes this vector would gather
+      StrVec(out, outNulls, null, dictSize, dict, codeSource, StrVec.gatherCodes(codeIndex, idx, n))
     else
-      val outCodes = StrVec.gatherCodes(codes, idx, n)
-      StrVec(out, outNulls, outCodes, dictSize, dict)
+      StrVec(out, outNulls)
+
+end StrVec
 
 object StrVec:
   /**
-    * `v` with codes over its distinct values and their `dict`, so that the vectors gathered from it
-    * share one coding; `v` itself when it has more than `maxDistinct` distinct values
+    * `v`, the concatenation of `parts`, with codes over its distinct values and their `dict`, so
+    * that the vectors gathered from it share one coding. A part carrying Parquet dictionary codes
+    * ([[codes]]) hashes each entry once, not each row; a part without them hashes each row when
+    * `hashPlain`. `v` itself when a part has no codes (without `hashPlain`) or the values have more
+    * than `maxDistinct` distinct values
     */
-  def encode(v: StrVec, maxDistinct: Int): StrVec =
-    val n     = v.size
+  def encodeParts(v: StrVec, parts: Seq[Vec], maxDistinct: Int, hashPlain: Boolean): StrVec =
     val ids   = java.util.HashMap[String, Integer]()
-    val codes = new Array[Int](n)
     val dict  = scala.collection.mutable.ArrayBuffer.empty[String]
-    var i     = 0
-    while i < n do
-      val s = v.values(i)
-      if s == null || v.isNull(i) then
-        codes(i) = -1
+    val codes = new Array[Int](v.size)
+    // The code of a value, new values taking the next code; -1 past maxDistinct
+    def codeOf(s: String): Int =
+      val c = ids.get(s)
+      if c != null then
+        c.intValue
+      else if dict.size >= maxDistinct then
+        -1
       else
-        val c = ids.get(s)
-        if c != null then
-          codes(i) = c.intValue
-        else
-          if dict.size >= maxDistinct then
+        ids.put(s, dict.size)
+        dict += s
+        dict.size - 1
+    var off = 0
+    val it  = parts.iterator
+    while it.hasNext do
+      it.next() match
+        case p: StrVec if p.hasCodes && p.dictSize > 0 =>
+          val m = p.size
+          if off + m > codes.length then
             return v
-          ids.put(s, dict.size)
-          codes(i) = dict.size
-          dict += s
-      i += 1
-    StrVec(v.values, v.nulls, codes, dict.size, dict.toArray)
+          // The code of each entry of the part's dictionary seen so far
+          val local = new Array[Int](p.dictSize)
+          java.util.Arrays.fill(local, -1)
+          var i = 0
+          while i < m do
+            val s = p.values(i)
+            codes(off + i) =
+              if s == null || p.isNull(i) then
+                -1
+              else
+                val x = p.codes(i)
+                val c =
+                  if x < 0 then
+                    codeOf(s)
+                  else if local(x) >= 0 then
+                    local(x)
+                  else
+                    val y = codeOf(s)
+                    local(x) = y
+                    y
+                if c < 0 then
+                  return v
+                c
+            i += 1
+          off += m
+        case p: StrVec if hashPlain =>
+          val m = p.size
+          if off + m > codes.length then
+            return v
+          var i = 0
+          while i < m do
+            val s = p.values(i)
+            codes(off + i) =
+              if s == null || p.isNull(i) then
+                -1
+              else
+                val c = codeOf(s)
+                if c < 0 then
+                  return v
+                c
+            i += 1
+          off += m
+        case _ =>
+          return v
+    end while
+    if off != codes.length then
+      v
+    else
+      StrVec(v.values, v.nulls, codes, dict.size, dict.toArray)
 
-  end encode
+  end encodeParts
 
   /** The codes at the given positions, -1 for padding (idx -1) */
-  private def gatherCodes(codes: Array[Int], idx: Array[Int], n: Int): Array[Int] =
+  private[vector] def gatherCodes(codes: Array[Int], idx: Array[Int], n: Int): Array[Int] =
     val out = new Array[Int](n)
     var i   = 0
     while i < n do

@@ -85,13 +85,15 @@ end GroupKey
   *
   * With `longDecimals`, decimal key columns are stored and compared as unscaled Long values
   * ([[GroupTable.DecimalStore]]) instead of boxed BigDecimals. With `stableCodes`, groups whose
-  * string keys carry codes shared across batches are keyed by the codes ([[StrVec.dict]]).
+  * string keys carry codes shared across batches are keyed by the codes ([[StrVec.dict]]), packed
+  * with the other keys into Int64 values with `packCodes`.
   */
 final class GroupTable(
     keyTypes: IndexedSeq[PType],
     expectedGroups: Int = 0,
     longDecimals: Boolean = false,
-    stableCodes: Boolean = false
+    stableCodes: Boolean = false,
+    packCodes: Boolean = true
 ) extends GroupIndex:
   import GroupTable.*
 
@@ -340,7 +342,7 @@ final class GroupTable(
           else
             keyTypes(k)
         }
-      coded = PackedGroupTable.forKeys(types, expectedGroups, pack = true, longDecimals)
+      coded = PackedGroupTable.forKeys(types, expectedGroups, packCodes, longDecimals)
     val codeKeys =
       Array.tabulate(width) { k =>
         if codeDicts(k) != null then
@@ -409,7 +411,7 @@ final class GroupTable(
     var k      = 0
     while k < width do
       norm(k) match
-        case v: StrVec if v.codes != null && stores(k).isInstanceOf[StrStore] =>
+        case v: StrVec if v.hasCodes && stores(k).isInstanceOf[StrStore] =>
           combos *= v.dictSize
         case _ =>
           return null

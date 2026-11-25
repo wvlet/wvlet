@@ -267,14 +267,39 @@ class GroupTableTest extends UniTest:
     v.usesStableCodes shouldBe false
   }
 
-  test("should encode strings over their distinct values, up to a limit") {
-    val v = strs("q", null, "p", "q", "p").asInstanceOf[StrVec]
-    val e = StrVec.encode(v, 5)
-    e.codes.toSeq shouldBe Seq(0, -1, 1, 0, 1)
-    e.dict.toSeq shouldBe Seq("q", "p")
-    e.dictSize shouldBe 2
-    StrVec.encode(v, 1) shouldBeTheSameInstanceAs v
+  test("should encode Parquet-coded parts over their distinct values, up to a limit") {
+    // Two parts with different dictionaries, a NULL, and a PLAIN "q" row (code -1)
+    val p1  = coded(IndexedSeq("q", "p"), "q", null, "p", "q")
+    val p2  = coded(IndexedSeq("p", "r"), "r", "p", "q?")
+    val all = StrVec(p1.values ++ p2.values, p1.nulls ++ Array(false, false, false))
+    val e   = StrVec.encodeParts(all, Seq(p1, p2), 7, hashPlain = false)
+    e.codes.toSeq shouldBe Seq(0, -1, 1, 0, 2, 1, 0)
+    e.dict.toSeq shouldBe Seq("q", "p", "r")
+    e.dictSize shouldBe 3
     e.gather(Array(2, -1), 2).asInstanceOf[StrVec].dict shouldBeTheSameInstanceAs e.dict
+    // Too many distinct values, a part without codes, or parts not covering the rows
+    StrVec.encodeParts(all, Seq(p1, p2), 2, hashPlain = false) shouldBeTheSameInstanceAs all
+    StrVec.encodeParts(all, Seq(p1, plain(p2)), 7, hashPlain = false) shouldBeTheSameInstanceAs all
+    StrVec.encodeParts(all, Seq(p1), 7, hashPlain = false) shouldBeTheSameInstanceAs all
+    // Small builds hash the rows of parts without codes
+    StrVec.encodeParts(all, Seq(p1, plain(p2)), 7, hashPlain = true).codes.toSeq shouldBe
+      e.codes.toSeq
+    // Gathered codes are read on first use, also through a second gather
+    val g = e.gather(Array(4, 0, -1), 3).asInstanceOf[StrVec]
+    g.hasCodes shouldBe true
+    g.gather(Array(1, 2, 0), 3).asInstanceOf[StrVec].codes.toSeq shouldBe Seq(0, -1, 2)
+    g.codes.toSeq shouldBe Seq(2, 0, -1)
+  }
+
+  test("should keep join build codes only when every string column encodes") {
+    val rep  = StrVec(Array.tabulate(100)(i => s"r${i % 4}"), null)
+    val uniq = StrVec(Array.tabulate(100)(i => s"u${i}"), null)
+    val ids  = LongVec(PType.Int64, Array.tabulate(100)(_.toLong), null)
+    val ok   = Batch(Array[Vec](ids, rep), 100)
+    val e    = JoinBuild.encodeStrings(ok, Seq(ok))
+    e.column(1).asInstanceOf[StrVec].dictSize shouldBe 4
+    val mixed = Batch(Array[Vec](ids, rep, uniq), 100)
+    JoinBuild.encodeStrings(mixed, Seq(mixed)) shouldBeTheSameInstanceAs mixed
   }
 
   private def plainOf(v: Vec): Vec =
