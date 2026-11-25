@@ -38,6 +38,13 @@ enum Optimization(val name: String):
   case PlaceSemiJoins extends Optimization("place_semi_joins")
 
   /**
+    * With `place_semi_joins`, compute an uncorrelated IN subquery estimated larger than the input
+    * it would join at plan time, and place its semi join by the exact row count, building on the
+    * computed rows (estimates pass through aggregations, e.g. TPC-H q18's group by having)
+    */
+  case CountInSubqueries extends Optimization("count_in_subqueries")
+
+  /**
     * Push filter conjuncts down the runtime plan: through projections, aggregates (grouping keys
     * only), and sorts, into the preserved side of outer joins and into inner join trees, with
     * equalities to constants inferred transitively there

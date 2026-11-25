@@ -487,8 +487,8 @@ class RuntimeBinder(planner: Planner):
     * [[RuntimePlan.InnerJoins]] node that [[ReorderJoins]] orders. Conditions with subqueries apply
     * over the ordered tree, through the planner, except for uncorrelated scalar subqueries, which
     * are constants (e.g., d_month_seq = (select ... from date_dim)), and uncorrelated IN conditions
-    * reading one input over a subquery no larger than it, which join that input
-    * ([[placedSemiJoin]]).
+    * reading one input over a subquery no larger than it (estimated, or counted at plan time),
+    * which join that input ([[placedSemiJoin]]).
     *
     * Conditions bind in a fixed order, as they may evaluate scalar subqueries: the single-input
     * ones input by input, then the others. They bind unfactored: the Normalize pass factors their
@@ -524,24 +524,44 @@ class RuntimeBinder(planner: Planner):
       .foreach(i => conds.indices.filter(refs(_) == Seq(i)).foreach(bindAt(_, inputs(i).output)))
     conds.indices.filter(bound(_) == null).foreach(bindAt(_, output))
     // Then the subqueries, in condition order. An uncorrelated IN condition reading one input
-    // joins that input when its subquery is estimated no larger than the input: the semi join
-    // then builds on the subquery and filters the input as it streams. Over a larger subquery (e.g., a CTE of unknown size), it joins the
-    // ordered tree instead, whose joins may have reduced the input's rows, as without placement.
+    // joins that input when its subquery is estimated no larger than the input, or, estimated
+    // larger, returns no more rows than that (`count_in_subqueries`, computed at plan time): the
+    // semi join then builds on the subquery and filters the input as it streams. Over a larger
+    // subquery (e.g., a CTE of unknown size), it joins the ordered tree instead, whose joins may
+    // have reduced the input's rows, as without placement.
     // The other conditions with subqueries (NOT IN, which rarely removes many rows, among them)
     // apply over the ordered tree
     val placed = List.newBuilder[(Int, SubqueryConjunct.In, Lowered)]
-    val lifted = List.newBuilder[(SubqueryConjunct.In, Lowered)]
-    val above  = List.newBuilder[Expression]
+    // With the subquery's exact rows, when computed
+    val lifted       = List.newBuilder[(SubqueryConjunct.In, Lowered, Option[Double])]
+    lazy val largest = inputs.map(Stats.rows).max
+    val above        = List.newBuilder[Expression]
     withSubqueries
       .map(_._1)
       .foreach { c =>
         singleInputIn(c, schemas) match
           case Some((i, in)) =>
             val inner = lowered(bind(in.sub))
-            if CardinalityEstimator.rows(inner.op) <= Stats.rows(inputs(i)) then
+            val limit = Stats.rows(inputs(i))
+            if CardinalityEstimator.rows(inner.op) <= limit then
               placed += ((i, in, inner))
+            else if planner.enabled(Optimization.CountInSubqueries) &&
+              limit >= CountInMinShare * largest
+            then
+              // Estimates pass through aggregations and filters, so a subquery estimated larger may
+              // return few rows (e.g., TPC-H q18's group by having): decided on its exact count,
+              // with the computed rows as the semi join's build input. Only for an input that is a
+              // large share of the tree: a small one (e.g., a dimension) gains little from the
+              // placement, and computing the subquery apart from the query loses what it would
+              // share with the rest of the plan (e.g., partial aggregates in TPC-DS q70)
+              val rows   = Operator.materialize(planner.physical(inner.op))
+              val result = plans.values(inner.op.schema, rows)
+              if rows.size <= limit then
+                placed += ((i, in, result))
+              else
+                lifted += ((in, result, Some(rows.size.toDouble)))
             else
-              lifted += in -> inner
+              lifted += ((in, inner, None))
           case None =>
             above += c
       }
@@ -565,10 +585,19 @@ class RuntimeBinder(planner: Planner):
     if overTree.isEmpty && others.isEmpty then
       node
     else
-      val tree = overTree.foldLeft(lowered(node))((p, s) => plans.inJoin(p, s._1.target, s._2))
+      val tree =
+        overTree.foldLeft(lowered(node)) { case (p, (in, inner, rows)) =>
+          plans.inJoin(p, in.target, inner, rows)
+        }
       plans.conjuncts(tree, others).plan
 
   end innerJoins
+
+  /**
+    * The smallest share of the largest input of an inner join tree, in estimated rows, that an
+    * input needs for `count_in_subqueries` to compute an IN subquery placed on it
+    */
+  private val CountInMinShare = 0.01
 
   /**
     * The input of an inner join tree that an uncorrelated IN condition reads alone, with the
@@ -898,7 +927,12 @@ class RuntimeBinder(planner: Planner):
       * join on the two cast to their common type, building on the subquery unless it is much larger
       * than p
       */
-    def inJoin(p: Lowered, a: Expression, inner: Lowered): Lowered =
+    def inJoin(
+        p: Lowered,
+        a: Expression,
+        inner: Lowered,
+        innerRows: Option[Double] = None
+    ): Lowered =
       val target   = Binder(planner, BindScope(p.op.schema)).bind(a)
       val (lk, rk) = inKeys(target, inner.op.schema(0))
       semiJoin(
@@ -907,7 +941,10 @@ class RuntimeBinder(planner: Planner):
         JoinKind.Semi,
         IndexedSeq(lk),
         IndexedSeq(rk),
-        planner.swapBuild(CardinalityEstimator.rows(inner.op), CardinalityEstimator.rows(p.op))
+        planner.swapBuild(
+          innerRows.getOrElse(CardinalityEstimator.rows(inner.op)),
+          CardinalityEstimator.rows(p.op)
+        )
       )
 
     /** A semi or anti join of p with `inner`, on keys over each one's columns */
