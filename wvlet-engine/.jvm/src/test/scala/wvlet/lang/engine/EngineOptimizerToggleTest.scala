@@ -95,6 +95,9 @@ class EngineOptimizerToggleTest extends UniTest:
       if o == Optimization.ReplanCTEBodies then
         // EngineMaterializedCTEStatsTest checks that the flag changes the plan
         ignore("No TPC-H or TPC-DS shared CTE body reads another shared CTE")
+      if o == Optimization.PrimitiveResultDistinct then
+        // StatsTest checks that both ways count the same distinct values
+        ignore("Changes how a computed CTE's distinct values are counted, not the counts")
       if o == Optimization.ParallelAggPartitioning then
         // PartitionedAggOpTest checks that both ways give the same partitions
         ignore("Changes how aggregation input is routed to partitions, not the plan")

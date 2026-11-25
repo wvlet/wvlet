@@ -1389,7 +1389,14 @@ class Planner(
             Option
               .when(k >= 0)(k)
               .map { k =>
-                Stats.resultDistinct(batches, k, body.schema(position).ptype).toDouble
+                Stats
+                  .resultDistinct(
+                    batches,
+                    k,
+                    body.schema(position).ptype,
+                    primitive = enabled(Optimization.PrimitiveResultDistinct)
+                  )
+                  .toDouble
               }
           }
         )

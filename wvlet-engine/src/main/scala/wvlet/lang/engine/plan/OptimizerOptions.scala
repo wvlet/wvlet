@@ -503,12 +503,20 @@ enum Optimization(val name: String):
   case EagerAggregation extends Optimization("eager_aggregation")
 
   /**
-    * Run [[EagerAggregation]] over the finest aggregation of chained grouping sets
-    * ([[ChainGroupingSets]]), which the planner builds as a shared input that the runtime passes
-    * don't visit: TPC-DS q22's ROLLUP of 26M inventory rows by four item strings sums them per item
-    * key before joining the 102K items
+    * Run [[EagerAggregation]] over the body of a shared input the planner builds while binding (the
+    * finest aggregation of chained grouping sets ([[ChainGroupingSets]]), and the inputs of other
+    * grouping sets and unpivots), which the runtime passes don't visit: TPC-DS q22's ROLLUP of 26M
+    * inventory rows by four item strings sums them per item key before joining the 102K items
     */
   case EagerGroupingSets extends Optimization("eager_grouping_sets")
+
+  /**
+    * Count the distinct values of an integer column of a shared CTE result computed for planning
+    * ([[CTEReaderStats]]) in a set of longs sized for its rows instead of a growing group table:
+    * the same counts, so the same plans, for less planning time (TPC-DS q01 counts 540K customer
+    * keys when it orders its joins again at SF10)
+    */
+  case PrimitiveResultDistinct extends Optimization("primitive_result_distinct")
 
   /**
     * Hash aggregations fold their counts and decimal sums in one pass over each batch's rows, so
