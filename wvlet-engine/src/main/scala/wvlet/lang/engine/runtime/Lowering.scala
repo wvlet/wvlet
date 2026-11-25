@@ -36,7 +36,8 @@ object Lowering:
 
   /**
     * Lower `p`. With `joinFilters`, hash joins whose unmatched probe rows are dropped give the
-    * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]). With
+    * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]), and with
+    * `rowJoinFilters` a per-row test of their keys too ([[wvlet.lang.engine.exec.RowKeyFilter]]). With
     * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]). With
     * `footerCache`, Parquet scans reuse cached footers
     * ([[wvlet.lang.engine.catalog.ParquetFooterCache]]). With `windowTopN`, a filter bounding the
@@ -390,7 +391,7 @@ object Lowering:
     * probe rows, so that a scan on the probe side may drop rows whose key is no build key; None
     * otherwise. Inner, semi, and right joins over the left input; left / anti joins building on the
     * left (a right join / right anti join over swapped inputs). The formal model
-    * `JoinKeyFilter.Probe` proves these sides sound, and `RuntimeFilterConformanceTest` replays it
+    * `JoinKeyFilter.Probe` proves these sides sound, and `JoinKeyFilterConformanceTest` replays it
     */
   private[engine] def filteredProbe(kind: JoinKind, buildLeft: Boolean): Option[Boolean] =
     (kind, buildLeft) match
