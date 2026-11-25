@@ -17,14 +17,15 @@
 Lane: Standard (Lean-modeled runtime join filters); merge authorized by the loop rules after green CI and a no-regression SF10 A/B.
 
 - New toggle `build_side_join_filters` (needs `runtime_join_filters`, in `OptimizerOptionsTest`).
-- `Lowering.scanColumns` also descends into a nested join's build input when the join keeps that input's rows: the left input of inner, LEFT, semi, and anti joins, the right input of inner and RIGHT joins. It never enters a NULL-padded input.
+- `Lowering.scanColumns` also descends into the preserved build input of a nested LEFT, RIGHT, semi, or anti join. It never enters a NULL-padded input.
+- Inner joins' builds stay out: a first version included them (24 golden plans changed), and q04 and q76 ran ~8% slower on wall time with flat CPU, because the morsel pipeline prepares those builds before the build above sets the filter.
 - A build reads its scan before the filter is set when the morsel pipeline prepares the inner build first; the scan then reads without it, as a probe scan that starts early already does. No scheduling change.
 - Lean first: `JoinKeyFilter/Probe.lean` gains `through_left`, `through_right_inner`, `through_right_of_right` (filtering a kept input by any test of its rows drops exactly the output rows from them, whatever the build side), and counterexamples for the padded inputs.
 
 ## Validation
 
 - Engine tests: the q05 shape (an outer join's preserved build in a UNION ALL input takes the filter) and the padded input staying unfiltered; results equal with the toggle off and with runtime filters off.
-- Golden plans regenerated (24 plans gain `join_filter` columns on build-side scans).
+- Golden plans regenerated.
 - SF10 A/B `WVLET_ENGINE_BENCH_AB=build_side_join_filters` on q05, q49, q77, q80 and on every query whose plan changed.
 
 ## Alternatives and Why Not?

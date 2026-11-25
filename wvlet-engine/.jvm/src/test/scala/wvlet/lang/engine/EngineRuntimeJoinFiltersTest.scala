@@ -17,6 +17,7 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.plan.Optimization
+import wvlet.lang.engine.runtime.Lowering
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.uni.test.UniTest
 
@@ -138,9 +139,35 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
         |  left join partsupp on s_suppkey = ps_suppkey
         |) u join part on u.k = p_partkey
         |where p_name like 'forest%' order by 1, 2""".stripMargin
-    explain(engine, q) shouldNotContain "join_filter=ps_partkey"
-    val (rows, _) = run(engine, q)
+    val (rows, filters) = run(engine, q)
+    filters("partsupp") shouldNotContain "ps_partkey"
     run(off, q)._1 shouldBe rows
+  }
+
+  test("pass filters only into the inputs a join keeps the rows of") {
+    // (kind, buildLeft, fromLeft) -> without / with build_side_join_filters
+    val expected = Seq(
+      (JoinKind.Inner, false, true)  -> (true, true),
+      (JoinKind.Inner, true, true)   -> (false, false),
+      (JoinKind.Inner, true, false)  -> (true, true),
+      (JoinKind.Inner, false, false) -> (false, false),
+      (JoinKind.Left, false, true)   -> (true, true),
+      (JoinKind.Left, true, true)    -> (false, true),
+      (JoinKind.Left, true, false)   -> (false, false),
+      (JoinKind.Left, false, false)  -> (false, false),
+      (JoinKind.Semi, true, true)    -> (false, true),
+      (JoinKind.Anti, true, true)    -> (false, true),
+      (JoinKind.Right, true, false)  -> (true, true),
+      (JoinKind.Right, false, false) -> (false, true),
+      (JoinKind.Right, false, true)  -> (false, false),
+      (JoinKind.Right, true, true)   -> (false, false),
+      (JoinKind.Full, false, true)   -> (false, false),
+      (JoinKind.Full, true, false)   -> (false, false)
+    )
+    expected.foreach { case ((kind, buildLeft, fromLeft), (probeOnly, withBuild)) =>
+      Lowering.passesFilter(kind, buildLeft, fromLeft, buildSides = false) shouldBe probeOnly
+      Lowering.passesFilter(kind, buildLeft, fromLeft, buildSides = true) shouldBe withBuild
+    }
   }
 
   test("leave the probe side of joins that keep unmatched probe rows unfiltered") {

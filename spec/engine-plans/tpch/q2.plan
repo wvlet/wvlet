@@ -1,6 +1,6 @@
 -- q2#1
 Scan[partsupp](columns=ps_partkey,ps_suppkey,ps_supplycost join_filter=ps_partkey,ps_suppkey) -> [ps_partkey:long, ps_suppkey:long, ps_supplycost:decimal(15,2)]
-  Scan[part](columns=p_partkey,p_mfgr,p_type filter=Compare(p_size,Eq,15) row_filter=Compare(p_size,Eq,15) join_filter=p_partkey) -> [p_partkey:long, p_mfgr:string, p_type:string]
+  Scan[part](columns=p_partkey,p_mfgr,p_type filter=Compare(p_size,Eq,15) row_filter=Compare(p_size,Eq,15)) -> [p_partkey:long, p_mfgr:string, p_type:string]
   ↓ Filter(like(#2,%BRASS,false,false), keep=0,1) -> [p_partkey:long, p_mfgr:string]
   ↓ Morsel[parallelism=N] -> [p_partkey:long, p_mfgr:string]
 ↙ HashJoin[Inner](#0 = #0) -> [ps_partkey:long, ps_suppkey:long, ps_supplycost:decimal(15,2), p_partkey:long, p_mfgr:string]

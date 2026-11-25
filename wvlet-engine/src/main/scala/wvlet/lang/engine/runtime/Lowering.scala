@@ -479,10 +479,11 @@ object Lowering:
     * column, when each row of `p` holds the value of the scan row it comes from, so that dropping
     * scan rows by that column only drops rows of `p` with those values: through filters, plain
     * projections, the inputs of UNION ALL, and the probe sides of joins that preserve their rows.
-    * With `buildSides`, also the build sides of joins that preserve their rows (inner joins, the
-    * left input of LEFT, semi, and anti joins, the right input of RIGHT joins): a row of `p` from a
-    * build row comes with that row's value too. The build may read its scan before the join above
-    * sets the filter (morsel pipelines prepare inner builds first); the scan then reads without it
+    * With `buildSides`, also the preserved build sides of joins that keep unmatched build rows or
+    * drop them by their matches (the left input of LEFT, semi, and anti joins building on it, the
+    * right input of RIGHT joins building on it): a row of `p` from a build row comes with that
+    * row's value too. Inner joins' builds are left out: a morsel pipeline mostly prepares them
+    * before the build above, so the filter came too late and only cost time (TPC-DS q04, q76)
     */
   private def scanColumns(p: RuntimePlan, id: Int, buildSides: Boolean): Seq[(Int, String)] =
     p match
@@ -518,21 +519,50 @@ object Lowering:
                 Nil
             }
       case Join(left, right, kind, _, _, _, buildLeft) =>
-        if left.output.exists(_.id.value == id) then
-          kind match
-            case JoinKind.Inner | JoinKind.Semi | JoinKind.Anti | JoinKind.Left
-                if !buildLeft || buildSides =>
-              scanColumns(left, id, buildSides)
-            case _ =>
-              Nil
+        val fromLeft = left.output.exists(_.id.value == id)
+        val input    =
+          if fromLeft then
+            left
+          else
+            right
+        if passesFilter(kind, buildLeft, fromLeft, buildSides) then
+          scanColumns(input, id, buildSides)
         else
-          kind match
-            case JoinKind.Inner | JoinKind.Right if buildLeft || buildSides =>
-              scanColumns(right, id, buildSides)
-            case _ =>
-              Nil
+          Nil
       case _ =>
         Nil
+
+  /**
+    * Whether a runtime filter over a column of the left (`fromLeft`) or right input of a join below
+    * the probe side may go into that input ([[scanColumns]]): the join's probe input when the join
+    * drops unmatched probe rows, and with `buildSides` (`build_side_join_filters`) also the
+    * preserved build input of a LEFT, semi, or anti join building on the left or a RIGHT join
+    * building on the right. Never a NULL-padded input. `JoinKeyFilter/Probe.lean` proves these
+    * inputs sound (`through_left`, `through_right_inner`, `through_right_of_right`) and the padded
+    * ones unsound
+    */
+  private[engine] def passesFilter(
+      kind: JoinKind,
+      buildLeft: Boolean,
+      fromLeft: Boolean,
+      buildSides: Boolean
+  ): Boolean =
+    if fromLeft then
+      kind match
+        case JoinKind.Inner =>
+          !buildLeft
+        case JoinKind.Semi | JoinKind.Anti | JoinKind.Left =>
+          !buildLeft || buildSides
+        case _ =>
+          false
+    else
+      kind match
+        case JoinKind.Inner =>
+          buildLeft
+        case JoinKind.Right =>
+          buildLeft || buildSides
+        case _ =>
+          false
 
   /** Column id -> position in the output of `p` (-1 for ids it doesn't output) */
   private[engine] def positions(p: RuntimePlan): Array[Int] = positions(p.output)

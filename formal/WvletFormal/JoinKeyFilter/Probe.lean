@@ -10,8 +10,8 @@ The other sides keep (or emit) unmatched probe rows, so a filter there changes t
 (`probe_left_of_left_unsound`, `probe_left_of_anti_unsound`, `probe_right_of_right_unsound`).
 
 Below the probe input, `Lowering.scanColumns` also gives the filter to the scans of the inputs of
-nested joins whose rows the nested join keeps, on its probe or (with `build_side_join_filters`) its
-build side: the left input of inner, LEFT, semi, and anti joins and the right input of inner and
+nested joins whose rows the nested join keeps, on its probe side or (with `build_side_join_filters`,
+for the preserved build of a LEFT, RIGHT, semi, or anti join) its build side: the left input of inner, LEFT, semi, and anti joins and the right input of inner and
 RIGHT joins. Dropping rows of such an input by a test of its own columns drops exactly the nested
 join's output rows that come from them (`through_left`, `through_right_inner`,
 `through_right_of_right`), whichever side the nested join builds on. The other inputs pad or drop

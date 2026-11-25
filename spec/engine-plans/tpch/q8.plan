@@ -1,6 +1,6 @@
 -- q8#1
   Scan[orders](columns=o_orderkey,o_custkey,o_orderdate filter=And(Compare(o_orderdate,GtEq,1995-01-01),Compare(o_orderdate,LtEq,1996-12-31)) row_filter=And(Compare(o_orderdate,GtEq,1995-01-01),Compare(o_orderdate,LtEq,1996-12-31)) join_filter=o_orderkey,o_custkey) -> [o_orderkey:long, o_custkey:long, o_orderdate:date]
-    Scan[lineitem](columns=l_orderkey,l_partkey,l_suppkey,l_extendedprice,l_discount join_filter=l_partkey,l_suppkey) -> [l_orderkey:long, l_partkey:long, l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
+    Scan[lineitem](columns=l_orderkey,l_partkey,l_suppkey,l_extendedprice,l_discount join_filter=l_partkey) -> [l_orderkey:long, l_partkey:long, l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
       Scan[part](columns=p_partkey filter=Compare(p_type,Eq,ECONOMY ANODIZED STEEL) row_filter=Compare(p_type,Eq,ECONOMY ANODIZED STEEL)) -> [p_partkey:long]
       ↓ Morsel[parallelism=N] -> [p_partkey:long]
     ↙ HashJoin[Inner](#1 = #0) -> [l_orderkey:long, l_partkey:long, l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), p_partkey:long]
