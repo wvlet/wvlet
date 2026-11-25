@@ -68,6 +68,7 @@ class OptimizerOptionsTest extends UniTest:
         "cte_reader_stats",
         "prune_columns",
         "push_scan_filters",
+        "scan_row_filters",
         "runtime_join_filters",
         "row_join_filters",
         "presize_aggregates",

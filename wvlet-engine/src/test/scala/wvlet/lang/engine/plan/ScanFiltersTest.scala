@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.plan
 
+import wvlet.lang.engine.catalog.MemTable
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
 import wvlet.uni.cloud.parquet.ParquetFilter
@@ -122,6 +123,47 @@ class ScanFiltersTest extends UniTest:
     f(CmpOp.Lt, 0.0) shouldBe Some(col("x") <= 0.0)
     ScanFilters.toParquet(Compare(CmpOp.Lt, x, Const(1.5, PType.Float64)), _ => Some("x")) shouldBe
       None
+  }
+
+  test("should translate a row filter only when every part translates") {
+    val eq = Compare(CmpOp.Eq, id, Const(1L, PType.Int64))
+    val ne = Compare(CmpOp.Ne, id, Const(2L, PType.Int64))
+    ScanFilters.exact(eq, i => Some(cols(i))) shouldBe Some(col("id") === 1L)
+    // A row filter can't drop the part it doesn't express, as a row-group filter does
+    ScanFilters.exact(AndExpr(eq, ne), i => Some(cols(i))) shouldBe None
+    ScanFilters.exact(OrExpr(eq, IsNullExpr(name, false)), i => Some(cols(i))) shouldBe
+      Some(col("id") === 1L || ParquetFilter.IsNull("name"))
+    // A column the source can't filter rows by exactly
+    ScanFilters.exact(eq, _ => None) shouldBe None
+    // Floating-point and decimal translations are only implied (x < 0.0 becomes x <= 0.0)
+    ScanFilters.exact(Compare(CmpOp.Lt, x, Const(0.0, PType.Float64)), _ => Some("x")) shouldBe None
+  }
+
+  test("should order row filters most selective first") {
+    // id in [0, 999] and day in [0, 99] by their statistics
+    val source =
+      new MemTable("t", Schema(IndexedSeq.empty), Nil):
+        override def columnRange(column: String): Option[(Long, Long)] =
+          column match
+            case "id" =>
+              Some((0L, 999L))
+            case "day" =>
+              Some((0L, 99L))
+            case _ =>
+              None
+    def conj(e: VExpr) = e -> ScanFilters.exact(e, i => Some(cols(i))).get
+    val idRange        = Seq(
+      conj(Compare(CmpOp.Ge, id, Const(100L, PType.Int64))),
+      conj(Compare(CmpOp.Lt, id, Const(600L, PType.Int64)))
+    )
+    val dayEq   = conj(Compare(CmpOp.Eq, day, Const(5, PType.Date)))
+    val nameEq  = conj(Compare(CmpOp.Eq, name, Const("x", PType.Str)))
+    val ordered = ScanFilters.ordered(nameEq +: idRange :+ dayEq, source, cols)
+    // day = 5 (0.01), then name = 'x' (0.3 by default), then the id range (0.5), kept adjacent
+    ordered shouldBe (
+      col("day") === LocalDate.ofEpochDay(5) && col("name") === "x" && col("id") >= 100L &&
+        col("id") < 600L
+    )
   }
 
 end ScanFiltersTest

@@ -1,6 +1,5 @@
 -- q59#1
-Scan[date_dim](columns=d_month_seq,d_week_seq filter=And(Compare(d_month_seq,GtEq,1212),Compare(d_month_seq,LtEq,1223)) join_filter=d_week_seq) -> [d_month_seq:long, d_week_seq:long]
-↓ Filter(((#0>=lit(1212:long)) and (#0<=lit(1223:long))), keep=1) -> [d_week_seq:long]
+Scan[date_dim](columns=d_week_seq filter=And(Compare(d_month_seq,GtEq,1212),Compare(d_month_seq,LtEq,1223)) row_filter=And(Compare(d_month_seq,GtEq,1212),Compare(d_month_seq,LtEq,1223)) join_filter=d_week_seq) -> [d_week_seq:long]
     (shared)
       Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_sales_price join_filter=ss_sold_date_sk) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2)]
         Scan[date_dim](columns=d_date_sk,d_week_seq,d_day_name) -> [d_date_sk:long, d_week_seq:long, d_day_name:string]
@@ -21,8 +20,7 @@ Scan[date_dim](columns=d_month_seq,d_week_seq filter=And(Compare(d_month_seq,GtE
 ↓ Project(#1, #3, #4, #5, #6, #7, #8, #9, #11, #12) -> [d_week_seq:long, sun_sales:decimal(38,2), mon_sales:decimal(38,2), tue_sales:decimal(38,2), wed_sales:decimal(38,2), thu_sales:decimal(38,2), fri_sales:decimal(38,2), sat_sales:decimal(38,2), s_store_id:string, s_store_name:string]
 ↓ Project(#9, #0, #8, #1, #2, #3, #4, #5, #6, #7) -> [s_store_name1:string, d_week_seq1:long, s_store_id1:string, sun_sales1:decimal(38,2), mon_sales1:decimal(38,2), tue_sales1:decimal(38,2), wed_sales1:decimal(38,2), thu_sales1:decimal(38,2), fri_sales1:decimal(38,2), sat_sales1:decimal(38,2)]
 ↓ Project(#0, #1, #2, #3, #4, #5, #6, #7, #8, #9) -> [s_store_name1:string, d_week_seq1:long, s_store_id1:string, sun_sales1:decimal(38,2), mon_sales1:decimal(38,2), tue_sales1:decimal(38,2), wed_sales1:decimal(38,2), thu_sales1:decimal(38,2), fri_sales1:decimal(38,2), sat_sales1:decimal(38,2)]
-  Scan[date_dim](columns=d_month_seq,d_week_seq filter=And(Compare(d_month_seq,GtEq,1224),Compare(d_month_seq,LtEq,1235)) join_filter=d_week_seq) -> [d_month_seq:long, d_week_seq:long]
-  ↓ Filter(((#0>=lit(1224:long)) and (#0<=lit(1235:long))), keep=1) -> [d_week_seq:long]
+  Scan[date_dim](columns=d_week_seq filter=And(Compare(d_month_seq,GtEq,1224),Compare(d_month_seq,LtEq,1235)) row_filter=And(Compare(d_month_seq,GtEq,1224),Compare(d_month_seq,LtEq,1235)) join_filter=d_week_seq) -> [d_week_seq:long]
     Scan[CTE[wss]]() -> [d_week_seq:long, ss_store_sk:long, sun_sales:decimal(38,2), mon_sales:decimal(38,2), tue_sales:decimal(38,2), wed_sales:decimal(38,2), thu_sales:decimal(38,2), fri_sales:decimal(38,2), sat_sales:decimal(38,2)]
       Scan[store](columns=s_store_sk,s_store_id) -> [s_store_sk:long, s_store_id:string]
       ↓ Morsel[parallelism=N] -> [s_store_sk:long, s_store_id:string]

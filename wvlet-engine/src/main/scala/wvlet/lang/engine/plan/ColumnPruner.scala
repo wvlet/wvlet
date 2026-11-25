@@ -81,10 +81,12 @@ object ColumnPruner:
         if required.length == s.schema.size then
           identity(s)
         else
-          // Keep at least one column so that the scan still carries the row count
+          // Keep at least one column so that the scan still carries the row count: one its row
+          // filter decodes anyway, if any
           val keep =
             if required.isEmpty then
-              Array(0)
+              val filtered = s.rowFilter.map(_.columnNames.toSet).getOrElse(Set.empty)
+              Array(s.schema.fields.indices.find(i => filtered(s.sourceColumnName(i))).getOrElse(0))
             else
               required
           if s.schema.size == 0 then

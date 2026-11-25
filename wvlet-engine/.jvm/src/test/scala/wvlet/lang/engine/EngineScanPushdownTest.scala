@@ -98,7 +98,9 @@ class EngineScanPushdownTest extends UniTest:
         |group by l_returnflag
         |select l_returnflag, cnt = _.count""".stripMargin)
     debug(plan)
-    plan shouldContain "columns=l_returnflag,l_shipdate"
+    // l_shipdate is read only by the scan's row filter (scan_row_filters)
+    plan shouldContain "columns=l_returnflag "
+    plan shouldContain "row_filter=Compare(l_shipdate,"
     plan.contains("l_comment") shouldBe false
   }
 

@@ -16,6 +16,7 @@ package wvlet.lang.engine.runtime
 import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.plan.JoinOrderOptimizer
+import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.Planner
@@ -44,7 +45,9 @@ object Lowering:
     * rank of a window keeps only the top rows of each partition ([[WindowOp.topNOf]]). With
     * `windowKernels`, running window aggregates fold primitive values
     * ([[WindowOp.runningPrimitive]]). With `windowSortKernels`, window partitions ordered by one
-    * integer or date key sort packed longs ([[WindowOp.sortByPrimitiveKey]])
+    * integer or date key sort packed longs ([[WindowOp.sortByPrimitiveKey]]). With
+    * `scanRowFilters`, the conjuncts of a filter over a scan that its source evaluates exactly move
+    * into the scan's row filter ([[ScanOp.rowFilter]])
     */
   def apply(
       p: RuntimePlan,
@@ -58,7 +61,8 @@ object Lowering:
       windowKernels: Boolean = false,
       commonSubexpressions: Boolean = false,
       foldConstants: Boolean = false,
-      windowSortKernels: Boolean = false
+      windowSortKernels: Boolean = false,
+      scanRowFilters: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -70,11 +74,14 @@ object Lowering:
       windowKernels,
       commonSubexpressions,
       foldConstants,
-      windowSortKernels
+      windowSortKernels,
+      scanRowFilters
     )
     if inSet then
       l.markInSet(p)
     l.lower(p)
+
+  end apply
 
   /**
     * The group table size of an aggregation of p by `keys`, from [[Stats.groups]]: 0 when unknown
@@ -98,7 +105,8 @@ object Lowering:
       windowKernels: Boolean,
       commonSubexpressions: Boolean,
       foldConstants: Boolean,
-      windowSortKernels: Boolean
+      windowSortKernels: Boolean,
+      scanRowFilters: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -135,7 +143,8 @@ object Lowering:
               inSet = inSet,
               footerCache = footerCache,
               commonSubexpressions = commonSubexpressions,
-              foldConstants = foldConstants
+              foldConstants = foldConstants,
+              scanRowFilters = scanRowFilters
             )
         )
       ) match
@@ -163,6 +172,15 @@ object Lowering:
         CommonSubexpressions.share(input, exprs)
       else
         (input, exprs)
+
+    /** Rows of `in` for which `cond` is true, with its common subexpressions computed once */
+    private def filterOver(in: Operator, cond: VExpr): Operator =
+      val (input, conds) = shared(in, IndexedSeq(cond))
+      if input eq in then
+        FilterOp(in, conds.head)
+      else
+        // Without the shared columns
+        FilterOp(input, conds.head, Array.range(0, in.schema.size))
 
     private def lowerNode(p: RuntimePlan, inSet: Boolean): Operator =
       p match
@@ -198,14 +216,24 @@ object Lowering:
               case other =>
                 other
           FilterOp(window, filter)
+        case Filter(s: Scan, cond, _) if scanRowFilters && s.source.supportsRowFilter =>
+          lower(s) match
+            case scan: ScanOp =>
+              val conds = ScanFilters.conjuncts(expr(cond, positions(s)))
+              val name  = (i: Int) => Some(scan.sourceColumnName(i)).filter(s.source.canRowFilterOn)
+              val (moved, kept) = conds.partitionMap(c =>
+                ScanFilters.exact(c, name).map(f => (c, f)).toLeft(c)
+              )
+              val in =
+                if moved.isEmpty then
+                  scan
+                else
+                  scan.withRowFilter(ScanFilters.ordered(moved, s.source, scan.sourceColumnName))
+              kept.reduceOption(AndExpr(_, _)).map(filterOver(in, _)).getOrElse(in)
+            case other =>
+              filterOver(other, expr(cond, positions(s)))
         case Filter(child, cond, _) =>
-          val in             = lower(child)
-          val (input, conds) = shared(in, IndexedSeq(expr(cond, positions(child))))
-          if input eq in then
-            FilterOp(in, conds.head)
-          else
-            // Without the shared columns
-            FilterOp(input, conds.head, Array.range(0, in.schema.size))
+          filterOver(lower(child), expr(cond, positions(child)))
         case Project(child, exprs, _) =>
           val pos         = positions(child)
           val (input, es) = shared(lower(child), exprs.map(expr(_, pos)))

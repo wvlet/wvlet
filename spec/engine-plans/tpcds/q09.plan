@@ -1,5 +1,4 @@
 -- q09#1
-Scan[reason](columns=r_reason_sk filter=Compare(r_reason_sk,Eq,1)) -> [r_reason_sk:long]
-↓ Filter((#0=lit(1:long)), keep=) -> []
+Scan[reason](columns=r_reason_sk filter=Compare(r_reason_sk,Eq,1) row_filter=Compare(r_reason_sk,Eq,1)) -> [r_reason_sk:long]
 ↓ Project(lit(359.79825808140293:double), lit(1031.9866225510243:double), lit(1720.6776948837207:double), lit(266.8218624652456:double), lit(3086.285034568175:double)) -> [bucket1:double, bucket2:double, bucket3:double, bucket4:double, bucket5:double]
 ↓ Morsel[parallelism=N] -> [bucket1:double, bucket2:double, bucket3:double, bucket4:double, bucket5:double]

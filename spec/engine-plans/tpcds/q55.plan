@@ -1,11 +1,9 @@
 -- q55#1
 Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_ext_sales_price join_filter=ss_sold_date_sk,ss_item_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_ext_sales_price:decimal(7,2)]
-  Scan[item](columns=i_item_sk,i_brand_id,i_brand,i_manager_id filter=Compare(i_manager_id,Eq,28)) -> [i_item_sk:long, i_brand_id:long, i_brand:string, i_manager_id:long]
-  ↓ Filter((#3=lit(28:long)), keep=0,1,2) -> [i_item_sk:long, i_brand_id:long, i_brand:string]
+  Scan[item](columns=i_item_sk,i_brand_id,i_brand filter=Compare(i_manager_id,Eq,28) row_filter=Compare(i_manager_id,Eq,28)) -> [i_item_sk:long, i_brand_id:long, i_brand:string]
   ↓ Morsel[parallelism=N] -> [i_item_sk:long, i_brand_id:long, i_brand:string]
 ↙ HashJoin[Inner](#1 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_ext_sales_price:decimal(7,2), i_item_sk:long, i_brand_id:long, i_brand:string]
-  Scan[date_dim](columns=d_date_sk,d_year,d_moy filter=And(Compare(d_moy,Eq,11),Compare(d_year,Eq,1999))) -> [d_date_sk:long, d_year:long, d_moy:long]
-  ↓ Filter(((#2=lit(11:long)) and (#1=lit(1999:long))), keep=0) -> [d_date_sk:long]
+  Scan[date_dim](columns=d_date_sk filter=And(Compare(d_moy,Eq,11),Compare(d_year,Eq,1999)) row_filter=And(Compare(d_year,Eq,1999),Compare(d_moy,Eq,11))) -> [d_date_sk:long]
   ↓ Morsel[parallelism=N] -> [d_date_sk:long]
 ↙ HashJoin[Inner](#0 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_ext_sales_price:decimal(7,2), i_item_sk:long, i_brand_id:long, i_brand:string, d_date_sk:long]
 ↓ Project(#2, #4, #5) -> [ss_ext_sales_price:decimal(7,2), i_brand_id:long, i_brand:string]

@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.plan
 
+import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
 import wvlet.uni.cloud.parquet.ParquetFilter
@@ -20,6 +21,7 @@ import wvlet.uni.cloud.parquet.ParquetFilter
 import java.math.BigDecimal as JBigDecimal
 import java.time.Instant
 import java.time.LocalDate
+import scala.collection.mutable
 
 /**
   * Translates a bound filter condition into a [[ParquetFilter]] that a Parquet scan uses to skip
@@ -81,6 +83,193 @@ object ScanFilters:
     go(cond)
 
   end toParquet
+
+  /**
+    * A [[ParquetFilter]] matching exactly the rows for which `cond` is TRUE, for a source to filter
+    * rows by ([[wvlet.lang.engine.catalog.ScanSpec.rowFilter]]), or None when any part of `cond`
+    * doesn't translate. Unlike [[toParquet]], no conjunct is dropped. NULLs agree with the engine:
+    * the translation has no negation, and a row is kept only when the filter is TRUE.
+    * `columnName(i)` is the Parquet column name of input position i, or None when the source can't
+    * filter rows by that column exactly
+    */
+  def exact(cond: VExpr, columnName: Int => Option[String]): Option[ParquetFilter] =
+    def go(e: VExpr): Option[ParquetFilter] =
+      e match
+        case AndExpr(a, b) =>
+          for
+            x <- go(a)
+            y <- go(b)
+          yield x && y
+        case OrExpr(a, b) =>
+          for
+            x <- go(a)
+            y <- go(b)
+          yield x || y
+        // A boolean column as a condition
+        case c: ColRef if c.ptype == PType.Bool =>
+          columnName(c.index).map(ParquetFilter.col(_) === true)
+        // Without `numeric`: its floating-point and decimal leaves are implied, not exact
+        case _ =>
+          toParquet(e, columnName, numeric = false)
+    go(cond)
+
+  /**
+    * The row filters of `conds` (conjuncts with their [[exact]] filters) as one AND, most selective
+    * first: a source decodes the first conjunct's columns for every row, and later ones only for
+    * the rows still kept. Conjuncts over the same column are estimated together and stay adjacent
+    * ([[selectivity]]); on a tie, conjuncts over a numeric column come before strings, which cost
+    * more to decode. `columnName(i)` is the source column name of input position i
+    */
+  def ordered(
+      conds: Seq[(VExpr, ParquetFilter)],
+      source: TableSource,
+      columnName: Int => String
+  ): ParquetFilter =
+    val groups = mutable.LinkedHashMap.empty[Set[Int], List[(VExpr, ParquetFilter)]]
+    conds.foreach { c =>
+      val refs = mutable.BitSet()
+      VExprs.collectRefs(c._1, refs)
+      val key = refs.toSet
+      groups.update(key, groups.getOrElse(key, Nil) :+ c)
+    }
+    groups
+      .toSeq
+      .zipWithIndex
+      .sortBy { case ((cols, members), pos) =>
+        val strings = cols.size != 1 || members.exists(m => refType(m._1).contains(PType.Str))
+        (selectivity(cols, members.map(_._1), source, columnName), strings, pos)
+      }
+      .flatMap(_._1._2.map(_._2))
+      .reduce(_ && _)
+
+  /**
+    * The estimated fraction of rows passing all `conds`, conjuncts that read the input positions
+    * `cols`. Over one integer or date column, comparisons with literals narrow a [min, max] range
+    * measured against the source's [[TableSource.columnRange]]; `=` and IN on other columns use the
+    * source's distinct estimate (not for strings, whose estimate may scan the column); anything
+    * else counts [[CardinalityEstimator.DefaultSelectivity]]
+    */
+  private def selectivity(
+      cols: Set[Int],
+      conds: Seq[VExpr],
+      source: TableSource,
+      columnName: Int => String
+  ): Double =
+    val default = CardinalityEstimator.DefaultSelectivity
+    if cols.size != 1 then
+      math.pow(default, conds.size)
+    else
+      val name    = columnName(cols.head)
+      val ptype   = conds.flatMap(refType).headOption
+      val ordered = ptype.exists(t => t == PType.Int32 || t == PType.Int64 || t == PType.Date)
+      lazy val distinct: Option[Double] =
+        if ptype.contains(PType.Str) then
+          None
+        else
+          source.estimatedDistinct(name).filter(_ >= 1)
+      var lo                              = Long.MinValue
+      var hi                              = Long.MaxValue
+      var bounded                         = false
+      var other                           = 1.0
+      def bound(op: CmpOp, v: Long): Unit =
+        if !ordered then
+          other *= (
+            if op == CmpOp.Eq then
+              distinct.map(1 / _).getOrElse(default)
+            else
+              default
+          )
+        else
+          bounded = true
+          op match
+            case CmpOp.Eq =>
+              lo = math.max(lo, v)
+              hi = math.min(hi, v)
+            case CmpOp.Lt =>
+              hi = math.min(
+                hi,
+                if v == Long.MinValue then
+                  v
+                else
+                  v - 1
+              )
+            case CmpOp.Le =>
+              hi = math.min(hi, v)
+            case CmpOp.Gt =>
+              lo = math.max(
+                lo,
+                if v == Long.MaxValue then
+                  v
+                else
+                  v + 1
+              )
+            case CmpOp.Ge =>
+              lo = math.max(lo, v)
+            case CmpOp.Ne =>
+              other *= default
+      conds.foreach {
+        case Compare(op, _: ColRef, k: Const) if k.value != null =>
+          bound(
+            op,
+            if ordered then
+              ValueOps.toLong(k.value)
+            else
+              0L
+          )
+        case Compare(op, k: Const, _: ColRef) if k.value != null =>
+          bound(
+            flip(op),
+            if ordered then
+              ValueOps.toLong(k.value)
+            else
+              0L
+          )
+        case in: InList =>
+          other *= distinct.map(n => math.min(1.0, in.values.size / n)).getOrElse(default)
+        case _ =>
+          other *= default
+      }
+      val range =
+        if !bounded then
+          1.0
+        else
+          source
+            .columnRange(name)
+            .map { (min, max) =>
+              val a = math.max(lo, min)
+              val b = math.min(hi, max)
+              if b < a then
+                0.0
+              else
+                (b.toDouble - a.toDouble + 1) / (max.toDouble - min.toDouble + 1)
+            }
+            .getOrElse(default)
+      range * other
+    end if
+
+  end selectivity
+
+  /** The type of the column a comparison, IN, or IS NULL test reads */
+  private def refType(e: VExpr): Option[PType] =
+    e match
+      case Compare(_, c: ColRef, _) =>
+        Some(c.ptype)
+      case Compare(_, _, c: ColRef) =>
+        Some(c.ptype)
+      case InList(c: ColRef, _, _, _) =>
+        Some(c.ptype)
+      case IsNullExpr(c: ColRef, _) =>
+        Some(c.ptype)
+      case _ =>
+        None
+
+  /** The top-level conjuncts of `cond` */
+  def conjuncts(cond: VExpr): List[VExpr] =
+    cond match
+      case AndExpr(a, b) =>
+        conjuncts(a) ++ conjuncts(b)
+      case other =>
+        List(other)
 
   /**
     * A filter implied by `column` holding one of `values` (of type `t`, non-null): their [min, max]
