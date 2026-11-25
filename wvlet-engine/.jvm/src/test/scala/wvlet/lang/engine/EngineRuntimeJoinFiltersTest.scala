@@ -26,6 +26,8 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
   private val engine  = WvletEngine(optimizer = options)
   private val off     = engine.withOptimizer(options.withDisabled(Optimization.RuntimeJoinFilters))
   private val noRows  = engine.withOptimizer(options.withDisabled(Optimization.RowJoinFilters))
+  // Per-row filters stay in the engine's ScanOp.narrow, which counts the rows they drop
+  private val inEngine = engine.withOptimizer(options.withDisabled(Optimization.ScanJoinRowFilters))
   EngineTPCHBench
     .tables
     .foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
@@ -136,7 +138,7 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
     }
 
   test("drop probe rows whose key is no build key, per row") {
-    val (rows, filters) = runRows(engine, innerJoin)
+    val (rows, filters) = runRows(inEngine, innerJoin)
     filters.nonEmpty shouldBe true
     filters.map(_.droppedRows).sum > 0 shouldBe true
     rows.nonEmpty shouldBe true
@@ -172,6 +174,69 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
   test("narrow probe batches with eager gathers when late_gather is off") {
     val eager = engine.withOptimizer(options.withDisabled(Optimization.LateGather))
     runRows(eager, innerJoin)._1 shouldBe runRows(noRows, innerJoin)._1
+  }
+
+  /** The row filter each scan read with, by table, after running the query */
+  private def rowFilters(e: WvletEngine, sql: String): (Seq[IndexedSeq[Any]], Map[String, String]) =
+    withQuery(sql) { r =>
+      val op   = e.physicalPlan(r)
+      val rows = op
+        .drain()
+        .flatMap(b => (0 until b.size).map(i => b.columns.map(_.get(i)).toIndexedSeq))
+      op.close()
+      val filters = scans(op).map(s =>
+        s.source.name -> s.spec.rowFilter.map(_.toString).getOrElse("")
+      )
+      (rows, filters.toMap)
+    }
+
+  test("test selective per-row filters in the probe scan's row filter") {
+    // About 1% of the order keys pass, so the probe scan decodes the other columns only for them
+    val (rows, filters) = rowFilters(engine, innerJoin)
+    debug(filters)
+    filters("lineitem") shouldContain "In(l_orderkey,"
+    rows.nonEmpty shouldBe true
+    rows shouldBe runRows(inEngine, innerJoin)._1
+    rows shouldBe run(off, innerJoin)._1
+    rowFilters(inEngine, innerJoin)._2("lineitem") shouldNotContain "In("
+  }
+
+  test("add per-row filters to the conjuncts already in the probe scan's row filter") {
+    val q =
+      """select o_orderkey, l_linenumber from lineitem join orders on l_orderkey = o_orderkey
+        |where o_orderdate < date '1992-01-10' and l_shipdate >= date '1992-01-01'
+        |order by 1, 2""".stripMargin
+    val (rows, filters) = rowFilters(engine, q)
+    filters("lineitem") shouldContain "Compare(l_shipdate,GtEq,"
+    filters("lineitem") shouldContain "In(l_orderkey,"
+    rows.nonEmpty shouldBe true
+    rows shouldBe runRows(inEngine, q)._1
+  }
+
+  test("keep per-row filters that pass most rows in the engine") {
+    val q =
+      """select o_orderkey, l_linenumber from lineitem join orders on l_orderkey = o_orderkey
+        |where o_orderdate < date '1997-01-01' order by 1, 2 limit 20""".stripMargin
+    val (rows, filters) = rowFilters(engine, q)
+    filters("lineitem") shouldNotContain "In("
+    rows shouldBe runRows(inEngine, q)._1
+  }
+
+  test("combine per-row filters on several columns into one row filter") {
+    // Each filter alone keeps too many rows, but together they keep few
+    val q =
+      """select l_orderkey, l_linenumber from lineitem
+        |join orders on l_orderkey = o_orderkey
+        |join part on l_partkey = p_partkey
+        |where o_orderdate < date '1994-01-01' and p_size < 10
+        |order by 1, 2""".stripMargin
+    val (rows, filters) = rowFilters(engine, q)
+    debug(filters)
+    filters("lineitem") shouldContain "In(l_orderkey,"
+    filters("lineitem") shouldContain "In(l_partkey,"
+    rows.nonEmpty shouldBe true
+    rows shouldBe runRows(inEngine, q)._1
+    rows shouldBe run(off, q)._1
   }
 
   test("turn off per-row filters with row_join_filters") {

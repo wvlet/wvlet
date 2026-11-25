@@ -14,6 +14,7 @@
 package wvlet.lang.engine.exec
 
 import wvlet.lang.engine.vector.*
+import wvlet.uni.cloud.parquet.ParquetFilter
 
 import java.util.concurrent.atomic.AtomicLong
 
@@ -39,7 +40,8 @@ final class RowKeyFilter private (
     lo: Long,
     hi: Long,
     bits: Array[Long],
-    shift: Int
+    shift: Int,
+    keys: Int
 ):
   import RowKeyFilter.*
 
@@ -83,6 +85,49 @@ final class RowKeyFilter private (
       val m = maskOf(h)
       (bits((h >>> shift).toInt) & m) == m
     }
+
+  /**
+    * The number of values in [a, b] the filter accepts: exact for a bitmap or a range, and for a
+    * Bloom filter its build keys scaled by how much of [lo, hi] lies in [a, b]
+    */
+  def acceptedIn(a: Long, b: Long): Double =
+    val from = math.max(a, lo)
+    val to   = math.min(b, hi)
+    if from > to then
+      0.0
+    else
+      kind match
+        case Kind.Bitmap =>
+          // Count the set bits of positions [from - lo, to - lo]
+          val d0    = from - lo
+          val d1    = to - lo
+          var w     = (d0 >>> 6).toInt
+          val wLast = (d1 >>> 6).toInt
+          var count = 0L
+          while w <= wLast do
+            var word = bits(w)
+            if w == (d0 >>> 6).toInt then
+              word &= -1L << d0
+            if w == wLast then
+              word &= -1L >>> (63 - (d1 & 63))
+            count += java.lang.Long.bitCount(word)
+            w += 1
+          count.toDouble
+        case Kind.Bloom =>
+          keys.toDouble * ((to - from).toDouble + 1.0) / ((hi - lo).toDouble + 1.0)
+        case Kind.Range =>
+          (to - from).toDouble + 1.0
+
+  /**
+    * The filter as a uni set ([[ParquetFilter.In]]), so that a Parquet scan tests it while decoding
+    * and decodes the other columns only for the rows it accepts
+    */
+  lazy val integerSet: ParquetFilter.IntegerSet =
+    new ParquetFilter.IntegerSet:
+      def contains(v: Long): Boolean = mayContain(v)
+      def min: Long                  = lo
+      def max: Long                  = hi
+      override def toString: String  = RowKeyFilter.this.toString
 
   /** Probe rows the filter has dropped so far, over every scan applying it */
   def droppedRows: Long = dropped.get()
@@ -238,7 +283,7 @@ object RowKeyFilter:
     // hi - lo + 1 overflows only for ranges far beyond any bitmap
     val span = hi - lo + 1
     if n > MaxKeys then
-      Some(RowKeyFilter(Kind.Range, lo, hi, null, 0))
+      Some(RowKeyFilter(Kind.Range, lo, hi, null, 0, n))
     else if span > 0 && (span <= SmallBitmap || span <= BitmapBits.toLong * n) then
       val bits = new Array[Long](((span + 63) >>> 6).toInt)
       var j    = 0
@@ -246,7 +291,7 @@ object RowKeyFilter:
         val d = key(j) - lo
         bits((d >>> 6).toInt) |= 1L << d
         j += 1
-      Some(RowKeyFilter(Kind.Bitmap, lo, hi, bits, 0))
+      Some(RowKeyFilter(Kind.Bitmap, lo, hi, bits, 0, n))
     else
       // At least two words, so that the word index shift stays below 64
       val words = Integer.highestOneBit(math.max(2, (n.toLong * BloomBits / 64).toInt) * 2 - 1)
@@ -257,7 +302,7 @@ object RowKeyFilter:
         val h = mix(key(j))
         bits((h >>> shift).toInt) |= maskOf(h)
         j += 1
-      Some(RowKeyFilter(Kind.Bloom, lo, hi, bits, shift))
+      Some(RowKeyFilter(Kind.Bloom, lo, hi, bits, shift, n))
 
   end of
 

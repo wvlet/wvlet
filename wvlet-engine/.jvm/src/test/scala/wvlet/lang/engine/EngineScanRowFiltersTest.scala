@@ -14,6 +14,8 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
+import wvlet.lang.engine.exec.Operator
+import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.model.plan.*
@@ -31,6 +33,7 @@ class EngineScanRowFiltersTest extends UniTest:
   private val options = OptimizerOptions().withValidatePlans(true)
   private val on      = WvletEngine(optimizer = options)
   private val off     = on.withOptimizer(options.withDisabled(Optimization.ScanRowFilters))
+  private val noJoin  = on.withOptimizer(options.withDisabled(Optimization.ScanJoinRowFilters))
 
   /**
     * 1000 rows in row groups of 100 (so that scans split into morsels), with integer, date,
@@ -150,6 +153,43 @@ class EngineScanRowFiltersTest extends UniTest:
     val plan = explain(on, q)
     plan shouldNotContain "row_filter="
     sameRows(q).size shouldBe 4
+  }
+
+  test("test selective runtime join filters in the row filter of every morsel") {
+    // The builds keep 11 of the 1000 ids, or 5 of the 400 dates, spread over the row groups, so
+    // their ranges skip few row groups and their per-row filters go into the probe scan's row
+    // filter
+    val queries = Seq(
+      """from $t as a
+        |join { from $t where id % 97 = 0 select id as bid } on a.id = bid
+        |select a.id, a.mode, a.qty""".stripMargin,
+      """from $t as a
+        |join { from $t where id % 97 = 0 and id < 400 select d as bd } on a.d = bd
+        |select a.id, a.ts, a.price""".stripMargin
+    )
+    // The row filters the scans read with, after running the plan (builds set the join filters)
+    def scanRowFilters(e: WvletEngine, q: String): Seq[String] =
+      run(e, q) { r =>
+        val op = e.physicalPlan(r)
+        op.drain()
+        op.close()
+        def scans(o: Operator): Seq[ScanOp] =
+          o match
+            case s: ScanOp =>
+              Seq(s)
+            case other =>
+              other.children.flatMap(scans) ++ other.sharedInputs.flatMap(scans)
+        scans(op).flatMap(_.spec.rowFilter.map(_.toString))
+      }
+    queries.foreach { q =>
+      debug(scanRowFilters(on, q))
+      scanRowFilters(on, q).exists(_.contains("In(")) shouldBe true
+      scanRowFilters(noJoin, q).exists(_.contains("In(")) shouldBe false
+      val r = rows(on, q)
+      r.nonEmpty shouldBe true
+      r shouldBe rows(noJoin, q)
+      r shouldBe rows(off, q)
+    }
   }
 
 end EngineScanRowFiltersTest

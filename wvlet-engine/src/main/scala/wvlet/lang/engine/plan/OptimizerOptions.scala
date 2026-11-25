@@ -205,6 +205,13 @@ enum Optimization(val name: String):
   case RowJoinFilters extends Optimization("row_join_filters")
 
   /**
+    * Per-row runtime join filters expected to keep few rows of a single-file Parquet probe scan go
+    * into its row filter as `In` conjuncts, so that uni decodes the other columns only for the rows
+    * they accept, instead of decoding every row and dropping them after. Needs `row_join_filters`
+    */
+  case ScanJoinRowFilters extends Optimization("scan_join_row_filters")
+
+  /**
     * Pre-size the group tables and aggregate state of hash aggregations from estimated group
     * counts, so they grow less often
     */
