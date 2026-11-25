@@ -113,7 +113,8 @@ class Planner(
         sharedPartials = enabled(Optimization.SharedAggPartials),
         adaptivePartials = enabled(Optimization.AdaptivePartialAggs),
         setOpJoins = enabled(Optimization.SetOpJoins),
-        packAggKeys = enabled(Optimization.PackAggKeys)
+        packAggKeys = enabled(Optimization.PackAggKeys),
+        unionPipelines = enabled(Optimization.UnionAllPipelines)
       )
     else
       pruned

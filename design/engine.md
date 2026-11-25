@@ -13,6 +13,7 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 - Two-phase aggregation merges identical partial aggregates (`shared_agg_partials`), so `avg(x)` reuses `sum(x)` and `count(x)`.
 - The binder simplifies each expression as it binds it (`plan/BoundExprSimplifier.scala`), before the logical passes: `fold_bound_constants` turns nodes over literals into literals (so `x <= 1200 + 11` reaches scan filters) and simplifies `and`/`or` with a literal operand; `unwrap_casts` compares `x` instead of `cast(x as T)` with literals when the cast is lossless (integer widening, integer or decimal to a wide enough decimal) and every literal converts exactly. A failing evaluation (`1 / 0`) stays unfolded, so it still fails only when rows exist.
 - With `parallelize`, INTERSECT / EXCEPT (without ALL) become semi / anti hash joins over the left input's distinct rows on every column, with NULL keys equal (`set_op_joins`, `HashJoinOp.nullsEqual`). A build with a NULL key skips the packed, direct, and flat paths; a join with NULL-equal keys takes no runtime filters.
+- With `parallelize`, a UNION ALL of scan pipelines is one pipeline (`union_all_pipelines`): one `MorselOp` runs the parts of every input, in input order and then part order, through the operators above the union (hash join probes over one shared build, partial aggregates). An input whose source has a single part runs on the calling thread in its turn; a union with an input that is no pipeline, or has right / full joins, keeps its inputs' own pipelines.
 
 ## Optimizer toggles
 
