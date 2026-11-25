@@ -22,7 +22,8 @@ import wvlet.uni.cloud.parquet.ParquetFilter
   * requalified); `columns` are the source column positions to read (all when None); `filter` lets
   * the source skip data that can't match (see [[ScanSpec]]), as do the `runtimeFilters` that hash
   * joins above set once their builds are done. With `footerCache`, the scan asks the source to
-  * reuse cached Parquet footers ([[ParquetFooterCache]]).
+  * reuse cached Parquet footers ([[ParquetFooterCache]]). The source returns only the rows matching
+  * `rowFilter` ([[ScanSpec.rowFilter]]), which may read columns outside `columns`.
   *
   * Runtime filters with a per-row test ([[RuntimeFilter.rowFilter]]) also narrow every batch the
   * source returns ([[narrow]]), deferring the other columns' gathers while `lateGather` is on
@@ -33,13 +34,16 @@ class ScanOp(
     val columns: Option[IndexedSeq[Int]],
     val filter: Option[ParquetFilter],
     val runtimeFilters: Seq[RuntimeFilter] = Nil,
-    val footerCache: Boolean = false
+    val footerCache: Boolean = false,
+    val rowFilter: Option[ParquetFilter] = None
 ) extends Operator:
   override def name: String              = s"Scan[${source.name}]"
   override protected def details: String =
     s"(${columns
         .map(c => s"columns=${c.map(source.schema(_).name).mkString(",")}")
-        .getOrElse("")}${filter.map(f => s" filter=${f}").getOrElse("")}${
+        .getOrElse("")}${filter.map(f => s" filter=${f}").getOrElse("")}${rowFilter
+        .map(f => s" row_filter=${f}")
+        .getOrElse("")}${
         if runtimeFilters.isEmpty then
           ""
         else
@@ -60,7 +64,8 @@ class ScanOp(
   def spec: ScanSpec = ScanSpec(
     columns.map(_.map(source.schema(_).name)),
     (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _),
-    footerCache
+    footerCache,
+    rowFilter
   )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
@@ -81,7 +86,8 @@ class ScanOp(
     columns,
     filter,
     runtimeFilters,
-    footerCache
+    footerCache,
+    rowFilter
   ).withLateGather(lateGather)
 
   /** Read only the given output positions */
@@ -93,7 +99,8 @@ class ScanOp(
       Some(idx.map(base)),
       filter,
       runtimeFilters,
-      footerCache
+      footerCache,
+      rowFilter
     ).withLateGather(lateGather)
 
   def withFilter(f: ParquetFilter): ScanOp = ScanOp(
@@ -102,7 +109,19 @@ class ScanOp(
     columns,
     Some(filter.map(_ && f).getOrElse(f)),
     runtimeFilters,
-    footerCache
+    footerCache,
+    rowFilter
+  ).withLateGather(lateGather)
+
+  /** Return only the rows matching `f` too (an exact filter, see [[ScanSpec.rowFilter]]) */
+  def withRowFilter(f: ParquetFilter): ScanOp = ScanOp(
+    source,
+    schema,
+    columns,
+    filter,
+    runtimeFilters,
+    footerCache,
+    Some(rowFilter.map(_ && f).getOrElse(f))
   ).withLateGather(lateGather)
 
   // The filters with a per-row test, each with the output position of its column

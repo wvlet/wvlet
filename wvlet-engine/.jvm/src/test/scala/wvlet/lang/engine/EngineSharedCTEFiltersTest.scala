@@ -22,7 +22,11 @@ import wvlet.uni.test.UniTest
 
 /** Shared CTEs computing only the rows their readers' filters agree on */
 class EngineSharedCTEFiltersTest extends UniTest:
-  private val options  = OptimizerOptions().withValidatePlans(true)
+  // Without scan_row_filters, so that the body's filters stay Filter operators to look for
+  private val options = OptimizerOptions()
+    .withValidatePlans(true)
+    .withDisabled(Optimization.ScanRowFilters)
+
   private val engine   = WvletEngine(optimizer = options)
   private val disabled = engine.withOptimizer(options.withDisabled(Optimization.PushDownCTEFilters))
   EngineTPCHBench

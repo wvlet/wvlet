@@ -71,7 +71,8 @@ class Planner(
     windowKernels = enabled(Optimization.RunningWindowKernels),
     commonSubexpressions = enabled(Optimization.CommonSubexpressions),
     foldConstants = enabled(Optimization.FoldConstants),
-    windowSortKernels = enabled(Optimization.WindowSortKernels)
+    windowSortKernels = enabled(Optimization.WindowSortKernels),
+    scanRowFilters = enabled(Optimization.ScanRowFilters)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

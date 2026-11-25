@@ -1,15 +1,13 @@
 -- q36#1
   (shared)
       Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_store_sk,ss_ext_sales_price,ss_net_profit join_filter=ss_sold_date_sk,ss_item_sk,ss_store_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2), ss_net_profit:decimal(7,2)]
-        Scan[date_dim](columns=d_date_sk,d_year filter=Compare(d_year,Eq,2001)) -> [d_date_sk:long, d_year:long]
-        ↓ Filter((#1=lit(2001:long)), keep=0) -> [d_date_sk:long]
+        Scan[date_dim](columns=d_date_sk filter=Compare(d_year,Eq,2001) row_filter=Compare(d_year,Eq,2001)) -> [d_date_sk:long]
         ↓ Morsel[parallelism=N] -> [d_date_sk:long]
       ↙ HashJoin[Inner](#0 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2), ss_net_profit:decimal(7,2), d_date_sk:long]
         Scan[item](columns=i_item_sk,i_class,i_category) -> [i_item_sk:long, i_class:string, i_category:string]
         ↓ Morsel[parallelism=N] -> [i_item_sk:long, i_class:string, i_category:string]
       ↙ HashJoin[Inner](#1 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2), ss_net_profit:decimal(7,2), d_date_sk:long, i_item_sk:long, i_class:string, i_category:string]
-        Scan[store](columns=s_store_sk,s_state filter=Compare(s_state,Eq,TN)) -> [s_store_sk:long, s_state:string]
-        ↓ Filter((#1=lit(TN:string)), keep=0) -> [s_store_sk:long]
+        Scan[store](columns=s_store_sk filter=Compare(s_state,Eq,TN) row_filter=Compare(s_state,Eq,TN)) -> [s_store_sk:long]
         ↓ Morsel[parallelism=N] -> [s_store_sk:long]
       ↙ HashJoin[Inner](#2 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2), ss_net_profit:decimal(7,2), d_date_sk:long, i_item_sk:long, i_class:string, i_category:string, s_store_sk:long]
       ↓ HashAgg(keys=[#8, #7], aggs=[agg:sum(#4), agg:sum(#3)]) -> [i_category:string, i_class:string, __partial_0:decimal(38,2), __partial_1:decimal(38,2)]

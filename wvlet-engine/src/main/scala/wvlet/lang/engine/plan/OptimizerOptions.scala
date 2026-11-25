@@ -175,6 +175,14 @@ enum Optimization(val name: String):
   case PushScanFilters extends Optimization("push_scan_filters")
 
   /**
+    * The conjuncts of a filter directly over a single-file Parquet scan that uni's row filter
+    * evaluates exactly move into the scan ([[wvlet.lang.engine.catalog.ScanSpec.rowFilter]]), most
+    * selective first: uni decodes their columns first and the other columns only for the matching
+    * rows (DuckDB's filter-first Parquet decode). The others stay in the engine's filter
+    */
+  case ScanRowFilters extends Optimization("scan_row_filters")
+
+  /**
     * Skip Parquet row groups on the probe side of a hash join by the [min, max] range of its build
     * keys, once the build is done
     */

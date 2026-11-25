@@ -25,12 +25,15 @@ import scala.collection.mutable
 /**
   * Scan request pushed down to a table source. `filter` is implied by the query's own filter: a
   * source may use it to skip data that can't match (e.g. Parquet row groups by statistics), but
-  * rows it returns are still filtered by the engine
+  * rows it returns are still filtered by the engine. `rowFilter` is exact: the source returns only
+  * the rows it matches, and the engine doesn't evaluate it again. Only a source that
+  * [[TableSource.supportsRowFilter]] gets one; its columns may be outside `columns`
   */
 case class ScanSpec(
     columns: Option[Seq[String]] = None,
     filter: Option[ParquetFilter] = None,
-    footerCache: Boolean = false
+    footerCache: Boolean = false,
+    rowFilter: Option[ParquetFilter] = None
 )
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -46,6 +49,21 @@ trait TableSource:
 
   /** Whether `spec.filter` may refer to this column */
   def canFilterOn(column: String): Boolean = supportsFilter
+
+  /**
+    * Whether `scan` returns only the rows matching `spec.rowFilter`, decoding the other columns
+    * only for those rows. A source without it never gets a row filter
+    */
+  def supportsRowFilter: Boolean = false
+
+  /** Whether `spec.rowFilter` may compare this column, exactly as the engine compares its values */
+  def canRowFilterOn(column: String): Boolean = false
+
+  /**
+    * The [min, max] range of an integer (or date, in epoch days) column's non-null values, from
+    * metadata only, for estimating how many rows a range condition keeps. None when unknown
+    */
+  def columnRange(column: String): Option[(Long, Long)] = None
 
   /** Row count estimate for join ordering */
   def estimatedRows: Option[Long] = None
@@ -150,6 +168,70 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
       case _ =>
         true
     }
+
+  /** Single files only: a folder or Iceberg table still filters rows after decoding them */
+  override def supportsRowFilter: Boolean = isSingleFile
+
+  /**
+    * Top-level primitive columns that uni's row filter compares as the engine compares their
+    * values: signed integers, dates, booleans, MILLIS or MICROS timestamps (the engine floors NANOS
+    * to micros, while uni would compare the nanos), and strings
+    */
+  override def canRowFilterOn(column: String): Boolean = parquetSchema
+    .fields
+    .find(_.name == column)
+    .exists {
+      case p: ParquetField.Primitive if !p.isRepeated =>
+        (p.physicalType, p.logicalType) match
+          case (PhysicalType.BOOLEAN, None) =>
+            true
+          case (PhysicalType.INT32 | PhysicalType.INT64, None) =>
+            true
+          case (PhysicalType.INT32 | PhysicalType.INT64, Some(LogicalType.Integer(_, true))) =>
+            true
+          case (PhysicalType.INT32, Some(LogicalType.Date)) =>
+            true
+          case (PhysicalType.INT64, Some(LogicalType.Timestamp(_, unit))) =>
+            unit == TimeUnit.MILLIS || unit == TimeUnit.MICROS
+          case (PhysicalType.BYTE_ARRAY, None | Some(LogicalType.String | LogicalType.Enum)) =>
+            true
+          case _ =>
+            false
+      case _ =>
+        false
+    }
+
+  /** From the file's column statistics, for signed integer and date columns */
+  override def columnRange(column: String): Option[(Long, Long)] =
+    if !isSingleFile || !canFilterOn(column) then
+      None
+    else
+      def asLong(v: Any): Option[Long] =
+        v match
+          case i: Int =>
+            Some(i.toLong)
+          case l: Long =>
+            Some(l)
+          case d: java.time.LocalDate =>
+            Some(d.toEpochDay)
+          case _ =>
+            None
+      schema.fields.find(_.name == column).map(_.ptype) match
+        case Some(PType.Int32 | PType.Int64 | PType.Date) =>
+          try
+            val opened = openFile(footerCache)
+            try
+              for
+                s   <- opened.columnStatistics.get(column)
+                min <- s.min.flatMap(asLong)
+                max <- s.max.flatMap(asLong)
+              yield (min, max)
+            finally opened.file.close()
+          catch
+            case _: Exception =>
+              None
+        case _ =>
+          None
 
   override lazy val estimatedRows: Option[Long] =
     try
@@ -369,6 +451,7 @@ object ParquetSource:
       .withBinaryAsString(true)
       .withInt32DecimalAsLong(true)
     spec.filter.foreach(f => options = options.withRowGroupFilter(f))
+    spec.rowFilter.foreach(f => options = options.withFilter(f))
     (cols, types, options)
 
   /**

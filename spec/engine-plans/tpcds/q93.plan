@@ -1,8 +1,7 @@
 -- q93#1
 Scan[store_sales](columns=ss_item_sk,ss_customer_sk,ss_ticket_number,ss_quantity,ss_sales_price join_filter=ss_item_sk,ss_ticket_number) -> [ss_item_sk:long, ss_customer_sk:long, ss_ticket_number:long, ss_quantity:long, ss_sales_price:decimal(7,2)]
   Scan[store_returns](columns=sr_item_sk,sr_reason_sk,sr_ticket_number,sr_return_quantity join_filter=sr_reason_sk) -> [sr_item_sk:long, sr_reason_sk:long, sr_ticket_number:long, sr_return_quantity:long]
-    Scan[reason](columns=r_reason_sk,r_reason_desc filter=Compare(r_reason_desc,Eq,reason 28)) -> [r_reason_sk:long, r_reason_desc:string]
-    ↓ Filter((#1=lit(reason 28:string)), keep=0) -> [r_reason_sk:long]
+    Scan[reason](columns=r_reason_sk filter=Compare(r_reason_desc,Eq,reason 28) row_filter=Compare(r_reason_desc,Eq,reason 28)) -> [r_reason_sk:long]
     ↓ Morsel[parallelism=N] -> [r_reason_sk:long]
   ↙ HashJoin[Inner](#1 = #0) -> [sr_item_sk:long, sr_reason_sk:long, sr_ticket_number:long, sr_return_quantity:long, r_reason_sk:long]
   ↓ Morsel[parallelism=N] -> [sr_item_sk:long, sr_reason_sk:long, sr_ticket_number:long, sr_return_quantity:long, r_reason_sk:long]

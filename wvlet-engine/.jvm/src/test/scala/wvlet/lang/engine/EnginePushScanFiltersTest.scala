@@ -44,8 +44,10 @@ class EnginePushScanFiltersTest extends UniTest:
     debug(p.explain)
     p
 
-  private def explain(query: String): String =
-    val plan = withQuery(CompilationUnit.fromSqlString(query))(engine.explain(_))
+  private def explain(query: String): String = explain(engine, query)
+
+  private def explain(e: WvletEngine, query: String): String =
+    val plan = withQuery(CompilationUnit.fromSqlString(query))(e.explain(_))
     debug(plan)
     plan
 
@@ -96,11 +98,15 @@ class EnginePushScanFiltersTest extends UniTest:
     val q   = "from region where r_name = 'ASIA' select r_regionkey"
     scans(runtimePlan(off, q)).map(_.filter) shouldBe Seq(None)
     val plan = withQuery(CompilationUnit.fromWvletString(q))(off.explain(_))
-    plan shouldNotContain "filter="
+    plan shouldNotContain " filter="
   }
 
   test("filter a scan once in the physical plan") {
-    val plan = explain("select r_regionkey from region where r_name = 'ASIA'")
+    val plan = explain(
+      // With scan_row_filters, the filter moves into the scan's row filter
+      engine.withOptimizer(options.withDisabled(Optimization.ScanRowFilters)),
+      "select r_regionkey from region where r_name = 'ASIA'"
+    )
     plan shouldContain "Scan[region](columns=r_regionkey,r_name filter=Compare(r_name,Eq,ASIA))"
   }
 

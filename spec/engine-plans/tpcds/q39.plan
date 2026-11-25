@@ -1,8 +1,7 @@
 -- q39#1
   (shared)
       Scan[inventory]( join_filter=inv_date_sk,inv_item_sk,inv_warehouse_sk) -> [inv_date_sk:long, inv_item_sk:long, inv_warehouse_sk:long, inv_quantity_on_hand:int]
-        Scan[date_dim](columns=d_date_sk,d_year,d_moy filter=Compare(d_year,Eq,2001)) -> [d_date_sk:long, d_year:long, d_moy:long]
-        ↓ Filter((#1=lit(2001:long)), keep=0,2) -> [d_date_sk:long, d_moy:long]
+        Scan[date_dim](columns=d_date_sk,d_moy filter=Compare(d_year,Eq,2001) row_filter=Compare(d_year,Eq,2001)) -> [d_date_sk:long, d_moy:long]
         ↓ Filter(((#1=lit(1:long)) or (#1=lit(2:long)))) -> [d_date_sk:long, d_moy:long]
         ↓ Morsel[parallelism=N] -> [d_date_sk:long, d_moy:long]
       ↙ HashJoin[Inner](#0 = #0) -> [inv_date_sk:long, inv_item_sk:long, inv_warehouse_sk:long, inv_quantity_on_hand:int, d_date_sk:long, d_moy:long]

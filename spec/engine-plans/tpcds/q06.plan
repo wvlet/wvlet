@@ -1,7 +1,6 @@
 -- q06#1
   Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk join_filter=ss_sold_date_sk,ss_item_sk,ss_customer_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long]
-    Scan[date_dim](columns=d_date_sk,d_month_seq filter=Compare(d_month_seq,Eq,1212)) -> [d_date_sk:long, d_month_seq:long]
-    ↓ Filter((#1=lit(1212:long)), keep=0) -> [d_date_sk:long]
+    Scan[date_dim](columns=d_date_sk filter=Compare(d_month_seq,Eq,1212) row_filter=Compare(d_month_seq,Eq,1212)) -> [d_date_sk:long]
     ↓ Morsel[parallelism=N] -> [d_date_sk:long]
   ↙ HashJoin[Inner](#0 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long, d_date_sk:long]
     Scan[item](columns=i_item_sk,i_current_price,i_category) -> [i_item_sk:long, i_current_price:decimal(7,2), i_category:string]
