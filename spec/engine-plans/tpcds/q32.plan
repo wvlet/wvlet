@@ -1,6 +1,6 @@
 -- q32#1
 Scan[catalog_sales](columns=cs_sold_date_sk,cs_item_sk,cs_ext_discount_amt join_filter=cs_sold_date_sk,cs_item_sk) -> [cs_sold_date_sk:long, cs_item_sk:long, cs_ext_discount_amt:decimal(7,2)]
-  Scan[item](columns=i_item_sk filter=Compare(i_manufact_id,Eq,977) row_filter=Compare(i_manufact_id,Eq,977)) -> [i_item_sk:long]
+  Scan[item](columns=i_item_sk filter=Compare(i_manufact_id,Eq,977) row_filter=Compare(i_manufact_id,Eq,977) join_filter=i_item_sk) -> [i_item_sk:long]
   ↓ Morsel[parallelism=N] -> [i_item_sk:long]
 ↙ HashJoin[Inner](#1 = #0) -> [cs_sold_date_sk:long, cs_item_sk:long, cs_ext_discount_amt:decimal(7,2), i_item_sk:long]
   Scan[date_dim](columns=d_date_sk filter=And(Compare(d_date,GtEq,2000-01-27),Compare(d_date,LtEq,2000-04-26)) row_filter=And(Compare(d_date,GtEq,2000-01-27),Compare(d_date,LtEq,2000-04-26))) -> [d_date_sk:long]

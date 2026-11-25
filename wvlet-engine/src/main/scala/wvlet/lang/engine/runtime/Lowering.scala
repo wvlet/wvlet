@@ -39,11 +39,12 @@ object Lowering:
     * Lower `p`. With `joinFilters`, hash joins whose unmatched probe rows are dropped give the
     * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]), and with
     * `rowJoinFilters` a per-row test of their keys too ([[wvlet.lang.engine.exec.RowKeyFilter]]).
-    * With `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]).
-    * With `footerCache`, Parquet scans reuse cached footers
-    * ([[wvlet.lang.engine.catalog.ParquetFooterCache]]). With `windowTopN`, a filter bounding the
-    * rank of a window keeps only the top rows of each partition ([[WindowOp.topNOf]]). With
-    * `windowKernels`, running window aggregates fold primitive values
+    * With `buildSideJoinFilters`, the filters also reach scans on the build sides of joins below
+    * the probe side that keep the rows of that side ([[scanColumns]]). With `inSet`, p's consumer
+    * reads only its distinct rows ([[ReduceSemiJoins.childContexts]]). With `footerCache`, Parquet
+    * scans reuse cached footers ([[wvlet.lang.engine.catalog.ParquetFooterCache]]). With
+    * `windowTopN`, a filter bounding the rank of a window keeps only the top rows of each partition
+    * ([[WindowOp.topNOf]]). With `windowKernels`, running window aggregates fold primitive values
     * ([[WindowOp.runningPrimitive]]). With `windowSortKernels`, window partitions ordered by one
     * integer or date key sort packed longs ([[WindowOp.sortByPrimitiveKey]]). With
     * `scanRowFilters`, the conjuncts of a filter over a scan that its source evaluates exactly move
@@ -54,6 +55,7 @@ object Lowering:
       p: RuntimePlan,
       joinFilters: Boolean = false,
       rowJoinFilters: Boolean = false,
+      buildSideJoinFilters: Boolean = false,
       presizeAggs: Boolean = false,
       inSet: Boolean = false,
       accelerator: Option[PlanAccelerator] = None,
@@ -69,6 +71,7 @@ object Lowering:
     val l = Lower(
       joinFilters,
       rowJoinFilters,
+      buildSideJoinFilters,
       presizeAggs,
       accelerator,
       footerCache,
@@ -101,6 +104,7 @@ object Lowering:
   private class Lower(
       joinFilters: Boolean,
       rowJoinFilters: Boolean,
+      buildSideJoinFilters: Boolean,
       presizeAggs: Boolean,
       accelerator: Option[PlanAccelerator],
       footerCache: Boolean,
@@ -413,7 +417,7 @@ object Lowering:
           .flatMap { k =>
             probeKeys(k).expr match
               case c: ColRef if c.ptype == buildKeys(k).ptype && rangeType(c.ptype) =>
-                scanColumns(probe, c.index).map { (id, column) =>
+                scanColumns(probe, c.index, buildSideJoinFilters).map { (id, column) =>
                   val f = RuntimeFilter(
                     k,
                     column,
@@ -474,9 +478,13 @@ object Lowering:
     * The Parquet columns of the scans that column `id` of `p` reads, with the id of each scan's
     * column, when each row of `p` holds the value of the scan row it comes from, so that dropping
     * scan rows by that column only drops rows of `p` with those values: through filters, plain
-    * projections, the inputs of UNION ALL, and the probe sides of joins that preserve their rows
+    * projections, the inputs of UNION ALL, and the probe sides of joins that preserve their rows.
+    * With `buildSides`, also the build sides of joins that preserve their rows (inner joins, the
+    * left input of LEFT, semi, and anti joins, the right input of RIGHT joins): a row of `p` from a
+    * build row comes with that row's value too. The build may read its scan before the join above
+    * sets the filter (morsel pipelines prepare inner builds first); the scan then reads without it
     */
-  private def scanColumns(p: RuntimePlan, id: Int): Seq[(Int, String)] =
+  private def scanColumns(p: RuntimePlan, id: Int, buildSides: Boolean): Seq[(Int, String)] =
     p match
       case s @ Scan(source, columns, _, _) if source.supportsFilter =>
         columns.indexWhere(_.id.value == id) match
@@ -485,7 +493,7 @@ object Lowering:
           case i =>
             Seq(s.sourceColumnName(i)).filter(source.canFilterOn).map(id -> _)
       case Filter(child, _, _) =>
-        scanColumns(child, id)
+        scanColumns(child, id, buildSides)
       case Project(child, exprs, columns) =>
         columns.indexWhere(_.id.value == id) match
           case -1 =>
@@ -493,7 +501,7 @@ object Lowering:
           case i =>
             exprs(i).expr match
               case c: ColRef =>
-                scanColumns(child, c.index)
+                scanColumns(child, c.index, buildSides)
               case _ =>
                 Nil
       // Each output row is a row of one input. An input column cast to a wider type is skipped
@@ -505,23 +513,22 @@ object Lowering:
             inputs.flatMap { in =>
               val c = in.output(i)
               if c.ptype == columns(i).ptype then
-                scanColumns(in, c.id.value)
+                scanColumns(in, c.id.value, buildSides)
               else
                 Nil
             }
-      // Only into the probe side: a build side is read while building, which can come before the
-      // build of the join above sets the filter (morsel pipelines prepare inner builds first)
       case Join(left, right, kind, _, _, _, buildLeft) =>
         if left.output.exists(_.id.value == id) then
           kind match
-            case JoinKind.Inner | JoinKind.Semi | JoinKind.Anti | JoinKind.Left if !buildLeft =>
-              scanColumns(left, id)
+            case JoinKind.Inner | JoinKind.Semi | JoinKind.Anti | JoinKind.Left
+                if !buildLeft || buildSides =>
+              scanColumns(left, id, buildSides)
             case _ =>
               Nil
         else
           kind match
-            case JoinKind.Inner | JoinKind.Right if buildLeft =>
-              scanColumns(right, id)
+            case JoinKind.Inner | JoinKind.Right if buildLeft || buildSides =>
+              scanColumns(right, id, buildSides)
             case _ =>
               Nil
       case _ =>

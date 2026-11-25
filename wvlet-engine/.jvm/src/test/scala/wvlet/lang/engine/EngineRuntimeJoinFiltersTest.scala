@@ -26,6 +26,10 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
   private val engine  = WvletEngine(optimizer = options)
   private val off     = engine.withOptimizer(options.withDisabled(Optimization.RuntimeJoinFilters))
   private val noRows  = engine.withOptimizer(options.withDisabled(Optimization.RowJoinFilters))
+  private val probeOnly = engine.withOptimizer(
+    options.withDisabled(Optimization.BuildSideJoinFilters)
+  )
+
   // Per-row filters stay in the engine's ScanOp.narrow, which counts the rows they drop
   private val inEngine = engine.withOptimizer(options.withDisabled(Optimization.ScanJoinRowFilters))
   EngineTPCHBench
@@ -99,6 +103,43 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
     filters("lineitem") shouldContain "Compare(l_partkey,GtEq,"
     filters("partsupp") shouldContain "Compare(ps_partkey,GtEq,"
     rows.nonEmpty shouldBe true
+    run(off, q)._1 shouldBe rows
+  }
+
+  test("filter the preserved build side of an outer join in a union all input") {
+    // The TPC-DS q05 shape: the LEFT join builds on its small preserved input, supplier, and the
+    // join with part above the union builds first, so its keys filter the supplier scan
+    val q =
+      """select u.k, u.n from (
+        |  select l_suppkey k, l_linenumber n from lineitem
+        |  union all
+        |  select s_suppkey k, ps_partkey n from supplier
+        |  left join partsupp on s_suppkey = ps_suppkey
+        |) u join part on u.k = p_partkey
+        |where p_name like 'forest%' order by 1, 2""".stripMargin
+    explain(engine, q) shouldContain "join_filter=s_suppkey"
+    explain(probeOnly, q) shouldNotContain "join_filter=s_suppkey"
+    val (rows, filters) = run(engine, q)
+    debug(filters)
+    filters("supplier") shouldContain "Compare(s_suppkey,GtEq,"
+    rows.nonEmpty shouldBe true
+    run(probeOnly, q)._1 shouldBe rows
+    run(off, q)._1 shouldBe rows
+  }
+
+  test("leave the NULL-padded input of an outer join below the probe side unfiltered") {
+    // partsupp supplies the LEFT join's padded rows: dropping its rows would pad suppliers that
+    // matched them instead of dropping those output rows
+    val q =
+      """select u.k, u.s from (
+        |  select l_partkey k, l_suppkey s from lineitem
+        |  union all
+        |  select ps_partkey k, s_suppkey s from supplier
+        |  left join partsupp on s_suppkey = ps_suppkey
+        |) u join part on u.k = p_partkey
+        |where p_name like 'forest%' order by 1, 2""".stripMargin
+    explain(engine, q) shouldNotContain "join_filter=ps_partkey"
+    val (rows, _) = run(engine, q)
     run(off, q)._1 shouldBe rows
   }
 

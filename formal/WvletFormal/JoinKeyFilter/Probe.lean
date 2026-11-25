@@ -9,9 +9,14 @@ input of inner, semi, and RIGHT joins, and the right input of inner, LEFT, semi,
 The other sides keep (or emit) unmatched probe rows, so a filter there changes the result
 (`probe_left_of_left_unsound`, `probe_left_of_anti_unsound`, `probe_right_of_right_unsound`).
 
-The model covers the join itself. Which scans below the probe input may take the filter (through
-filters, plain projections, UNION ALL inputs, and the probe sides of joins that keep their rows,
-`Lowering.scanColumns`) is not modeled.
+Below the probe input, `Lowering.scanColumns` also gives the filter to the scans of the inputs of
+nested joins whose rows the nested join keeps, on its probe or (with `build_side_join_filters`) its
+build side: the left input of inner, LEFT, semi, and anti joins and the right input of inner and
+RIGHT joins. Dropping rows of such an input by a test of its own columns drops exactly the nested
+join's output rows that come from them (`through_left`, `through_right_inner`,
+`through_right_of_right`), whichever side the nested join builds on. The other inputs pad or drop
+rows by their matches, so the step is unsound there (`through_right_of_left_unsound`,
+`through_left_of_right_unsound`). Filters, plain projections, and UNION ALL inputs are not modeled.
 -/
 import WvletFormal.JoinKeyFilter.Sound
 
@@ -140,6 +145,83 @@ theorem probe_left_of_anti_unsound :
 theorem probe_right_of_right_unsound :
     join (fun _ _ => true) .right [] (keep noneP [⟨some 1, 0⟩]) ≠
       join (fun _ _ => true) .right [] [⟨some 1, 0⟩] := by
+  decide
+
+/-! ### Through nested joins (`Lowering.scanColumns`)
+
+A test `q` of an input row (any of its columns, not only the key) stands for the runtime filter
+that a scan below the nested join applies. -/
+
+/-- Inner, LEFT, semi, and anti joins keep their left rows: dropping left rows that fail `q`
+drops exactly the output rows whose left row fails it, on either build side. -/
+theorem through_left (θ : Residual) (q : Row → Bool) (k : Kind) (hk : leftRooted k = true)
+    (rs : List Row) :
+    ∀ ls : List Row,
+      join θ k (ls.filter q) rs = (join θ k ls rs).filter fun o => o.1.any q := by
+  have hjoin : ∀ xs, join θ k xs rs = xs.flatMap fun l => rowsOf k l (matching θ rs l) := by
+    intro xs; cases k with
+    | right => simp [leftRooted] at hk
+    | _ => rfl
+  intro ls
+  rw [hjoin, hjoin]
+  induction ls with
+  | nil => rfl
+  | cons l ls ih =>
+    have hall := filter_const (fun o : Out => o.1.any q) (q l) (rowsOf k l (matching θ rs l))
+      (fun o ho => by simp [rowsOf_fst k hk l _ o ho])
+    rw [List.flatMap_cons, List.filter_append, hall, ← ih]
+    by_cases hq : q l = true
+    · simp [hq]
+    · simp [hq]
+
+/-- Matching against the rows of `rs` that pass `q`: the matches that pass `q`. -/
+theorem matching_filter (θ : Residual) (q : Row → Bool) (l : Row) (rs : List Row) :
+    matching θ (rs.filter q) l = (matching θ rs l).filter q := by
+  unfold matching
+  rw [List.filter_filter, List.filter_filter]
+  congr 1
+  funext r
+  cases q r <;> cases (keyEq l.key r.key && θ l r) <;> rfl
+
+/-- Inner joins keep their right rows: dropping right rows that fail `q` drops exactly the
+output rows whose right row fails it, on either build side. -/
+theorem through_right_inner (θ : Residual) (q : Row → Bool) (rs : List Row) :
+    ∀ ls : List Row,
+      join θ .inner ls (rs.filter q) = (join θ .inner ls rs).filter fun o => o.2.any q := by
+  intro ls
+  induction ls with
+  | nil => rfl
+  | cons l ls ih =>
+    simp only [join] at ih ⊢
+    rw [List.flatMap_cons, List.flatMap_cons, List.filter_append, ← ih, matching_filter]
+    congr 1
+    simp only [rowsOf]
+    rw [List.filter_map]
+    congr 1
+
+/-- RIGHT joins keep their right rows: dropping right rows that fail `q` drops exactly the output
+rows whose right row fails it, on either build side. -/
+theorem through_right_of_right (θ : Residual) (q : Row → Bool) (ls rs : List Row) :
+    join θ .right ls (rs.filter q) = (join θ .right ls rs).filter fun o => o.2.any q := by
+  have h := through_left (fun a b => θ b a) q .left rfl ls rs
+  simp only [join] at h ⊢
+  rw [h, List.filter_map]
+  congr 1
+
+/-- A LEFT join pads the left rows whose matches its right input drops: the step is unsound
+there. -/
+theorem through_right_of_left_unsound :
+    join (fun _ _ => true) .left [⟨some 1, 0⟩] ([⟨some 1, 1⟩].filter fun _ => false) ≠
+      (join (fun _ _ => true) .left [⟨some 1, 0⟩] [⟨some 1, 1⟩]).filter fun o =>
+        o.2.any fun _ => false := by
+  decide
+
+/-- A RIGHT join pads the right rows whose matches its left input drops: the step is unsound
+there. -/
+theorem through_left_of_right_unsound :
+    join (fun _ _ => true) .right ([⟨some 1, 0⟩].filter fun _ => false) [⟨some 1, 1⟩] ≠
+      (join (fun _ _ => true) .right [⟨some 1, 0⟩] [⟨some 1, 1⟩]).filter fun o =>
+        o.1.any fun _ => false := by
   decide
 
 end Wvlet.JoinKeyFilter

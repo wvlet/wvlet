@@ -1,7 +1,7 @@
 -- q31#1
   (shared)
     Scan[date_dim](columns=d_date_sk,d_year,d_qoy filter=And(Compare(d_year,Eq,2000),Or(Or(Compare(d_qoy,Eq,1),Compare(d_qoy,Eq,2)),Compare(d_qoy,Eq,3))) row_filter=And(Compare(d_year,Eq,2000),Or(Or(Compare(d_qoy,Eq,1),Compare(d_qoy,Eq,2)),Compare(d_qoy,Eq,3))) join_filter=d_date_sk) -> [d_date_sk:long, d_year:long, d_qoy:long]
-      Scan[web_sales](columns=ws_sold_date_sk,ws_bill_addr_sk,ws_ext_sales_price) -> [ws_sold_date_sk:long, ws_bill_addr_sk:long, ws_ext_sales_price:decimal(7,2)]
+      Scan[web_sales](columns=ws_sold_date_sk,ws_bill_addr_sk,ws_ext_sales_price join_filter=ws_bill_addr_sk) -> [ws_sold_date_sk:long, ws_bill_addr_sk:long, ws_ext_sales_price:decimal(7,2)]
       ↓ Morsel[parallelism=N] -> [ws_sold_date_sk:long, ws_bill_addr_sk:long, ws_ext_sales_price:decimal(7,2)]
     ↙ HashJoin[Inner](#0 = #0) -> [d_date_sk:long, d_year:long, d_qoy:long, ws_sold_date_sk:long, ws_bill_addr_sk:long, ws_ext_sales_price:decimal(7,2)]
       Scan[customer_address](columns=ca_address_sk,ca_county) -> [ca_address_sk:long, ca_county:string]

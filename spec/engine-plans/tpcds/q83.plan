@@ -63,7 +63,7 @@
     ↓ Project(#0) -> [d_date:date]
     ↓ Morsel[parallelism=N] -> [d_date:date]
   ↙ HashJoin[Semi](#1 = #0) -> [d_date_sk:long, d_date:date]
-    Scan[web_returns](columns=wr_returned_date_sk,wr_item_sk,wr_return_quantity) -> [wr_returned_date_sk:long, wr_item_sk:long, wr_return_quantity:long]
+    Scan[web_returns](columns=wr_returned_date_sk,wr_item_sk,wr_return_quantity join_filter=wr_item_sk) -> [wr_returned_date_sk:long, wr_item_sk:long, wr_return_quantity:long]
     ↓ Morsel[parallelism=N] -> [wr_returned_date_sk:long, wr_item_sk:long, wr_return_quantity:long]
   ↙ HashJoin[Inner](#0 = #0) -> [d_date_sk:long, d_date:date, wr_returned_date_sk:long, wr_item_sk:long, wr_return_quantity:long]
   ↓ Project(#3, #4) -> [wr_item_sk:long, wr_return_quantity:long]

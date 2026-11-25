@@ -1,7 +1,7 @@
 -- q19#1
 Scan[customer_address](columns=ca_address_sk,ca_zip join_filter=ca_address_sk) -> [ca_address_sk:long, ca_zip:string]
   Scan[customer](columns=c_customer_sk,c_current_addr_sk join_filter=c_customer_sk) -> [c_customer_sk:long, c_current_addr_sk:long]
-    Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk,ss_store_sk,ss_ext_sales_price join_filter=ss_sold_date_sk,ss_item_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2)]
+    Scan[store_sales](columns=ss_sold_date_sk,ss_item_sk,ss_customer_sk,ss_store_sk,ss_ext_sales_price join_filter=ss_sold_date_sk,ss_item_sk,ss_store_sk) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2)]
       Scan[item](columns=i_item_sk,i_brand_id,i_brand,i_manufact_id,i_manufact filter=Compare(i_manager_id,Eq,8) row_filter=Compare(i_manager_id,Eq,8)) -> [i_item_sk:long, i_brand_id:long, i_brand:string, i_manufact_id:long, i_manufact:string]
       ↓ Morsel[parallelism=N] -> [i_item_sk:long, i_brand_id:long, i_brand:string, i_manufact_id:long, i_manufact:string]
     ↙ HashJoin[Inner](#1 = #0) -> [ss_sold_date_sk:long, ss_item_sk:long, ss_customer_sk:long, ss_store_sk:long, ss_ext_sales_price:decimal(7,2), i_item_sk:long, i_brand_id:long, i_brand:string, i_manufact_id:long, i_manufact:string]
