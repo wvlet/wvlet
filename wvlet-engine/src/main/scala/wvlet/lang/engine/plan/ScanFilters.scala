@@ -146,6 +146,32 @@ object ScanFilters:
       .reduce(_ && _)
 
   /**
+    * The largest estimated fraction of a scan's rows its row filter may keep with
+    * `selective_scan_row_filters`: selective TPC-H q4, q6, q12 scans (4-14%) decode faster
+    * filter-first, while q09's 20% and q1's 96% decode slower
+    */
+  final val MaxRowFilterSelectivity = 0.15
+
+  /**
+    * The estimated fraction of rows passing all `conds` together (conjuncts over the same input
+    * positions estimated together by [[selectivity]], independent otherwise). `columnName(i)` is
+    * the source column name of input position i
+    */
+  def estimatedSelectivity(
+      conds: Seq[VExpr],
+      source: TableSource,
+      columnName: Int => String
+  ): Double =
+    val groups = mutable.LinkedHashMap.empty[Set[Int], List[VExpr]]
+    conds.foreach { c =>
+      val refs = mutable.BitSet()
+      VExprs.collectRefs(c, refs)
+      val key = refs.toSet
+      groups.update(key, groups.getOrElse(key, Nil) :+ c)
+    }
+    groups.map((cols, members) => selectivity(cols, members, source, columnName)).product
+
+  /**
     * The estimated fraction of rows passing all `conds`, conjuncts that read the input positions
     * `cols`. Over one integer or date column, comparisons with literals narrow a [min, max] range
     * measured against the source's [[TableSource.columnRange]]; `=` and IN on other columns use the

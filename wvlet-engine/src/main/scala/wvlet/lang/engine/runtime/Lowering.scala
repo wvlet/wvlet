@@ -47,8 +47,10 @@ object Lowering:
     * ([[WindowOp.runningPrimitive]]). With `windowSortKernels`, window partitions ordered by one
     * integer or date key sort packed longs ([[WindowOp.sortByPrimitiveKey]]). With
     * `scanRowFilters`, the conjuncts of a filter over a scan that its source evaluates exactly move
-    * into the scan's row filter ([[ScanOp.rowFilter]]). With `dictionaryCodes`, Parquet strings
-    * decoded from a dictionary carry their codes ([[ScanOp.dictionaryCodes]])
+    * into the scan's row filter ([[ScanOp.rowFilter]]); with `selectiveRowFilters`, only when they
+    * are estimated to keep at most [[ScanFilters.MaxRowFilterSelectivity]] of its rows. With
+    * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
+    * ([[ScanOp.dictionaryCodes]])
     */
   def apply(
       p: RuntimePlan,
@@ -64,7 +66,8 @@ object Lowering:
       foldConstants: Boolean = false,
       windowSortKernels: Boolean = false,
       scanRowFilters: Boolean = false,
-      dictionaryCodes: Boolean = false
+      dictionaryCodes: Boolean = false,
+      selectiveRowFilters: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -78,7 +81,8 @@ object Lowering:
       foldConstants,
       windowSortKernels,
       scanRowFilters,
-      dictionaryCodes
+      dictionaryCodes,
+      selectiveRowFilters
     )
     if inSet then
       l.markInSet(p)
@@ -110,7 +114,8 @@ object Lowering:
       foldConstants: Boolean,
       windowSortKernels: Boolean,
       scanRowFilters: Boolean,
-      dictionaryCodes: Boolean
+      dictionaryCodes: Boolean,
+      selectiveRowFilters: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -149,7 +154,8 @@ object Lowering:
               commonSubexpressions = commonSubexpressions,
               foldConstants = foldConstants,
               scanRowFilters = scanRowFilters,
-              dictionaryCodes = dictionaryCodes
+              dictionaryCodes = dictionaryCodes,
+              selectiveRowFilters = selectiveRowFilters
             )
         )
       ) match
@@ -230,12 +236,24 @@ object Lowering:
               val (moved, kept) = conds.partitionMap(c =>
                 ScanFilters.exact(c, name).map(f => (c, f)).toLeft(c)
               )
-              val in =
-                if moved.isEmpty then
-                  scan
-                else
-                  scan.withRowFilter(ScanFilters.ordered(moved, s.source, scan.sourceColumnName))
-              kept.reduceOption(AndExpr(_, _)).map(filterOver(in, _)).getOrElse(in)
+              // Filter-first decode pays per row for the row filter and the selective gathers, and
+              // saves only on the rows it drops: filters keeping many rows stay in the engine
+              val selective =
+                !selectiveRowFilters || moved.isEmpty ||
+                  ScanFilters.estimatedSelectivity(
+                    moved.map(_._1),
+                    s.source,
+                    scan.sourceColumnName
+                  ) <= ScanFilters.MaxRowFilterSelectivity
+              if !selective then
+                filterOver(scan, expr(cond, positions(s)))
+              else
+                val in =
+                  if moved.isEmpty then
+                    scan
+                  else
+                    scan.withRowFilter(ScanFilters.ordered(moved, s.source, scan.sourceColumnName))
+                kept.reduceOption(AndExpr(_, _)).map(filterOver(in, _)).getOrElse(in)
             case other =>
               filterOver(other, expr(cond, positions(s)))
         case Filter(child, cond, _) =>

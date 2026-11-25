@@ -192,6 +192,15 @@ enum Optimization(val name: String):
   case ScanRowFilters extends Optimization("scan_row_filters")
 
   /**
+    * With `scan_row_filters`, a scan's exact conjuncts move into its row filter only when they are
+    * estimated to keep at most [[ScanFilters.MaxRowFilterSelectivity]] of its rows. uni evaluates
+    * the row filter row by row and gathers the other columns for the rows it keeps, which costs
+    * more than decoding them all when few rows drop (TPC-H q1's `l_shipdate <= ...` keeps 96%,
+    * TPC-DS q09's `ss_quantity between` ranges 20% each)
+    */
+  case SelectiveScanRowFilters extends Optimization("selective_scan_row_filters")
+
+  /**
     * Skip Parquet row groups on the probe side of a hash join by the [min, max] range of its build
     * keys, once the build is done
     */
