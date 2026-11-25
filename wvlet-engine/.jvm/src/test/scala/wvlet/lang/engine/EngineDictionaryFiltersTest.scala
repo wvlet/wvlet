@@ -157,6 +157,14 @@ class EngineDictionaryFiltersTest extends UniTest:
         p.column shouldBe 1
       case other =>
         fail(s"Unexpected ${other.sig}")
+    // ANDs and ORs over one column stay outside, so Selection can short-circuit them
+    val col = ColRef(0, PType.Str, "s")
+    DictionaryPredicates.wrap(
+      OrExpr(LikeExpr(col, "a%", negate = false), LikeExpr(col, "b%", negate = false))
+    ) match
+      case OrExpr(_: PerDictEntry, _: PerDictEntry) =>
+      case other =>
+        fail(s"Unexpected ${other.sig}")
     // Codes: "ab" = 0, "b" = 1; row 3 is NULL and row 5 a PLAIN value
     val s = StrVec(
       Array("ab", "b", "ab", null, "b", "ax", "ab", "b"),

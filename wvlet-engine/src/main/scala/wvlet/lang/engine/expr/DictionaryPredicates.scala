@@ -33,7 +33,8 @@ case class PerDictEntry(inner: VExpr, column: Int, local: VExpr) extends VExpr:
 
   def eval(b: Batch): Vec =
     b.column(column) match
-      case s: StrVec if s.codes != null && s.dictSize > 0 && b.size >= 2 =>
+      // A dictionary larger than the batch costs more to index than per-row evaluation saves
+      case s: StrVec if s.codes != null && s.dictSize > 0 && s.dictSize <= b.size =>
         val r = DictionaryPredicates.evalPerEntry(local, s, b.size)
         if r == null then
           inner.eval(b)
@@ -47,25 +48,26 @@ end PerDictEntry
 object DictionaryPredicates:
 
   /**
-    * `cond` with each maximal boolean subexpression that reads only one string column, made of
-    * comparisons, IN lists, LIKE, IS NULL, and AND / OR / NOT over them, as a [[PerDictEntry]].
-    * Other parts of an AND / OR / NOT are searched for such subexpressions; anything else stays as
-    * is
+    * `cond` with each AND / OR part that reads only one string column, made of comparisons, IN
+    * lists, LIKE, IS NULL, and NOT over them, as a [[PerDictEntry]]. ANDs and ORs stay outside, so
+    * [[Selection]] still short-circuits them when a part runs per row; anything else stays as is
     */
   def wrap(cond: VExpr): VExpr =
-    singleStrColumn(cond) match
-      case Some(c) if cond.ptype == PType.Bool && !cond.isConstant =>
-        PerDictEntry(cond, c, rebase(cond, c))
+    cond match
+      case AndExpr(l, r) =>
+        AndExpr(wrap(l), wrap(r))
+      case OrExpr(l, r) =>
+        OrExpr(wrap(l), wrap(r))
       case _ =>
-        cond match
-          case AndExpr(l, r) =>
-            AndExpr(wrap(l), wrap(r))
-          case OrExpr(l, r) =>
-            OrExpr(wrap(l), wrap(r))
-          case NotExpr(c) =>
-            NotExpr(wrap(c))
-          case other =>
-            other
+        singleStrColumn(cond) match
+          case Some(c) if cond.ptype == PType.Bool && !cond.isConstant =>
+            PerDictEntry(cond, c, rebase(cond, c))
+          case _ =>
+            cond match
+              case NotExpr(c) =>
+                NotExpr(wrap(c))
+              case other =>
+                other
 
   // The one string column `e` reads, when every node of it is one `wrap` evaluates per entry
   private def singleStrColumn(e: VExpr): Option[Int] =
@@ -119,7 +121,8 @@ object DictionaryPredicates:
 
   /**
     * `local` over the `n` rows of `s`, evaluated once per distinct code, once for NULL, and once
-    * per PLAIN row, or null when there are more than n / 2 of those
+    * per PLAIN row, or null when there are more than n / 2 of those. `s` has at most n dictionary
+    * entries
     */
   private[expr] def evalPerEntry(local: VExpr, s: StrVec, n: Int): Vec =
     val codes = s.codes
@@ -155,7 +158,20 @@ object DictionaryPredicates:
         map(i) = m
         m += 1
       i += 1
-    val entries = Batch(Array[Vec](s.gather(reps, m)), m)
+    // The entries' values only: `local` reads no codes
+    val values = new Array[String](m)
+    val nulls  =
+      if nullEntry >= 0 then
+        new Array[Boolean](m)
+      else
+        null
+    var j = 0
+    while j < m do
+      values(j) = s.values(reps(j))
+      j += 1
+    if nullEntry >= 0 then
+      nulls(nullEntry) = true
+    val entries = Batch(Array[Vec](StrVec(values, nulls)), m)
     local.eval(entries).gather(map, n)
 
   end evalPerEntry
