@@ -28,7 +28,7 @@ Queries on the engine can call the [standard library](../syntax/stdlib.md) funct
 [FUNCTION_NOT_FOUND] Function array_unique is not supported by the wvlet engine. Use a standard library function, or run the query on the DuckDB connector (a profile with type: duckdb)
 ```
 
-When a standard library function expands to that DuckDB name on DuckDB, the message names it instead. Calls inside `sql"..."` fragments are not checked until the engine runs them.
+When the name is another engine's function that a standard library function covers, the message names that function instead (for example, `count_approx_distinct` for Trino's `approx_distinct`). Calls inside `sql"..."` fragments are not checked until the engine runs them.
 
 ## Usage
 

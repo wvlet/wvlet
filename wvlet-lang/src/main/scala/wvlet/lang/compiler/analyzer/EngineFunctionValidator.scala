@@ -43,17 +43,20 @@ object EngineFunctionValidator extends Phase("engine-function-validator"):
       validate(unit.resolvedPlan)(using context)
     unit
 
-  private def validate(plan: LogicalPlan)(using context: Context): Unit = plan.traverse {
-    case _: TypeDef | _: TopLevelFunctionDef =>
-    // Definitions are checked where they are inlined
-    case p: LogicalPlan =>
-      p.childExpressions
-        .foreach { e =>
-          e.traverseExpressions { case f: FunctionApply =>
-            checkCall(f)
+  private def validate(plan: LogicalPlan)(using context: Context): Unit =
+    plan match
+      case _: TypeDef | _: TopLevelFunctionDef =>
+      // Definitions are checked where they are inlined
+      case p =>
+        // Expression traversal also reaches relations nested in expressions (subqueries), so only
+        // child plans are walked here
+        p.childExpressions
+          .foreach { e =>
+            e.traverseExpressions { case f: FunctionApply =>
+              checkCall(f)
+            }
           }
-        }
-  }
+        p.children.foreach(validate)
 
   private def checkCall(f: FunctionApply)(using context: Context): Unit =
     val names: List[String] =
@@ -97,31 +100,34 @@ object EngineFunctionValidator extends Phase("engine-function-validator"):
         // An ambiguous definition is reported by the inliner, not here
         true
 
-  /** The stdlib function that expands to the given DuckDB function name, if any */
+  /** The stdlib function that another engine's variant expands to the given name, if any */
   private[analyzer] def stdlibAlternative(name: String): Option[String] = stdlibAlternatives.get(
     name.toLowerCase
   )
 
   /**
-    * DuckDB function name -> the stdlib function that expands to it on DuckDB, e.g. regexp_matches
-    * -> string.regexp_like. Read from the hand-written stdlib sources: a def whose `in duckdb` (or
-    * dialect-neutral) body is `sql"name(..."`
+    * Function name of another engine -> the stdlib function that expands to it there, e.g.
+    * approx_distinct (Trino) -> array.count_approx_distinct. Read from the hand-written stdlib
+    * sources: a def scoped to another engine whose body is `sql"name(..."`. The `in duckdb` and
+    * dialect-neutral bodies are left out: the wvlet engine runs those, so a name they call that the
+    * engine lacks would fail through the stdlib function too
     */
   private lazy val stdlibAlternatives: Map[String, String] =
     val m = List.newBuilder[(String, String)]
     def visit(owner: Option[String], ownerContexts: List[DefContext], fd: FunctionDef): Unit =
       val contexts = (ownerContexts ++ fd.defContexts).map(_.contextType.leafName.toLowerCase)
-      if contexts.isEmpty || contexts.exists(c => c == "duckdb" || c == "wvlet") then
+      if contexts.nonEmpty && !contexts.exists(c => c == "duckdb" || c == "wvlet") then
         fd.expr match
           case Some(s: InterpolatedString) if s.prefix.fullName == "sql" =>
             s.parts.headOption match
               case Some(p: StringPart) =>
                 callee
                   .findPrefixMatchOf(p.value)
-                  .foreach { mt =>
+                  .map(_.group(1).toLowerCase)
+                  .filterNot(isEngineFunction)
+                  .foreach { name =>
                     val stdName = fd.name.name
-                    m += mt.group(1).toLowerCase ->
-                      owner.map(o => s"${o}.${stdName}").getOrElse(stdName)
+                    m += name -> owner.map(o => s"${o}.${stdName}").getOrElse(stdName)
                   }
               case _ =>
             end match

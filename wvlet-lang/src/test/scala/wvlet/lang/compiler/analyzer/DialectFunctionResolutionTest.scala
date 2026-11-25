@@ -160,8 +160,27 @@ class DialectFunctionResolutionTest extends UniTest:
     generateSQL(query, DBType.DuckDB) shouldContain "v + 1"
   }
 
-  test("the error should name the stdlib function that expands to a DuckDB name") {
-    EngineFunctionValidator.stdlibAlternative("regexp_matches") shouldBe Some("string.regexp_like")
+  test("the error should name the stdlib function for another engine's function name") {
+    val query =
+      """from [['a']] as t(s)
+        |group by s
+        |select approx_distinct(s) as n
+        |""".stripMargin
+    val e = compileError(query)
+    e.statusCode shouldBe StatusCode.FUNCTION_NOT_FOUND
+    e.getMessage shouldContain "Use the standard library function array.count_approx_distinct"
+    // Names the engine binds never get a hint, as they never fail
+    EngineFunctionValidator.stdlibAlternative("regexp_matches") shouldBe None
+  }
+
+  test("a def body should be checked only where it is inlined") {
+    val query =
+      """def f_unused(v: int): boolean = v in (from [[1]] as t(x) select array_unique(x))
+        |
+        |from [[10]] as t(v)
+        |select v
+        |""".stripMargin
+    generateSQL(query, DBType.Wvlet) shouldContain "select v"
   }
 
 end DialectFunctionResolutionTest

@@ -17,7 +17,7 @@ The stdlib is freshness-gated in CI. After changing `wvlet-stdlib/module/standar
 
 - `def ... in <context>` variants are selected by `DBType.dialectContextChain`, most specific first. Each engine has one context, except the wvlet engine: `type wvlet extends duckdb`, so `in wvlet` wins over `in duckdb`, which wins over a dialect-neutral def.
 - The wvlet engine inherits the hand-written `in duckdb` variants, but not the generated DuckDB catalog (`standard/duckdb/functions.wv`). A catalog def is kept only when the engine binds its name (`WvletEngineFunctionNames`), which keeps its typed signature.
-- On the wvlet target, `EngineFunctionValidator` rejects a call that resolves to no def for the dialect and is not an engine function, with `FUNCTION_NOT_FOUND` and the stdlib name when one expands to it on DuckDB. Other targets pass unknown names through as SQL. Raw `sql"..."` is not checked.
+- On the wvlet target, `EngineFunctionValidator` rejects a call that resolves to no def for the dialect and is not an engine function, with `FUNCTION_NOT_FOUND`. When the name is what another engine's stdlib variant expands to (e.g. Trino's `approx_distinct`), the message names that stdlib function. Other targets pass unknown names through as SQL. Raw `sql"..."` is not checked.
 
 ## Engine support
 
