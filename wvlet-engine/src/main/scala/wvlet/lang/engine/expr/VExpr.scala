@@ -357,7 +357,7 @@ case class CaseWhen(
 
   def eval(b: Batch): Vec =
     if masked then
-      CaseWhen.masked(b, whens.head._1, whens.head._2, ptype).getOrElse(evalBranches(b))
+      CaseWhen.masked(b, whens.head._1, whens.head._2, ptype)
     else
       evalBranches(b)
 
@@ -400,10 +400,10 @@ end CaseWhen
 object CaseWhen:
   /**
     * CASE WHEN cond THEN value END: the value vector with NULL where cond isn't true. The value is
-    * evaluated only when some row takes it, as with the branch choice. None for layouts without
-    * typed arrays (wide decimals, nested values), which take the branch choice
+    * evaluated only when some row takes it, as with the branch choice. Layouts without typed arrays
+    * (wide decimals, nested values) fill from the evaluated value like the branch choice
     */
-  private def masked(b: Batch, cond: VExpr, value: VExpr, ptype: PType): Option[Vec] =
+  private def masked(b: Batch, cond: VExpr, value: VExpr, ptype: PType): Vec =
     val n     = b.size
     val c     = Kernels.asBool(cond.eval(b))
     val cv    = c.values
@@ -418,13 +418,22 @@ object CaseWhen:
         taken += 1
       i += 1
     if taken == 0 then
-      Some(Vec.nullVec(ptype, n))
+      Vec.nullVec(ptype, n)
     else
+      // Branch 0 for the rows the condition takes, the missing ELSE (NULL) for the others
+      def chooseRows(v: Vec): Vec =
+        val chosen = new Array[Int](n)
+        var j      = 0
+        while j < n do
+          if nulls(j) then
+            chosen(j) = 1
+          j += 1
+        fill(ptype, n, chosen, Array(v, null), Array(true, true))
       evalBranch(value, b, ptype) match
         case null =>
-          Some(Vec.nullVec(ptype, n))
+          Vec.nullVec(ptype, n)
         case v if taken == n =>
-          Some(v)
+          v
         case v if v.size == n && hasLayout(v, ptype) =>
           val vn = v.nulls
           if vn != null then
@@ -434,20 +443,20 @@ object CaseWhen:
               i += 1
           v match
             case x: BoolVec =>
-              Some(BoolVec(x.values, nulls))
+              BoolVec(x.values, nulls)
             case x: IntVec =>
-              Some(IntVec(ptype, x.values, nulls))
+              IntVec(ptype, x.values, nulls)
             case x: LongVec =>
-              Some(LongVec(ptype, x.values, nulls))
+              LongVec(ptype, x.values, nulls)
             case x: DoubleVec =>
-              Some(DoubleVec(x.values, nulls))
+              DoubleVec(x.values, nulls)
             case x: StrVec =>
               // Without codes: a NULL row would need code -1
-              Some(StrVec(x.values, nulls))
-            case _ =>
-              None
-        case _ =>
-          None
+              StrVec(x.values, nulls)
+            case other =>
+              chooseRows(other)
+        case v =>
+          chooseRows(v)
       end match
     end if
 

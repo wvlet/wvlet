@@ -156,6 +156,26 @@ class CaseWhenTest extends UniTest:
     masked(ColRef(6, PType.Bool, "none"), 3, PType.Int32) shouldBe Seq(null, null, null, null)
   }
 
+  test("should mask wide decimals through the row path, evaluating the THEN value once") {
+    val wide      = PType.decimal(38, 2)
+    val big       = JBigDecimal("12345678901234567890123.45")
+    var evaluated = 0
+    val probe     = RowFn(
+      "probe",
+      Seq(selRef),
+      wide,
+      _ =>
+        evaluated += 1
+        big
+    )
+    val c = CaseWhen(Seq(is(1) -> probe), None, wide, maskNulls = true)
+    rows(eval(c, sel)) shouldBe Seq(big, null, null, null)
+    val maskedCalls = evaluated
+    evaluated = 0
+    rows(eval(c.copy(maskNulls = false), sel)) shouldBe Seq(big, null, null, null)
+    maskedCalls shouldBe evaluated
+  }
+
 end CaseWhenTest
 
 class LogicalKernelsTest extends UniTest:
