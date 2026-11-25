@@ -876,8 +876,9 @@ object WindowOp:
     * primitive values: count(*) and count(x) over any column, sum over Int64, Decimal (of the
     * result scale), and Float64 columns, min / max over Int64 and Decimal columns. Each row's value
     * is the fold of the rows up to its frame end, as `aggregateRunning` computes it with an
-    * accumulator. Returns false, possibly after writing some rows, for other calls, columns, and
-    * frames, and when a Long sum overflows; the caller then computes every row of the partition
+    * accumulator. The caller passes only running frames ([[isRunningFrame]]). Returns false,
+    * possibly after writing some rows, for other calls and columns, and when a Long sum overflows;
+    * the caller then computes every row of the partition
     */
   def runningPrimitive(
       c: WindowCall,
