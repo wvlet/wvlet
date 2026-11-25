@@ -175,8 +175,11 @@ class ScanOp(
     rowFilter
   ).withFlagsOf(this)
 
-  /** Return only the rows matching `f` too (an exact filter, see [[ScanSpec.rowFilter]]) */
-  def withRowFilter(f: ParquetFilter): ScanOp = ScanOp(
+  /**
+    * Return only the rows matching `f` too (an exact filter, see [[ScanSpec.rowFilter]]), which is
+    * estimated to keep `passRate` of them ([[rowFilterPassRate]])
+    */
+  def withRowFilter(f: ParquetFilter, passRate: Double = 1.0): ScanOp = ScanOp(
     source,
     schema,
     columns,
@@ -184,7 +187,7 @@ class ScanOp(
     runtimeFilters,
     footerCache,
     Some(rowFilter.map(_ && f).getOrElse(f))
-  ).withFlagsOf(this)
+  ).withFlagsOf(this).withRowFilterPassRate(rowFilterPassRate * passRate)
 
   // The filters with a per-row test, each with the output position of its column
   private lazy val rowFilters: Array[(RuntimeFilter, Int)] =

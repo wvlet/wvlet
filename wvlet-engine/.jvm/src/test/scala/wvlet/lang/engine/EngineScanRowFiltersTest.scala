@@ -262,6 +262,7 @@ class EngineScanRowFiltersTest extends UniTest:
       out.result()
     val joinFirst = rowFilter(scan(0.76, first = true))
     debug(joinFirst)
+    joinFirst shouldContain "In("
     joinFirst.indexOf("In(") < joinFirst.indexOf("Compare(d,") shouldBe true
     // The scan's own filter stays first when it keeps fewer rows, or with the toggle off
     Seq(scan(0.0001, first = true), scan(0.76, first = false)).foreach { s =>

@@ -272,9 +272,10 @@ object Lowering:
                   if moved.isEmpty then
                     scan
                   else
-                    scan
-                      .withRowFilter(ScanFilters.ordered(moved, s.source, scan.sourceColumnName))
-                      .withRowFilterPassRate(passRate)
+                    scan.withRowFilter(
+                      ScanFilters.ordered(moved, s.source, scan.sourceColumnName),
+                      passRate
+                    )
                 kept.reduceOption(AndExpr(_, _)).map(filterOver(in, _)).getOrElse(in)
             case other =>
               filterOver(other, expr(cond, positions(s)))
