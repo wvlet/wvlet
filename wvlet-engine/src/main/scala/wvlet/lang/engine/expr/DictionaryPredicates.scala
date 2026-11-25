@@ -43,6 +43,18 @@ case class PerDictEntry(inner: VExpr, column: Int, local: VExpr) extends VExpr:
       case _ =>
         inner.eval(b)
 
+  /**
+    * The positions of `sel` (every row of `b` when null), in order, at which the condition is TRUE,
+    * computed once per dictionary entry of those rows; null when the column carries no codes (or a
+    * dictionary larger than the batch), so the caller evaluates it per row
+    */
+  def selectPositions(b: Batch, sel: Array[Int]): Array[Int] =
+    b.column(column) match
+      case s: StrVec if s.hasCodes && s.dictSize > 0 && s.dictSize <= b.size =>
+        DictionaryPredicates.selectPerEntry(local, s, sel, b.size)
+      case _ =>
+        null
+
 end PerDictEntry
 
 object DictionaryPredicates:
@@ -50,14 +62,21 @@ object DictionaryPredicates:
   /**
     * `cond` with each AND / OR part that reads only one string column, made of comparisons, IN
     * lists, LIKE, IS NULL, and NOT over them, as a [[PerDictEntry]]. ANDs and ORs stay outside, so
-    * [[Selection]] still short-circuits them when a part runs per row; anything else stays as is
+    * [[Selection]] still short-circuits them when a part runs per row; anything else stays as is.
+    * With `whole`, an AND / OR reading only one string column becomes one [[PerDictEntry]] too (`x =
+    * 'a' or x = 'b'` runs once per entry, not twice)
     */
-  def wrap(cond: VExpr): VExpr =
+  def wrap(cond: VExpr, whole: Boolean = false): VExpr =
     cond match
+      case _: AndExpr | _: OrExpr
+          if whole && cond.ptype == PType.Bool && !cond.isConstant &&
+            singleStrColumn(cond).isDefined =>
+        val c = singleStrColumn(cond).get
+        PerDictEntry(cond, c, rebase(cond, c))
       case AndExpr(l, r) =>
-        AndExpr(wrap(l), wrap(r))
+        AndExpr(wrap(l, whole), wrap(r, whole))
       case OrExpr(l, r) =>
-        OrExpr(wrap(l), wrap(r))
+        OrExpr(wrap(l, whole), wrap(r, whole))
       case _ =>
         singleStrColumn(cond) match
           case Some(c) if cond.ptype == PType.Bool && !cond.isConstant =>
@@ -65,7 +84,7 @@ object DictionaryPredicates:
           case _ =>
             cond match
               case NotExpr(c) =>
-                NotExpr(wrap(c))
+                NotExpr(wrap(c, whole))
               case other =>
                 other
 
@@ -175,5 +194,93 @@ object DictionaryPredicates:
     local.eval(entries).gather(map, n)
 
   end evalPerEntry
+
+  /**
+    * The positions of `sel` (all of 0 until `size` when null) at which `local`, evaluated once per
+    * dictionary entry of `s` found there, is TRUE; null when a selected non-NULL row has no code,
+    * or, over the whole batch, when it has more entries than half the rows (as [[evalPerEntry]])
+    */
+  private[expr] def selectPerEntry(
+      local: VExpr,
+      s: StrVec,
+      sel: Array[Int],
+      size: Int
+  ): Array[Int] =
+    val codes = s.codes
+    val n     =
+      if sel == null then
+        size
+      else
+        sel.length
+    // slot(code) is 1 + the entry's position in `reps`, 0 when not seen yet
+    val slot = new Array[Int](s.dictSize)
+    // One entry per code seen, and one for NULL rows
+    val reps  = new Array[Int](math.min(n, s.dictSize + 1))
+    val limit =
+      if sel == null then
+        n / 2
+      else
+        reps.length
+    var nullEntry = -1
+    var m         = 0
+    var i         = 0
+    while i < n do
+      val p =
+        if sel == null then
+          i
+        else
+          sel(i)
+      val c = codes(p)
+      if c >= 0 then
+        if slot(c) == 0 then
+          if m >= limit then
+            return null
+          reps(m) = p
+          m += 1
+          slot(c) = m
+      else if s.isNull(p) then
+        if nullEntry < 0 then
+          if m >= limit then
+            return null
+          nullEntry = m
+          reps(m) = p
+          m += 1
+      else
+        return null
+      i += 1
+    val values = new Array[String](m)
+    val nulls  =
+      if nullEntry >= 0 then
+        new Array[Boolean](m)
+      else
+        null
+    var j = 0
+    while j < m do
+      values(j) = s.values(reps(j))
+      j += 1
+    if nullEntry >= 0 then
+      nulls(nullEntry) = true
+    val accepted = Kernels.trueMask(local.eval(Batch(Array[Vec](StrVec(values, nulls)), m)))
+    val nullTrue = nullEntry >= 0 && accepted(nullEntry)
+    val out      = new Array[Int](n)
+    var k        = 0
+    i = 0
+    while i < n do
+      val p =
+        if sel == null then
+          i
+        else
+          sel(i)
+      val c = codes(p)
+      if (c >= 0 && accepted(slot(c) - 1)) || (c < 0 && nullTrue) then
+        out(k) = p
+        k += 1
+      i += 1
+    if k == n then
+      out
+    else
+      java.util.Arrays.copyOf(out, k)
+
+  end selectPerEntry
 
 end DictionaryPredicates

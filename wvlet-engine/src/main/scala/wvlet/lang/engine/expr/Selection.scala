@@ -33,6 +33,11 @@ import wvlet.lang.engine.vector.*
   * REORDER_FILTER, DataFusion's `reorder_predicates`). A part that can throw (a cast or arithmetic
   * that fails on some values, a row function) is a barrier that no part moves across, so it never
   * sees rows the written order would have removed before it.
+  *
+  * With `dictionaryPositions` (`dictionary_selection`), a [[PerDictEntry]] part becomes a
+  * [[DictLeaf]]: it runs once per dictionary entry of the rows still selected and returns their
+  * positions, without a per-row mask over the whole batch, so the later parts of an AND over
+  * dictionary-coded strings look at the surviving rows only (TPC-DS q41's eight-way OR of ANDs).
   */
 object Selection:
 
@@ -48,8 +53,15 @@ object Selection:
   /** An expression evaluated as a whole, with its estimated cost per row */
   case class Leaf(expr: VExpr, cost: Int) extends Node
 
+  /**
+    * A condition over one dictionary-coded string column, run per dictionary entry of the selected
+    * rows ([[DictionaryPredicates.selectPerEntry]]), with the estimated cost per row of a [[Leaf]]
+    * of it, for ordering and for the rows without codes
+    */
+  case class DictLeaf(expr: PerDictEntry, cost: Int) extends Node
+
   /** The condition as nested ANDs and ORs over leaves, the parts reordered when `reorder` */
-  def compile(cond: VExpr, reorder: Boolean): Node =
+  def compile(cond: VExpr, reorder: Boolean, dictionaryPositions: Boolean = false): Node =
     def conjuncts(e: VExpr): List[VExpr] =
       e match
         case AndExpr(l, r) =>
@@ -68,6 +80,8 @@ object Selection:
           Conj(order(conjuncts(e).map(build)))
         case _: OrExpr =>
           Disj(order(disjuncts(e).map(build)))
+        case p: PerDictEntry if dictionaryPositions =>
+          DictLeaf(p, cost(p))
         case other =>
           Leaf(other, cost(other))
     def order(parts: List[Node]): IndexedSeq[Node] =
@@ -97,6 +111,8 @@ object Selection:
     n match
       case Leaf(_, c) =>
         c
+      case DictLeaf(_, c) =>
+        c
       case Conj(ps) =>
         ps.map(nodeCost).sum
       case Disj(ps) =>
@@ -105,6 +121,8 @@ object Selection:
   private def canThrow(n: Node): Boolean =
     n match
       case Leaf(e, _) =>
+        !isSafe(e)
+      case DictLeaf(e, _) =>
         !isSafe(e)
       case Conj(ps) =>
         ps.exists(canThrow)
@@ -208,6 +226,8 @@ object Selection:
     n match
       case Leaf(e, c) =>
         leaf(e, c, b, sel)
+      case DictLeaf(e, c) =>
+        dictLeaf(e, c, b, sel)
       case Conj(parts) =>
         var cur = sel
         var i   = 0
@@ -253,14 +273,16 @@ object Selection:
   val CheapCost = 4
 
   /**
-    * Whether selecting is worth it for `n`: some leaf is costly. With cheap leaves only, building
-    * position arrays costs more than the full-batch masks it saves (TPC-H q6, q10)
+    * Whether selecting is worth it for `n`: some leaf is costly, or an AND has two or more
+    * [[DictLeaf]] parts (the later ones run on the surviving rows only). With cheap leaves only,
+    * building position arrays costs more than the full-batch masks it saves (TPC-H q6, q10)
     */
   def worthSelecting(n: Node): Boolean =
     n match
-      case _: Leaf =>
+      case _: Leaf | _: DictLeaf =>
         false
       case Conj(ps) =>
+        ps.count(_.isInstanceOf[DictLeaf]) >= 2 ||
         ps.exists(p => worthSelecting(p) || leafCost(p) > CheapCost)
       case Disj(ps) =>
         ps.exists(p => worthSelecting(p) || leafCost(p) > CheapCost)
@@ -268,6 +290,8 @@ object Selection:
   private def leafCost(n: Node): Int =
     n match
       case Leaf(_, c) =>
+        c
+      case DictLeaf(_, c) =>
         c
       case _ =>
         0
@@ -307,6 +331,19 @@ object Selection:
         keep(sel, count, mask(_))
 
   end leaf
+
+  private def dictLeaf(e: PerDictEntry, c: Int, b: Batch, sel: Array[Int]): Array[Int] =
+    if sel != null && sel.length == 0 then
+      sel
+    else
+      e.selectPositions(b, sel) match
+        case null =>
+          // No usable codes: as a leaf of the same cost
+          leaf(e, c, b, sel)
+        case r if r.length == sizeOf(sel, b.size) =>
+          null
+        case r =>
+          r
 
   private def countTrue(mask: Array[Boolean], n: Int): Int =
     var count = 0

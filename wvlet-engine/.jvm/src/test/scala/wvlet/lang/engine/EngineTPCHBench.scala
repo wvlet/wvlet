@@ -227,20 +227,21 @@ object EngineTPCHBench extends LogSupport:
               val (ms, _) = duckdbOnce()
               val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
               (ms, cpuMs / math.max(ms, 0.001))
-            def engineOnce(): (Double, Long) = timed(engine.execute(q).numRows.toLong)
-            // Wall time, busy cores (process CPU time / wall time), GC time, and allocated MB of
-            // one engine run
+            def engineOnce(): (Double, Long, Double) = plannedRun(engine, q)
+            // Wall time, busy cores (process CPU time / wall time), GC time, allocated MB, and
+            // planning time of one engine run
             def engineTimed(): EngineRun =
-              val cpu0    = processCpuNanos()
-              val gc0     = gcMillis()
-              val alloc0  = allocatedBytes()
-              val (ms, _) = engineOnce()
-              val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
+              val cpu0            = processCpuNanos()
+              val gc0             = gcMillis()
+              val alloc0          = allocatedBytes()
+              val (ms, _, planMs) = engineOnce()
+              val cpuMs           = (processCpuNanos() - cpu0) / 1000000.0
               EngineRun(
                 ms,
                 cpuMs / math.max(ms, 0.001),
                 (gcMillis() - gc0).toDouble,
-                (allocatedBytes() - alloc0) / 1048576.0
+                (allocatedBytes() - alloc0) / 1048576.0,
+                planMs
               )
             try
               if opts.explain then
@@ -254,7 +255,7 @@ object EngineTPCHBench extends LogSupport:
                 try countRows(conn, sql)
                 finally execute(conn, "pragma disable_profiling")
               val task = worker.submit { () =>
-                val (_, rows) = engineOnce()
+                val (_, rows, _) = engineOnce()
                 (rows, (1 to opts.runs).map(_ => engineTimed()))
               }
               val (engineRows, eng) =
@@ -277,7 +278,8 @@ object EngineTPCHBench extends LogSupport:
                 eng.map(_.cores).sorted,
                 duck.map(_._2).sorted,
                 eng.map(_.gcMs).sorted,
-                eng.map(_.allocMb).sorted
+                eng.map(_.allocMb).sorted,
+                eng.map(_.planMs).sorted
               )
               info(r.logLine)
               r
@@ -428,12 +430,12 @@ object EngineTPCHBench extends LogSupport:
           .getOrElse("default")}"
     val table = Seq.newBuilder[String]
     table +=
-      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | DuckDB busy cores | engine busy cores | engine / DuckDB CPU | engine GC (ms) | engine alloc (MB) | rows |"
-    table += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"
+      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | DuckDB busy cores | engine busy cores | engine / DuckDB CPU | engine GC (ms) | engine alloc (MB) | engine plan (ms) | rows |"
+    table += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"
     results.foreach { r =>
       r.error match
         case Some(e) =>
-          table += s"| ${r.name} | | | | | | | | | error: ${e.take(80)} |"
+          table += s"| ${r.name} | | | | | | | | | | error: ${e.take(80)} |"
         case None =>
           val rows =
             if r.rowsMatch then
@@ -443,7 +445,7 @@ object EngineTPCHBench extends LogSupport:
           table +=
             f"| ${r.name} | ${r.duckdbMedian}%.1f | ${r.engineMedian}%.1f | ${r.ratio}%.1fx | ${r
                 .duckdbCores}%.1f | ${r.engineCores}%.1f | ${r.cpuRatio}%.1fx | ${r
-                .engineGcMs}%.0f | ${r.engineAllocMb}%.0f | ${rows} |"
+                .engineGcMs}%.0f | ${r.engineAllocMb}%.0f | ${r.enginePlanMs}%.1f | ${rows} |"
     }
     val duckCpu = ok.map(r => r.duckdbMedian * r.duckdbCores).sum
     val engCpu  = ok.map(r => r.engineMedian * r.engineCores).sum
@@ -451,16 +453,17 @@ object EngineTPCHBench extends LogSupport:
       f"| total | ${duckTotal}%.1f | ${engTotal}%.1f | ${engTotal / duckTotal}%.1fx | ${duckCpu /
           duckTotal}%.1f | ${engCpu / engTotal}%.1f | ${engCpu / duckCpu}%.1fx | ${ok
           .map(_.engineGcMs)
-          .sum}%.0f | ${ok.map(_.engineAllocMb).sum}%.0f | |"
+          .sum}%.0f | ${ok.map(_.engineAllocMb).sum}%.0f | ${ok.map(_.enginePlanMs).sum}%.1f | |"
     info(s"${header}\n${table.result().mkString("\n")}")
 
     val tsv   = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.tsv")
     val lines =
-      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb" +:
+      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb\tengine_plan_ms" +:
         results.map { r =>
           f"${r.name}\t${r.duckdbMedian}%.1f\t${r.engineMedian}%.1f\t${r.ratio}%.2f\t${r
               .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}\t${r.engineCores}%.2f\t${r
-              .duckdbCores}%.2f\t${r.cpuRatio}%.2f\t${r.engineGcMs}%.1f\t${r.engineAllocMb}%.1f"
+              .duckdbCores}%.2f\t${r.cpuRatio}%.2f\t${r.engineGcMs}%.1f\t${r.engineAllocMb}%.1f\t${r
+              .enginePlanMs}%.1f"
         }
     Files.writeString(tsv.toPath, lines.mkString("", "\n", "\n"))
     info(s"Wrote ${tsv.getPath}")
@@ -477,8 +480,15 @@ object EngineTPCHBench extends LogSupport:
       engineCoresPerRun: Seq[Double] = Nil,
       duckdbCoresPerRun: Seq[Double] = Nil,
       engineGcMsPerRun: Seq[Double] = Nil,
-      engineAllocMbPerRun: Seq[Double] = Nil
+      engineAllocMbPerRun: Seq[Double] = Nil,
+      enginePlanMsPerRun: Seq[Double] = Nil
   ):
+    /**
+      * The median planning time of the engine runs: model expansion and building the physical
+      * operators, including plan-time subqueries and statistics reads, before any operator runs
+      */
+    def enginePlanMs: Double = median(enginePlanMsPerRun)
+
     /** The median GC time (collector time summed over the JVM's collectors) of the engine runs */
     def engineGcMs: Double = median(engineGcMsPerRun)
 
@@ -505,7 +515,7 @@ object EngineTPCHBench extends LogSupport:
     def logLine: String      =
       f"${name}%-4s DuckDB median ${duckdbMedian}%9.1f ms  engine median ${engineMedian}%9.1f ms  (${ratio}%6.1fx)  engine min ${engineMs
           .headOption
-          .getOrElse(0.0)}%9.1f ms${
+          .getOrElse(0.0)}%9.1f ms  plan ${enginePlanMs}%7.1f ms${
           if rowsMatch then
             ""
           else
@@ -529,8 +539,22 @@ object EngineTPCHBench extends LogSupport:
     else
       (xs(xs.size / 2 - 1) + xs(xs.size / 2)) / 2
 
-  /** Wall time, busy cores, GC time, and allocated MB of one engine run */
-  case class EngineRun(ms: Double, cores: Double, gcMs: Double, allocMb: Double)
+  /** Wall time, busy cores, GC time, allocated MB, and planning time of one engine run */
+  case class EngineRun(ms: Double, cores: Double, gcMs: Double, allocMb: Double, planMs: Double)
+
+  /**
+    * Plans and runs a query on an engine as [[WvletEngine.execute]] does, returning the wall time,
+    * the result rows, and the milliseconds spent planning (before any operator ran)
+    */
+  def plannedRun(engine: WvletEngine, q: Relation)(using ctx: Context): (Double, Long, Double) =
+    val start   = System.nanoTime()
+    val op      = engine.physicalPlan(GenSQL.expand(q, ctx))
+    val planned = System.nanoTime()
+    try
+      val rows = op.drain().map(_.size.toLong).sum
+      ((System.nanoTime() - start) / 1000000.0, rows, (planned - start) / 1000000.0)
+    finally
+      op.close()
 
   /** Accumulated collection time of the JVM's garbage collectors */
   def gcMillis(): Long =

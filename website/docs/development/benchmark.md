@@ -54,7 +54,10 @@ WVLET_ENGINE_BENCH_SF=1 WVLET_ENGINE_BENCH_QUERIES=q1,q6 WVLET_ENGINE_BENCH_DUCK
 the same numbers are written to `target/engine-bench/tpch-sf<sf>.tsv`. Engine time covers
 planning and execution of an already compiled query; DuckDB time covers running the generated
 SQL over JDBC and reading every result row. Row counts are compared too, and a mismatch is
-flagged in the table.
+flagged in the table. The `engine plan (ms)` column is the median time before the first operator
+runs: model expansion, planning, and the subqueries and statistics reads done while planning
+(scalar and IN subqueries, materialized CTE estimates), so a small query's fixed cost shows apart
+from its execution.
 
 ## Columnar engine on Scala Native
 

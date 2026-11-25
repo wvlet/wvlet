@@ -408,6 +408,14 @@ enum Optimization(val name: String):
   case DictionaryFilters extends Optimization("dictionary_filters")
 
   /**
+    * In filters that short-circuit AND / OR (`short_circuit_filters`), a `dictionary_filters` part
+    * runs once per dictionary entry of the rows still selected and returns their positions, so an
+    * AND of such parts looks at fewer rows part by part instead of building a mask over the whole
+    * batch for each (TPC-DS q41's OR of ANDs over item's strings, DuckDB's selection vectors)
+    */
+  case DictionarySelection extends Optimization("dictionary_selection")
+
+  /**
     * Hash-join builds encode their string columns over their distinct values, so the probe outputs
     * carry codes that identify values across batches ([[wvlet.lang.engine.vector.StrVec.dict]]).
     * Aggregations whose string keys all carry such codes group rows by the packed codes (with the

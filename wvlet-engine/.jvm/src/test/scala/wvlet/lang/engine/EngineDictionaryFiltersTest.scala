@@ -42,6 +42,10 @@ class EngineDictionaryFiltersTest extends UniTest:
     options.withDisabled(Optimization.ScanRowFilters, Optimization.DictionaryFilters)
   )
 
+  private val noSelNoRow = on.withOptimizer(
+    options.withDisabled(Optimization.ScanRowFilters, Optimization.DictionarySelection)
+  )
+
   /**
     * 10000 rows in row groups of 2048, with dictionary-encoded strings (some NULLs) whose
     * dictionaries differ by row group, and a high-cardinality string
@@ -80,12 +84,16 @@ class EngineDictionaryFiltersTest extends UniTest:
   private def rows(e: WvletEngine, query: String): Seq[String] =
     run(query)(q => e.execute(q).rows.map(_.mkString(",")).toSeq.sorted)
 
-  private def filterSettings(e: WvletEngine, query: String): Seq[Boolean] =
+  private def filterSettings(
+      e: WvletEngine,
+      query: String,
+      setting: FilterOp => Boolean = _.dictionaryFilters
+  ): Seq[Boolean] =
     def collect(op: Operator): Seq[Boolean] =
       (
         op match
           case f: FilterOp =>
-            Seq(f.dictionaryFilters)
+            Seq(setting(f))
           case _ =>
             Nil
       ) ++ op.children.flatMap(collect)
@@ -111,6 +119,22 @@ class EngineDictionaryFiltersTest extends UniTest:
     val q = "from $t where ptype not like 'F%'"
     filterSettings(on, q) shouldContain true
     filterSettings(off, q).contains(true) shouldBe false
+  }
+
+  test("set dictionary_selection on filters only when enabled") {
+    val q = "from $t where ptype not like 'F%'"
+    filterSettings(onNoRow, q, _.dictionarySelection) shouldContain true
+    filterSettings(noSelNoRow, q, _.dictionarySelection).contains(true) shouldBe false
+  }
+
+  test("select rows of an OR of ANDs over two dictionary-coded columns per entry") {
+    val q =
+      "from $t where (brand = 'Brand#1' and ptype like 'F%') or (brand = 'Brand#3' and ptype != 'G POLISHED') or (brand is null and ptype = 'H POLISHED') select id"
+    val r = rows(onNoRow, q)
+    r.nonEmpty shouldBe true
+    rows(noSelNoRow, q) shouldBe r
+    rows(offNoRow, q) shouldBe r
+    rows(on, q) shouldBe r
   }
 
   test("filter by LIKE, NOT LIKE, and != per dictionary entry") {
