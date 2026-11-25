@@ -135,7 +135,7 @@ object DecimalStats:
         None
 
   /** A signed little-endian integer of `n` (4 or 8) bytes */
-  private def littleEndian(b: Array[Byte], n: Int): Long =
+  private[catalog] def littleEndian(b: Array[Byte], n: Int): Long =
     var v = 0L
     var i = n - 1
     while i >= 0 do

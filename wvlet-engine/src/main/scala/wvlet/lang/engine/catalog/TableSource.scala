@@ -68,6 +68,13 @@ trait TableSource:
     */
   def columnRange(column: String): Option[(Long, Long)] = None
 
+  /**
+    * The [min, max] range of an integer (or date) column's non-null values in each part of the
+    * source (Parquet row groups) holding any, with the part's row count, from metadata only. None
+    * when unknown
+    */
+  def partRanges(column: String): Option[IndexedSeq[ColumnPartRange]] = None
+
   /** Row count estimate for join ordering */
   def estimatedRows: Option[Long] = None
 
@@ -109,6 +116,9 @@ case class ScanSplits(
     close: () => Unit,
     rows: IndexedSeq[Long] = IndexedSeq.empty
 )
+
+/** The [min, max] range of a column's non-null values in a part of a source, holding `rows` rows */
+case class ColumnPartRange(min: Long, max: Long, rows: Long)
 
 /** An in-memory table */
 class MemTable(val name: String, val schema: Schema, batches: Seq[Batch]) extends TableSource:
@@ -238,6 +248,65 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
         yield (min, max)
       case _ =>
         None
+
+  // The row groups of the single file, read once per source
+  private lazy val rowGroupMeta: IndexedSeq[format.RowGroupMeta] =
+    try
+      val opened = openFile(footerCache)
+      try opened.file.rowGroups
+      finally opened.file.close()
+    catch
+      case _: Exception =>
+        IndexedSeq.empty
+
+  /**
+    * From the statistics of each row group, for the columns [[columnRange]] covers. Row groups
+    * holding only nulls are left out; None when any other row group lacks statistics
+    */
+  override def partRanges(column: String): Option[IndexedSeq[ColumnPartRange]] =
+    if columnRange(column).isEmpty then
+      return None
+    parquetSchema.field(column) match
+      case Some(p: ParquetField.Primitive) if rowGroupMeta.nonEmpty =>
+        val n =
+          p.physicalType match
+            case PhysicalType.INT32 =>
+              4
+            case _ =>
+              8
+        val ranges = rowGroupMeta.map { rg =>
+          rg.columns
+            .lift(p.columnIndex)
+            .flatMap { c =>
+              c.statistics
+                .flatMap { s =>
+                  if s.nullCount.contains(c.numValues) then
+                    Some(None)
+                  else
+                    for
+                      min <- s.min
+                      if min.length == n
+                      max <- s.max
+                      if max.length == n
+                    yield Some(
+                      ColumnPartRange(
+                        DecimalStats.littleEndian(min, n),
+                        DecimalStats.littleEndian(max, n),
+                        rg.numRows
+                      )
+                    )
+                }
+            }
+        }
+        if ranges.exists(_.isEmpty) then
+          None
+        else
+          Some(ranges.flatMap(_.get))
+      case _ =>
+        None
+    end match
+
+  end partRanges
 
   override lazy val estimatedRows: Option[Long] =
     try

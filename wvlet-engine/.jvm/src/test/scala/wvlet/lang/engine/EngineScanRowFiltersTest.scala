@@ -14,6 +14,8 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
+import wvlet.lang.engine.catalog.ColumnPartRange
+import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.plan.Optimization
@@ -66,10 +68,38 @@ class EngineScanRowFiltersTest extends UniTest:
       conn.close()
     path.toString
 
+  /**
+    * 20480 rows in 10 row groups of 2048 (DuckDB writes one row group below 2048 rows), with ids
+    * clustered by row group and dates spread over every row group, for runtime join filters
+    */
+  private lazy val joinFile: String =
+    val dir = Paths.get("target/engine-test").toAbsolutePath
+    Files.createDirectories(dir)
+    val path = dir.resolve("scan_join_row_filters.parquet")
+    Files.deleteIfExists(path)
+    Class.forName("org.duckdb.DuckDBDriver")
+    val conn = DriverManager.getConnection("jdbc:duckdb:")
+    try
+      val st = conn.createStatement()
+      try st.execute(s"""copy (
+             |  select
+             |    range::bigint as id,
+             |    date '2020-01-01' + (range % 400)::integer as d,
+             |    case when range % 11 = 0 then null else 'm' || (range % 5) end as mode,
+             |    (range % 50)::decimal(12, 2) as qty
+             |  from range(20480)
+             |) to '${path}' (format parquet, row_group_size 2048)""".stripMargin)
+      finally st.close()
+    finally
+      conn.close()
+    path.toString
+
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
   private def run[A](e: WvletEngine, query: String)(body: Relation => Context ?=> A): A =
-    val unit           = CompilationUnit.fromWvletString(query.replace("$t", s"'${file}'"))
+    val unit = CompilationUnit.fromWvletString(
+      query.replace("$t", s"'${file}'").replace("$j", s"'${joinFile}'")
+    )
     val r              = compiler.compileSingleUnit(unit)
     given ctx: Context = r.context
     val q              = queryOf(unit.executionPlan).getOrElse(fail(s"No query in ${query}"))
@@ -156,16 +186,15 @@ class EngineScanRowFiltersTest extends UniTest:
   }
 
   test("test selective runtime join filters in the row filter of every morsel") {
-    // The builds keep 11 of the 1000 ids, or 5 of the 400 dates, spread over the row groups, so
-    // their ranges skip few row groups and their per-row filters go into the probe scan's row
-    // filter
+    // The builds keep 21 of the 20480 ids, or 9 of the 400 dates, spread over the 10 row groups, so
+    // their ranges skip no row group and their per-row filters go into the probe scan's row filter
     val queries = Seq(
-      """from $t as a
-        |join { from $t where id % 97 = 0 select id as bid } on a.id = bid
+      """from $j as a
+        |join { from $j where id % 997 = 0 select id as bid } on a.id = bid
         |select a.id, a.mode, a.qty""".stripMargin,
-      """from $t as a
-        |join { from $t where id % 97 = 0 and id < 400 select d as bd } on a.d = bd
-        |select a.id, a.ts, a.price""".stripMargin
+      """from $j as a
+        |join { from $j where id % 997 = 0 and id < 9000 select d as bd } on a.d = bd
+        |select a.id, a.mode, a.qty""".stripMargin
     )
     // The row filters the scans read with, after running the plan (builds set the join filters)
     def scanRowFilters(e: WvletEngine, q: String): Seq[String] =
@@ -190,6 +219,40 @@ class EngineScanRowFiltersTest extends UniTest:
       r shouldBe rows(noJoin, q)
       r shouldBe rows(off, q)
     }
+  }
+
+  test("read the range of a column in each row group") {
+    val src   = ParquetSource("t", joinFile)
+    val parts = src.partRanges("id").getOrElse(fail("no row group ranges"))
+    parts shouldBe (0 until 10).map(g => ColumnPartRange(g * 2048L, g * 2048L + 2047, 2048L))
+    // Dates as epoch days
+    val d0 = java.time.LocalDate.of(2020, 1, 1).toEpochDay
+    src.partRanges("d").get.head shouldBe ColumnPartRange(d0, d0 + 399, 2048L)
+    src.partRanges("mode") shouldBe None
+  }
+
+  test("keep join filters in the engine when most rows of the row groups they leave pass") {
+    // Ids are clustered: the build's range leaves the first row group, where 600 of its 2048 rows
+    // pass, though 600 of all 20480 ids would be 3%
+    val q =
+      """from $j as a
+        |join { from $j where id < 600 select id as bid } on a.id = bid
+        |select a.id, a.mode""".stripMargin
+    val filters =
+      run(on, q) { r =>
+        val op = on.physicalPlan(r)
+        op.drain()
+        op.close()
+        def scans(o: Operator): Seq[ScanOp] =
+          o match
+            case s: ScanOp =>
+              Seq(s)
+            case other =>
+              other.children.flatMap(scans) ++ other.sharedInputs.flatMap(scans)
+        scans(op).flatMap(_.spec.rowFilter.map(_.toString))
+      }
+    filters.exists(_.contains("In(")) shouldBe false
+    sameRows(q).size shouldBe 600
   }
 
 end EngineScanRowFiltersTest

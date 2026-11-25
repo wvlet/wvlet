@@ -198,12 +198,7 @@ class ScanOp(
         if rf == null || !typed || !source.canRowFilterOn(column) then
           None
         else
-          source
-            .columnRange(column)
-            .map { (lo, hi) =>
-              (i, rf, rf.acceptedIn(lo, hi) / (hi.toDouble - lo.toDouble + 1.0))
-            }
-            .filter(_._3 <= ScanOp.MaxConjunctPassRate)
+          passRate(column, rf).map((i, rf, _)).filter(_._3 <= ScanOp.MaxConjunctPassRate)
       }
       .sortBy(_._3)
     if chosen.isEmpty || chosen.map(_._3).product > ScanOp.MaxSourcePassRate then
@@ -216,6 +211,35 @@ class ScanOp(
       chosen.map((i, rf, _) => ParquetFilter.col(rowFilters(i)._1.column).isIn(rf.integerSet))
 
   end joinRowFilters
+
+  /**
+    * The fraction of the rows in the parts (row groups) that `rf`'s range doesn't skip that `rf` is
+    * expected to keep: in each part, the share of its [min, max] that `rf` accepts, weighted by its
+    * rows. Data clustered by the key (e.g. sales by date) leaves few parts whose rows mostly pass,
+    * which the share of the whole column's [min, max] would underestimate. None when the source has
+    * no statistics for the column
+    */
+  private def passRate(column: String, rf: RowKeyFilter): Option[Double] =
+    inline def share(lo: Long, hi: Long): Double =
+      rf.acceptedIn(lo, hi) / (hi.toDouble - lo.toDouble + 1.0)
+    source.partRanges(column) match
+      case Some(parts) =>
+        val set  = rf.integerSet
+        var rows = 0.0
+        var kept = 0.0
+        parts.foreach { p =>
+          if p.max >= set.min && p.min <= set.max then
+            rows += p.rows
+            kept += p.rows * share(p.min, p.max)
+        }
+        Some(
+          if rows == 0.0 then
+            0.0
+          else
+            kept / rows
+        )
+      case None =>
+        source.columnRange(column).map(share)
 
   /**
     * The rows of `b` (a batch the source returned) that pass the per-row filters set so far. A
