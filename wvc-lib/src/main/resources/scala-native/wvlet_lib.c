@@ -8,11 +8,11 @@
 // the end of ld.so's .eh_frame, which has no zero terminator, and the host
 // process crashes with SIGSEGV before main().
 //
-// wvcLib therefore builds with -DSCALANATIVE_NO_DYLIB_CTOR and
-// -DWVLET_LAZY_INIT: the runtime starts on the first call into this API, from
-// the host's own call stack, whose frames unwind cleanly. Builds without
-// WVLET_LAZY_INIT (the static library, whose host calls ScalaNativeInit
-// itself, or builds that keep the constructor) only forward the calls.
+// wvcLib therefore builds with -DSCALANATIVE_NO_DYLIB_CTOR, and this file then
+// starts the runtime on the first call into this API, from the host's own call
+// stack, whose frames unwind cleanly. Other builds (the static library, whose
+// host calls ScalaNativeInit itself, or dynamic builds that keep the
+// constructor) only forward the calls.
 
 #ifdef _WIN32
 #include <windows.h>
@@ -28,7 +28,8 @@ extern int wvlet_internal_compile_main(const char *json);
 extern char *wvlet_internal_compile_query(const char *json);
 extern char *wvlet_internal_compile_query_json(const char *json);
 
-#ifdef WVLET_LAZY_INIT
+// The inverse of dylib_init.c's guard: a dynamic library without the constructor
+#if defined SCALANATIVE_DYLIB && defined SCALANATIVE_NO_DYLIB_CTOR
 extern int ScalaNativeInit(void);
 
 static int wvlet_init_status = -1;

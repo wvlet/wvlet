@@ -316,9 +316,7 @@ lazy val wvcLib = project
         .withGC(GC.immix)
         // Start the runtime on the first API call (scala-native/wvlet_lib.c) instead of in the
         // library constructor, whose stack walk crashes in Nix's x86_64 glibc 2.42 loader
-        .withCompileOptions(
-          c.compileOptions ++ Seq("-DSCALANATIVE_NO_DYLIB_CTOR", "-DWVLET_LAZY_INIT")
-        )
+        .withCompileOptions(c.compileOptions :+ "-DSCALANATIVE_NO_DYLIB_CTOR")
       // Allow overriding target triple via environment variable for cross-compilation
       val targetConfig =
         sys.env.get("SCALANATIVE_TARGET_TRIPLE") match {
