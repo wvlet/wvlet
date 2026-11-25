@@ -78,6 +78,12 @@ class Planner(
   private[engine] def swapBuild(rows: Double, otherRows: Double): Boolean = JoinOrderOptimizer
     .swapBuild(options, rows, otherRows)
 
+  /**
+    * The physical passes over a lowered subquery computed at plan time, as [[plan]] runs them for a
+    * nested relation, so that it runs in parallel
+    */
+  private[engine] def physical(op: Operator): Operator = optimizePhysical(op)
+
   /** The physical passes over a lowered plan: column pruning (with scan filters), parallelism */
   private def optimizePhysical(op: Operator): Operator =
     val pruned = ColumnPruner(

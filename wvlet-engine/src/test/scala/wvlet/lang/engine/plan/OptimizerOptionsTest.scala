@@ -43,6 +43,7 @@ class OptimizerOptionsTest extends UniTest:
         "factor_or",
         "decorrelate",
         "place_semi_joins",
+        "count_in_subqueries",
         "push_down_filters",
         "join_key_filters",
         "outer_to_inner",

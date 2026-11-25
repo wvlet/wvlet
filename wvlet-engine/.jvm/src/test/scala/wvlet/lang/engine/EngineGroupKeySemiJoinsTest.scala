@@ -34,6 +34,18 @@ class EngineGroupKeySemiJoinsTest extends UniTest:
     .engine
     .withOptimizer(options.withDisabled(Optimization.PrefixLikeSelectivity))
 
+  // q20's aggregation is in an IN subquery, which `count_in_subqueries` would compute at plan time,
+  // out of the explained plan
+  private val noCountIn = conformance
+    .engine
+    .withOptimizer(options.withDisabled(Optimization.CountInSubqueries))
+
+  private val noCountInPrefixLike = conformance
+    .engine
+    .withOptimizer(
+      options.withDisabled(Optimization.CountInSubqueries, Optimization.PrefixLikeSelectivity)
+    )
+
   override def afterAll: Unit = conformance.close()
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
@@ -141,7 +153,7 @@ class EngineGroupKeySemiJoinsTest extends UniTest:
       conformance.queries(unit) { (name, q) =>
         conformance.assertMatches(name, q)
         conformance.assertMatches(name, q, target = noPrefixLike)
-        semiJoins(conformance.engine.explain(q)) - semiJoins(noPrefixLike.explain(q))
+        semiJoins(noCountIn.explain(q)) - semiJoins(noCountInPrefixLike.explain(q))
       }
     added shouldBe Seq(1)
   }

@@ -49,6 +49,16 @@ class EngineOptimizerToggleTest extends UniTest:
     Optimization.FactorOr -> Set("q19.wv")
   )
 
+  /**
+    * Optimizations whose TPC-H and TPC-DS plans `count_in_subqueries` replaces: the shared CTEs
+    * they re-plan are read by IN subqueries that it computes at plan time (TPC-DS q14, q95). They
+    * are compared with it disabled on both sides
+    */
+  private val withoutCountIn: Set[Optimization] = Set(
+    Optimization.ReplanSemiJoinBuilds,
+    Optimization.ReplanSharedInputs
+  )
+
   for o <- Optimization.values do
     val options = OptimizerOptions().withDisabled(o)
 
@@ -116,10 +126,15 @@ class EngineOptimizerToggleTest extends UniTest:
       if o == Optimization.RowJoinFilters then
         // EngineRuntimeJoinFiltersTest checks that the flag sets per-row filters on probe scans
         ignore("Changes which rows the probe scans emit, not the plan")
-      val changed = EnginePlanGolden
-        .suites
-        .zip(baselinePlans)
-        .exists((s, baseline) => s.generate(options) != baseline)
+      val changed =
+        if withoutCountIn.contains(o) then
+          val base = OptimizerOptions().withDisabled(Optimization.CountInSubqueries)
+          EnginePlanGolden.suites.exists(s => s.generate(base.withDisabled(o)) != s.generate(base))
+        else
+          EnginePlanGolden
+            .suites
+            .zip(baselinePlans)
+            .exists((s, baseline) => s.generate(options) != baseline)
       if !changed then
         fail(s"Disabling ${o.name} changed no plan: is the flag wired to the optimization?")
     }
