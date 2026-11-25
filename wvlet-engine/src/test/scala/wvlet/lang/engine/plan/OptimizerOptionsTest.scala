@@ -67,6 +67,7 @@ class OptimizerOptionsTest extends UniTest:
         "presize_aggregates",
         "window_top_n",
         "running_window_kernels",
+        "window_sort_kernels",
         "parallelize",
         "late_gather",
         "join_direct_index",

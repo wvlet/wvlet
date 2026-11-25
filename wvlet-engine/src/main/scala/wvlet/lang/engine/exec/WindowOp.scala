@@ -81,7 +81,9 @@ object WindowCall:
   * evaluated as tasks of `runner`. Each row's value doesn't depend on how partitions are grouped
   * into parts, so the output equals the sequential one. Aggregates over frames that start at the
   * partition start are folded incrementally (see `aggregateRunning`); `runningFrames = false`
-  * recomputes every frame instead, which tests use as the reference.
+  * recomputes every frame instead, which tests use as the reference. With `sortKernels`, a
+  * partition ordered by one integer or date key is sorted as packed (key, position) longs
+  * ([[WindowOp.sortByPrimitiveKey]]) instead of through the row comparator.
   */
 class WindowOp(
     val child: Operator,
@@ -91,7 +93,8 @@ class WindowOp(
     minParallelRows: Int = WindowOp.MinParallelRows,
     runningFrames: Boolean = true,
     val topN: Option[WindowOp.TopN] = None,
-    val runningKernels: Boolean = false
+    val runningKernels: Boolean = false,
+    val sortKernels: Boolean = false
 ) extends Operator:
   private var result: Iterator[Batch]  = null
   override def children: Seq[Operator] = Seq(child)
@@ -181,6 +184,7 @@ class WindowOp(
       c: WindowCall,
       partKeys: Array[Vec],
       rows: Array[Int],
+      keyVecs: Array[Vec],
       cmp: SortOp.RowComparator,
       hashes: Array[Int]
   ): Seq[Array[Int]] =
@@ -208,11 +212,12 @@ class WindowOp(
             h(i) = hashes(rows(i))
             i += 1
           table.groupIds(keys, n, h)
-    val numGroups =
-      if n == 0 then
-        0
-      else
-        groups.max + 1
+    var numGroups = 0
+    var r         = 0
+    while r < n do
+      if groups(r) >= numGroups then
+        numGroups = groups(r) + 1
+      r += 1
     // Counting sort of the rows by group, keeping the row order within a group
     val start = new Array[Int](numGroups + 1)
     var i     = 0
@@ -241,7 +246,11 @@ class WindowOp(
             WindowOp.topRows(all, t, cmp)
           case None =>
             all
-      if c.orderBy.nonEmpty then
+      if c.orderBy.nonEmpty && !(
+          sortKernels && keyVecs.length == 1 &&
+            WindowOp.sortByPrimitiveKey(part, keyVecs(0), c.orderBy.head)
+        )
+      then
         IndexSort.sort(part, cmp)
       out(g) = part
       g += 1
@@ -264,6 +273,7 @@ class WindowOp(
       c,
       partKeys,
       rows,
+      keyVecs,
       cmp,
       hashes
     ).foreach(evalRows)
@@ -1014,6 +1024,92 @@ object WindowOp:
     * The rows of `part` within the top `t.limit` by `cmp`, in no particular order: a bounded
     * max-heap finds the limit-th row, then with ties every row not after it is kept
     */
+  /**
+    * Sorts the row indexes `part` by one Int32, Date, or Int64 key the way [[IndexSort]] does with
+    * the key's comparator (stable, with the key's direction and NULL placement), but as one
+    * `Arrays.sort` of longs packing each row's key code above its position in `part`. The code is
+    * the key's offset from the partition's minimum (from its maximum when descending), with NULLs
+    * coded below or above every value; equal codes keep their positions' order. False, leaving
+    * `part` unchanged, when the key is another type or the codes and positions don't fit in 63 bits
+    */
+  def sortByPrimitiveKey(part: Array[Int], key: Vec, k: SortKey): Boolean =
+    val n = part.length
+    if n <= 1 then
+      return true
+    val (ints, longs, nulls) =
+      key match
+        case v: IntVec =>
+          (v.values, null, v.nulls)
+        case v: LongVec =>
+          (null, v.values, v.nulls)
+        case _ =>
+          return false
+    def value(row: Int): Long =
+      if ints != null then
+        ints(row).toLong
+      else
+        longs(row)
+    def isNull(row: Int): Boolean = nulls != null && nulls(row)
+    var min                       = Long.MaxValue
+    var max                       = Long.MinValue
+    var hasNull                   = false
+    var i                         = 0
+    while i < n do
+      val row = part(i)
+      if isNull(row) then
+        hasNull = true
+      else
+        val x = value(row)
+        if x < min then
+          min = x
+        if x > max then
+          max = x
+      i += 1
+    if min > max then
+      // Only NULLs: every row is a peer, so the order stays
+      return true
+    val range = max - min
+    if range < 0 then
+      // max - min overflows
+      return false
+    val posBits = 32 - Integer.numberOfLeadingZeros(n - 1)
+    // Codes are 0..range+1: one slot for NULLs below or above the values
+    val nullCode =
+      if k.nullsFirst then
+        0L
+      else
+        range + 1
+    val shift =
+      if hasNull && k.nullsFirst then
+        1L
+      else
+        0L
+    if range >= (1L << (62 - posBits)) - 1 then
+      return false
+    val packed = new Array[Long](n)
+    i = 0
+    while i < n do
+      val row  = part(i)
+      val code =
+        if isNull(row) then
+          nullCode
+        else if k.ascending then
+          value(row) - min + shift
+        else
+          max - value(row) + shift
+      packed(i) = (code << posBits) | i
+      i += 1
+    java.util.Arrays.sort(packed)
+    val orig = part.clone()
+    val mask = (1L << posBits) - 1
+    i = 0
+    while i < n do
+      part(i) = orig((packed(i) & mask).toInt)
+      i += 1
+    true
+
+  end sortByPrimitiveKey
+
   def topRows(part: Array[Int], t: TopN, cmp: SortOp.RowComparator): Array[Int] =
     val n = part.length
     if t.limit >= n then

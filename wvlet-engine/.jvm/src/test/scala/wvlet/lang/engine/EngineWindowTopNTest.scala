@@ -93,9 +93,9 @@ class EngineWindowTopNTest extends UniTest:
         |where rk <= 3""".stripMargin) shouldNotContain "top="
   }
 
-  test("fold running window aggregates in primitive values with running_window_kernels") {
+  test("pass running_window_kernels and window_sort_kernels to the window operators") {
     val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
-    def windowKernels(o: OptimizerOptions): Seq[Boolean] =
+    def windowKernels(o: OptimizerOptions): Seq[(Boolean, Boolean)] =
       val unit = CompilationUnit.fromWvletString(
         """from 'spec/tpch/data/lineitem.parquet'
           |select l_orderkey,
@@ -105,17 +105,19 @@ class EngineWindowTopNTest extends UniTest:
       val r         = compiler.compileSingleUnit(unit)
       given Context = r.context
       val query     = EngineTPCHBench.queryOf(unit).getOrElse(fail("No query"))
-      def collect(op: wvlet.lang.engine.exec.Operator): Seq[Boolean] =
+      def collect(op: wvlet.lang.engine.exec.Operator): Seq[(Boolean, Boolean)] =
         (
           op match
             case w: wvlet.lang.engine.exec.WindowOp =>
-              Seq(w.runningKernels)
+              Seq((w.runningKernels, w.sortKernels))
             case _ =>
               Nil
         ) ++ op.children.flatMap(collect)
       collect(WvletEngine(optimizer = o).physicalPlan(GenSQL.expand(query, summon[Context])))
-    windowKernels(options) shouldBe Seq(true)
-    windowKernels(options.withDisabled(Optimization.RunningWindowKernels)) shouldBe Seq(false)
+    windowKernels(options) shouldBe Seq((true, true))
+    windowKernels(options.withDisabled(Optimization.RunningWindowKernels)) shouldBe
+      Seq((false, true))
+    windowKernels(options.withDisabled(Optimization.WindowSortKernels)) shouldBe Seq((true, false))
   }
 
 end EngineWindowTopNTest

@@ -171,6 +171,12 @@ enum Optimization(val name: String):
     */
   case RunningWindowKernels extends Optimization("running_window_kernels")
 
+  /**
+    * Window partitions ordered by one integer or date key are sorted as packed (key, position)
+    * longs instead of through a row comparator
+    */
+  case WindowSortKernels extends Optimization("window_sort_kernels")
+
   /** Parallel scan pipelines and two-phase / partitioned aggregation */
   case Parallelize extends Optimization("parallelize")
 

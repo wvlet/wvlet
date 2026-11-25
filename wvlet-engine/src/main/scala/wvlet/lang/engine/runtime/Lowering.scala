@@ -42,7 +42,8 @@ object Lowering:
     * ([[wvlet.lang.engine.catalog.ParquetFooterCache]]). With `windowTopN`, a filter bounding the
     * rank of a window keeps only the top rows of each partition ([[WindowOp.topNOf]]). With
     * `windowKernels`, running window aggregates fold primitive values
-    * ([[WindowOp.runningPrimitive]])
+    * ([[WindowOp.runningPrimitive]]). With `windowSortKernels`, window partitions ordered by one
+    * integer or date key sort packed longs ([[WindowOp.sortByPrimitiveKey]])
     */
   def apply(
       p: RuntimePlan,
@@ -54,7 +55,8 @@ object Lowering:
       windowTopN: Boolean = false,
       windowKernels: Boolean = false,
       commonSubexpressions: Boolean = false,
-      foldConstants: Boolean = false
+      foldConstants: Boolean = false,
+      windowSortKernels: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -64,7 +66,8 @@ object Lowering:
       windowTopN,
       windowKernels,
       commonSubexpressions,
-      foldConstants
+      foldConstants,
+      windowSortKernels
     )
     if inSet then
       l.markInSet(p)
@@ -90,7 +93,8 @@ object Lowering:
       windowTopN: Boolean,
       windowKernels: Boolean,
       commonSubexpressions: Boolean,
-      foldConstants: Boolean
+      foldConstants: Boolean,
+      windowSortKernels: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -184,7 +188,8 @@ object Lowering:
                   op.calls,
                   op.schema,
                   topN = WindowOp.topNOf(op.calls, op.child.schema.size, filter),
-                  runningKernels = op.runningKernels
+                  runningKernels = op.runningKernels,
+                  sortKernels = op.sortKernels
                 )
               case other =>
                 other
@@ -304,7 +309,13 @@ object Lowering:
             )
           }
           if input eq in then
-            WindowOp(in, calls2, p.schema, runningKernels = windowKernels)
+            WindowOp(
+              in,
+              calls2,
+              p.schema,
+              runningKernels = windowKernels,
+              sortKernels = windowSortKernels
+            )
           else
             // The window appends its results to its input: drop the shared columns after it
             val width  = in.schema.size
@@ -314,7 +325,8 @@ object Lowering:
               input,
               calls2,
               Schema(input.schema.fields ++ result),
-              runningKernels = windowKernels
+              runningKernels = windowKernels,
+              sortKernels = windowSortKernels
             )
             ProjectOp(
               w,

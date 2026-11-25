@@ -98,6 +98,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineWindowTopNTest checks that the flag reaches the window operators, and WindowOpTest
         // that both folds give the same values
         ignore("Changes how running window aggregates are folded, not the plan")
+      if o == Optimization.WindowSortKernels then
+        // EngineWindowTopNTest checks that the flag reaches the window operators, and
+        // WindowSortKernelTest that both sorts give the same row order
+        ignore("Changes how window partitions are sorted, not the plan")
       if o == Optimization.ParquetFooterCache then
         // ParquetFooterCacheTest checks that the flag reuses parsed footers
         ignore("Changes how often Parquet footers are parsed, not the plan")
