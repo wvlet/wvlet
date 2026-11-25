@@ -43,6 +43,19 @@ import scala.util.control.NonFatal
 object Stats:
   import RuntimePlan.*
 
+  /**
+    * Whether p aggregates or deduplicates rows, which [[rows]] estimates as their input's rows; a
+    * shared CTE counts as its known rows
+    */
+  def aggregates(p: RuntimePlan): Boolean =
+    p match
+      case _: Aggregate | _: Distinct | _: SetOp =>
+        true
+      case _: CTERef =>
+        false
+      case other =>
+        other.children.exists(aggregates)
+
   /** Estimated rows of p: source row counts, passed through every node but joins */
   def rows(p: RuntimePlan): Double =
     p match

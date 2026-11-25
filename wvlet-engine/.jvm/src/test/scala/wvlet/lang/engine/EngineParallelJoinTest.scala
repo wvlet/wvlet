@@ -14,6 +14,8 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
+import wvlet.lang.engine.plan.Optimization
+import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.model.plan.*
 import wvlet.uni.test.UniTest
 
@@ -63,11 +65,11 @@ class EngineParallelJoinTest extends UniTest:
         None
 
   /** Sorted rows of a query on the engine and on DuckDB (through the generated SQL) */
-  private def explainOf(query: String): String =
+  private def explainOf(query: String, on: WvletEngine = engine): String =
     val unit           = CompilationUnit.fromWvletString(query)
     val r              = compiler.compileSingleUnit(unit)
     given ctx: Context = r.context
-    engine.explain(queryOf(unit.executionPlan).get)
+    on.explain(queryOf(unit.executionPlan).get)
 
   private def both(query: String): (Seq[String], Seq[String]) =
     val unit           = CompilationUnit.fromWvletString(query)
@@ -135,6 +137,22 @@ class EngineParallelJoinTest extends UniTest:
       s"from ${small} where not exists { from ${facts} where k = sk and v > 2 } select sk, label"
     explainOf(anti) shouldContain "HashJoin[RightAnti]"
     check(anti)
+  }
+
+  test("should build EXISTS and NOT EXISTS on the outer input when the subquery is larger") {
+    // 500 outer rows, 1000 subquery rows: less than 4x larger, so only semi_join_build_side swaps
+    val semi = s"from ${dims} where exists { from ${facts} where k = dk and v > 2 } select dk, name"
+    val anti =
+      s"from ${dims} where not exists { from ${facts} where k = dk and v != dk % 7 } select dk"
+    explainOf(semi) shouldContain "HashJoin[RightSemi]"
+    explainOf(anti) shouldContain "HashJoin[RightAnti]"
+    check(semi)
+    check(anti)
+    val off = WvletEngine(optimizer =
+      OptimizerOptions().withDisabled(Optimization.SemiJoinBuildSide)
+    )
+    explainOf(semi, off) shouldContain "HashJoin[Semi]"
+    explainOf(anti, off) shouldContain "HashJoin[Anti]"
   }
 
   test("should probe the larger side of IN subqueries") {

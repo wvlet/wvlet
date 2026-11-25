@@ -924,8 +924,8 @@ class RuntimeBinder(planner: Planner):
 
     /**
       * Rows of p whose value of `a` is in the first column of the lowered subquery `inner`: a semi
-      * join on the two cast to their common type, building on the subquery unless it is much larger
-      * than p (by `innerRows`, its exact rows when computed at plan time)
+      * join on the two cast to their common type, building on the subquery unless it is larger than
+      * p (by `innerRows`, its exact rows when computed at plan time)
       */
     def inJoin(
         p: Lowered,
@@ -941,10 +941,12 @@ class RuntimeBinder(planner: Planner):
         JoinKind.Semi,
         IndexedSeq(lk),
         IndexedSeq(rk),
-        planner.swapBuild(
-          innerRows.getOrElse(CardinalityEstimator.rows(inner.op)),
-          CardinalityEstimator.rows(p.op)
-        )
+        innerRows match
+          case Some(n) =>
+            // Exact rows: no aggregation to discount
+            planner.swapSemiBuild(n, CardinalityEstimator.rows(p.op), aggregates = false)
+          case None =>
+            planner.swapSemiBuild(inner.op, CardinalityEstimator.rows(p.op))
       )
 
     /** A semi or anti join of p with `inner`, on keys over each one's columns */

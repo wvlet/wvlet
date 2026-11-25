@@ -48,6 +48,18 @@ object CardinalityEstimator:
       case other =>
         other.children.headOption.map(rows).getOrElse(1e6)
 
+  /**
+    * Whether op aggregates or deduplicates rows, which [[rows]] estimates as their input's rows
+    */
+  def aggregates(op: Operator): Boolean =
+    op match
+      case _: HashAggOp | _: PartitionedAggOp | _: DistinctOp | _: SetOpOp =>
+        true
+      case s: ScanOp if s.source.isInstanceOf[BreakerSource] =>
+        aggregates(s.source.asInstanceOf[BreakerSource].op)
+      case other =>
+        other.children.exists(aggregates)
+
   /** Distinct values of output column i of op from source statistics, if traceable */
   def columnDistinct(op: Operator, i: Int): Option[Double] =
     op match
