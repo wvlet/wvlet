@@ -11,7 +11,7 @@ export default function(hljs) {
              'from select where group by having order limit agg ' +
              'join left right full inner cross asof on ' +
              'pivot unpivot partition over rows range ' +
-             'add prepend exclude rename shift drop describe ' +
+             'add exclude rename shift drop describe ' +
              'concat dedup intersect except all distinct ' +
              'save append delete truncate update ' +
              'create replace reshape table trait schema view ' +
