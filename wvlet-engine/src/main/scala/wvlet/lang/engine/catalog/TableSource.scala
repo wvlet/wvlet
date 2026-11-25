@@ -352,8 +352,9 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
 
   /**
     * A statistic `stat` of `column`, computed once per file version and shared by the sources of
-    * the file ([[ParquetSource.MaxDistinctEntries]] entries); a file [[ParquetFooterCache]]
-    * wouldn't cache is computed once per source (a source lives for one query)
+    * the file (an LRU per statistic, [[ParquetSource.MaxDistinctEntries]] distinct estimates and
+    * [[ParquetSource.MaxValueCountsEntries]] value samples); a file [[ParquetFooterCache]] wouldn't
+    * cache is computed once per source (a source lives for one query)
     */
   private def cachedPerVersion[A](column: String, stat: String)(compute: => Option[A]): Option[A] =
     if !isSingleFile then
@@ -548,16 +549,31 @@ object ParquetSource:
   /** Up to how many distinct strings a [[ValueCounts]] sample holds */
   val MaxSampleValues: Int = 4096
 
+  /**
+    * Up to how many (file, column) [[ValueCounts]] samples are kept, apart from the distinct-count
+    * estimates: each holds up to [[MaxSampleValues]] strings
+    */
+  val MaxValueCountsEntries: Int = 512
+
   /** A statistic and the file version (size, last-modified) it was computed from */
   private case class StatEntry(version: (Long, Long), value: Option[Any])
 
-  // Statistics per (file path, column, statistic), shared by the sources of the same file.
-  // Access-ordered, so that the eldest entry is the least recently used
-  private val statCache =
+  // Statistics per (file path, column, statistic), shared by the sources of the same file, in
+  // one LRU per statistic (access-ordered, so that the eldest entry is the least recently used)
+  private def lru(max: Int) =
     new java.util.LinkedHashMap[(String, String, String), StatEntry](16, 0.75f, true):
       override def removeEldestEntry(
           e: java.util.Map.Entry[(String, String, String), StatEntry]
-      ): Boolean = size() > MaxDistinctEntries
+      ): Boolean = size() > max
+
+  private val distinctCache    = lru(MaxDistinctEntries)
+  private val valueCountsCache = lru(MaxValueCountsEntries)
+
+  private def statCache(stat: String) =
+    if stat == ValueCountsStat then
+      valueCountsCache
+    else
+      distinctCache
 
   /** The cached `stat` of `column` in `path`, when it was computed from file version `version` */
   private def cachedStat(
@@ -565,9 +581,11 @@ object ParquetSource:
       column: String,
       stat: String,
       version: (Long, Long)
-  ): Option[Option[Any]] = statCache.synchronized {
-    Option(statCache.get((path, column, stat))).filter(_.version == version).map(_.value)
-  }
+  ): Option[Option[Any]] =
+    val cache = statCache(stat)
+    cache.synchronized {
+      Option(cache.get((path, column, stat))).filter(_.version == version).map(_.value)
+    }
 
   private def putStat(
       path: String,
@@ -575,14 +593,16 @@ object ParquetSource:
       stat: String,
       version: (Long, Long),
       value: Option[Any]
-  ): Unit = statCache.synchronized {
-    statCache.put((path, column, stat), StatEntry(version, value))
-  }
+  ): Unit =
+    val cache = statCache(stat)
+    cache.synchronized {
+      cache.put((path, column, stat), StatEntry(version, value))
+    }
 
   /** The file version the cached estimate of `column` in `path` was computed from (for tests) */
-  def cachedDistinctVersion(path: String, column: String): Option[(Long, Long)] = statCache
+  def cachedDistinctVersion(path: String, column: String): Option[(Long, Long)] = distinctCache
     .synchronized {
-      Option(statCache.get((path, column, DistinctStat))).map(_.version)
+      Option(distinctCache.get((path, column, DistinctStat))).map(_.version)
     }
 
   /**

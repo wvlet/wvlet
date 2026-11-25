@@ -35,51 +35,59 @@ final class ValueCounts(
 
   /**
     * The fraction of the sampled rows for which `cond`, a condition reading the column as column 0,
-    * is TRUE: evaluated once per distinct value and once for NULL. None for an empty sample or when
-    * `cond` fails to evaluate
+    * is TRUE: evaluated once per distinct value and once for NULL, and at least 1 / rows, as a
+    * value missing from the sample may still be in the unsampled rows. None for an empty sample or
+    * when `cond` fails to evaluate
     */
   def selectivity(cond: VExpr): Option[Double] =
     if rows <= 0 then
       None
     else
-      val n      = values.length
-      val withNa = nulls > 0
-      val size   =
-        if withNa then
-          n + 1
-        else
-          n
-      val vs =
-        if withNa then
-          java.util.Arrays.copyOf(values, size)
-        else
-          values
-      val ns =
-        if withNa then
-          val a = new Array[Boolean](size)
-          a(n) = true
-          a
-        else
-          null
-      try
-        val mask = Kernels.trueMask(cond.eval(Batch(Array[Vec](StrVec(vs, ns)), size)))
-        var kept = 0L
-        var i    = 0
-        while i < size do
-          if mask(i) then
-            kept += (
-              if i < n then
-                counts(i)
-              else
-                nulls
-            )
-          i += 1
-        Some(kept.toDouble / rows.toDouble)
-      catch
-        case NonFatal(_) =>
-          None
+      // The join search asks for the same conditions many times per query
+      estimates.computeIfAbsent(cond.sig, _ => evaluate(cond))
 
-  end selectivity
+  // Estimates by condition signature (conditions over one string column and constants only)
+  private val estimates = java.util.concurrent.ConcurrentHashMap[String, Option[Double]]()
+
+  private def evaluate(cond: VExpr): Option[Double] =
+    val n      = values.length
+    val withNa = nulls > 0
+    val size   =
+      if withNa then
+        n + 1
+      else
+        n
+    val vs =
+      if withNa then
+        java.util.Arrays.copyOf(values, size)
+      else
+        values
+    val ns =
+      if withNa then
+        val a = new Array[Boolean](size)
+        a(n) = true
+        a
+      else
+        null
+    try
+      val mask = Kernels.trueMask(cond.eval(Batch(Array[Vec](StrVec(vs, ns)), size)))
+      var kept = 0L
+      var i    = 0
+      while i < size do
+        if mask(i) then
+          kept += (
+            if i < n then
+              counts(i)
+            else
+              nulls
+          )
+        i += 1
+      Some(math.max(1L, kept).toDouble / rows.toDouble)
+    catch
+      case NonFatal(_) =>
+        None
+
+  end evaluate
 
 end ValueCounts
 
