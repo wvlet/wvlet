@@ -252,3 +252,31 @@ object FoldConstants:
         other
 
 end FoldConstants
+
+/**
+  * Mark every CASE WHEN of an expression to mask the THEN vector of a single WHEN without ELSE
+  * (`masked_case_when`, [[CaseWhen.maskNulls]]). Parts of unknown expression types stay as they are
+  */
+object MaskCaseWhen:
+  def apply(e: VExpr): VExpr =
+    if !contains(e) then
+      e
+    else
+      try
+        VExprs.mapChildren(e, apply) match
+          case c: CaseWhen =>
+            c.copy(maskNulls = true)
+          case other =>
+            other
+      catch
+        case _: IllegalStateException =>
+          e
+
+  private def contains(e: VExpr): Boolean =
+    e match
+      case _: CaseWhen =>
+        true
+      case _ =>
+        e.children.exists(contains)
+
+end MaskCaseWhen

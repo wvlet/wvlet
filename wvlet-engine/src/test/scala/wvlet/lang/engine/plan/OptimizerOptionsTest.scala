@@ -108,7 +108,8 @@ class OptimizerOptionsTest extends UniTest:
         "range_selectivity",
         "left_group_key_semi_joins",
         "eager_aggregation",
-        "fused_accumulators"
+        "fused_accumulators",
+        "masked_case_when"
       )
   }
 

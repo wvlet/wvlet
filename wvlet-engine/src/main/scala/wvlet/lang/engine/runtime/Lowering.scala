@@ -51,7 +51,8 @@ object Lowering:
     * into the scan's row filter ([[ScanOp.rowFilter]]); with `selectiveRowFilters`, only when they
     * are estimated to keep at most [[ScanFilters.MaxRowFilterSelectivity]] of its rows. With
     * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
-    * ([[ScanOp.dictionaryCodes]])
+    * ([[ScanOp.dictionaryCodes]]) With `maskedCaseWhen`, a CASE of one WHEN without ELSE masks its
+    * THEN vector ([[MaskCaseWhen]])
     */
   def apply(
       p: RuntimePlan,
@@ -69,7 +70,8 @@ object Lowering:
       windowSortKernels: Boolean = false,
       scanRowFilters: Boolean = false,
       dictionaryCodes: Boolean = false,
-      selectiveRowFilters: Boolean = false
+      selectiveRowFilters: Boolean = false,
+      maskedCaseWhen: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -85,7 +87,8 @@ object Lowering:
       windowSortKernels,
       scanRowFilters,
       dictionaryCodes,
-      selectiveRowFilters
+      selectiveRowFilters,
+      maskedCaseWhen
     )
     if inSet then
       l.markInSet(p)
@@ -119,7 +122,8 @@ object Lowering:
       windowSortKernels: Boolean,
       scanRowFilters: Boolean,
       dictionaryCodes: Boolean,
-      selectiveRowFilters: Boolean
+      selectiveRowFilters: Boolean,
+      maskedCaseWhen: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -159,7 +163,8 @@ object Lowering:
               foldConstants = foldConstants,
               scanRowFilters = scanRowFilters,
               dictionaryCodes = dictionaryCodes,
-              selectiveRowFilters = selectiveRowFilters
+              selectiveRowFilters = selectiveRowFilters,
+              maskedCaseWhen = maskedCaseWhen
             )
         )
       ) match
@@ -172,11 +177,16 @@ object Lowering:
 
     /** A bound expression over an input whose column of id `i` is at `pos(i)`, folded if enabled */
     private def expr(e: BExpr, pos: Array[Int]): VExpr =
-      val x = e.lower(pos)
-      if foldConstants then
-        FoldConstants(x)
+      val x      = e.lower(pos)
+      val folded =
+        if foldConstants then
+          FoldConstants(x)
+        else
+          x
+      if maskedCaseWhen then
+        MaskCaseWhen(folded)
       else
-        x
+        folded
 
     /**
       * The input with the common subexpressions of `exprs` appended ([[CommonSubexpressions]]), and

@@ -120,6 +120,62 @@ class CaseWhenTest extends UniTest:
     rows(eval(e, sel)) shouldBe Seq(null, null, null, null)
   }
 
+  test("should mask the THEN vector of a single WHEN without ELSE") {
+    val price = LongVec(dec2, Array(150L, 250L, 350L, 450L), Array(false, true, false, false))
+    val then1 = ColRef(1, dec2, "price")
+    Seq(None, Some(Const(null, dec2))).foreach { elseExpr =>
+      val plain  = CaseWhen(Seq(is(1) -> then1), elseExpr, dec2)
+      val masked = plain.copy(maskNulls = true)
+      val v      = eval(masked, sel, price)
+      v shouldMatch { case l: LongVec =>
+      }
+      // A false condition, a NULL condition, and a NULL value each yield NULL
+      rows(v) shouldBe Seq(JBigDecimal("1.50"), null, null, null)
+      rows(v) shouldBe rows(eval(plain, sel, price))
+    }
+  }
+
+  test("should mask strings, doubles, ints and booleans, and return all-taken or no-taken rows") {
+    val all  = BoolVec(Array(true, true, true, true), null)
+    val none = BoolVec(Array(false, false, false, false), null)
+    val strs = StrVec(Array("a", "b", "c", null), Array(false, false, false, true))
+    val dbls = DoubleVec(Array(1.0, 2.0, 3.0, 4.0), null)
+    val ints = IntVec(PType.Int32, Array(1, 2, 3, 4), null)
+    val bls  = BoolVec(Array(true, false, true, false), null)
+    val cols = Seq(sel, strs, dbls, ints, bls, all, none)
+    def masked(cond: VExpr, col: Int, t: PType): Seq[Any] =
+      val c = CaseWhen(Seq(cond -> ColRef(col, t, "v")), None, t)
+      val m = rows(eval(c.copy(maskNulls = true), cols*))
+      m shouldBe rows(eval(c, cols*))
+      m
+    masked(is(2), 1, PType.Str) shouldBe Seq(null, "b", null, null)
+    masked(is(3), 2, PType.Float64) shouldBe Seq(null, null, 3.0, null)
+    masked(is(1), 3, PType.Int32) shouldBe Seq(1, null, null, null)
+    masked(is(1), 4, PType.Bool) shouldBe Seq(true, null, null, null)
+    masked(ColRef(5, PType.Bool, "all"), 3, PType.Int32) shouldBe Seq(1, 2, 3, 4)
+    masked(ColRef(6, PType.Bool, "none"), 3, PType.Int32) shouldBe Seq(null, null, null, null)
+  }
+
+  test("should mask wide decimals through the row path, evaluating the THEN value once") {
+    val wide      = PType.decimal(38, 2)
+    val big       = JBigDecimal("12345678901234567890123.45")
+    var evaluated = 0
+    val probe     = RowFn(
+      "probe",
+      Seq(selRef),
+      wide,
+      _ =>
+        evaluated += 1
+        big
+    )
+    val c = CaseWhen(Seq(is(1) -> probe), None, wide, maskNulls = true)
+    rows(eval(c, sel)) shouldBe Seq(big, null, null, null)
+    val maskedCalls = evaluated
+    evaluated = 0
+    rows(eval(c.copy(maskNulls = false), sel)) shouldBe Seq(big, null, null, null)
+    maskedCalls shouldBe evaluated
+  }
+
 end CaseWhenTest
 
 class LogicalKernelsTest extends UniTest:
