@@ -666,7 +666,7 @@ object PushDownFilters extends Pass:
       }
       inAll ++ perColumn
 
-  private[runtime] def isDeterministic(e: VExpr): Boolean =
+  private[engine] def isDeterministic(e: VExpr): Boolean =
     e match
       case f: RowFn if ScalarFunctions.volatileFunctions.contains(f.name) =>
         false

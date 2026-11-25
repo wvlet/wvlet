@@ -17,7 +17,7 @@
 ## Design
 
 - Lane: Express — a pure expression rewrite inside the engine behind toggles, no user-facing change, no always-gate area; the direction comes from the approved work item.
-- Two `Optimization` toggles so each can be A/B'd: `fold_constants` and `unwrap_casts`.
+- Two `Optimization` toggles so each can be A/B'd: `fold_bound_constants` (the existing `fold_constants` folds later, at lowering) and `unwrap_casts`.
 - Folding happens in the binder, where every expression is built, so filters, projections, join conditions and the planner's own paths all see folded expressions; no separate optimizer pass.
 - A subtree folds when it doesn't read any column and has no volatile function (`random`, `uuid`): it is evaluated on a one-row batch and replaced by a literal of the same type. If the evaluation throws (division by zero, bad cast), the expression stays as is, so an error still occurs only when rows are evaluated.
 - `and`/`or` with a literal `true`/`false` operand simplify the way three-valued logic allows (`false and x` → `false`, `true and x` → `x`, and the duals).

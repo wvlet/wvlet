@@ -14,10 +14,11 @@
 package wvlet.lang.engine.plan
 
 import wvlet.lang.engine.expr.*
+import wvlet.lang.engine.runtime.FoldConstants
+import wvlet.lang.engine.runtime.PushDownFilters
 import wvlet.lang.engine.vector.*
 
 import java.math.BigDecimal as JBigDecimal
-import scala.util.control.NonFatal
 
 /**
   * Simplifications the [[Binder]] applies to each expression as it binds it, so that the optimizer
@@ -42,12 +43,11 @@ object BoundExprSimplifier:
     e match
       case _: Const | _: ColRef =>
         e
-      case _ if e.children.nonEmpty && e.children.forall(_.isInstanceOf[Const]) && !isVolatile(e) =>
-        try
-          Const(e.eval(Batch.ofRows(1)).get(0), e.ptype)
-        catch
-          case NonFatal(_) =>
-            e
+      // Children are already folded, so a deterministic node over literals reads no input
+      case _
+          if e.children.nonEmpty && e.children.forall(_.isInstanceOf[Const]) &&
+            PushDownFilters.isDeterministic(e) =>
+        FoldConstants.evaluated(e).getOrElse(e)
       // `false and x` is false and `true or x` is true even when x is NULL; `true and x` and
       // `false or x` are x
       case AndExpr(Const(false, PType.Bool), _) | AndExpr(_, Const(false, PType.Bool)) =>
@@ -64,13 +64,6 @@ object BoundExprSimplifier:
         x
       case _ =>
         e
-
-  private def isVolatile(e: VExpr): Boolean =
-    e match
-      case f: RowFn =>
-        ScalarFunctions.volatileFunctions.contains(f.name)
-      case _ =>
-        false
 
   /**
     * `cast(x as T) op k` as `x op k'` when the cast is lossless and order-preserving and the

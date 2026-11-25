@@ -210,12 +210,7 @@ object FoldConstants:
       case _: ColRef | _: Const | _: Materialized =>
         e
       case _ if e.isConstant && PushDownFilters.isDeterministic(e) =>
-        // An expression that fails at plan time (1 / 0) still fails only when rows exist
-        try
-          Const(e.eval(Batch.ofRows(1)).get(0), e.ptype)
-        catch
-          case NonFatal(_) =>
-            e
+        evaluated(e).getOrElse(e)
       case _ if e.children.isEmpty =>
         e
       case _ =>
@@ -228,6 +223,17 @@ object FoldConstants:
         catch
           case _: IllegalStateException =>
             e
+
+  /**
+    * A row-independent expression evaluated into a literal, or None when the evaluation fails: an
+    * expression that fails at plan time (`1 / 0`) still fails only when rows exist
+    */
+  private[engine] def evaluated(e: VExpr): Option[Const] =
+    try
+      Some(Const(e.eval(Batch.ofRows(1)).get(0), e.ptype))
+    catch
+      case NonFatal(_) =>
+        None
 
   /** A numeric constant as a decimal at the scale of `d`, when that is exact and fits */
   private def scaled(e: VExpr, d: PType.Decimal): VExpr =

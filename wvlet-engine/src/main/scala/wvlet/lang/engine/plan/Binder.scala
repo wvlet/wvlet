@@ -627,13 +627,13 @@ class Binder(
         i += 1
       sb.toString
 
-  private val foldConstants = planner.enabled(Optimization.FoldBoundConstants)
-  private val unwrapCasts   = planner.enabled(Optimization.UnwrapCasts)
+  private val foldBoundConstants = planner.enabled(Optimization.FoldBoundConstants)
+  private val unwrapCasts        = planner.enabled(Optimization.UnwrapCasts)
 
   /** Bind an expression, folded by [[BoundExprSimplifier]] when `fold_bound_constants` is on */
   def bindExpr(e: Expression): VExpr =
     val x = bindPlain(e)
-    if foldConstants then
+    if foldBoundConstants then
       BoundExprSimplifier.fold(x)
     else
       x
