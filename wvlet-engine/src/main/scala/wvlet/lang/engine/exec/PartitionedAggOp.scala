@@ -76,7 +76,7 @@ class PartitionedAggOp(
         try op.drain()
         finally op.close()
       val keyVecs =
-        if packKeys && keys.size >= 2 then
+        if packKeys && AggKeyPacking.packable(keys.map(_.ptype)) then
           batches.map(b => (keys.map(_.eval(b)).toArray, b.size))
         else
           Nil

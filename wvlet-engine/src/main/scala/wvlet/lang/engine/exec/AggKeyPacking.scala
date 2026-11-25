@@ -66,30 +66,31 @@ final class AggKeyPacking private (
       val lo                    = mins(k)
       val shift                 = shifts(k)
       var nulls: Array[Boolean] = null
-      def code(i: Int): Long    =
-        val c = (p(i) >>> shift) & mask
-        if c == 0 then
-          if nulls == null then
-            nulls = new Array[Boolean](n)
-          nulls(i) = true
-        c
       types(k) match
         case t @ (PType.Int32 | PType.Date) =>
           val out = new Array[Int](n)
           var i   = 0
           while i < n do
-            val c = code(i)
+            val c = (p(i) >>> shift) & mask
             if c != 0 then
               out(i) = (c - 1 + lo).toInt
+            else
+              if nulls == null then
+                nulls = new Array[Boolean](n)
+              nulls(i) = true
             i += 1
           IntVec(t, out, nulls)
         case t =>
           val out = new Array[Long](n)
           var i   = 0
           while i < n do
-            val c = code(i)
+            val c = (p(i) >>> shift) & mask
             if c != 0 then
               out(i) = c - 1 + lo
+            else
+              if nulls == null then
+                nulls = new Array[Boolean](n)
+              nulls(i) = true
             i += 1
           LongVec(t, out, nulls)
     }
@@ -99,6 +100,16 @@ final class AggKeyPacking private (
 end AggKeyPacking
 
 object AggKeyPacking:
+  /** Whether keys of `types` can be packed: two or more Int32, Date, or Int64 columns */
+  def packable(types: IndexedSeq[PType]): Boolean =
+    types.size >= 2 &&
+      types.forall {
+        case PType.Int32 | PType.Date | PType.Int64 =>
+          true
+        case _ =>
+          false
+      }
+
   /**
     * The packing of keys of `types` covering every row of `keyBatches` (each the key columns of one
     * batch, and its row count), or None when a key column isn't an Int32, Date, or Int64 vector,
@@ -106,15 +117,7 @@ object AggKeyPacking:
     */
   def of(types: IndexedSeq[PType], keyBatches: Seq[(Array[Vec], Int)]): Option[AggKeyPacking] =
     val width = types.size
-    val ok    =
-      width >= 2 &&
-        types.forall {
-          case PType.Int32 | PType.Date | PType.Int64 =>
-            true
-          case _ =>
-            false
-        }
-    if !ok then
+    if !packable(types) then
       return None
     val mins    = Array.fill(width)(Long.MaxValue)
     val maxs    = Array.fill(width)(Long.MinValue)
