@@ -72,7 +72,7 @@ Apply these rules in order:
   - Numeric `to_boolean` means non-zero is true.
 
 - **Formatting** (user-approved addition, 2026-11-24, from the TD dbt gap report):
-  - `fmt.format(a, ...)`, Scala/Java-style `'%s:%s'.format(a, b)`, with up to 5 arguments: each `%s` takes the next argument's text and `%%` is a literal `%`. Other specifiers are engine-specific, and arguments should be strings: DuckDB's `printf` rejects `%s` for numbers, so call `to_string` first.
+  - `fmt.format(a, ...)`, Scala/Java-style `'%s:%s'.format(a, b)`, with up to 5 arguments: each `%s` takes the next argument's text and `%%` is a literal `%`. Other specifiers are engine-specific, and arguments should be strings: DuckDB's `printf` and the engine reject `%s` for numbers, so call `to_string` first.
   - A NULL argument gives NULL. DuckDB (`printf`) and BigQuery (`format`) already do; Trino's `format` and Hive's `printf` print `null`, so their variants check the arguments first. PostgreSQL prints `''`. Snowflake has no printf-style function, so `format` is absent there.
   - Fixed arities instead of varargs, so the NULL check can name each argument.
 

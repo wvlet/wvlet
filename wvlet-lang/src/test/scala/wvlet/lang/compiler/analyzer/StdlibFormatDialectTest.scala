@@ -41,9 +41,9 @@ class StdlibFormatDialectTest extends UniTest:
 
   test("check for NULL arguments where the engine prints them as 'null'") {
     generateSQL(query, DBType.Trino) shouldContain
-      "case when x is null or y is null then null else format('%s:%s',x,y) end as k"
+      "case when (x) is null or (y) is null then null else format('%s:%s',x,y) end as k"
     generateSQL(query, DBType.Hive) shouldContain
-      "case when x is null or y is null then null else printf('%s:%s',x,y) end as k"
+      "case when (x) is null or (y) is null then null else printf('%s:%s',x,y) end as k"
   }
 
 end StdlibFormatDialectTest

@@ -650,10 +650,17 @@ object ScalarFunctions:
           a.iterator.drop(1).filter(_ != null).map(_.toString).mkString(a(0).toString)
       }
     }
-    // A NULL format or argument gives NULL, as in DuckDB
+    // A NULL format or argument gives NULL, as in DuckDB, which also rejects %s for numbers
     reg("printf") { args =>
       if args.isEmpty then
-        arity("printf", args, 1)
+        throw StatusCode.INVALID_ARGUMENT.newException("printf expects at least 1 argument")
+      args
+        .find(a => a.ptype.isIntegral || a.ptype.isDecimal || a.ptype == PType.Float64)
+        .foreach { a =>
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(s"printf: %s takes text, not ${a.ptype}; cast the argument to a string")
+        }
       fn("printf", args.map(str), PType.Str)(a =>
         TextFunctions.printf(a(0).asInstanceOf[String], a.toSeq.drop(1).map(_.asInstanceOf[String]))
       )

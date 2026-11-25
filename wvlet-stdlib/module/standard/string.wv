@@ -159,11 +159,11 @@ trait string in trino = {
   -- text and %% is a literal %, e.g. '%s:%s'.format(a, b). Pass strings (to_string others); other
   -- specifiers are engine-specific. A NULL argument gives NULL. Up to 5 arguments
   -- Trino's format prints a NULL argument as 'null', so return NULL first
-  def format(a:any): string = sql"case when ${a} is null then null else format(${this},${a}) end"
-  def format(a:any, b:any): string = sql"case when ${a} is null or ${b} is null then null else format(${this},${a},${b}) end"
-  def format(a:any, b:any, c:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null then null else format(${this},${a},${b},${c}) end"
-  def format(a:any, b:any, c:any, d:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null or ${d} is null then null else format(${this},${a},${b},${c},${d}) end"
-  def format(a:any, b:any, c:any, d:any, e:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null or ${d} is null or ${e} is null then null else format(${this},${a},${b},${c},${d},${e}) end"
+  def format(a:any): string = sql"case when (${a}) is null then null else format(${this},${a}) end"
+  def format(a:any, b:any): string = sql"case when (${a}) is null or (${b}) is null then null else format(${this},${a},${b}) end"
+  def format(a:any, b:any, c:any): string = sql"case when (${a}) is null or (${b}) is null or (${c}) is null then null else format(${this},${a},${b},${c}) end"
+  def format(a:any, b:any, c:any, d:any): string = sql"case when (${a}) is null or (${b}) is null or (${c}) is null or (${d}) is null then null else format(${this},${a},${b},${c},${d}) end"
+  def format(a:any, b:any, c:any, d:any, e:any): string = sql"case when (${a}) is null or (${b}) is null or (${c}) is null or (${d}) is null or (${e}) is null then null else format(${this},${a},${b},${c},${d},${e}) end"
 }
 
 trait string in hive = {
@@ -202,11 +202,11 @@ trait string in hive = {
   -- text and %% is a literal %, e.g. '%s:%s'.format(a, b). Pass strings (to_string others); other
   -- specifiers are engine-specific. A NULL argument gives NULL. Up to 5 arguments
   -- Hive's printf prints a NULL argument as 'null', so return NULL first
-  def format(a:any): string = sql"case when ${a} is null then null else printf(${this},${a}) end"
-  def format(a:any, b:any): string = sql"case when ${a} is null or ${b} is null then null else printf(${this},${a},${b}) end"
-  def format(a:any, b:any, c:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null then null else printf(${this},${a},${b},${c}) end"
-  def format(a:any, b:any, c:any, d:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null or ${d} is null then null else printf(${this},${a},${b},${c},${d}) end"
-  def format(a:any, b:any, c:any, d:any, e:any): string = sql"case when ${a} is null or ${b} is null or ${c} is null or ${d} is null or ${e} is null then null else printf(${this},${a},${b},${c},${d},${e}) end"
+  def format(a:any): string = sql"case when (${a}) is null then null else printf(${this},${a}) end"
+  def format(a:any, b:any): string = sql"case when (${a}) is null or (${b}) is null then null else printf(${this},${a},${b}) end"
+  def format(a:any, b:any, c:any): string = sql"case when (${a}) is null or (${b}) is null or (${c}) is null then null else printf(${this},${a},${b},${c}) end"
+  def format(a:any, b:any, c:any, d:any): string = sql"case when (${a}) is null or (${b}) is null or (${c}) is null or (${d}) is null then null else printf(${this},${a},${b},${c},${d}) end"
+  def format(a:any, b:any, c:any, d:any, e:any): string = sql"case when (${a}) is null or (${b}) is null or (${c}) is null or (${d}) is null or (${e}) is null then null else printf(${this},${a},${b},${c},${d},${e}) end"
 }
 
 trait string in snowflake = {
