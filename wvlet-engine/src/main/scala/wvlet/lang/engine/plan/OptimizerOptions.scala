@@ -359,6 +359,15 @@ enum Optimization(val name: String):
     */
   case UnionAllPipelines extends Optimization("union_all_pipelines")
 
+  /**
+    * With `swap_build_side`, a semi / anti join of an EXISTS / IN subquery builds on the outer
+    * input (a RIGHT SEMI / RIGHT ANTI join) whenever the subquery input is estimated larger, not
+    * only [[JoinOrderOptimizer.SwapBuildRatio]] times larger: a swapped semi join outputs only the
+    * outer columns, so it needs no reordering projection, and its build keys filter the larger
+    * probe scan (TPC-H q4, q21 build on orders instead of lineitem)
+    */
+  case SemiJoinBuildSide extends Optimization("semi_join_build_side")
+
 end Optimization
 
 object Optimization:

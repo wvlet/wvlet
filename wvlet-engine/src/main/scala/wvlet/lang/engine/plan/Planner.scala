@@ -79,6 +79,13 @@ class Planner(
     .swapBuild(options, rows, otherRows)
 
   /**
+    * Whether a semi / anti join builds on its outer input, as the subquery input (`rows`) is larger
+    * ([[JoinOrderOptimizer.swapSemiBuild]])
+    */
+  private[engine] def swapSemiBuild(rows: Double, otherRows: Double): Boolean = JoinOrderOptimizer
+    .swapSemiBuild(options, rows, otherRows)
+
+  /**
     * The physical passes over a lowered subquery computed at plan time, as [[plan]] runs them for a
     * nested relation, so that it runs in parallel
     */
@@ -2640,10 +2647,10 @@ class Planner(
         rk: IndexedSeq[VExpr],
         res: List[VExpr]
     ) =
-      // Build on the body unless it is much larger than p
+      // Build on the body unless it is larger than p
       val buildLeft =
         lk.nonEmpty &&
-          swapBuild(CardinalityEstimator.rows(b.op(body)), CardinalityEstimator.rows(b.op(p)))
+          swapSemiBuild(CardinalityEstimator.rows(b.op(body)), CardinalityEstimator.rows(b.op(p)))
       b.join(p, body, kind, lk, rk, res.reduceOption((x, y) => AndExpr(x, y)), buildLeft)
     s match
       case SubqueryConjunct.Exists(_, negate) =>

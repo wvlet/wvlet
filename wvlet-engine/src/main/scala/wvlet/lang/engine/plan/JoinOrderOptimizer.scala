@@ -305,6 +305,17 @@ object JoinOrderOptimizer:
   def swapBuild(options: OptimizerOptions, rows: Double, otherRows: Double): Boolean =
     options.isEnabled(Optimization.SwapBuildSide) && rows > SwapBuildRatio * otherRows
 
+  /**
+    * Whether a semi / anti join builds on its outer (left) input, as the subquery input has more
+    * rows (`rows`) than the outer one (`otherRows`): by any margin with `semi_join_build_side`,
+    * otherwise by [[SwapBuildRatio]] as for other joins
+    */
+  def swapSemiBuild(options: OptimizerOptions, rows: Double, otherRows: Double): Boolean =
+    if options.isEnabled(Optimization.SemiJoinBuildSide) then
+      options.isEnabled(Optimization.SwapBuildSide) && rows > otherRows
+    else
+      swapBuild(options, rows, otherRows)
+
   /** The position of each column of left ++ right (of widths lw, rw) in right ++ left */
   private def swappedPositions(lw: Int, rw: Int): Array[Int] =
     Array.tabulate(lw + rw)(i =>

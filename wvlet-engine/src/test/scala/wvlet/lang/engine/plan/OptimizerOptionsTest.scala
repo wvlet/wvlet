@@ -94,7 +94,8 @@ class OptimizerOptionsTest extends UniTest:
         "unwrap_casts",
         "set_op_joins",
         "or_implied_filters",
-        "union_all_pipelines"
+        "union_all_pipelines",
+        "semi_join_build_side"
       )
   }
 

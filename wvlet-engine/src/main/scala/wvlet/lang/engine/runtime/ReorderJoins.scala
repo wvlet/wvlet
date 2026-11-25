@@ -57,10 +57,14 @@ object ReorderJoins extends Pass:
           if lk.nonEmpty && ctx.replanSemiJoinBuilds &&
             (readsComputedCTE(left) || readsComputedCTE(right)) =>
         // The binder chose the build side before the CTE was computed, building on the outer
-        // input when the other is much larger (`Planner.correlatedJoin`, `plans.inJoin`): choose
+        // input when the other is larger (`Planner.correlatedJoin`, `plans.inJoin`): choose
         // it again with the CTE's exact rows. Either side gives the same rows, as NULL keys
         // never match
-        val swap = JoinOrderOptimizer.swapBuild(ctx.options, Stats.rows(right), Stats.rows(left))
+        val swap = JoinOrderOptimizer.swapSemiBuild(
+          ctx.options,
+          Stats.rows(right),
+          Stats.rows(left)
+        )
         if swap == buildLeft then
           j
         else
