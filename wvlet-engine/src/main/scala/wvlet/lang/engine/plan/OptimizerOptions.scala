@@ -293,6 +293,14 @@ enum Optimization(val name: String):
     */
   case UnwrapCasts extends Optimization("unwrap_casts")
 
+  /**
+    * With `parallelize`, INTERSECT / EXCEPT (without ALL) run as semi / anti hash joins of the left
+    * input's distinct rows with the right input on every column, NULLs equal, so that the probe
+    * runs as morsels, as DuckDB plans them. Otherwise one set operation buffers the right input and
+    * walks the left one on the calling thread
+    */
+  case SetOpJoins extends Optimization("set_op_joins")
+
 end Optimization
 
 object Optimization:

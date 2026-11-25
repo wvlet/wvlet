@@ -99,7 +99,8 @@ class Planner(
         parallelPartitioning = enabled(Optimization.ParallelAggPartitioning),
         concurrentBuilds = enabled(Optimization.ConcurrentJoinBuilds),
         sharedPartials = enabled(Optimization.SharedAggPartials),
-        adaptivePartials = enabled(Optimization.AdaptivePartialAggs)
+        adaptivePartials = enabled(Optimization.AdaptivePartialAggs),
+        setOpJoins = enabled(Optimization.SetOpJoins)
       )
     else
       pruned
