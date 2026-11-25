@@ -30,7 +30,9 @@ object Parallelizer:
   /**
     * With `aboveBreakers`, the output of a grouped aggregation is a source whose parts are its
     * batches, so that the filters, projections, and join probes above it run as morsels too. With
-    * `parallelPartitioning`, partitioned aggregations route their input rows to partitions as tasks
+    * `parallelPartitioning`, partitioned aggregations route their input rows to partitions as
+    * tasks. With `adaptivePartials`, the partial aggregates of two-phase aggregations stop grouping
+    * when the groups don't reduce the rows ([[PartialAggSkip]])
     */
   def apply(
       op: Operator,
@@ -38,7 +40,8 @@ object Parallelizer:
       aboveBreakers: Boolean = true,
       parallelPartitioning: Boolean = true,
       concurrentBuilds: Boolean = true,
-      sharedPartials: Boolean = true
+      sharedPartials: Boolean = true,
+      adaptivePartials: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -47,7 +50,8 @@ object Parallelizer:
         aboveBreakers,
         parallelPartitioning,
         concurrentBuilds,
-        sharedPartials
+        sharedPartials,
+        adaptivePartials
       )
       rewrite(op, runner)
 
@@ -60,7 +64,8 @@ object Parallelizer:
       enabled: Boolean,
       parallelPartitioning: Boolean,
       concurrentBuilds: Boolean,
-      sharedPartials: Boolean
+      sharedPartials: Boolean,
+      adaptivePartials: Boolean
   )
 
   /**
@@ -263,7 +268,8 @@ object Parallelizer:
             prepareSteps(p, runner),
             p.close,
             o.parallelPartitioning,
-            o.sharedPartials
+            o.sharedPartials,
+            o.adaptivePartials
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -508,7 +514,8 @@ private[plan] object TwoPhaseAgg:
       prepare: List[() => Unit],
       release: List[() => Unit],
       parallelPartitioning: Boolean,
-      sharedPartials: Boolean
+      sharedPartials: Boolean,
+      adaptivePartials: Boolean = false
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -519,10 +526,24 @@ private[plan] object TwoPhaseAgg:
         partialAggs.zipWithIndex.map((c, i) => Field(s"__partial_${i}", c.ptype))
     )
     // Sized per part: the query-wide estimate would pre-size one table per scan part
-    val sizer   = PartialGroupSizer(a.expectedGroups)
+    val sizer = PartialGroupSizer(a.expectedGroups)
+    val skip  =
+      if adaptivePartials then
+        PartialAggSkip()
+      else
+        null
     val partial = MorselOp(
       scan,
-      x => HashAggOp(rebuild(x), a.keys, partialAggs, partialSchema, sizer.hint(x), sizer.report),
+      x =>
+        HashAggOp(
+          rebuild(x),
+          a.keys,
+          partialAggs,
+          partialSchema,
+          sizer.hint(x),
+          sizer.report,
+          skip
+        ),
       partialSchema,
       runner,
       prepare,

@@ -632,7 +632,12 @@ end SortOp
   *
   * `expectedGroups` (0 when unknown) pre-sizes the group table and the aggregate state, so they
   * grow less often; it never changes the result. `onGroups`, when given, receives the number of
-  * groups once the input is consumed
+  * groups once the input is consumed (or once grouping stops).
+  *
+  * With `skip` (the partial aggregate of a two-phase aggregation, whose output is aggregated
+  * again), grouping stops when [[PartialAggSkip]] says the groups don't reduce the rows: the groups
+  * so far are emitted, then each remaining input batch as one-row partial results (a key may appear
+  * in several output rows).
   */
 class HashAggOp(
     val child: Operator,
@@ -640,14 +645,72 @@ class HashAggOp(
     val aggs: IndexedSeq[AggCall],
     val schema: Schema,
     val expectedGroups: Int = 0,
-    onGroups: Int => Unit = null
+    onGroups: Int => Unit = null,
+    val skip: PartialAggSkip = null
 ) extends Operator:
   private var done                     = false
+  private var passing                  = false
   override def children: Seq[Operator] = Seq(child)
   override protected def details       =
     s"(keys=[${keys.map(_.sig).mkString(", ")}], aggs=[${aggs.map(_.sig).mkString(", ")}])"
 
+  // Scratch arrays reused across batches: accumulators read group ids only during update
+  private var idx: Array[Int] = Array.emptyIntArray
+  private var gs: Array[Int]  = Array.emptyIntArray
+  // 0, 1, 2, ...: each passed-through row is its own group
+  private var rowIds: Array[Int] = Array.emptyIntArray
+
+  /** Folds the rows of b, in groups `groups`, into `accs` sized for `numGroups` groups */
+  private def update(accs: IndexedSeq[Accumulator], groups: Array[Int], numGroups: Int, b: Batch) =
+    var a = 0
+    while a < accs.size do
+      val agg = aggs(a)
+      val acc = accs(a)
+      acc.ensureGroups(numGroups)
+      val argVecs = agg.args.map(_.eval(b)).toArray
+      agg.filter match
+        case Some(f) =>
+          val mask = Kernels.trueMask(f.eval(b))
+          var cnt  = 0
+          var i    = 0
+          while i < b.size do
+            if mask(i) then
+              cnt += 1
+            i += 1
+          if idx.length < cnt then
+            idx = new Array[Int](cnt)
+            gs = new Array[Int](cnt)
+          var j = 0
+          i = 0
+          while i < b.size do
+            if mask(i) then
+              idx(j) = i
+              gs(j) = groups(i)
+              j += 1
+            i += 1
+          acc.update(gs, cnt, argVecs.map(_.gather(idx, cnt)))
+        case None =>
+          acc.update(groups, b.size, argVecs)
+      a += 1
+
+  end update
+
+  /** Row i of b as its own group: the keys of b and each aggregate over one row */
+  private def passThrough(b: Batch): Batch =
+    val n = b.size
+    if rowIds.length < n then
+      rowIds = Array.tabulate(n)(identity)
+    val accs = aggs.map(_.newAccumulator())
+    update(accs, rowIds, n, b)
+    Batch(keys.map(_.eval(b)).toArray ++ accs.map(_.result(n)), n)
+
   def next(): Batch =
+    if passing then
+      val b = child.next()
+      return if b == null then
+        null
+      else
+        passThrough(b)
     if done then
       return null
     done = true
@@ -660,11 +723,14 @@ class HashAggOp(
     val accs  = aggs.map(_.newAccumulator())
     if presize > 0 then
       accs.foreach(_.ensureGroups(presize))
-    // Scratch arrays reused across batches: accumulators read group ids only during update
+    val adaptive          = skip != null && keys.nonEmpty
     var zeros: Array[Int] = Array.emptyIntArray
-    var idx: Array[Int]   = Array.emptyIntArray
-    var gs: Array[Int]    = Array.emptyIntArray
-    var b                 = child.next()
+    var rows              = 0L
+    var b                 =
+      if adaptive && skip.skipping then
+        null
+      else
+        child.next()
     while b != null do
       val groups =
         if keys.isEmpty then
@@ -678,38 +744,17 @@ class HashAggOp(
           1
         else
           table.numGroups
-      var a = 0
-      while a < accs.size do
-        val agg = aggs(a)
-        val acc = accs(a)
-        acc.ensureGroups(numGroups)
-        val argVecs = agg.args.map(_.eval(b)).toArray
-        agg.filter match
-          case Some(f) =>
-            val mask = Kernels.trueMask(f.eval(b))
-            var cnt  = 0
-            var i    = 0
-            while i < b.size do
-              if mask(i) then
-                cnt += 1
-              i += 1
-            if idx.length < cnt then
-              idx = new Array[Int](cnt)
-              gs = new Array[Int](cnt)
-            var j = 0
-            i = 0
-            while i < b.size do
-              if mask(i) then
-                idx(j) = i
-                gs(j) = groups(i)
-                j += 1
-              i += 1
-            acc.update(gs, cnt, argVecs.map(_.gather(idx, cnt)))
-          case None =>
-            acc.update(groups, b.size, argVecs)
-        a += 1
-      b = child.next()
+      update(accs, groups, numGroups, b)
+      rows += b.size
+      b =
+        if adaptive && skip.shouldStop(rows, table.numGroups) then
+          null
+        else
+          child.next()
     end while
+    passing = adaptive && skip.skipping
+    if adaptive && !passing then
+      skip.report(rows, table.numGroups)
     val numGroups =
       if keys.isEmpty then
         1
@@ -718,7 +763,7 @@ class HashAggOp(
     if onGroups != null then
       onGroups(numGroups)
     if numGroups == 0 then
-      return null
+      return next()
     accs.foreach(_.ensureGroups(numGroups))
     val keyVecs =
       if keys.isEmpty then
