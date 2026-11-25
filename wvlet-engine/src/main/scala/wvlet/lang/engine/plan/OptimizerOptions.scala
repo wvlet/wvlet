@@ -414,6 +414,21 @@ enum Optimization(val name: String):
     */
   case DecimalFloatScanFilters extends Optimization("decimal_float_scan_filters")
 
+  /**
+    * Estimate a range comparison of an integer or date column with a constant (`<`, `>`, `between`,
+    * date ranges) from the column's [min, max] in the Parquet statistics, with the bounds on one
+    * column combined into one interval ([[wvlet.lang.engine.runtime.RangeSelectivity]]), instead of
+    * the default selectivity per comparison
+    */
+  case RangeSelectivity extends Optimization("range_selectivity")
+
+  /**
+    * With `group_key_semi_joins`, an aggregation on the left (probe) input of an inner join is
+    * reduced too, as the join's inputs swap with the same build side (TPC-H q20 once its lineitem
+    * aggregation is estimated larger than the partsupp side)
+    */
+  case LeftGroupKeySemiJoins extends Optimization("left_group_key_semi_joins")
+
 end Optimization
 
 object Optimization:
