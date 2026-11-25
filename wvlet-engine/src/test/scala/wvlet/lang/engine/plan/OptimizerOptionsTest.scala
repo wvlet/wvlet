@@ -113,6 +113,7 @@ class OptimizerOptionsTest extends UniTest:
         "range_selectivity",
         "left_group_key_semi_joins",
         "eager_aggregation",
+        "eager_grouping_sets",
         "fused_accumulators",
         "masked_case_when",
         "join_tree_build_estimates",

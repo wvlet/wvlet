@@ -503,6 +503,14 @@ enum Optimization(val name: String):
   case EagerAggregation extends Optimization("eager_aggregation")
 
   /**
+    * Run [[EagerAggregation]] over the finest aggregation of chained grouping sets
+    * ([[ChainGroupingSets]]), which the planner builds as a shared input that the runtime passes
+    * don't visit: TPC-DS q22's ROLLUP of 26M inventory rows by four item strings sums them per item
+    * key before joining the 102K items
+    */
+  case EagerGroupingSets extends Optimization("eager_grouping_sets")
+
+  /**
     * Hash aggregations fold their counts and decimal sums in one pass over each batch's rows, so
     * that the per-group updates of different aggregates overlap instead of each aggregate waiting
     * on its previous row's store (TPC-H q1 has nine such partial aggregates over four groups)
