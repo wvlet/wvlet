@@ -62,6 +62,13 @@ class EngineStdlibAggregateTest extends UniTest:
     check(rows + "group by g\nagg item.to_array(ts) as items, item.to_array(ts).size as n")
     // string_agg is order-sensitive too: DuckDB SQL with ORDER BY inside the call
     check(rows + "group by g\nagg sql\"string_agg(item, ',' order by ts desc)\" as s")
+    // Aggregates differing only in their ORDER BY must not share one subplan
+    check(
+      "val ev(g, item, ts) = [['a', 'x', 3], ['a', 'y', 1], ['a', 'z', 2], ['b', 'w', 5]]\n" +
+        "with l as { from ev group by g agg item.to_array(ts) as up }\n" +
+        "with r as { from ev group by g agg sql\"array_agg(item order by ts desc)\" as down }\n" +
+        "from l join r on l.g = r.g\nselect l.g, up, down"
+    )
     check(rows + "group by g\nagg item.to_array(ts) as items, ts.to_array(item) as by_item")
   }
 

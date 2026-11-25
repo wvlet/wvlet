@@ -1318,7 +1318,6 @@ object Aggregates:
 
 end Aggregates
 
-/** Feeds each distinct (group, argument values) once into the inner accumulator */
 /**
   * Buffers each group's rows (values, then ORDER BY keys) and feeds them to `inner` sorted by the
   * keys when the result is read, for order-sensitive aggregates such as `array_agg(x ORDER BY y)`.
@@ -1373,33 +1372,26 @@ final class OrderedAccumulator(inner: Accumulator, valueTypes: Seq[PType], order
         k += 1
       c
 
+  // Feed one group at a time and release its rows, so the sorted copy is never the whole input
   def result(numGroups: Int): Vec =
-    val gs   = mutable.ArrayBuilder.make[Int]
-    val vals = Array.fill(numValues)(mutable.ArrayBuffer.empty[Any])
-    var g    = 0
+    var g = 0
     while g < numGroups && g < rows.length do
       val r = rows(g)
       if r != null then
         r.sortInPlace()(using rowOrdering)
-        r.foreach { row =>
-          gs += g
-          var j = 0
-          while j < numValues do
-            vals(j) += row(j)
-            j += 1
-        }
+        val n = r.size
+        inner.update(
+          Array.fill(n)(g),
+          n,
+          Array.tabulate(numValues)(j => Vec.fromValues(valueTypes(j), r.view.map(_(j)).toSeq))
+        )
+        rows(g) = null
       g += 1
-    val groupIds = gs.result()
-    if groupIds.nonEmpty then
-      inner.update(
-        groupIds,
-        groupIds.length,
-        Array.tabulate(numValues)(j => Vec.fromValues(valueTypes(j), vals(j).toSeq))
-      )
     inner.result(numGroups)
 
 end OrderedAccumulator
 
+/** Feeds each distinct (group, argument values) once into the inner accumulator */
 final class DistinctAccumulator(inner: Accumulator) extends Accumulator:
   private val seen                                               = mutable.HashSet.empty[Any]
   def ptype: PType                                               = inner.ptype
