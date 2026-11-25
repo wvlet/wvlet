@@ -1460,11 +1460,12 @@ object ScalarFunctions:
     rangeFn("generate_series", inclusive = true)
 
     // ---- maps ----
-    // DuckDB's map(keys, values): keys must be unique and non-NULL, and the lists must align
+    // DuckDB's map(keys, values): keys must be unique and non-NULL, and the lists must align.
+    // VectorMap keeps insertion order with constant-time inserts and lookups
     reg("map") { args =>
       arity("map", args, 0, 2)
       if args.isEmpty then
-        Const(scala.collection.immutable.ListMap.empty[Any, Any], PType.AnyT)
+        Const(scala.collection.immutable.VectorMap.empty[Any, Any], PType.AnyT)
       else
         fn("map", args, PType.AnyT) { a =>
           val ks = a(0).asInstanceOf[Seq[Any]]
@@ -1473,7 +1474,7 @@ object ScalarFunctions:
             throw StatusCode
               .INVALID_ARGUMENT
               .newException("map: the key list does not align with the value list")
-          val b    = scala.collection.immutable.ListMap.newBuilder[Any, Any]
+          val b    = scala.collection.immutable.VectorMap.newBuilder[Any, Any]
           val seen = scala.collection.mutable.HashSet.empty[Any]
           ks.iterator
             .zip(vs.iterator)
