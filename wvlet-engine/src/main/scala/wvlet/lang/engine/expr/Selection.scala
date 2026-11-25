@@ -220,11 +220,11 @@ object Selection:
         else
           cur
       case Disj(parts) =>
-        val total            = sizeOf(sel, b)
+        val total            = sizeOf(sel, b.size)
         var accepted         = Array.emptyIntArray
         var rest: Array[Int] = sel
         var i                = 0
-        while i < parts.length && sizeOf(rest, b) > 0 do
+        while i < parts.length && sizeOf(rest, b.size) > 0 do
           val r = run(parts(i), b, rest)
           if r == null then
             // Every remaining row is accepted
@@ -232,18 +232,12 @@ object Selection:
             rest = Array.emptyIntArray
           else if r.length > 0 then
             accepted = merge(accepted, r)
-            rest = minus(all(rest, b), r)
+            rest = minus(rest, r, b.size)
           i += 1
         if accepted.length == total then
           null
         else
           accepted
-
-  private def sizeOf(sel: Array[Int], b: Batch): Int =
-    if sel == null then
-      b.size
-    else
-      sel.length
 
   private def all(sel: Array[Int], b: Batch): Array[Int] =
     if sel == null then
@@ -291,20 +285,7 @@ object Selection:
 
   private def leaf(e: VExpr, c: Int, b: Batch, sel: Array[Int]): Array[Int] =
     if sel == null then
-      val mask  = Kernels.trueMask(e.eval(b))
-      val count = countTrue(mask, b.size)
-      if count == b.size then
-        null
-      else
-        val out = new Array[Int](count)
-        var j   = 0
-        var i   = 0
-        while i < b.size do
-          if mask(i) then
-            out(j) = i
-            j += 1
-          i += 1
-        out
+      b.maskPositions(Kernels.trueMask(e.eval(b)))
     else
       val n = sel.length
       if n == 0 then
@@ -379,19 +360,33 @@ object Selection:
         k += 1
       out
 
-  /** The positions of `a` not in `b`, a subset of `a`; both ascending */
-  private def minus(a: Array[Int], b: Array[Int]): Array[Int] =
-    val out = new Array[Int](a.length - b.length)
+  /**
+    * The positions of `a` (all of 0 until `size` when null) not in `b`, a subset of it; ascending
+    */
+  private def minus(a: Array[Int], b: Array[Int], size: Int): Array[Int] =
+    val n   = sizeOf(a, size)
+    val out = new Array[Int](n - b.length)
     var i   = 0
     var j   = 0
     var k   = 0
-    while i < a.length do
-      if j < b.length && a(i) == b(j) then
+    while i < n do
+      val p =
+        if a == null then
+          i
+        else
+          a(i)
+      if j < b.length && p == b(j) then
         j += 1
       else
-        out(k) = a(i)
+        out(k) = p
         k += 1
       i += 1
     out
+
+  private def sizeOf(sel: Array[Int], size: Int): Int =
+    if sel == null then
+      size
+    else
+      sel.length
 
 end Selection

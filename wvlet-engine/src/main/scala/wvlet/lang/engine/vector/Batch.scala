@@ -87,7 +87,7 @@ final class Batch private (
   def row(i: Int): Array[Any] = Array.tabulate(cols.length)(c => column(c).get(i))
 
   /** Positions of the true values of the mask, or null when every row is selected */
-  private def maskPositions(mask: Array[Boolean]): Array[Int] =
+  private[engine] def maskPositions(mask: Array[Boolean]): Array[Int] =
     var count = 0
     var i     = 0
     while i < size do
