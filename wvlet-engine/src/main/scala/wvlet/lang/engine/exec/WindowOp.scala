@@ -1021,10 +1021,6 @@ object WindowOp:
   case class TopN(limit: Long, ties: Boolean)
 
   /**
-    * The rows of `part` within the top `t.limit` by `cmp`, in no particular order: a bounded
-    * max-heap finds the limit-th row, then with ties every row not after it is kept
-    */
-  /**
     * Sorts the row indexes `part` by one Int32, Date, or Int64 key the way [[IndexSort]] does with
     * the key's comparator (stable, with the key's direction and NULL placement), but as one
     * `Arrays.sort` of longs packing each row's key code above its position in `part`. The code is
@@ -1110,6 +1106,10 @@ object WindowOp:
 
   end sortByPrimitiveKey
 
+  /**
+    * The rows of `part` within the top `t.limit` by `cmp`, in no particular order: a bounded
+    * max-heap finds the limit-th row, then with ties every row not after it is kept
+    */
   def topRows(part: Array[Int], t: TopN, cmp: SortOp.RowComparator): Array[Int] =
     val n = part.length
     if t.limit >= n then
