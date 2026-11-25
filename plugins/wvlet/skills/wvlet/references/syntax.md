@@ -217,7 +217,7 @@ Frames: `rows [,0]` (unbounded preceding to current, the default), `rows [-1,1]`
 | `[1, 2, 3]`, `arr[1]` | Array, 1-origin index |
 | `{k: 1, s: 'v'}`, `obj.k` | Struct |
 | `map {'a': 1}` | Map |
-| `x -> x + 1`, `(a, b) -> a + b` | Lambda |
+| `xs.transform(x -> x + 1)`, `xs.filter(x -> x > 0)`, `xs.reduce((a, b) -> a + b)` | Lambda over array elements; the parameter has the element type |
 | `_` | The input relation, e.g. `_.count`, `_.size` in tests |
 | `sql"..."` | Raw SQL expression; `${...}` interpolates |
 

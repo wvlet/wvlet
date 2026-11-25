@@ -128,6 +128,19 @@ trait array[A] = {
   def concat(other:any) in snowflake: array[A] = sql"array_cat(${this},${other})"
   def concat(other:any) in bigquery: array[A] = sql"array_concat(${this},${other})"
 
+  -- Higher-order functions taking a lambda, e.g. [1, 2, 3].transform(x -> x * 2).filter(x -> x > 2)
+
+  -- Apply the lambda to each element
+  def transform(f: sql) in duckdb: array[any] = sql"list_transform(${this}, ${f})"
+  def transform(f: sql) in trino: array[any] = sql"transform(${this}, ${f})"
+  -- Keep the elements for which the lambda returns true
+  def filter(f: sql) in duckdb: array[A] = sql"list_filter(${this}, ${f})"
+  def filter(f: sql) in trino: array[A] = sql"filter(${this}, ${f})"
+  -- Fold the elements from the first one with a two-argument lambda (acc, x) -> ..., e.g.
+  -- [1, 2, 3].reduce((a, b) -> a + b) = 6. An empty array is an error
+  def reduce(f: sql) in duckdb: A = sql"list_reduce(${this}, ${f})"
+  def reduce(f: sql) in trino: A = sql"reduce(slice(${this}, 2, cardinality(${this})), ${this}[1], ${f}, s -> s)"
+
   -- Window (analytic) functions, applied to a column with an over(...) clause,
   -- e.g. v.lag(1) over (partition by g order by k)
 

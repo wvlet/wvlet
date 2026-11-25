@@ -86,6 +86,12 @@ Apply these rules in order:
   - The engine implements ORDER BY inside aggregate calls instead of dropping it, so `string_agg(x, ',' ORDER BY y)` in SQL input is ordered too.
   - NULL elements follow the existing `to_array`: DuckDB, Trino, and the engine keep them, Snowflake drops them, and BigQuery rejects them.
 
+- **Higher-order array functions** (user-approved, 2026-11-25):
+  - `xs.transform(x -> ...)`, `xs.filter(x -> ...)`, and `xs.reduce((acc, x) -> ...)`, so arrays read like Scala collections and chain: `xs.transform(x -> x * 2).filter(x -> x > 2)`. `transform` and `filter` are the Trino, Spark, and Snowflake names (DuckDB's are `list_transform` / `list_filter`); `reduce` is the name four sources share. Scala's `map` was not adopted: `map` already names the map type and literal (`map {'a': 1}`), and `transform` is the shared SQL name (rule 3).
+  - `reduce` folds from the first element, as DuckDB's `list_reduce` without an initial value, and an empty array is an error. Trino has only the initial-value form, so its variant is `reduce(slice(xs, 2, n), xs[1], f, s -> s)`; the out-of-range subscript keeps the empty-array error. An initial-value overload is a follow-up.
+  - The Typer gives lambda parameters the element type of the array (both parameters for `reduce`), so methods on them resolve: `names.filter(s -> s.length > 3)` is string `length` on every engine. Parameters shadow same-named columns (`identify_lambda_param` in `formal/WvletFormal/NameLookup/Resolve.lean`).
+  - DuckDB and Trino variants only, the engines CI runs them on. Snowflake's TRANSFORM / FILTER / REDUCE are a follow-up once they can be tested; Hive and BigQuery have no lambdas.
+
 Later families (JSON, lists, maps, structs) add their rows to this ADR in the PR that introduces them, each with a comparison row.
 
 ### The engine's own SQL names

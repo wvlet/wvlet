@@ -280,34 +280,38 @@ object Binder:
     else
       e.eval(Batch.ofRows(1)).get(0) match
         case s: Seq[?] =>
-          val ts =
-            s.filter(_ != null)
-              .map {
-                case _: Int =>
-                  PType.Int32
-                case _: Long =>
-                  PType.Int64
-                case _: Double =>
-                  PType.Float64
-                case _: String =>
-                  PType.Str
-                case _: Boolean =>
-                  PType.Bool
-                case _ =>
-                  PType.AnyT
-              }
-              .distinct
-          ts match
-            case Seq() =>
-              PType.Int32
-            case Seq(t) =>
-              t
-            case many if many.forall(_.isNumeric) =>
-              many.reduce(PType.common)
-            case _ =>
-              PType.AnyT
+          elementTypeOf(s)
         case _ =>
           PType.AnyT
+
+  /** The common type of list element values: Int32 for an empty list, Any for mixed kinds */
+  def elementTypeOf(s: Seq[?]): PType =
+    val ts =
+      s.filter(_ != null)
+        .map {
+          case _: Int =>
+            PType.Int32
+          case _: Long =>
+            PType.Int64
+          case _: Double =>
+            PType.Float64
+          case _: String =>
+            PType.Str
+          case _: Boolean =>
+            PType.Bool
+          case _ =>
+            PType.AnyT
+        }
+        .distinct
+    ts match
+      case Seq() =>
+        PType.Int32
+      case Seq(t) =>
+        t
+      case many if many.forall(_.isNumeric) =>
+        many.reduce(PType.common)
+      case _ =>
+        PType.AnyT
 
   /** True when the expression has an aggregate call outside subqueries and window functions */
   def containsAggregate(e: Expression): Boolean =
@@ -1316,8 +1320,10 @@ class Binder(
 
   /**
     * list_transform / list_filter / list_reduce with a lambda. The lambda body is bound over its
-    * parameters, typed by the elements of a constant list (Any otherwise), and evaluated over all
-    * elements of a list at once (sequentially for reduce)
+    * parameters, typed by the list elements, and evaluated over all elements of a list at once
+    * (sequentially for reduce). A constant list gives the element type at plan time; for other
+    * lists (e.g. a column) the body is bound on first use from the element values, once per element
+    * type
     */
   private def bindLambdaCall(
       name: String,
@@ -1331,61 +1337,80 @@ class Binder(
           (l, lam)
         case _ =>
           error(s"${name} expects a list and a lambda", f)
+    val isReduce =
+      name match
+        case "list_reduce" | "array_reduce" | "reduce" =>
+          true
+        case _ =>
+          false
+    val arity =
+      if isReduce then
+        2
+      else
+        1
+    if lambda.args.size != arity then
+      error(s"${name} expects a lambda with ${arity} parameter(s)", f)
     val list                               = bind(listArg)
-    val elemType                           = listElementType(list)
     def bodyOver(types: Seq[PType]): VExpr =
-      if lambda.args.size != types.size then
-        error(s"${name} expects a lambda with ${types.size} parameter(s)", f)
       val schema = Schema(lambda.args.zip(types).map((p, t) => Field(p.leafName, t)).toIndexedSeq)
       Binder(planner, BindScope(schema)).bind(lambda.body)
+
+    // The result type and the evaluator over one list, for lists of the given element type
+    def compile(elemType: PType): (PType, Seq[Any] => Any) =
+      name match
+        case "list_filter" | "array_filter" | "filter" =>
+          val body = bodyOver(Seq(elemType))
+          (
+            PType.AnyT,
+            elems =>
+              val mask = Kernels.trueMask(
+                body.eval(Batch(Array(Vec.fromValues(elemType, elems)), elems.size))
+              )
+              elems.indices.filter(mask(_)).map(elems).toList
+          )
+        case _ if isReduce =>
+          // The accumulator takes the common type of the elements and the body result
+          val accType = PType.common(elemType, bodyOver(Seq(elemType, elemType)).ptype)
+          val body    = bodyOver(Seq(accType, elemType))
+          (
+            accType,
+            elems =>
+              if elems.isEmpty then
+                throw StatusCode.INVALID_ARGUMENT.newException(s"${name} of an empty list")
+              elems
+                .tail
+                .foldLeft(ValueOps.cast(elems.head, elemType, accType)) { (acc, x) =>
+                  val row = Batch(
+                    Array(Vec.fromValues(accType, Seq(acc)), Vec.fromValues(elemType, Seq(x))),
+                    1
+                  )
+                  ValueOps.cast(body.eval(row).get(0), body.ptype, accType)
+                }
+          )
+        case _ =>
+          val body = bodyOver(Seq(elemType))
+          (
+            PType.AnyT,
+            elems =>
+              val out = body.eval(Batch(Array(Vec.fromValues(elemType, elems)), elems.size))
+              (0 until elems.size).map(out.get).toList
+          )
+
     def asList(v: Any): Seq[Any] = v.asInstanceOf[Seq[Any]]
-    name match
-      case "list_filter" | "array_filter" | "filter" =>
-        val body = bodyOver(Seq(elemType))
+    listElementType(list) match
+      case PType.AnyT if !list.isConstant && !list.isInstanceOf[Const] =>
+        val compiled = java.util.concurrent.ConcurrentHashMap[PType, Seq[Any] => Any]()
         RowFn(
           name,
           Seq(list),
           PType.AnyT,
           a =>
             val elems = asList(a(0))
-            val mask  = Kernels.trueMask(
-              body.eval(Batch(Array(Vec.fromValues(elemType, elems)), elems.size))
-            )
-            elems.indices.filter(mask(_)).map(elems).toList
+            compiled.computeIfAbsent(elementTypeOf(elems), t => compile(t)._2)(elems)
         )
-      case "list_reduce" | "array_reduce" | "reduce" =>
-        // The accumulator takes the common type of the elements and the body result
-        val accType = PType.common(elemType, bodyOver(Seq(elemType, elemType)).ptype)
-        val body    = bodyOver(Seq(accType, elemType))
-        RowFn(
-          name,
-          Seq(list),
-          accType,
-          a =>
-            val elems = asList(a(0))
-            if elems.isEmpty then
-              throw StatusCode.INVALID_ARGUMENT.newException(s"${name} of an empty list")
-            elems
-              .tail
-              .foldLeft(ValueOps.cast(elems.head, elemType, accType)) { (acc, x) =>
-                val row = Batch(
-                  Array(Vec.fromValues(accType, Seq(acc)), Vec.fromValues(elemType, Seq(x))),
-                  1
-                )
-                ValueOps.cast(body.eval(row).get(0), body.ptype, accType)
-              }
-        )
-      case _ =>
-        val body = bodyOver(Seq(elemType))
-        RowFn(
-          name,
-          Seq(list),
-          PType.AnyT,
-          a =>
-            val elems = asList(a(0))
-            val out   = body.eval(Batch(Array(Vec.fromValues(elemType, elems)), elems.size))
-            (0 until elems.size).map(out.get).toList
-        )
+      case elemType =>
+        val (ptype, eval) = compile(elemType)
+        RowFn(name, Seq(list), ptype, a => eval(asList(a(0))))
     end match
 
   end bindLambdaCall

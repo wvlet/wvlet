@@ -388,6 +388,9 @@ A column reference after `group by` also has an array type, so aggregation funct
 | `reverse` | array[A] | duckdb, trino, snowflake, bigquery |  |
 | `index_of(elem: A)` | int | duckdb, trino, snowflake | 1-origin position of the first occurrence of the element (0 if not found) |
 | `concat(other: any)` | array[A] | duckdb, trino, snowflake, bigquery |  |
+| `transform(f: sql)` | array[any] | duckdb, trino | Apply the lambda to each element |
+| `filter(f: sql)` | array[A] | duckdb, trino | Keep the elements for which the lambda returns true |
+| `reduce(f: sql)` | A | duckdb, trino | Fold the elements from the first one with a two-argument lambda (acc, x) -> ..., e.g. [1, 2, 3].reduce((a, b) -> a + b) = 6. An empty array is an error |
 | `lag` | A | all | Value of the column at a preceding row of the window |
 | `lag(offset: int)` | A | all |  |
 | `lag(offset: int, default: any)` | A | all |  |

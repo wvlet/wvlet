@@ -165,6 +165,21 @@ theorem identify_after_add (env : Env) (n : Name) (x : Sym) (info : Binding → 
       if (info (.local x)).isLiveFunction && column then .column else .symbol (.local x) := by
   rw [findSymbol_add]; rfl
 
+/--
+Lambda parameters (`Typer.typeLambda`): the Typer binds each parameter of `xs.transform(x -> ...)`
+as a value with `add` in a child scope of the enclosing expression, so inside the lambda body the
+parameter wins over a same-named input column, an outer local binding, and every top-level
+definition or import.
+-/
+theorem identify_lambda_param (env : Env) (n : Name) (x : Sym) (info : Binding → Info)
+    (column : Bool) (hv : (info (.local x)).kind = .value) :
+    identify (findSymbol { env with scope := env.scope.child.add n x } n).head? info column =
+      .symbol (.local x) := by
+  have h : findSymbol { env with scope := env.scope.child.add n x } n = [.local x] :=
+    findSymbol_local _ _ _ (Scope.lookup_add_self _ _ _)
+  rw [h]
+  simp [identify, Info.isLiveFunction, hv]
+
 /-! ## Relation names -/
 
 inductive RelResult where
