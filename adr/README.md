@@ -15,6 +15,7 @@ The language-wide design principles (left-to-right flow, modularity, composabili
 
 ## Index
 
+- [2026-11-25 — Selective runtime join filters go into uni's Parquet row filter](2026-11-25-engine-scan-join-row-filters.md) — why `scan_join_row_filters` moves per-row join filters into a probe scan's row filter when the scan opens, all or nothing by the product of their footer-range pass estimates (at most 0.05), and why the others keep `narrow`'s pausing
 - [2026-11-25 — Exact scan conjuncts move into uni's Parquet row filter when lowering](2026-11-25-engine-scan-row-filters.md) — why `scan_row_filters` splits a filter over a single-file Parquet scan in Lowering (not the runtime plan), which conjuncts and column types count as exact (no NANOS timestamps), and why the most selective conjunct goes first
 - [2026-11-24 — ROLLUP / CUBE sets are computed from the partial results of finer sets](2026-11-24-engine-chained-grouping-sets.md) — why `chain_grouping_sets` aggregates the input once by the finest set and merges each coarser set from its smallest finer set, instead of one aggregation per set over a materialized input
 - [2026-11-24 — Common subexpressions are shared when lowering, not by a logical pass](2026-11-24-engine-common-subexpressions.md) — why `common_subexpressions` shares repeated expressions of a projection, filter, aggregation, or window in a `ProjectOp` built during lowering instead of a `RuntimePlan` rewrite, which expressions it may hoist, and how `fold_constants` and `shared_agg_partials` cut the remaining q1 arithmetic and accumulators

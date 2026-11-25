@@ -110,6 +110,8 @@ class Planner(
     )
     if !enabled(Optimization.LateGather) then
       Planner.disableLateGather(pruned)
+    if !enabled(Optimization.ScanJoinRowFilters) then
+      Planner.disableSourceJoinFilters(pruned)
     if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) then
       Planner.configureFilters(
         pruned,
@@ -3461,6 +3463,18 @@ object Planner:
       case _ =>
     op.children.foreach(disableLateGather)
     op.sharedInputs.foreach(disableLateGather)
+
+  /**
+    * Keep every per-row runtime filter of a physical plan's scans in the engine
+    * (`scan_join_row_filters`)
+    */
+  private[engine] def disableSourceJoinFilters(op: Operator): Unit =
+    op match
+      case s: ScanOp =>
+        s.sourceJoinFilters = false
+      case _ =>
+    op.children.foreach(disableSourceJoinFilters)
+    op.sharedInputs.foreach(disableSourceJoinFilters)
 
   /** Set how the filters of a physical plan evaluate AND / OR (`short_circuit_filters`) */
   private[engine] def configureFilters(

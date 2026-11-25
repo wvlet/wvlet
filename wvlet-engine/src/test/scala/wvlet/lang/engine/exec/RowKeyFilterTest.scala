@@ -37,6 +37,43 @@ class RowKeyFilterTest extends UniTest:
     (0L to 30L).filter(f.mayContain) shouldBe Seq(10L, 12L, 20L)
   }
 
+  test("should count the accepted values of a bitmap in a range exactly") {
+    val keys = Array(3L, 64L, 65L, 127L, 128L, 200L, 1000L, 1001L)
+    val f    = filterOf(keys)
+    f.kind shouldBe RowKeyFilter.Kind.Bitmap
+    val bounds = Seq(
+      -5L, 0L, 3L, 4L, 63L, 64L, 65L, 66L, 127L, 128L, 129L, 500L, 1000L, 1001L, 2000L
+    )
+    for
+      a <- bounds
+      b <- bounds
+    do
+      f.acceptedIn(a, b) shouldBe keys.count(k => k >= a && k <= b).toDouble
+  }
+
+  test("should estimate the accepted values of Bloom filters and ranges from their keys") {
+    val keys  = (0 until 100).map(_ * 1000000L).toArray
+    val bloom = filterOf(keys)
+    bloom.kind shouldBe RowKeyFilter.Kind.Bloom
+    val fp = RowKeyFilter.BloomFalsePositives
+    bloom.acceptedIn(Long.MinValue, Long.MaxValue) shouldBe 100.0 + fp * (keys.max + 1)
+    // Half of [lo, hi]
+    val half = (keys.max / 2 + 1).toDouble
+    bloom.acceptedIn(0L, keys.max / 2) shouldBe (100.0 * half / (keys.max + 1) + fp * half)
+    bloom.acceptedIn(keys.max + 1, Long.MaxValue) shouldBe 0.0
+    // Ranges as wide as the Long domain don't overflow
+    val wide = filterOf(Array(Long.MinValue + 1, -5L, 7L, Long.MaxValue - 1))
+    (wide.acceptedIn(Long.MinValue, Long.MaxValue) > 0.0) shouldBe true
+  }
+
+  test("should test the same values as a uni set") {
+    val f   = filterOf(Array(10L, 12L, 20L))
+    val set = f.integerSet
+    set.min shouldBe 10L
+    set.max shouldBe 20L
+    (0L to 30L).filter(set.contains) shouldBe (0L to 30L).filter(f.mayContain)
+  }
+
   test("should keep every build key with a Bloom filter over a sparse range") {
     val keys = Array.tabulate(1000)(i => i.toLong * 1000003L - 7L)
     val f    = filterOf(keys)
@@ -55,6 +92,7 @@ class RowKeyFilterTest extends UniTest:
     val f = RowKeyFilter.of(v, Array(0, 1), n, 5L, 9L).get
     f.kind shouldBe RowKeyFilter.Kind.Range
     (0L to 12L).filter(f.mayContain) shouldBe (5L to 9L)
+    f.acceptedIn(7L, 100L) shouldBe 3.0
   }
 
   test("should drop NULL probe keys and read int keys") {
