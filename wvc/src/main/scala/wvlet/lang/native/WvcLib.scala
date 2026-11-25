@@ -14,6 +14,12 @@ import wvlet.lang.api.v1.compile.ErrorLocation
 import scala.scalanative.unsafe.*
 import scala.scalanative.libc.stdlib
 
+/**
+  * Entry points of libwvlet. The public C symbols (`wvlet_compile_main`, `wvlet_compile_query`,
+  * `wvlet_compile_query_json`) are defined in wvc-lib's `scala-native/wvlet_lib.c`, which starts
+  * the Scala Native runtime on the first call and then forwards to the `wvlet_internal_*` functions
+  * below.
+  */
 object WvcLib extends LogSupport:
 
   /**
@@ -35,7 +41,7 @@ object WvcLib extends LogSupport:
     *   json string representing command line arguments ["arg1", "arg2", ...]
     * @return
     */
-  @exported("wvlet_compile_main")
+  @exported("wvlet_internal_compile_main")
   def compile_main(argJson: CString): Int =
     try
       val json = fromCString(argJson)
@@ -54,7 +60,7 @@ object WvcLib extends LogSupport:
     * @return
     *   generated SQL as a CString (allocated on heap, managed by GC)
     */
-  @exported("wvlet_compile_query")
+  @exported("wvlet_internal_compile_query")
   def compile_query(argJson: CString): CString =
     try
       val json     = fromCString(argJson)
@@ -76,7 +82,7 @@ object WvcLib extends LogSupport:
     *   {"success": false, "error": {"code": "...", "statusType": "...", "message": "...",
     *   "location": {...}}} Status types: Success, UserError, InternalError, ResourceExhausted
     */
-  @exported("wvlet_compile_query_json")
+  @exported("wvlet_internal_compile_query_json")
   def compile_query_json(argJson: CString): CString =
     try
       val json = fromCString(argJson)
