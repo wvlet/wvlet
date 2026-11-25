@@ -36,10 +36,13 @@ class EngineGroupKeySemiJoinsTest extends UniTest:
 
   // q20's aggregation is in an IN subquery, which `count_in_subqueries` would compute at plan time,
   // out of the explained plan; without range estimates, whose lineitem estimate moves the
-  // aggregation's join side
+  // aggregation's join side, and without sampled string estimates, which estimate the LIKE
+  // without `prefix_like_selectivity`
   private def noRange(o: OptimizerOptions) = conformance
     .engine
-    .withOptimizer(o.withDisabled(Optimization.RangeSelectivity))
+    .withOptimizer(
+      o.withDisabled(Optimization.RangeSelectivity, Optimization.StringValueSelectivity)
+    )
 
   private val noLeft = conformance
     .engine

@@ -185,7 +185,11 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineRuntimeJoinFiltersTest checks that the flag sets per-row filters on probe scans
         ignore("Changes which rows the probe scans emit, not the plan")
       val changed =
-        if withoutCountIn.contains(o) then
+        if o == Optimization.PrefixLikeSelectivity then
+          // Sampled string values estimate the prefix LIKEs of Parquet scans first
+          val base = OptimizerOptions().withDisabled(Optimization.StringValueSelectivity)
+          EnginePlanGolden.suites.exists(s => s.generate(base.withDisabled(o)) != s.generate(base))
+        else if withoutCountIn.contains(o) then
           val base = OptimizerOptions().withDisabled(Optimization.CountInSubqueries)
           EnginePlanGolden.suites.exists(s => s.generate(base.withDisabled(o)) != s.generate(base))
         else

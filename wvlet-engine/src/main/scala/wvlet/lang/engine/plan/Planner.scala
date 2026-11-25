@@ -81,7 +81,9 @@ class Planner(
     windowTopNStream = enabled(Optimization.WindowTopNStream),
     constCaseSelect = enabled(Optimization.ConstCaseSelect),
     caseAggFilters = enabled(Optimization.CaseAggFilters),
-    substringInLists = enabled(Optimization.SubstringInLists)
+    substringInLists = enabled(Optimization.SubstringInLists),
+    valueSelectivity = enabled(Optimization.StringValueSelectivity),
+    columnImpliedRowFilters = enabled(Optimization.ColumnImpliedRowFilters)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

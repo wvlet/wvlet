@@ -84,6 +84,12 @@ trait TableSource:
     */
   def estimatedDistinct(column: String): Option[Double] = None
 
+  /**
+    * The distinct values of a string column in a sample of its rows, with their counts, for
+    * estimating how many rows a condition over the column keeps. None when unknown
+    */
+  def valueCounts(column: String): Option[ValueCounts] = None
+
   /** EXPLAIN lines of what a scan of this source reads, nested above the scan (at `indent`) */
   def explainDetail(indent: Int): Option[String] = None
 
@@ -329,21 +335,44 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
     * query)
     */
   override def estimatedDistinct(column: String): Option[Double] =
+    cachedPerVersion(column, ParquetSource.DistinctStat)(computeDistinct(column))
+
+  /**
+    * Strings of a single file: counted in up to [[ParquetSource.ValueSampleRowGroups]] row groups
+    * spread over the file, until [[ParquetSource.ValueSampleRows]] rows, and per Parquet dictionary
+    * code where the pages are dictionary-encoded. None for a column with more than
+    * [[ParquetSource.MaxSampleValues]] distinct values in the sample. Cached per file version as
+    * [[estimatedDistinct]] is
+    */
+  override def valueCounts(column: String): Option[ValueCounts] =
+    if !isSingleFile || !schema.fields.exists(f => f.name == column && f.ptype == PType.Str) then
+      None
+    else
+      cachedPerVersion(column, ParquetSource.ValueCountsStat)(computeValueCounts(column))
+
+  /**
+    * A statistic `stat` of `column`, computed once per file version and shared by the sources of
+    * the file ([[ParquetSource.MaxDistinctEntries]] entries); a file [[ParquetFooterCache]]
+    * wouldn't cache is computed once per source (a source lives for one query)
+    */
+  private def cachedPerVersion[A](column: String, stat: String)(compute: => Option[A]): Option[A] =
     if !isSingleFile then
       None
     else
       fileVersion() match
         case None =>
           // A file whose rewrites can't be told apart: not shared with other queries
-          localDistinct.synchronized(localDistinct.getOrElseUpdate(column, computeDistinct(column)))
+          localStats
+            .synchronized(localStats.getOrElseUpdate((column, stat), compute))
+            .asInstanceOf[Option[A]]
         case Some(v) =>
-          ParquetSource.cachedDistinct(path, column, v) match
+          ParquetSource.cachedStat(path, column, stat, v) match
             case Some(d) =>
-              d
+              d.asInstanceOf[Option[A]]
             case None =>
               // Computed outside the lock, so that a scan doesn't block other planners
-              val d = computeDistinct(column)
-              ParquetSource.putDistinct(path, column, v, d)
+              val d = compute
+              ParquetSource.putStat(path, column, stat, v, d)
               d
 
   // The file version (None: not trusted) and when it was read (System.nanoTime)
@@ -369,7 +398,32 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
       v
 
   // Estimates of a file without a trusted version, kept for this source only
-  private val localDistinct = scala.collection.mutable.HashMap.empty[String, Option[Double]]
+  private val localStats = scala.collection.mutable.HashMap.empty[(String, String), Option[Any]]
+
+  private def computeValueCounts(column: String): Option[ValueCounts] =
+    try
+      val f = openFile(footerCache).file
+      try
+        val groups  = f.rowGroups
+        val n       = groups.size
+        val samples = math.min(n, ParquetSource.ValueSampleRowGroups)
+        // Spread over the file: generated and appended data is often ordered by a key
+        val picked = (0 until samples).map(i => (i.toLong * n / samples).toInt).distinct
+        val (cols, types, options) = readOptions(ScanSpec(Some(Seq(column))))
+        var sampled                = 0L
+        val batches                = picked
+          .iterator
+          .takeWhile(_ => sampled < ParquetSource.ValueSampleRows)
+          .map { g =>
+            sampled += groups(g).numRows
+            ParquetSource.toBatch(f.readRowGroup(g, options), cols, types, dictionaryCodes = true)
+          }
+        ValueCounts.count(batches, ParquetSource.MaxSampleValues)
+      finally
+        f.close()
+    catch
+      case _: Exception =>
+        None
 
   private def computeDistinct(column: String): Option[Double] =
     if !isSingleFile then
@@ -482,39 +536,53 @@ object ParquetSource:
   /** Up to how many (file, column) distinct-count estimates are kept */
   val MaxDistinctEntries: Int = 4096
 
-  /** A distinct-count estimate and the file version (size, last-modified) it was computed from */
-  private case class DistinctEntry(version: (Long, Long), estimate: Option[Double])
+  private[catalog] val DistinctStat    = "distinct"
+  private[catalog] val ValueCountsStat = "values"
 
-  // Estimates per (file path, column), shared by the sources of the same file. Access-ordered, so
-  // that the eldest entry is the least recently used
-  private val distinctCache =
-    new java.util.LinkedHashMap[(String, String), DistinctEntry](16, 0.75f, true):
+  /** Up to how many row groups a string column's values are counted in, for [[ValueCounts]] */
+  val ValueSampleRowGroups: Int = 4
+
+  /** After how many sampled rows no further row group is read for [[ValueCounts]] */
+  val ValueSampleRows: Long = 250000
+
+  /** Up to how many distinct strings a [[ValueCounts]] sample holds */
+  val MaxSampleValues: Int = 4096
+
+  /** A statistic and the file version (size, last-modified) it was computed from */
+  private case class StatEntry(version: (Long, Long), value: Option[Any])
+
+  // Statistics per (file path, column, statistic), shared by the sources of the same file.
+  // Access-ordered, so that the eldest entry is the least recently used
+  private val statCache =
+    new java.util.LinkedHashMap[(String, String, String), StatEntry](16, 0.75f, true):
       override def removeEldestEntry(
-          e: java.util.Map.Entry[(String, String), DistinctEntry]
+          e: java.util.Map.Entry[(String, String, String), StatEntry]
       ): Boolean = size() > MaxDistinctEntries
 
-  /** The cached estimate of `column` in `path`, when it was computed from file version `version` */
-  private def cachedDistinct(
+  /** The cached `stat` of `column` in `path`, when it was computed from file version `version` */
+  private def cachedStat(
       path: String,
       column: String,
+      stat: String,
       version: (Long, Long)
-  ): Option[Option[Double]] = distinctCache.synchronized {
-    Option(distinctCache.get((path, column))).filter(_.version == version).map(_.estimate)
+  ): Option[Option[Any]] = statCache.synchronized {
+    Option(statCache.get((path, column, stat))).filter(_.version == version).map(_.value)
   }
 
-  private def putDistinct(
+  private def putStat(
       path: String,
       column: String,
+      stat: String,
       version: (Long, Long),
-      estimate: Option[Double]
-  ): Unit = distinctCache.synchronized {
-    distinctCache.put((path, column), DistinctEntry(version, estimate))
+      value: Option[Any]
+  ): Unit = statCache.synchronized {
+    statCache.put((path, column, stat), StatEntry(version, value))
   }
 
   /** The file version the cached estimate of `column` in `path` was computed from (for tests) */
-  def cachedDistinctVersion(path: String, column: String): Option[(Long, Long)] = distinctCache
+  def cachedDistinctVersion(path: String, column: String): Option[(Long, Long)] = statCache
     .synchronized {
-      Option(distinctCache.get((path, column))).map(_.version)
+      Option(statCache.get((path, column, DistinctStat))).map(_.version)
     }
 
   /**

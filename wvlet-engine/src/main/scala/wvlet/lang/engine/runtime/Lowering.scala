@@ -59,7 +59,11 @@ object Lowering:
     * aggregates its THEN value with the condition as FILTER ([[CaseAggFilters]]). With
     * `substringInLists`, `substring(s, k, n) IN (strings)` compares string regions with the values
     * ([[SubstringInLists]]). With `windowTopNStream`, a window under a rank bound keeps each input
-    * chunk's top rows as it reads them ([[wvlet.lang.engine.exec.WindowTopN.keepTop]])
+    * chunk's top rows as it reads them ([[wvlet.lang.engine.exec.WindowTopN.keepTop]]). With
+    * `valueSelectivity`, the row-filter gate estimates string conjuncts from the source's sampled
+    * values ([[ScanFilters.valueSelectivity]]). With `columnImpliedRowFilters`, a row filter also
+    * takes the per-column filters implied by a multi-column `or` conjunct
+    * ([[ScanFilters.columnImplied]])
     */
   def apply(
       p: RuntimePlan,
@@ -83,7 +87,9 @@ object Lowering:
       constCaseSelect: Boolean = false,
       caseAggFilters: Boolean = false,
       substringInLists: Boolean = false,
-      windowTopNStream: Boolean = false
+      windowTopNStream: Boolean = false,
+      valueSelectivity: Boolean = false,
+      columnImpliedRowFilters: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -105,7 +111,9 @@ object Lowering:
       constCaseSelect,
       caseAggFilters,
       substringInLists,
-      windowTopNStream
+      windowTopNStream,
+      valueSelectivity,
+      columnImpliedRowFilters
     )
     if inSet then
       l.markInSet(p)
@@ -145,7 +153,9 @@ object Lowering:
       constCaseSelect: Boolean,
       caseAggFilters: Boolean,
       substringInLists: Boolean,
-      windowTopNStream: Boolean
+      windowTopNStream: Boolean,
+      valueSelectivity: Boolean,
+      columnImpliedRowFilters: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -189,7 +199,9 @@ object Lowering:
               maskedCaseWhen = maskedCaseWhen,
               constCaseSelect = constCaseSelect,
               caseAggFilters = caseAggFilters,
-              substringInLists = substringInLists
+              substringInLists = substringInLists,
+              valueSelectivity = valueSelectivity,
+              columnImpliedRowFilters = columnImpliedRowFilters
             )
         )
       ) match
@@ -275,15 +287,26 @@ object Lowering:
             case scan: ScanOp =>
               val conds = ScanFilters.conjuncts(expr(cond, positions(s)))
               val name  = (i: Int) => Some(scan.sourceColumnName(i)).filter(s.source.canRowFilterOn)
-              val (moved, kept) = conds.partitionMap(c =>
+              val (exactMoved, exactKept) = conds.partitionMap(c =>
                 ScanFilters.exact(c, name).map(f => (c, f)).toLeft(c)
               )
+              // A multi-column `or` stays in the engine when it implies per-column row filters
+              val implied =
+                if columnImpliedRowFilters then
+                  conds.map(c => c -> ScanFilters.columnImplied(c)).filter(_._2.nonEmpty).toMap
+                else
+                  Map.empty[VExpr, List[VExpr]]
+              val moved =
+                exactMoved.filterNot((c, _) => implied.contains(c)) ++
+                  implied.values.flatten.flatMap(c => ScanFilters.exact(c, name).map(f => (c, f)))
+              val kept = exactKept ++ exactMoved.map(_._1).filter(implied.contains)
               // Filter-first decode pays per row for the row filter and the selective gathers, and
               // saves only on the rows it drops: filters keeping many rows stay in the engine
               lazy val passRate = ScanFilters.estimatedSelectivity(
                 moved.map(_._1),
                 s.source,
-                scan.sourceColumnName
+                scan.sourceColumnName,
+                valueSelectivity
               )
               val selective =
                 !selectiveRowFilters || moved.isEmpty ||
@@ -296,7 +319,7 @@ object Lowering:
                     scan
                   else
                     scan.withRowFilter(
-                      ScanFilters.ordered(moved, s.source, scan.sourceColumnName),
+                      ScanFilters.ordered(moved, s.source, scan.sourceColumnName, valueSelectivity),
                       passRate
                     )
                 kept.reduceOption(AndExpr(_, _)).map(filterOver(in, _)).getOrElse(in)

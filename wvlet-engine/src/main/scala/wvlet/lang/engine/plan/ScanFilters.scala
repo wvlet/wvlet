@@ -14,6 +14,7 @@
 package wvlet.lang.engine.plan
 
 import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.engine.catalog.ValueCounts
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
 import wvlet.uni.cloud.parquet.ParquetFilter
@@ -121,18 +122,20 @@ object ScanFilters:
     * first: a source decodes the first conjunct's columns for every row, and later ones only for
     * the rows still kept. Conjuncts over the same column are estimated together and stay adjacent
     * ([[selectivity]]); on a tie, conjuncts over a numeric column come before strings, which cost
-    * more to decode. `columnName(i)` is the source column name of input position i
+    * more to decode. `columnName(i)` is the source column name of input position i. With `values`,
+    * string conjuncts are estimated from the source's sampled values ([[selectivity]])
     */
   def ordered(
       conds: Seq[(VExpr, ParquetFilter)],
       source: TableSource,
-      columnName: Int => String
+      columnName: Int => String,
+      values: Boolean = false
   ): ParquetFilter = byColumns(conds)(_._1)
     .toSeq
     .zipWithIndex
     .sortBy { case ((cols, members), pos) =>
       val strings = cols.size != 1 || members.exists(m => refType(m._1).contains(PType.Str))
-      (selectivity(cols, members.map(_._1), source, columnName), strings, pos)
+      (selectivity(cols, members.map(_._1), source, columnName, values), strings, pos)
     }
     .flatMap(_._1._2.map(_._2))
     .reduce(_ && _)
@@ -147,16 +150,32 @@ object ScanFilters:
   /**
     * The estimated fraction of rows passing all `conds` together (conjuncts over the same input
     * positions estimated together by [[selectivity]], independent otherwise). `columnName(i)` is
-    * the source column name of input position i
+    * the source column name of input position i. With `values`, string conjuncts are estimated from
+    * the source's sampled values ([[selectivity]])
     */
   def estimatedSelectivity(
       conds: Seq[VExpr],
       source: TableSource,
-      columnName: Int => String
+      columnName: Int => String,
+      values: Boolean = false
   ): Double =
     byColumns(conds)(identity)
-      .map((cols, members) => selectivity(cols, members, source, columnName))
+      .map((cols, members) => selectivity(cols, members, source, columnName, values))
       .product
+
+  /**
+    * The fraction of rows for which `cond` is TRUE, from the sampled values ([[ValueCounts]]) of
+    * the one string column it reads, when it is made only of comparisons, IN lists, LIKE, IS NULL,
+    * AND, OR and NOT over that column and constants (`string_value_selectivity`). `counts(i)` gives
+    * the sampled values of input position i. None otherwise
+    */
+  def valueSelectivity(cond: VExpr, counts: Int => Option[ValueCounts]): Option[Double] =
+    if cond.ptype != PType.Bool || cond.isConstant then
+      None
+    else
+      DictionaryPredicates
+        .singleStrColumn(cond)
+        .flatMap(c => counts(c).flatMap(_.selectivity(DictionaryPredicates.rebase(cond, c))))
 
   /** `conds` grouped by the input positions their conjunct (`cond(c)`) reads, in first order */
   private def byColumns[A](conds: Seq[A])(
@@ -175,18 +194,28 @@ object ScanFilters:
     * The estimated fraction of rows passing all `conds`, conjuncts that read the input positions
     * `cols`. Over one integer or date column, comparisons with literals narrow a [min, max] range
     * measured against the source's [[TableSource.columnRange]]; `=` and IN on other columns use the
-    * source's distinct estimate (not for strings, whose estimate may scan the column); anything
-    * else counts [[CardinalityEstimator.DefaultSelectivity]]
+    * source's distinct estimate (not for strings, whose estimate may scan the column); with
+    * `values`, conjuncts over one string column are evaluated together over the source's sampled
+    * values ([[valueSelectivity]]); anything else counts
+    * [[CardinalityEstimator.DefaultSelectivity]]
     */
   private def selectivity(
       cols: Set[Int],
       conds: Seq[VExpr],
       source: TableSource,
-      columnName: Int => String
+      columnName: Int => String,
+      values: Boolean
   ): Double =
-    val default = CardinalityEstimator.DefaultSelectivity
+    val default      = CardinalityEstimator.DefaultSelectivity
+    lazy val sampled =
+      if values && cols.size == 1 && conds.nonEmpty then
+        valueSelectivity(conds.reduce(AndExpr(_, _)), i => source.valueCounts(columnName(i)))
+      else
+        None
     if cols.size != 1 then
       math.pow(default, conds.size)
+    else if sampled.isDefined then
+      sampled.get
     else
       val name    = columnName(cols.head)
       val ptype   = conds.flatMap(refType).headOption
@@ -277,6 +306,46 @@ object ScanFilters:
     end if
 
   end selectivity
+
+  /**
+    * The filters implied by `cond` when it is an `or` reading several input positions: for each
+    * position that every branch tests with conjuncts reading only it, the `or` over the branches of
+    * those conjuncts (TPC-H q19's `(p_brand = 'Brand#12' and p_size <= 5 ...) or (p_brand =
+    * 'Brand#23' and ...)` implies `p_brand = 'Brand#12' or p_brand = 'Brand#23' or ...`). A row for
+    * which `cond` is TRUE has one branch TRUE, so it passes each implied filter: they may drop rows
+    * before `cond` runs, but not replace it. Nil otherwise
+    */
+  def columnImplied(cond: VExpr): List[VExpr] =
+    def branches(e: VExpr): List[VExpr] =
+      e match
+        case OrExpr(a, b) =>
+          branches(a) ++ branches(b)
+        case other =>
+          List(other)
+    def refs(e: VExpr): Set[Int] =
+      val bits = mutable.BitSet()
+      VExprs.collectRefs(e, bits)
+      bits.toSet
+    cond match
+      case _: OrExpr if refs(cond).size > 1 =>
+        // Per branch, its single-position conjuncts by position
+        val byPos = branches(cond).map { b =>
+          conjuncts(b)
+            .flatMap { c =>
+              refs(c).toList match
+                case List(i) =>
+                  Some(i -> c)
+                case _ =>
+                  None
+            }
+            .groupMap(_._1)(_._2)
+        }
+        val common = byPos.map(_.keySet).reduce(_ intersect _)
+        common.toList.sorted.map(i => byPos.map(_(i).reduce(AndExpr(_, _))).reduce(OrExpr(_, _)))
+      case _ =>
+        Nil
+
+  end columnImplied
 
   /** The type of the column a comparison, IN, or IS NULL test reads */
   private def refType(e: VExpr): Option[PType] =

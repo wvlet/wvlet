@@ -88,8 +88,8 @@ object DictionaryPredicates:
               case other =>
                 other
 
-  // The one string column `e` reads, when every node of it is one `wrap` evaluates per entry
-  private def singleStrColumn(e: VExpr): Option[Int] =
+  /** The one string column `e` reads, when every node of it is one `wrap` evaluates per entry */
+  private[engine] def singleStrColumn(e: VExpr): Option[Int] =
     var col                      = -1
     def visit(x: VExpr): Boolean =
       x match
@@ -111,8 +111,8 @@ object DictionaryPredicates:
     else
       None
 
-  // `e` (accepted by singleStrColumn) reading column `col` as column 0
-  private def rebase(e: VExpr, col: Int): VExpr =
+  /** `e` (accepted by [[singleStrColumn]]) reading column `col` as column 0 */
+  private[engine] def rebase(e: VExpr, col: Int): VExpr =
     def r(x: VExpr): VExpr = rebase(x, col)
     e match
       case c: ColRef =>
