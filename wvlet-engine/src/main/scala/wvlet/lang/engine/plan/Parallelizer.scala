@@ -240,6 +240,7 @@ object Parallelizer:
         true
       case s: SetOpOp =>
         !s.all
+      // Unique on its keys, so on its whole rows
       case a: HashAggOp =>
         a.keys.nonEmpty
       // A semi / anti join emits some of its probe rows, each at most once
@@ -251,12 +252,7 @@ object Parallelizer:
   /** The distinct rows of a set operation input, unless they already are */
   private def distinctInput(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     op match
-      case _: DistinctOp =>
-        op
-      case s: SetOpOp if !s.all =>
-        op
-      // Unique on its keys, so on its whole rows
-      case a: HashAggOp if a.keys.nonEmpty =>
+      case _ if alreadyDistinct(op) =>
         op
       case _ if parallelDistinct(op, runner) =>
         distinctAgg(op)
@@ -333,11 +329,16 @@ object Parallelizer:
         val left  = setOpJoin(s.left, runner)
         val right = setOpJoin(s.right, runner)
         val probe =
-          distinctInput(left, runner) match
-            case same if (same eq left) && !alreadyDistinct(left) =>
-              DistinctOp(left)
-            case reduced =>
-              reduced
+          left match
+            // As an aggregation, so that the probe pipeline starts at its output
+            case d: DistinctOp if parallelDistinct(d.child, runner) =>
+              distinctAgg(d.child)
+            case _ =>
+              distinctInput(left, runner) match
+                case same if (same eq left) && !alreadyDistinct(left) =>
+                  DistinctOp(left)
+                case reduced =>
+                  reduced
         // The right input needs no distinct rows, but reducing them in parallel shrinks the build
         val build = distinctInput(right, runner)
         // Keys in the set operation's column types, as SetOpOp compares them
