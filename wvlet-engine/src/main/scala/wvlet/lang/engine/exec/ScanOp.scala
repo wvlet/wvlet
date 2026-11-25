@@ -65,7 +65,8 @@ class ScanOp(
     columns.map(_.map(source.schema(_).name)),
     (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _),
     footerCache,
-    rowFilter
+    rowFilter,
+    dictionaryCodes
   )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
@@ -80,6 +81,16 @@ class ScanOp(
     lateGather = enabled
     this
 
+  /**
+    * Whether Parquet strings decoded from a dictionary come with their codes, for grouping by them
+    * (`dictionary_group_keys`, [[ScanSpec.dictionaryCodes]])
+    */
+  var dictionaryCodes: Boolean = false
+
+  def withDictionaryCodes(enabled: Boolean): this.type =
+    dictionaryCodes = enabled
+    this
+
   def withSchema(s: Schema): ScanOp = ScanOp(
     source,
     s,
@@ -88,7 +99,7 @@ class ScanOp(
     runtimeFilters,
     footerCache,
     rowFilter
-  ).withLateGather(lateGather)
+  ).withLateGather(lateGather).withDictionaryCodes(dictionaryCodes)
 
   /** Read only the given output positions */
   def project(idx: IndexedSeq[Int]): ScanOp =
@@ -101,7 +112,7 @@ class ScanOp(
       runtimeFilters,
       footerCache,
       rowFilter
-    ).withLateGather(lateGather)
+    ).withLateGather(lateGather).withDictionaryCodes(dictionaryCodes)
 
   def withFilter(f: ParquetFilter): ScanOp = ScanOp(
     source,
@@ -111,7 +122,7 @@ class ScanOp(
     runtimeFilters,
     footerCache,
     rowFilter
-  ).withLateGather(lateGather)
+  ).withLateGather(lateGather).withDictionaryCodes(dictionaryCodes)
 
   /** Return only the rows matching `f` too (an exact filter, see [[ScanSpec.rowFilter]]) */
   def withRowFilter(f: ParquetFilter): ScanOp = ScanOp(
@@ -122,7 +133,7 @@ class ScanOp(
     runtimeFilters,
     footerCache,
     Some(rowFilter.map(_ && f).getOrElse(f))
-  ).withLateGather(lateGather)
+  ).withLateGather(lateGather).withDictionaryCodes(dictionaryCodes)
 
   // The filters with a per-row test, each with the output position of its column
   private lazy val rowFilters: Array[(RuntimeFilter, Int)] =

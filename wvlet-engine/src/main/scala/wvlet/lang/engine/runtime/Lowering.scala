@@ -47,7 +47,8 @@ object Lowering:
     * ([[WindowOp.runningPrimitive]]). With `windowSortKernels`, window partitions ordered by one
     * integer or date key sort packed longs ([[WindowOp.sortByPrimitiveKey]]). With
     * `scanRowFilters`, the conjuncts of a filter over a scan that its source evaluates exactly move
-    * into the scan's row filter ([[ScanOp.rowFilter]])
+    * into the scan's row filter ([[ScanOp.rowFilter]]). With `dictionaryCodes`, Parquet strings
+    * decoded from a dictionary carry their codes ([[ScanOp.dictionaryCodes]])
     */
   def apply(
       p: RuntimePlan,
@@ -62,7 +63,8 @@ object Lowering:
       commonSubexpressions: Boolean = false,
       foldConstants: Boolean = false,
       windowSortKernels: Boolean = false,
-      scanRowFilters: Boolean = false
+      scanRowFilters: Boolean = false,
+      dictionaryCodes: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -75,7 +77,8 @@ object Lowering:
       commonSubexpressions,
       foldConstants,
       windowSortKernels,
-      scanRowFilters
+      scanRowFilters,
+      dictionaryCodes
     )
     if inSet then
       l.markInSet(p)
@@ -106,7 +109,8 @@ object Lowering:
       commonSubexpressions: Boolean,
       foldConstants: Boolean,
       windowSortKernels: Boolean,
-      scanRowFilters: Boolean
+      scanRowFilters: Boolean,
+      dictionaryCodes: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -144,7 +148,8 @@ object Lowering:
               footerCache = footerCache,
               commonSubexpressions = commonSubexpressions,
               foldConstants = foldConstants,
-              scanRowFilters = scanRowFilters
+              scanRowFilters = scanRowFilters,
+              dictionaryCodes = dictionaryCodes
             )
         )
       ) match
@@ -186,6 +191,7 @@ object Lowering:
       p match
         case Scan(source, _, read, filter) =>
           ScanOp(source, p.schema, read, filter, scanFilters(p.output), footerCache)
+            .withDictionaryCodes(dictionaryCodes)
         case Values(columns, rows) if columns.isEmpty && rows.size == 1 =>
           // One row without columns (a query without FROM), as the planner plans it
           SingleRowOp()

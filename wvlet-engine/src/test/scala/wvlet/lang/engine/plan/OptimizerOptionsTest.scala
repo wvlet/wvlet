@@ -93,6 +93,7 @@ class OptimizerOptionsTest extends UniTest:
         "pack_agg_keys",
         "stream_pack_agg_keys",
         "long_decimal_keys",
+        "dictionary_group_keys",
         "fold_constants",
         "fold_bound_constants",
         "unwrap_casts",

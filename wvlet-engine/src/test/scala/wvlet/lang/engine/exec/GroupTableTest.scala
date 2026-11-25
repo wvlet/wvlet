@@ -120,4 +120,85 @@ class GroupTableTest extends UniTest:
     rows.foreach(r => r.map(i => h(i) & 0xffff0000).distinct.size > 1 shouldBe true)
   }
 
+  /** Strings with dictionary codes: code -1 for NULLs and for rows marked "?" (PLAIN rows) */
+  private def coded(dict: IndexedSeq[String], xs: String*): StrVec =
+    val nulls =
+      if xs.contains(null) then
+        xs.map(_ == null).toArray
+      else
+        null
+    val codes =
+      xs.map(x =>
+          if x == null || x.endsWith("?") then
+            -1
+          else
+            dict.indexOf(x)
+        )
+        .toArray
+    StrVec(
+      xs.map(x =>
+          if x == null then
+            null
+          else
+            x.stripSuffix("?")
+        )
+        .toArray,
+      nulls,
+      codes,
+      dict.size
+    )
+
+  private def plain(v: StrVec): StrVec = StrVec(v.values, v.nulls)
+
+  private def sameGroups(keys: Array[Vec], n: Int): Seq[Int] =
+    val types = IndexedSeq.fill(keys.length)(PType.Str)
+    val t     = GroupTable(types)
+    val ids   = t.groupIds(keys, n)
+    val p     = GroupTable(types)
+    ids.toSeq shouldBe p.groupIds(keys.map(k => plain(k.asInstanceOf[StrVec])), n).toSeq
+    t.keyVectors().map(_.asInstanceOf[StrVec].values.toSeq).toSeq shouldBe
+      p.keyVectors().map(_.asInstanceOf[StrVec].values.toSeq).toSeq
+    ids.toSeq
+
+  test("should group dictionary-coded strings as their values, with NULLs and rows without codes") {
+    val flags  = IndexedSeq("A", "N", "R")
+    val status = IndexedSeq("F", "O")
+    val n      = 40
+    val f      = (0 until n).map(i =>
+      if i % 13 == 0 then
+        null
+      else if i % 7 == 0 then
+        flags(i % 3) + "?"
+      else
+        flags(i % 3)
+    )
+    val s   = (0 until n).map(i => status((i / 3) % 2))
+    val ids = sameGroups(Array(coded(flags, f*), coded(status, s*)), n)
+    ids.distinct.size shouldBe 8
+  }
+
+  test("should keep group ids across batches whose dictionaries differ") {
+    val types = IndexedSeq(PType.Str)
+    val t     = GroupTable(types)
+    val p     = GroupTable(types)
+    val b1    = coded(IndexedSeq("x", "y"), "x", "y", "x", "x", "y", "y")
+    // The same strings under other codes, and a new one
+    val b2 = coded(IndexedSeq("z", "y", "x"), "y", "z", "x", "z", "y", "x")
+    t.groupIds(Array(b1), 6).toSeq shouldBe p.groupIds(Array(plain(b1)), 6).toSeq
+    t.groupIds(Array(b2), 6).toSeq shouldBe p.groupIds(Array(plain(b2)), 6).toSeq
+    t.groupIds(Array(b2), 6).toSeq shouldBe Seq(1, 2, 0, 2, 1, 0)
+    // Pre-computed hashes take the same path
+    t.groupIds(Array(b1), 6, t.keyHashes(Array(b1), 6)).toSeq shouldBe Seq(0, 1, 0, 0, 1, 1)
+  }
+
+  test("should group by values when the dictionary has as many entries as the rows") {
+    val dict = IndexedSeq("a", "b", "c", "d")
+    sameGroups(Array(coded(dict, "a", "b", "c", "a", "d")), 5) shouldBe Seq(0, 1, 2, 0, 3)
+  }
+
+  test("should carry dictionary codes through gather, with -1 for padding") {
+    val v = coded(IndexedSeq("p", "q"), "q", "p", null).gather(Array(1, -1, 0, 2), 4)
+    v.asInstanceOf[StrVec].codes.toSeq shouldBe Seq(0, -1, 1, -1)
+  }
+
 end GroupTableTest

@@ -247,6 +247,9 @@ final class GroupTable(
 
   def groupIds(keys: Array[Vec], n: Int): Array[Int] =
     val norm = normalize(keys)
+    val ids  = dictionaryIds(norm, n, null)
+    if ids != null then
+      return ids
     if hashBuf == null || hashBuf.length < n then
       hashBuf = new Array[Int](n)
     else
@@ -257,11 +260,113 @@ final class GroupTable(
     * [[groupIds]] with each row's hash already computed by [[keyHashes]] (of a table with the same
     * key types), so the keys are not hashed again
     */
-  def groupIds(keys: Array[Vec], n: Int, keyHashes: Array[Int]): Array[Int] = assignIds(
-    normalize(keys),
-    n,
-    keyHashes
-  )
+  def groupIds(keys: Array[Vec], n: Int, keyHashes: Array[Int]): Array[Int] =
+    val norm = normalize(keys)
+    val ids  = dictionaryIds(norm, n, keyHashes)
+    if ids != null then
+      ids
+    else
+      assignIds(norm, n, keyHashes)
+
+  // Per batch, the group of each combination of dictionary codes seen so far (-1 when not yet),
+  // and each row's combination (-1 when a key has no code), reused across batches
+  private var codeGroups: Array[Int] = null
+  private var rowCodes: Array[Int]   = null
+
+  /**
+    * Group ids through the dictionary codes of the keys ([[StrVec.codes]]): the first row of each
+    * code combination finds or inserts its group as [[assignIds]] does, and the other rows with the
+    * same combination take that group. Rows with a key without a code (-1) find their group one by
+    * one. `h` holds the row hashes, or is null to hash only the rows that look up a group.
+    *
+    * Null (the caller takes [[assignIds]]) unless every key is a string carrying codes and the
+    * combinations number at most half the rows, as DuckDB's dictionary aggregation without a
+    * dictionary id: a batch's codes don't identify entries of other batches, so each batch looks
+    * its combinations up again
+    */
+  private def dictionaryIds(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
+    if width == 0 then
+      return null
+    var combos = 1L
+    var k      = 0
+    while k < width do
+      norm(k) match
+        case v: StrVec if v.codes != null && stores(k).isInstanceOf[StrStore] =>
+          combos *= v.dictSize
+        case _ =>
+          return null
+      if combos * 2 > n then
+        return null
+      k += 1
+    val m = combos.toInt
+    if codeGroups == null || codeGroups.length < m then
+      codeGroups = new Array[Int](math.max(m, 64))
+    java.util.Arrays.fill(codeGroups, 0, m, -1)
+    if rowCodes == null || rowCodes.length < n then
+      rowCodes = new Array[Int](n)
+    val c = rowCodes
+    // Mixed-radix combination of the codes, column by column
+    java.util.Arrays.fill(c, 0, n, 0)
+    k = 0
+    while k < width do
+      val v     = norm(k).asInstanceOf[StrVec]
+      val codes = v.codes
+      val size  = v.dictSize
+      var i     = 0
+      while i < n do
+        val x = codes(i)
+        if c(i) >= 0 then
+          c(i) =
+            if x >= 0 then
+              c(i) * size + x
+            else
+              -1
+        i += 1
+      k += 1
+    val ids = new Array[Int](n)
+    var i   = 0
+    while i < n do
+      val x = c(i)
+      ids(i) =
+        if x < 0 then
+          findOrInsert(norm, i, h)
+        else
+          val g = codeGroups(x)
+          if g >= 0 then
+            g
+          else
+            val ng = findOrInsert(norm, i, h)
+            codeGroups(x) = ng
+            ng
+      i += 1
+    ids
+
+  end dictionaryIds
+
+  /** The group of row i, inserted when new: hashed here when `h` is null */
+  private def findOrInsert(norm: Array[Vec], i: Int, h: Array[Int]): Int =
+    val hash =
+      if h != null then
+        h(i)
+      else
+        strRowHash(norm, i)
+    val g = find(norm, i, hash)
+    if g >= 0 then
+      g
+    else
+      insert(norm, i, hash)
+
+  /** The hash of row i of string keys, as [[hashesInto]] computes it with [[StrStore.hashInto]] */
+  private def strRowHash(norm: Array[Vec], i: Int): Int =
+    var x = 0
+    var k = 0
+    while k < width do
+      val v = norm(k).asInstanceOf[StrVec]
+      val s = v.values(i)
+      if s != null && !v.isNull(i) then
+        x = x * 31 + s.hashCode
+      k += 1
+    fmix(x)
 
   private def assignIds(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
     val ids = new Array[Int](n)

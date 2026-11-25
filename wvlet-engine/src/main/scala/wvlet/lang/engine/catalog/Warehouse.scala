@@ -56,7 +56,9 @@ private[engine] class DataFilePart(
     val (cols, types, options) = ParquetSource.readOptions(schema, spec)
     val one                    = dataset.withFiles(Seq(file))
     ParquetSource.closing(
-      one.readBatches(options).map(b => ParquetSource.toBatch(b, cols, types)),
+      one
+        .readBatches(options)
+        .map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes)),
       () => one.close()
     )
 
