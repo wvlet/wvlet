@@ -180,6 +180,70 @@ object Stats:
     counted.getOrElse(rows(p) * conds.map(selectivity(p, _, options)).product)
 
   /**
+    * Estimated rows of an aggregation, possibly under filters, projections, sorts and limits (an
+    * aggregated subquery), from the plan below it: inner hash joins estimated as the join search
+    * estimates them ([[CardinalityEstimator.joinOutputRows]]), filters by the [[selectivity]] of
+    * each conjunct, and the aggregation as at most the product of its keys' distinct values. At
+    * most [[rows]]. None when p is not an aggregation (`aggregate_input_rows`), as [[rows]] passes
+    * the probe source's rows through joins, which makes an aggregated star join as large as its
+    * fact table (TPC-DS q73, q34, q68)
+    */
+  def aggregatedRows(p: RuntimePlan, options: OptimizerOptions): Option[Double] =
+    def aggregated(p: RuntimePlan): Boolean =
+      p match
+        case Aggregate(_, _, _, _) =>
+          true
+        case Filter(child, _, _) =>
+          aggregated(child)
+        case Project(child, _, _) =>
+          aggregated(child)
+        case Sort(child, _, _) =>
+          aggregated(child)
+        case Limit(child, _, _) =>
+          aggregated(child)
+        case _ =>
+          false
+    Option.when(options.isEnabled(Optimization.AggregateInputRows) && aggregated(p))(
+      math.min(rows(p), treeRows(p, options))
+    )
+
+  /** Estimated rows of p as [[aggregatedRows]] reads the plan below an aggregation */
+  private def treeRows(p: RuntimePlan, options: OptimizerOptions): Double =
+    p match
+      case Filter(child, cond, literalCounts) =>
+        treeRows(child, options) *
+          FactorOr
+            .conjuncts(cond.expr)
+            .map(c => selectivity(child, JoinCondition(BExpr(c), literalCounts), options))
+            .product
+      case Project(child, _, _) =>
+        treeRows(child, options)
+      case Sort(child, _, limit) =>
+        val r = treeRows(child, options)
+        limit.map(l => math.min(l.toDouble, r)).getOrElse(r)
+      case Limit(child, limit, _) =>
+        math.min(limit.toDouble, treeRows(child, options))
+      case Aggregate(child, keys, _, _) =>
+        if keys.isEmpty then
+          1.0
+        else
+          val r = treeRows(child, options)
+          groups(child, keys.map(_.expr)).map(math.min(_, r)).getOrElse(r)
+      case Join(left, right, JoinKind.Inner, lk, rk, _, _) if lk.nonEmpty =>
+        CardinalityEstimator.joinOutputRows(
+          treeRows(left, options),
+          lk.map(k => distinct(left, k.expr)),
+          treeRows(right, options),
+          rk.map(k => distinct(right, k.expr))
+        )
+      case Join(left, _, JoinKind.Left | JoinKind.Semi | JoinKind.Anti, lk, _, _, _)
+          if lk.nonEmpty =>
+        // Every output row comes from a left row, as for rows
+        treeRows(left, options)
+      case other =>
+        rows(other)
+
+  /**
     * Estimated fraction of the rows of p passing a condition: 1 / ndv for `x = literal` (n / ndv
     * for `x in (n literals)`), as in DuckDB, [[PrefixLike.Selectivity]] for `x like 'p%'` (when
     * `prefix_like_selectivity` is on), and [[CardinalityEstimator.DefaultSelectivity]] otherwise

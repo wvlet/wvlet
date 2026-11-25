@@ -131,8 +131,17 @@ object ReorderJoins extends Pass:
         }
         // Pushed into the input as far as filters go, so that a second run of the passes over
         // the ordered tree (the binder optimizes some inputs before their parents) keeps it
-        val p = PushDownFilters.filter(inputs(i), local, ctx)
-        (p, Stats.filteredRows(inputs(i), local, ctx.options))
+        val p    = PushDownFilters.filter(inputs(i), local, ctx)
+        val rows = Stats.filteredRows(inputs(i), local, ctx.options)
+        // An aggregated input, estimated from the plan below its aggregation
+        // (`aggregate_input_rows`), scaled by the same local conditions
+        val estimate = Stats
+          .aggregatedRows(inputs(i), ctx.options)
+          .map(r => rows * r / math.max(1.0, Stats.rows(inputs(i))))
+          .getOrElse(rows)
+        if estimate < rows then
+          ctx.fired(Optimization.AggregateInputRows.name)
+        (p, estimate)
       }
     val edges =
       condRefs
