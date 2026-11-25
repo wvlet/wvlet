@@ -66,6 +66,8 @@ object EngineFunctionNamesGenerator extends LogSupport:
        |  val names: Set[String] = Set(
        |${names}
        |  )
+       |
+       |end WvletEngineFunctionNames
        |""".stripMargin
 
   def main(args: Array[String]): Unit =

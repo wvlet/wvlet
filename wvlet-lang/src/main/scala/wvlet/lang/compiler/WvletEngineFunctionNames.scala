@@ -303,3 +303,5 @@ object WvletEngineFunctionNames:
     "zip_with",
     "||"
   )
+
+end WvletEngineFunctionNames
