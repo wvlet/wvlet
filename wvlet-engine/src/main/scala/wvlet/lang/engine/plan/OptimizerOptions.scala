@@ -445,6 +445,13 @@ enum Optimization(val name: String):
     */
   case EagerAggregation extends Optimization("eager_aggregation")
 
+  /**
+    * Hash aggregations fold their counts and decimal sums in one pass over each batch's rows, so
+    * that the per-group updates of different aggregates overlap instead of each aggregate waiting
+    * on its previous row's store (TPC-H q1 has nine such partial aggregates over four groups)
+    */
+  case FusedAccumulators extends Optimization("fused_accumulators")
+
 end Optimization
 
 object Optimization:

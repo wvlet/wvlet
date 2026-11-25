@@ -46,7 +46,8 @@ object Parallelizer:
       packAggKeys: Boolean = true,
       unionPipelines: Boolean = true,
       streamPackAggKeys: Boolean = true,
-      longDecimalKeys: Boolean = true
+      longDecimalKeys: Boolean = true,
+      fusedAccumulators: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -61,7 +62,8 @@ object Parallelizer:
         packAggKeys,
         unionPipelines,
         streamPackAggKeys,
-        longDecimalKeys
+        longDecimalKeys,
+        fusedAccumulators
       )
       rewrite(op, runner)
 
@@ -80,7 +82,8 @@ object Parallelizer:
       packAggKeys: Boolean,
       unionPipelines: Boolean,
       streamPackAggKeys: Boolean,
-      longDecimalKeys: Boolean
+      longDecimalKeys: Boolean,
+      fusedAccumulators: Boolean
   )
 
   /**
@@ -383,7 +386,8 @@ object Parallelizer:
             o.adaptivePartials,
             o.packAggKeys,
             o.streamPackAggKeys,
-            o.longDecimalKeys
+            o.longDecimalKeys,
+            o.fusedAccumulators
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -704,7 +708,8 @@ private[plan] object TwoPhaseAgg:
       adaptivePartials: Boolean = false,
       packAggKeys: Boolean = false,
       streamPackAggKeys: Boolean = false,
-      longDecimalKeys: Boolean = false
+      longDecimalKeys: Boolean = false,
+      fusedAccumulators: Boolean = true
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -734,6 +739,7 @@ private[plan] object TwoPhaseAgg:
               sizer.report,
               skip
             ).withKeyOptions(streamPackAggKeys, longDecimalKeys)
+              .withFusedAccumulators(fusedAccumulators)
         )
       ),
       partialSchema,
@@ -742,10 +748,9 @@ private[plan] object TwoPhaseAgg:
       release,
       tail.map(t =>
         (x: Operator) =>
-          HashAggOp(t(x), a.keys, partialAggs, partialSchema).withKeyOptions(
-            streamPackAggKeys,
-            longDecimalKeys
-          )
+          HashAggOp(t(x), a.keys, partialAggs, partialSchema)
+            .withKeyOptions(streamPackAggKeys, longDecimalKeys)
+            .withFusedAccumulators(fusedAccumulators)
       )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)

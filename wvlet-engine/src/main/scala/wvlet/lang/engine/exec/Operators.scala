@@ -717,6 +717,20 @@ class HashAggOp(
     longDecimalKeys = longDecimals
     this
 
+  /**
+    * Whether counts and decimal sums are folded in one pass over each batch ([[FusedAccumulators]],
+    * `fused_accumulators`)
+    */
+  var fuseAccumulators: Boolean = true
+
+  /** Set [[fuseAccumulators]] */
+  def withFusedAccumulators(enabled: Boolean): this.type =
+    fuseAccumulators = enabled
+    this
+
+  // Aggregates without FILTER, which FusedAccumulators may fold
+  private lazy val unfiltered: Array[Boolean] = aggs.map(_.filter.isEmpty).toArray
+
   // Scratch arrays reused across batches: accumulators read group ids only during update
   private var idx: Array[Int] = Array.emptyIntArray
   private var gs: Array[Int]  = Array.emptyIntArray
@@ -725,38 +739,71 @@ class HashAggOp(
 
   /** Folds the rows of b, in groups `groups`, into `accs` sized for `numGroups` groups */
   private def update(accs: IndexedSeq[Accumulator], groups: Array[Int], numGroups: Int, b: Batch) =
+    // With fusion, arguments are evaluated up front and the fusable accumulators fold first
+    var args: Array[Array[Vec]] = null
+    var folded: Array[Boolean]  = null
+    if fuseAccumulators && accs.size > 1 then
+      accs.foreach(_.ensureGroups(numGroups))
+      args = aggs.map(_.args.map(_.eval(b)).toArray).toArray
+      folded = FusedAccumulators.update(accs, unfiltered, args, groups, b.size, numGroups)
     var a = 0
     while a < accs.size do
-      val agg = aggs(a)
-      val acc = accs(a)
-      acc.ensureGroups(numGroups)
-      val argVecs = agg.args.map(_.eval(b)).toArray
-      agg.filter match
-        case Some(f) =>
-          val mask = Kernels.trueMask(f.eval(b))
-          var cnt  = 0
-          var i    = 0
-          while i < b.size do
-            if mask(i) then
-              cnt += 1
-            i += 1
-          if idx.length < cnt then
-            idx = new Array[Int](cnt)
-            gs = new Array[Int](cnt)
-          var j = 0
-          i = 0
-          while i < b.size do
-            if mask(i) then
-              idx(j) = i
-              gs(j) = groups(i)
-              j += 1
-            i += 1
-          acc.update(gs, cnt, argVecs.map(_.gather(idx, cnt)))
-        case None =>
-          acc.update(groups, b.size, argVecs)
+      if folded == null || !folded(a) then
+        updateOne(
+          aggs(a),
+          accs(a),
+          groups,
+          numGroups,
+          b,
+          if args == null then
+            null
+          else
+            args(a)
+        )
       a += 1
 
   end update
+
+  /** Folds the rows of b into one accumulator, with its arguments if already evaluated */
+  private def updateOne(
+      agg: AggCall,
+      acc: Accumulator,
+      groups: Array[Int],
+      numGroups: Int,
+      b: Batch,
+      evaluated: Array[Vec]
+  ): Unit =
+    acc.ensureGroups(numGroups)
+    val argVecs =
+      if evaluated != null then
+        evaluated
+      else
+        agg.args.map(_.eval(b)).toArray
+    agg.filter match
+      case Some(f) =>
+        val mask = Kernels.trueMask(f.eval(b))
+        var cnt  = 0
+        var i    = 0
+        while i < b.size do
+          if mask(i) then
+            cnt += 1
+          i += 1
+        if idx.length < cnt then
+          idx = new Array[Int](cnt)
+          gs = new Array[Int](cnt)
+        var j = 0
+        i = 0
+        while i < b.size do
+          if mask(i) then
+            idx(j) = i
+            gs(j) = groups(i)
+            j += 1
+          i += 1
+        acc.update(gs, cnt, argVecs.map(_.gather(idx, cnt)))
+      case None =>
+        acc.update(groups, b.size, argVecs)
+
+  end updateOne
 
   /** Row i of b as its own group: the keys of b and each aggregate over one row */
   private def passThrough(b: Batch): Batch =
