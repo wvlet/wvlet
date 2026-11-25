@@ -429,6 +429,15 @@ enum Optimization(val name: String):
     */
   case LeftGroupKeySemiJoins extends Optimization("left_group_key_semi_joins")
 
+  /**
+    * Aggregate the side of an inner join that an aggregation's calls read by its join keys and the
+    * group keys it holds before the join, when that is estimated to reduce it at least 4 times and
+    * the other side keeps most of its rows: the join then probes, and gathers the other side's
+    * group keys for, one row per partial group (TPC-DS q04, q11, q74 sum the sales per customer key
+    * and year before joining the seven customer strings they group by)
+    */
+  case EagerAggregation extends Optimization("eager_aggregation")
+
 end Optimization
 
 object Optimization:

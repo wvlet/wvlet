@@ -148,6 +148,16 @@ class Optimizer(
       PlanValidator.validate(next)
     next
 
+  /**
+    * The plan with its aggregations computed eagerly below joins ([[EagerAggregation]]), for a
+    * shared CTE body once its readers' filters are pushed into it
+    */
+  def eagerAggregation(p: RuntimePlan): RuntimePlan =
+    val next = EagerAggregation.run(p, ctx)
+    if options.validatePlans && (next ne p) then
+      PlanValidator.validate(next)
+    next
+
   /** The plan with the row-group filters of its scans recomputed ([[PushScanFilters]]) */
   def pushScanFilters(p: RuntimePlan): RuntimePlan =
     val next = PushScanFilters.run(p, ctx)
@@ -175,6 +185,7 @@ object Optimizer:
     ReduceSemiJoins,
     ReorderJoins,
     GroupKeySemiJoins,
+    EagerAggregation,
     PruneColumns,
     PushScanFilters
   )

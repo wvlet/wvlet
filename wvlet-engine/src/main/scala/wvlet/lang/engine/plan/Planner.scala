@@ -1472,8 +1472,19 @@ class Planner(
           runtimeOptimizer.reduceSemiJoins(p, keep.map(out(_).id).toSet)
         else
           p
-      // A reduced body's readers read only its distinct rows, as do the CTE readers in it
-      val op       = Planner.this.lower(runtimeOptimizer.pushScanFilters(pruned), reduced)
+      // The readers' filters pushed into the body can make an aggregation of it worth computing
+      // below its joins (TPC-DS q04, q11: `d_year in (2001, 2002)`); optimizeRuntime already ran
+      // the pass over the body without them. A reduced body's readers read only its
+      // distinct rows, as do the CTE readers in it
+      val op = Planner.this.lower(
+        runtimeOptimizer.pushScanFilters(
+          if pushed.isEmpty then
+            pruned
+          else
+            runtimeOptimizer.eagerAggregation(pruned)
+        ),
+        reduced
+      )
       val pos      = pruned.output.map(_.id).zipWithIndex.toMap
       val selected =
         if pruned.output.size == keep.size then
@@ -1485,6 +1496,8 @@ class Planner(
             Schema(keep.map(i => body.schema(i)))
           )
       optimizePhysical(selected)
+
+    end lower
 
     /** Whether the body can be planned again: finalized, and not computed yet */
     def canReplan: Boolean = bound != null && finalized.exists(!_._2.isComputed)

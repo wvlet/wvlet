@@ -253,8 +253,11 @@ object Stats:
       math.min(rows(p), treeRows(p, options))
     )
 
-  /** Estimated rows of p as [[aggregatedRows]] reads the plan below an aggregation */
-  private def treeRows(p: RuntimePlan, options: OptimizerOptions): Double =
+  /**
+    * Estimated rows of p as [[aggregatedRows]] reads the plan below an aggregation: inner hash
+    * joins as the join search estimates them, filters by their conjuncts' selectivity
+    */
+  private[runtime] def treeRows(p: RuntimePlan, options: OptimizerOptions): Double =
     p match
       case Filter(child, cond, literalCounts) =>
         treeRows(child, options) *
