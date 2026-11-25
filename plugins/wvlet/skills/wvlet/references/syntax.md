@@ -58,7 +58,7 @@ val t(id, given, family, secret) = [[1, 'Ada', 'Lovelace', 'x']]
 
 from t
 add given + ' ' + family as full_name  -- append to the right
-prepend id * 100 as key                -- insert on the left
+add to left id * 100 as key            -- insert on the left
 exclude secret
 rename given as given_name
 shift full_name                        -- move to the left
@@ -274,5 +274,5 @@ These words cannot be bare column or table names. Quote them with back quotes
 (`` `order` ``) or pick another name. The list is generated from the parser.
 
 <!-- BEGIN GENERATED: reserved-keywords -->
-`add`, `agg`, `all`, `and`, `append`, `as`, `asc`, `asof`, `be`, `between`, `by`, `case`, `contain`, `create`, `cross`, `debug`, `dedup`, `def`, `delete`, `desc`, `describe`, `distinct`, `drop`, `else`, `escape`, `except`, `exclude`, `execute`, `exists`, `explain`, `export`, `extends`, `false`, `first`, `for`, `from`, `full`, `group`, `having`, `if`, `import`, `in`, `inline`, `inner`, `intersect`, `is`, `join`, `last`, `left`, `let`, `like`, `limit`, `map`, `model`, `native`, `not`, `null`, `nulls`, `of`, `on`, `or`, `order`, `over`, `package`, `partition`, `pivot`, `prepend`, `rename`, `right`, `rows`, `run`, `sample`, `save`, `select`, `shift`, `should`, `show`, `test`, `then`, `this`, `to`, `true`, `truncate`, `type`, `unpivot`, `update`, `use`, `val`, `when`, `where`, `with`
+`add`, `agg`, `all`, `and`, `append`, `as`, `asc`, `asof`, `be`, `between`, `by`, `case`, `contain`, `create`, `cross`, `debug`, `dedup`, `def`, `delete`, `desc`, `describe`, `distinct`, `drop`, `else`, `escape`, `except`, `exclude`, `execute`, `exists`, `explain`, `export`, `extends`, `false`, `first`, `for`, `from`, `full`, `group`, `having`, `if`, `import`, `in`, `inline`, `inner`, `intersect`, `is`, `join`, `last`, `left`, `let`, `like`, `limit`, `map`, `model`, `native`, `not`, `null`, `nulls`, `of`, `on`, `or`, `order`, `over`, `package`, `partition`, `pivot`, `rename`, `right`, `rows`, `run`, `sample`, `save`, `select`, `shift`, `should`, `show`, `test`, `then`, `this`, `to`, `true`, `truncate`, `type`, `unpivot`, `update`, `use`, `val`, `when`, `where`, `with`
 <!-- END GENERATED: reserved-keywords -->

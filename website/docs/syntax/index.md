@@ -137,7 +137,7 @@ These operators help you manipulate columns without changing the number of rows.
 | Operator | Description | SQL Equivalent |
 |----------|-------------|----------------|
 | [__add__ `expr` __as__ `name`](#add) | Add column to the right | `SELECT *, expr AS name` |
-| [__prepend__ `expr` __as__ `name`](#prepend) | Add column to the left | - |
+| [__add to left__ `expr` __as__ `name`](#add-to-left) | Add column to the left | `SELECT expr AS name, *` |
 | [__exclude__ `col1`, `col2`](#exclude) | Remove specific columns | - |
 | [__rename__ `old` __as__ `new`](#rename) | Rename columns | `old AS new` |
 | [__shift__ `col1`, `col2`](#shift) | Move columns to left | - |
@@ -835,14 +835,14 @@ limit 5;
 └────────────────────┘
 ```
 
-### prepend
+### add to left
 
-Prepend a new column to the left side of the input:
+Add a new column to the left side of the input. `add` places new columns on the right by default, and `add to right` says so explicitly:
 
 ```wvlet
 from nation
 select n_name
-prepend n_name.substring(1, 3) as prefix
+add to left n_name.substring(1, 3) as prefix
 limit 5;
 
 ┌────────┬───────────┐

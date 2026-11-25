@@ -77,7 +77,6 @@ export const language = <languages.IMonarchLanguage> {
         "inner",
         "cross",
         "add",
-        "prepend",
         "exclude",
         "rename",
         "shift",

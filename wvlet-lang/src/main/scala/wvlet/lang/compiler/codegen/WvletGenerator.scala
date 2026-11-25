@@ -395,7 +395,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case a: AddColumnsToRelation =>
         unary(a, "add", a.newColumns)
       case p: PrependColumnsToRelation =>
-        unary(p, "prepend", p.newColumns)
+        unary(p, "add to left", p.newColumns)
       case s: ShiftColumns =>
         if s.isLeftShift then
           unary(s, "shift", s.shiftItems)

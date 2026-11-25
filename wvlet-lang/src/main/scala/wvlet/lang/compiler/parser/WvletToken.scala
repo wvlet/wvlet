@@ -216,7 +216,6 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // column modification operators
   case ADD      extends WvletToken(Keyword, "add")
-  case PREPEND  extends WvletToken(Keyword, "prepend")
   case EXCLUDE  extends WvletToken(Keyword, "exclude")
   case RENAME   extends WvletToken(Keyword, "rename")
   case SHIFT    extends WvletToken(Keyword, "shift")
@@ -376,7 +375,6 @@ object WvletToken:
     WvletToken.AGG,
     WvletToken.ADD,
     WvletToken.EXCLUDE,
-    WvletToken.PREPEND,
     WvletToken.SHIFT,
     WvletToken.RENAME,
     WvletToken.DISTINCT,

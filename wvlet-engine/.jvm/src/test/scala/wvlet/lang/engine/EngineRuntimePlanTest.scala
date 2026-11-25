@@ -92,12 +92,13 @@ class EngineRuntimePlanTest extends UniTest:
     // These forms fail in the shared Binder, or the runtime binder raises the same error itself
     def errorOf(f: => Any): String = intercept[wvlet.lang.api.WvletLangException](f).getMessage
     Seq(
-      "from nation add count(*) as n"             -> "Aggregate function count is not allowed here",
-      "from nation prepend sum(n_nationkey) as n" -> "Aggregate function sum is not allowed here",
+      "from nation add count(*) as n" -> "Aggregate function count is not allowed here",
+      "from nation add to left sum(n_nationkey) as n" ->
+        "Aggregate function sum is not allowed here",
       "from nation add max(n_nationkey) over () as m, count(*) as c" ->
         "Aggregate function count is not allowed here",
-      "from nation add unnest([1, 2]) as u"     -> "Unsupported function in the engine: unnest",
-      "from nation prepend unnest([1, 2]) as u" -> "Unsupported function in the engine: unnest",
+      "from nation add unnest([1, 2]) as u"         -> "Unsupported function in the engine: unnest",
+      "from nation add to left unnest([1, 2]) as u" -> "Unsupported function in the engine: unnest",
       "from nation select n_name, unnest([1, 2]) as u, row_number() over (order by n_name) as rn" ->
         "Window functions are not supported here"
     ).foreach { (query, message) =>
@@ -297,7 +298,7 @@ class EngineRuntimePlanTest extends UniTest:
     val query =
       """from nation
         |add n_nationkey + 1 as k, upper(n_name) as n_name
-        |prepend n_regionkey * 10 as r10
+        |add to left n_regionkey * 10 as r10
         |exclude n_comment
         |rename n_nationkey as id
         |shift k

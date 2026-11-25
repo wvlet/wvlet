@@ -75,7 +75,7 @@ The usual order is `from` → `where` → `add` → `group by` → `agg` → `wh
 | `from` table / file / values | `from orders`, `from 'data.parquet'`, `from [[1, 'a'], [2, 'b']]` |
 | `where` | `where status = 'paid'` |
 | `select`, `select distinct` | `select id, amount`, `select distinct status` |
-| `add`, `prepend` | `add amount * 1.1 as with_tax`, `prepend amount * 2 as doubled` |
+| `add`, `add to left` | `add amount * 1.1 as with_tax`, `add to left amount * 2 as doubled` |
 | `exclude`, `rename`, `shift` | `exclude password`, `rename amount as price`, `shift id`, `shift to right note` |
 | `group by` + `agg` | `group by k agg _.count as n, v.sum as total` |
 | `count` | `from orders count` |
