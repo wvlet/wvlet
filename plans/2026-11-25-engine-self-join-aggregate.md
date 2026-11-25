@@ -16,15 +16,16 @@
 Lane: Express — an engine optimization behind a new toggle, pre-approved by the engine optimization loop; no user-facing surface.
 
 - New toggle `self_join_aggregate`, applied inside the `ReduceSemiJoins` walk (main plans and shared CTE bodies), so it sees the semi joins that pass creates and its duplicate-insensitive context.
-- Match `L ⋉ R on L.k = R.k, residual L.x <> R.x` where R is a bare full scan of table T, and L's k and x trace (through filters, column projections, inner joins, the left side of semi/anti joins, sorts, limits) to one scan of the same T reading the same columns. Exclude float/double x (NaN ordering vs `<>`).
-- General form (q94): `filter(L, x is not null) ⋉ (T group by k having min(x) <> max(x)) on k`. It stays a semi join over L, so bag semantics are kept without needing a duplicate-insensitive context.
-- Duplicate-insensitive form (q95): when L is also a bare full scan of T and the parent reads only k, the whole join becomes the group-by keys alone, as DuckDB does: one scan, one aggregation, no join.
+- Match `T ⋉ T on l.k = T.k, residual l.x <> T.x` where both sides are whole scans of the same table reading the same columns. Exclude float/double x (NaN ordering vs `<>`).
+- Duplicate-insensitive form (q95): when the parent reads only k, the whole join becomes the group-by keys alone, as DuckDB does: one scan, one aggregation, no join.
+- Otherwise: `filter(T, x is not null) ⋉ (T where k is not null group by k having min(x) <> max(x)) on k`. It stays a semi join, so bag semantics are kept.
+- Not applied to a filtered left side (q94, q16, TPC-H q21), though the model covers it: the SF10 A/B showed q16 1.46x and q21 1.11x slower, since aggregating all of T costs more than the hash table it replaces when the probe side is small.
 - New columns (min, max, group key) get ids from the query's binder through the optimizer context, keeping ids unique per query.
 - Lean model next to `WvletFormal/SemiReduce/` (bag semantics with NULL x and NULL k), trace fixture, and a conformance test replaying it against the rule, per design/formal-verification.md.
-- Tests: rule fires / doesn't fire (filtered R, different table, different column, float x, needed x), result equality with the toggle off including NULL x/k; golden plans for q95/q94 regenerated; SF10 A/B on q95, q94 plus unchanged-plan controls.
+- Tests: the conformance fixture (EXISTS, IN, DISTINCT over whole and filtered left sides, NULL x and k) on and off and against DuckDB; SF10 A/B on q95 plus unchanged-plan controls.
 
 ## Alternatives and Why Not?
 
 - **Separate pass after ReduceSemiJoins.** Loses the duplicate-insensitive context and `needed` columns, and the CTE body path calls only `reduceBody`.
 - **`count(distinct x) > 1` instead of min/max.** One call, but distinct counting is costlier than two running min/max values.
-- **Only the duplicate-insensitive form.** Misses q94, whose left side is a filtered join tree.
+- **Also rewrite a filtered left side.** Covered by the model, but slower at SF10 (see above).

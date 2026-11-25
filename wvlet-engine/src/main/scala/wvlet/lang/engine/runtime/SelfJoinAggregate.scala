@@ -93,7 +93,8 @@ object SelfJoinAggregate:
             IndexedSeq(BExpr(ref(m.leftKey))),
             IndexedSeq(BExpr(ref(key))),
             residual = None,
-            buildLeft = m.buildLeft
+            // The groups are at most the keys of T, which the left side reads all of
+            buildLeft = false
           )
 
   /**
@@ -106,8 +107,7 @@ object SelfJoinAggregate:
       leftValue: Column,
       table: Scan,
       k: Column,
-      x: Column,
-      buildLeft: Boolean
+      x: Column
   )
 
   private def matchSelfJoin(p: RuntimePlan): Option[SelfJoin] =
@@ -119,7 +119,7 @@ object SelfJoinAggregate:
             lk,
             rk,
             Some(res),
-            buildLeft
+            _
           ) if lk.size == 1 && (leftSource eq source) =>
         val leftCols  = left.columns.map(c => c.id -> c).toMap
         val rightCols = right.columns.map(c => c.id -> c).toMap
@@ -138,7 +138,7 @@ object SelfJoinAggregate:
           if comparable(x.ptype) && sourceIndex(left, lkc.id) == sourceIndex(right, k.id) &&
             sourceIndex(left, lx.id) == sourceIndex(right, x.id) &&
             sourceIndex(right, k.id) != sourceIndex(right, x.id)
-        yield SelfJoin(left, lkc, lx, right, k, x, buildLeft)
+        yield SelfJoin(left, lkc, lx, right, k, x)
       case _ =>
         None
 

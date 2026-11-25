@@ -79,8 +79,11 @@ class SelfJoinAggregateConformanceTest extends UniTest:
         other.toJSON
 
   // The fixture's table t(k, x, id), written by DuckDB to Parquet for both engines to read
-  private val path   = s"target/self-join-aggregate/t-${ProcessHandle.current().pid()}.parquet"
-  private val values = arr(fixture("t"))
+  private val dir  = s"target/self-join-aggregate/${ProcessHandle.current().pid()}"
+  private val path = s"${dir}/t.parquet"
+  // t with x as a double, which the rule leaves: NaN differs from itself only under <>
+  private val floatPath = s"${dir}/f.parquet"
+  private val values    = arr(fixture("t"))
     .map(r =>
       arr(r)
         .map {
@@ -100,9 +103,14 @@ class SelfJoinAggregateConformanceTest extends UniTest:
     "spec/tpch",
     Seq(
       s"create table t as select * from (${values}) as v(k, x, id)",
-      s"copy t to '${path}' (format parquet)"
+      s"copy t to '${path}' (format parquet)",
+      "create table f as select k, cast(x as double) as x, id from t",
+      s"copy f to '${floatPath}' (format parquet)"
     ),
-    e => e.catalog.registerParquet("t", path),
+    e =>
+      e.catalog.registerParquet("t", path)
+      e.catalog.registerParquet("f", floatPath)
+    ,
     options
   )
 
@@ -172,6 +180,18 @@ class SelfJoinAggregateConformanceTest extends UniTest:
         explain(engine, query) shouldContain "min(#"
       else
         explain(engine, query) shouldNotContain "min(#"
+    }
+  }
+
+  Seq(
+    "a float value"        -> "from f as t1, f as t2 where t1.k = t2.k and t1.x <> t2.x",
+    "different columns"    -> "from t as t1, t as t2 where t1.k = t2.k and t1.x <> t2.id",
+    "two different tables" -> "from t as t1, f as t2 where t1.k = t2.k and t1.id <> t2.id"
+  ).foreach { (label, join) =>
+    test(s"leave a self join on ${label}") {
+      val query = s"select distinct t1.k ${join}"
+      compiled(query)(conformance.assertMatches(query, _, engine))
+      explain(engine, query) shouldNotContain "min(#"
     }
   }
 
