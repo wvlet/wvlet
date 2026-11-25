@@ -77,16 +77,15 @@ object GroupKeySemiJoins extends Pass:
                 // B on the left of an inner join (`left_group_key_semi_joins`): the inputs swap,
                 // with the same build input, so that B is again on the right, and a projection
                 // restores the column order
-                Option
-                  .when(
-                    kind == JoinKind.Inner &&
-                      ctx.options.isEnabled(Optimization.LeftGroupKeySemiJoins)
-                  )(())
-                  .flatMap(_ => reduce(left, right, pairs.map(_.swap), ctx))
-                  .map { l =>
+                if kind == JoinKind.Inner &&
+                  ctx.options.isEnabled(Optimization.LeftGroupKeySemiJoins)
+                then
+                  reduce(left, right, pairs.map(_.swap), ctx).map { l =>
                     val swapped = Join(right, l, kind, rk, lk, j.residual, !j.buildLeft)
                     Project(swapped, j.output.map(BExpr.ref), j.output)
                   }
+                else
+                  None
               )
           else if kind == JoinKind.Right && !j.buildLeft then
             // The mirror of a left join, with B on the left. B is lowered first, but no runtime
