@@ -308,10 +308,16 @@ object JoinOrderOptimizer:
   /**
     * Whether a semi / anti join builds on its outer (left) input, as the subquery input has more
     * rows (`rows`) than the outer one (`otherRows`): by any margin with `semi_join_build_side`,
-    * otherwise by [[SwapBuildRatio]] as for other joins
+    * otherwise by [[SwapBuildRatio]] as for other joins. A subquery that `aggregates` keeps the
+    * ratio, as its estimate is its input's rows
     */
-  def swapSemiBuild(options: OptimizerOptions, rows: Double, otherRows: Double): Boolean =
-    if options.isEnabled(Optimization.SemiJoinBuildSide) then
+  def swapSemiBuild(
+      options: OptimizerOptions,
+      rows: Double,
+      otherRows: Double,
+      aggregates: Boolean
+  ): Boolean =
+    if options.isEnabled(Optimization.SemiJoinBuildSide) && !aggregates then
       options.isEnabled(Optimization.SwapBuildSide) && rows > otherRows
     else
       swapBuild(options, rows, otherRows)

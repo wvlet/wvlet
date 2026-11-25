@@ -63,7 +63,8 @@ object ReorderJoins extends Pass:
         val swap = JoinOrderOptimizer.swapSemiBuild(
           ctx.options,
           Stats.rows(right),
-          Stats.rows(left)
+          Stats.rows(left),
+          Stats.aggregates(right)
         )
         if swap == buildLeft then
           j

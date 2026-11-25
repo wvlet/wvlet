@@ -941,10 +941,12 @@ class RuntimeBinder(planner: Planner):
         JoinKind.Semi,
         IndexedSeq(lk),
         IndexedSeq(rk),
-        planner.swapSemiBuild(
-          innerRows.getOrElse(CardinalityEstimator.rows(inner.op)),
-          CardinalityEstimator.rows(p.op)
-        )
+        innerRows match
+          case Some(n) =>
+            // Exact rows: no aggregation to discount
+            planner.swapSemiBuild(n, CardinalityEstimator.rows(p.op), aggregates = false)
+          case None =>
+            planner.swapSemiBuild(inner.op, CardinalityEstimator.rows(p.op))
       )
 
     /** A semi or anti join of p with `inner`, on keys over each one's columns */

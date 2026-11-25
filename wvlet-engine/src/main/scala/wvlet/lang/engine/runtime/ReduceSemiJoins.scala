@@ -259,7 +259,7 @@ object ReduceSemiJoins extends Pass:
           val residual = shared.filterNot(keyConds).map(_.cond).reduceOption(and)
           val right    = joinOf(g.map(inputs), inner)
           Some((left: RuntimePlan) =>
-            // Build on the smaller side, as the binder does for IN: a much larger group probes
+            // Build on the smaller side, by the ratio of other joins: a much larger group probes
             // a table of the kept rows (a RIGHT SEMI join)
             Join(
               left,
