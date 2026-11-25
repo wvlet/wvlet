@@ -201,4 +201,112 @@ class GroupTableTest extends UniTest:
     v.asInstanceOf[StrVec].codes.toSeq shouldBe Seq(0, -1, 1, -1)
   }
 
+  /** Strings encoded over a shared dict, as a join build's columns ([[StrVec.encode]]) */
+  private def shared(dict: Array[String], xs: String*): StrVec =
+    val codes =
+      xs.map(x =>
+          if x == null then
+            -1
+          else
+            dict.indexOf(x)
+        )
+        .toArray
+    StrVec(xs.toArray, strs(xs*).nulls, codes, dict.length, dict)
+
+  private def values(t: GroupIndex): Seq[Seq[Any]] =
+    t.keyVectors().map(v => (0 until v.size).map(v.get)).toSeq
+
+  test("should group strings with a shared dict by their codes across batches") {
+    val dict  = Array("x", "y", "z")
+    val types = IndexedSeq(PType.Str, PType.Int64)
+    val t     = GroupTable(types, stableCodes = true)
+    val p     = GroupTable(types)
+    val b1    = Array[Vec](shared(dict, "x", "y", null, "x", "z"), longs(1, 1, 2, 1, 3))
+    val b2    = Array[Vec](shared(dict, "z", "x", null, "y"), longs(3, 2, 2, 1))
+    t.groupIds(b1, 5).toSeq shouldBe p.groupIds(b1.map(k => plainOf(k)), 5).toSeq
+    t.usesStableCodes shouldBe true
+    t.groupIds(b2, 4, t.keyHashes(b2, 4)).toSeq shouldBe p.groupIds(b2.map(plainOf), 4).toSeq
+    t.numGroups shouldBe 5
+    values(t) shouldBe values(p)
+    // The key strings keep the codes, so a final aggregation groups them by codes too
+    val k = t.keyVectors()(0).asInstanceOf[StrVec]
+    k.dict shouldBeTheSameInstanceAs dict
+    k.codes.toSeq shouldBe Seq(0, 1, -1, 2, 0)
+  }
+
+  test("should move code-keyed groups to their strings for a batch without the dict") {
+    val dict  = Array("x", "y")
+    val types = IndexedSeq(PType.Str)
+    val t     = GroupTable(types, stableCodes = true)
+    val p     = GroupTable(types)
+    val b1    = Array[Vec](shared(dict, "y", "x", "y"))
+    val b2    = Array[Vec](strs("x", "w", null))
+    val b3    = Array[Vec](shared(Array("w", "y"), "w", "y"))
+    t.groupIds(b1, 3).toSeq shouldBe p.groupIds(b1.map(plainOf), 3).toSeq
+    t.groupIds(b2, 3).toSeq shouldBe p.groupIds(b2, 3).toSeq
+    t.usesStableCodes shouldBe false
+    t.groupIds(b3, 2).toSeq shouldBe Seq(2, 0)
+    t.usesStableCodes shouldBe false
+    t.groupIds(b1, 3).toSeq shouldBe Seq(0, 1, 0)
+    values(t) shouldBe Seq(Seq("y", "x", "w", null))
+  }
+
+  test("should key groups by codes only from the first batch, and decode them for lookups") {
+    val dict = Array("a", "b")
+    val t    = GroupTable(IndexedSeq(PType.Str), stableCodes = true)
+    t.groupIds(Array(strs("b")), 1).toSeq shouldBe Seq(0)
+    t.groupIds(Array(shared(dict, "a", "b")), 2).toSeq shouldBe Seq(1, 0)
+    t.usesStableCodes shouldBe false
+    val u = GroupTable(IndexedSeq(PType.Str), stableCodes = true)
+    u.groupIds(Array(shared(dict, "a", "b", "a")), 3).toSeq shouldBe Seq(0, 1, 0)
+    u.lookup(Array(strs("b", "c")), 2).toSeq shouldBe Seq(1, -1)
+    u.usesStableCodes shouldBe false
+    // Without stableCodes, a shared dict takes the per-batch dictionary path
+    val v = GroupTable(IndexedSeq(PType.Str))
+    v.groupIds(Array(shared(dict, "a", "b", "a")), 3).toSeq shouldBe Seq(0, 1, 0)
+    v.usesStableCodes shouldBe false
+  }
+
+  test("should encode Parquet-coded parts over their distinct values, up to a limit") {
+    // Two parts with different dictionaries, a NULL, and a PLAIN "q" row (code -1)
+    val p1  = coded(IndexedSeq("q", "p"), "q", null, "p", "q")
+    val p2  = coded(IndexedSeq("p", "r"), "r", "p", "q?")
+    val all = StrVec(p1.values ++ p2.values, p1.nulls ++ Array(false, false, false))
+    val e   = StrVec.encodeParts(all, Seq(p1, p2), 7, hashPlain = false)
+    e.codes.toSeq shouldBe Seq(0, -1, 1, 0, 2, 1, 0)
+    e.dict.toSeq shouldBe Seq("q", "p", "r")
+    e.dictSize shouldBe 3
+    e.gather(Array(2, -1), 2).asInstanceOf[StrVec].dict shouldBeTheSameInstanceAs e.dict
+    // Too many distinct values, a part without codes, or parts not covering the rows
+    StrVec.encodeParts(all, Seq(p1, p2), 2, hashPlain = false) shouldBeTheSameInstanceAs all
+    StrVec.encodeParts(all, Seq(p1, plain(p2)), 7, hashPlain = false) shouldBeTheSameInstanceAs all
+    StrVec.encodeParts(all, Seq(p1), 7, hashPlain = false) shouldBeTheSameInstanceAs all
+    // Small builds hash the rows of parts without codes
+    StrVec.encodeParts(all, Seq(p1, plain(p2)), 7, hashPlain = true).codes.toSeq shouldBe
+      e.codes.toSeq
+    // Gathered codes are read on first use, also through a second gather
+    val g = e.gather(Array(4, 0, -1), 3).asInstanceOf[StrVec]
+    g.hasCodes shouldBe true
+    g.gather(Array(1, 2, 0), 3).asInstanceOf[StrVec].codes.toSeq shouldBe Seq(0, -1, 2)
+    g.codes.toSeq shouldBe Seq(2, 0, -1)
+  }
+
+  test("should keep join build codes only when every string column encodes") {
+    val rep  = StrVec(Array.tabulate(100)(i => s"r${i % 4}"), null)
+    val uniq = StrVec(Array.tabulate(100)(i => s"u${i}"), null)
+    val ids  = LongVec(PType.Int64, Array.tabulate(100)(_.toLong), null)
+    val ok   = Batch(Array[Vec](ids, rep), 100)
+    val e    = JoinBuild.encodeStrings(ok, Seq(ok))
+    e.column(1).asInstanceOf[StrVec].dictSize shouldBe 4
+    val mixed = Batch(Array[Vec](ids, rep, uniq), 100)
+    JoinBuild.encodeStrings(mixed, Seq(mixed)) shouldBeTheSameInstanceAs mixed
+  }
+
+  private def plainOf(v: Vec): Vec =
+    v match
+      case s: StrVec =>
+        plain(s)
+      case other =>
+        other
+
 end GroupTableTest

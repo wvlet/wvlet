@@ -139,6 +139,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineAdaptivePartialAggsTest checks that the flags reach the aggregations, and
         // PackedGroupTableTest that packed and unscaled keys give the same groups
         ignore("Changes how aggregations compare keys, not the plan")
+      if o == Optimization.JoinBuildStringCodes then
+        // EngineJoinBuildStringCodesTest checks that the flag reaches the joins, and GroupTableTest
+        // the grouping
+        ignore("Changes how join builds hold strings and aggregations compare them, not the plan")
       if o == Optimization.DictionaryGroupKeys then
         // EngineDictionaryGroupKeysTest checks that the flag reaches the scans, and GroupTableTest
         // that grouping by dictionary codes gives the same groups

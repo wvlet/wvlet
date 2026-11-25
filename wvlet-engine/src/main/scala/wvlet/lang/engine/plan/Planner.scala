@@ -124,6 +124,8 @@ class Planner(
       Planner.disableJoinDirectIndex(pruned)
     if !enabled(Optimization.ParallelJoinBuild) then
       Planner.disableParallelJoinBuild(pruned)
+    if !enabled(Optimization.JoinBuildStringCodes) then
+      Planner.disableJoinBuildStringCodes(pruned)
     val physical =
       if enabled(Optimization.Parallelize) then
         Parallelizer(
@@ -3565,6 +3567,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableParallelJoinBuild)
     op.sharedInputs.foreach(disableParallelJoinBuild)
+
+  /** Make the hash joins of a physical plan keep their string columns as they are */
+  private[engine] def disableJoinBuildStringCodes(op: Operator): Unit =
+    op match
+      case j: HashJoinOp =>
+        j.withStringCodes(false)
+      case _ =>
+    op.children.foreach(disableJoinBuildStringCodes)
+    op.sharedInputs.foreach(disableJoinBuildStringCodes)
 
   /**
     * The keys and the inequality of an ASOF join, each bound over its input: a left row matches the

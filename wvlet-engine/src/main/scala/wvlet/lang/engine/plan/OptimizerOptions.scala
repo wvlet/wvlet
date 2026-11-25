@@ -401,6 +401,15 @@ enum Optimization(val name: String):
   case DictionaryFilters extends Optimization("dictionary_filters")
 
   /**
+    * Hash-join builds encode their string columns over their distinct values, so the probe outputs
+    * carry codes that identify values across batches ([[wvlet.lang.engine.vector.StrVec.dict]]).
+    * Aggregations whose string keys all carry such codes group rows by the packed codes (with the
+    * other keys) in a table kept across batches, and hash and compare the strings once per group
+    * (TPC-DS q47's item and store names)
+    */
+  case JoinBuildStringCodes extends Optimization("join_build_string_codes")
+
+  /**
     * Row-independent subexpressions are evaluated once when lowering, and integral constants added
     * to or subtracted from decimals become decimals at the result scale
     * ([[wvlet.lang.engine.runtime.FoldConstants]])

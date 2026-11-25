@@ -107,17 +107,18 @@ end PackedGroupTable
 object PackedGroupTable:
   /**
     * A [[PackedGroupTable]] when `pack` and the keys can be packed, and a [[GroupTable]] over the
-    * key columns otherwise
+    * key columns otherwise, keyed by the codes of string keys that carry them with `stableCodes`
     */
   def forKeys(
       keyTypes: IndexedSeq[PType],
       expectedGroups: Int,
       pack: Boolean,
-      longDecimals: Boolean
+      longDecimals: Boolean,
+      stableCodes: Boolean = false
   ): GroupIndex =
     if pack && AggKeyPacking.packable(keyTypes, longDecimals) then
       new PackedGroupTable(keyTypes, expectedGroups, longDecimals)
     else
-      GroupTable(keyTypes, expectedGroups, longDecimals)
+      GroupTable(keyTypes, expectedGroups, longDecimals, stableCodes, packCodes = pack)
 
 end PackedGroupTable

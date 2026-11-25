@@ -34,7 +34,7 @@ case class PerDictEntry(inner: VExpr, column: Int, local: VExpr) extends VExpr:
   def eval(b: Batch): Vec =
     b.column(column) match
       // A dictionary larger than the batch costs more to index than per-row evaluation saves
-      case s: StrVec if s.codes != null && s.dictSize > 0 && s.dictSize <= b.size =>
+      case s: StrVec if s.hasCodes && s.dictSize > 0 && s.dictSize <= b.size =>
         val r = DictionaryPredicates.evalPerEntry(local, s, b.size)
         if r == null then
           inner.eval(b)
