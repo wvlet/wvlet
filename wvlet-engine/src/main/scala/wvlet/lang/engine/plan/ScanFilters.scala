@@ -17,6 +17,7 @@ import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
 import wvlet.uni.cloud.parquet.ParquetFilter
 
+import java.math.BigDecimal as JBigDecimal
 import java.time.Instant
 import java.time.LocalDate
 
@@ -28,8 +29,15 @@ import java.time.LocalDate
   *
   * Only comparisons whose Parquet statistics order matches the engine's order are translated:
   * integers, dates, timestamps and booleans, and string equality (Parquet orders strings by UTF-8
-  * bytes while the engine compares UTF-16 code units). Floating-point and decimal columns are left
-  * out.
+  * bytes while the engine compares UTF-16 code units). With `numeric`, also:
+  *
+  *   - Decimal comparisons, with the constant as a `java.math.BigDecimal`. uni doesn't skip row
+  *     groups by decimal statistics, so [[wvlet.lang.engine.catalog.DecimalStats]] checks them for
+  *     single-file scans.
+  *   - Floating-point `<`, `<=` and `=`. The engine orders NaN above every number and -0.0 below
+  *     0.0 (`Double.compare`), while writers leave NaN out of the statistics and uni treats -0.0 as
+  *     0.0. So `>` and `>=`, which NaN rows satisfy, stay out, and `x < 0.0` becomes `x <= 0.0`,
+  *     which keeps row groups holding -0.0.
   */
 object ScanFilters:
 
@@ -37,7 +45,11 @@ object ScanFilters:
     * `columnName(i)` is the Parquet column name of input position i, or None when the source can't
     * filter on that column
     */
-  def toParquet(cond: VExpr, columnName: Int => Option[String]): Option[ParquetFilter] =
+  def toParquet(
+      cond: VExpr,
+      columnName: Int => Option[String],
+      numeric: Boolean = false
+  ): Option[ParquetFilter] =
     def go(e: VExpr): Option[ParquetFilter] =
       e match
         case AndExpr(a, b) =>
@@ -52,9 +64,9 @@ object ScanFilters:
             y <- go(b)
           yield x || y
         case Compare(op, c: ColRef, k: Const) =>
-          columnName(c.index).flatMap(compare(_, c.ptype, op, k))
+          columnName(c.index).flatMap(compare(_, c.ptype, op, k, numeric))
         case Compare(op, k: Const, c: ColRef) =>
-          columnName(c.index).flatMap(compare(_, c.ptype, flip(op), k))
+          columnName(c.index).flatMap(compare(_, c.ptype, flip(op), k, numeric))
         case IsNullExpr(c: ColRef, negate) =>
           columnName(c.index).map { name =>
             if negate then
@@ -63,7 +75,7 @@ object ScanFilters:
               ParquetFilter.IsNull(name)
           }
         case InList(c: ColRef, values, _, false) =>
-          columnName(c.index).flatMap(equalities(_, c.ptype, values.toSeq))
+          columnName(c.index).flatMap(equalities(_, c.ptype, values.toSeq, numeric))
         case _ =>
           None
     go(cond)
@@ -82,7 +94,7 @@ object ScanFilters:
         case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp | PType.TimestampTz =>
           range(column, t, values.minBy(ValueOps.toLong), values.maxBy(ValueOps.toLong))
         case _ =>
-          equalities(column, t, values.toSeq.distinct)
+          equalities(column, t, values.toSeq.distinct, numeric = false)
 
   /**
     * `min <= column <= max` for an integer, date (`min` and `max` in epoch days), or timestamp
@@ -90,16 +102,21 @@ object ScanFilters:
     */
   def range(column: String, t: PType, min: Any, max: Any): Option[ParquetFilter] =
     for
-      lo <- compare(column, t, CmpOp.Ge, Const(min, t))
-      hi <- compare(column, t, CmpOp.Le, Const(max, t))
+      lo <- compare(column, t, CmpOp.Ge, Const(min, t), numeric = false)
+      hi <- compare(column, t, CmpOp.Le, Const(max, t), numeric = false)
     yield lo && hi
 
   /** `column = v1 or column = v2 ...` for up to 64 non-null values, when every one translates */
-  private def equalities(column: String, t: PType, values: Seq[Any]): Option[ParquetFilter] =
+  private def equalities(
+      column: String,
+      t: PType,
+      values: Seq[Any],
+      numeric: Boolean
+  ): Option[ParquetFilter] =
     if values.isEmpty || values.size > 64 then
       None
     else
-      val eqs = values.map(v => compare(column, t, CmpOp.Eq, Const(v, t)))
+      val eqs = values.map(v => compare(column, t, CmpOp.Eq, Const(v, t), numeric))
       Option.when(eqs.forall(_.isDefined))(eqs.flatten.reduce(_ || _))
 
   private def flip(op: CmpOp): CmpOp =
@@ -115,9 +132,17 @@ object ScanFilters:
       case other =>
         other
 
-  private def compare(column: String, t: PType, op: CmpOp, k: Const): Option[ParquetFilter] =
+  private def compare(
+      column: String,
+      t: PType,
+      op: CmpOp,
+      k: Const,
+      numeric: Boolean
+  ): Option[ParquetFilter] =
     if k.value == null || k.ptype != t then
       None
+    else if numeric && t == PType.Float64 then
+      realCompare(column, op, k.value)
     else
       val value: Option[Any] =
         t match
@@ -137,6 +162,12 @@ object ScanFilters:
             Some(ValueOps.toBoolean(k.value))
           case PType.Str if op == CmpOp.Eq =>
             Some(k.value.toString)
+          case _: PType.Decimal if numeric =>
+            k.value match
+              case d: JBigDecimal =>
+                Some(d)
+              case _ =>
+                None
           case _ =>
             None
       val col = ParquetFilter.col(column)
@@ -155,5 +186,28 @@ object ScanFilters:
           case CmpOp.Ne =>
             None
       }
+
+  /**
+    * A floating-point comparison whose row groups uni may skip without losing rows the engine's
+    * `Double.compare` order would keep (see the object comment)
+    */
+  private def realCompare(column: String, op: CmpOp, v: Any): Option[ParquetFilter] =
+    val d   = ValueOps.toDouble(v)
+    val col = ParquetFilter.col(column)
+    if d.isNaN then
+      None
+    else
+      op match
+        case CmpOp.Eq =>
+          Some(col === d)
+        // -0.0 < 0.0 in the engine, while uni reads a -0.0 minimum as 0.0
+        case CmpOp.Lt if d == 0.0 =>
+          Some(col <= 0.0)
+        case CmpOp.Lt =>
+          Some(col < d)
+        case CmpOp.Le =>
+          Some(col <= d)
+        case _ =>
+          None
 
 end ScanFilters

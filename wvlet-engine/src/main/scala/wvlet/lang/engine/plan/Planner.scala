@@ -103,7 +103,8 @@ class Planner(
     val pruned = ColumnPruner(
       op,
       pruneColumns = enabled(Optimization.PruneColumns),
-      scanFilters = enabled(Optimization.PushScanFilters)
+      scanFilters = enabled(Optimization.PushScanFilters),
+      numericScanFilters = enabled(Optimization.DecimalFloatScanFilters)
     )
     if !enabled(Optimization.LateGather) then
       Planner.disableLateGather(pruned)

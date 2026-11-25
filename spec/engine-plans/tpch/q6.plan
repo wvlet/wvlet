@@ -1,5 +1,5 @@
 -- q6#1
-Scan[lineitem](columns=l_quantity,l_extendedprice,l_discount,l_shipdate filter=And(Compare(l_shipdate,GtEq,1994-01-01),Compare(l_shipdate,Lt,1995-01-01))) -> [l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipdate:date]
+Scan[lineitem](columns=l_quantity,l_extendedprice,l_discount,l_shipdate filter=And(And(And(And(Compare(l_shipdate,GtEq,1994-01-01),Compare(l_shipdate,Lt,1995-01-01)),Compare(l_discount,GtEq,0.05)),Compare(l_discount,LtEq,0.07)),Compare(l_quantity,Lt,24.00))) -> [l_quantity:decimal(15,2), l_extendedprice:decimal(15,2), l_discount:decimal(15,2), l_shipdate:date]
 ↓ Filter((((((#3>=lit(8766:date)) and (#3<lit(9131:date))) and (lit(0.05:decimal(15,2))<=#2)) and (#2<=lit(0.07:decimal(15,2)))) and (#0<lit(24.00:decimal(15,2)))), keep=1,2) -> [l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
 ↓ HashAgg(keys=[], aggs=[agg:sum((#0*#1))]) -> [__partial_0:decimal(38,4)]
 ↓ Morsel[parallelism=N] -> [__partial_0:decimal(38,4)]

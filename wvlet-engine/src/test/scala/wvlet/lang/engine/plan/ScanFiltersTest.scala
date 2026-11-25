@@ -19,6 +19,7 @@ import wvlet.uni.cloud.parquet.ParquetFilter
 import wvlet.uni.cloud.parquet.ParquetFilter.col
 import wvlet.uni.test.UniTest
 
+import java.math.BigDecimal as JBigDecimal
 import java.time.LocalDate
 
 class ScanFiltersTest extends UniTest:
@@ -87,6 +88,40 @@ class ScanFiltersTest extends UniTest:
     ScanFilters.valuesFilter("name", PType.Str, (0 until 65).map(_.toString)) shouldBe None
     ScanFilters.valuesFilter("price", PType.Float64, Seq(1.0)) shouldBe None
     ScanFilters.valuesFilter("id", PType.Int64, Nil) shouldBe None
+  }
+
+  private val price = ColRef(0, PType.decimal(12, 2), "price")
+  private val x     = ColRef(1, PType.Float64, "x")
+
+  private def numeric(e: VExpr): Option[ParquetFilter] = ScanFilters.toParquet(
+    e,
+    i => Some(IndexedSeq("price", "x")(i)),
+    numeric = true
+  )
+
+  test("should translate decimal comparisons only with numeric filters") {
+    val k = Const(JBigDecimal("50.00"), price.ptype)
+    numeric(Compare(CmpOp.Gt, price, k)) shouldBe Some(col("price") > JBigDecimal("50.00"))
+    numeric(Compare(CmpOp.Le, k, price)) shouldBe Some(col("price") >= JBigDecimal("50.00"))
+    numeric(Compare(CmpOp.Ne, price, k)) shouldBe None
+    // A constant of another decimal type is not compared
+    numeric(Compare(CmpOp.Gt, price, Const(JBigDecimal("50.0"), PType.decimal(3, 1)))) shouldBe None
+    ScanFilters.toParquet(Compare(CmpOp.Gt, price, k), _ => Some("price")) shouldBe None
+  }
+
+  test("should translate only the floating-point comparisons NaN and -0.0 can't break") {
+    def f(op: CmpOp, v: Double) = numeric(Compare(op, x, Const(v, PType.Float64)))
+    f(CmpOp.Lt, 1.5) shouldBe Some(col("x") < 1.5)
+    f(CmpOp.Le, 1.5) shouldBe Some(col("x") <= 1.5)
+    f(CmpOp.Eq, 1.5) shouldBe Some(col("x") === 1.5)
+    // NaN rows satisfy > and >= in the engine, but writers leave NaN out of the statistics
+    f(CmpOp.Gt, 1.5) shouldBe None
+    f(CmpOp.Ge, 1.5) shouldBe None
+    f(CmpOp.Lt, Double.NaN) shouldBe None
+    // -0.0 < 0.0 in the engine, and uni reads a -0.0 minimum as 0.0
+    f(CmpOp.Lt, 0.0) shouldBe Some(col("x") <= 0.0)
+    ScanFilters.toParquet(Compare(CmpOp.Lt, x, Const(1.5, PType.Float64)), _ => Some("x")) shouldBe
+      None
   }
 
 end ScanFiltersTest
