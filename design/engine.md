@@ -10,6 +10,7 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 - `WvletEngine.runtimePlan` uses a new `Planner` per call; share one `Planner` when building plans by hand in tests.
 - `Lowering` rewrites expressions over positions, after the logical passes: `fold_constants` folds row-independent subexpressions and pre-scales decimal constants, and `common_subexpressions` computes a subexpression repeated across a Project, Filter, Aggregate, or Window once in a Project below it (`CommonSubexpressions`). It shares only subexpressions evaluated for every row in at least one place, never volatile functions, and matches with `==`, not `sig`.
 - Two-phase aggregation merges identical partial aggregates (`shared_agg_partials`), so `avg(x)` reuses `sum(x)` and `count(x)`.
+- The binder simplifies each expression as it binds it (`plan/BoundExprSimplifier.scala`), before the logical passes: `fold_bound_constants` turns nodes over literals into literals (so `x <= 1200 + 11` reaches scan filters) and simplifies `and`/`or` with a literal operand; `unwrap_casts` compares `x` instead of `cast(x as T)` with literals when the cast is lossless (integer widening, integer or decimal to a wide enough decimal) and every literal converts exactly. A failing evaluation (`1 / 0`) stays unfolded, so it still fails only when rows exist.
 
 ## Optimizer toggles
 

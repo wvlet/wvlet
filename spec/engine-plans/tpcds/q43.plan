@@ -6,7 +6,7 @@ Scan[store_sales](columns=ss_sold_date_sk,ss_store_sk,ss_sales_price join_filter
 ↙ HashJoin[Inner](#0 = #0) -> [ss_sold_date_sk:long, ss_store_sk:long, ss_sales_price:decimal(7,2), d_date_sk:long, d_day_name:string]
 ↓ Project(#4, #1, #2) -> [d_day_name:string, ss_store_sk:long, ss_sales_price:decimal(7,2)]
   Scan[store](columns=s_store_sk,s_store_id,s_store_name,s_gmt_offset) -> [s_store_sk:long, s_store_id:string, s_store_name:string, s_gmt_offset:decimal(5,2)]
-  ↓ Filter((cast(#3 as decimal(12,2))=lit(-5.00:decimal(12,2))), keep=0,1,2) -> [s_store_sk:long, s_store_id:string, s_store_name:string]
+  ↓ Filter((#3=lit(-5.00:decimal(5,2))), keep=0,1,2) -> [s_store_sk:long, s_store_id:string, s_store_name:string]
   ↓ Morsel[parallelism=N] -> [s_store_sk:long, s_store_id:string, s_store_name:string]
 ↙ HashJoin[Inner](#1 = #0) -> [d_day_name:string, ss_store_sk:long, ss_sales_price:decimal(7,2), s_store_sk:long, s_store_id:string, s_store_name:string]
 ↓ HashAgg(keys=[#5, #4], aggs=[agg:sum(case((#0=lit(Sunday:string))->#2;Some(lit(null:null)))), agg:sum(case((#0=lit(Monday:string))->#2;Some(lit(null:null)))), agg:sum(case((#0=lit(Tuesday:string))->#2;Some(lit(null:null)))), agg:sum(case((#0=lit(Wednesday:string))->#2;Some(lit(null:null)))), agg:sum(case((#0=lit(Thursday:string))->#2;Some(lit(null:null)))), agg:sum(case((#0=lit(Friday:string))->#2;Some(lit(null:null)))), agg:sum(case((#0=lit(Saturday:string))->#2;Some(lit(null:null))))]) -> [s_store_name:string, s_store_id:string, __partial_0:decimal(38,2), __partial_1:decimal(38,2), __partial_2:decimal(38,2), __partial_3:decimal(38,2), __partial_4:decimal(38,2), __partial_5:decimal(38,2), __partial_6:decimal(38,2)]

@@ -24,7 +24,7 @@
 ↙ Scan[CTE[inv]](columns=w_warehouse_sk,i_item_sk,d_moy,mean,cov) -> [w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double]
 ↓ Filter((#2=lit(1:long))) -> [w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double]
   Scan[CTE[inv]](columns=w_warehouse_sk,i_item_sk,d_moy,mean,cov) -> [w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double]
-  ↓ Filter((#2=(lit(1:int)+lit(1:int)))) -> [w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double]
+  ↓ Filter((#2=lit(2:long))) -> [w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double]
   ↓ Morsel[parallelism=N] -> [w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double]
 ↙ HashJoin[Inner](#1,#0 = #1,#0) -> [w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double, w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double]
 ↓ Project(#0, #1, #2, #3, #4, #5, #6, #7, #8, #9) -> [wsk1:long, isk1:long, dmoy1:long, mean1:double, cov1:double, w_warehouse_sk:long, i_item_sk:long, d_moy:long, mean:double, cov:double]
