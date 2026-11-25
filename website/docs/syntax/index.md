@@ -576,13 +576,13 @@ select obj.k1, obj.k2
 
 ### Lambda Expression
 
-To manipulate array values, you can use lambda expressions:
+To manipulate array values, call `transform`, `filter`, or `reduce` on an array with a lambda expression, as in Scala collections:
 
 ```wvlet
-select list_transform([4, 5, 6], x -> x + 1)
+select [4, 5, 6].transform(x -> x + 1) as arr
 ```
 
-This query applies the lambda function `x -> x + 1` to each element of the input array:
+The lambda `x -> x + 1` is applied to each element of the array:
 
 ```
 ┌────────────┐
@@ -595,10 +595,23 @@ This query applies the lambda function `x -> x + 1` to each element of the input
 └────────────┘
 ```
 
-To pass multiple arguments to the lambda function, use the following syntax:
+These methods can be chained, and they work on array columns too:
 
 ```wvlet
-select list_reduce([4, 5, 6], (a, b) -> a + b) as sum;
+from [[1, ['apple', 'fig', 'banana']]] as fruits(id, names)
+select names.filter(s -> s.length > 3).transform(s -> s.upper) as long_names
+```
+
+The lambda parameter takes the element type of the array, so `s` above is a string and `s.length` is the string length.
+
+- `xs.transform(x -> ...)`: apply the lambda to each element.
+- `xs.filter(x -> ...)`: keep the elements for which the lambda returns true.
+- `xs.reduce((acc, x) -> ...)`: fold the elements from the first one. An empty array is an error.
+
+To pass multiple arguments to the lambda function, wrap the parameters in parentheses:
+
+```wvlet
+select [4, 5, 6].reduce((a, b) -> a + b) as sum;
 
 ┌─────┐
 │ sum │
@@ -614,10 +627,7 @@ Lambda functions can be nested as follows:
 
 ```wvlet
 select
-  list_transform(
-    [1, 2, 3],
-    x -> list_reduce([4, 5, 6], (a, b) -> a + b) + x
-  ) as arr;
+  [1, 2, 3].transform(x -> [4, 5, 6].reduce((a, b) -> a + b) + x) as arr;
 
 ┌──────────────┐
 │     arr      │
@@ -628,6 +638,8 @@ select
 │ 1 rows       │
 └──────────────┘
 ```
+
+These methods are available on DuckDB, Trino, and the wvlet engine. An engine's own functions also accept lambdas, e.g. DuckDB's `list_transform(xs, x -> x + 1)`.
 
 ## Examples
 

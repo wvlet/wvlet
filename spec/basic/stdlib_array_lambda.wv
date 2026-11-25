@@ -1,0 +1,23 @@
+-- Higher-order array functions taking a lambda, in method-call form
+select [4, 5, 6] as a
+select
+  -- Array results are joined to strings so the expected value is engine-independent
+  a.transform(x -> x * 2).mk_string(',') as doubled,
+  a.filter(x -> x > 4).mk_string(',') as large,
+  a.reduce((acc, x) -> acc + x) as total,
+  a.transform(x -> x + 1).filter(x -> x % 2 = 0).mk_string(',') as chained,
+  a.transform(x -> [1, 2].reduce((p, q) -> p + q) + x).mk_string(',') as nested,
+  [7].reduce((acc, x) -> acc * x) as single
+test _.rows should be [['8,10,12', '5,6', 15, '6', '7,8,9', 7]]
+;
+
+-- Lambdas over array columns, one array per row
+from [[1, [1, 2], ['a', 'bb']], [2, [3, 4, 5], ['ccc']]] as lists(id, nums, words)
+select
+  id,
+  nums.transform(n -> n * 10).mk_string(',') as tens,
+  nums.reduce((acc, n) -> acc + n) as total,
+  words.filter(w -> w.length > 1).mk_string(',') as long_words
+order by id
+test _.rows should be [[1, '10,20', 3, 'bb'], [2, '30,40,50', 12, 'ccc']]
+;

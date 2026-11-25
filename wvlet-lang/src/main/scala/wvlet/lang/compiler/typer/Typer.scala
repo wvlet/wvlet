@@ -23,6 +23,7 @@ import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.TermName
+import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.ValSymbolInfo
 import wvlet.lang.model.expr.ArrayConstructor
 import wvlet.lang.model.expr.NameExpr
@@ -38,6 +39,7 @@ import wvlet.lang.model.expr.DotRef
 import wvlet.lang.model.expr.FunctionApply
 import wvlet.lang.model.expr.FunctionArg
 import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.LambdaExpr
 import wvlet.lang.model.expr.SingleColumn
 import wvlet.lang.model.expr.Window
 import wvlet.lang.model.expr.InRelation
@@ -1223,11 +1225,104 @@ object Typer extends Phase("typer") with LogSupport:
       case _ =>
         ()
 
-    // Bottom-up: type children first - in place
-    expr.children.foreach(typeExpression)
+    expr match
+      case f: FunctionApply if f.args.exists(_.value.isInstanceOf[LambdaExpr]) =>
+        typeLambdaApply(f)
+      case l: LambdaExpr =>
+        // A lambda outside a call, e.g. inside the sql"..." template of an inlined stdlib method
+        // such as xs.transform(f), keeps the parameter types it got at the call
+        typeLambda(l, l.args.map(_.dataType))
+      case _ =>
+        // Bottom-up: type children first - in place
+        expr.children.foreach(typeExpression)
 
     // Apply expression rules - modifies tpe field in place, returns same instance
     TyperRules.exprRules.applyOrElse(expr, identity[Expression])
+
+  end typeExpression
+
+  /** Higher-order functions whose lambda takes (accumulator, element), both of the element type */
+  private val reduceFunctions = Set("reduce", "list_reduce", "array_reduce")
+
+  /**
+    * Type a call with lambda arguments, e.g. xs.transform(x -> x * 2) or list_filter(xs, x -> ...).
+    * The receiver and the other arguments are typed first, so that the lambda parameters can take
+    * the element type of the list
+    */
+  private def typeLambdaApply(f: FunctionApply)(using ctx: Context): Unit =
+    typeExpression(f.base)
+    val (lambdaArgs, valueArgs) = f.args.partition(_.value.isInstanceOf[LambdaExpr])
+    valueArgs.foreach(typeExpression)
+    // The list and the function name, for the list-and-lambda shapes only: xs.f(lambda) and
+    // f(xs, lambda). Other shapes (e.g. Trino's reduce(xs, init, f, g)) leave the parameter types
+    // unknown
+    val listAndName: Option[(Expression, String)] =
+      (f.base, f.args.map(_.value)) match
+        case (d: DotRef, List(_: LambdaExpr)) =>
+          Some((d.qualifier, d.name.leafName))
+        case (id: Identifier, List(list, _: LambdaExpr)) =>
+          Some((list, id.leafName))
+        case _ =>
+          None
+    val elemType: DataType =
+      listAndName.map(_._1.dataType) match
+        case Some(DataType.ArrayType(e)) =>
+          e
+        case _ =>
+          DataType.UnknownType
+    val isReduce = listAndName.exists((_, name) => reduceFunctions.contains(name))
+    lambdaArgs.foreach { arg =>
+      val lambda     = arg.value.asInstanceOf[LambdaExpr]
+      val paramTypes = lambda
+        .args
+        .indices
+        .map { i =>
+          if i == 0 || isReduce then
+            elemType
+          else
+            // e.g. the element index of DuckDB's list_transform(xs, (x, i) -> ...)
+            DataType.UnknownType
+        }
+      typeLambda(lambda, paramTypes)
+      TyperRules.exprRules.applyOrElse(arg, identity[Expression])
+    }
+
+  end typeLambdaApply
+
+  /**
+    * Type a lambda body with its parameters bound in a child scope. Parameters are added, not
+    * entered, so they shadow same-named outer symbols, and as values they also win over input
+    * columns of the same name (identify_lambda_param in
+    * formal/WvletFormal/NameLookup/Resolve.lean). Only the scope is new: the body keeps the
+    * enclosing imports and input relation, so it can call imported functions and refer to columns
+    */
+  private def typeLambda(lambda: LambdaExpr, paramTypes: Seq[DataType])(using ctx: Context): Unit =
+    val lambdaCtx = ctx.copy(scope = ctx.scope.newChildScope)
+    lambda
+      .args
+      .zip(paramTypes)
+      .foreach { (param, paramType) =>
+        val sym = Symbol(ctx.global.newSymbolId, param.span)
+        sym.symbolInfo = ValSymbolInfo(
+          lambdaCtx.owner,
+          sym,
+          param.toTermName,
+          paramType,
+          param,
+          ctx.compilationUnit
+        )
+        lambdaCtx.scope.add(param.toTermName, sym)
+        param.symbol = sym
+        if paramType.isResolved then
+          param.tpe = paramType
+      }
+    typeExpression(lambda.body)(using lambdaCtx)
+    lambda.tpe = FunctionType(
+      Name.NoName,
+      lambda.args.zip(paramTypes).map((p, t) => NamedType(p.toTermName, t)),
+      lambda.body.dataType,
+      Nil
+    )
 
   /**
     * Type a single node (fallback for nodes not handled by specific typing methods)
