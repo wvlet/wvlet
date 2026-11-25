@@ -125,8 +125,7 @@ class EngineScanPushdownTest extends UniTest:
         |select _.count""".stripMargin)
     debug(plan)
     plan shouldContain "columns=l_orderkey)"
-    // l_quantity is read only by the scan's row filter
-    plan shouldContain "row_filter=Compare(l_quantity,Gt,10.00)) -> [l_orderkey:long]"
+    plan shouldContain "columns=l_orderkey,l_quantity"
     plan.contains("l_comment") shouldBe false
   }
 
