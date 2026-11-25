@@ -925,7 +925,7 @@ class RuntimeBinder(planner: Planner):
     /**
       * Rows of p whose value of `a` is in the first column of the lowered subquery `inner`: a semi
       * join on the two cast to their common type, building on the subquery unless it is much larger
-      * than p
+      * than p (by `innerRows`, its exact rows when computed at plan time)
       */
     def inJoin(
         p: Lowered,
