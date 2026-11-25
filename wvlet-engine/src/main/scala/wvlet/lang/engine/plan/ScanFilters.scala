@@ -195,7 +195,9 @@ object ScanFilters:
     * first: a source decodes the first conjunct's columns for every row, and later ones only for
     * the rows still kept. Conjuncts over the same column are estimated together and stay adjacent
     * ([[selectivity]]); on a tie, conjuncts over a numeric column come before strings, which cost
-    * more to decode. `columnName(i)` is the source column name of input position i
+    * more to decode. Decimal and floating-point conjuncts, whose selectivity isn't estimated from
+    * statistics, come last ([[unestimated]]). `columnName(i)` is the source column name of input
+    * position i
     */
   def ordered(
       conds: Seq[(VExpr, ParquetFilter)],
@@ -206,7 +208,8 @@ object ScanFilters:
     .zipWithIndex
     .sortBy { case ((cols, members), pos) =>
       val strings = cols.size != 1 || members.exists(m => refType(m._1).contains(PType.Str))
-      (selectivity(cols, members.map(_._1), source, columnName), strings, pos)
+      val last    = unestimated(members.map(_._1))
+      (last, selectivity(cols, members.map(_._1), source, columnName), strings, pos)
     }
     .flatMap(_._1._2.map(_._2))
     .reduce(_ && _)
@@ -220,8 +223,10 @@ object ScanFilters:
 
   /**
     * The estimated fraction of rows passing all `conds` together (conjuncts over the same input
-    * positions estimated together by [[selectivity]], independent otherwise). `columnName(i)` is
-    * the source column name of input position i
+    * positions estimated together by [[selectivity]], independent otherwise). Decimal and
+    * floating-point conjuncts count as keeping every row ([[unestimated]]), so that they alone
+    * don't make a scan look selective. `columnName(i)` is the source column name of input position
+    * i
     */
   def estimatedSelectivity(
       conds: Seq[VExpr],
@@ -229,8 +234,27 @@ object ScanFilters:
       columnName: Int => String
   ): Double =
     byColumns(conds)(identity)
-      .map((cols, members) => selectivity(cols, members, source, columnName))
+      .map((cols, members) =>
+        if unestimated(members) then
+          1.0
+        else
+          selectivity(cols, members, source, columnName)
+      )
       .product
+
+  /**
+    * Whether `conds` read a decimal or floating-point column, whose comparisons [[selectivity]]
+    * counts at the default selectivity: on TPC-H q19 and TPC-DS q13/q48 such ranges keep most rows
+    * while the default makes them look selective
+    */
+  private def unestimated(conds: Seq[VExpr]): Boolean =
+    def numericRef(e: VExpr): Boolean =
+      e match
+        case c: ColRef =>
+          isNumeric(c.ptype)
+        case other =>
+          other.children.exists(numericRef)
+    conds.exists(numericRef)
 
   /** `conds` grouped by the input positions their conjunct (`cond(c)`) reads, in first order */
   private def byColumns[A](conds: Seq[A])(
