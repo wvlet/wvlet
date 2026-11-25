@@ -300,7 +300,6 @@ object WvletEngineFunctionNames:
     "week",
     "weekofyear",
     "year",
+    "zip_with",
     "||"
   )
-
-end WvletEngineFunctionNames

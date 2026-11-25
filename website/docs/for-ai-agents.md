@@ -102,7 +102,7 @@ Expressions:
 - Conditionals: `if x > 0 then 'pos' else 'neg'`, or `case when x > 0 then 'pos' else 'neg'` (no `end`).
 - String interpolation: `s"order-${id}"`. `'a' + x` concatenates when either side is a string. In both, non-strings are cast and NULL counts as `''` (unlike SQL `||`).
 - Window functions: `row_number() over (partition by customer_id order by amount desc)`.
-- Arrays: `xs.transform(x -> x * 2)`, `xs.filter(x -> x > 0)`, `xs.reduce((a, b) -> a + b)`, `xs.reduce(init, (acc, x) -> ...)`, `xs.exists(x -> x > 0)`, and `xs.forall(x -> x > 0)` take a lambda, and chain like Scala collections. The lambda parameter has the array's element type, so `names.filter(s -> s.length > 3)` calls the string `length`.
+- Arrays: `xs.transform(x -> x * 2)`, `xs.filter(x -> x > 0)`, `xs.reduce((a, b) -> a + b)`, `xs.reduce(init, (acc, x) -> ...)`, `xs.exists(x -> x > 0)`, `xs.forall(x -> x > 0)`, and `xs.zip_with(ys, (x, y) -> x * y)` take a lambda, and chain like Scala collections. The lambda parameter has the array's element type, so `names.filter(s -> s.length > 3)` calls the string `length`.
 - Comments: `-- line comment`. `---` starts a Markdown doc comment block.
 
 See the [Query Syntax reference](./syntax/index.md) for every operator.

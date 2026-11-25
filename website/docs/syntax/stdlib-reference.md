@@ -394,6 +394,7 @@ A column reference after `group by` also has an array type, so aggregation funct
 | `reduce(init: any, f: sql)` | any | duckdb, trino | Fold the elements from an initial value with (acc, x) -> ..., e.g. [1, 2, 3].reduce(10, (acc, x) -> acc + x) = 16. An empty array gives the initial value |
 | `exists(f: sql)` | boolean | duckdb, trino | True if the lambda is true for some element, e.g. [1, 5].exists(x -> x > 3). False for an empty array. When no element gives true and some give NULL, the result is NULL, as SQL `or` |
 | `forall(f: sql)` | boolean | duckdb, trino | True if the lambda is true for every element, e.g. [1, 5].forall(x -> x > 0). True for an empty array. When no element gives false and some give NULL, the result is NULL, as SQL `and` |
+| `zip_with(other: any, f: sql)` | array[any] | duckdb, trino, wvlet | Combine the elements at the same position with a two-argument lambda, e.g. [1, 2].zip_with([10, 20], (x, y) -> x + y) = [11, 22]. The shorter array is padded with NULL, and a NULL array gives NULL |
 | `lag` | A | all | Value of the column at a preceding row of the window |
 | `lag(offset: int)` | A | all |  |
 | `lag(offset: int, default: any)` | A | all |  |

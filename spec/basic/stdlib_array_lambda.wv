@@ -42,3 +42,22 @@ select
   [1, null].forall(x -> x > 0) is null as null_forall_unknown
 test _.rows should be [[true, false, true, false, 25, '159', false, true, 0, true, true, false, true]]
 ;
+
+-- zip_with combines the elements at the same position; the shorter array is padded with NULL
+select
+  [1, 2].zip_with([10, 20], (x, y) -> x + y).mk_string(',') as sums,
+  [1, 2, 3].zip_with([10, 20], (x, y) -> x + coalesce(y, 0)).mk_string(',') as padded,
+  ['a', 'b'].zip_with([1, 2], (s, n) -> s + n.to_string).mk_string(',') as labels,
+  -- The inner x is the inner lambda's own parameter
+  [1, 2].zip_with([3, 4], (x, y) -> [x].transform(x -> x * 10).mk_string('') + '-' + y.to_string).mk_string(',') as shadowed
+test _.rows should be [['11,22', '11,22,3', 'a1,b2', '10-3,20-4']]
+;
+
+-- Prices in cents
+from [[1, [250, 400], [2, 3]], [2, [100], [5]]] as orders(id, prices, quantities)
+select
+  id,
+  prices.zip_with(quantities, (p, q) -> p * q).reduce(0, (acc, v) -> acc + v) as total
+order by id
+test _.rows should be [[1, 1700], [2, 500]]
+;

@@ -494,22 +494,31 @@ object FunctionInliner extends ContextLogSupport:
       m.body match
         case Some(methodBody) =>
           // Substitute-first: bind `this` and the arguments resolved in the caller's frame
-          val substituted = methodBody.transformUpExpression {
-            case th: This =>
-              base match
-                case d: DotRef =>
-                  // Replace ${this} with ${qual} in DotRef(qual, method)
-                  d.qualifier
-                case _ =>
-                  th
-            case i: Identifier =>
-              // Replace function arguments to the resolved args
-              resolvedArgs.find(_._1 == i.toTermName) match
-                case Some((_, expr)) =>
-                  expr
-                case None =>
-                  i
-          }
+          val substituted = methodBody
+            .transformUpExpression {
+              case th: This =>
+                base match
+                  case d: DotRef =>
+                    // Replace ${this} with ${qual} in DotRef(qual, method)
+                    d.qualifier
+                  case _ =>
+                    th
+              case i: Identifier =>
+                // Replace function arguments to the resolved args
+                resolvedArgs.find(_._1 == i.toTermName) match
+                  case Some((_, expr)) =>
+                    expr
+                  case None =>
+                    i
+            }
+            .transformUpExpression {
+              // A template may apply a lambda argument, e.g. ${f(this[i], other[i])}: substitute
+              // the call arguments for the lambda parameters (beta reduction), so that an engine
+              // without lambda values (DuckDB) gets plain SQL
+              case FunctionApply(l: LambdaExpr, args, None, None, None, _)
+                  if l.args.size == args.size && args.forall(_.isPlainArg) =>
+                applyLambda(l, args.map(_.value))
+            }
           // Then inline function calls nested in the body, with this function on the active path
           // so that self-referential or mutually recursive definitions are detected. This must be
           // a top-down traversal: a bottom-up one would visit the base DotRef of a member call
@@ -546,6 +555,26 @@ object FunctionInliner extends ContextLogSupport:
     newExpr
 
   end inlineFunctionBody
+
+  /**
+    * The body of a lambda with its parameters replaced by the given arguments. A parameter
+    * reference is matched by the symbol the Typer bound to the parameter, so a nested lambda that
+    * reuses a parameter name keeps its own binding; an untyped parameter is matched by name
+    */
+  private def applyLambda(lambda: LambdaExpr, args: List[Expression]): Expression =
+    val bindings = lambda.args.zip(args)
+    lambda
+      .body
+      .transformUpExpression { case id: Identifier =>
+        bindings
+          .collectFirst {
+            case (param, arg)
+                if (!param.symbol.isNoSymbol && (id.symbol eq param.symbol)) ||
+                  (param.symbol.isNoSymbol && id.leafName == param.leafName) =>
+              arg
+          }
+          .getOrElse(id)
+      }
 
   /**
     * Inline a function application if a corresponding function definition is found; otherwise

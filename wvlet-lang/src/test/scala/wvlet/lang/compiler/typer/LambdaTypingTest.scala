@@ -16,7 +16,9 @@ package wvlet.lang.compiler.typer
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.model.DataType
 import wvlet.lang.model.Type.FunctionType
 import wvlet.lang.model.expr.LambdaExpr
@@ -29,8 +31,15 @@ import scala.collection.mutable.ListBuffer
   */
 class LambdaTypingTest extends UniTest:
 
-  private def compileLambdas(wv: String): List[LambdaExpr] =
-    val compiler = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
+  private def generateSQL(wv: String): String =
+    val compiler = Compiler(CompilerOptions(workEnv = WorkEnv("."), dbType = DBType.DuckDB))
+    val unit     = CompilationUnit.fromWvletString(wv)
+    val result   = compiler.compileSingleUnit(unit)
+    result.reportAllErrors
+    GenSQL.generateSQL(unit)(using result.context)
+
+  private def compileLambdas(wv: String, dbType: DBType = DBType.DuckDB): List[LambdaExpr] =
+    val compiler = Compiler(CompilerOptions(workEnv = WorkEnv("."), dbType = dbType))
     val unit     = CompilationUnit.fromWvletString(wv)
     compiler.compileSingleUnit(unit)
     val lambdas = ListBuffer.empty[LambdaExpr]
@@ -90,6 +99,33 @@ class LambdaTypingTest extends UniTest:
     )
     lambdas.map(_.args.head.dataType) shouldBe List(DataType.StringType, DataType.LongType)
     lambdas.map(_.body.dataType) shouldBe List(DataType.BooleanType, DataType.BooleanType)
+  }
+
+  test("type the zip_with parameters with the element types of both lists") {
+    // Trino keeps the lambda: its zip_with takes one
+    val List(l) =
+      compileLambdas(
+        "select ['a'].zip_with([1], (s, n) -> s + n.to_string) as a",
+        DBType.Trino
+      ): @unchecked
+    l.args.map(_.dataType) shouldBe List(DataType.StringType, DataType.LongType)
+    l.body.dataType shouldBe DataType.StringType
+  }
+
+  test("apply the zip_with lambda to the elements in DuckDB SQL") {
+    val sql = generateSQL("select [1, 2].zip_with([3, 4], (x, y) -> x * y) as a")
+    // DuckDB has no lambda values: the body is inlined over the element positions
+    sql shouldContain "lambda __wv_i:"
+    sql.contains("lambda x") shouldBe false
+  }
+
+  test("keep a nested lambda's own parameter when applying a lambda") {
+    val sql = generateSQL(
+      "select [1, 2].zip_with([3, 4], (x, y) -> [x].transform(x -> x * 10)) as a"
+    )
+    // The outer x becomes an element access; the inner lambda keeps its parameter x
+    sql shouldContain "lambda x:"
+    sql shouldContain "[__wv_i]"
   }
 
   test("type nested lambdas with their own lists") {

@@ -116,7 +116,8 @@ object Binder:
     "filter",
     "list_reduce",
     "array_reduce",
-    "reduce"
+    "reduce",
+    "zip_with"
   )
 
   private val IntervalPattern = """(?i)\binterval\s*\(([^()]*)\)\s*([a-z]+)""".r
@@ -1431,6 +1432,75 @@ class Binder(
 
   end bindLambdaCall
 
+  /**
+    * zip_with(xs, ys, (x, y) -> ...): the lambda over the elements at the same position, with the
+    * shorter list padded with NULL. As in bindLambdaCall, a list whose element type is unknown at
+    * plan time (e.g. a column) has the body bound on first use, once per pair of element types
+    */
+  private def bindZipWith(f: FunctionApply, receiverArgs: List[Expression]): VExpr =
+    val (xsArg, ysArg, lambda) = (receiverArgs ++ f.args.map(_.value)) match
+      case List(xs, ys, lam: LambdaExpr) =>
+        (xs, ys, lam)
+      case _ =>
+        error("zip_with expects two lists and a lambda", f)
+    if lambda.args.size != 2 then
+      error("zip_with expects a lambda with 2 parameter(s)", f)
+    val xs                                                               = bind(xsArg)
+    val ys                                                               = bind(ysArg)
+    def compile(xType: PType, yType: PType): (Seq[Any], Seq[Any]) => Any =
+      val schema = Schema(
+        IndexedSeq(Field(lambda.args(0).leafName, xType), Field(lambda.args(1).leafName, yType))
+      )
+      val body = Binder(planner, BindScope(schema)).bind(lambda.body)
+      (a, b) =>
+        val n   = a.size max b.size
+        val out = body.eval(
+          Batch(
+            Array(Vec.fromValues(xType, a.padTo(n, null)), Vec.fromValues(yType, b.padTo(n, null))),
+            n
+          )
+        )
+        (0 until n).map(out.get).toList
+
+    def asList(v: Any): Seq[Any]               = v.asInstanceOf[Seq[Any]]
+    val xStatic                                = listElementType(xs)
+    val yStatic                                = listElementType(ys)
+    def isDynamic(e: VExpr, t: PType): Boolean =
+      t == PType.AnyT && !e.isConstant && !e.isInstanceOf[Const]
+    val xDynamic = isDynamic(xs, xStatic)
+    val yDynamic = isDynamic(ys, yStatic)
+    if xDynamic || yDynamic then
+      val compiled = java
+        .util
+        .concurrent
+        .ConcurrentHashMap[(PType, PType), (Seq[Any], Seq[Any]) => Any]()
+      RowFn(
+        "zip_with",
+        Seq(xs, ys),
+        PType.AnyT,
+        a =>
+          val l1    = asList(a(0))
+          val l2    = asList(a(1))
+          val types = (
+            if xDynamic then
+              elementTypeOf(l1)
+            else
+              xStatic
+            ,
+            if yDynamic then
+              elementTypeOf(l2)
+            else
+              yStatic
+          )
+          compiled.computeIfAbsent(types, t => compile(t._1, t._2))(l1, l2)
+      )
+    else
+      val eval = compile(xStatic, yStatic)
+      RowFn("zip_with", Seq(xs, ys), PType.AnyT, a => eval(asList(a(0)), asList(a(1))))
+    end if
+
+  end bindZipWith
+
   private def bindLike(
       left: Expression,
       right: Expression,
@@ -1556,6 +1626,8 @@ class Binder(
               PType.AnyT,
               a => intervalOf(unit, a(0).asInstanceOf[Double])
             )
+      case "zip_with" if f.args.exists(_.value.isInstanceOf[LambdaExpr]) =>
+        bindZipWith(f, receiverArgs)
       case _ if LambdaFunctions.contains(name) && f.args.exists(_.value.isInstanceOf[LambdaExpr]) =>
         bindLambdaCall(name, f, receiverArgs)
       case "date_add" if args.size == 2 =>
