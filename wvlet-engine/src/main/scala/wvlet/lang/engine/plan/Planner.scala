@@ -2072,12 +2072,6 @@ class Planner(
     (rewritten, found.result())
 
   /**
-    * A hash aggregation that groups only by the keys that are not constants (a grouping set's NULL
-    * keys and grouping id): constants are the same in every row, so they don't change the groups,
-    * and a projection puts them back. Output: the keys, then the aggregates, as in `out`. With
-    * `allowGlobal`, all-constant keys make a global aggregation (a grouping set's grand total)
-    */
-  /**
     * Grouping sets whose key union is one of the sets (ROLLUP, CUBE), computed from finer sets: the
     * finest set aggregates `in` into partial results ([[TwoPhaseAgg.decompose]]), and each coarser
     * set merges the partial results of its smallest finer set. Each set's rows are its finished
@@ -2189,6 +2183,12 @@ class Planner(
 
   end chainGroupingSets
 
+  /**
+    * A hash aggregation that groups only by the keys that are not constants (a grouping set's NULL
+    * keys and grouping id): constants are the same in every row, so they don't change the groups,
+    * and a projection puts them back. Output: the keys, then the aggregates, as in `out`. With
+    * `allowGlobal`, all-constant keys make a global aggregation (a grouping set's grand total)
+    */
   private def groupByVaryingKeys[P](
       input: P,
       keys: IndexedSeq[VExpr],
