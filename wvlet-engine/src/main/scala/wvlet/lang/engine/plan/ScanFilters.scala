@@ -136,6 +136,8 @@ object ScanFilters:
           toParquet(e, columnName, numeric = false)
     go(cond)
 
+  end exact
+
   private def isNumeric(t: PType): Boolean =
     t match
       case _: PType.Decimal | PType.Float64 =>
@@ -186,6 +188,7 @@ object ScanFilters:
                 None
         case _ =>
           None
+      end match
 
   /**
     * The row filters of `conds` (conjuncts with their [[exact]] filters) as one AND, most selective

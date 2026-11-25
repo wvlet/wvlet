@@ -241,11 +241,12 @@ object Lowering:
           lower(s) match
             case scan: ScanOp =>
               val conds = ScanFilters.conjuncts(expr(cond, positions(s)))
-              val name = (i: Int) =>
-                Some(scan.sourceColumnName(i)).filter(n =>
-                  s.source.canRowFilterOn(n) ||
-                    numericRowFilters && s.source.canRowFilterNumericOn(n)
-                )
+              val name  =
+                (i: Int) =>
+                  Some(scan.sourceColumnName(i)).filter(n =>
+                    s.source.canRowFilterOn(n) ||
+                      numericRowFilters && s.source.canRowFilterNumericOn(n)
+                  )
               val (moved, kept) = conds.partitionMap(c =>
                 ScanFilters.exact(c, name, numericRowFilters).map(f => (c, f)).toLeft(c)
               )
