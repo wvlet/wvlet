@@ -868,6 +868,15 @@ from nation
 select n_name, n_regionkey
 ```
 
+Name an output column with `expr as name`, or put the name first with `name = expr`:
+
+```wvlet
+from nation
+select n_name as nation_name, region = n_regionkey
+```
+
+Unlike SQL, Wvlet has no implicit aliases: `select n_name nation_name` is a compile error that suggests `as`, because an identifier after a column list applies a partial query (`def name = where ...`) and a missing comma would otherwise silently rename a column. The same applies to `add`, `prepend`, and `agg`.
+
 As in SQL, arbitrary expressions can be used in select statements. Note that, however, in Wvlet, you usually don't need to use select statement
 as the other column-at-a-time operators, like `add`, `exclude`, `shift`, etc. can be used for manipulating column values.
 

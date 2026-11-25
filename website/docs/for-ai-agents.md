@@ -112,6 +112,7 @@ See the [Query Syntax reference](./syntax/index.md) for every operator.
 |-----|-------|
 | `SELECT * FROM t` | `from t` |
 | `SELECT a, b FROM t WHERE c > 0` | `from t where c > 0 select a, b` |
+| `SELECT x AS y FROM t`, `SELECT x y FROM t` | `from t select x as y` or `from t select y = x` (no implicit alias; `as` is required) |
 | `SELECT *, x * 2 AS y FROM t` | `from t add x * 2 as y` |
 | `SELECT DISTINCT a FROM t` | `from t select distinct a` |
 | `SELECT COUNT(*) FROM t` | `from t count` |

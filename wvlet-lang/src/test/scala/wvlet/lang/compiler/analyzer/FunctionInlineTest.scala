@@ -129,4 +129,48 @@ class FunctionInlineTest extends UniTest:
     e.getMessage shouldContain "concat"
   }
 
+  test("suggest as when a select item has a SQL-style implicit alias") {
+    for q <- List(
+        "select c1 total",
+        "select c1 + 1 total",
+        "select distinct c1 total",
+        "add c1 * 2 total",
+        "prepend c1 * 2 total",
+        "agg c1.sum total",
+        "group by c1 agg c1.count total"
+      )
+    do
+      val e = intercept[WvletLangException] {
+        generateSQL(s"from [[1], [2]] as t(c1) | ${q}")
+      }
+      e.statusCode shouldBe StatusCode.PARTIAL_QUERY_NOT_FOUND
+      e.getMessage shouldContain "`<expr> as total`"
+      e.getMessage shouldContain "`total = <expr>`"
+  }
+
+  test("suggest as when an implicit alias matches an existing table name") {
+    val e = intercept[WvletLangException] {
+      generateSQL("""val region(r) = [[1]]
+          |from [[1], [2]] as t(c1) | select c1 region
+          |""".stripMargin)
+    }
+    e.statusCode shouldBe StatusCode.PARTIAL_QUERY_NOT_FOUND
+    e.getMessage shouldContain "`<expr> as region`"
+  }
+
+  test("not suggest as for an undefined partial query after a non-column-list operator") {
+    val e = intercept[WvletLangException] {
+      generateSQL("from [[1], [2]] as t(c1) | where c1 > 1 | no_such_pq")
+    }
+    e.statusCode shouldBe StatusCode.PARTIAL_QUERY_NOT_FOUND
+    e.getMessage.contains("as no_such_pq") shouldBe false
+  }
+
+  test("still resolve a partial query applied after select") {
+    val sql = generateSQL("""def pq_big = where c1 > 1
+        |from [[1], [2]] as t(c1) | select c1 pq_big
+        |""".stripMargin)
+    sql shouldContain "c1 > 1"
+  }
+
 end FunctionInlineTest

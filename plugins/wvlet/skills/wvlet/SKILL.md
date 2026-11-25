@@ -67,6 +67,7 @@ The usual order is `from` → `where` → `add` → `group by` → `agg` → `wh
 | `cast(x as int)` | `x::int` (SQL `cast` also works) |
 | `a || b` | `a + b` or `s"${a}${b}"`; NULL counts as `''` |
 | `select *, x * 2 as y` | `add x * 2 as y` |
+| `select x y` (implicit alias) | `select x as y` or `select y = x`; a bare name after a column list is a partial query call |
 
 ## Operators
 

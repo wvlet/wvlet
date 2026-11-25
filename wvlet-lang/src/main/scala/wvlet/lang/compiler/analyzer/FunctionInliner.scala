@@ -701,7 +701,7 @@ object FunctionInliner extends ContextLogSupport:
             throw StatusCode
               .PARTIAL_QUERY_NOT_FOUND
               .newException(
-                s"'${partialQueryName}' is not a partial query definition",
+                s"'${partialQueryName}' is not a partial query definition${aliasHint(p)}",
                 context.sourceLocationAt(p.span)
               )
       case None =>
@@ -710,7 +710,7 @@ object FunctionInliner extends ContextLogSupport:
           if partialQueryName.name.equalsIgnoreCase("union") then
             ". Wvlet has no union operator: use concat { ... } (UNION ALL), and add dedup for UNION"
           else
-            ""
+            aliasHint(p)
         throw StatusCode
           .PARTIAL_QUERY_NOT_FOUND
           .newException(
@@ -719,6 +719,26 @@ object FunctionInliner extends ContextLogSupport:
           )
     end match
   end resolvePartialQuery
+
+  /**
+    * A SQL-style implicit alias (`select c1 total`) is parsed as a partial query application, since
+    * Wvlet requires `as` to name a column. When the name follows an operator taking a column list
+    * (select, select distinct, add, prepend, agg), return a hint suggesting the alias forms.
+    */
+  private def aliasHint(p: PartialQueryApply): String =
+    val endsWithColumnList =
+      p.child match
+        case _: Project | _: Distinct | _: AddColumnsToRelation | _: PrependColumnsToRelation |
+            _: Agg =>
+          true
+        case _ =>
+          false
+    if p.args.isEmpty && endsWithColumnList then
+      val name = p.partialQueryRef.leafName
+      s". To name a column, write `<expr> as ${name}` or `${name} = <expr>` " +
+        "(Wvlet has no implicit column aliases), or add a comma if it is another column"
+    else
+      ""
 
   /**
     * Replace EmptyRelation nodes in the partial query body with the input relation.
