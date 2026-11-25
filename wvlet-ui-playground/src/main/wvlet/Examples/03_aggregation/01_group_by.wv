@@ -1,0 +1,9 @@
+-- Group rows and aggregate
+-- `group by` keys come first in the output; `agg` adds aggregations to them.
+from lineitem
+group by l_returnflag, l_linestatus
+agg
+  _.count as cnt,
+  l_quantity.sum as sum_qty,
+  l_extendedprice.avg as avg_price
+order by l_returnflag, l_linestatus

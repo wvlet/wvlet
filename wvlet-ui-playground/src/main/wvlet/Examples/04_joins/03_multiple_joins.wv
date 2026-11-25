@@ -1,0 +1,10 @@
+-- Join several tables
+from lineitem
+join orders on l_orderkey = o_orderkey
+join customer on o_custkey = c_custkey
+join nation on c_nationkey = n_nationkey
+where o_orderdate.year = 1995
+group by n_name
+agg (l_extendedprice * (1 - l_discount)).sum as revenue
+order by revenue desc
+limit 5

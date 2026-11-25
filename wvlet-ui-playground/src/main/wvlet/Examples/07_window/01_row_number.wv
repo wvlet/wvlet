@@ -1,0 +1,7 @@
+-- Number rows within groups
+-- The top 3 orders of each priority by total price.
+from orders
+add row_number() over (partition by o_orderpriority order by o_totalprice desc) as rn
+where rn <= 3
+select o_orderpriority, rn, o_orderkey, o_totalprice
+order by o_orderpriority, rn

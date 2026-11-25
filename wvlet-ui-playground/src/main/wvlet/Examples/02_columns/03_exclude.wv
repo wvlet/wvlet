@@ -1,0 +1,4 @@
+-- Drop columns with exclude
+from customer
+exclude c_address, c_phone, c_comment
+limit 10

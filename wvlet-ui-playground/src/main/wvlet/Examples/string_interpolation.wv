@@ -1,4 +1,0 @@
-from lineitem
-add s"label ${l_returnflag}:${l_linestatus}" as label
-group by label
-agg _.count as cnt

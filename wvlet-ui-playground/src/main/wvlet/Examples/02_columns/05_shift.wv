@@ -1,0 +1,6 @@
+-- Move columns with shift
+-- `shift` moves columns to the left; `shift to right` moves them to the end.
+from lineitem
+shift l_returnflag, l_linestatus
+shift to right l_orderkey
+limit 5

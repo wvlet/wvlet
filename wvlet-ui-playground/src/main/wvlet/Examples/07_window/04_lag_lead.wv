@@ -1,0 +1,10 @@
+-- Previous and next rows with lag and lead
+from [
+  ['2024-01', 100],
+  ['2024-02', 130],
+  ['2024-03', 90],
+  ['2024-04', 160]
+] as sales(month, amount)
+add amount.lag over (order by month) as prev
+add amount.lead over (order by month) as next
+add amount - prev as change

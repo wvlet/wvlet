@@ -20,6 +20,11 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 - `group_key_semi_joins` also reduces an aggregation on the left of an inner join by swapping the inputs with the same build side (`left_group_key_semi_joins`), so the copy of the semi-join source is lowered after the original.
 - `eager_aggregation` (`runtime/EagerAggregation.scala`) computes an aggregation below the top inner join under it, by the aggregated side's join keys and the group-key columns it holds, when the calls read one side and can't fail on rows the join drops (sum, min, max and counts over columns, `+ - *`, division by a nonzero constant, widening casts), the partial groups are at most 1/4 of that side's `Stats.treeRows` and at most 4x the outer groups, and the other side keeps ≥ 70% of its rows. Shared CTE bodies run it again in `SharedCTE.lower` once their readers' filters are pushed in (TPC-DS q04, q11).
 
+## Generated TPC-H tables
+
+- `TpchGen` (`catalog/`) generates the TPC-H tables as `MemTable`s on every platform, with spec row counts, keys, and value domains but not `dbgen`'s values; the web playground queries them in the browser. `TpchGenQueriesTest` runs every spec/tpch query over them, and `PlaygroundEngineTest` runs every playground example. See [the playground ADR](../adr/2026-11-25-playground-engine-tpch-gen.md).
+- Compile queries over registered tables with `EngineCatalog.toCompileCatalog(tables)` as the compiler's default catalog, so column types resolve stdlib methods (`o_comment.like(...)`).
+
 ## Optimizer toggles
 
 - `Optimization` (`plan/OptimizerOptions.scala`) names each planner optimization. Turn them off with `wvlet.engine.optimizer.disabled=<names>`, `WVLET_ENGINE_OPTIMIZER_DISABLED`, or `WvletEngine(optimizer = ...)`.

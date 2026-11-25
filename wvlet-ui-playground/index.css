@@ -1,19 +1,546 @@
-@import "tailwindcss" source("../");
+/*
+ * Wvlet Playground layout. Colors and fonts come from uni-ui's --uni-* tokens, so the light and
+ * dark themes (data-theme on <html>) apply to the whole page.
+ */
+html, body, #main {
+    height: 100%;
+    margin: 0;
+}
 
-@layer utilities {
-    /* https://stackoverflow.com/questions/66416614/how-to-create-scrollable-element-in-tailwind-without-a-scrollbar */
-    /* Chrome, Safari and Opera */
-    .scrollbar-hidden::-webkit-scrollbar {
+body {
+    background: var(--uni-canvas);
+    color: var(--uni-fg);
+    font-family: var(--uni-font-sans);
+    font-size: var(--uni-font-size);
+    overflow: hidden;
+}
+
+.pg-app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.pg-grow {
+    flex: 1 1 auto;
+}
+
+/* Header */
+.pg-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--uni-line);
+    background: var(--uni-panel);
+    flex: none;
+}
+
+.pg-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--uni-fg);
+    text-decoration: none;
+    font-weight: 600;
+    margin-right: 8px;
+}
+
+.pg-brand__logo {
+    width: 22px;
+    height: 22px;
+}
+
+.pg-brand__sub {
+    color: var(--uni-muted);
+    font-weight: 400;
+}
+
+.pg-header__mode {
+    margin-right: 4px;
+}
+
+.pg-header__mode .uni-tabs {
+    border-bottom: none;
+}
+
+.pg-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--uni-muted);
+    font-size: var(--uni-font-size-sm);
+}
+
+.pg-link {
+    color: var(--uni-muted);
+    text-decoration: none;
+    font-size: var(--uni-font-size-sm);
+    padding: 0 4px;
+}
+
+.pg-link:hover {
+    color: var(--uni-fg);
+}
+
+.pg-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* Body: sidebar | main */
+.pg-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.pg-body > .uni-pane {
+    background: var(--uni-panel);
+    flex: none;
+}
+
+.pg-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+.pg-top {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 120px;
+}
+
+.pg-top > .uni-pane {
+    flex: none;
+    border-left: 1px solid var(--uni-line);
+}
+
+.pg-editor-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 200px;
+}
+
+.pg-editor-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+}
+
+.pg-editor {
+    position: absolute;
+    inset: 0;
+}
+
+/* Example title and description above the editor */
+.pg-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--uni-line);
+    background: var(--uni-surface);
+    flex: none;
+}
+
+.pg-info__body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.pg-info__category {
+    color: var(--uni-accent);
+    font-size: var(--uni-font-size-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.pg-info__title {
+    font-weight: 600;
+}
+
+.pg-info__desc {
+    color: var(--uni-muted);
+    font-size: var(--uni-font-size-sm);
+    flex-basis: 100%;
+}
+
+.pg-info__keys {
+    color: var(--uni-faint);
+    font-size: var(--uni-font-size-sm);
+    white-space: nowrap;
+}
+
+/* Panel headers (output tabs, result) */
+.pg-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--uni-line);
+    background: var(--uni-surface);
+    flex: none;
+}
+
+.pg-panel-header .uni-tabs {
+    border-bottom: none;
+}
+
+.pg-panel-title {
+    font-weight: 600;
+}
+
+.pg-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Output panel: translation and plans */
+.pg-output {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.pg-output__body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.pg-output__view {
+    position: absolute;
+    inset: 0;
+}
+
+.pg-plan {
+    overflow: auto;
+    padding: 8px 12px;
+}
+
+.pg-plan__caption {
+    color: var(--uni-muted);
+    font-size: var(--uni-font-size-sm);
+    margin-bottom: 6px;
+}
+
+.pg-plan__text {
+    margin: 0;
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre;
+}
+
+/* Vertical splitter between the editor and the result */
+.pg-vsplit {
+    flex: none;
+    height: 6px;
+    cursor: row-resize;
+    background: var(--uni-line);
+    position: relative;
+    touch-action: none;
+}
+
+.pg-vsplit:hover,
+.pg-vsplit[data-dragging="true"],
+.pg-vsplit:focus-visible {
+    background: var(--uni-accent);
+    outline: none;
+}
+
+/* Result */
+.pg-bottom {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    min-height: 0;
+    background: var(--uni-panel);
+}
+
+.pg-result-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.pg-result-stmt {
+    color: var(--uni-muted);
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+}
+
+.pg-badge {
+    background: var(--uni-accent-soft);
+    color: var(--uni-accent);
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: var(--uni-font-size-sm);
+    white-space: nowrap;
+}
+
+.pg-badge--muted {
+    background: var(--uni-hover);
+    color: var(--uni-muted);
+}
+
+.pg-result {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.pg-result__table {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.pg-result__table .uni-table {
+    flex: 1 1 auto;
+    min-height: 0;
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+}
+
+.pg-result__types {
+    display: flex;
+    gap: 4px;
+    padding: 4px 8px;
+    overflow-x: auto;
+    flex: none;
+    scrollbar-width: thin;
+}
+
+.pg-type-chip {
+    color: var(--uni-faint);
+    font-family: var(--uni-font-mono);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.pg-null {
+    color: var(--uni-faint);
+    font-style: italic;
+}
+
+.pg-rownum {
+    color: var(--uni-faint);
+}
+
+.pg-result__empty {
+    color: var(--uni-muted);
+    padding: 16px;
+}
+
+.pg-result__error {
+    overflow: auto;
+    padding: 12px;
+    background: var(--uni-danger-soft);
+    color: var(--uni-danger);
+    flex: 1 1 auto;
+}
+
+.pg-result__error pre {
+    margin: 0;
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
+/* Sidebar */
+.pg-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.pg-sidebar__tabs {
+    padding: 0 8px;
+    border-bottom: 1px solid var(--uni-line);
+    flex: none;
+}
+
+.pg-sidebar__tabs .uni-tabs {
+    border-bottom: none;
+}
+
+.pg-sidebar > [role="tabpanel"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.pg-sidebar__panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.pg-sidebar__search {
+    padding: 8px;
+    flex: none;
+}
+
+.pg-sidebar__search input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.pg-sidebar__note {
+    color: var(--uni-muted);
+    font-size: var(--uni-font-size-sm);
+    padding: 8px 12px;
+    flex: none;
+}
+
+.pg-sidebar__tree {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.pg-sidebar__tree .uni-tree {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.pg-tree-category {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    font-weight: 600;
+}
+
+.pg-tree-count {
+    color: var(--uni-faint);
+    font-weight: 400;
+    font-size: var(--uni-font-size-sm);
+    padding-right: 8px;
+}
+
+.pg-tree-leaf {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pg-column {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+}
+
+.pg-column-type {
+    color: var(--uni-faint);
+    padding-right: 8px;
+}
+
+/* Status bar */
+.pg-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 24px;
+    padding: 0 10px;
+    border-top: 1px solid var(--uni-line);
+    background: var(--uni-panel);
+    color: var(--uni-muted);
+    font-size: 12px;
+    flex: none;
+}
+
+.pg-status__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--uni-success);
+}
+
+.pg-status__dot[data-error="true"] {
+    background: var(--uni-danger);
+}
+
+.pg-status__mode {
+    color: var(--uni-accent);
+}
+
+@media (max-width: 760px) {
+    .pg-info__keys,
+    .pg-brand__sub,
+    .pg-link {
         display: none;
-    }
-
-    .scrollbar-hidden {
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* Edge on Windows */
     }
 }
 
+.uni-tabs [role="tab"] {
+    white-space: nowrap;
+}
 
-body {
-    @apply text-white bg-gray-800
+.pg-field span {
+    white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+    .pg-info__keys,
+    .pg-field > span {
+        display: none;
+    }
+}
+
+/*
+ * Scrollbars appear only while the pointer is over the area that scrolls. Chromium and Firefox use
+ * the standard properties (and then ignore ::-webkit-scrollbar); Safari uses the pseudo-elements.
+ */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+
+*:hover {
+    scrollbar-color: var(--uni-faint) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+}
+
+:hover::-webkit-scrollbar-thumb {
+    background: var(--uni-faint);
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
 }

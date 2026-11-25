@@ -1,0 +1,9 @@
+-- Name a subquery with with
+with big_orders as {
+  from orders
+  where o_totalprice > 300000
+}
+from big_orders
+group by o_orderpriority
+agg _.count as cnt
+order by o_orderpriority

@@ -1,0 +1,9 @@
+-- Constants with val
+val min_balance = 9500
+val segment     = 'MACHINERY'
+
+from customer
+where c_acctbal > min_balance
+where c_mktsegment = segment
+select c_name, c_acctbal
+order by c_acctbal desc

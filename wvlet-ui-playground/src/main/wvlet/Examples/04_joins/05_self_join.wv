@@ -1,0 +1,7 @@
+-- Self join with aliases
+-- Name each side with `as` to join a table with itself.
+from nation as a
+join nation as b on a.n_regionkey = b.n_regionkey and a.n_nationkey < b.n_nationkey
+where a.n_regionkey = 1
+select a.n_name as nation1, b.n_name as nation2
+order by nation1, nation2

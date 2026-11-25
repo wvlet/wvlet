@@ -821,3 +821,33 @@ end EngineCatalog
 object EngineCatalog:
   val CatalogName = "memory"
   val SchemaName  = "main"
+
+  /**
+    * A compile-time catalog with the columns of `tables` in the `main` schema, for the `wvlet`
+    * dialect: with it, the typer knows each column's type, so stdlib methods such as
+    * `o_comment.like(...)` resolve. Pass it to `Compiler.setDefaultCatalog`. `dbType` is the SQL
+    * dialect the compiler targets (the catalog decides `Context.dbType`).
+    */
+  def toCompileCatalog(
+      tables: Seq[TableSource],
+      dbType: wvlet.lang.compiler.DBType = wvlet.lang.compiler.DBType.Wvlet
+  ): wvlet.lang.catalog.InMemoryCatalog =
+    import wvlet.lang.catalog.Catalog
+    val c = wvlet
+      .lang
+      .catalog
+      .InMemoryCatalog(catalogName = CatalogName, functions = Nil, catalogDBType = dbType)
+    c.createSchema(
+      Catalog.TableSchema(Some(CatalogName), SchemaName),
+      Catalog.CreateMode.CREATE_IF_NOT_EXISTS
+    )
+    tables.foreach { t =>
+      val columns = t.schema.fields.map(f => Catalog.TableColumn(f.name, f.ptype.toDataType))
+      c.createTable(
+        Catalog.TableDef(Catalog.TableName(Some(CatalogName), Some(SchemaName), t.name), columns),
+        Catalog.CreateMode.CREATE_IF_NOT_EXISTS
+      )
+    }
+    c
+
+end EngineCatalog

@@ -1,8 +1,0 @@
-from lineitem
--- Add a new expression column
-add l_linestatus + ':' + l_shipmode as ship_label
--- Move ship_label colmn to the left
-shift ship_label
--- Exclude unnecessary columns
-exclude l_comment
-limit 10

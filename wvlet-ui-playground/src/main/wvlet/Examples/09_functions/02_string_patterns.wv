@@ -1,0 +1,9 @@
+-- Pattern matching and padding
+from part
+select
+  p_name,
+  p_name.like('%green%') as has_green,
+  p_name.regexp_extract('[a-z]+') as first_word,
+  p_name.split(' ').size as words,
+  p_partkey.to_string.lpad(6, '0') as padded_key
+limit 10

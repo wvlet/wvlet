@@ -1,0 +1,6 @@
+-- Moving averages with a window frame
+-- `rows [-2, 0]` is SQL's rows between 2 preceding and current row.
+from [
+  [1, 10.0], [2, 20.0], [3, 30.0], [4, 20.0], [5, 50.0]
+] as t(day, value)
+add avg(value) over (order by day rows [-2, 0]) as moving_avg

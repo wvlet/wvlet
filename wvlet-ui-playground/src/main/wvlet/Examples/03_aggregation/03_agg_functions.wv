@@ -1,0 +1,12 @@
+-- Aggregation functions
+-- Call an aggregation on a column with the dot syntax. SQL functions such as sum(x) work too.
+from part
+group by p_mfgr
+agg
+  _.count as parts,
+  p_retailprice.min as min_price,
+  p_retailprice.max as max_price,
+  p_retailprice.avg as avg_price,
+  p_size.count_distinct as sizes,
+  sum(p_size) as total_size
+order by p_mfgr

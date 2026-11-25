@@ -1,0 +1,4 @@
+-- Show the columns of a query with describe
+-- Press Shift+Enter in the editor to describe the query at the cursor.
+from orders
+describe

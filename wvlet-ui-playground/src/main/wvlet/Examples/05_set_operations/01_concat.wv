@@ -1,0 +1,5 @@
+-- Append rows with concat (SQL UNION ALL)
+from [[1, 'apple'], [2, 'banana']] as fruit(id, name)
+concat {
+  from [[3, 'cherry']] as fruit(id, name)
+}

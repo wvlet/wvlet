@@ -1,0 +1,5 @@
+-- Count rows
+-- `count` returns the number of input rows (SQL: SELECT count(*)).
+from lineitem
+where l_shipmode = 'AIR'
+count

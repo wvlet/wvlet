@@ -13,7 +13,6 @@
  */
 
 import { defineConfig } from "vite";
-import tailwindcss from "@tailwindcss/vite";
 import monacoEditorPlugin from "vite-plugin-monaco-editor";
 import fs from 'fs'
 import path from 'path';
@@ -54,7 +53,6 @@ export default defineConfig({
     }
   },
   plugins: [
-    tailwindcss(),
     monacoEditorPlugin, // plugin for awaiting Monaco Editor loading
     replace({
       preventAssignment: true,

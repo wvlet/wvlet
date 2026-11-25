@@ -1,0 +1,7 @@
+-- Array values
+select
+  [1, 2, 3] as xs,
+  [1, 2, 3].size as n,
+  [1, 2, 3].contains(2) as has_two,
+  [3, 1, 2, 1].distinct as uniq,
+  ['a', 'b', 'c'].get(2) as second

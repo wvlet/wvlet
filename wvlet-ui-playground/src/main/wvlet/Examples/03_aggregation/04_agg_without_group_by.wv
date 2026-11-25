@@ -1,0 +1,8 @@
+-- Aggregate the whole table
+-- `agg` without `group by` returns one row.
+from lineitem
+agg
+  _.count as rows,
+  l_orderkey.count_distinct as orders,
+  l_shipdate.min as first_ship,
+  l_shipdate.max as last_ship

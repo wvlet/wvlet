@@ -1,0 +1,7 @@
+-- Add computed columns
+-- `add` appends columns on the right, keeping the existing ones.
+from lineitem
+add l_extendedprice * (1 - l_discount) as disc_price
+add disc_price * (1 + l_tax) as charge
+select l_orderkey, l_linenumber, l_extendedprice, disc_price, charge
+limit 10

@@ -1,0 +1,13 @@
+-- Conditional expressions
+-- `if ... then ... else`, and `case` without `end`.
+from orders
+add if o_totalprice > 200000 then 'large' else 'small' as size
+add
+  case o_orderstatus
+    when 'F' then 'finished'
+    when 'O' then 'open'
+    else 'partial'
+  as status
+group by size, status
+agg _.count as cnt
+order by size, status

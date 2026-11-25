@@ -1,0 +1,10 @@
+-- Date functions
+from orders
+select
+  o_orderdate,
+  o_orderdate.year as year,
+  o_orderdate.month as month,
+  o_orderdate.quarter as quarter,
+  o_orderdate.truncate_to('month') as month_start,
+  o_orderdate.diff_days('1998-12-31'::date) as days_to_end
+limit 10

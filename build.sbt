@@ -138,24 +138,32 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
   .nativeSettings(uniNativeCurlLinking)
 
-def generateWvletLib(path: File, packageName: String, className: String): String = {
-  val srcDir      = path
-  val wvFiles     = (srcDir ** "*.wv").get()
-  val methodNames = Seq.newBuilder[String]
+/**
+  * Embed the query files under `path` (`.wv`, or the given extensions) as Scala strings in
+  * `<packageName>.<className>`, keyed by their relative paths in `allFiles`.
+  */
+def generateWvletLib(
+    path: File,
+    packageName: String,
+    className: String,
+    extensions: Seq[String] = Seq("wv")
+): String = {
+  val srcDir = path
+  val files  = extensions.flatMap(ext => (srcDir ** s"*.${ext}").get())
+  val keys   = Seq.newBuilder[(String, String)]
 
-  def resourceDefs: String = wvFiles
+  def resourceDefs: String = files
     .map { f =>
       // Use replace instead of replaceAll to handle both Unix and Windows path separators
-      val name = f
-        .relativeTo(srcDir)
-        .get
-        .getPath
-        .stripSuffix(".wv")
-        .replace("/", "__")
-        .replace("\\", "__")
-
-      val methodName = name.replaceAll("-", "_")
-      methodNames += methodName
+      val key = f.relativeTo(srcDir).get.getPath.replace("\\", "/")
+      // .wv files keep their method names of before (no extension); others name theirs
+      val stem =
+        if key.endsWith(".wv") then
+          key.stripSuffix(".wv")
+        else
+          key.replace(".", "_")
+      val methodName = stem.replace("/", "__").replaceAll("-", "_")
+      keys += (key -> methodName)
       val content = IO
         .read(f)
         .replaceAll("""\$""", """\$\$""")
@@ -166,11 +174,9 @@ def generateWvletLib(path: File, packageName: String, className: String): String
     .mkString("\n")
 
   def allFiles: String = {
-    val allMethods = methodNames.result().sorted
+    val all = keys.result().sortBy(_._1)
     s"""  def allFiles: ListMap[String, String] = ListMap(
-       |    ${allMethods
-        .map(m => s""""${m.replaceAll("__", "/")}.wv"-> _${m}""")
-        .mkString(",\n    ")}
+       |    ${all.map((k, m) => s""""${k}"-> _${m}""").mkString(",\n    ")}
        |  )
        |""".stripMargin
   }
@@ -801,7 +807,8 @@ lazy val uiMain = project
   .dependsOn(ui, lang.js)
 
 lazy val playground = project
-  .enablePlugins(ScalaJSPlugin)
+  // UniPlugin copies uni-ui.css out of the uni-ui jar to target/uni-ui.css after every compile
+  .enablePlugins(ScalaJSPlugin, UniPlugin)
   .in(file("wvlet-ui-playground"))
   .settings(
     buildSettings,
@@ -812,14 +819,17 @@ lazy val playground = project
       val libDir     = baseDirectory.value / "src/main/wvlet/Examples"
       val targetFile = (Compile / sourceManaged).value /
         "wvlet/lang/ui/playground/SampleQuery.scala"
-      val body = generateWvletLib(libDir, "wvlet.lang.ui.playground", "SampleQuery")
+      val body = generateWvletLib(libDir, "wvlet.lang.ui.playground", "SampleQuery", Seq("wv", "sql"))
       state.value.log.debug(s"Generating SampleQuery.scala:\n${body}")
       IO.write(targetFile, body)
       Seq(targetFile)
     },
-    Compile / sourceGenerators += sampleQueryGen.taskValue
+    Compile / sourceGenerators += sampleQueryGen.taskValue,
+    // uni-ui supplies the resizable panes, tree, tabs, and data table of the playground
+    libraryDependencies += "org.wvlet.uni" %% "uni-ui" % UNI_VERSION
   )
-  .dependsOn(uiMain, lang.js)
+  // Queries run on the in-process columnar engine, in the browser
+  .dependsOn(uiMain, lang.js, engine.js)
 
 // uni's rx-html embeds plain strings and DOM nodes as element children through `given
 // Conversion`s (wvlet.uni.dom.all.stringToDomNode etc.), which Scala 3 gates behind the

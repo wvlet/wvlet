@@ -1,0 +1,5 @@
+-- rank and dense_rank
+from [[1, 10], [2, 20], [3, 20], [4, 30]] as t(id, score)
+add rank() over (order by score desc) as rnk
+add dense_rank() over (order by score desc) as dense
+order by id

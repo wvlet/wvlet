@@ -1,5 +1,0 @@
--- List schemas (databases)
-show schemas
-
--- List schemas in a specific catalog
-show schemas in memory

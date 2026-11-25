@@ -1,0 +1,9 @@
+-- Arithmetic
+-- `%` is the remainder; `--` starts a comment, not `//`.
+select
+  7 + 3 as add,
+  7 - 3 as sub,
+  7 * 3 as mul,
+  7 / 2 as div,
+  7 % 3 as mod,
+  -7.5.abs as abs_value

@@ -12,32 +12,16 @@
  * limitations under the License.
  */
 
-// Import Tailwind CSS
+// uni-ui's component styles (copied from the uni-ui jar by sbt-uni after each compile), then the
+// playground's own layout
+import './target/uni-ui.css'
 import './index.css'
-
-// Typescript
-import {DuckDBWasm} from '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/duckdb/DuckDBWasm.ts'
-window.duckdb = DuckDBWasm
-
-import * as arrow from 'apache-arrow'
-window.arrow = arrow
 
 import { MonacoEditor } from '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
 import '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
 
-// // Ensure that Monaco is loaded before assigning it to the window object
-// document.addEventListener('DOMContentLoaded', () => {
-//     import('monaco-editor').then((monaco) => {
-//         console.log("Monaco Editor loaded successfully");
-//
-//
-//     }).catch((error) => {
-//         console.error('Failed to load Monaco Editor:', error);
-//     });
-// });
-
 // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
 window.MonacoEditor = MonacoEditor;
 
-// Start Scala.js code
+// Start Scala.js code. Queries run on Wvlet's columnar engine in the browser; no DuckDB-Wasm.
 import('__target__/main.js')

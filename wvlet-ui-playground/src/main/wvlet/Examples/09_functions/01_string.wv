@@ -1,0 +1,11 @@
+-- String functions
+from nation
+select
+  n_name,
+  n_name.length as len,
+  n_name.lower as lower,
+  n_name.substring(1, 3) as prefix,
+  n_name.replace('A', '_') as replaced,
+  n_name.starts_with('I') as starts_with_i,
+  n_name.strpos('AN') as pos
+limit 10

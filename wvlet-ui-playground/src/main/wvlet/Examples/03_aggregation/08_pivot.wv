@@ -1,0 +1,6 @@
+-- Turn values into columns with pivot
+from lineitem
+pivot on l_linestatus
+group by l_returnflag
+agg _.count
+order by l_returnflag

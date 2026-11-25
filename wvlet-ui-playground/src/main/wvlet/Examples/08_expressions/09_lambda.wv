@@ -1,0 +1,8 @@
+-- Lambdas on arrays
+-- transform, filter, reduce, exists, and forall take a lambda.
+select
+  [1, 2, 3, 4].transform(x -> x * 10) as times10,
+  [1, 2, 3, 4].filter(x -> x % 2 = 0) as evens,
+  [1, 2, 3, 4].reduce((a, b) -> a + b) as total,
+  [1, 2, 3, 4].exists(x -> x > 3) as any_big,
+  [1, 2, 3, 4].forall(x -> x > 0) as all_positive

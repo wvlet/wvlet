@@ -1,0 +1,5 @@
+-- Inner join
+from nation
+join region on n_regionkey = r_regionkey
+select n_name, r_name
+order by r_name, n_name

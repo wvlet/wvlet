@@ -1,0 +1,8 @@
+-- Semi join with exists
+-- Keep customers with at least one urgent order.
+from customer
+where exists {
+  from orders
+  where o_custkey = c_custkey and o_orderpriority = '1-URGENT'
+}
+count

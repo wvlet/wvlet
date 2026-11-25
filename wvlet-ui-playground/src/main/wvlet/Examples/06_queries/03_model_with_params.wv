@@ -1,0 +1,9 @@
+-- Models with parameters
+model orders_in(year: int, priority: string) = {
+  from orders
+  where o_orderdate.year = year
+  where o_orderpriority = priority
+}
+
+from orders_in(1996, '1-URGENT')
+count

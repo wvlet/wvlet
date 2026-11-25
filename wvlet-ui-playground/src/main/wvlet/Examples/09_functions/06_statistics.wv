@@ -1,0 +1,8 @@
+-- Statistical aggregations
+from lineitem
+group by l_shipmode
+agg
+  l_quantity.median as median_qty,
+  l_quantity.stddev as stddev_qty,
+  l_extendedprice.approx_quantile(0.9) as p90_price
+order by l_shipmode

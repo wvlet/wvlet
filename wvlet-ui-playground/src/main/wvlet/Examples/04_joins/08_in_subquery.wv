@@ -1,0 +1,11 @@
+-- Filter by a subquery with in
+from supplier
+where s_nationkey in (
+  from nation
+  join region on n_regionkey = r_regionkey
+  where r_name = 'EUROPE'
+  select n_nationkey
+)
+select s_name, s_nationkey
+order by s_name
+limit 10

@@ -1,0 +1,4 @@
+-- Add a column on the left
+from part
+add to left p_brand + ' / ' + p_type as label
+limit 10

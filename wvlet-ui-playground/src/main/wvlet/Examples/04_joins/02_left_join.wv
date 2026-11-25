@@ -1,0 +1,10 @@
+-- Left join
+-- Keep every row of the left input; unmatched right columns are null.
+from customer
+left join orders on c_custkey = o_custkey
+group by c_custkey
+agg o_orderkey.count as orders
+group by orders
+agg _.count as customers
+order by orders
+limit 10
