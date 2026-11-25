@@ -87,6 +87,12 @@ class Planner(
     )
     if !enabled(Optimization.LateGather) then
       Planner.disableLateGather(pruned)
+    if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) then
+      Planner.configureFilters(
+        pruned,
+        shortCircuit = enabled(Optimization.ShortCircuitFilters),
+        reorder = enabled(Optimization.ReorderConjuncts)
+      )
     if !enabled(Optimization.JoinDirectIndex) then
       Planner.disableJoinDirectIndex(pruned)
     if !enabled(Optimization.ParallelJoinBuild) then
@@ -103,6 +109,8 @@ class Planner(
       )
     else
       pruned
+
+  end optimizePhysical
 
   private var hiddenSeq                                  = 0
   private[engine] def hiddenName(prefix: String): String =
@@ -3405,6 +3413,20 @@ object Planner:
       case _ =>
     op.children.foreach(disableLateGather)
     op.sharedInputs.foreach(disableLateGather)
+
+  /** Set how the filters of a physical plan evaluate AND / OR (`short_circuit_filters`) */
+  private[engine] def configureFilters(
+      op: Operator,
+      shortCircuit: Boolean,
+      reorder: Boolean
+  ): Unit =
+    op match
+      case f: FilterOp =>
+        f.shortCircuit = shortCircuit
+        f.reorderConjuncts = reorder
+      case _ =>
+    op.children.foreach(configureFilters(_, shortCircuit, reorder))
+    op.sharedInputs.foreach(configureFilters(_, shortCircuit, reorder))
 
   /** Make the hash joins of a physical plan use hash tables for every key (`join_direct_index`) */
   private[engine] def disableJoinDirectIndex(op: Operator): Unit =
