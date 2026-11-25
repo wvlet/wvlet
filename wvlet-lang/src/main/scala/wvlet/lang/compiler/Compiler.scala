@@ -17,6 +17,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.compiler.analyzer.EmptyTypeResolver
+import wvlet.lang.compiler.analyzer.EngineFunctionValidator
 import wvlet.lang.compiler.analyzer.ModelDependencyAnalyzer
 import wvlet.lang.compiler.analyzer.RemoveUnusedQueries
 import wvlet.lang.compiler.analyzer.SQLValidator
@@ -60,8 +61,9 @@ object Compiler extends LogSupport:
     PreprocessLocalExpr, // Preprocess local expressions (e.g., backquote strings and native expressions)
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
     RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
-    Typer,          // Assign a concrete DataType to each LogicalPlan and Expression nodes
-    SQLValidator(), // Validate SQL-specific patterns and emit warnings
+    Typer,                   // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    EngineFunctionValidator, // Reject calls the target engine does not bind (wvlet engine only)
+    SQLValidator(),          // Validate SQL-specific patterns and emit warnings
     ModelDependencyAnalyzer()
   )
 

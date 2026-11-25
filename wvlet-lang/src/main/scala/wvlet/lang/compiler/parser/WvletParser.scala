@@ -1681,18 +1681,17 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     scanner.lookAhead().token match
       case WvletToken.EXTENDS =>
         consume(WvletToken.EXTENDS)
+        // Parents are comma-separated (`extends a, b`). Without a comma the list ends, so a
+        // body-less declaration such as `type duckdb extends db_context` does not swallow the
+        // next statement's tokens as more parents
         val parents          = List.newBuilder[NameExpr]
         def nextParent: Unit =
-          val t = scanner.lookAhead()
-          t.token match
+          parents += identifier()
+          scanner.lookAhead().token match
             case WvletToken.COMMA =>
               consume(WvletToken.COMMA)
               nextParent
-            case WvletToken.EQ | WvletToken.EOF | WvletToken.LIKE =>
-            // ok
             case _ =>
-              parents += identifier()
-              nextParent
         nextParent
         parents.result()
       case _ =>

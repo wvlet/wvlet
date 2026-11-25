@@ -14,6 +14,8 @@
 package wvlet.lang.compiler.analyzer
 
 import wvlet.uni.test.UniTest
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
@@ -33,7 +35,13 @@ class DialectFunctionResolutionTest extends UniTest:
     val compiler = Compiler(CompilerOptions(workEnv = WorkEnv("."), dbType = dbType))
     val unit     = CompilationUnit.fromWvletString(wv)
     val result   = compiler.compileSingleUnit(unit)
+    result.reportAllErrors
     GenSQL.generateSQL(unit)(using result.context)
+
+  private def compileError(wv: String, dbType: DBType = DBType.Wvlet): WvletLangException =
+    intercept[WvletLangException] {
+      generateSQL(wv, dbType)
+    }
 
   test("select the dialect-specific variant matching the compile target") {
     val query =
@@ -89,6 +97,71 @@ class DialectFunctionResolutionTest extends UniTest:
     val sql = generateSQL(query, DBType.DuckDB)
     sql shouldContain "substring(s, 1, 2)"
     sql shouldContain "rpad(substring(s, 1, 5), 5, '_')"
+  }
+
+  test("the wvlet engine should use the duckdb variants of the standard library") {
+    val query =
+      """from [['abc']] as t(s)
+        |select s.regexp_like('a.*') as m
+        |""".stripMargin
+    generateSQL(query, DBType.Wvlet) shouldContain "regexp_matches(s,'a.*')"
+  }
+
+  test("an in wvlet variant should win over an in duckdb variant on the wvlet engine") {
+    val query =
+      """def f_engine(x: int) in duckdb: int = x + 1
+        |def f_engine(x: int) in wvlet: int = x + 2
+        |
+        |from [[10]] as t(v)
+        |select f_engine(v) as r
+        |""".stripMargin
+    generateSQL(query, DBType.Wvlet) shouldContain "v + 2"
+    generateSQL(query, DBType.DuckDB) shouldContain "v + 1"
+  }
+
+  test("the wvlet engine should accept the functions it binds") {
+    val query =
+      """from [[0.5]] as t(v)
+        |select acos(v) as a, v.acos() as b
+        |""".stripMargin
+    generateSQL(query, DBType.Wvlet) shouldContain "acos(v)"
+  }
+
+  test("a DuckDB-only function should fail at compile time on the wvlet engine") {
+    val query =
+      """from [[[1, 2]]] as t(a)
+        |select array_unique(a) as u
+        |""".stripMargin
+    val e = compileError(query)
+    e.statusCode shouldBe StatusCode.FUNCTION_NOT_FOUND
+    e.getMessage shouldContain "array_unique is not supported by the wvlet engine"
+    e.getMessage shouldContain "DuckDB connector"
+    // The DuckDB connector keeps the full DuckDB catalog
+    generateSQL(query, DBType.DuckDB) shouldContain "array_unique(a)"
+  }
+
+  test("a method-style call of a DuckDB-only function should fail on the wvlet engine") {
+    val query =
+      """from [[[1, 2]]] as t(a)
+        |select a.array_unique() as u
+        |""".stripMargin
+    compileError(query).statusCode shouldBe StatusCode.FUNCTION_NOT_FOUND
+  }
+
+  test("a function defined only for another engine should fail on the wvlet engine") {
+    val query =
+      """def f_trino_only(x: int) in trino: int = x + 1
+        |
+        |from [[10]] as t(v)
+        |select f_trino_only(v) as r
+        |""".stripMargin
+    compileError(query).getMessage shouldContain "f_trino_only is not supported"
+    // Other engines keep the lenient fallback to the only definition
+    generateSQL(query, DBType.DuckDB) shouldContain "v + 1"
+  }
+
+  test("the error should name the stdlib function that expands to a DuckDB name") {
+    EngineFunctionValidator.stdlibAlternative("regexp_matches") shouldBe Some("string.regexp_like")
   }
 
 end DialectFunctionResolutionTest
