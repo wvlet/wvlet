@@ -1,0 +1,67 @@
+-- Every set computed from a finer set: counts, sums, min / max, and avg over ints and decimals
+from [
+  ['A', 'X', 'web', 100, 1.25],
+  ['A', 'X', 'store', 50, null],
+  ['A', 'Y', 'web', 200, 2.50],
+  ['B', 'X', 'web', 150, 0.75],
+  ['B', null, 'store', 10, 3.00],
+  [null, 'Y', 'web', 70, 1.00]
+] as t(region, product, channel, amount, price)
+group by rollup(region, product, channel)
+select region, product, channel,
+  count(*) as cnt, count(price) as priced, sum(amount) as total, min(price) as lo,
+  max(amount) as hi, avg(amount) as avg_amount, avg(price) as avg_price,
+  grouping(region, product, channel) as gid
+order by gid, region, product, channel
+
+-- CUBE: a coarser set merges its smallest finer set
+from [
+  ['A', 'X', 100, 1.25],
+  ['A', 'Y', 200, null],
+  ['B', 'X', 150, 0.75],
+  ['B', null, 10, 3.00]
+] as t(region, product, amount, price)
+group by cube(region, product)
+select region, product, count(*) as cnt, sum(price) as total, avg(amount) as a,
+  grouping(region, product) as gid
+order by gid, region, product
+
+-- Two rollups combine as a cross product of their sets
+from [
+  ['A', 'X', 100],
+  ['A', 'Y', 200],
+  ['B', 'X', 150]
+] as t(region, product, amount)
+group by rollup(region), rollup(product)
+select region, product, count(*) as cnt, sum(amount) as total, grouping(region, product) as gid
+order by gid, region, product
+
+-- A plain key with a rollup: every set keeps the plain key
+from [
+  ['A', 'X', 'web', 100],
+  ['A', 'Y', 'store', 200],
+  ['B', 'X', 'web', 150]
+] as t(region, product, channel, amount)
+group by region, rollup(product, channel)
+select region, product, channel, max(amount) as hi, count(*) as cnt
+order by region, product, channel
+
+-- An empty input keeps only the grand total: count 0, other aggregates NULL
+from [
+  ['A', 'X', 100, 1.25]
+] as t(region, product, amount, price)
+where amount > 1000
+group by rollup(region, product)
+select region, product, count(*) as cnt, count(price) as priced, sum(amount) as total,
+  min(price) as lo, avg(amount) as a
+
+-- An expression key
+from [
+  ['A', 1],
+  ['A', 2],
+  ['B', 3],
+  ['B', 5]
+] as t(region, amount)
+group by rollup(region, amount % 2)
+select region, amount % 2 as parity, sum(amount) as total, count(*) as cnt
+order by region, parity

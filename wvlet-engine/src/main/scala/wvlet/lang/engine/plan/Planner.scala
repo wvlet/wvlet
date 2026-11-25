@@ -1919,6 +1919,10 @@ class Planner(
       groupingSets match
         case None =>
           builder.aggregate(in, keys, calls, aggCtx.outputSchema)
+        case Some(sets)
+            if enabled(Optimization.ChainGroupingSets) && sets.distinct.size > 1 &&
+              sets.contains(sets.reduce(_ ++ _)) && TwoPhaseAgg.supportsCalls(calls) =>
+          chainGroupingSets(in, keys, calls, sets, baseKeyExprs.size, aggCtx.outputSchema, builder)
         case Some(sets) =>
           // One aggregation per grouping set; keys outside the set are NULL, and the grouping id
           // has a bit set for each of them. The sets share one evaluation of the input, reduced
@@ -2066,6 +2070,113 @@ class Planner(
         case other =>
           visit(other)
     (rewritten, found.result())
+
+  /**
+    * Grouping sets whose key union is one of the sets (ROLLUP, CUBE), computed from finer sets: the
+    * finest set aggregates `in` into partial results ([[TwoPhaseAgg.decompose]]), and each coarser
+    * set merges the partial results of its smallest finer set. Each set's rows are its finished
+    * partial results, with the keys outside the set NULL and the grouping id set, as one
+    * aggregation per set over `in` gives them
+    *
+    * @param keys
+    *   the `n` grouping keys, then the grouping id
+    * @param out
+    *   the keys, the grouping id, then the calls
+    */
+  private def chainGroupingSets[P](
+      in: P,
+      keys: IndexedSeq[VExpr],
+      calls: IndexedSeq[AggCall],
+      sets: List[Set[Int]],
+      n: Int,
+      out: Schema,
+      builder: AggPlanBuilder[P]
+  ): P =
+    val (partials, sources) = TwoPhaseAgg.decompose(calls)
+    // Finest first, so that every set's finer sets come before it
+    val order = sets.distinct.sortBy(-_.size).toIndexedSeq
+    // A set's partial results: its keys in key order, then the partial aggregates
+    def keysOf(set: Set[Int]): IndexedSeq[Int] = (0 until n).filter(set.contains)
+    def schemaOf(set: Set[Int]): Schema        = Schema(
+      keysOf(set).map(out(_)) ++
+        partials.zipWithIndex.map((c, j) => Field(s"__partial_${j}", c.ptype))
+    )
+    // The smallest finer set (the first, among equal sizes) each coarser set merges
+    val sourceOf: Map[Set[Int], Set[Int]] =
+      order
+        .indices
+        .drop(1)
+        .map { i =>
+          val set = order(i)
+          set -> order.take(i).filter(f => set.subsetOf(f)).minBy(_.size)
+        }
+        .toMap
+    // Readers of each set's partial results: the coarser sets merging them and its own rows
+    def reads(set: Set[Int]): Int = sourceOf.values.count(_ == set) + sets.count(_ == set)
+    val readers                   = mutable.Map.empty[Set[Int], () => P]
+    order.foreach { set =>
+      val schema = schemaOf(set)
+      val agg    =
+        sourceOf.get(set) match
+          case None =>
+            groupByVaryingKeys(
+              in,
+              keysOf(set).map(keys),
+              partials,
+              schema,
+              builder,
+              allowGlobal = set.isEmpty
+            )
+          case Some(finer) =>
+            val fk                 = keysOf(finer)
+            val fs                 = schemaOf(finer)
+            def col(i: Int): VExpr = ColRef(i, fs(i).ptype, fs(i).name)
+            val merged = partials.indices.map(j => TwoPhaseAgg.merge(partials(j), col(fk.size + j)))
+            groupByVaryingKeys(
+              readers(finer)(),
+              keysOf(set).map(k => col(fk.indexOf(k))),
+              merged,
+              schema,
+              builder,
+              allowGlobal = set.isEmpty
+            )
+      readers(set) =
+        if reads(set) > 1 then
+          builder.sharedInput(agg, schema.fields.indices, "GroupingSetPartials")
+        else
+          () => agg
+    }
+    builder.union(
+      sets
+        .map { set =>
+          val ks                 = keysOf(set)
+          val schema             = schemaOf(set)
+          def col(i: Int): VExpr = ColRef(i, schema(i).ptype, schema(i).name)
+          val gid                = (0 until n).filterNot(set.contains).map(k => 1L << k).sum
+          val keyOut             = (0 until n).map { k =>
+            ks.indexOf(k) match
+              case -1 =>
+                Const(null, keys(k).ptype)
+              case i =>
+                col(i)
+          } :+ Const(gid, PType.Int64)
+          val callOut = calls
+            .zip(sources)
+            .map { (c, src) =>
+              val v = TwoPhaseAgg.finish(c, src.map(j => col(ks.size + j)))
+              // A count over no rows (the grand total of an empty input) is 0
+              if TwoPhaseAgg.isCount(c) then
+                Coalesce(Seq(v, Const(0L, PType.Int64)), PType.Int64)
+              else
+                v
+            }
+          builder.project(readers(set)(), keyOut ++ callOut, out)
+        }
+        .toIndexedSeq,
+      out
+    )
+
+  end chainGroupingSets
 
   /**
     * A hash aggregation that groups only by the keys that are not constants (a grouping set's NULL

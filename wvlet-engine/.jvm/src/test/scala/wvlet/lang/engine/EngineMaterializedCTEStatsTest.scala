@@ -188,15 +188,25 @@ class EngineMaterializedCTEStatsTest extends UniTest:
       s"""${cte}select o_orderstatus, o_orderpriority, count(*) from orders
          |where o_orderstatus in (select s from t) and o_orderstatus in (select s from t where c > 0)
          |group by rollup(o_orderstatus, o_orderpriority)""".stripMargin
-    val before = explain(noSharedInputs, query)
+    val unchained = options.withDisabled(Optimization.ChainGroupingSets)
+    val before    = explain(
+      engine.withOptimizer(unchained.withDisabled(Optimization.ReplanSharedInputs)),
+      query
+    )
     before shouldContain "GroupingSetInput"
     before shouldContain "HashJoin[RightSemi]"
-    val plan = explain(engine, query)
+    val plan = explain(engine.withOptimizer(unchained), query)
     plan shouldNotContain "HashJoin[RightSemi]"
     plan shouldContain "HashJoin[Semi]"
+    // Chained grouping sets read the input once, from the finest set's shared partial results
+    val chained = explain(engine, query)
+    chained shouldContain "GroupingSetPartials"
+    chained shouldNotContain "HashJoin[RightSemi]"
+    chained shouldContain "HashJoin[Semi]"
     val r = rows(engine, query)
     r.nonEmpty shouldBe true
     r shouldBe rows(disabled, query)
+    r shouldBe rows(engine.withOptimizer(unchained), query)
   }
 
   test("build anti joins on a small shared CTE once its rows are known") {
