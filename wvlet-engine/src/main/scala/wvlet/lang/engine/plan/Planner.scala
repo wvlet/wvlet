@@ -144,8 +144,7 @@ class Planner(
           longDecimalKeys = enabled(Optimization.LongDecimalKeys),
           unionPipelines = enabled(Optimization.UnionAllPipelines),
           fusedAccumulators = enabled(Optimization.FusedAccumulators),
-          oneRowPartials = enabled(Optimization.OneRowPartials),
-          sizeFinalAggsByRows = enabled(Optimization.SizeFinalAggsByRows)
+          oneRowPartials = enabled(Optimization.OneRowPartials)
         )
       else
         pruned

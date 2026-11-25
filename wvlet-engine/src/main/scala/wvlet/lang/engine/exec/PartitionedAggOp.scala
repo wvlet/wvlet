@@ -35,10 +35,6 @@ import scala.collection.mutable
   * With `packKeys`, each partition whose key columns are integers or dates that fit in one Int64
   * groups by the packed key ([[AggKeyPacking]], from the ranges of the partition's rows) and
   * unpacks the key columns of its groups.
-  *
-  * With `skip` (the final aggregate of a two-phase aggregation, whose partial aggregates share
-  * `skip`), once the partial aggregates stopped grouping, nearly every input row is a new group, so
-  * each partition's group table is sized for its rows instead of its share of `expectedGroups`.
   */
 class PartitionedAggOp(
     val child: Operator,
@@ -49,8 +45,7 @@ class PartitionedAggOp(
     minParallelRows: Int = PartitionedAggOp.MinParallelRows,
     val expectedGroups: Int = 0,
     parallelPartitioning: Boolean = true,
-    val packKeys: Boolean = false,
-    skip: PartialAggSkip = null
+    val packKeys: Boolean = false
 ) extends Operator:
   require(keys.nonEmpty, "PartitionedAggOp needs grouping keys")
 
@@ -77,17 +72,6 @@ class PartitionedAggOp(
     fuseAccumulators = enabled
     this
 
-  /**
-    * Whether partitions are sized for their rows once the partial aggregates stopped grouping
-    * (`size_final_aggs_by_rows`)
-    */
-  var sizeByRows: Boolean = true
-
-  /** Set [[sizeByRows]] */
-  def withSizeByRows(enabled: Boolean): this.type =
-    sizeByRows = enabled
-    this
-
   def next(): Batch =
     if result == null then
       result = aggregate()
@@ -100,18 +84,11 @@ class PartitionedAggOp(
     // Deferred columns are gathered by the tasks that route the batches
     val input = readInput()
     val total = input.map(_.size).sum
-    // Read once the input is consumed, after every partial aggregate has decided
-    val rowsAreGroups = sizeByRows && skip != null && skip.skipping
     // A partition has at most one group per row
     def aggregateAll(batches: Seq[Batch], groups: Int): Seq[Batch] =
-      val rows    = batches.map(_.size).sum
-      val presize =
-        if rowsAreGroups then
-          rows
-        else
-          math.min(groups, rows)
+      val rows = batches.map(_.size).sum
       def run(in: Schema, bs: Seq[Batch], ks: IndexedSeq[VExpr], out: Schema): Seq[Batch] =
-        val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, presize)
+        val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, math.min(groups, rows))
           // The keys are packed here from the partition's exact ranges, when they can be
           .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
           .withFusedAccumulators(fuseAccumulators)

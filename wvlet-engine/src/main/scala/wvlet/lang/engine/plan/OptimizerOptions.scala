@@ -548,13 +548,6 @@ enum Optimization(val name: String):
     */
   case OneRowPartials extends Optimization("one_row_partials")
 
-  /**
-    * Once the partial aggregates of a two-phase aggregation stopped grouping, the final partitioned
-    * aggregation sizes each partition's group table for the partition's rows, instead of its share
-    * of the estimated groups, so near-unique keys don't regrow the tables (TPC-DS q97, q78)
-    */
-  case SizeFinalAggsByRows extends Optimization("size_final_aggs_by_rows")
-
 end Optimization
 
 object Optimization:

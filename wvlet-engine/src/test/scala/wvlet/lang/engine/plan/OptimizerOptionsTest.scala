@@ -118,8 +118,7 @@ class OptimizerOptionsTest extends UniTest:
         "join_tree_build_estimates",
         "const_case_select",
         "case_agg_filters",
-        "one_row_partials",
-        "size_final_aggs_by_rows"
+        "one_row_partials"
       )
   }
 

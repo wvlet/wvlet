@@ -861,20 +861,21 @@ class HashAggOp(
       val accs = aggs.map(_.newAccumulator())
       update(accs, rowIds, n, b)
       return Batch(keys.map(_.eval(b)).toArray ++ accs.map(_.result(n)), n)
+    if rowIds.length < n then
+      rowIds = new Array[Int](n)
+      var i = 0
+      while i < n do
+        rowIds(i) = i
+        i += 1
     val values = aggs.map { a =>
-      val d = OneRowPartials.of(a, b)
+      val args = a.args.map(_.eval(b)).toArray
+      val d    = OneRowPartials.of(a, args, b)
       if d != null then
         d
       else
         // No direct one-row result: fold the batch with one group per row
-        if rowIds.length < n then
-          rowIds = new Array[Int](n)
-          var i = 0
-          while i < n do
-            rowIds(i) = i
-            i += 1
         val acc = a.newAccumulator()
-        updateOne(a, acc, rowIds, n, b, null)
+        updateOne(a, acc, rowIds, n, b, args)
         acc.result(n)
     }
     Batch(keys.map(_.eval(b)).toArray ++ values, n)

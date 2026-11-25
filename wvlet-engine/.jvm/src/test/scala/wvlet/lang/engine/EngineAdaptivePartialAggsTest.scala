@@ -26,8 +26,8 @@ import wvlet.uni.test.UniTest
   * `adaptive_partial_aggs` reaches the partial aggregates of two-phase aggregations, and
   * `pack_agg_keys` the partitioned aggregations, and `stream_pack_agg_keys` / `long_decimal_keys`
   * every aggregation, and `fused_accumulators` the hash aggregations, `one_row_partials` the
-  * partial aggregates and `size_final_aggs_by_rows` the partitioned ones; their results are checked
-  * in PartialAggSkipTest, AggKeyPackingTest, PackedGroupTableTest, and FusedAccumulatorsTest
+  * partial aggregates; their results are checked in PartialAggSkipTest, AggKeyPackingTest,
+  * PackedGroupTableTest, and FusedAccumulatorsTest
   */
 class EngineAdaptivePartialAggsTest extends UniTest:
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
@@ -102,14 +102,6 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options, oneRows) shouldContain true
     flags(options, oneRows).contains(false) shouldBe false
     flags(options.withDisabled(Optimization.OneRowPartials), oneRows).contains(true) shouldBe false
-  }
-
-  test("size the final partitions by their rows with size_final_aggs_by_rows") {
-    val sizes: PartialFunction[Operator, Boolean] = { case a: PartitionedAggOp =>
-      a.sizeByRows
-    }
-    flags(options, sizes) shouldBe Seq(true)
-    flags(options.withDisabled(Optimization.SizeFinalAggsByRows), sizes) shouldBe Seq(false)
   }
 
 end EngineAdaptivePartialAggsTest

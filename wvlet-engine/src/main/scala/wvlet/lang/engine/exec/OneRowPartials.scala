@@ -28,8 +28,12 @@ import wvlet.lang.engine.vector.*
   */
 object OneRowPartials:
 
-  /** The partial result of `agg` for each row of `b` as its own group, or null */
-  def of(agg: AggCall, b: Batch): Vec =
+  /**
+    * The partial result of `agg` for each row of `b` as its own group, or null. `args` are the
+    * values of `agg.args` over `b`, evaluated once so an accumulator can fold them when this gives
+    * null
+    */
+  def of(agg: AggCall, args: Array[Vec], b: Batch): Vec =
     if agg.distinct || agg.order.nonEmpty then
       return null
     val n = b.size
@@ -50,9 +54,9 @@ object OneRowPartials:
       case "count" | "count_star" if agg.args.isEmpty =>
         counts(n, keep, null)
       case "count" =>
-        counts(n, keep, agg.args.head.eval(b))
+        counts(n, keep, args(0))
       case "count_if" | "countif" =>
-        val c = Kernels.trueMask(agg.args.head.eval(b))
+        val c = Kernels.trueMask(args(0))
         val m = keep
         counts(
           n,
@@ -63,8 +67,8 @@ object OneRowPartials:
           ,
           null
         )
-      case "sum" if agg.args.size == 1 =>
-        val v = agg.args.head.eval(b)
+      case "sum" if args.length == 1 =>
+        val v = args(0)
         if v.ptype == PType.Null then
           null
         else
@@ -84,8 +88,8 @@ object OneRowPartials:
                 LongVec(d, exact(u, n), nullsOf(v, m))
             case _ =>
               null
-      case "min" | "max" if agg.args.size == 1 && agg.filter.isEmpty =>
-        val v = agg.args.head.eval(b)
+      case "min" | "max" if args.length == 1 && agg.filter.isEmpty =>
+        val v = args(0)
         if v.ptype == agg.ptype then
           v
         else

@@ -48,8 +48,7 @@ object Parallelizer:
       streamPackAggKeys: Boolean = true,
       longDecimalKeys: Boolean = true,
       fusedAccumulators: Boolean = true,
-      oneRowPartials: Boolean = true,
-      sizeFinalAggsByRows: Boolean = true
+      oneRowPartials: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -66,8 +65,7 @@ object Parallelizer:
         streamPackAggKeys,
         longDecimalKeys,
         fusedAccumulators,
-        oneRowPartials,
-        sizeFinalAggsByRows
+        oneRowPartials
       )
       rewrite(op, runner)
 
@@ -88,8 +86,7 @@ object Parallelizer:
       streamPackAggKeys: Boolean,
       longDecimalKeys: Boolean,
       fusedAccumulators: Boolean,
-      oneRowPartials: Boolean,
-      sizeFinalAggsByRows: Boolean
+      oneRowPartials: Boolean
   )
 
   /**
@@ -395,8 +392,7 @@ object Parallelizer:
             o.streamPackAggKeys,
             o.longDecimalKeys,
             o.fusedAccumulators,
-            o.oneRowPartials,
-            o.sizeFinalAggsByRows
+            o.oneRowPartials
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -721,8 +717,7 @@ private[plan] object TwoPhaseAgg:
       streamPackAggKeys: Boolean = false,
       longDecimalKeys: Boolean = false,
       fusedAccumulators: Boolean = true,
-      oneRowPartials: Boolean = true,
-      sizeFinalAggsByRows: Boolean = true
+      oneRowPartials: Boolean = true
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -785,9 +780,8 @@ private[plan] object TwoPhaseAgg:
           runner,
           expectedGroups = a.expectedGroups,
           parallelPartitioning = parallelPartitioning,
-          packKeys = packAggKeys,
-          skip = skip
-        ).withSizeByRows(sizeFinalAggsByRows)
+          packKeys = packAggKeys
+        )
       else
         HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)
     // Restore the original output: keys, then each aggregate in its original type
