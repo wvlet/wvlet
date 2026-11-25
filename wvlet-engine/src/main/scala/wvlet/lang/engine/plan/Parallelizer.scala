@@ -43,7 +43,8 @@ object Parallelizer:
       sharedPartials: Boolean = true,
       adaptivePartials: Boolean = true,
       setOpJoins: Boolean = true,
-      packAggKeys: Boolean = true
+      packAggKeys: Boolean = true,
+      unionPipelines: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -55,7 +56,8 @@ object Parallelizer:
         sharedPartials,
         adaptivePartials,
         setOpJoins,
-        packAggKeys
+        packAggKeys,
+        unionPipelines
       )
       rewrite(op, runner)
 
@@ -71,7 +73,8 @@ object Parallelizer:
       sharedPartials: Boolean,
       adaptivePartials: Boolean,
       setOpJoins: Boolean,
-      packAggKeys: Boolean
+      packAggKeys: Boolean,
+      unionPipelines: Boolean
   )
 
   /**
@@ -87,29 +90,48 @@ object Parallelizer:
       p.prepare
 
   /**
-    * A scan and the operators over it that can run on parts of the scan independently:
-    * `rebuild(input)` makes a copy of those operators over another input. `tail`, when the pipeline
-    * has right / full joins, makes the copy that runs once after every part over an empty input,
-    * emitting the build rows no part matched. `prepare` runs before parts start (hash join builds),
-    * on the calling thread or, with `concurrent_join_builds`, together on coordinator threads, and
-    * `close` releases what the copies share
+    * Scans and the operators over them that can run on parts of the scans independently: each
+    * segment's `pipeline(input)` makes a copy of those operators over another input of its scan. A
+    * pipeline has one segment, or one per scan of the inputs of a UNION ALL
+    * (`union_all_pipelines`), whose operators above the union are the same. `tail`, when the
+    * pipeline has right / full joins, makes the copy that runs once after every part over an empty
+    * input of the first scan, emitting the build rows no part matched. `prepare` runs before parts
+    * start (hash join builds), on the calling thread or, with `concurrent_join_builds`, together on
+    * coordinator threads, and `close` releases what the copies share
     */
   private case class Pipeline(
-      scan: ScanOp,
-      rebuild: Operator => Operator,
+      segments: Seq[MorselOp.Segment],
       tail: Option[Operator => Operator],
       prepare: List[() => Unit],
       close: List[() => Unit],
       hasWork: Boolean = false
   ):
+    /** The scan of the first segment */
+    def scan: ScanOp = segments.head.scan
+
+    /** The copy of the operators over an input of the first scan */
+    def rebuild: Operator => Operator = segments.head.pipeline
+
     /**
       * Add an operator over the pipeline, the same over the parts and the tail. `work`: whether it
       * computes something (not only selects or renames columns)
       */
     def map(f: Operator => Operator, work: Boolean = true): Pipeline = copy(
-      rebuild = x => f(rebuild(x)),
+      segments = segments.map(s => s.copy(pipeline = x => f(s.pipeline(x)))),
       tail = tail.map(t => x => f(t(x))),
       hasWork = hasWork || work
+    )
+
+    /** The parts of every segment in order, as one [[MorselOp]] */
+    def morsels(schema: Schema, runner: TaskRunner, prepareSteps: List[() => Unit]): MorselOp =
+      MorselOp(segments, schema, runner, prepareSteps, close, tail)
+
+  private object Pipeline:
+    def of(scan: ScanOp, close: List[() => Unit] = Nil): Pipeline = Pipeline(
+      Seq(MorselOp.Segment(scan, x => x)),
+      None,
+      Nil,
+      close
     )
 
   private def isOuterBuild(kind: JoinKind): Boolean = kind.tracksBuildMatches
@@ -119,7 +141,7 @@ object Parallelizer:
   ): Option[Pipeline] =
     op match
       case s: ScanOp if s.source.canSplit =>
-        Some(Pipeline(s, x => x, None, Nil, Nil))
+        Some(Pipeline.of(s))
       case s: SetOpOp if convertsToJoin(s) =>
         // As a semi / anti join, so that operators above it (count(*)) join its pipeline
         pipeline(setOpJoin(s, runner), runner)
@@ -127,7 +149,9 @@ object Parallelizer:
         // The aggregation runs on the calling thread before any part starts (it parallelizes
         // its own work); its output batches are the parts
         val source = BreakerSource(aggregate(a, runner), "Aggregate")
-        Some(Pipeline(ScanOp(source, a.schema, None, None), x => x, None, Nil, List(source.close)))
+        Some(Pipeline.of(ScanOp(source, a.schema, None, None), List(source.close)))
+      case u: UnionAllOp if breakers.unionPipelines =>
+        unionPipeline(u, runner)
       case f: FilterOp =>
         pipeline(f.child, runner).map(
           _.map(x => FilterOp(x, f.cond, f.keep).withLateGather(f.lateGather))
@@ -172,7 +196,9 @@ object Parallelizer:
           if isOuterBuild(j.kind) then
             // Parts mark matched build rows; the tail emits the rest once every part is done
             shared.copy(
-              rebuild = x => template.withLeft(p.rebuild(x), OuterMode.Part),
+              segments = p
+                .segments
+                .map(s => s.copy(pipeline = x => template.withLeft(s.pipeline(x), OuterMode.Part))),
               tail = Some(x => template.withLeft(p.tail.getOrElse(p.rebuild)(x), OuterMode.Tail)),
               // A join is work: without it, `rewrite` would keep only the projections over an
               // aggregation below and drop the join
@@ -202,6 +228,57 @@ object Parallelizer:
         }
       case _ =>
         None
+
+  /**
+    * A UNION ALL of pipelines as one pipeline (`union_all_pipelines`): the segments of every input
+    * in input order, each cast to the union's columns, so that the operators above the union (hash
+    * join probes over one shared build, partial aggregates) run on the parts of every input. None
+    * when an input is no pipeline or has a tail (right / full joins), which runs after its own
+    * parts
+    */
+  private def unionPipeline(u: UnionAllOp, runner: TaskRunner)(using
+      AboveBreakers
+  ): Option[Pipeline] =
+    if u.inputs.isEmpty || !u.inputs.forall(startsPipeline) then
+      None
+    else
+      val inputs = u.inputs.map(pipeline(_, runner))
+      if inputs.exists(p => p.isEmpty || p.get.tail.nonEmpty) then
+        None
+      else
+        val ps = inputs.flatten
+        Some(
+          Pipeline(
+            ps.flatMap { p =>
+              // The input's output columns, as UnionAllOp casts them
+              p.segments.map(s => s.copy(pipeline = x => asUnionColumns(s.pipeline(x), u.schema)))
+            },
+            None,
+            ps.flatMap(_.prepare).toList,
+            ps.flatMap(_.close).toList,
+            ps.exists(_.hasWork)
+          )
+        )
+
+  /** op with the columns of a UNION ALL's schema, cast as UnionAllOp casts them */
+  private def asUnionColumns(op: Operator, schema: Schema): Operator =
+    if op.schema.types == schema.types then
+      op
+    else
+      ProjectOp(
+        op,
+        schema
+          .fields
+          .indices
+          .map { i =>
+            val c = ColRef(i, op.schema(i).ptype, op.schema(i).name)
+            if c.ptype == schema(i).ptype then
+              c
+            else
+              CastExpr(c, schema(i).ptype)
+          },
+        schema
+      )
 
   /** An aggregation grouping by every column of op, with no aggregates: its distinct rows */
   private def distinctAgg(op: Operator): Operator = HashAggOp(
@@ -234,6 +311,8 @@ object Parallelizer:
         startsPipeline(j.left)
       case j: NestedLoopJoinOp =>
         j.kind == JoinKind.Cross && j.cond.isEmpty && startsPipeline(j.left)
+      case u: UnionAllOp =>
+        breakers.unionPipelines && u.inputs.nonEmpty && u.inputs.forall(startsPipeline)
       case _ =>
         false
 
@@ -270,8 +349,7 @@ object Parallelizer:
         case Some(p) =>
           TwoPhaseAgg.plan(
             a,
-            p.scan,
-            p.rebuild,
+            p.segments,
             p.tail,
             runner,
             prepareSteps(p, runner),
@@ -394,7 +472,8 @@ object Parallelizer:
 
   private def rewriteOp(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     def r(x: Operator): Operator = rewrite(x, runner)
-    pipeline(op, runner) match
+    // A union with nothing above it worth running as one pipeline keeps its inputs' own ones
+    pipeline(op, runner).filter(p => p.segments.size == 1 || p.hasWork) match
       case Some(p) =>
         p.scan.source match
           case b: BreakerSource if !p.hasWork =>
@@ -402,7 +481,7 @@ object Parallelizer:
             // are over it
             rebuildOver(op, b.op)
           case _ =>
-            MorselOp(p.scan, p.rebuild, op.schema, runner, prepareSteps(p, runner), p.close, p.tail)
+            p.morsels(op.schema, runner, prepareSteps(p, runner))
       case None =>
         op match
           case a: HashAggOp =>
@@ -589,8 +668,7 @@ private[plan] object TwoPhaseAgg:
 
   def plan(
       a: HashAggOp,
-      scan: ScanOp,
-      rebuild: Operator => Operator,
+      segments: Seq[MorselOp.Segment],
       tail: Option[Operator => Operator],
       runner: TaskRunner,
       prepare: List[() => Unit],
@@ -616,22 +694,25 @@ private[plan] object TwoPhaseAgg:
       else
         null
     val partial = MorselOp(
-      scan,
-      x =>
-        HashAggOp(
-          rebuild(x),
-          a.keys,
-          partialAggs,
-          partialSchema,
-          sizer.hint(x),
-          sizer.report,
-          skip
-        ),
+      segments.map(s =>
+        s.copy(pipeline =
+          x =>
+            HashAggOp(
+              s.pipeline(x),
+              a.keys,
+              partialAggs,
+              partialSchema,
+              sizer.hint(x),
+              sizer.report,
+              skip
+            )
+        )
+      ),
       partialSchema,
       runner,
       prepare,
       release,
-      tail.map(t => x => HashAggOp(t(x), a.keys, partialAggs, partialSchema))
+      tail.map(t => (x: Operator) => HashAggOp(t(x), a.keys, partialAggs, partialSchema))
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
     // Combine partial results by key

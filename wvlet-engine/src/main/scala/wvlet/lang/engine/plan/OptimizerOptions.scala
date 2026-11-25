@@ -330,6 +330,14 @@ enum Optimization(val name: String):
     */
   case OrImpliedFilters extends Optimization("or_implied_filters")
 
+  /**
+    * With `parallelize`, a UNION ALL of scan pipelines is one pipeline: the parts of every input,
+    * in input order, run through the operators above the union (hash join probes over one shared
+    * build, partial aggregates) as morsels. Otherwise those operators run on the calling thread
+    * over the union's rows (TPC-DS q02, q05, q76, q77, q80)
+    */
+  case UnionAllPipelines extends Optimization("union_all_pipelines")
+
 end Optimization
 
 object Optimization:

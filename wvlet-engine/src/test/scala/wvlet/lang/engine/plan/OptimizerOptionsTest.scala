@@ -90,7 +90,8 @@ class OptimizerOptionsTest extends UniTest:
         "fold_bound_constants",
         "unwrap_casts",
         "set_op_joins",
-        "or_implied_filters"
+        "or_implied_filters",
+        "union_all_pipelines"
       )
   }
 
