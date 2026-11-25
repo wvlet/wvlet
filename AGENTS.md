@@ -23,7 +23,7 @@
 - **PRs:** `gh pr create` following `.github/pull_request_template.md`, with linked issues (`Fixes #123`) and screenshots for UI changes. Fix format, compile, and test failures that CI reports. Read review comments with `gh api repos/wvlet/wvlet/pulls/<n>/comments` and check status with `gh pr checks <n>`. After merging, update the related issues, then switch to main and pull.
 - **Never merge a PR or enable auto-merge without the user's explicit approval.** Ask after CI passes and reviews are addressed.
 - **Before committing:** compilation passes for src/main, src/test, and Scala.js, and the code is formatted.
-- **Plans** go in `plans/YYYY-MM-DD-(topic).md`. **ADRs:** add `adr/YYYY-MM-DD-(topic).md` for a non-obvious decision and list it in [`adr/README.md`](adr/README.md).
+- **Plans** go in `plans/YYYY-MM-DD-(topic).md`. **ADRs:** add `adr/YYYY-MM-DD-(topic).md` for a non-obvious decision and list it at the top of the newest-first index in [`adr/README.md`](adr/README.md).
 - Temporary files go under `target/`, which git ignores.
 - Do not commit credentials. Reference environment variables in `profile.yml` as `${VAR_NAME}`.
 

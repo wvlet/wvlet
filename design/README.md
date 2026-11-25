@@ -1,6 +1,6 @@
 # Design references
 
-Area contracts and the gates that guard them. Start with [`ARCHITECTURE.md`](../ARCHITECTURE.md) for the module map and pipelines, and use this index to find the area you need. See [Writing design docs](AGENTS.md) when editing these pages.
+Area contracts and the gates that guard them. Start with [`ARCHITECTURE.md`](../ARCHITECTURE.md) for the module map and pipelines, and use this index to find the area you need. See [Writing design docs](AGENTS.md) when editing these pages. The language design principles are on the [Design Philosophy](https://wvlet.org/wvlet/docs/development/design/) page; these pages hold area contracts, and [ADRs](../adr/README.md) hold individual decisions.
 
 | Reference | Owns |
 | --- | --- |
