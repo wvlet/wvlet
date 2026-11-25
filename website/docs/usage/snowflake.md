@@ -16,11 +16,12 @@ To connect to Snowflake, create a profile in `~/.wvlet/profiles.json`. The file 
           "name": "snowflake",
           "type": "snowflake",
           "user": "(your Snowflake user name)",
-          "password": "(your password)",
           "host": "(your account identifier, e.g., myorg-myaccount)",
           "catalog": "(your database name)",
           "schema": "(your schema name, e.g., PUBLIC)",
           "properties": {
+            // Key-pair authentication; see below for a programmatic access token
+            "private_key_file": "/path/to/rsa_key.p8",
             "warehouse": "(your warehouse name)",
             "role": "(your role name, optional)"
           }
@@ -42,7 +43,10 @@ wv>
 
 - **host**: Your Snowflake account identifier (e.g., `myorg-myaccount`). The connector will automatically append `.snowflakecomputing.com`.
 - **user**: Your Snowflake username
-- **password**: Your Snowflake password
+- Authentication, one of the following. Snowflake requires MFA for people who sign in with a password and rejects passwords for service users, so use a key pair or a token for the connector:
+  - **properties.private_key_file**: Path to a PKCS#8 private key (`.p8`) whose public key is assigned to the user ([key-pair authentication](https://docs.snowflake.com/en/user-guide/key-pair-auth)). Set **properties.private_key_pwd** when the key is encrypted.
+  - **properties.token**: A [programmatic access token](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens).
+  - **password**: A password, for accounts that still accept one.
 - **catalog**: The database name to connect to
 - **schema**: The schema name (default: `PUBLIC`)
 - **properties.warehouse**: (Optional) The virtual warehouse to use

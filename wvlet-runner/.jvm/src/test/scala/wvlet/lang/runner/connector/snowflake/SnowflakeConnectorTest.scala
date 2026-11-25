@@ -18,46 +18,21 @@ import wvlet.lang.connector.snowflake.SnowflakeConnector
 
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.connector.codec.JDBCCodec.ResultSetCodec
+import wvlet.lang.runner.SnowflakeTestEnv
 import wvlet.lang.test.WvletDITest
 
 /**
   * Tests for SnowflakeConnector
   *
-  * Note: Integration tests require actual Snowflake credentials to run. Set the following
-  * environment variables:
-  *   - SNOWFLAKE_ACCOUNT
-  *   - SNOWFLAKE_USER
-  *   - SNOWFLAKE_PASSWORD
-  *   - SNOWFLAKE_DATABASE
-  *   - SNOWFLAKE_SCHEMA
-  *   - SNOWFLAKE_WAREHOUSE (optional)
-  *   - SNOWFLAKE_ROLE (optional)
-  *
-  * Integration tests will be skipped if credentials are not available.
+  * Note: Integration tests require actual Snowflake credentials, read from the environment
+  * variables listed in [[SnowflakeTestEnv]]. They are skipped if the credentials are not set.
   */
 class SnowflakeConnectorTest extends WvletDITest:
 
-  private val snowflakeConfig: Option[SnowflakeConfig] =
-    for
-      account  <- sys.env.get("SNOWFLAKE_ACCOUNT")
-      user     <- sys.env.get("SNOWFLAKE_USER")
-      password <- sys.env.get("SNOWFLAKE_PASSWORD")
-      database <- sys.env.get("SNOWFLAKE_DATABASE")
-      schema   <- sys.env.get("SNOWFLAKE_SCHEMA")
-    yield SnowflakeConfig(
-      account = account,
-      database = database,
-      schema = schema,
-      warehouse = sys.env.get("SNOWFLAKE_WAREHOUSE"),
-      role = sys.env.get("SNOWFLAKE_ROLE"),
-      user = Some(user),
-      password = Some(password)
-    )
+  private val snowflakeConfig: Option[SnowflakeConfig] = SnowflakeTestEnv.config
 
   if snowflakeConfig.isEmpty then
-    skip(
-      "Snowflake credentials not available. Set SNOWFLAKE_* environment variables to run integration tests."
-    )
+    skip(SnowflakeTestEnv.missingMessage)
 
   initDesign:
     _.bindInstance[SnowflakeConfig](snowflakeConfig.get)

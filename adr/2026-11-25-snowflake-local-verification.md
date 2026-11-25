@@ -12,7 +12,8 @@ Date: 2026-11-25 · PR #2434
 ## Decision
 
 - **CI pins the SQL.** `SnowflakeSqlGoldenTest` compiles each `spec/basic/stdlib_*.wv` for Snowflake, one file at a time, and compares the SQL with `spec/snowflake-sql/<spec>.sql`. `SnowflakeSqlGolden` regenerates the files; a spec that does not compile for Snowflake records its error message instead. This catches unintended changes to Snowflake SQL and makes the fallbacks visible in review, but it does not prove the SQL runs.
-- **Execution is checked locally.** `SnowflakeStdLibSpec` runs the same specs on Snowflake through the Snowflake connector, with credentials from `SNOWFLAKE_*` environment variables, and skips itself without them. It shares the compile-and-run loop with the Trino specs (`ConnectorSpecRunner`).
+- **Execution is checked locally.** `SnowflakeStdLibSpec` runs the same specs on Snowflake through the Snowflake connector, with credentials from `SNOWFLAKE_*` environment variables (`SnowflakeTestEnv`), and skips itself without them.
+- **Key-pair or token authentication.** Since its 2026 rollout, Snowflake requires MFA for people who sign in with a password and rejects passwords for service users, so a test run can't use a password. The connector gains key-pair authentication (`private_key_file`, `SNOWFLAKE_JWT`) and programmatic access tokens (`token`, `PROGRAMMATIC_ACCESS_TOKEN`); a password still works for accounts that accept one. It shares the compile-and-run loop with the Trino specs (`ConnectorSpecRunner`).
 - **The gate.** An `in snowflake` variant is added or changed only after someone has run `SnowflakeStdLibSpec` with their own account (a personal or trial account works) and noted the result in the PR. Until then, a function keeps its current behavior on Snowflake.
 
 ## Consequences
@@ -20,4 +21,4 @@ Date: 2026-11-25 · PR #2434
 - No credentials live in the repository, and CI stays free of external services.
 - Snowflake regressions in the generated SQL show up in PR diffs; regressions in Snowflake's own behavior are found only when someone runs the local spec.
 - The array lambda functions (`transform`, `filter`, `reduce`, `exists`, `forall`, `zip_with`) still have no Snowflake variants. They can be added through the gate above.
-- The connector authenticates with a password only. Snowflake is phasing out single-factor password sign-ins for users, so key-pair or token authentication in the connector is a follow-up for running the local spec with a service user.
+- Running the local spec needs a service user with a key pair or a token, which is also what other programs using the connector need.

@@ -19,7 +19,7 @@ The stdlib is freshness-gated in CI. After changing `wvlet-stdlib/module/standar
 CI has no Snowflake account ([ADR](../adr/2026-11-25-snowflake-local-verification.md)), so Snowflake SQL is checked in two steps:
 
 - In CI, `SnowflakeSqlGoldenTest` pins the Snowflake SQL generated for `spec/basic/stdlib_*.wv` in `spec/snowflake-sql/`, so every change to it shows in the PR diff. A function with no `in snowflake` variant falls back to another engine's variant on Snowflake (`dialectCompatible`), and the golden SQL shows which one.
-- Before adding or changing an `in snowflake` variant, run the stdlib specs on Snowflake with your own account and note the result in the PR: `SNOWFLAKE_ACCOUNT=... SNOWFLAKE_USER=... SNOWFLAKE_PASSWORD=... SNOWFLAKE_DATABASE=... ./sbt "runnerJVM/testOnly *SnowflakeStdLibSpec"` (`SNOWFLAKE_SCHEMA`, `SNOWFLAKE_WAREHOUSE`, and `SNOWFLAKE_ROLE` are optional). Without the variables it is skipped. The specs query literal tables only.
+- Before adding or changing an `in snowflake` variant, run the stdlib specs on Snowflake with your own account and note the result in the PR: `SNOWFLAKE_ACCOUNT=... SNOWFLAKE_USER=... SNOWFLAKE_DATABASE=... SNOWFLAKE_PRIVATE_KEY_FILE=... ./sbt "runnerJVM/testOnly *SnowflakeStdLibSpec"`. Snowflake no longer accepts a password alone (MFA for people, no passwords for service users), so use a key pair (`SNOWFLAKE_PRIVATE_KEY_FILE`) or a programmatic access token (`SNOWFLAKE_TOKEN`); the variables are listed in `SnowflakeTestEnv`. Without them it is skipped. The specs query literal tables only.
 
 ## Dialect contexts
 
