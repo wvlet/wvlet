@@ -94,7 +94,7 @@ object ScanFilters:
         case PType.Int32 | PType.Int64 | PType.Date | PType.Timestamp | PType.TimestampTz =>
           range(column, t, values.minBy(ValueOps.toLong), values.maxBy(ValueOps.toLong))
         case _ =>
-          equalities(column, t, values.toSeq.distinct)
+          equalities(column, t, values.toSeq.distinct, numeric = false)
 
   /**
     * `min <= column <= max` for an integer, date (`min` and `max` in epoch days), or timestamp
@@ -102,8 +102,8 @@ object ScanFilters:
     */
   def range(column: String, t: PType, min: Any, max: Any): Option[ParquetFilter] =
     for
-      lo <- compare(column, t, CmpOp.Ge, Const(min, t))
-      hi <- compare(column, t, CmpOp.Le, Const(max, t))
+      lo <- compare(column, t, CmpOp.Ge, Const(min, t), numeric = false)
+      hi <- compare(column, t, CmpOp.Le, Const(max, t), numeric = false)
     yield lo && hi
 
   /** `column = v1 or column = v2 ...` for up to 64 non-null values, when every one translates */
@@ -111,7 +111,7 @@ object ScanFilters:
       column: String,
       t: PType,
       values: Seq[Any],
-      numeric: Boolean = false
+      numeric: Boolean
   ): Option[ParquetFilter] =
     if values.isEmpty || values.size > 64 then
       None
@@ -137,7 +137,7 @@ object ScanFilters:
       t: PType,
       op: CmpOp,
       k: Const,
-      numeric: Boolean = false
+      numeric: Boolean
   ): Option[ParquetFilter] =
     if k.value == null || k.ptype != t then
       None
