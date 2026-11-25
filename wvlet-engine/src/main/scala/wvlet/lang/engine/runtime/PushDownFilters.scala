@@ -633,36 +633,42 @@ object PushDownFilters extends Pass:
     * `p.brand = 'a' or p.brand = 'b'` on the part input. Where the `or` is TRUE, some branch is,
     * and with it its conjuncts, so the implied condition is TRUE too; the `or` stays, so the join
     * keeps the same rows (`WvletFormal/FactorOr/Implied.lean`). [[ReorderJoins]] places each
-    * implied condition on its input. A condition already among them (by signature) isn't added
-    * again, and each keeps the literal counts of the `or`'s sub-conditions
+    * implied condition on its input. A condition already among them isn't added again, and each
+    * keeps the literal counts of the `or`'s sub-conditions
     */
   private def orImplied(
       conds: IndexedSeq[JoinCondition],
       inputs: IndexedSeq[RuntimePlan]
   ): Seq[JoinCondition] =
     val inputIds = inputs.map(_.output.map(_.id).toSet)
-    val existing = mutable.Set.from(conds.map(_.cond.expr.sig))
+    // Compared structurally: a signature omits what a RowFn closes over (tuple_in)
+    val existing = mutable.ListBuffer.from(conds.map(_.cond.expr))
     val added    = mutable.ListBuffer.empty[JoinCondition]
     conds.foreach { c =>
       c.cond.expr match
         case o: OrExpr if isDeterministic(o) =>
-          val branches = FactorOr.disjuncts(o).map(conjuncts)
-          inputIds.foreach { ids =>
-            if !c.cond.refs.subsetOf(ids) then
+          val refs     = c.cond.refs
+          val branches = FactorOr.disjuncts(o).map(conjuncts(_).map(e => e -> BExpr(e).refs))
+          inputIds
+            .filter(ids => !refs.subsetOf(ids) && refs.exists(ids.contains))
+            .foreach { ids =>
               val local = branches.map(
-                _.filter { e =>
-                  val refs = BExpr(e).refs
-                  refs.nonEmpty && refs.subsetOf(ids)
+                _.collect {
+                  case (e, r) if r.nonEmpty && r.subsetOf(ids) =>
+                    e
                 }
               )
               if local.forall(_.nonEmpty) then
                 val e = local.map(_.reduce(AndExpr(_, _))).reduce(OrExpr(_, _))
-                if existing.add(e.sig) then
+                if !existing.contains(e) then
+                  existing += e
                   added += JoinCondition(BExpr(e), c.literalCounts)
-          }
+            }
         case _ =>
     }
     added.toList
+
+  end orImplied
 
   /** Whether a row-independent conjunct is true; one that fails to evaluate is kept as a filter */
   private def isTrue(e: VExpr): Boolean =
