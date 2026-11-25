@@ -123,7 +123,9 @@ class OptimizerOptionsTest extends UniTest:
         "const_case_select",
         "case_agg_filters",
         "one_row_partials",
-        "substring_in_lists"
+        "substring_in_lists",
+        "string_value_selectivity",
+        "column_implied_row_filters"
       )
   }
 

@@ -586,6 +586,27 @@ enum Optimization(val name: String):
     */
   case SubstringInLists extends Optimization("substring_in_lists")
 
+  /**
+    * Estimate string `=`, IN, LIKE and IS NULL conditions (and AND / OR / NOT of them) over one
+    * column of a Parquet file from the values of a few sampled row groups
+    * ([[wvlet.lang.engine.catalog.ValueCounts]]), cached per file version, for the scan row-filter
+    * gate (`selective_scan_row_filters`) and the join search, instead of 1 / ndv or the default 0.3
+    * (TPC-H q3's `c_mktsegment = 'BUILDING'` keeps 20%)
+    */
+  case StringValueSelectivity extends Optimization("string_value_selectivity")
+
+  /**
+    * With `scan_row_filters`, an `or` conjunct of a filter over a scan that reads several columns
+    * also gives the scan's row filter, for each column that every branch tests, the `or` over the
+    * branches of their conjuncts on that column ([[ScanFilters.columnImplied]]), as DuckDB derives
+    * them: uni decodes the other columns only for the rows those keep. The `or` stays in the
+    * engine's filter, so the rows are the same (TPC-H q19's part filter keeps 0.24% of the rows but
+    * reads three columns, so it was estimated to keep 30% and decoded every row). Estimated by
+    * `string_value_selectivity` for the row-filter gate, as string estimates of 0.3 let selective
+    * guesses through (#2429)
+    */
+  case ColumnImpliedRowFilters extends Optimization("column_implied_row_filters")
+
 end Optimization
 
 object Optimization:

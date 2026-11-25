@@ -41,6 +41,10 @@ class EngineScanRowFiltersTest extends UniTest:
   private val off     = on.withOptimizer(options.withDisabled(Optimization.ScanRowFilters))
   private val noJoin  = on.withOptimizer(options.withDisabled(Optimization.ScanJoinRowFilters))
   private val loose   = on.withOptimizer(options.withDisabled(Optimization.SelectiveScanRowFilters))
+  private val noValues = on.withOptimizer(options.withDisabled(Optimization.StringValueSelectivity))
+  private val noImplied = on.withOptimizer(
+    options.withDisabled(Optimization.ColumnImpliedRowFilters)
+  )
 
   /**
     * 1000 rows in row groups of 100 (so that scans split into morsels), with integer, date,
@@ -65,7 +69,8 @@ class EngineScanRowFiltersTest extends UniTest:
              |    range % 3 = 0 as flag,
              |    case when range % 11 = 0 then null else 'm' || (range % 5) end as mode,
              |    (range % 50)::decimal(12, 2) as qty,
-             |    (range % 13) * 0.5 as price
+             |    (range % 13) * 0.5 as price,
+             |    case when range % 50 = 7 then 'rare' else 'common' end as tag
              |  from range(1000)
              |) to '${path}' (format parquet, row_group_size 100)""".stripMargin)
       finally st.close()
@@ -306,6 +311,60 @@ class EngineScanRowFiltersTest extends UniTest:
       }
     filters.exists(_.contains("In(")) shouldBe false
     sameRows(q).size shouldBe 600
+  }
+
+  test("estimate string conditions from the sampled values of the column") {
+    val src = ParquetSource("t", file)
+    val vc  = src.valueCounts("tag").get
+    vc.rows shouldBe 1000L
+    vc.values.toSeq.sorted shouldBe Seq("common", "rare")
+    vc.counts.sum shouldBe 1000L
+    src.valueCounts("mode").get.nulls shouldBe 91L
+    // Not a string column
+    src.valueCounts("k") shouldBe None
+    // 'rare' keeps 2% of the rows, below MaxRowFilterSelectivity; the default 0.3 is above it
+    val rare = "from $t where tag = 'rare' select id"
+    explain(on, rare) shouldContain "row_filter="
+    explain(noValues, rare) shouldNotContain "row_filter="
+    rows(on, rare).size shouldBe 20
+    rows(on, rare) shouldBe rows(noValues, rare)
+    // 'common' keeps 98%: stays in the engine
+    explain(on, "from $t where tag = 'common' select id") shouldNotContain "row_filter="
+    sameRows("from $t where tag in ('rare', 'none') and mode is null select id")
+  }
+
+  test("give the row filter the per-column filters implied by a multi-column or") {
+    // TPC-H q19's shape: each branch tests tag, k and qty
+    val q =
+      """from $t
+        |where (tag = 'rare' and k = 1 and qty < 10) or (tag = 'none' and k in (2, 3) and qty < 20)
+        |select id""".stripMargin
+    val plan      = explain(on, q)
+    val rowFilter = plan.linesIterator.find(_.contains("row_filter=")).getOrElse("")
+    rowFilter shouldContain "Compare(tag,Eq,rare)"
+    // The or itself (with its decimal comparisons) stays in the engine's filter
+    plan shouldContain "Filter("
+    explain(noImplied, q) shouldNotContain "row_filter="
+    val r = rows(on, q)
+    r shouldBe rows(noImplied, q)
+    r shouldBe rows(off, q)
+    r.nonEmpty shouldBe true
+  }
+
+  test("return the same rows with column-implied row filters on and off") {
+    Seq(
+      // A branch without a test of mode implies nothing for it
+      "from $t where (k = 1 and mode = 'm1') or (k = 2) select id",
+      "from $t where (k = 1 and mode is null) or (k = 3 and flag) select id, mode",
+      "from $t where (d < '2020-02-01'::date and k = 1) or (d > '2020-12-01'::date and k > 4) select id",
+      "from $t where (id < 100 and mode = 'm0') or (id > 900 and (mode = 'm4' or mode is null)) select id",
+      "from $t where (tag = 'rare' and mode = 'm2') or (tag = 'rare' and k = 4) select id"
+    ).foreach { q =>
+      val r = rows(on, q)
+      r shouldBe rows(noImplied, q)
+      r shouldBe rows(off, q)
+      r shouldBe rows(noValues, q)
+    }
   }
 
 end EngineScanRowFiltersTest

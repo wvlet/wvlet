@@ -14,6 +14,7 @@
 package wvlet.lang.engine.runtime
 
 import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.engine.catalog.ValueCounts
 import wvlet.lang.engine.exec.GroupTable
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.expr.AndExpr
@@ -30,6 +31,7 @@ import wvlet.lang.engine.plan.CardinalityEstimator
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.plan.ScanFilters
 import wvlet.lang.engine.vector.Batch
 import wvlet.lang.engine.vector.IntVec
 import wvlet.lang.engine.vector.LongVec
@@ -372,11 +374,36 @@ object Stats:
       conds.map(selectivity(p, _, options)).product
 
   /**
-    * Estimated fraction of the rows of p passing a condition: 1 / ndv for `x = literal` (n / ndv
-    * for `x in (n literals)`), as in DuckDB, [[PrefixLike.Selectivity]] for `x like 'p%'` (when
+    * The sampled values ([[wvlet.lang.engine.catalog.ValueCounts]]) of the source string column
+    * that column `id` of p reads, if traceable (not for shared CTE results)
+    */
+  def valueCounts(p: RuntimePlan, id: ColumnId): Option[ValueCounts] = sourceStat(
+    p,
+    id,
+    _.valueCounts(_),
+    (_, _) => None
+  )
+
+  /**
+    * Estimated fraction of the rows of p passing a condition: with `string_value_selectivity`, a
+    * condition over one string column from its source's sampled values
+    * ([[ScanFilters.valueSelectivity]]); otherwise 1 / ndv for `x = literal` (n / ndv for
+    * `x in (n literals)`), as in DuckDB, [[PrefixLike.Selectivity]] for `x like 'p%'` (when
     * `prefix_like_selectivity` is on), and [[CardinalityEstimator.DefaultSelectivity]] otherwise
     */
   def selectivity(p: RuntimePlan, c: JoinCondition, options: OptimizerOptions): Double =
+    val sampled =
+      if options.isEnabled(Optimization.StringValueSelectivity) then
+        ScanFilters.valueSelectivity(c.cond.expr, i => valueCounts(p, ColumnId(i)))
+      else
+        None
+    sampled.getOrElse(literalSelectivity(p, c, options))
+
+  private def literalSelectivity(
+      p: RuntimePlan,
+      c: JoinCondition,
+      options: OptimizerOptions
+  ): Double =
     def compared(e: VExpr): Option[VExpr] =
       e match
         case Compare(CmpOp.Eq, Const(_, _), x) =>
