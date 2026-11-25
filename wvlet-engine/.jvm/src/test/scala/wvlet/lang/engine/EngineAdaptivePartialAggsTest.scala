@@ -17,36 +17,46 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.HashAggOp
 import wvlet.lang.engine.exec.Operator
+import wvlet.lang.engine.exec.PartitionedAggOp
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.uni.test.UniTest
 
 /**
-  * `adaptive_partial_aggs` reaches the partial aggregates of two-phase aggregations; their results
-  * are checked in PartialAggSkipTest
+  * `adaptive_partial_aggs` reaches the partial aggregates of two-phase aggregations, and
+  * `pack_agg_keys` the partitioned aggregations; their results are checked in PartialAggSkipTest
+  * and AggKeyPackingTest
   */
 class EngineAdaptivePartialAggsTest extends UniTest:
+  private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
+  private val options  = OptimizerOptions()
+
+  /** `flag` of each operator it applies to in the physical plan of a grouped lineitem query */
+  private def flags(o: OptimizerOptions, flag: PartialFunction[Operator, Boolean]): Seq[Boolean] =
+    val unit = CompilationUnit.fromWvletString("""from 'spec/tpch/data/lineitem.parquet'
+        |group by l_orderkey, l_linenumber
+        |agg sum(l_quantity) as q""".stripMargin)
+    val r         = compiler.compileSingleUnit(unit)
+    given Context = r.context
+    val query     = EngineTPCHBench.queryOf(unit).getOrElse(fail("No query"))
+    def collect(op: Operator): Seq[Boolean] = flag.lift(op).toSeq ++ op.children.flatMap(collect)
+    collect(WvletEngine(optimizer = o).physicalPlan(GenSQL.expand(query, summon[Context])))
+
   test("give the partial aggregates of a two-phase aggregation a skip decision") {
-    val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
-    def skips(o: OptimizerOptions): Seq[Boolean] =
-      val unit = CompilationUnit.fromWvletString("""from 'spec/tpch/data/lineitem.parquet'
-          |group by l_orderkey
-          |agg sum(l_quantity) as q""".stripMargin)
-      val r         = compiler.compileSingleUnit(unit)
-      given Context = r.context
-      val query     = EngineTPCHBench.queryOf(unit).getOrElse(fail("No query"))
-      def collect(op: Operator): Seq[Boolean] =
-        (
-          op match
-            case a: HashAggOp =>
-              Seq(a.skip != null)
-            case _ =>
-              Nil
-        ) ++ op.children.flatMap(collect)
-      collect(WvletEngine(optimizer = o).physicalPlan(GenSQL.expand(query, summon[Context])))
-    val options = OptimizerOptions()
-    skips(options) shouldContain true
-    skips(options.withDisabled(Optimization.AdaptivePartialAggs)).contains(true) shouldBe false
+    val skips: PartialFunction[Operator, Boolean] = { case a: HashAggOp =>
+      a.skip != null
+    }
+    flags(options, skips) shouldContain true
+    flags(options.withDisabled(Optimization.AdaptivePartialAggs), skips).contains(true) shouldBe
+      false
+  }
+
+  test("pack the keys of partitioned aggregations with pack_agg_keys") {
+    val packs: PartialFunction[Operator, Boolean] = { case a: PartitionedAggOp =>
+      a.packKeys
+    }
+    flags(options, packs) shouldBe Seq(true)
+    flags(options.withDisabled(Optimization.PackAggKeys), packs) shouldBe Seq(false)
   }
 
 end EngineAdaptivePartialAggsTest

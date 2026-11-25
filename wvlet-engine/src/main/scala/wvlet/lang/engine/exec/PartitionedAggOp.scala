@@ -31,6 +31,10 @@ import scala.collection.mutable
   * and scatters a contiguous run of input batches, and each partition joins the tasks' rows in
   * input order, so its rows (and its groups' first-seen order) are the same as routing them on the
   * calling thread.
+  *
+  * With `packKeys`, each partition whose key columns are integers or dates that fit in one Int64
+  * groups by the packed key ([[AggKeyPacking]], from the ranges of the partition's rows) and
+  * unpacks the key columns of its groups.
   */
 class PartitionedAggOp(
     val child: Operator,
@@ -40,7 +44,8 @@ class PartitionedAggOp(
     runner: TaskRunner,
     minParallelRows: Int = PartitionedAggOp.MinParallelRows,
     val expectedGroups: Int = 0,
-    parallelPartitioning: Boolean = true
+    parallelPartitioning: Boolean = true,
+    val packKeys: Boolean = false
 ) extends Operator:
   require(keys.nonEmpty, "PartitionedAggOp needs grouping keys")
 
@@ -66,15 +71,36 @@ class PartitionedAggOp(
     // A partition has at most one group per row
     def aggregateAll(batches: Seq[Batch], groups: Int): Seq[Batch] =
       val rows = batches.map(_.size).sum
-      val op   = HashAggOp(
-        BatchesOp(child.schema, batches),
-        keys,
-        aggs,
-        schema,
-        math.min(groups, rows)
-      )
-      try op.drain()
-      finally op.close()
+      def run(in: Schema, bs: Seq[Batch], ks: IndexedSeq[VExpr], out: Schema): Seq[Batch] =
+        val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, math.min(groups, rows))
+        try op.drain()
+        finally op.close()
+      val keyVecs =
+        if packKeys && keys.size >= 2 then
+          batches.map(b => (keys.map(_.eval(b)).toArray, b.size))
+        else
+          Nil
+      val packing =
+        if keyVecs.isEmpty then
+          None
+        else
+          AggKeyPacking.of(keys.map(_.ptype), keyVecs)
+      packing match
+        case Some(packing) =>
+          // The packed key as one more input column, whose groups unpack into the key columns
+          val w      = child.schema.size
+          val in     = Schema(child.schema.fields :+ Field("__packed_key", PType.Int64))
+          val packed = batches
+            .zip(keyVecs)
+            .map((b, kv) => Batch(b.columns :+ packing.pack(kv._1, b.size), b.size))
+          val out = Schema(Field("__packed_key", PType.Int64) +: schema.fields.drop(keys.size))
+          run(in, packed, IndexedSeq(ColRef(w, PType.Int64, "__packed_key")), out).map { b =>
+            val k = packing.unpack(b.columns(0).asInstanceOf[LongVec], b.size)
+            Batch(k ++ b.columns.drop(1), b.size)
+          }
+        case None =>
+          run(child.schema, batches, keys, schema)
+    end aggregateAll
     if total < minParallelRows || runner.parallelism <= 1 then
       return aggregateAll(input.map(_.compact()), expectedGroups).iterator
     val parts = GroupTable.partitionCount(runner.parallelism)

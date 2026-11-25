@@ -100,7 +100,8 @@ class Planner(
         concurrentBuilds = enabled(Optimization.ConcurrentJoinBuilds),
         sharedPartials = enabled(Optimization.SharedAggPartials),
         adaptivePartials = enabled(Optimization.AdaptivePartialAggs),
-        setOpJoins = enabled(Optimization.SetOpJoins)
+        setOpJoins = enabled(Optimization.SetOpJoins),
+        packAggKeys = enabled(Optimization.PackAggKeys)
       )
     else
       pruned

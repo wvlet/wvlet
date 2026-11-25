@@ -84,6 +84,7 @@ class OptimizerOptionsTest extends UniTest:
         "common_subexpressions",
         "shared_agg_partials",
         "adaptive_partial_aggs",
+        "pack_agg_keys",
         "fold_constants",
         "fold_bound_constants",
         "unwrap_casts",

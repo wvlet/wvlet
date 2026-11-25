@@ -42,7 +42,8 @@ object Parallelizer:
       concurrentBuilds: Boolean = true,
       sharedPartials: Boolean = true,
       adaptivePartials: Boolean = true,
-      setOpJoins: Boolean = true
+      setOpJoins: Boolean = true,
+      packAggKeys: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -53,7 +54,8 @@ object Parallelizer:
         concurrentBuilds,
         sharedPartials,
         adaptivePartials,
-        setOpJoins
+        setOpJoins,
+        packAggKeys
       )
       rewrite(op, runner)
 
@@ -68,7 +70,8 @@ object Parallelizer:
       concurrentBuilds: Boolean,
       sharedPartials: Boolean,
       adaptivePartials: Boolean,
-      setOpJoins: Boolean
+      setOpJoins: Boolean,
+      packAggKeys: Boolean
   )
 
   /**
@@ -275,7 +278,8 @@ object Parallelizer:
             p.close,
             o.parallelPartitioning,
             o.sharedPartials,
-            o.adaptivePartials
+            o.adaptivePartials,
+            o.packAggKeys
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -285,7 +289,8 @@ object Parallelizer:
             a.schema,
             runner,
             expectedGroups = a.expectedGroups,
-            parallelPartitioning = o.parallelPartitioning
+            parallelPartitioning = o.parallelPartitioning,
+            packKeys = o.packAggKeys
           )
         case None =>
           HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
@@ -298,7 +303,8 @@ object Parallelizer:
         a.schema,
         runner,
         expectedGroups = a.expectedGroups,
-        parallelPartitioning = o.parallelPartitioning
+        parallelPartitioning = o.parallelPartitioning,
+        packKeys = o.packAggKeys
       )
     else
       HashAggOp(r(a.child), a.keys, a.aggs, a.schema, a.expectedGroups)
@@ -591,7 +597,8 @@ private[plan] object TwoPhaseAgg:
       release: List[() => Unit],
       parallelPartitioning: Boolean,
       sharedPartials: Boolean,
-      adaptivePartials: Boolean = false
+      adaptivePartials: Boolean = false,
+      packAggKeys: Boolean = false
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -643,7 +650,8 @@ private[plan] object TwoPhaseAgg:
           finalSchema,
           runner,
           expectedGroups = a.expectedGroups,
-          parallelPartitioning = parallelPartitioning
+          parallelPartitioning = parallelPartitioning,
+          packKeys = packAggKeys
         )
       else
         HashAggOp(partial, (0 until nk).map(col), finalAggs, finalSchema)

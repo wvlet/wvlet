@@ -106,6 +106,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineAdaptivePartialAggsTest checks that the flag reaches the partial aggregates, and
         // PartialAggSkipTest that passing rows through gives the same final groups
         ignore("Changes when partial aggregates stop grouping, not the plan")
+      if o == Optimization.PackAggKeys then
+        // EngineAdaptivePartialAggsTest checks that the flag reaches the partitioned
+        // aggregations, and AggKeyPackingTest that packed keys give the same groups
+        ignore("Changes how partitioned aggregations compare keys, not the plan")
       if o == Optimization.ParquetFooterCache then
         // ParquetFooterCacheTest checks that the flag reuses parsed footers
         ignore("Changes how often Parquet footers are parsed, not the plan")
