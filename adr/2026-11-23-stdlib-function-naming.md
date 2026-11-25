@@ -76,6 +76,11 @@ Apply these rules in order:
   - A NULL argument gives NULL. DuckDB (`printf`) and BigQuery (`format`) already do; Trino's `format` and Hive's `printf` print `null`, so their variants check the arguments first. PostgreSQL prints `''`. Snowflake has no printf-style function, so `format` is absent there.
   - Fixed arities instead of varargs, so the NULL check can name each argument.
 
+- **Map aggregation** (user-approved addition, 2026-11-24):
+  - `key.map_agg(value)`, Trino's name (Snowflake's `OBJECT_AGG` builds an OBJECT, not a map). The receiver is the key, as `x.max_by(y)` reads `max_by(x, y)`.
+  - Rows with a NULL key are skipped and NULL values are kept, as Trino does; a group with no key gives NULL. Keys must be unique: DuckDB and the engine raise an error on a duplicate, Trino keeps one value.
+  - DuckDB has no `map_agg`, so its variant is `map(list(k) filter (where k is not null), list(v) filter (where k is not null))`. Absent on Snowflake (OBJECT_AGG drops NULL values), Hive, BigQuery, and PostgreSQL, which have no map aggregate.
+
 Later families (JSON, lists, maps, structs) add their rows to this ADR in the PR that introduces them, each with a comparison row.
 
 ### The engine's own SQL names

@@ -1,0 +1,15 @@
+-- key.map_agg(value) maps each grouped key to its row's value; NULL keys are skipped
+from [
+  ['a', 'k1', 1],
+  ['a', 'k2', null],
+  ['a', null, 3],
+  ['b', null, 4],
+] as kv(g, k, v)
+group by g
+agg k.map_agg(v).size as n, k.map_agg(v).get('k1') as k1
+order by g
+
+test _.rows should be [
+  ['a', 2, 1],
+  ['b', null, null],
+]

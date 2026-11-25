@@ -1460,6 +1460,33 @@ object ScalarFunctions:
     rangeFn("generate_series", inclusive = true)
 
     // ---- maps ----
+    // DuckDB's map(keys, values): keys must be unique and non-NULL, and the lists must align
+    reg("map") { args =>
+      arity("map", args, 0, 2)
+      if args.isEmpty then
+        Const(scala.collection.immutable.ListMap.empty[Any, Any], PType.AnyT)
+      else
+        fn("map", args, PType.AnyT) { a =>
+          val ks = a(0).asInstanceOf[Seq[Any]]
+          val vs = a(1).asInstanceOf[Seq[Any]]
+          if ks.size != vs.size then
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException("map: the key list does not align with the value list")
+          val b    = scala.collection.immutable.ListMap.newBuilder[Any, Any]
+          val seen = scala.collection.mutable.HashSet.empty[Any]
+          ks.iterator
+            .zip(vs.iterator)
+            .foreach { (k, v) =>
+              if k == null then
+                throw StatusCode.INVALID_ARGUMENT.newException("map: keys must not be NULL")
+              if !seen.add(k) then
+                throw StatusCode.INVALID_ARGUMENT.newException(s"map: duplicate key ${k}")
+              b += k -> v
+            }
+          b.result()
+        }
+    }
     reg("map_keys") { args =>
       fn("map_keys", args, PType.AnyT)(a => a(0).asInstanceOf[Map[Any, Any]].keys.toList)
     }

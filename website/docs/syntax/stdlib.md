@@ -186,6 +186,7 @@ aggregation functions apply (see also [Aggregation](index.md#group-by)):
 | `c.min_by(expr)` / `c.max_by(expr)` | Value at the row minimizing/maximizing `expr` |
 | `c.arbitrary` | Any value of the group |
 | `c.to_array` | Collect values into an array |
+| `key.map_agg(value)` | Map each key to its row's value; NULL keys are skipped, keys must be unique (DuckDB, Trino) |
 | `c.string_agg(separator)` | Concatenate strings with a separator |
 | `c.bool_and` / `c.bool_or` | Boolean aggregates |
 | `c.median` | Median value |
