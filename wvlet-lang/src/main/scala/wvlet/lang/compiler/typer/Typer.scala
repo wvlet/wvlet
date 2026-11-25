@@ -1293,11 +1293,11 @@ object Typer extends Phase("typer") with LogSupport:
     * Type a lambda body with its parameters bound in a child scope. Parameters are added, not
     * entered, so they shadow same-named outer symbols, and as values they also win over input
     * columns of the same name (identify_lambda_param in
-    * formal/WvletFormal/NameLookup/Resolve.lean). The child context keeps the input relation, so
-    * the body can refer to its columns
+    * formal/WvletFormal/NameLookup/Resolve.lean). Only the scope is new: the body keeps the
+    * enclosing imports and input relation, so it can call imported functions and refer to columns
     */
   private def typeLambda(lambda: LambdaExpr, paramTypes: Seq[DataType])(using ctx: Context): Unit =
-    val lambdaCtx = ctx.newContext(ctx.owner).withInputType(ctx.inputType)
+    val lambdaCtx = ctx.copy(scope = ctx.scope.newChildScope)
     lambda
       .args
       .zip(paramTypes)
