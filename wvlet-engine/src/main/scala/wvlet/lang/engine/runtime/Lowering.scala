@@ -97,6 +97,9 @@ object Lowering:
     // The nodes not lowered yet that are in a duplicate-insensitive context, set by their parent
     // ([[ReduceSemiJoins.childContexts]]), so that shared CTE readers report it
     private val setNodes = java.util.IdentityHashMap[RuntimePlan, Boolean]()
+    // Windows under a rank bound: lowered without shared subexpressions, which would wrap the
+    // WindowOp that takes the bound in a projection
+    private val topNWindows = java.util.IdentityHashMap[RuntimePlan, Boolean]()
 
     /** Lower p as read only for its distinct rows */
     def markInSet(p: RuntimePlan): Unit = setNodes.put(p, true)
@@ -172,6 +175,7 @@ object Lowering:
           )
         case Filter(w: Window, cond, _) if windowTopN =>
           val filter = cond.lower(positions(w))
+          topNWindows.put(w, true)
           val window =
             lower(w) match
               case op: WindowOp =>
@@ -285,10 +289,12 @@ object Lowering:
           }
           // Each call's arguments, partition keys, and sort keys
           val in          = lower(child)
-          val (input, es) = shared(
-            in,
-            ws.flatMap(w => w.args ++ w.partitionBy ++ w.orderBy.map(_.expr))
-          )
+          val exprs       = ws.flatMap(w => w.args ++ w.partitionBy ++ w.orderBy.map(_.expr))
+          val (input, es) =
+            if topNWindows.containsKey(p) then
+              (in, exprs)
+            else
+              shared(in, exprs)
           val it     = es.iterator
           val calls2 = ws.map { w =>
             w.copy(

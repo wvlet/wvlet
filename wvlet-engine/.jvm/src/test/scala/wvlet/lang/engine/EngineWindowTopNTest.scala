@@ -76,6 +76,12 @@ class EngineWindowTopNTest extends UniTest:
         |where rk <= 3""".stripMargin
     explain(ranked) shouldContain "top=3 with ties"
     explain(ranked, options.withDisabled(Optimization.WindowTopN)) shouldNotContain "top="
+    // Window expressions repeated across calls aren't shared, which would hide the bound's window
+    explain("""from 'spec/tpch/data/lineitem.parquet'
+        |select l_returnflag,
+        |  row_number() over (partition by l_returnflag order by l_quantity * l_tax) as rn,
+        |  rank() over (partition by l_returnflag order by l_quantity * l_tax) as rk
+        |where rn <= 3""".stripMargin) shouldContain "top=3"
     // A window aggregate needs every row of the partition
     explain("""from 'spec/tpch/data/lineitem.parquet'
         |select l_returnflag, rank() over (partition by l_returnflag order by l_quantity) as rk,
