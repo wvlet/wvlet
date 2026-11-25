@@ -1,6 +1,6 @@
 # ADR: Snowflake variants are verified locally, with golden SQL in CI
 
-Date: 2026-11-25 · PR #TBD
+Date: 2026-11-25 · PR #2434
 
 ## Context
 
