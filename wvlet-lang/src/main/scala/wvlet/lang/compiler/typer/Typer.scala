@@ -1269,12 +1269,22 @@ object Typer extends Phase("typer") with LogSupport:
           Some((list, id.leafName, Some(init)))
         case _ =>
           None
-    val elemType: DataType =
-      shape.map(_._1.dataType) match
-        case Some(DataType.ArrayType(e)) =>
+    def elementTypeOf(list: Expression): DataType =
+      list.dataType match
+        case DataType.ArrayType(e) =>
           e
         case _ =>
           DataType.UnknownType
+    val elemType = shape.map(_._1).map(elementTypeOf).getOrElse(DataType.UnknownType)
+    // zip_with's lambda takes an element of each list: xs.zip_with(ys, f) and zip_with(xs, ys, f)
+    val zipLists: Option[(Expression, Expression)] =
+      (f.base, f.args.map(_.value)) match
+        case (d: DotRef, List(other, _: LambdaExpr)) if d.name.leafName == "zip_with" =>
+          Some((d.qualifier, other))
+        case (id: Identifier, List(xs, ys, _: LambdaExpr)) if id.leafName == "zip_with" =>
+          Some((xs, ys))
+        case _ =>
+          None
     val isReduce = shape.exists((_, name, _) => reduceFunctions.contains(name))
     // The accumulator of a reduce starts from the initial value, or from the first element
     val accType = shape.flatMap(_._3).map(_.dataType).getOrElse(elemType)
@@ -1284,7 +1294,17 @@ object Typer extends Phase("typer") with LogSupport:
         .args
         .indices
         .map { i =>
-          if isReduce then
+          if zipLists.isDefined then
+            zipLists
+              .map((xs, ys) =>
+                if i == 0 then
+                  xs
+                else
+                  ys
+              )
+              .map(elementTypeOf)
+              .getOrElse(DataType.UnknownType)
+          else if isReduce then
             if i == 0 then
               accType
             else

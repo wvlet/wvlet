@@ -153,6 +153,14 @@ trait array[A] = {
   def forall(f: sql) in duckdb: boolean = sql"list_reduce(list_transform(${this}, ${f}), lambda a, b: a and b, true)"
   def forall(f: sql) in trino: boolean = sql"all_match(${this}, ${f})"
 
+  -- Combine the elements at the same position with a two-argument lambda, e.g.
+  -- [1, 2].zip_with([10, 20], (x, y) -> x + y) = [11, 22]. The shorter array is padded with
+  -- NULL, and a NULL array gives NULL
+  def zip_with(other: any, f: sql) in duckdb: array[any] = sql"case when ${this} is null or ${other} is null then null else list_transform(range(1, greatest(len(${this}), len(${other})) + 1), lambda __wv_i: ${f(this[__wv_i], other[__wv_i])}) end"
+  def zip_with(other: any, f: sql) in trino: array[any] = sql"zip_with(${this}, ${other}, ${f})"
+  -- The engine has no lambdas over outer values, so it binds zip_with itself
+  def zip_with(other: any, f: sql) in wvlet: array[any] = sql"zip_with(${this}, ${other}, ${f})"
+
   -- Window (analytic) functions, applied to a column with an over(...) clause,
   -- e.g. v.lag(1) over (partition by g order by k)
 

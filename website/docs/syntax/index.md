@@ -610,6 +610,7 @@ The lambda parameter takes the element type of the array, so `s` above is a stri
 - `xs.reduce(init, (acc, x) -> ...)`: fold the elements from an initial value, which an empty array returns. The accumulator takes the type of the initial value, e.g. `prices.reduce('', (acc, p) -> acc + p.to_string)`.
 - `xs.exists(x -> ...)`: true if the lambda is true for some element; false for an empty array.
 - `xs.forall(x -> ...)`: true if the lambda is true for every element; true for an empty array.
+- `xs.zip_with(ys, (x, y) -> ...)`: combine the elements at the same position, e.g. `prices.zip_with(quantities, (p, q) -> p * q)`. The shorter array is padded with NULL, and a NULL array gives NULL.
 
 Like SQL `or` and `and`, `exists` and `forall` return NULL when no element decides the answer and the lambda gives NULL for some element, e.g. `[1, null].exists(x -> x > 5)`.
 

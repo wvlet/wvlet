@@ -42,8 +42,8 @@ object TyperRules:
     */
   def exprRules(using ctx: Context): PartialFunction[Expression, Expression] = (
     literalRules orElse identifierRules orElse binaryOpRules orElse castRules orElse
-      caseExprRules orElse interpolatedStringRules orElse parenRules orElse dotRefRules orElse
-      functionApplyRules orElse materializeStructuralTypeRules
+      caseExprRules orElse interpolatedStringRules orElse parenRules orElse arrayAccessRules orElse
+      dotRefRules orElse functionApplyRules orElse materializeStructuralTypeRules
   ) andThen materializeStructuralType
 
   /**
@@ -396,6 +396,22 @@ object TyperRules:
       else if p.child.isTyped then
         p.tpe = p.child.tpe
       p
+  }
+
+  /**
+    * Rule for element access: xs[i] has the element type of an array, and m[k] the value type of a
+    * map, e.g. this[__wv_i] in the DuckDB variant of zip_with
+    */
+  def arrayAccessRules(using ctx: Context): PartialFunction[Expression, Expression] = {
+    case a: ArrayAccess =>
+      a.arrayExpr.dataType match
+        case DataType.ArrayType(elemType) if elemType.isResolved =>
+          a.tpe = elemType
+        case DataType.MapType(_, valueType) if valueType.isResolved =>
+          a.tpe = valueType
+        case _ =>
+          ()
+      a
   }
 
   /**
