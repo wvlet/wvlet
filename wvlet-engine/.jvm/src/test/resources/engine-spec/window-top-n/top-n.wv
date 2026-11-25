@@ -1,0 +1,69 @@
+-- rank() <= k keeps every row tied with the k-th
+from [
+  ['A', 10], ['A', 9], ['A', 9], ['A', 8], ['A', 7],
+  ['B', 5], ['B', 5], ['B', 5], ['B', 1],
+  ['C', 3]
+] as t(g, v)
+select g, v, rank() over (partition by g order by v desc) as rk
+where rk <= 2
+order by g, v desc, rk
+
+-- row_number() < k, and a constant on the left
+from [
+  ['A', 10], ['A', 9], ['A', 8], ['A', 7],
+  ['B', 5], ['B', 4], ['B', 1]
+] as t(g, v)
+select g, v, row_number() over (partition by g order by v) as rn
+where 3 > rn
+order by g, rn
+
+-- rank() = k keeps only that rank; other conjuncts still apply
+from [
+  ['A', 10], ['A', 9], ['A', 9], ['A', 8],
+  ['B', 5], ['B', 4], ['B', 4]
+] as t(g, v)
+select g, v, rank() over (partition by g order by v desc) as rk
+where rk = 2 and v > 4
+order by g, v
+
+-- NULL order keys sort last by default, and rank among the top rows like any value
+from [
+  ['A', null], ['A', 3], ['A', 2], ['A', null],
+  ['B', null], ['B', 1]
+] as t(g, v)
+select g, v, rank() over (partition by g order by v desc nulls first) as rk
+where rk <= 2
+order by g, rk, v
+
+-- rank() and row_number() over the same window, without PARTITION BY
+from [
+  [1, 'a'], [2, 'b'], [2, 'c'], [3, 'd'], [4, 'e']
+] as t(v, s)
+select v, s, rank() over (order by v) as rk, row_number() over (order by v, s) as rn
+where rk <= 2
+order by v, s
+
+-- Another window function in the same select: every row is ranked over the whole partition
+from [
+  ['A', 10], ['A', 9], ['A', 8],
+  ['B', 5], ['B', 4]
+] as t(g, v)
+select g, v, rank() over (partition by g order by v desc) as rk,
+  count(*) over (partition by g) as n
+where rk <= 1
+order by g
+
+-- A limit larger than every partition, and a limit of 0
+from [
+  ['A', 10], ['A', 9],
+  ['B', 5]
+] as t(g, v)
+select g, v, rank() over (partition by g order by v) as rk
+where rk <= 100
+order by g, v
+
+from [
+  ['A', 10], ['A', 9]
+] as t(g, v)
+select g, v, rank() over (partition by g order by v) as rk
+where rk <= 0

@@ -380,7 +380,7 @@ object Parallelizer:
           case s: SetOpOp =>
             SetOpOp(r(s.left), r(s.right), s.isIntersect, s.all, s.schema)
           case w: WindowOp =>
-            WindowOp(r(w.child), w.calls, w.schema, runner)
+            WindowOp(r(w.child), w.calls, w.schema, runner, topN = w.topN)
           case other =>
             other
     end match

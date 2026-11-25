@@ -157,6 +157,13 @@ enum Optimization(val name: String):
     */
   case PresizeAggregates extends Optimization("presize_aggregates")
 
+  /**
+    * A filter bounding a row_number() or rank() by a constant (`rk <= 100`) over a window of only
+    * such calls keeps the top rows of each partition with a bounded heap instead of sorting the
+    * whole partition
+    */
+  case WindowTopN extends Optimization("window_top_n")
+
   /** Parallel scan pipelines and two-phase / partitioned aggregation */
   case Parallelize extends Optimization("parallelize")
 
