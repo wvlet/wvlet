@@ -985,7 +985,9 @@ final class JoinBuild(
     val rawTypes = rightKeys.map(_.ptype)
     // Rows with NULL keys never match
     val (valid, nv) = JoinBuildSteps.validRows(rawKeys, build.size, steps)
-    filters.foreach(f => f.set(rawKeys(f.key), valid, nv, steps))
+    filters
+      .groupBy(_.key)
+      .foreach((k, fs) => RuntimeFilter.setAll(fs, rawKeys(k), valid, nv, steps))
     if packKeys then
       packer = KeyPacker.of(rawTypes, rawKeys, valid, nv)
     // The key columns the tables hold

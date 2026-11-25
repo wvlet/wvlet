@@ -37,9 +37,9 @@ object Lowering:
   /**
     * Lower `p`. With `joinFilters`, hash joins whose unmatched probe rows are dropped give the
     * Parquet scans on their probe side the range of their build keys ([[RuntimeFilter]]), and with
-    * `rowJoinFilters` a per-row test of their keys too ([[wvlet.lang.engine.exec.RowKeyFilter]]). With
-    * `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]). With
-    * `footerCache`, Parquet scans reuse cached footers
+    * `rowJoinFilters` a per-row test of their keys too ([[wvlet.lang.engine.exec.RowKeyFilter]]).
+    * With `inSet`, p's consumer reads only its distinct rows ([[ReduceSemiJoins.childContexts]]).
+    * With `footerCache`, Parquet scans reuse cached footers
     * ([[wvlet.lang.engine.catalog.ParquetFooterCache]]). With `windowTopN`, a filter bounding the
     * rank of a window keeps only the top rows of each partition ([[WindowOp.topNOf]]). With
     * `windowKernels`, running window aggregates fold primitive values
