@@ -83,6 +83,7 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
   private var pendingRun: Option[js.timers.SetTimeoutHandle] = None
 
   override def onMount(node: Any): Unit =
+    state.revealLine = line => editor.revealLine(line)
     subscriptions = Seq(
       // Run the statement being edited shortly after typing stops
       state
@@ -104,8 +105,16 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
         .run(_ =>
           if state.lastRequest.get.text.nonEmpty then
             state.rerun()
+        ),
+      state
+        .disabledOptimizations
+        .run(_ =>
+          if state.lastRequest.get.text.nonEmpty then
+            state.rerun()
         )
     )
+
+  end onMount
 
   override def beforeUnmount: Unit =
     subscriptions.foreach(_.cancel)

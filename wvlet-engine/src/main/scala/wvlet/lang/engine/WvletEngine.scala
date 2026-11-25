@@ -57,6 +57,18 @@ case class EngineResult(schema: Schema, batches: Seq[Batch]):
       .toSeq
 
 /**
+  * The planning stages of one query ([[WvletEngine.planStages]]). `bound` and `optimized` are empty
+  * when the query planned without a runtime plan of its own (e.g., a plan-time constant)
+  */
+case class EnginePlanStages(
+    bound: Option[wvlet.lang.engine.runtime.RuntimePlan],
+    optimized: Option[wvlet.lang.engine.runtime.RuntimePlan],
+    firedRules: Map[String, Int],
+    physical: Operator
+):
+  def close(): Unit = physical.close()
+
+/**
   * The in-process columnar query engine: executes typed wvlet relations on vectors, reading Parquet
   * / Iceberg through uni. Tables are registered in [[catalog]]; file paths in queries are resolved
   * against `baseDir`. `optimizer` selects the planner optimizations to run (by default, all but
@@ -182,5 +194,20 @@ class WvletEngine(
 
   def explain(r: Relation)(using ctx: Context): String = physicalPlan(GenSQL.expand(r, ctx))
     .explain()
+
+  /**
+    * Plan a query and return each stage, for tools that show how the engine plans it: the runtime
+    * plan as bound, after the logical passes, the rules that fired, and the physical operators. The
+    * operators are not run; [[EnginePlanStages.close]] releases them.
+    */
+  def planStages(r: Relation)(using ctx: Context): EnginePlanStages =
+    val planner = Planner(catalog, DefaultResolver(), optimizer, accelerator)
+    val op      = planner.plan(lowerShow(GenSQL.expand(r, ctx)))
+    EnginePlanStages(
+      bound = planner.rootPlans.map(_.bound),
+      optimized = planner.rootPlans.map(_.optimized),
+      firedRules = planner.firedRules,
+      physical = op
+    )
 
 end WvletEngine

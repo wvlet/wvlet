@@ -35,6 +35,8 @@ import wvlet.lang.engine.WvletEngine
 import wvlet.lang.engine.catalog.EngineCatalog
 import wvlet.lang.engine.catalog.MemTable
 import wvlet.lang.engine.catalog.TpchGen
+import wvlet.lang.engine.plan.Optimization
+import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.vector.ValueOps
 import wvlet.lang.model.plan.*
 import wvlet.uni.log.LogLevel
@@ -75,10 +77,17 @@ case class RunOutput(
     sql: String = "",
     wvlet: String = "",
     logicalPlan: String = "",
+    // The engine's runtime plan as bound from the query, and after its logical passes
+    boundPlan: String = "",
+    runtimePlan: String = "",
+    // How many times each optimizer rule changed the runtime plan, most first
+    firedRules: Seq[(String, Int)] = Nil,
     physicalPlan: String = "",
     result: Option[ResultTable] = None,
     error: Option[String] = None,
     elapsedMillis: Double = 0,
+    // Planning and running on the engine only, without compilation
+    executionMillis: Double = 0,
     statement: String = ""
 ):
   def hasError: Boolean = error.nonEmpty
@@ -93,7 +102,7 @@ case class RunOutput(
 class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFactor)
     extends LogSupport:
   val tables: Seq[MemTable] = TpchGen.tables(scaleFactor)
-  private val engine        = WvletEngine()
+  private val engine        = WvletEngine(optimizer = OptimizerOptions())
   tables.foreach(engine.catalog.register)
 
   // One compiler per dialect: the catalog's dialect decides the SQL a compiler generates. The
@@ -114,6 +123,13 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
       c
     }
   )
+
+  // The engine with some optimizations turned off, over the same tables
+  private def engineFor(disabled: Set[Optimization]): WvletEngine =
+    if disabled.isEmpty then
+      engine
+    else
+      engine.withOptimizer(OptimizerOptions(disabled = disabled))
 
   /** Columns of the generated tables, for the schema browser */
   def tableSchemas: Seq[(String, Seq[ResultColumn])] = tables.map { t =>
@@ -139,7 +155,8 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
       dialect: SqlDialect = SqlDialect.DuckDB,
       position: LinePosition = LinePosition.NoPosition,
       selection: QuerySelection = QuerySelection.Single,
-      rowLimit: Int = PlaygroundEngine.defaultRowLimit
+      rowLimit: Int = PlaygroundEngine.defaultRowLimit,
+      disabled: Set[Optimization] = Set.empty
   ): RunOutput =
     val start   = System.nanoTime()
     def elapsed = (System.nanoTime() - start) / 1e6
@@ -164,16 +181,40 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
           else
             ""
       )
-      out = out.copy(sql = translate(text, mode, dialect, position, selection))
+      // A dialect that can't express the query (e.g., asof join on Trino) only affects the SQL view
+      val sql =
+        try
+          translate(text, mode, dialect, position, selection)
+        catch
+          case e: WvletLangException =>
+            s"-- Cannot generate ${dialect.label} SQL: ${e
+                .getMessage
+                .linesIterator
+                .nextOption()
+                .getOrElse("")}"
+      out = out.copy(sql = sql)
       val relations = runnable(unit, selected)
       relations.lastOption match
         case None =>
           out.copy(result = Some(ResultTable(Nil, IndexedSeq.empty, 0)), elapsedMillis = elapsed)
         case Some(rel) =>
-          val expanded = GenSQL.expand(rel, ctx)
-          out = out.copy(physicalPlan = engine.physicalPlan(expanded).explain())
-          val res = engine.execute(rel)
-          out.copy(result = Some(toTable(res, rowLimit)), elapsedMillis = elapsed)
+          val target = engineFor(disabled)
+          val stages = target.planStages(rel)
+          try
+            out = out.copy(
+              boundPlan = stages.bound.map(_.explain).getOrElse(""),
+              runtimePlan = stages.optimized.map(_.explain).getOrElse(""),
+              firedRules = stages.firedRules.toSeq.sortBy((name, n) => (-n, name)),
+              physicalPlan = stages.physical.explain()
+            )
+          finally stages.close()
+          val execStart = System.nanoTime()
+          val res       = target.execute(rel)
+          out.copy(
+            result = Some(toTable(res, rowLimit)),
+            elapsedMillis = elapsed,
+            executionMillis = (System.nanoTime() - execStart) / 1e6
+          )
     catch
       case e: WvletLangException =>
         out.copy(error = Some(e.getMessage), elapsedMillis = elapsed)
@@ -335,12 +376,33 @@ object PlaygroundEngine:
       case m: Map[?, ?] =>
         m.map((k, x) => s"${quoteIfString(k)}: ${quoteIfString(x)}").mkString("{", ", ", "}")
       case d: Double =>
-        if d == d.toLong.toDouble && !d.isInfinite && math.abs(d) < 1e15 then
-          s"${d.toLong}.0"
-        else
-          d.toString
+        formatDouble(d)
       case other =>
         other.toString
+
+  /** Decimal places shown for doubles; decimals keep the scale of their type */
+  val doubleDigits: Int = 6
+
+  /**
+    * A double rounded to [[doubleDigits]] decimal places, without trailing zeros (`35893.865307`
+    * instead of `35893.86530718333`). Very large or small magnitudes use scientific notation
+    */
+  def formatDouble(d: Double): String =
+    if d.isNaN || d.isInfinite then
+      d.toString
+    else if d != 0 && (math.abs(d) >= 1e15 || math.abs(d) < 1e-4) then
+      String.format("%.6e", java.lang.Double.valueOf(d))
+    else
+      val s =
+        BigDecimal(d)
+          .setScale(doubleDigits, BigDecimal.RoundingMode.HALF_UP)
+          .bigDecimal
+          .stripTrailingZeros
+          .toPlainString
+      if s.contains('.') then
+        s
+      else
+        s"${s}.0"
 
   private def quoteIfString(x: Any): String =
     x match

@@ -53,6 +53,9 @@ class CodeEditor(
 
   def focus(): Unit = editor.focus()
 
+  /** Scroll to a 1-origin line, select it, and focus the editor */
+  def revealLine(line: Int): Unit = editor.revealLine(line)
+
   override def onMount(node: Any): Unit =
     editor.render()
     if readOnly then

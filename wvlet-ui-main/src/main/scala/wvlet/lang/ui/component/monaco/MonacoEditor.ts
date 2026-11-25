@@ -87,6 +87,17 @@ export class MonacoEditor {
         }
     }
 
+    /** Scroll to a 1-origin line, select it, and focus the editor */
+    revealLine(line: number): void {
+        if (this.editor) {
+            const model = this.editor.getModel();
+            const n = Math.max(1, Math.min(line, model.getLineCount()));
+            this.editor.revealLineInCenter(n);
+            this.editor.setSelection(new monaco.Selection(n, 1, n, model.getLineMaxColumn(n)));
+            this.editor.focus();
+        }
+    }
+
     focus(): void {
         if (this.editor) {
             this.editor.focus();

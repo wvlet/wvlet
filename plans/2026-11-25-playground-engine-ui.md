@@ -17,3 +17,4 @@ Turn the web playground into a syntax and function reference that runs: queries 
 - Run queries in a Web Worker so SF 0.1 generation and long queries don't block the page.
 - Expose `TpchGen` as a data source outside the playground (e.g., a `wvlet` connector option or a CLI command to write the tables to Parquet).
 - Run `test` assertions and show their results.
+- Done in the follow-up PR: Plan view with clickable source lines; Engine view with bound / optimized runtime plans, operators, fired rules, and optimization switches (`WvletEngine.planStages`); fixed result column widths; doubles rounded to 6 decimal places; a dialect that can't express a query no longer hides its result.

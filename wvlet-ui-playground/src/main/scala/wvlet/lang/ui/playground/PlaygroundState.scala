@@ -16,6 +16,7 @@ package wvlet.lang.ui.playground
 import org.scalajs.dom
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.engine.plan.Optimization
 import wvlet.uni.dom.SizeRange
 import wvlet.uni.dom.Storage
 import wvlet.uni.dom.StorageCodec
@@ -32,6 +33,26 @@ enum OutputTab(val label: String) derives StorageCodec:
   case Translation  extends OutputTab("SQL")
   case LogicalPlan  extends OutputTab("Plan")
   case PhysicalPlan extends OutputTab("Engine")
+
+/** The stage of the engine's plan shown in the Engine tab */
+enum EngineStage(val label: String, val description: String) derives StorageCodec:
+  case Optimized
+      extends EngineStage(
+        "Optimized",
+        "The engine's runtime plan after its logical passes (filter pushdown, join ordering, column pruning, ...), read top-down in data-flow order."
+      )
+
+  case Bound
+      extends EngineStage(
+        "Bound",
+        "The runtime plan as bound from the query, before any optimization. Compare it with Optimized."
+      )
+
+  case Operators
+      extends EngineStage(
+        "Operators",
+        "The physical operators that run: hash joins and aggregations, sorts, and scans with the filters pushed into them."
+      )
 
 /** The tabs of the sidebar */
 enum SidebarTab(val label: String) derives StorageCodec:
@@ -63,7 +84,18 @@ class PlaygroundState extends LogSupport:
   val outputTab: RxVar[OutputTab]   = Storage.local(s"${prefix}outputTab", OutputTab.Translation)
   val sidebarTab: RxVar[SidebarTab] = Rx.variable(SidebarTab.Examples)
   val dialect: RxVar[SqlDialect]    = Rx.variable(SqlDialect.DuckDB)
-  val scaleFactor: RxVar[Double]    = Rx.variable(PlaygroundEngine.defaultScaleFactor)
+  val engineStage: RxVar[EngineStage] = Storage.local(
+    s"${prefix}engineStage",
+    EngineStage.Optimized
+  )
+
+  val showPlanColumns: RxVar[Boolean] = Storage.local(s"${prefix}showPlanColumns", false)
+  // Engine optimizations turned off in the Engine tab
+  val disabledOptimizations: RxVar[Set[Optimization]] = Rx.variable(Set.empty)
+
+  /** Select a line of the query in the editor; set by the editor when it mounts */
+  var revealLine: Int => Unit    = _ => ()
+  val scaleFactor: RxVar[Double] = Rx.variable(PlaygroundEngine.defaultScaleFactor)
 
   // The query
   val mode: RxVar[InputMode]                 = Rx.variable(InputMode.Wvlet)
@@ -108,7 +140,8 @@ class PlaygroundState extends LogSupport:
       dialect.get,
       req.position,
       req.selection,
-      PlaygroundEngine.defaultRowLimit
+      PlaygroundEngine.defaultRowLimit,
+      disabledOptimizations.get
     )
     output := out
     status := (

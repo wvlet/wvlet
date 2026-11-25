@@ -23,6 +23,9 @@ import wvlet.uni.ui.Select
 import wvlet.uni.ui.Tab
 import wvlet.uni.ui.TabList
 
+import org.scalajs.dom
+import wvlet.lang.engine.plan.Optimization
+
 import scala.scalajs.js
 
 /**
@@ -121,9 +124,9 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
                 copyButton(translationText.get)
               )
             case OutputTab.LogicalPlan =>
-              copyButton(state.output.get.logicalPlan)
+              span(cls -> "pg-toolbar", columnsToggle, copyButton(state.output.get.logicalPlan))
             case OutputTab.PhysicalPlan =>
-              copyButton(state.output.get.physicalPlan)
+              span(cls -> "pg-toolbar", columnsToggle, copyButton(enginePlanText))
           }
       ),
       div(
@@ -148,27 +151,147 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
             case OutputTab.Translation =>
               span()
             case OutputTab.LogicalPlan =>
-              planView(state.output.map(_.logicalPlan), "The logical plan the compiler builds")
-            case OutputTab.PhysicalPlan =>
-              planView(
-                state.output.map(_.physicalPlan),
-                "The physical plan of the in-browser columnar engine"
+              div(
+                cls -> "pg-output__view pg-plan",
+                div(
+                  cls -> "pg-plan__caption",
+                  "The compiler's logical plan, read top-down in data-flow order. Click a line number to select its source."
+                ),
+                PlanView(
+                  state.output.map(_.logicalPlan),
+                  "No plan: fix the query errors first.",
+                  onSourceLine = n => state.revealLine(n)
+                )
               )
+            case OutputTab.PhysicalPlan =>
+              enginePanel
           }
       )
     )
 
   end render
 
-  private def planView(plan: Rx[String], caption: String): RxElement = div(
-    cls -> "pg-output__view pg-plan",
-    div(cls -> "pg-plan__caption", caption),
-    plan.map(p =>
-      if p.isEmpty then
-        div(cls -> "pg-result__empty", "No plan: fix the query errors first.")
-      else
-        pre(cls -> "pg-plan__text", p)
-    )
+  private def columnsToggle: RxElement = label(
+    cls       -> "pg-check",
+    titleAttr -> "Show the output columns of each plan node",
+    input(
+      tpe      -> "checkbox",
+      checked  -> state.showPlanColumns,
+      onchange -> { (e: dom.Event) =>
+        state.showPlanColumns := e.target.asInstanceOf[dom.html.Input].checked
+      }
+    ),
+    "Columns"
   )
+
+  private def enginePlanText: String =
+    val out = state.output.get
+    state.engineStage.get match
+      case EngineStage.Optimized =>
+        out.runtimePlan
+      case EngineStage.Bound =>
+        out.boundPlan
+      case EngineStage.Operators =>
+        out.physicalPlan
+
+  // The engine's planning stages, the rules that fired, and switches for its optimizations
+  private def enginePanel: RxElement =
+    val stages = TabList(
+      state.engineStage,
+      label = "Engine plan stage",
+      tabs = EngineStage.values.toSeq.map(s => Tab(s, s.label))
+    )
+    div(
+      cls -> "pg-output__view pg-plan",
+      div(cls -> "pg-engine-stages", stages),
+      div(cls -> "pg-plan__caption", state.engineStage.map(_.description)),
+      PlanView(
+        Rx.join(state.output, state.engineStage)
+          .map { (out, stage) =>
+            stage match
+              case EngineStage.Optimized =>
+                out.runtimePlan
+              case EngineStage.Bound =>
+                out.boundPlan
+              case EngineStage.Operators =>
+                out.physicalPlan
+          },
+        "No engine plan: fix the query errors first.",
+        showOutputs = state.showPlanColumns
+      ),
+      div(
+        cls -> "pg-engine-section",
+        div(cls -> "pg-engine-section__title", "Optimizer rules that changed the plan"),
+        state
+          .output
+          .map { out =>
+            if out.firedRules.isEmpty then
+              div(cls -> "pg-plan__caption", "None: the bound plan was already optimal.")
+            else
+              div(
+                cls -> "pg-chips",
+                out
+                  .firedRules
+                  .map((name, n) =>
+                    span(cls -> "pg-chip", name, span(cls -> "pg-chip__count", s"×${n}"))
+                  )
+              )
+          }
+      ),
+      optimizationSwitches
+    )
+
+  end enginePanel
+
+  private def optimizationSwitches: RxElement =
+    val all = Optimization.values.toSeq.sortBy(_.name)
+    details(
+      cls -> "pg-engine-section",
+      summary(
+        cls -> "pg-engine-section__title",
+        state
+          .disabledOptimizations
+          .map { d =>
+            if d.isEmpty then
+              "Optimizations (all on)"
+            else
+              s"Optimizations (${d.size} off)"
+          }
+      ),
+      div(
+        cls -> "pg-plan__caption",
+        "Turn an optimization off to see how the plan and the run time change.",
+        Button("Turn all on")
+          .withVariant(ButtonVariant.Ghost)
+          .withSize(ButtonSize.Small)
+          .onClick(() => state.disabledOptimizations := Set.empty)
+      ),
+      div(
+        cls -> "pg-switches",
+        all.map { o =>
+          label(
+            cls -> "pg-check",
+            input(
+              tpe      -> "checkbox",
+              checked  -> state.disabledOptimizations.map(d => !d.contains(o)),
+              onchange -> { (e: dom.Event) =>
+                val on = e.target.asInstanceOf[dom.html.Input].checked
+                state
+                  .disabledOptimizations
+                  .update(d =>
+                    if on then
+                      d - o
+                    else
+                      d + o
+                  )
+              }
+            ),
+            span(cls -> "pg-mono", o.name)
+          )
+        }
+      )
+    )
+
+  end optimizationSwitches
 
 end OutputPanel

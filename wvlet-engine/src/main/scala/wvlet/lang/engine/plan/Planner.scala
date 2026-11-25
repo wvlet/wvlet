@@ -185,6 +185,12 @@ class Planner(
   /** Window function calls collected while binding a projection */
   private var windowCollector: Option[WindowCollector] = None
 
+  /**
+    * The runtime plans of the outermost relation of the last [[plan]] call, before and after the
+    * logical passes, for tools that show them (`WvletEngine.planStages`)
+    */
+  private[engine] var rootPlans: Option[RootPlans] = None
+
   /** Plan a relation, then drop columns no operator needs so that scans read fewer columns */
   def plan(r: Relation): Operator =
     planDepth += 1
@@ -207,7 +213,8 @@ class Planner(
     try
       val bound     = runtimeBinder.bind(r)
       val optimized = optimizeRuntime(bound)
-      val op        = optimizePhysical(lower(optimized))
+      rootPlans = Some(RootPlans(bound, optimized))
+      val op = optimizePhysical(lower(optimized))
       finalizeCTEs(op)
       val root =
         if enabled(Optimization.ReplanMaterializedCTEs) then
@@ -3625,3 +3632,6 @@ trait SourceResolver:
   def tableSource(name: String, fullName: String): Option[TableSource]
   def fileSource(path: String): Option[TableSource]
   def parseSql(r: RawSQL): Relation
+
+/** The runtime plan of a query as bound, and after the logical passes */
+case class RootPlans(bound: RuntimePlan, optimized: RuntimePlan)

@@ -544,3 +544,132 @@ body {
 ::-webkit-scrollbar-corner {
     background: transparent;
 }
+
+/* Result cells: one line, cut with an ellipsis (the full value is the title) */
+.pg-result__table .uni-table__cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Plan rows */
+.pg-plan-view {
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.pg-plan-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.pg-plan-row:hover {
+    background: var(--uni-hover);
+}
+
+.pg-plan-row--attr {
+    color: var(--uni-muted);
+}
+
+.pg-plan-marker {
+    color: var(--uni-faint);
+}
+
+.pg-plan-name {
+    color: var(--uni-accent);
+    font-weight: 600;
+}
+
+.pg-plan-detail {
+    color: var(--uni-fg);
+}
+
+.pg-plan-attr::before {
+    content: "· ";
+    color: var(--uni-faint);
+}
+
+.pg-plan-line {
+    border: none;
+    background: var(--uni-accent-soft);
+    color: var(--uni-accent);
+    border-radius: 999px;
+    padding: 0 6px;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.pg-plan-outputs {
+    flex-basis: 100%;
+    color: var(--uni-faint);
+    padding-left: 2ch;
+}
+
+.pg-engine-stages {
+    margin-bottom: 4px;
+}
+
+.pg-engine-stages .uni-tabs {
+    border-bottom: none;
+}
+
+.pg-engine-section {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--uni-line);
+}
+
+.pg-engine-section__title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    cursor: default;
+}
+
+summary.pg-engine-section__title {
+    cursor: pointer;
+}
+
+.pg-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.pg-chip {
+    font-family: var(--uni-font-mono);
+    font-size: 11px;
+    background: var(--uni-hover);
+    border-radius: 999px;
+    padding: 1px 8px;
+}
+
+.pg-chip__count {
+    color: var(--uni-faint);
+    margin-left: 4px;
+}
+
+.pg-switches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 2px 12px;
+}
+
+.pg-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--uni-font-size-sm);
+    color: var(--uni-muted);
+    cursor: pointer;
+}
+
+.pg-mono {
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+}
