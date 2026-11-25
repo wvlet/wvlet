@@ -281,6 +281,12 @@ enum Optimization(val name: String):
   case AdaptivePartialAggs extends Optimization("adaptive_partial_aggs")
 
   /**
+    * Partitioned aggregations by several integer or date keys group each partition by one packed
+    * Int64 key, from the key ranges of the partition's rows
+    */
+  case PackAggKeys extends Optimization("pack_agg_keys")
+
+  /**
     * Row-independent subexpressions are evaluated once when lowering, and integral constants added
     * to or subtracted from decimals become decimals at the result scale
     * ([[wvlet.lang.engine.runtime.FoldConstants]])
