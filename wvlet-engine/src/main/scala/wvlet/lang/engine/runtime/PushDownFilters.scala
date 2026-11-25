@@ -20,8 +20,10 @@ import wvlet.lang.engine.expr.CmpOp
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.expr.Const
+import wvlet.lang.engine.expr.InList
 import wvlet.lang.engine.expr.IsNullExpr
 import wvlet.lang.engine.expr.Kernels
+import wvlet.lang.engine.expr.NotExpr
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.RowFn
 import wvlet.lang.engine.expr.ScalarFunctions
@@ -54,6 +56,12 @@ import scala.util.control.NonFatal
   * It stops at filters (whose own conjuncts push down from there), limits, and full joins. A
   * conjunct keeps its literal count (selectivity) as it moves.
   *
+  * With `outer_to_inner`, a LEFT join becomes an inner join when a conjunct over it, or a condition
+  * of the inner join tree it is an input of, is never TRUE on a row whose right columns are NULL
+  * ([[rejectsNull]]): such a conjunct drops every NULL-padded row. Its inputs and ON condition then
+  * join the inner join tree, which [[ReorderJoins]] orders. This happens only in the pass's own
+  * walk, not in [[filter]], which [[ReorderJoins]] calls on inputs it is ordering.
+  *
   * The pass also turns the equalities between the inputs of an outer join's residual into hash join
   * keys, as the planner does for ON conditions. That always happens, since the binder leaves them
   * to the pass; with `push_down_filters` disabled, only the conjuncts stay where they are.
@@ -72,10 +80,10 @@ object PushDownFilters extends Pass:
       val e = VExprs.mapRefs(expr, f)
       Conjunct(e, remapCounts(expr, e, counts))
 
-  override def run(p: RuntimePlan, ctx: OptimizerContext): RuntimePlan = Walk(
-    ctx,
-    ctx.options.isEnabled(Optimization.PushDownFilters)
-  ).push(p, Nil)
+  override def run(p: RuntimePlan, ctx: OptimizerContext): RuntimePlan =
+    val enabled = ctx.options.isEnabled(Optimization.PushDownFilters)
+    Walk(ctx, enabled, outerToInner = enabled && ctx.options.isEnabled(Optimization.OuterToInner))
+      .push(p, Nil)
 
   /**
     * Rows of p for which the conditions are true: pushed down p as far as they go, or a filter over
@@ -99,7 +107,12 @@ object PushDownFilters extends Pass:
     else
       Filter(p, BExpr(conds.map(_.cond.expr).reduce(AndExpr(_, _))))
 
-  private class Walk(ctx: OptimizerContext, enabled: Boolean, throughFilters: Boolean = false):
+  private class Walk(
+      ctx: OptimizerContext,
+      enabled: Boolean,
+      throughFilters: Boolean = false,
+      outerToInner: Boolean = false
+  ):
     /** Rows of p for which every conjunct is true, with the conjuncts pushed as far as they go */
     def push(p: RuntimePlan, conds: List[Conjunct]): RuntimePlan =
       p match
@@ -145,6 +158,12 @@ object PushDownFilters extends Pass:
           moved(in)
           val pushed = in.map(_.substitute(r => byId(ColumnId(r.index))))
           filter(withChild(a, push(child, pushed)), out)
+        case j: Join if outerToInner && rejected(j, conds.map(_.expr)) =>
+          // A conjunct drops every NULL-padded row: the LEFT join is an inner join tree of its
+          // inputs, on its ON condition and the conjuncts
+          ctx.fired(Optimization.OuterToInner.name)
+          val (inputs, joinConds) = innerTree(j)
+          push(InnerJoins(inputs, joinConds), conds)
         case j: Join =>
           val keyed = joinKeys(j)
           val ids   = (q: RuntimePlan) => q.output.map(_.id).toSet
@@ -202,20 +221,27 @@ object PushDownFilters extends Pass:
           val (in, out) = conds.partition(_.refs.subsetOf(ids))
           moved(in)
           filter(j.withChildren(Seq(push(left, in), push(right, Nil))), out)
-        case j @ InnerJoins(inputs, joinConds) =>
+        case j @ InnerJoins(treeInputs, joinConds) =>
           val added = conds
             .filterNot(c => c.expr == Const(true, PType.Bool))
             .map(c => JoinCondition(BExpr(c.expr), c.counts))
-          val all          = joinConds ++ added
+          val (inputs, all) =
+            if outerToInner then
+              withInnerInputs(treeInputs, joinConds ++ added)
+            else
+              (treeInputs, joinConds ++ added)
+          val flattened    = inputs.size != treeInputs.size
           val withInferred =
             if enabled then
               all ++ inferred(all)
             else
               all
-          if withInferred.size > joinConds.size then
+          if added.nonEmpty || withInferred.size > all.size then
             ctx.fired(name)
           val newInputs = inputs.map(push(_, Nil))
-          if withInferred.size == joinConds.size && newInputs.lazyZip(inputs).forall(_ eq _) then
+          if !flattened && withInferred.size == joinConds.size &&
+            newInputs.lazyZip(inputs).forall(_ eq _)
+          then
             j
           else
             InnerJoins(newInputs, withInferred)
@@ -276,6 +302,29 @@ object PushDownFilters extends Pass:
         val col = in(pos(r.index))
         castTo(ColRef(col.id.value, col.ptype, col.name), columns(pos(r.index)).ptype)
       }
+
+    /**
+      * The inputs and conditions of an inner join tree with each input that is a LEFT join whose
+      * right columns a condition rejects NULLs on replaced by its two inputs, with its ON condition
+      * added. Repeats until no such input is left: an added ON condition can reject the right
+      * columns of a LEFT join in another input
+      */
+    private def withInnerInputs(
+        inputs: IndexedSeq[RuntimePlan],
+        conds: IndexedSeq[JoinCondition]
+    ): (IndexedSeq[RuntimePlan], IndexedSeq[JoinCondition]) =
+      val i = inputs.indexWhere {
+        case j: Join =>
+          rejected(j, conds.map(_.cond.expr))
+        case _ =>
+          false
+      }
+      if i < 0 then
+        (inputs, conds)
+      else
+        ctx.fired(Optimization.OuterToInner.name)
+        val (tree, treeConds) = innerTree(inputs(i).asInstanceOf[Join])
+        withInnerInputs(inputs.patch(i, tree, 1), conds ++ treeConds)
 
     /** Whether conjuncts carry across join keys (`join_key_filters`) */
     private val carryKeys = enabled && ctx.options.isEnabled(Optimization.JoinKeyFilters)
@@ -398,6 +447,88 @@ object PushDownFilters extends Pass:
           )
       case _ =>
         j
+
+  /**
+    * Whether j is a LEFT join and one of the deterministic conditions over its output is never TRUE
+    * on a row whose right columns are NULL
+    */
+  private def rejected(j: Join, conds: Seq[VExpr]): Boolean =
+    j.kind == JoinKind.Left && {
+      val right = j.right.output.map(_.id).toSet
+      conds.exists(c => isDeterministic(c) && rejectsNull(c, right))
+    }
+
+  /**
+    * A join as the inputs and conditions of an inner join tree: its two inputs, each replaced by
+    * its own inputs and conditions when it is an inner join tree (a join before the LEFT join), so
+    * that [[ReorderJoins]] orders them all together, and its ON condition: its key equalities, then
+    * its residual's conjuncts. A join outputs its left columns, then its right ones, as the inputs
+    * do in order
+    */
+  private def innerTree(j: Join): (IndexedSeq[RuntimePlan], IndexedSeq[JoinCondition]) =
+    def parts(p: RuntimePlan): (IndexedSeq[RuntimePlan], IndexedSeq[JoinCondition]) =
+      p match
+        case InnerJoins(inputs, conds) =>
+          (inputs, conds)
+        case other =>
+          (IndexedSeq(other), IndexedSeq.empty)
+    val (l, lc) = parts(j.left)
+    val (r, rc) = parts(j.right)
+    val keys    = j.leftKeys.lazyZip(j.rightKeys).map((a, b) => Compare(CmpOp.Eq, a.expr, b.expr))
+    val on      = (keys ++ j.residual.toSeq.flatMap(e => conjuncts(e.expr))).map(e =>
+      JoinCondition(BExpr(e))
+    )
+    (l ++ r, lc ++ rc ++ on)
+
+  /**
+    * Whether a condition is never TRUE on a row whose columns of `cols` are all NULL (the Lean
+    * model's `rejectsNull`, formal/WvletFormal/Pushdown/Rule.lean): a [[strict]] condition, `c is
+    * not null` for such a column `c`, an `and` with such a side, or an `or` of two such conditions
+    */
+  private def rejectsNull(e: VExpr, cols: Set[ColumnId]): Boolean =
+    strict(e, cols) || (
+      e match
+        case IsNullExpr(c, true) =>
+          isColumnOf(c, cols)
+        case NotExpr(IsNullExpr(c, false)) =>
+          isColumnOf(c, cols)
+        case AndExpr(a, b) =>
+          rejectsNull(a, cols) || rejectsNull(b, cols)
+        case OrExpr(a, b) =>
+          rejectsNull(a, cols) && rejectsNull(b, cols)
+        case _ =>
+          false
+    )
+
+  /**
+    * Whether a condition is NULL on every row whose columns of `cols` are all NULL: a comparison
+    * with such a column as an operand, IN or NOT IN testing such a column over at least one value
+    * (over none, IN is FALSE and NOT IN TRUE), and `not`, `and`, `or` of such conditions
+    */
+  private def strict(e: VExpr, cols: Set[ColumnId]): Boolean =
+    e match
+      case Compare(_, a, b) =>
+        isColumnOf(a, cols) || isColumnOf(b, cols)
+      case InList(c, values, hasNullValue, _) =>
+        isColumnOf(c, cols) && (values.nonEmpty || hasNullValue)
+      case NotExpr(c) =>
+        strict(c, cols)
+      case AndExpr(a, b) =>
+        strict(a, cols) && strict(b, cols)
+      case OrExpr(a, b) =>
+        strict(a, cols) && strict(b, cols)
+      case _ =>
+        false
+
+  /** A column of `cols`, possibly under casts: a cast of NULL is NULL */
+  private def isColumnOf(e: VExpr, cols: Set[ColumnId]): Boolean =
+    e match
+      case c: ColRef =>
+        cols.contains(ColumnId(c.index))
+      case CastExpr(c, _, _) =>
+        isColumnOf(c, cols)
+      case _ =>
+        false
 
   /** `key is not null`, which a hash join already implies for both inputs' keys */
   private def isNotNullKey(e: VExpr): Boolean =

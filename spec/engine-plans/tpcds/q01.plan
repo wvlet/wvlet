@@ -28,7 +28,7 @@ Scan[customer](columns=c_customer_sk,c_customer_id join_filter=c_customer_sk) ->
   ↙ Scan[Aggregate]() -> [__wv_k1:long, agg:avg(#2):double]
   ↓ Project(#0, (#1*lit(1.2:decimal(2,1)))) -> [__wv_k1:long, __wv_sq2:double]
   ↓ Morsel[parallelism=N] -> [__wv_k1:long, __wv_sq2:double]
-↙ HashJoin[Left](#0 = #0) -> [ctr_store_sk:long, ctr_total_return:decimal(38,2), c_customer_id:string, __wv_k1:long, __wv_sq2:double]
+↙ HashJoin[Inner](#0 = #0) -> [ctr_store_sk:long, ctr_total_return:decimal(38,2), c_customer_id:string, __wv_k1:long, __wv_sq2:double]
 ↓ Filter((cast(#1 as double)>#4), keep=2) -> [c_customer_id:string]
 ↓ Project(#0) -> [c_customer_id:string]
 ↓ Project(#0) -> [c_customer_id:string]

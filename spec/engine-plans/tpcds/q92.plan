@@ -26,7 +26,7 @@ Scan[date_dim](columns=d_date_sk,d_date filter=And(Compare(d_date,GtEq,2000-01-2
   ↙ Scan[Aggregate]() -> [__wv_k1:long, agg:avg(#22):double]
   ↓ Project(#0, (lit(1.3:decimal(2,1))*#1)) -> [__wv_k1:long, __wv_sq2:double]
   ↓ Morsel[parallelism=N] -> [__wv_k1:long, __wv_sq2:double]
-↙ HashJoin[Left](#1 = #0) -> [ws_ext_discount_amt:decimal(7,2), i_item_sk:long, __wv_k1:long, __wv_sq2:double]
+↙ HashJoin[Inner](#1 = #0) -> [ws_ext_discount_amt:decimal(7,2), i_item_sk:long, __wv_k1:long, __wv_sq2:double]
 ↓ Filter((cast(#0 as double)>#3), keep=0) -> [ws_ext_discount_amt:decimal(7,2)]
 ↓ Project(#0) -> [ws_ext_discount_amt:decimal(7,2)]
 ↓ HashAgg(keys=[], aggs=[agg:sum(#0)]) -> [__partial_0:decimal(38,2)]

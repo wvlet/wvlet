@@ -171,7 +171,10 @@ class EnginePushDownFiltersTest extends UniTest:
       j.leftKeys.isEmpty shouldBe true
       j.residual shouldNotBe None
     } shouldNotBe None
-    val (p, _) = pushed(b)
+    // Without outer_to_inner, which would make the join inner (c_mktsegment = 'BUILDING' rejects
+    // its NULL-padded rows)
+    val o      = options.withDisabled(Optimization.OuterToInner)
+    val (p, _) = pushed(b, o)
     find(p) {
       case Filter(Join(Filter(_: Scan, l, _), _, JoinKind.Left, lk, _, residual, _), c, _) =>
         l.toString shouldContain "lit(F"
@@ -179,6 +182,79 @@ class EnginePushDownFiltersTest extends UniTest:
         lk.size shouldBe 1
         residual shouldBe None
     } shouldNotBe None
+    sameRows(query, o)
+  }
+
+  test("turn a left join into an inner join under a conjunct that rejects its padded rows") {
+    val query =
+      """from orders
+        |left join customer on o_custkey = c_custkey
+        |where o_orderstatus = 'F' and c_mktsegment = 'BUILDING'
+        |select o_orderkey""".stripMargin
+    val (p, opt) = pushed(bound(query))
+    find(p) {
+      case j: Join if j.kind == JoinKind.Left =>
+        j
+    } shouldBe None
+    val conds = find(p) { case InnerJoins(inputs, conds) =>
+      inputs.size shouldBe 2
+      conds.map(_.cond.toString)
+    }.getOrElse(fail(s"No inner joins in\n${p.explain}"))
+    conds.exists(_.contains("BUILDING")) shouldBe true
+    // The ON condition is one of the tree's conditions
+    conds.size shouldBe 3
+    opt.firedRules.get("outer_to_inner") shouldBe Some(1)
+    sameRows(query)
+  }
+
+  test("keep a left join under a conjunct that padded rows can satisfy") {
+    val query =
+      """from orders
+        |left join customer on o_custkey = c_custkey
+        |where c_mktsegment is null or c_mktsegment = 'BUILDING'
+        |select o_orderkey""".stripMargin
+    val (p, _) = pushed(bound(query))
+    find(p) {
+      case j: Join if j.kind == JoinKind.Left =>
+        j
+    } shouldNotBe None
+    sameRows(query)
+  }
+
+  test("order the inputs of a converted left join with the inner joins before it") {
+    // The binder's inner join tree of orders and customer is the LEFT join's left input; the
+    // converted join merges it, so nation can join customer first
+    val query =
+      """from orders
+        |join customer on o_custkey = c_custkey
+        |left join nation on c_nationkey = n_nationkey
+        |where n_name = 'FRANCE'
+        |select o_orderkey""".stripMargin
+    val (p, _) = pushed(bound(query))
+    find(p) { case InnerJoins(inputs, _) =>
+      inputs.size
+    } shouldBe Some(3)
+    sameRows(query)
+  }
+
+  test("turn nested left joins into inner joins when an ON condition rejects the inner one") {
+    // n_name = 'FRANCE' rejects the padded rows of the join with nation; its ON condition
+    // c_nationkey = n_nationkey then rejects those of the join with customer
+    val query =
+      """from orders
+        |left join customer on o_custkey = c_custkey
+        |left join nation on c_nationkey = n_nationkey
+        |where n_name = 'FRANCE'
+        |select o_orderkey""".stripMargin
+    val (p, opt) = pushed(bound(query))
+    find(p) {
+      case j: Join if j.kind == JoinKind.Left =>
+        j
+    } shouldBe None
+    find(p) { case InnerJoins(inputs, _) =>
+      inputs.size
+    } shouldBe Some(3)
+    opt.firedRules.get("outer_to_inner") shouldBe Some(2)
     sameRows(query)
   }
 

@@ -8,6 +8,10 @@ with one WHERE conjunct per case. Each case gives the model's placement (`place`
 the query (`rewrite_sound`: the same rows wherever the conjunct goes).
 
 Columns: `a`, `b` on the left (ids 0, 1), `c`, `d` on the right (ids 2, 3).
+
+The `tree` cases join the LEFT join with a third table `t(e)` (id 4) in an inner join tree
+(`from l left join r on ..., t where q`): the model makes the LEFT join inner when `q` rejects NULLs
+on `c`, `d` (`tree_left_inner`), and otherwise keeps it.
 -/
 import WvletFormal.Pushdown.Necessity
 
@@ -27,7 +31,8 @@ def colName : Col → String
   | 0 => "a"
   | 1 => "b"
   | 2 => "c"
-  | _ => "d"
+  | 3 => "d"
+  | _ => "e"
 
 def L : List Col := [0, 1]
 def R : List Col := [2, 3]
@@ -59,6 +64,7 @@ private def a : Term := .col 0
 private def b : Term := .col 1
 private def c : Term := .col 2
 private def d : Term := .col 3
+private def e : Term := .col 4
 
 /-- A row of the given values for columns 0, 1, ... -/
 def mkRow (vs : List Value) : Row := fun i => vs.getD i .null
@@ -108,9 +114,39 @@ def placeName : Place → String
   | .left => "left"
   | .right => "right"
   | .cond => "cond"
+  | .inner => "inner"
   | .above => "above"
 
 def jrow (x : Row) : String := jarr (outCols.map fun i => jvalue (x i))
+
+/-- The third table of the `tree` cases, at column 4. -/
+def thirdRows : List (List Value) := [[v 1], [v 5], [.null]]
+
+def ts : Rel := thirdRows.map fun r => mkRow ([.null, .null, .null, .null] ++ r)
+
+def treeCols : List Col := [0, 1, 2, 3, 4]
+
+/-- Conditions of the inner join tree over the LEFT join and `t`. -/
+def treeConds : List Cond :=
+  [ .eq c e
+  , .lt d e
+  , .and (.eq a e) (.not (.isNull c))
+  , .or (.eq c e) (.eq d e)
+  , .or (.eq c e) (.isNull c)
+  , .eq a e
+  , .not (.eq d e)
+  , .lt (int 50) d
+  , .isNull d
+  ]
+
+def jtree (on q : Cond) : String :=
+  let inner := rejectsNull R q
+  let lj := if inner then innerJoin L on ls rs else leftJoin L on ls rs
+  jobj [ ("on", jstr (condWv on))
+       , ("where", jstr (condWv q))
+       , ("place", jstr (if inner then "inner" else "left"))
+       , ("rows", jarr ((innerJoin outCols q lj ts).map fun x =>
+           jarr (treeCols.map fun i => jvalue (x i)))) ]
 
 def jcase (k : JoinKind) (on p : Cond) : String :=
   jobj [ ("kind", jstr (kindName k))
@@ -122,8 +158,11 @@ def jcase (k : JoinKind) (on p : Cond) : String :=
 
 def fixture : String :=
   let cases := kinds.flatMap fun k => ons.flatMap fun on => conjuncts.map fun p => jcase k on p
+  let trees := ons.flatMap fun on => treeConds.map fun q => jtree on q
   jobj [ ("left", jarr (leftRows.map fun r => jarr (r.map jvalue)))
        , ("right", jarr (rightRows.map fun r => jarr (r.map jvalue)))
-       , ("cases", "[\n  " ++ ",\n  ".intercalate cases ++ "\n]") ] ++ "\n"
+       , ("third", jarr (thirdRows.map fun r => jarr (r.map jvalue)))
+       , ("cases", "[\n  " ++ ",\n  ".intercalate cases ++ "\n]")
+       , ("tree", "[\n  " ++ ",\n  ".intercalate trees ++ "\n]") ] ++ "\n"
 
 end Wvlet.Pushdown.Traces

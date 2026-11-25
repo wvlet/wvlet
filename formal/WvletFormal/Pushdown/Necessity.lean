@@ -63,4 +63,11 @@ theorem left_on :
       (filter (.eq c (.lit (.int 2))) (leftJoin L on ls rs)).length = 0 := by
   decide
 
+/-- A LEFT join becomes an inner join only under a NULL-rejecting conjunct: under `c is null`,
+the padded row of an unmatched left row is the one the filter keeps. -/
+theorem left_inner_needs_rejecting :
+    (innerJoin L (.and on (.isNull c)) ls []).length = 0 ∧
+      (filter (.isNull c) (leftJoin L on ls [])).length = 1 := by
+  decide
+
 end Wvlet.Pushdown.Necessity
