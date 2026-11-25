@@ -440,6 +440,13 @@ enum Optimization(val name: String):
   case DecimalFloatScanFilters extends Optimization("decimal_float_scan_filters")
 
   /**
+    * With `scan_row_filters`, decimal conjuncts (DECIMAL stored as INT32/INT64) and floating-point
+    * `<`, `<=` and `=` with a constant other than 0.0 and NaN also move into the scan's row filter,
+    * so uni decodes their columns first (TPC-H q6, q19 `l_discount`, `l_quantity`)
+    */
+  case DecimalFloatRowFilters extends Optimization("decimal_float_row_filters")
+
+  /**
     * Estimate a range comparison of an integer or date column with a constant (`<`, `>`, `between`,
     * date ranges) from the column's [min, max] in the Parquet statistics, with the bounds on one
     * column combined into one interval ([[wvlet.lang.engine.runtime.RangeSelectivity]]), instead of

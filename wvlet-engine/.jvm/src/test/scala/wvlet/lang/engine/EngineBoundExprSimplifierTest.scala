@@ -91,7 +91,8 @@ class EngineBoundExprSimplifierTest extends UniTest:
     "select count(*) from lineitem where l_quantity <= cast(1 + 10 as decimal(21,2))"
 
   test("should compare a decimal column without a per-row cast") {
-    explain(engine, decimalQuery) shouldContain "Filter((#0<=lit(11.00:decimal(15,2)))"
+    // The uncast comparison moves into the scan's row filter (decimal_float_row_filters)
+    explain(engine, decimalQuery) shouldContain "row_filter=Compare(l_quantity,LtEq,11.00)"
     explain(without(Optimization.UnwrapCasts), decimalQuery) shouldContain
       "Filter((cast(#0 as decimal(21,2))<=lit(11.00:decimal(21,2)))"
     rows(engine, decimalQuery) shouldBe rows(without(Optimization.UnwrapCasts), decimalQuery)

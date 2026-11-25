@@ -139,6 +139,34 @@ class ScanFiltersTest extends UniTest:
     ScanFilters.exact(Compare(CmpOp.Lt, x, Const(0.0, PType.Float64)), _ => Some("x")) shouldBe None
   }
 
+  test("should translate exact decimal and floating-point row filters only with numeric") {
+    def exact(e: VExpr) = ScanFilters.exact(
+      e,
+      i => Some(IndexedSeq("price", "x")(i)),
+      numeric = true
+    )
+    val k = Const(JBigDecimal("50.00"), price.ptype)
+    exact(Compare(CmpOp.Gt, price, k)) shouldBe Some(col("price") > JBigDecimal("50.00"))
+    exact(Compare(CmpOp.Le, k, price)) shouldBe Some(col("price") >= JBigDecimal("50.00"))
+    exact(Compare(CmpOp.Ne, price, k)) shouldBe None
+    exact(Compare(CmpOp.Gt, price, Const(JBigDecimal("50.0"), PType.decimal(3, 1)))) shouldBe None
+    exact(InList(price, Set(JBigDecimal("1.00"), JBigDecimal("2.00")), false, false)) shouldBe
+      Some(col("price") === JBigDecimal("1.00") || col("price") === JBigDecimal("2.00"))
+    def f(op: CmpOp, v: Double) = exact(Compare(op, x, Const(v, PType.Float64)))
+    f(CmpOp.Lt, 1.5) shouldBe Some(col("x") < 1.5)
+    f(CmpOp.Le, 1.5) shouldBe Some(col("x") <= 1.5)
+    f(CmpOp.Eq, 1.5) shouldBe Some(col("x") === 1.5)
+    // NaN rows satisfy > and >= in the engine but no comparison in uni
+    f(CmpOp.Gt, 1.5) shouldBe None
+    f(CmpOp.Ge, 1.5) shouldBe None
+    f(CmpOp.Eq, Double.NaN) shouldBe None
+    // The engine orders -0.0 below 0.0, while uni treats them as equal
+    f(CmpOp.Lt, 0.0) shouldBe None
+    f(CmpOp.Eq, 0.0) shouldBe None
+    // Without numeric, neither translates
+    ScanFilters.exact(Compare(CmpOp.Gt, price, k), _ => Some("price")) shouldBe None
+  }
+
   test("should order row filters most selective first") {
     // id in [0, 999] and day in [0, 99] by their statistics
     val source =

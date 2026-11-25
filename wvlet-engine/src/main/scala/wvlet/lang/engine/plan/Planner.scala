@@ -74,6 +74,7 @@ class Planner(
     foldConstants = enabled(Optimization.FoldConstants),
     windowSortKernels = enabled(Optimization.WindowSortKernels),
     scanRowFilters = enabled(Optimization.ScanRowFilters),
+    numericRowFilters = enabled(Optimization.DecimalFloatRowFilters),
     dictionaryCodes = enabled(Optimization.DictionaryGroupKeys),
     selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters)
   )

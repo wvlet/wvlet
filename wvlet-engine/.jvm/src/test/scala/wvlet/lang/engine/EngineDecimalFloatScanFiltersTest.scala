@@ -30,12 +30,17 @@ import java.sql.DriverManager
 
 /**
   * Row groups skipped by decimal and floating-point statistics (`decimal_float_scan_filters`):
-  * DECIMAL as INT32, INT64 and FIXED_LEN_BYTE_ARRAY, and a DOUBLE column holding -0.0 and NaN
+  * DECIMAL as INT32, INT64 and FIXED_LEN_BYTE_ARRAY, and a DOUBLE column holding -0.0 and NaN. Also
+  * the exact row filters of `decimal_float_row_filters` over the same file
   */
 class EngineDecimalFloatScanFiltersTest extends UniTest:
   private val on  = WvletEngine(optimizer = OptimizerOptions().withValidatePlans(true))
   private val off = WvletEngine(optimizer =
     OptimizerOptions().withValidatePlans(true).withDisabled(Optimization.DecimalFloatScanFilters)
+  )
+
+  private val noRowFilters = WvletEngine(optimizer =
+    OptimizerOptions().withValidatePlans(true).withDisabled(Optimization.DecimalFloatRowFilters)
   )
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
@@ -141,6 +146,46 @@ class EngineDecimalFloatScanFiltersTest extends UniTest:
     rows(on, s"from '${file}' where x < 0.0 select id").map(_.head) shouldContain 16384L
     rows(on, s"from '${file}' where x > 10237.0 select id order by id").map(_.head) shouldBe
       Seq(2048L, 20478L, 20479L)
+  }
+
+  test("should move exact decimal and floating-point conjuncts into the row filter") {
+    val plan = explain(
+      s"from '${file}' where d64 >= 81.9 and d32 < 0.5 and x < 10.0 and d128 > 0.0 and x > 1.0" +
+        " select id"
+    )
+    debug(plan)
+    plan shouldContain "row_filter="
+    val rowFilter = plan.split("row_filter=")(1).split(" -> ")(0)
+    rowFilter shouldContain "Compare(d64,GtEq,81.9"
+    rowFilter shouldContain "Compare(d32,Lt,0.5"
+    rowFilter shouldContain "Compare(x,Lt,10.0)"
+    // A FIXED_LEN_BYTE_ARRAY decimal, and x > 1.0 which NaN satisfies in the engine, stay out
+    rowFilter.contains("d128") shouldBe false
+    rowFilter.contains("Compare(x,Gt") shouldBe false
+  }
+
+  test("should return the same rows with and without decimal and float row filters") {
+    val queries = Seq(
+      "d32 >= 81.9",
+      "d64 > 102.38",
+      "d64 = 0.05",
+      "d64 in (0.05, 0.07, 1.00)",
+      "d32 between -0.5 and 0.5 and d64 < 0.3",
+      "d64 < -102.3 or d32 >= 102.35",
+      "d64 >= 1.0 and d128 < 2.0",
+      "x < 0.0",
+      "x <= -0.0",
+      "x = 0.0",
+      "x < -10239.0",
+      "x <= 10.0 and x = 5.0",
+      "x > 10237.0",
+      "x != 5.0 and d64 < 0.0"
+    )
+    for q <- queries do
+      val query    = s"from '${file}' where ${q} select id order by id"
+      val expected = rows(noRowFilters, query)
+      debug(s"${q}: ${expected.size} rows")
+      rows(on, query) shouldBe expected
   }
 
 end EngineDecimalFloatScanFiltersTest

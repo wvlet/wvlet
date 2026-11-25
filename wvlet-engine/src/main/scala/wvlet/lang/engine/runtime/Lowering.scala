@@ -48,8 +48,9 @@ object Lowering:
     * ([[WindowOp.runningPrimitive]]). With `windowSortKernels`, window partitions ordered by one
     * integer or date key sort packed longs ([[WindowOp.sortByPrimitiveKey]]). With
     * `scanRowFilters`, the conjuncts of a filter over a scan that its source evaluates exactly move
-    * into the scan's row filter ([[ScanOp.rowFilter]]); with `selectiveRowFilters`, only when they
-    * are estimated to keep at most [[ScanFilters.MaxRowFilterSelectivity]] of its rows. With
+    * into the scan's row filter ([[ScanOp.rowFilter]]); with `numericRowFilters`, decimal and
+    * floating-point conjuncts too ([[ScanFilters.exact]]); with `selectiveRowFilters`, only when
+    * they are estimated to keep at most [[ScanFilters.MaxRowFilterSelectivity]] of its rows. With
     * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
     * ([[ScanOp.dictionaryCodes]])
     */
@@ -68,6 +69,7 @@ object Lowering:
       foldConstants: Boolean = false,
       windowSortKernels: Boolean = false,
       scanRowFilters: Boolean = false,
+      numericRowFilters: Boolean = false,
       dictionaryCodes: Boolean = false,
       selectiveRowFilters: Boolean = false
   ): Operator =
@@ -84,6 +86,7 @@ object Lowering:
       foldConstants,
       windowSortKernels,
       scanRowFilters,
+      numericRowFilters,
       dictionaryCodes,
       selectiveRowFilters
     )
@@ -118,6 +121,7 @@ object Lowering:
       foldConstants: Boolean,
       windowSortKernels: Boolean,
       scanRowFilters: Boolean,
+      numericRowFilters: Boolean,
       dictionaryCodes: Boolean,
       selectiveRowFilters: Boolean
   ):
@@ -158,6 +162,7 @@ object Lowering:
               commonSubexpressions = commonSubexpressions,
               foldConstants = foldConstants,
               scanRowFilters = scanRowFilters,
+              numericRowFilters = numericRowFilters,
               dictionaryCodes = dictionaryCodes,
               selectiveRowFilters = selectiveRowFilters
             )
@@ -236,9 +241,13 @@ object Lowering:
           lower(s) match
             case scan: ScanOp =>
               val conds = ScanFilters.conjuncts(expr(cond, positions(s)))
-              val name  = (i: Int) => Some(scan.sourceColumnName(i)).filter(s.source.canRowFilterOn)
+              val name = (i: Int) =>
+                Some(scan.sourceColumnName(i)).filter(n =>
+                  s.source.canRowFilterOn(n) ||
+                    numericRowFilters && s.source.canRowFilterNumericOn(n)
+                )
               val (moved, kept) = conds.partitionMap(c =>
-                ScanFilters.exact(c, name).map(f => (c, f)).toLeft(c)
+                ScanFilters.exact(c, name, numericRowFilters).map(f => (c, f)).toLeft(c)
               )
               // Filter-first decode pays per row for the row filter and the selective gathers, and
               // saves only on the rows it drops: filters keeping many rows stay in the engine
