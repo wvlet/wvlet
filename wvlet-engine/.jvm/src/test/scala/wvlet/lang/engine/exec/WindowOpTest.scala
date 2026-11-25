@@ -132,6 +132,59 @@ class WindowOpTest extends UniTest:
         .sorted
     finally op.close()
 
+  test("should keep the same top rows when chunks of the input keep their own top rows") {
+    def topRows(
+        cs: IndexedSeq[WindowCall],
+        t: WindowOp.TopN,
+        parallel: Boolean,
+        chunkRows: Option[Int]
+    ): Seq[String] =
+      val op = WindowOp(
+        BatchesOp(schema, batches),
+        cs,
+        Schema(schema.fields ++ cs.indices.map(i => Field(s"w${i}", cs(i).ptype))),
+        if parallel then
+          runner
+        else
+          TaskRunner.Sequential
+        ,
+        minParallelRows = 0,
+        topN = Some(t),
+        streamTopN = chunkRows.isDefined,
+        topNChunkRows = chunkRows.getOrElse(WindowTopN.ChunkRows)
+      )
+      try
+        op.drain()
+          .flatMap(b => (0 until b.size).map(i => b.row(i).map(String.valueOf).mkString(",")))
+          .sorted
+      finally op.close()
+    val desc  = Seq(SortKey(v, ascending = false, nullsFirst = true))
+    val cases = Seq(
+      // Few large partitions with ties at the bound: chunks drop most rows
+      IndexedSeq(
+        call("rank", Nil, Seq(g), order, None, PType.Int64),
+        call("row_number", Nil, Seq(g), order, None, PType.Int64)
+      ) -> WindowOp.TopN(3, ties = true),
+      // row_number() alone: ties broken by input order across chunks
+      IndexedSeq(call("row_number", Nil, Seq(s), desc, None, PType.Int64)) ->
+        WindowOp.TopN(7, ties = false),
+      // No PARTITION BY
+      IndexedSeq(call("rank", Nil, Nil, desc, None, PType.Int64)) -> WindowOp.TopN(5, ties = true),
+      // Many small partitions: chunks keep most rows, so later chunks are kept whole
+      IndexedSeq(call("rank", Nil, Seq(g, s), order, None, PType.Int64)) ->
+        WindowOp.TopN(50, ties = true),
+      IndexedSeq(call("rank", Nil, Seq(g), order, None, PType.Int64)) ->
+        WindowOp.TopN(0, ties = true)
+    )
+    for
+      (cs, t)   <- cases
+      parallel  <- Seq(false, true)
+      chunkRows <- Seq(1, 1000, 2500, 100000)
+    do
+      val expected = topRows(cs, t, parallel = false, chunkRows = None)
+      topRows(cs, t, parallel, Some(chunkRows)) shouldBe expected
+  }
+
   test("should group window calls by equal PARTITION BY and ORDER BY") {
     WindowOp.callGroups(sharedCalls, share = true) shouldBe
       Seq(IndexedSeq(0, 2, 3, 5, 6), IndexedSeq(1, 4), IndexedSeq(7))

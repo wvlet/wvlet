@@ -258,6 +258,13 @@ enum Optimization(val name: String):
   case WindowTopN extends Optimization("window_top_n")
 
   /**
+    * With `window_top_n`, the window keeps the top rows of each partition within every chunk of
+    * input batches as it reads them, in parallel tasks, instead of materializing its whole input
+    * first; only the chunks' top rows are concatenated and ranked
+    */
+  case WindowTopNStream extends Optimization("window_top_n_stream")
+
+  /**
     * Running window counts, sums, mins, and maxes (frames from the partition start) over primitive
     * columns are folded in primitive values, instead of through an accumulator and a result vector
     * per row

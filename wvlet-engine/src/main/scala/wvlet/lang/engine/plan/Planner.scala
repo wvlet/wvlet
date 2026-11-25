@@ -78,6 +78,7 @@ class Planner(
     selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters),
     maskedCaseWhen = enabled(Optimization.MaskedCaseWhen),
     windowSharePartitions = enabled(Optimization.WindowSharePartitions),
+    windowTopNStream = enabled(Optimization.WindowTopNStream),
     constCaseSelect = enabled(Optimization.ConstCaseSelect),
     caseAggFilters = enabled(Optimization.CaseAggFilters),
     substringInLists = enabled(Optimization.SubstringInLists)

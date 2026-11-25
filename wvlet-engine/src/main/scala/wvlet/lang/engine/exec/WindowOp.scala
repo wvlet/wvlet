@@ -85,7 +85,9 @@ object WindowCall:
   * partition ordered by one integer or date key is sorted as packed (key, position) longs
   * ([[WindowOp.sortByPrimitiveKey]]) instead of through the row comparator. With `sharePartitions`,
   * calls with the same PARTITION BY and ORDER BY are partitioned and sorted once
-  * ([[WindowOp.callGroups]]).
+  * ([[WindowOp.callGroups]]). With `streamTopN` and a `topN`, the input is read in chunks that keep
+  * only their own top rows ([[WindowTopN.keepTop]]), in tasks of `runner`, instead of being
+  * materialized in full.
   */
 class WindowOp(
     val child: Operator,
@@ -97,7 +99,9 @@ class WindowOp(
     val topN: Option[WindowOp.TopN] = None,
     val runningKernels: Boolean = false,
     val sortKernels: Boolean = false,
-    val sharePartitions: Boolean = false
+    val sharePartitions: Boolean = false,
+    val streamTopN: Boolean = false,
+    topNChunkRows: Int = WindowTopN.ChunkRows
 ) extends Operator:
   private var result: Iterator[Batch]  = null
   override def children: Seq[Operator] = Seq(child)
@@ -118,7 +122,12 @@ class WindowOp(
           }"
       )
       .getOrElse("")
-    s"(${calls.map(_.sig).mkString(", ")}${top})"
+    val streamed =
+      if topN.isDefined && streamTopN then
+        ", streamed"
+      else
+        ""
+    s"(${calls.map(_.sig).mkString(", ")}${top}${streamed})"
 
   def next(): Batch =
     if result == null then
@@ -129,8 +138,13 @@ class WindowOp(
       null
 
   private def compute(): Iterator[Batch] =
-    val all = Operator.materialize(child)
-    val n   = all.size
+    val all =
+      topN match
+        case Some(t) if streamTopN =>
+          topInput(t)
+        case _ =>
+          Operator.materialize(child)
+    val n = all.size
     if n == 0 then
       return Iterator.empty
     // With topN, the rows the first call ranks within the limit: the only rows output
@@ -190,6 +204,60 @@ class WindowOp(
   end compute
 
   /**
+    * The input rows that can rank within `t` (see [[WindowTopN.keepTop]]), in input order: chunks
+    * of about `topNChunkRows` input rows keep their own top rows in tasks of `runner` while the
+    * next chunk is read. A row outside its chunk's top is outside the top of the whole input, as
+    * the rows ranked before it in the chunk are ranked before it in the input too. Once a chunk
+    * keeps most of its rows (many small partitions), the later chunks are kept whole
+    */
+  private def topInput(t: WindowOp.TopN): Batch =
+    val c       = calls.head
+    val tasks   = Seq.newBuilder[TaskRunner.Handle[Seq[Batch]]]
+    val pending = Seq.newBuilder[Batch]
+    var rows    = 0
+    // Set by the chunk tasks
+    val pruning                             = java.util.concurrent.atomic.AtomicBoolean(true)
+    def keep(chunk: Seq[Batch]): Seq[Batch] =
+      if !pruning.get() then
+        chunk
+      else
+        val in   = chunk.map(_.size).sum
+        val tops = chunk.map(b => WindowTopN.keepTop(b, c, t))
+        val top  =
+          if tops.size > 1 then
+            // Each batch's top rows, then their top together
+            Seq(WindowTopN.keepTop(Batch.concat(child.schema, tops), c, t))
+          else
+            tops
+        if top.map(_.size).sum * 2 > in then
+          pruning.set(false)
+        top
+    def submit(): Unit =
+      val chunk = pending.result()
+      pending.clear()
+      rows = 0
+      tasks += runner.submit(() => keep(chunk))
+    var b = child.next()
+    while b != null do
+      if b.size > 0 then
+        pending += b.compact()
+        rows += b.size
+        if rows >= topNChunkRows then
+          submit()
+      b = child.next()
+    if rows > 0 then
+      submit()
+    val kept = tasks.result().flatMap(_.get()).filter(_.size > 0)
+    if kept.isEmpty then
+      Batch.empty(child.schema)
+    else if kept.size == 1 then
+      kept.head
+    else
+      Batch.concat(child.schema, kept)
+
+  end topInput
+
+  /**
     * The window partitions among `rows` (ascending row indexes of the input), each sorted by the
     * ORDER BY keys. `partKeys` are the PARTITION BY values of every input row. `hashes` are their
     * key hashes when `rows` is one part of the input, or null when `rows` is the whole input
@@ -226,49 +294,24 @@ class WindowOp(
             h(i) = hashes(rows(i))
             i += 1
           table.groupIds(keys, n, h)
-    var numGroups = 0
-    var r         = 0
-    while r < n do
-      if groups(r) >= numGroups then
-        numGroups = groups(r) + 1
-      r += 1
-    // Counting sort of the rows by group, keeping the row order within a group
-    val start = new Array[Int](numGroups + 1)
-    var i     = 0
-    while i < n do
-      start(groups(i) + 1) += 1
-      i += 1
-    var g = 0
-    while g < numGroups do
-      start(g + 1) += start(g)
-      g += 1
-    val pos     = java.util.Arrays.copyOf(start, numGroups)
-    val ordered = new Array[Int](n)
-    i = 0
-    while i < n do
-      val gi = groups(i)
-      ordered(pos(gi)) = rows(i)
-      pos(gi) += 1
-      i += 1
-    val out = new Array[Array[Int]](numGroups)
-    g = 0
-    while g < numGroups do
-      val all  = java.util.Arrays.copyOfRange(ordered, start(g), start(g + 1))
-      val part =
-        topN match
-          case Some(t) =>
-            WindowOp.topRows(all, t, cmp)
-          case None =>
-            all
-      if c.orderBy.nonEmpty && !(
-          sortKernels && keyVecs.length == 1 &&
-            WindowOp.sortByPrimitiveKey(part, keyVecs(0), c.orderBy.head)
-        )
-      then
-        IndexSort.sort(part, cmp)
-      out(g) = part
-      g += 1
-    out.toSeq
+    WindowTopN
+      .groupRows(groups, rows, n)
+      .map { all =>
+        val part =
+          topN match
+            case Some(t) =>
+              WindowOp.topRows(all, t, cmp)
+            case None =>
+              all
+        if c.orderBy.nonEmpty && !(
+            sortKernels && keyVecs.length == 1 &&
+              WindowOp.sortByPrimitiveKey(part, keyVecs(0), c.orderBy.head)
+          )
+        then
+          IndexSort.sort(part, cmp)
+        part
+      }
+      .toSeq
 
   end partitions
 
@@ -1171,7 +1214,7 @@ object WindowOp:
   end sortByPrimitiveKey
 
   /**
-    * The rows of `part` within the top `t.limit` by `cmp`, in no particular order: a bounded
+    * The rows of `part` within the top `t.limit` by `cmp`, in the order of `part`: a bounded
     * max-heap finds the limit-th row, then with ties every row not after it is kept
     */
   def topRows(part: Array[Int], t: TopN, cmp: SortOp.RowComparator): Array[Int] =
@@ -1217,6 +1260,8 @@ object WindowOp:
         siftDown(0)
       i += 1
     if !t.ties then
+      // In input order, so that the stable sort numbers tied rows as it does without a top-N
+      java.util.Arrays.sort(heap)
       heap
     else
       val last = heap(0)

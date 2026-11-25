@@ -23,7 +23,7 @@
       ↓ Morsel[parallelism=N] -> [s_state:string, __partial_0:decimal(38,2)]
       ↓ PartitionedAgg[parallelism=N](keys=[#0], aggs=[agg:sum(#1)]) -> [s_state:string, __final_0:decimal(38,2)]
       ↓ Project(#0, #1) -> [s_state:string, agg:sum(#22):decimal(38,2)]
-      ↓ Window[parallelism=N](win:rank() over(#0;#1 desc;None), top=5 with ties) -> [s_state:string, agg:sum(#22):decimal(38,2), __wv_win0:long]
+      ↓ Window[parallelism=N](win:rank() over(#0;#1 desc;None), top=5 with ties, streamed) -> [s_state:string, agg:sum(#22):decimal(38,2), __wv_win0:long]
       ↓ Filter((#2<=lit(5:long)), keep=0) -> [s_state:string]
       ↓ Project(#0) -> [s_state:string]
       ↓ Project(#0) -> [s_state:string]

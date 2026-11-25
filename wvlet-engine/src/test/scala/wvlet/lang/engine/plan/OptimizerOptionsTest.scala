@@ -78,6 +78,7 @@ class OptimizerOptionsTest extends UniTest:
         "join_row_filters_first",
         "presize_aggregates",
         "window_top_n",
+        "window_top_n_stream",
         "running_window_kernels",
         "window_sort_kernels",
         "window_share_partitions",

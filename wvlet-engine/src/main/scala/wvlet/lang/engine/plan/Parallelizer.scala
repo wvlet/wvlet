@@ -601,7 +601,8 @@ object Parallelizer:
               topN = w.topN,
               runningKernels = w.runningKernels,
               sortKernels = w.sortKernels,
-              sharePartitions = w.sharePartitions
+              sharePartitions = w.sharePartitions,
+              streamTopN = w.streamTopN
             )
           case other =>
             other
