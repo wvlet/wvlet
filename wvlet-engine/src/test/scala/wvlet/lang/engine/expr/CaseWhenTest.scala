@@ -218,6 +218,16 @@ class CaseWhenTest extends UniTest:
     }
   }
 
+  test("should keep the branch choice when a constant doesn't cast, as no row may take it") {
+    val c = CaseWhen(
+      Seq(is(9) -> Const("x", PType.Str)),
+      Some(Const(0, PType.Int32)),
+      PType.Int32,
+      selectConsts = true
+    )
+    rows(eval(c, sel)) shouldBe Seq(0, 0, 0, 0)
+  }
+
 end CaseWhenTest
 
 class LogicalKernelsTest extends UniTest:

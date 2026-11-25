@@ -753,12 +753,19 @@ class HashAggOp(
 
   /** Folds the rows of b, in groups `groups`, into `accs` sized for `numGroups` groups */
   private def update(accs: IndexedSeq[Accumulator], groups: Array[Int], numGroups: Int, b: Batch) =
-    // With fusion, arguments are evaluated up front and the fusable accumulators fold first
+    // With fusion, the arguments of aggregates without FILTER (the ones fusion may fold) are
+    // evaluated up front and the fusable accumulators fold first
     var args: Array[Array[Vec]] = null
     var folded: Array[Boolean]  = null
     if fuseAccumulators && accs.size > 1 then
       accs.foreach(_.ensureGroups(numGroups))
-      args = aggs.map(_.args.map(_.eval(b)).toArray).toArray
+      args =
+        Array.tabulate(aggs.size)(a =>
+          if unfiltered(a) then
+            aggs(a).args.map(_.eval(b)).toArray
+          else
+            null
+        )
       folded = FusedAccumulators.update(accs, unfiltered, args, groups, b.size, numGroups)
     var a = 0
     while a < accs.size do

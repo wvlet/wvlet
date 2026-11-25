@@ -369,14 +369,20 @@ case class CaseWhen(
     else
       (whens.head._2, elseExpr) match
         case (Const(t, tt), Some(Const(e, et))) if t != null && e != null =>
-          val tv = Kernels.castTo(Vec.constant(tt, t, 1), ptype)
-          val ev = Kernels.castTo(Vec.constant(et, e, 1), ptype)
-          if CaseWhen.hasLayout(tv, ptype) && CaseWhen.hasLayout(ev, ptype) && tv.nulls == null &&
-            ev.nulls == null
-          then
-            (tv, ev)
-          else
-            null
+          // A constant that doesn't cast keeps the branch choice, which casts it only when some
+          // row takes it
+          try
+            val tv = Kernels.castTo(Vec.constant(tt, t, 1), ptype)
+            val ev = Kernels.castTo(Vec.constant(et, e, 1), ptype)
+            if CaseWhen.hasLayout(tv, ptype) && CaseWhen.hasLayout(ev, ptype) && tv.nulls == null &&
+              ev.nulls == null
+            then
+              (tv, ev)
+            else
+              null
+          catch
+            case scala.util.control.NonFatal(_) =>
+              null
         case _ =>
           null
 
