@@ -204,10 +204,10 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
   test("add per-row filters to the conjuncts already in the probe scan's row filter") {
     val q =
       """select o_orderkey, l_linenumber from lineitem join orders on l_orderkey = o_orderkey
-        |where o_orderdate < date '1992-01-10' and l_shipdate >= date '1992-01-01'
+        |where o_orderdate < date '1992-01-10' and l_shipdate < date '1992-03-01'
         |order by 1, 2""".stripMargin
     val (rows, filters) = rowFilters(engine, q)
-    filters("lineitem") shouldContain "Compare(l_shipdate,GtEq,"
+    filters("lineitem") shouldContain "Compare(l_shipdate,Lt,"
     filters("lineitem") shouldContain "In(l_orderkey,"
     rows.nonEmpty shouldBe true
     rows shouldBe runRows(inEngine, q)._1
