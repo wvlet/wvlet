@@ -163,7 +163,7 @@ class EngineDictionaryFiltersTest extends UniTest:
       OrExpr(LikeExpr(col, "a%", negate = false), LikeExpr(col, "b%", negate = false))
     ) match
       case OrExpr(_: PerDictEntry, _: PerDictEntry) =>
-      case other =>
+      case other                                    =>
         fail(s"Unexpected ${other.sig}")
     // Codes: "ab" = 0, "b" = 1; row 3 is NULL and row 5 a PLAIN value
     val s = StrVec(
