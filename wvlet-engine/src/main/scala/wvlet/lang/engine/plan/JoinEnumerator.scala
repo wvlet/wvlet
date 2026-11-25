@@ -37,12 +37,20 @@ class JoinEnumerator(options: OptimizerOptions):
     * None when the graph is too large, needs a cross join, or exceeds [[PairBudget]]
     */
   def plan[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): Option[(P, List[C])] =
+    planWithRows(g, search).map((tree, conds, _) => (tree, conds))
+
+  /** [[plan]], with the estimated rows of the tree */
+  def planWithRows[P, C, K](
+      g: JoinGraph[P, C],
+      search: JoinSearch[P, C, K]
+  ): Option[(P, List[C], Double)] =
     val n = g.inputs.size
     if n < 2 || n > MaxInputs then
       None
     else
       val edges = analyze(g, search)
-      solve(g, edges).map(dp => (build(g, search, edges, dp, (1 << n) - 1), constants(g)))
+      val full  = (1 << n) - 1
+      solve(g, edges).map(dp => (build(g, search, edges, dp, full), constants(g), dp.rows(full)))
 
   /** The best join of each input set, by bitset, or None if the full set has no plan */
   private def solve[P, C](g: JoinGraph[P, C], edges: IndexedSeq[Edge]): Option[Table] =

@@ -9,6 +9,10 @@ The two sides list their rows in different orders (the left side pairs each `A` 
 matches first, the right side with its `C` matches), so the theorem is a permutation: the same bag.
 Each input's rows are NULL outside its columns, as rows of a relation are; the joined rows then
 agree on every column.
+
+The engine moves the LEFT join above an inner join tree of several inputs and conditions. That
+case is this one with `C` the inner join of the other inputs and `q` the conjunction of the tree's
+conditions (inner joins being associative and commutative as bags).
 -/
 import WvletFormal.Algebra.Bag
 

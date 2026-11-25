@@ -65,7 +65,8 @@ enum Optimization(val name: String):
   /**
     * Move a LEFT join that is an input of an inner join tree above the tree when no condition of
     * the tree reads its right input, so that the inner joins reduce its left input before it probes
-    * or builds (TPC-DS q80, q40). Its build side is then chosen over the joined rows
+    * or builds (TPC-DS q80, q40). Its build side is then chosen over the joined tree's estimated
+    * rows. Only with `reorder_joins`, which otherwise keeps the written order
     */
   case CommuteLeftJoins extends Optimization("commute_left_joins")
 

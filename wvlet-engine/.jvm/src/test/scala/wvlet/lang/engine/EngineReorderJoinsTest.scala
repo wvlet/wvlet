@@ -99,6 +99,45 @@ class EngineReorderJoinsTest extends UniTest:
       case other =>
         other
 
+  test("move a left join above the inner joins of its preserved input, building on them") {
+    val query =
+      """from nation
+        |left join customer on n_nationkey = c_nationkey, region
+        |where n_regionkey = r_regionkey and r_name = 'ASIA'
+        |select n_name, c_name""".stripMargin
+    val p    = plan(query)
+    val left = nodes(p)
+      .collectFirst {
+        case j: RuntimePlan.Join if j.kind == JoinKind.Left =>
+          j
+      }
+      .getOrElse(fail(s"No left join in\n${p.explain}"))
+    debug(p.explain)
+    // nation joins region first; the left join builds on those few rows, not on customer
+    nodes(left.left).exists {
+      case j: RuntimePlan.Join =>
+        j.kind == JoinKind.Inner
+      case _ =>
+        false
+    } shouldBe true
+    left.buildLeft shouldBe true
+    // Without commute_left_joins, the left join stays an input of the inner join
+    val off      = engine.withOptimizer(options.withDisabled(Optimization.CommuteLeftJoins))
+    val (r, ctx) = relation(query)
+    val q        = off.runtimePlan(r)(using ctx)
+    nodes(q).exists {
+      case j: RuntimePlan.Join if j.kind == JoinKind.Inner =>
+        nodes(j).exists {
+          case l: RuntimePlan.Join =>
+            l.kind == JoinKind.Left
+          case _ =>
+            false
+        }
+      case _ =>
+        false
+    } shouldBe true
+  }
+
   test("join every input once on its equalities") {
     val o       = Optimizer.only(ReorderJoins, options)
     val ordered = o.run(joins)
