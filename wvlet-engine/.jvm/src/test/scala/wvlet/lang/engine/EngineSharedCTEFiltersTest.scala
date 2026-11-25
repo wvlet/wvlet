@@ -135,6 +135,52 @@ class EngineSharedCTEFiltersTest extends UniTest:
     sameRows(query)
   }
 
+  // A body whose join condition across its inputs stays a filter over the join
+  private val joinCte =
+    """with t as (
+      |  select c_custkey, c_mktsegment, c_nationkey, c_acctbal, o_totalprice
+      |  from customer join orders on c_custkey = o_custkey
+      |  where o_totalprice > c_acctbal * 10
+      |)
+      |""".stripMargin
+
+  /** Body lines (flow order: inputs first) of the readers' filter and of the body's own filter */
+  private def filterLines(e: WvletEngine, query: String, readers: String): (Int, Int) =
+    val body = sharedBody(explain(e, query)).linesIterator.map(_.trim).toSeq
+    val r    = body.indexWhere(l => l.contains(readers) && !l.startsWith("Scan"))
+    val own  = body.indexWhere(l => l.startsWith("↓ Filter") && l.contains("lit(10"))
+    r shouldNotBe -1
+    own shouldNotBe -1
+    (r, own)
+
+  private val throughDisabled = engine.withOptimizer(
+    options.withDisabled(Optimization.CTEFiltersThroughFilters)
+  )
+
+  test("push the readers' filters below a filter of the body when they can't throw") {
+    val query =
+      s"""${joinCte}select a.c_custkey, a.o_totalprice, b.o_totalprice
+         |from t a join t b on a.c_nationkey = b.c_nationkey
+         |where a.c_mktsegment = 'BUILDING' and b.c_mktsegment = 'MACHINERY'""".stripMargin
+    // Below the join, on the customer input, instead of after the body's own filter
+    val (r, own) = filterLines(engine, query, "lit(BUILDING:string)")
+    (r < own) shouldBe true
+    val (rOff, ownOff) = filterLines(throughDisabled, query, "lit(BUILDING:string)")
+    (rOff > ownOff) shouldBe true
+    sameRows(query)
+  }
+
+  test("keep the readers' filters that can throw above a filter of the body") {
+    // Division by c_nationkey (0 for ALGERIA) can fail on rows the body's filter drops
+    val query =
+      s"""${joinCte}select a.c_custkey, a.o_totalprice, b.o_totalprice
+         |from t a join t b on a.c_custkey = b.c_custkey
+         |where 100 / a.c_nationkey > 10 and 100 / b.c_nationkey > 10""".stripMargin
+    val (r, own) = filterLines(engine, query, "/")
+    (r > own) shouldBe true
+    rows(engine, query) shouldBe rows(throughDisabled, query)
+  }
+
   test("keep the body unfiltered when a reader has no filter") {
     val query =
       s"""${cte}select a.l_linestatus, a.q, b.q
