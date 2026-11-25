@@ -1330,19 +1330,22 @@ class Binder(
       f: FunctionApply,
       receiverArgs: List[Expression]
   ): VExpr =
-    val (listArg, lambda) =
-      // The list may be the receiver of a method call: xs.list_transform(x -> x + 1)
-      (receiverArgs ++ f.args.map(_.value)) match
-        case List(l, lam: LambdaExpr) =>
-          (l, lam)
-        case _ =>
-          error(s"${name} expects a list and a lambda", f)
     val isReduce =
       name match
         case "list_reduce" | "array_reduce" | "reduce" =>
           true
         case _ =>
           false
+    val (listArg, lambda, initArg) =
+      // The list may be the receiver of a method call: xs.list_transform(x -> x + 1). A reduce
+      // may take an initial value last, as DuckDB's list_reduce(xs, f, init)
+      (receiverArgs ++ f.args.map(_.value)) match
+        case List(l, lam: LambdaExpr) =>
+          (l, lam, None)
+        case List(l, lam: LambdaExpr, init) if isReduce =>
+          (l, lam, Some(init))
+        case _ =>
+          error(s"${name} expects a list and a lambda", f)
     val arity =
       if isReduce then
         2
@@ -1351,66 +1354,79 @@ class Binder(
     if lambda.args.size != arity then
       error(s"${name} expects a lambda with ${arity} parameter(s)", f)
     val list                               = bind(listArg)
+    val init                               = initArg.map(bind)
     def bodyOver(types: Seq[PType]): VExpr =
       val schema = Schema(lambda.args.zip(types).map((p, t) => Field(p.leafName, t)).toIndexedSeq)
       Binder(planner, BindScope(schema)).bind(lambda.body)
 
-    // The result type and the evaluator over one list, for lists of the given element type
-    def compile(elemType: PType): (PType, Seq[Any] => Any) =
+    // The result type and the evaluator over one list and the initial value (null without one),
+    // for lists of the given element type
+    def compile(elemType: PType): (PType, (Seq[Any], Any) => Any) =
       name match
         case "list_filter" | "array_filter" | "filter" =>
           val body = bodyOver(Seq(elemType))
           (
             PType.AnyT,
-            elems =>
+            (elems, _) =>
               val mask = Kernels.trueMask(
                 body.eval(Batch(Array(Vec.fromValues(elemType, elems)), elems.size))
               )
               elems.indices.filter(mask(_)).map(elems).toList
           )
         case _ if isReduce =>
-          // The accumulator takes the common type of the elements and the body result
-          val accType = PType.common(elemType, bodyOver(Seq(elemType, elemType)).ptype)
-          val body    = bodyOver(Seq(accType, elemType))
+          // The accumulator takes the common type of the seed (the initial value, or the first
+          // element) and the body result
+          val seedType = init.map(_.ptype).getOrElse(elemType)
+          val accType  = PType.common(seedType, bodyOver(Seq(seedType, elemType)).ptype)
+          val body     = bodyOver(Seq(accType, elemType))
+          def fold(seed: Any, rest: Seq[Any]): Any =
+            rest.foldLeft(seed) { (acc, x) =>
+              val row = Batch(
+                Array(Vec.fromValues(accType, Seq(acc)), Vec.fromValues(elemType, Seq(x))),
+                1
+              )
+              ValueOps.cast(body.eval(row).get(0), body.ptype, accType)
+            }
           (
             accType,
-            elems =>
-              if elems.isEmpty then
+            (elems, initValue) =>
+              if init.isDefined then
+                fold(ValueOps.cast(initValue, seedType, accType), elems)
+              else if elems.isEmpty then
                 throw StatusCode.INVALID_ARGUMENT.newException(s"${name} of an empty list")
-              elems
-                .tail
-                .foldLeft(ValueOps.cast(elems.head, elemType, accType)) { (acc, x) =>
-                  val row = Batch(
-                    Array(Vec.fromValues(accType, Seq(acc)), Vec.fromValues(elemType, Seq(x))),
-                    1
-                  )
-                  ValueOps.cast(body.eval(row).get(0), body.ptype, accType)
-                }
+              else
+                fold(ValueOps.cast(elems.head, elemType, accType), elems.tail)
           )
         case _ =>
           val body = bodyOver(Seq(elemType))
           (
             PType.AnyT,
-            elems =>
+            (elems, _) =>
               val out = body.eval(Batch(Array(Vec.fromValues(elemType, elems)), elems.size))
               (0 until elems.size).map(out.get).toList
           )
 
-    def asList(v: Any): Seq[Any] = v.asInstanceOf[Seq[Any]]
+    def asList(v: Any): Seq[Any]   = v.asInstanceOf[Seq[Any]]
+    val inputs                     = list +: init.toSeq
+    def initOf(a: Array[Any]): Any =
+      if init.isDefined then
+        a(1)
+      else
+        null
     listElementType(list) match
       case PType.AnyT if !list.isConstant && !list.isInstanceOf[Const] =>
-        val compiled = java.util.concurrent.ConcurrentHashMap[PType, Seq[Any] => Any]()
+        val compiled = java.util.concurrent.ConcurrentHashMap[PType, (Seq[Any], Any) => Any]()
         RowFn(
           name,
-          Seq(list),
+          inputs,
           PType.AnyT,
           a =>
             val elems = asList(a(0))
-            compiled.computeIfAbsent(elementTypeOf(elems), t => compile(t)._2)(elems)
+            compiled.computeIfAbsent(elementTypeOf(elems), t => compile(t)._2)(elems, initOf(a))
         )
       case elemType =>
         val (ptype, eval) = compile(elemType)
-        RowFn(name, Seq(list), ptype, a => eval(asList(a(0))))
+        RowFn(name, inputs, ptype, a => eval(asList(a(0)), initOf(a)))
     end match
 
   end bindLambdaCall

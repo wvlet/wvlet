@@ -76,7 +76,7 @@ trait array[A] = {
   def string_agg(separator:string) in snowflake: string = sql"listagg(${this},${separator})"
   def string_agg(separator:string) in bigquery: string = sql"string_agg(${this},${separator})"
 
-  def exclude(arr: sql) in duckdb: array[A] = sql"array_filter(${this}, x -> NOT array_contains(${arr}, x))"
+  def exclude(arr: sql) in duckdb: array[A] = sql"array_filter(${this}, lambda x: NOT array_contains(${arr}, x))"
   def exclude(arr: sql) in trino: array[A] = sql"array_except(${this}, ${arr})"
 
   def exists: boolean = sql"exists(${this})"
@@ -140,6 +140,18 @@ trait array[A] = {
   -- [1, 2, 3].reduce((a, b) -> a + b) = 6. An empty array is an error
   def reduce(f: sql) in duckdb: A = sql"list_reduce(${this}, ${f})"
   def reduce(f: sql) in trino: A = sql"reduce(slice(${this}, 2, cardinality(${this})), ${this}[1], ${f}, s -> s)"
+  -- Fold the elements from an initial value with (acc, x) -> ..., e.g.
+  -- [1, 2, 3].reduce(10, (acc, x) -> acc + x) = 16. An empty array gives the initial value
+  def reduce(init: any, f: sql) in duckdb: any = sql"list_reduce(${this}, ${f}, ${init})"
+  def reduce(init: any, f: sql) in trino: any = sql"reduce(${this}, ${init}, ${f}, s -> s)"
+  -- True if the lambda is true for some element, e.g. [1, 5].exists(x -> x > 3). False for an
+  -- empty array. When no element gives true and some give NULL, the result is NULL, as SQL `or`
+  def exists(f: sql) in duckdb: boolean = sql"list_reduce(list_transform(${this}, ${f}), lambda a, b: a or b, false)"
+  def exists(f: sql) in trino: boolean = sql"any_match(${this}, ${f})"
+  -- True if the lambda is true for every element, e.g. [1, 5].forall(x -> x > 0). True for an
+  -- empty array. When no element gives false and some give NULL, the result is NULL, as SQL `and`
+  def forall(f: sql) in duckdb: boolean = sql"list_reduce(list_transform(${this}, ${f}), lambda a, b: a and b, true)"
+  def forall(f: sql) in trino: boolean = sql"all_match(${this}, ${f})"
 
   -- Window (analytic) functions, applied to a column with an over(...) clause,
   -- e.g. v.lag(1) over (partition by g order by k)

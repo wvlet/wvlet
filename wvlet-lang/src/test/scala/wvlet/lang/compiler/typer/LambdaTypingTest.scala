@@ -73,6 +73,25 @@ class LambdaTypingTest extends UniTest:
     l.body.dataType shouldBe DataType.BooleanType
   }
 
+  test("type the accumulator of reduce with an initial value from that value") {
+    val List(l) = compileLambdas("select [1, 2].reduce('', (acc, x) -> acc + 'a') as a"): @unchecked
+    l.args.map(_.dataType) shouldBe List(DataType.StringType, DataType.LongType)
+  }
+
+  test("type the accumulator of DuckDB's list_reduce with an initial value") {
+    val List(l) =
+      compileLambdas("select list_reduce([1, 2], (acc, x) -> acc, 'a') as a"): @unchecked
+    l.args.map(_.dataType) shouldBe List(DataType.StringType, DataType.LongType)
+  }
+
+  test("type the lambda parameter of exists and forall") {
+    val lambdas = compileLambdas(
+      "select ['a', 'bb'].exists(s -> s.length > 1) as e, [1].forall(x -> x > 0) as f"
+    )
+    lambdas.map(_.args.head.dataType) shouldBe List(DataType.StringType, DataType.LongType)
+    lambdas.map(_.body.dataType) shouldBe List(DataType.BooleanType, DataType.BooleanType)
+  }
+
   test("type nested lambdas with their own lists") {
     val lambdas = compileLambdas(
       "select [1, 2].transform(x -> ['a'].transform(s -> s + 'b').length + x) as a"
