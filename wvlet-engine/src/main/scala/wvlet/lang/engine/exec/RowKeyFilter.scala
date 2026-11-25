@@ -99,27 +99,39 @@ final class RowKeyFilter private (
     else
       kind match
         case Kind.Bitmap =>
-          // Count the set bits of positions [from - lo, to - lo]
-          val d0    = from - lo
-          val d1    = to - lo
-          var w     = (d0 >>> 6).toInt
-          val wLast = (d1 >>> 6).toInt
-          var count = 0L
-          while w <= wLast do
-            var word = bits(w)
-            if w == (d0 >>> 6).toInt then
-              word &= -1L << d0
-            if w == wLast then
-              word &= -1L >>> (63 - (d1 & 63))
-            count += java.lang.Long.bitCount(word)
-            w += 1
-          count.toDouble
+          // The set bits of positions [from - lo, to - lo]: whole words from the prefix counts
+          val d0       = from - lo
+          val d1       = to - lo
+          val w0       = (d0 >>> 6).toInt
+          val w1       = (d1 >>> 6).toInt
+          val lowMask  = -1L << d0
+          val highMask = -1L >>> (63 - (d1 & 63))
+          if w0 == w1 then
+            java.lang.Long.bitCount(bits(w0) & lowMask & highMask).toDouble
+          else
+            val inner = bitsBefore(w1) - bitsBefore(w0 + 1)
+            (
+              java.lang.Long.bitCount(bits(w0) & lowMask) + inner +
+                java.lang.Long.bitCount(bits(w1) & highMask)
+            ).toDouble
         case Kind.Bloom =>
           // The build keys in the overlap, plus the false positives among the other values
           val width = to.toDouble - from.toDouble + 1.0
           keys.toDouble * width / (hi.toDouble - lo.toDouble + 1.0) + BloomFalsePositives * width
         case Kind.Range =>
           to.toDouble - from.toDouble + 1.0
+
+  // For a bitmap, the set bits in the words before each word index (one more entry than words),
+  // so that acceptedIn counts any range in constant time
+  private lazy val prefixBits: Array[Long] =
+    val p = new Array[Long](bits.length + 1)
+    var w = 0
+    while w < bits.length do
+      p(w + 1) = p(w) + java.lang.Long.bitCount(bits(w))
+      w += 1
+    p
+
+  private inline def bitsBefore(w: Int): Long = prefixBits(w)
 
   /**
     * The filter as a uni set ([[ParquetFilter.In]]), so that a Parquet scan tests it while decoding
