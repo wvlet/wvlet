@@ -69,6 +69,36 @@ object TextFunctions extends TextCompatImpl:
 
   def translate(s: String, from: String, to: String): String = translate(s, translation(from, to))
 
+  /**
+    * DuckDB's printf for the `%s` and `%%` specifiers: each `%s` takes the next argument's text.
+    * Other specifiers, and too few arguments, are errors
+    */
+  def printf(format: String, args: Seq[String]): String =
+    val b    = StringBuilder()
+    var next = 0
+    var i    = 0
+    while i < format.length do
+      val c = format.charAt(i)
+      if c != '%' then
+        b.append(c)
+      else if i + 1 < format.length && format.charAt(i + 1) == '%' then
+        b.append('%')
+        i += 1
+      else if i + 1 < format.length && format.charAt(i + 1) == 's' then
+        if next >= args.size then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(s"printf: the format needs more than ${args.size} arguments")
+        b.append(args(next))
+        next += 1
+        i += 1
+      else
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"printf: unsupported format specifier in '${format}' (only %s and %%)")
+      i += 1
+    b.result()
+
   def octetLength(s: String): Long = s.getBytes(StandardCharsets.UTF_8).length.toLong
 
   private val HexUpper = "0123456789ABCDEF"
