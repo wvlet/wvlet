@@ -73,7 +73,8 @@ class Planner(
     foldConstants = enabled(Optimization.FoldConstants),
     windowSortKernels = enabled(Optimization.WindowSortKernels),
     scanRowFilters = enabled(Optimization.ScanRowFilters),
-    dictionaryCodes = enabled(Optimization.DictionaryGroupKeys)
+    dictionaryCodes = enabled(Optimization.DictionaryGroupKeys),
+    selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

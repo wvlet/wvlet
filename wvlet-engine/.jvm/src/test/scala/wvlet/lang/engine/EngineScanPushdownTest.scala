@@ -94,11 +94,11 @@ class EngineScanPushdownTest extends UniTest:
 
   test("should read only the columns a query references") {
     val plan = explain("""from 'spec/tpch/data/lineitem.parquet'
-        |where l_shipdate <= '1998-09-02'::date
+        |where l_shipdate > '1998-09-02'::date
         |group by l_returnflag
         |select l_returnflag, cnt = _.count""".stripMargin)
     debug(plan)
-    // l_shipdate is read only by the scan's row filter (scan_row_filters)
+    // l_shipdate is read only by the scan's row filter (scan_row_filters), which keeps few rows
     plan shouldContain "columns=l_returnflag "
     plan shouldContain "row_filter=Compare(l_shipdate,"
     plan.contains("l_comment") shouldBe false

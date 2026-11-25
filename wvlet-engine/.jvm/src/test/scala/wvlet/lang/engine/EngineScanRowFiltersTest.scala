@@ -36,6 +36,7 @@ class EngineScanRowFiltersTest extends UniTest:
   private val on      = WvletEngine(optimizer = options)
   private val off     = on.withOptimizer(options.withDisabled(Optimization.ScanRowFilters))
   private val noJoin  = on.withOptimizer(options.withDisabled(Optimization.ScanJoinRowFilters))
+  private val loose   = on.withOptimizer(options.withDisabled(Optimization.SelectiveScanRowFilters))
 
   /**
     * 1000 rows in row groups of 100 (so that scans split into morsels), with integer, date,
@@ -153,12 +154,24 @@ class EngineScanRowFiltersTest extends UniTest:
   }
 
   test("count the rows of a row filter by a column it reads anyway") {
-    val q    = "from $t where d >= '2020-12-01'::date select n = _.count"
+    val q    = "from $t where d >= '2020-12-15'::date select n = _.count"
     val plan = explain(on, q)
+    plan shouldContain "row_filter="
     // Not the first column (id), which the scan would then decode for every matching row
     plan shouldContain "Scan[scan_row_filters](columns=d filter="
-    // Day offsets 335 until 400 (December), in 2 of the 2.5 cycles of 400 rows
-    sameRows(q) shouldBe Seq("130")
+    // Day offsets 349 until 400, in 2 of the 2.5 cycles of 400 rows
+    sameRows(q) shouldBe Seq("102")
+  }
+
+  test("keep exact conjuncts in the engine when they are estimated to keep many rows") {
+    // k in [1, 5] keeps 5 of its 7 values, more than MaxRowFilterSelectivity
+    val q = "from $t where k between 1 and 5 select id"
+    explain(on, q) shouldNotContain "row_filter="
+    explain(on, q) shouldContain "Filter"
+    explain(loose, q) shouldContain "row_filter="
+    val r = rows(on, q)
+    r.size shouldBe 1000 * 5 / 7 + 1
+    r shouldBe rows(loose, q)
   }
 
   test("return the same rows with the toggle on and off") {

@@ -127,23 +127,49 @@ object ScanFilters:
       conds: Seq[(VExpr, ParquetFilter)],
       source: TableSource,
       columnName: Int => String
-  ): ParquetFilter =
-    val groups = mutable.LinkedHashMap.empty[Set[Int], List[(VExpr, ParquetFilter)]]
+  ): ParquetFilter = byColumns(conds)(_._1)
+    .toSeq
+    .zipWithIndex
+    .sortBy { case ((cols, members), pos) =>
+      val strings = cols.size != 1 || members.exists(m => refType(m._1).contains(PType.Str))
+      (selectivity(cols, members.map(_._1), source, columnName), strings, pos)
+    }
+    .flatMap(_._1._2.map(_._2))
+    .reduce(_ && _)
+
+  /**
+    * The largest estimated fraction of a scan's rows its row filter may keep with
+    * `selective_scan_row_filters`: selective TPC-H q4, q6, q12 scans (4-14%) decode faster
+    * filter-first, while q09's 20% and q1's 96% decode slower
+    */
+  final val MaxRowFilterSelectivity = 0.15
+
+  /**
+    * The estimated fraction of rows passing all `conds` together (conjuncts over the same input
+    * positions estimated together by [[selectivity]], independent otherwise). `columnName(i)` is
+    * the source column name of input position i
+    */
+  def estimatedSelectivity(
+      conds: Seq[VExpr],
+      source: TableSource,
+      columnName: Int => String
+  ): Double =
+    byColumns(conds)(identity)
+      .map((cols, members) => selectivity(cols, members, source, columnName))
+      .product
+
+  /** `conds` grouped by the input positions their conjunct (`cond(c)`) reads, in first order */
+  private def byColumns[A](conds: Seq[A])(
+      cond: A => VExpr
+  ): mutable.LinkedHashMap[Set[Int], List[A]] =
+    val groups = mutable.LinkedHashMap.empty[Set[Int], List[A]]
     conds.foreach { c =>
       val refs = mutable.BitSet()
-      VExprs.collectRefs(c._1, refs)
+      VExprs.collectRefs(cond(c), refs)
       val key = refs.toSet
       groups.update(key, groups.getOrElse(key, Nil) :+ c)
     }
     groups
-      .toSeq
-      .zipWithIndex
-      .sortBy { case ((cols, members), pos) =>
-        val strings = cols.size != 1 || members.exists(m => refType(m._1).contains(PType.Str))
-        (selectivity(cols, members.map(_._1), source, columnName), strings, pos)
-      }
-      .flatMap(_._1._2.map(_._2))
-      .reduce(_ && _)
 
   /**
     * The estimated fraction of rows passing all `conds`, conjuncts that read the input positions
