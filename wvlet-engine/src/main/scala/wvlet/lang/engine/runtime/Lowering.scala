@@ -257,13 +257,14 @@ object Lowering:
               )
               // Filter-first decode pays per row for the row filter and the selective gathers, and
               // saves only on the rows it drops: filters keeping many rows stay in the engine
+              lazy val passRate = ScanFilters.estimatedSelectivity(
+                moved.map(_._1),
+                s.source,
+                scan.sourceColumnName
+              )
               val selective =
                 !selectiveRowFilters || moved.isEmpty ||
-                  ScanFilters.estimatedSelectivity(
-                    moved.map(_._1),
-                    s.source,
-                    scan.sourceColumnName
-                  ) <= ScanFilters.MaxRowFilterSelectivity
+                  passRate <= ScanFilters.MaxRowFilterSelectivity
               if !selective then
                 filterOver(scan, expr(cond, positions(s)))
               else
@@ -271,7 +272,10 @@ object Lowering:
                   if moved.isEmpty then
                     scan
                   else
-                    scan.withRowFilter(ScanFilters.ordered(moved, s.source, scan.sourceColumnName))
+                    scan.withRowFilter(
+                      ScanFilters.ordered(moved, s.source, scan.sourceColumnName),
+                      passRate
+                    )
                 kept.reduceOption(AndExpr(_, _)).map(filterOver(in, _)).getOrElse(in)
             case other =>
               filterOver(other, expr(cond, positions(s)))

@@ -67,13 +67,21 @@ class ScanOp(
     * The scan request this operator sends to the source. Per-row runtime filters set by then may
     * join its row filter ([[joinRowFilters]])
     */
-  def spec: ScanSpec = ScanSpec(
-    columns.map(_.map(source.schema(_).name)),
-    (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _),
-    footerCache,
-    (rowFilter ++ joinRowFilters()).reduceOption(_ && _),
-    dictionaryCodes
-  )
+  def spec: ScanSpec =
+    val (join, joinPassRate) = joinRowFilters()
+    // uni tests the conjuncts in order, each on the rows the ones before it kept
+    val conjuncts =
+      if joinFiltersFirst && join.nonEmpty && joinPassRate < rowFilterPassRate then
+        join ++ rowFilter
+      else
+        rowFilter ++ join
+    ScanSpec(
+      columns.map(_.map(source.schema(_).name)),
+      (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _),
+      footerCache,
+      conjuncts.reduceOption(_ && _),
+      dictionaryCodes
+    )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
 
@@ -107,10 +115,32 @@ class ScanOp(
     sourceJoinFilters = enabled
     this
 
+  /**
+    * Whether [[spec]] puts the per-row runtime filters ahead of [[rowFilter]] in the source's row
+    * filter when they are expected to keep fewer rows (`join_row_filters_first`)
+    */
+  var joinFiltersFirst: Boolean = true
+
+  def withJoinFiltersFirst(enabled: Boolean): this.type =
+    joinFiltersFirst = enabled
+    this
+
+  /**
+    * The estimated fraction of the rows [[rowFilter]] keeps (1.0 when unknown), to order it against
+    * the per-row runtime filters in [[spec]]
+    */
+  var rowFilterPassRate: Double = 1.0
+
+  def withRowFilterPassRate(rate: Double): this.type =
+    rowFilterPassRate = rate
+    this
+
   /** Take the flags of `s`, the scan this one rebuilds */
   private def withFlagsOf(s: ScanOp): ScanOp = withLateGather(s.lateGather)
     .withDictionaryCodes(s.dictionaryCodes)
     .withSourceJoinFilters(s.sourceJoinFilters)
+    .withJoinFiltersFirst(s.joinFiltersFirst)
+    .withRowFilterPassRate(s.rowFilterPassRate)
 
   def withSchema(s: Schema): ScanOp = ScanOp(
     source,
@@ -145,8 +175,11 @@ class ScanOp(
     rowFilter
   ).withFlagsOf(this)
 
-  /** Return only the rows matching `f` too (an exact filter, see [[ScanSpec.rowFilter]]) */
-  def withRowFilter(f: ParquetFilter): ScanOp = ScanOp(
+  /**
+    * Return only the rows matching `f` too (an exact filter, see [[ScanSpec.rowFilter]]), which is
+    * estimated to keep `passRate` of them ([[rowFilterPassRate]])
+    */
+  def withRowFilter(f: ParquetFilter, passRate: Double = 1.0): ScanOp = ScanOp(
     source,
     schema,
     columns,
@@ -154,7 +187,7 @@ class ScanOp(
     runtimeFilters,
     footerCache,
     Some(rowFilter.map(_ && f).getOrElse(f))
-  ).withFlagsOf(this)
+  ).withFlagsOf(this).withRowFilterPassRate(rowFilterPassRate * passRate)
 
   // The filters with a per-row test, each with the output position of its column
   private lazy val rowFilters: Array[(RuntimeFilter, Int)] =
@@ -178,11 +211,11 @@ class ScanOp(
     * other columns only for the rows passing all, which costs more than decoding everything unless
     * few rows pass (and the source's filter, unlike [[narrow]], doesn't pause). The hash joins
     * still match every key, so a filter that stays in [[narrow]], or is in neither, only keeps more
-    * rows
+    * rows. Returns the conjuncts and the fraction of rows they are expected to keep together
     */
-  private def joinRowFilters(): Seq[ParquetFilter] =
+  private def joinRowFilters(): (Seq[ParquetFilter], Double) =
     if !sourceJoinFilters || rowFilters.isEmpty || !source.supportsRowFilter then
-      return Nil
+      return (Nil, 1.0)
     val chosen = rowFilters
       .indices
       .flatMap { i =>
@@ -201,14 +234,18 @@ class ScanOp(
           passRate(column, rf).map((i, rf, _)).filter(_._3 <= ScanOp.MaxConjunctPassRate)
       }
       .sortBy(_._3)
-    if chosen.isEmpty || chosen.map(_._3).product > ScanOp.MaxSourcePassRate then
+    val kept = chosen.map(_._3).product
+    if chosen.isEmpty || kept > ScanOp.MaxSourcePassRate then
       inSource = null
-      Nil
+      (Nil, 1.0)
     else
       val flags = new Array[Boolean](rowFilters.length)
       chosen.foreach((i, _, _) => flags(i) = true)
       inSource = flags
-      chosen.map((i, rf, _) => ParquetFilter.col(rowFilters(i)._1.column).isIn(rf.integerSet))
+      (
+        chosen.map((i, rf, _) => ParquetFilter.col(rowFilters(i)._1.column).isIn(rf.integerSet)),
+        kept
+      )
 
   end joinRowFilters
 

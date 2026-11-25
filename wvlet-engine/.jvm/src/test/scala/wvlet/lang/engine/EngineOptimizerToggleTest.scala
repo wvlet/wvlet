@@ -115,6 +115,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // EngineRuntimeJoinFiltersTest and EngineScanRowFiltersTest check that the flag puts
         // per-row join filters into the probe scans' row filters, with the same rows
         ignore("Changes where probe scans test per-row join filters, not the plan")
+      if o == Optimization.JoinRowFiltersFirst then
+        // EngineScanRowFiltersTest checks that the flag orders the probe scans' row filters, with
+        // the same rows
+        ignore("Changes the order of a probe scan's row filter conjuncts, not the plan")
       if o == Optimization.WindowSharePartitions then
         // EngineWindowTopNTest checks that the flag reaches the window operators, and WindowOpTest
         // that shared partitions give the same values
