@@ -267,6 +267,12 @@ enum Optimization(val name: String):
   case SharedAggPartials extends Optimization("shared_agg_partials")
 
   /**
+    * The partial aggregates of a two-phase aggregation stop grouping once they keep nearly every
+    * row as its own group, and pass the rows to the final aggregate as one-row partial results
+    */
+  case AdaptivePartialAggs extends Optimization("adaptive_partial_aggs")
+
+  /**
     * Row-independent subexpressions are evaluated once when lowering, and integral constants added
     * to or subtracted from decimals become decimals at the result scale
     * ([[wvlet.lang.engine.runtime.FoldConstants]])

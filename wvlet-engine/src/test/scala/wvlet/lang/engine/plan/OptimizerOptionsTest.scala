@@ -82,6 +82,7 @@ class OptimizerOptionsTest extends UniTest:
         "parquet_footer_cache",
         "common_subexpressions",
         "shared_agg_partials",
+        "adaptive_partial_aggs",
         "fold_constants"
       )
   }
