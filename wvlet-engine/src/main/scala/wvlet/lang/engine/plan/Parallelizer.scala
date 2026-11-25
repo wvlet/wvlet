@@ -41,7 +41,8 @@ object Parallelizer:
       parallelPartitioning: Boolean = true,
       concurrentBuilds: Boolean = true,
       sharedPartials: Boolean = true,
-      adaptivePartials: Boolean = true
+      adaptivePartials: Boolean = true,
+      setOpJoins: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -51,7 +52,8 @@ object Parallelizer:
         parallelPartitioning,
         concurrentBuilds,
         sharedPartials,
-        adaptivePartials
+        adaptivePartials,
+        setOpJoins
       )
       rewrite(op, runner)
 
@@ -65,7 +67,8 @@ object Parallelizer:
       parallelPartitioning: Boolean,
       concurrentBuilds: Boolean,
       sharedPartials: Boolean,
-      adaptivePartials: Boolean
+      adaptivePartials: Boolean,
+      setOpJoins: Boolean
   )
 
   /**
@@ -114,6 +117,9 @@ object Parallelizer:
     op match
       case s: ScanOp if s.source.canSplit =>
         Some(Pipeline(s, x => x, None, Nil, Nil))
+      case s: SetOpOp if convertsToJoin(s) =>
+        // As a semi / anti join, so that operators above it (count(*)) join its pipeline
+        pipeline(setOpJoin(s, runner), runner)
       case a: HashAggOp if breakers.enabled && a.keys.nonEmpty =>
         // The aggregation runs on the calling thread before any part starts (it parallelizes
         // its own work); its output batches are the parts
@@ -151,7 +157,8 @@ object Parallelizer:
             j.residual,
             j.schema,
             buildRunner = runner,
-            runtimeFilters = j.runtimeFilters
+            runtimeFilters = j.runtimeFilters,
+            nullsEqual = j.nullsEqual
           ).withLateGather(j.lateGather)
             .withDirectIndex(j.directIndex)
             .withParallelBuild(j.parallelBuild)
@@ -233,20 +240,19 @@ object Parallelizer:
         true
       case s: SetOpOp =>
         !s.all
+      // Unique on its keys, so on its whole rows
       case a: HashAggOp =>
         a.keys.nonEmpty
+      // A semi / anti join emits some of its probe rows, each at most once
+      case j: HashJoinOp =>
+        j.kind.outputsProbeOnly && alreadyDistinct(j.left)
       case _ =>
         false
 
   /** The distinct rows of a set operation input, unless they already are */
   private def distinctInput(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     op match
-      case _: DistinctOp =>
-        op
-      case s: SetOpOp if !s.all =>
-        op
-      // Unique on its keys, so on its whole rows
-      case a: HashAggOp if a.keys.nonEmpty =>
+      case _ if alreadyDistinct(op) =>
         op
       case _ if parallelDistinct(op, runner) =>
         distinctAgg(op)
@@ -311,7 +317,76 @@ object Parallelizer:
       case _ =>
         agg
 
+  /** Whether [[setOpJoin]] turns s into a semi / anti join (`set_op_joins`) */
+  private def convertsToJoin(s: SetOpOp)(using o: AboveBreakers): Boolean =
+    o.setOpJoins && !s.all && s.schema.size > 0
+
+  /**
+    * INTERSECT / EXCEPT (without ALL) as a semi / anti hash join of the left input's distinct rows
+    * with the right input, on every column with NULLs equal (`set_op_joins`), as DuckDB plans them.
+    * Nested set operations convert first, so a chain of them becomes one probe pipeline over the
+    * distinct rows of its first input. Other operators are returned as they are
+    */
+  private def setOpJoin(op: Operator, runner: TaskRunner)(using o: AboveBreakers): Operator =
+    op match
+      case s: SetOpOp if convertsToJoin(s) =>
+        val left  = setOpJoin(s.left, runner)
+        val right = setOpJoin(s.right, runner)
+        val probe =
+          left match
+            // As an aggregation, so that the probe pipeline starts at its output
+            case d: DistinctOp if parallelDistinct(d.child, runner) =>
+              distinctAgg(d.child)
+            case _ =>
+              distinctInput(left, runner) match
+                case same if (same eq left) && !alreadyDistinct(left) =>
+                  DistinctOp(left)
+                case reduced =>
+                  reduced
+        // The right input needs no distinct rows, but reducing them in parallel shrinks the build
+        val build = distinctInput(right, runner)
+        // Keys in the set operation's column types, as SetOpOp compares them
+        def keys(in: Operator): IndexedSeq[VExpr] = s
+          .schema
+          .fields
+          .indices
+          .map { i =>
+            val c = ColRef(i, in.schema(i).ptype, in.schema(i).name)
+            if c.ptype == s.schema(i).ptype then
+              c
+            else
+              CastExpr(c, s.schema(i).ptype)
+          }
+        val probeKeys = keys(probe)
+        val join      = HashJoinOp(
+          probe,
+          build,
+          probeKeys,
+          keys(build),
+          if s.isIntersect then
+            JoinKind.Semi
+          else
+            JoinKind.Anti
+          ,
+          None,
+          probe.schema,
+          nullsEqual = true
+        )
+        if probe.schema.types == s.schema.types then
+          join
+        else
+          ProjectOp(join, probeKeys, s.schema)
+      case _ =>
+        op
+
   private def rewrite(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
+    op match
+      case s: SetOpOp if convertsToJoin(s) =>
+        rewrite(setOpJoin(s, runner), runner)
+      case _ =>
+        rewriteOp(op, runner)
+
+  private def rewriteOp(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     def r(x: Operator): Operator = rewrite(x, runner)
     pipeline(op, runner) match
       case Some(p) =>
@@ -377,7 +452,8 @@ object Parallelizer:
               j.residual,
               j.schema,
               buildRunner = runner,
-              runtimeFilters = j.runtimeFilters
+              runtimeFilters = j.runtimeFilters,
+              nullsEqual = j.nullsEqual
             ).withLateGather(j.lateGather)
               .withDirectIndex(j.directIndex)
               .withParallelBuild(j.parallelBuild)
@@ -409,7 +485,7 @@ object Parallelizer:
             other
     end match
 
-  end rewrite
+  end rewriteOp
 
 end Parallelizer
 

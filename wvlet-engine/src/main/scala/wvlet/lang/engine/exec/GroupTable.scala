@@ -295,28 +295,32 @@ final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
   end assignIds
 
   /**
-    * Group ids of existing keys without inserting new ones: -1 for keys not in the table and for
-    * rows with a NULL key column
+    * Group ids of existing keys without inserting new ones: -1 for keys not in the table and,
+    * unless `nullsMatch`, for rows with a NULL key column. With `nullsMatch`, a NULL key finds the
+    * group holding NULL there, as in GROUP BY (`IS NOT DISTINCT FROM`)
     */
-  def lookup(keys: Array[Vec], n: Int): Array[Int] =
+  def lookup(keys: Array[Vec], n: Int, nullsMatch: Boolean = false): Array[Int] =
     val norm = normalize(keys)
-    lookupNormalized(norm, n, hashes(norm, n))
+    lookupNormalized(norm, n, hashes(norm, n), nullsMatch)
 
   /**
     * [[lookup]] with each row's hash already computed by [[keyHashes]] (of a table with the same
     * key types), so the keys are not hashed again
     */
-  def lookup(keys: Array[Vec], n: Int, keyHashes: Array[Int]): Array[Int] = lookupNormalized(
-    normalize(keys),
-    n,
-    keyHashes
-  )
+  def lookup(keys: Array[Vec], n: Int, keyHashes: Array[Int], nullsMatch: Boolean): Array[Int] =
+    lookupNormalized(normalize(keys), n, keyHashes, nullsMatch)
 
-  private def lookupNormalized(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
+  private def lookupNormalized(
+      norm: Array[Vec],
+      n: Int,
+      h: Array[Int],
+      nullsMatch: Boolean
+  ): Array[Int] =
     val ids = new Array[Int](n)
-    // Rows with a NULL key are reset to -1 below, so the fast paths may take NULL rows too
-    val x  = longKey(norm, anyNulls = true)
-    val xi = intKey(norm, anyNulls = true)
+    // Rows with a NULL key are reset to -1 below, so the fast paths may take NULL rows too. When
+    // NULLs match, the fast paths (which ignore NULL flags) take only keys without NULLs
+    val x  = longKey(norm, anyNulls = !nullsMatch)
+    val xi = intKey(norm, anyNulls = !nullsMatch)
     var i  = 0
     if x != null then
       val ls = stores(0).asInstanceOf[LongStore]
@@ -333,7 +337,7 @@ final class GroupTable(keyTypes: IndexedSeq[PType], expectedGroups: Int = 0):
         ids(i) = find(norm, i, h(i))
         i += 1
     var k = 0
-    while k < width do
+    while !nullsMatch && k < width do
       val nulls = norm(k).nulls
       if nulls != null then
         i = 0

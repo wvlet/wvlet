@@ -171,9 +171,11 @@ class EngineScanPushdownTest extends UniTest:
         |intersect
         |{ from ${li} where l_quantity > 10 select l_suppkey }""".stripMargin)
     debug(intersect)
-    // Each side is reduced to its distinct rows before the set operation
-    PlanText.downstream(intersect, "PartitionedAgg").take(2).map(_.takeWhile(_ != '(')) shouldBe
-      Seq("Project", "Intersect")
+    // Each side is reduced to its distinct rows before the set operation, a semi join
+    // (`set_op_joins`) probing the left side's distinct rows as morsels
+    intersect.linesIterator.count(_.contains("PartitionedAgg")) shouldBe 2
+    intersect shouldContain "HashJoin[Semi]"
+    intersect.contains("Intersect") shouldBe false
     rows(s"""from ${li} where l_orderkey <= 3 select l_returnflag
         |intersect
         |{ from ${li} where l_orderkey <= 3 select l_returnflag }""".stripMargin).size shouldBe

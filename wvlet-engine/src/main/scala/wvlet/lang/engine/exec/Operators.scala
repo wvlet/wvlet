@@ -944,10 +944,18 @@ final class JoinBuild(
     runner: TaskRunner = TaskRunner.Sequential,
     filters: Seq[RuntimeFilter] = Nil,
     packKeys: Boolean = true,
-    flatTable: Boolean = true
+    flatTable: Boolean = true,
+    nullsEqual: Boolean = false
 ):
   @volatile
   private var built = false
+
+  // Runtime filters drop NULL probe keys, which match NULL build keys here
+  require(!nullsEqual || filters.isEmpty, "A join with NULL-equal keys takes no runtime filters")
+
+  // With `nullsEqual`, whether a build key has a NULL: NULL probe keys then look up the hash
+  // tables as values, which the packed, direct, and flat paths cannot hold
+  private var nullKeys = false
 
   var build: Batch = null
 
@@ -1031,12 +1039,22 @@ final class JoinBuild(
         JoinBuildSteps.concat(right.schema, batches.toIndexedSeq, steps)
     val rawKeys  = rightKeys.map(_.eval(build)).toArray
     val rawTypes = rightKeys.map(_.ptype)
-    // Rows with NULL keys never match
-    val (valid, nv) = JoinBuildSteps.validRows(rawKeys, build.size, steps)
+    // Rows with NULL keys never match, unless NULLs are equal (`IS NOT DISTINCT FROM`)
+    nullKeys = nullsEqual && rawKeys.exists(k => k.nulls != null && k.nulls.contains(true))
+    // With NULL keys equal, every row is valid: no key columns to check for NULLs
+    val (valid, nv) = JoinBuildSteps.validRows(
+      if nullKeys then
+        Array.empty
+      else
+        rawKeys
+      ,
+      build.size,
+      steps
+    )
     filters
       .groupBy(_.key)
       .foreach((k, fs) => RuntimeFilter.setAll(fs, rawKeys(k), valid, nv, steps))
-    if packKeys then
+    if packKeys && !nullKeys then
       packer = KeyPacker.of(rawTypes, rawKeys, valid, nv)
     // The key columns the tables hold
     val (keyVecs, types) =
@@ -1045,9 +1063,9 @@ final class JoinBuild(
       else
         (Array[Vec](packer.pack(rawKeys, build.size)), IndexedSeq(PType.Int64))
     chain = JoinBuildSteps.filledInts(build.size, -1, steps)
-    if directIndex && types.size == 1 then
+    if directIndex && types.size == 1 && !nullKeys then
       buildDirect(keyVecs(0), types(0), valid, nv, steps)
-    if directHeads == null && flatTable && types.size == 1 then
+    if directHeads == null && flatTable && types.size == 1 && !nullKeys then
       buildFlat(keyVecs(0), types(0), valid, nv)
     if directHeads == null && flat == null then
       buildHashed(keyVecs, types, valid, nv)
@@ -1295,7 +1313,7 @@ final class JoinBuild(
 
   /**
     * The first build row with the key of each probe row, or -1 when none has it (or the probe key
-    * has a NULL). Safe to call from several threads once built
+    * has a NULL, unless `nullsEqual`). Safe to call from several threads once built
     */
   def firstMatches(probeKeys: Array[Vec], n: Int): Array[Int] =
     val out = new Array[Int](n)
@@ -1318,7 +1336,7 @@ final class JoinBuild(
             s"Unexpected join key vector: ${other.getClass.getSimpleName}"
           )
     else if parts == 1 then
-      val ids  = tables(0).lookup(keys, n)
+      val ids  = tables(0).lookup(keys, n, nullsMatch = nullKeys)
       val head = heads(0)
       var i    = 0
       while i < n do
@@ -1344,7 +1362,7 @@ final class JoinBuild(
           while j < m do
             ph(j) = h(rows(j))
             j += 1
-          val ids  = tables(p).lookup(keys.map(_.gather(rows, m)), m, ph)
+          val ids  = tables(p).lookup(keys.map(_.gather(rows, m)), m, ph, nullKeys)
           val head = heads(p)
           j = 0
           while j < m do
@@ -1454,7 +1472,8 @@ class HashJoinOp(
     shared: JoinBuild = null,
     outerMode: OuterMode = OuterMode.Own,
     buildRunner: TaskRunner = TaskRunner.Sequential,
-    val runtimeFilters: Seq[RuntimeFilter] = Nil
+    val runtimeFilters: Seq[RuntimeFilter] = Nil,
+    val nullsEqual: Boolean = false
 ) extends Operator:
   override def children: Seq[Operator] = Seq(left, right)
   override def name: String            = s"HashJoin[${kind}]"
@@ -1473,6 +1492,11 @@ class HashJoinOp(
           ""
         else
           ", serial build"
+      }${
+        if nullsEqual then
+          ", nulls equal"
+        else
+          ""
       })"
 
   /** The build this join probes */
@@ -1485,7 +1509,8 @@ class HashJoinOp(
         rightKeys,
         trackMatches = kind.tracksBuildMatches,
         runner = buildRunner,
-        filters = runtimeFilters
+        filters = runtimeFilters,
+        nullsEqual = nullsEqual
       )
 
   /** The same join over another left input, sharing this join's build */
@@ -1498,7 +1523,8 @@ class HashJoinOp(
     residual,
     schema,
     joinBuild,
-    mode
+    mode,
+    nullsEqual = nullsEqual
   ).withLateGather(lateGather)
 
   override def close(): Unit =

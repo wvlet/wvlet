@@ -85,7 +85,8 @@ class OptimizerOptionsTest extends UniTest:
         "adaptive_partial_aggs",
         "fold_constants",
         "fold_bound_constants",
-        "unwrap_casts"
+        "unwrap_casts",
+        "set_op_joins"
       )
   }
 
