@@ -85,7 +85,7 @@ object FactorOr extends Rule:
     else
       Some(BExpr(and(conds.zip(factored).flatMap((c, fc) => fc.getOrElse(List(c))))))
 
-  private def disjuncts(e: VExpr): List[VExpr] =
+  private[runtime] def disjuncts(e: VExpr): List[VExpr] =
     e match
       case OrExpr(l, r) =>
         disjuncts(l) ++ disjuncts(r)

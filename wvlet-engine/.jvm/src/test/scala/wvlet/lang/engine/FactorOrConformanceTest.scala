@@ -15,13 +15,19 @@ package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.plan.Planner
+import wvlet.lang.engine.plan.SourceResolver
 import wvlet.lang.engine.runtime.Normalize
 import wvlet.lang.engine.runtime.Optimizer
+import wvlet.lang.engine.runtime.PushDownFilters
+import wvlet.lang.engine.runtime.RuntimeBinder
 import wvlet.lang.engine.runtime.RuntimePlan
+import wvlet.lang.model.plan.RawSQL
 import wvlet.lang.model.plan.Relation
 import wvlet.uni.json.JSON
 import wvlet.uni.json.JSON.JSONArray
@@ -119,6 +125,8 @@ class FactorOrConformanceTest extends UniTest:
   private val engine      = conformance.engine
   // Bind without the rule, so that Normalize alone factors the bound condition
   private val unfactored = engine.withOptimizer(options.withDisabled(Optimization.FactorOr))
+  private val noImplied  = options.withDisabled(Optimization.OrImpliedFilters)
+  private val unimplied  = engine.withOptimizer(noImplied)
 
   override def afterAll: Unit = conformance.close()
 
@@ -172,7 +180,7 @@ class FactorOrConformanceTest extends UniTest:
         List(other)
 
   test("factor each traced condition as the model does") {
-    cases.size shouldBe 17
+    cases.size shouldBe 21
     for c <- cases do
       val where = str(c("where"))
       debug(where)
@@ -257,9 +265,56 @@ class FactorOrConformanceTest extends UniTest:
       (q, want) <- joinQueries(c)
     do
       debug(q)
-      for e <- Seq(engine, unfactored) do
+      for e <- Seq(engine, unfactored, unimplied) do
         sorted(rowsOf(e, q)) shouldBe want
       withQuery(q)(conformance.assertMatches(q, _))
+  }
+
+  private def innerJoins(p: RuntimePlan): Seq[RuntimePlan.InnerJoins] =
+    p match
+      case j: RuntimePlan.InnerJoins =>
+        Seq(j)
+      case other =>
+        other.children.flatMap(innerJoins)
+
+  private def innerJoinsOf(p: RuntimePlan): RuntimePlan.InnerJoins = innerJoins(p)
+    .headOption
+    .getOrElse(fail(s"No join in\n${p.explain}"))
+
+  /** The plan as the binder builds it, before the passes */
+  private def bound(query: String): RuntimePlan =
+    withQuery(query) { r =>
+      val planner = Planner(
+        engine.catalog,
+        new SourceResolver:
+          override def tableSource(name: String, fullName: String): Option[TableSource] = None
+          override def fileSource(path: String): Option[TableSource]                    = None
+          override def parseSql(r: RawSQL): Relation = fail("No SQL")
+        ,
+        options
+      )
+      RuntimeBinder(planner).bind(r)
+    }
+
+  test("add the filters the model implies on each join input") {
+    for c <- cases do
+      val q = s"${joined} join ${right} on l.i = r.i and (${str(c("joinWhere"))})${asTable}"
+      debug(q)
+      val implied = Seq("impliedLeft", "impliedRight").map(k => arr(c(k)).size)
+      val p       = bound(q)
+      def conds(opts: OptimizerOptions) =
+        val o = Optimizer(Seq(Normalize, PushDownFilters), opts)
+        val j = innerJoinsOf(o.run(p))
+        (o.firedRules.contains("or_implied_filters"), j)
+      val (fired, j)  = conds(options)
+      val (_, before) = conds(noImplied)
+      fired shouldBe implied.sum > 0
+      val added = j.conds.drop(before.conds.size)
+      added.size shouldBe implied.sum
+      // Each added filter reads one input only, the left one for the first ones
+      val inputIds = j.inputs.map(_.output.map(_.id).toSet)
+      val reads    = added.map(a => inputIds.indexWhere(ids => a.cond.refs.subsetOf(ids)))
+      reads shouldBe (Seq.fill(implied(0))(0) ++ Seq.fill(implied(1))(1))
   }
 
 end FactorOrConformanceTest

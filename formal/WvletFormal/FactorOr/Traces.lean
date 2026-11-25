@@ -16,6 +16,7 @@ rows. Factoring is proved to keep them (`Rule.lean`).
 Columns: `a` (int), `b`, `c` (bool), `s` (string), ids 0 to 3.
 -/
 import WvletFormal.FactorOr.Necessity
+import WvletFormal.FactorOr.Implied
 
 namespace Wvlet.FactorOr.Traces
 
@@ -147,7 +148,12 @@ def cases : List (List (List Cond)) :=
   , [[sNullText, bT], [sNull, cT]]
   , [[sNullText, bT], [sNullText, cT]]
   , [[bT, a1], [cT, a1]]
-  , [[sTwoSpaces, bT], [sOneSpace, cT]] ]
+  , [[sTwoSpaces, bT], [sOneSpace, cT]]
+  -- Implied filters on both join inputs (`Implied.lean`), with NULLs that make a branch unknown
+  , [[a1, cT], [aLt2, sX]]
+  , [[aNull, sNull], [a1, bT, cT]]
+  , [[a1, cT], [bT]]
+  , [[a1, cT], [aLt2, sX], [aNull, cT]] ]
 
 def jrow (x : Row) : String := jarr ([0, 1, 2, 3].map fun i => jvalue (x i))
 
@@ -160,18 +166,31 @@ subquery in every branch and a conjunct common to all of them. -/
 def existsBranchesWv (bs : List (List Cond)) : String :=
   " or ".intercalate (bs.map fun br => s!"(({condWv joinColName (conj br)}) and {existsWv})")
 
+/-- The columns of each input of the join form: `l.a`, `l.v` and `r.v`, `r.s`. -/
+def leftCols : List Col := [0, 1]
+def rightCols : List Col := [2, 3]
+
+/-- The filters the factored conjuncts imply on the input with columns `cols` (`Implied.lean`),
+as the engine derives them after `Normalize` factors the condition. -/
+def impliedOn (cols : List Col) (e : Cond) : List Cond :=
+  (conjuncts e).filterMap (impliedCond cols)
+
 def jcase (bs : List (List Cond)) : String :=
   let e := disj (bs.map conj)
   let f := factorConjuncts (K := Cond) id e
   let n := match f with
     | some e' => (conjuncts e').length
     | none => 1
+  let impliedWv (cols : List Col) :=
+    jarr ((impliedOn cols (f.getD e)).map fun i => jstr (condWv joinColName i))
   jobj [ ("where", jstr (condWv colName e))
        , ("joinWhere", jstr (condWv joinColName e))
        , ("existsBranchesWhere", jstr (existsBranchesWv bs))
        , ("factored", if f.isSome then "true" else "false")
        , ("conjuncts", toString n)
        , ("factoredWhere", jstr (condWv colName (f.getD e)))
+       , ("impliedLeft", impliedWv leftCols)
+       , ("impliedRight", impliedWv rightCols)
        , ("rows", jarr ((filter e table).map jrow)) ]
 
 def fixture : String :=

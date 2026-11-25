@@ -322,6 +322,14 @@ enum Optimization(val name: String):
     */
   case SetOpJoins extends Optimization("set_op_joins")
 
+  /**
+    * With `push_down_filters`, an `or` condition of an inner join tree that reads several inputs
+    * also filters each input by the `or`, over its branches, of the conjuncts that read only that
+    * input, when every branch has one (TPC-H q19's part filter, q7's nation names). The `or` stays,
+    * so the rows are the same ([[PushDownFilters]])
+    */
+  case OrImpliedFilters extends Optimization("or_implied_filters")
+
 end Optimization
 
 object Optimization:

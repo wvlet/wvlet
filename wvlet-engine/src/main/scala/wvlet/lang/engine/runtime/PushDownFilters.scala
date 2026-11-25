@@ -48,7 +48,9 @@ import scala.util.control.NonFatal
   *   - with `join_key_filters`, into either input of an inner join the binder already ordered (an
   *     aggregation or subquery input), and across its keys to the other input;
   *   - into an inner join tree, as a condition that [[ReorderJoins]] places. There, `a = b` and
-  *     `a = constant` add `b = constant` for columns `a` and `b` of the same type;
+  *     `a = constant` add `b = constant` for columns `a` and `b` of the same type, and, with
+  *     `or_implied_filters`, an `or` over several inputs adds the filter it implies on each
+  *     ([[orImplied]]);
   *   - into every input of a UNION, INTERSECT, or EXCEPT, by position and cast to the output type,
   *     and below a DISTINCT;
   *   - below a window, when the conjunct reads only columns that every window call partitions by.
@@ -238,13 +240,21 @@ object PushDownFilters extends Pass:
               all
           if added.nonEmpty || withInferred.size > all.size then
             ctx.fired(name)
+          val withImplied =
+            if impliedFilters then
+              val implied = orImplied(withInferred, inputs)
+              if implied.nonEmpty then
+                ctx.fired(Optimization.OrImpliedFilters.name)
+              withInferred ++ implied
+            else
+              withInferred
           val newInputs = inputs.map(push(_, Nil))
-          if !flattened && withInferred.size == joinConds.size &&
+          if !flattened && withImplied.size == joinConds.size &&
             newInputs.lazyZip(inputs).forall(_ eq _)
           then
             j
           else
-            InnerJoins(newInputs, withInferred)
+            InnerJoins(newInputs, withImplied)
         case Union(_, _) | SetOp(_, _, _, _, _) =>
           // For INTERSECT and EXCEPT, rows equal under the set comparison give a conjunct the
           // same value, so filtering both inputs keeps the result. An input narrower than the
@@ -325,6 +335,9 @@ object PushDownFilters extends Pass:
         ctx.fired(Optimization.OuterToInner.name)
         val (tree, treeConds) = innerTree(inputs(i).asInstanceOf[Join])
         withInnerInputs(inputs.patch(i, tree, 1), conds ++ treeConds)
+
+    /** Whether an `or` over inner join inputs filters each of them (`or_implied_filters`) */
+    private val impliedFilters = enabled && ctx.options.isEnabled(Optimization.OrImpliedFilters)
 
     /** Whether conjuncts carry across join keys (`join_key_filters`) */
     private val carryKeys = enabled && ctx.options.isEnabled(Optimization.JoinKeyFilters)
@@ -611,6 +624,51 @@ object PushDownFilters extends Pass:
     end if
 
   end inferred
+
+  /**
+    * For each deterministic `or` among the conditions of an inner join tree that reads more than
+    * one of its `inputs`, and each input, the `or` over its branches of each branch's conjuncts
+    * that read only that input, when every branch has one:
+    * `(p.brand = 'a' and l.qty < 10 and ...) or (p.brand = 'b' and l.qty < 20 and ...)` implies
+    * `p.brand = 'a' or p.brand = 'b'` on the part input. Where the `or` is TRUE, some branch is,
+    * and with it its conjuncts, so the implied condition is TRUE too; the `or` stays, so the join
+    * keeps the same rows (`WvletFormal/FactorOr/Implied.lean`). [[ReorderJoins]] places each
+    * implied condition on its input. A condition already among them isn't added again, and each
+    * keeps the literal counts of the `or`'s sub-conditions
+    */
+  private def orImplied(
+      conds: IndexedSeq[JoinCondition],
+      inputs: IndexedSeq[RuntimePlan]
+  ): Seq[JoinCondition] =
+    val inputIds = inputs.map(_.output.map(_.id).toSet)
+    // Compared structurally: a signature omits what a RowFn closes over (tuple_in)
+    val existing = mutable.ListBuffer.from(conds.map(_.cond.expr))
+    val added    = mutable.ListBuffer.empty[JoinCondition]
+    conds.foreach { c =>
+      c.cond.expr match
+        case o: OrExpr if isDeterministic(o) =>
+          val refs     = c.cond.refs
+          val branches = FactorOr.disjuncts(o).map(conjuncts(_).map(e => e -> BExpr(e).refs))
+          inputIds
+            .filter(ids => !refs.subsetOf(ids) && refs.exists(ids.contains))
+            .foreach { ids =>
+              val local = branches.map(
+                _.collect {
+                  case (e, r) if r.nonEmpty && r.subsetOf(ids) =>
+                    e
+                }
+              )
+              if local.forall(_.nonEmpty) then
+                val e = local.map(_.reduce(AndExpr(_, _))).reduce(OrExpr(_, _))
+                if !existing.contains(e) then
+                  existing += e
+                  added += JoinCondition(BExpr(e), c.literalCounts)
+            }
+        case _ =>
+    }
+    added.toList
+
+  end orImplied
 
   /** Whether a row-independent conjunct is true; one that fails to evaluate is kept as a filter */
   private def isTrue(e: VExpr): Boolean =
