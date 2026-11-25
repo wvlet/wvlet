@@ -88,7 +88,8 @@ final class RowKeyFilter private (
 
   /**
     * The number of values in [a, b] the filter accepts: exact for a bitmap or a range, and for a
-    * Bloom filter its build keys scaled by how much of [lo, hi] lies in [a, b]
+    * Bloom filter its build keys scaled by how much of [lo, hi] lies in [a, b], plus about 1% of
+    * the other values there (its false positives)
     */
   def acceptedIn(a: Long, b: Long): Double =
     val from = math.max(a, lo)
@@ -114,9 +115,11 @@ final class RowKeyFilter private (
             w += 1
           count.toDouble
         case Kind.Bloom =>
-          keys.toDouble * ((to - from).toDouble + 1.0) / ((hi - lo).toDouble + 1.0)
+          // The build keys in the overlap, plus the false positives among the other values
+          val width = to.toDouble - from.toDouble + 1.0
+          keys.toDouble * width / (hi.toDouble - lo.toDouble + 1.0) + BloomFalsePositives * width
         case Kind.Range =>
-          (to - from).toDouble + 1.0
+          to.toDouble - from.toDouble + 1.0
 
   /**
     * The filter as a uni set ([[ParquetFilter.In]]), so that a Parquet scan tests it while decoding
@@ -231,6 +234,9 @@ object RowKeyFilter:
 
   /** Bloom filter bits per build row (at least; the word count is a power of two) */
   val BloomBits: Int = 16
+
+  /** About the fraction of other values a Bloom filter with [[BloomBits]] per key accepts */
+  val BloomFalsePositives: Double = 0.01
 
   /** Up to how many bits per build row a bitmap may use instead of a Bloom filter */
   val BitmapBits: Int = 32

@@ -55,10 +55,15 @@ class RowKeyFilterTest extends UniTest:
     val keys  = (0 until 100).map(_ * 1000000L).toArray
     val bloom = filterOf(keys)
     bloom.kind shouldBe RowKeyFilter.Kind.Bloom
-    bloom.acceptedIn(Long.MinValue, Long.MaxValue) shouldBe 100.0
+    val fp = RowKeyFilter.BloomFalsePositives
+    bloom.acceptedIn(Long.MinValue, Long.MaxValue) shouldBe 100.0 + fp * (keys.max + 1)
     // Half of [lo, hi]
-    bloom.acceptedIn(0L, keys.max / 2) shouldBe (100.0 * (keys.max / 2 + 1) / (keys.max + 1))
+    val half = (keys.max / 2 + 1).toDouble
+    bloom.acceptedIn(0L, keys.max / 2) shouldBe (100.0 * half / (keys.max + 1) + fp * half)
     bloom.acceptedIn(keys.max + 1, Long.MaxValue) shouldBe 0.0
+    // Ranges as wide as the Long domain don't overflow
+    val wide = filterOf(Array(Long.MinValue + 1, -5L, 7L, Long.MaxValue - 1))
+    (wide.acceptedIn(Long.MinValue, Long.MaxValue) > 0.0) shouldBe true
   }
 
   test("should test the same values as a uni set") {

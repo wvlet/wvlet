@@ -201,22 +201,19 @@ class ScanOp(
           source
             .columnRange(column)
             .map { (lo, hi) =>
-              (i, rf.acceptedIn(lo, hi) / ((hi - lo).toDouble + 1.0))
+              (i, rf, rf.acceptedIn(lo, hi) / (hi.toDouble - lo.toDouble + 1.0))
             }
-            .filter(_._2 <= ScanOp.MaxConjunctPassRate)
+            .filter(_._3 <= ScanOp.MaxConjunctPassRate)
       }
-      .sortBy(_._2)
-    if chosen.isEmpty || chosen.map(_._2).product > ScanOp.MaxSourcePassRate then
+      .sortBy(_._3)
+    if chosen.isEmpty || chosen.map(_._3).product > ScanOp.MaxSourcePassRate then
       inSource = null
       Nil
     else
       val flags = new Array[Boolean](rowFilters.length)
-      chosen.foreach((i, _) => flags(i) = true)
+      chosen.foreach((i, _, _) => flags(i) = true)
       inSource = flags
-      chosen.map { (i, _) =>
-        val (f, _) = rowFilters(i)
-        ParquetFilter.col(f.column).isIn(f.rowFilter.integerSet)
-      }
+      chosen.map((i, rf, _) => ParquetFilter.col(rowFilters(i)._1.column).isIn(rf.integerSet))
 
   end joinRowFilters
 
