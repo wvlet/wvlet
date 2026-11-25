@@ -345,6 +345,14 @@ enum Optimization(val name: String):
   case LongDecimalKeys extends Optimization("long_decimal_keys")
 
   /**
+    * Parquet scans keep the dictionary codes of the strings they decode from a dictionary page
+    * ([[wvlet.lang.engine.vector.StrVec.codes]]), and aggregations whose keys all carry codes look
+    * up each code combination once per batch instead of hashing and comparing every row's strings
+    * (DuckDB's dictionary aggregation)
+    */
+  case DictionaryGroupKeys extends Optimization("dictionary_group_keys")
+
+  /**
     * Row-independent subexpressions are evaluated once when lowering, and integral constants added
     * to or subtracted from decimals become decimals at the result scale
     * ([[wvlet.lang.engine.runtime.FoldConstants]])

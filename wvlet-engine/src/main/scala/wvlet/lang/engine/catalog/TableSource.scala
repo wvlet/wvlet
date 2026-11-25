@@ -27,13 +27,16 @@ import scala.collection.mutable
   * source may use it to skip data that can't match (e.g. Parquet row groups by statistics), but
   * rows it returns are still filtered by the engine. `rowFilter` is exact: the source returns only
   * the rows it matches, and the engine doesn't evaluate it again. Only a source that
-  * [[TableSource.supportsRowFilter]] gets one; its columns may be outside `columns`
+  * [[TableSource.supportsRowFilter]] gets one; its columns may be outside `columns`. With
+  * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
+  * ([[StrVec.codes]])
   */
 case class ScanSpec(
     columns: Option[Seq[String]] = None,
     filter: Option[ParquetFilter] = None,
     footerCache: Boolean = false,
-    rowFilter: Option[ParquetFilter] = None
+    rowFilter: Option[ParquetFilter] = None,
+    dictionaryCodes: Boolean = false
 )
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -342,7 +345,9 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
         None
       else
         val parts = groups.map { g => () =>
-          Iterator.single(ParquetSource.toBatch(f.readRowGroup(g, options), cols, types))
+          Iterator.single(
+            ParquetSource.toBatch(f.readRowGroup(g, options), cols, types, spec.dictionaryCodes)
+          )
         }
         val meta = f.rowGroups
         Some(ScanSplits(parts, () => f.close(), groups.map(g => meta(g).numRows)))
@@ -362,11 +367,17 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
           case e: Throwable =>
             f.close()
             throw e
-      ParquetSource.closing(it.map(b => ParquetSource.toBatch(b, cols, types)), () => f.close())
+      ParquetSource.closing(
+        it.map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes)),
+        () => f.close()
+      )
     else
       val ds = ParquetSource.openDataset(path)
       val it = ds.readBatches(options)
-      ParquetSource.closing(it.map(b => ParquetSource.toBatch(b, cols, types)), () => ds.close())
+      ParquetSource.closing(
+        it.map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes)),
+        () => ds.close()
+      )
 
 end ParquetSource
 
@@ -522,16 +533,25 @@ object ParquetSource:
   private def nullsOf(c: ColumnVector): Array[Boolean] = c.nullFlags
 
   /** Convert uni column vectors into engine vectors, mostly without copying the value arrays */
-  def toBatch(b: ColumnBatch, cols: Seq[String], types: Seq[PType]): Batch =
+  def toBatch(
+      b: ColumnBatch,
+      cols: Seq[String],
+      types: Seq[PType],
+      dictionaryCodes: Boolean = false
+  ): Batch =
     val vecs = cols
       .indices
       .map { k =>
         val c = b.column(cols(k))
-        toVec(c, types(k))
+        toVec(c, types(k), dictionaryCodes)
       }
     Batch(vecs.toArray, b.numRows)
 
-  def toVec(c: ColumnVector, ptype: PType): Vec =
+  /**
+    * The engine vector of a uni column. With `dictionaryCodes`, strings decoded from a dictionary
+    * page carry their dictionary codes ([[StrVec.codes]])
+    */
+  def toVec(c: ColumnVector, ptype: PType, dictionaryCodes: Boolean = false): Vec =
     val nulls = nullsOf(c)
     (c, ptype) match
       case (x: ColumnVector.BooleanColumn, PType.Bool) =>
@@ -565,6 +585,8 @@ object ParquetSource:
         DoubleVec(Vec.mapFloatToDouble(x.values), nulls)
       case (x: ColumnVector.DoubleColumn, PType.Float64) =>
         DoubleVec(x.values, nulls)
+      case (x: ColumnVector.BinaryColumn, PType.Str) if dictionaryCodes && x.dictionarySize > 0 =>
+        stringsWithCodes(x, nulls)
       case (x: ColumnVector.BinaryColumn, PType.Str) =>
         val n   = x.size
         val out = new Array[String](n)
@@ -597,6 +619,21 @@ object ParquetSource:
     end match
 
   end toVec
+
+  /** The strings of a dictionary-encoded column with the dictionary entry of each row */
+  private def stringsWithCodes(x: ColumnVector.BinaryColumn, nulls: Array[Boolean]): StrVec =
+    val n     = x.size
+    val out   = new Array[String](n)
+    val codes = new Array[Int](n)
+    var i     = 0
+    while i < n do
+      if nulls == null || !nulls(i) then
+        out(i) = x.getString(i)
+        codes(i) = x.dictionaryIndex(i)
+      else
+        codes(i) = -1
+      i += 1
+    StrVec(out, nulls, codes, x.dictionarySize)
 
   /** Nested Parquet values into engine values (Seq / Map / numbers / strings) */
   private def normalize(v: Any): Any =

@@ -307,7 +307,19 @@ final class DoubleVec(val values: Array[Double], val nulls: Array[Boolean]) exte
     val outNulls = Vec.nullsWithPadding(nulls, idx, n)
     DoubleVec(out, outNulls)
 
-final class StrVec(val values: Array[String], val nulls: Array[Boolean]) extends Vec:
+/**
+  * Strings. A vector decoded from a Parquet dictionary may also carry the dictionary `codes` of its
+  * rows (null without them), each in [0, `dictSize`) or -1 when unknown (a NULL row, a
+  * PLAIN-encoded row, or gathered padding). Two rows of one vector with the same code >= 0 hold
+  * equal strings, so grouping can look up each code once ([[wvlet.lang.engine.exec.GroupTable]]).
+  * Codes mean nothing across vectors.
+  */
+final class StrVec(
+    val values: Array[String],
+    val nulls: Array[Boolean],
+    val codes: Array[Int] = null,
+    val dictSize: Int = 0
+) extends Vec:
   def ptype: PType     = PType.Str
   def size: Int        = values.length
   def get(i: Int): Any =
@@ -325,7 +337,26 @@ final class StrVec(val values: Array[String], val nulls: Array[Boolean]) extends
         out(i) = values(k)
       i += 1
     val outNulls = Vec.nullsWithPadding(nulls, idx, n)
-    StrVec(out, outNulls)
+    if codes == null then
+      StrVec(out, outNulls)
+    else
+      val outCodes = StrVec.gatherCodes(codes, idx, n)
+      StrVec(out, outNulls, outCodes, dictSize)
+
+object StrVec:
+  /** The codes at the given positions, -1 for padding (idx -1) */
+  private def gatherCodes(codes: Array[Int], idx: Array[Int], n: Int): Array[Int] =
+    val out = new Array[Int](n)
+    var i   = 0
+    while i < n do
+      val k = idx(i)
+      out(i) =
+        if k >= 0 then
+          codes(k)
+        else
+          -1
+      i += 1
+    out
 
 /** Boxed values: wide decimals (java.math.BigDecimal), and nested or untyped values */
 final class ObjVec(val ptype: PType, val values: Array[AnyRef], val nulls: Array[Boolean])
