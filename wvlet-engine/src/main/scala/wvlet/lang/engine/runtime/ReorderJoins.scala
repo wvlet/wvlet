@@ -51,8 +51,8 @@ object ReorderJoins extends Pass:
         // `Planner.joinOn` decides it
         if JoinOrderOptimizer.swapBuild(
             ctx.options,
-            Stats.buildRows(right, ctx.options),
-            Stats.buildRows(left, ctx.options)
+            Stats.outerBuildRows(right, right, ctx.options),
+            Stats.outerBuildRows(left, right, ctx.options)
           )
         then
           j.copy(buildLeft = true)
@@ -122,9 +122,15 @@ object ReorderJoins extends Pass:
       // (Stats.rows reads only the probe side's source rows)
       val buildLeft =
         l.leftKeys.nonEmpty &&
-          JoinOrderOptimizer.swapBuild(ctx.options, Stats.buildRows(l.right, ctx.options), rows)
+          JoinOrderOptimizer.swapBuild(
+            ctx.options,
+            Stats.outerBuildRows(l.right, l.right, ctx.options),
+            rows
+          )
       // Every row of the tree is kept, with its matches
       (l.copy(left = tree, buildLeft = buildLeft), rows)
+
+  end orderWithRows
 
   /** The join tree of an [[RuntimePlan.InnerJoins]] node without LEFT joins to move */
   private def orderTree(j: InnerJoins, ctx: OptimizerContext): (RuntimePlan, Double) =

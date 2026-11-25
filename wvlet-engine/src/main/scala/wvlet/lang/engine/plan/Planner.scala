@@ -3225,7 +3225,7 @@ class Planner(
             lk,
             rk,
             residual,
-            buildLeft = swapsOuterBuild(kind, builder.buildRows(left), builder.buildRows(right))
+            buildLeft = swapsOuterBuild(kind, builder, left, right)
           )
     end match
 
@@ -3233,12 +3233,23 @@ class Planner(
 
   /**
     * Whether an outer hash join builds on its left input, as the right (build) input is estimated
-    * to be much larger
+    * to be much larger: by `builder.buildRows`, or by the probe source's rows when the right input
+    * aggregates ([[wvlet.lang.engine.runtime.Stats.outerBuildRows]])
     */
-  private def swapsOuterBuild(kind: JoinKind, leftRows: Double, rightRows: Double): Boolean =
+  private def swapsOuterBuild[P](
+      kind: JoinKind,
+      builder: JoinTreeBuilder[P],
+      left: P,
+      right: P
+  ): Boolean =
+    def rows(p: P): Double =
+      if CardinalityEstimator.aggregates(builder.op(right)) then
+        CardinalityEstimator.rows(builder.op(p))
+      else
+        builder.buildRows(p)
     kind match
       case JoinKind.Left | JoinKind.Right | JoinKind.Full =>
-        swapBuild(rightRows, leftRows)
+        swapBuild(rows(right), rows(left))
       case _ =>
         false
 
@@ -3269,7 +3280,7 @@ class Planner(
       lk,
       rk,
       None,
-      buildLeft = swapsOuterBuild(kind, builder.buildRows(leftPlan), builder.buildRows(rightPlan))
+      buildLeft = swapsOuterBuild(kind, builder, leftPlan, rightPlan)
     )
     val lw     = left.schema.size
     val keyIdx = names.map { n =>

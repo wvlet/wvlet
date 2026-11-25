@@ -280,6 +280,18 @@ object Stats:
       JoinOrderOptimizer.swapBuild(options, rows(right), rows(left))
 
   /**
+    * Estimated rows of p for choosing the build side of an outer join whose right input is `right`:
+    * [[buildRows]], except [[rows]] when `right` aggregates, as a RIGHT join probing with an
+    * aggregation's output gains no scan to filter and holds back the rows above it until its
+    * unmatched build rows are emitted (TPC-DS q10's EXISTS marks)
+    */
+  def outerBuildRows(p: RuntimePlan, right: RuntimePlan, options: OptimizerOptions): Double =
+    if aggregates(right) then
+      rows(p)
+    else
+      buildRows(p, options)
+
+  /**
     * Estimated rows of p as [[aggregatedRows]] reads the plan below an aggregation: inner hash
     * joins as the join search estimates them, filters by their conjuncts' selectivity. With
     * `join_tree_build_estimates`, plan-time rows count exactly, a union as the sum of its inputs,
