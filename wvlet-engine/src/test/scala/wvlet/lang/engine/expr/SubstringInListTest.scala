@@ -67,6 +67,8 @@ class SubstringInListTest extends UniTest:
     check(1, 0, Set(""))
     check(5, 3, Set("555", "5"))
     check(20, 2, Set("", "13"))
+    // A length running past every string, whose end would overflow
+    check(2, Long.MaxValue, Set("", "3-555-0101", "1-555"))
   }
 
   test("look up regions among many values") {

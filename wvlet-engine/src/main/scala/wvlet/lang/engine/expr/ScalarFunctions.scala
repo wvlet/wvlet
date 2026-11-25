@@ -104,7 +104,14 @@ object ScalarFunctions:
     .reduceOption(PType.common)
     .getOrElse(PType.Null)
 
-  private def utf8Substring(s: String, start: Long, len: Option[Long]): String =
+  /** `begin + len`, saturating at Long.MaxValue for a region running past every string */
+  private[expr] def regionEnd(begin: Long, len: Long): Long =
+    if begin > 0 && len > Long.MaxValue - begin then
+      Long.MaxValue
+    else
+      begin + len
+
+  private[expr] def utf8Substring(s: String, start: Long, len: Option[Long]): String =
     // SQL substring: 1-origin; start <= 0 counts the positions before the string
     val cps   = s.codePointCount(0, s.length)
     val begin =
@@ -119,7 +126,7 @@ object ScalarFunctions:
         case Some(l) =>
           if l < 0 then
             throw StatusCode.INVALID_ARGUMENT.newException(s"Negative substring length: ${l}")
-          begin + l
+          regionEnd(begin, l)
         case None =>
           cps.toLong
     val b = math.max(0L, begin)

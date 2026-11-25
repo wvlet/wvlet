@@ -27,7 +27,6 @@ final class SubstringInList private (
     str: VExpr,
     start: Long,
     len: Long,
-    fallback: VExpr,
     values: Set[Any],
     // Open addressing over the values' hash codes: a power-of-two table with free slots
     slots: Array[String],
@@ -43,7 +42,7 @@ final class SubstringInList private (
     var nulls: Array[Boolean] = null
     // The region's char positions in strings without surrogates before its end
     val begin = start - 1
-    val end   = begin + len
+    val end   = ScalarFunctions.regionEnd(begin, len)
     var i     = 0
     while i < n do
       val x = v.get(i)
@@ -70,7 +69,7 @@ final class SubstringInList private (
             contains(s, from, limit - from, h)
           else
             // Code points differ from chars: compare the substring as built
-            fallbackMatch(b, i)
+            values.contains(ScalarFunctions.utf8Substring(s, start, Some(len)))
         if !found && hasNullValue then
           if nulls == null then
             nulls = new Array[Boolean](n)
@@ -100,11 +99,6 @@ final class SubstringInList private (
         slot = (slot + 1) & mask
     found
 
-  // The substring of row i built by the substring function, for strings with surrogates (rare)
-  private def fallbackMatch(b: Batch, i: Int): Boolean = values.contains(
-    fallback.eval(b.take(Array(i), 1)).get(0)
-  )
-
 end SubstringInList
 
 object SubstringInList:
@@ -133,7 +127,7 @@ object SubstringInList:
           slots(slot) = str
           hashes(slot) = h
         }
-        SubstringInList(s, k, l, child, values, slots, hashes)
+        SubstringInList(s, k, l, values, slots, hashes)
       case _ =>
         null
 
