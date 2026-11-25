@@ -13,8 +13,11 @@
  */
 package wvlet.lang.compiler.parser
 
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.model.plan.CallTool
+import wvlet.lang.model.plan.Import
 import wvlet.lang.model.plan.PackageDef
 import wvlet.lang.model.plan.TableRef
 import wvlet.lang.model.plan.Query
@@ -30,6 +33,29 @@ class ParserTest extends UniTest:
     plan shouldMatch { case p: PackageDef =>
       p.statements shouldMatch { case List(Query(t: TableRef, _)) =>
         t.name.fullName shouldBe "A"
+      }
+    }
+  }
+
+  test("should reject import with a remote from source") {
+    val p = WvletParser(
+      CompilationUnit.fromWvletString("""import example.* from "github.com/wvlet/example"""")
+    )
+    val e = intercept[WvletLangException] {
+      p.parse()
+    }
+    e.statusCode shouldBe StatusCode.SYNTAX_ERROR
+    e.getMessage shouldContain "is not supported"
+  }
+
+  test("should parse a from query on the line after an import") {
+    val p = WvletParser(CompilationUnit.fromWvletString("""import example.*
+        |from adults
+        |""".stripMargin))
+    val plan = p.parse()
+    plan shouldMatch { case p: PackageDef =>
+      p.statements shouldMatch { case List(_: Import, Query(t: TableRef, _)) =>
+        t.name.fullName shouldBe "adults"
       }
     }
   }

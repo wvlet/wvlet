@@ -28,7 +28,6 @@ import wvlet.lang.model.expr.Attribute
 import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.expr.QualifiedName
-import wvlet.lang.model.expr.StringLiteral
 import wvlet.lang.model.plan.LogicalPlan
 
 sealed trait LanguageStatement extends TopLevelStatement with LeafPlan:
@@ -52,12 +51,8 @@ case class PackageDef(
   override def isEmpty: Boolean            = statements.isEmpty
   override def children: List[LogicalPlan] = statements
 
-case class Import(
-    importRef: NameExpr,
-    alias: Option[NameExpr],
-    fromSource: Option[StringLiteral],
-    span: Span
-) extends LanguageStatement
+case class Import(importRef: NameExpr, alias: Option[NameExpr], span: Span)
+    extends LanguageStatement
 
 case class TypeAlias(alias: NameExpr, sourceTypeName: NameExpr, span: Span)
     extends LanguageStatement

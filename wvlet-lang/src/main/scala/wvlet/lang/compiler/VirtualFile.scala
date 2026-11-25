@@ -16,7 +16,7 @@ package wvlet.lang.compiler
 import scala.util.Try
 
 /**
-  * An abstraction over local files or files in remote GitHub repositories
+  * An abstraction over local files and in-memory sources
   */
 trait VirtualFile extends Ordered[VirtualFile]:
   /**
@@ -118,22 +118,6 @@ case class LocalFile(path: String) extends VirtualFile:
       SourceIO.listFiles(path).map(p => LocalFile(p.toString))
     else
       Nil
-
-/**
-  * TODO: Download GitHub archive to .cache/wvlet/repository/github/${owner}/${repo}/${ref} and
-  * provide file paths
-  * @param owner
-  * @param repo
-  * @param ref
-  */
-case class GitHubArchive(owner: String, repo: String, ref: String) extends VirtualFile:
-  def name: String                   = s"github:${owner}/${repo}@${ref}"
-  override def path: String          = s"https://github.com/${owner}/${repo}"
-  override def exists: Boolean       = ???
-  override def isDirectory: Boolean  = true
-  override def listFiles             = ???
-  override def lastUpdatedAt: Long   = ???
-  override def contentString: String = ???
 
 case class MemoryFile(path: String, contentString: String) extends VirtualFile:
   val lastUpdatedAt                 = System.currentTimeMillis()

@@ -218,7 +218,7 @@ class NameLookupConformanceTest extends UniTest:
         global = global,
         scope = scope,
         compilationUnit = unitIn("query.wv", Some(cur)),
-        importDefs = imports.map(r => Import(qualifiedName(r), None, None, NoSpan))
+        importDefs = imports.map(r => Import(qualifiedName(r), None, NoSpan))
       )
       def show(sym: Symbol): String =
         if sym eq local then

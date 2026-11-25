@@ -525,7 +525,6 @@ class TyperTest extends UniTest:
     val importDef = Import(
       importRef = wvlet.lang.model.expr.UnquotedIdentifier("some_module", Span.NoSpan),
       alias = None,
-      fromSource = None,
       span = Span.NoSpan
     )
 
