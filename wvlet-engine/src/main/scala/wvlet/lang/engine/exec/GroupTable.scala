@@ -274,7 +274,7 @@ final class GroupTable(
     * string keys with dictionary codes look up the codes at the positions, so the keys aren't
     * gathered first (`dense_selected_rows`). Other keys are gathered, then grouped as usual
     */
-  def groupIdsAt(keys: Array[Vec], sel: Array[Int], n: Int): Array[Int] =
+  def groupIdsAt(keys: Array[Vec], sel: Array[Int], n: Int, scratch: Boolean = false): Array[Int] =
     // Groups keyed by stable codes read the codes of gathered keys
     val plain =
       coded == null &&
@@ -285,7 +285,9 @@ final class GroupTable(
             false
         }
     val ids =
-      if plain then
+      if plain && scratch && keys.length <= 2 then
+        DictionaryIdsAt.ids(this, normalize(keys), n, sel)
+      else if plain then
         dictionaryIds(normalize(keys), n, null, sel)
       else
         null
@@ -425,6 +427,27 @@ final class GroupTable(
   // and each row's combination (-1 when a key has no code), reused across batches
   private var codeGroups: Array[Int] = null
   private var rowCodes: Array[Int]   = null
+  // The group ids [[DictionaryIdsAt]] returns, reused across batches
+  private var idScratch: Array[Int] = null
+
+  /** For [[DictionaryIdsAt]]: whether key k is held as strings */
+  private[exec] def strKey(k: Int): Boolean = stores(k).isInstanceOf[StrStore]
+
+  /** For [[DictionaryIdsAt]]: [[codeGroups]] for m combinations, all -1 */
+  private[exec] def codeGroupsFor(m: Int): Array[Int] =
+    if codeGroups == null || codeGroups.length < m then
+      codeGroups = new Array[Int](math.max(m, 64))
+    java.util.Arrays.fill(codeGroups, 0, m, -1)
+    codeGroups
+
+  /** For [[DictionaryIdsAt]]: a group id array of at least n entries, reused across batches */
+  private[exec] def idsFor(n: Int): Array[Int] =
+    if idScratch == null || idScratch.length < n then
+      idScratch = new Array[Int](n)
+    idScratch
+
+  /** For [[DictionaryIdsAt]]: the group of row i of the normalized keys, inserted when new */
+  private[exec] def groupOfRow(norm: Array[Vec], i: Int): Int = findOrInsert(norm, i, null)
 
   /**
     * Group ids through the dictionary codes of the keys ([[StrVec.codes]]): the first row of each

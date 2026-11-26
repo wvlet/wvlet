@@ -77,8 +77,11 @@ private[exec] object DenseSelectedRows:
     else
       Dense(sourceValue(e, b), sel)
 
-  /** The value of qualifying `e` over the source rows */
-  private def sourceValue(e: VExpr, b: Batch): Vec =
+  /**
+    * The value of qualifying `e` over the source rows; fused decimal products compute into arrays
+    * of `scratch` when given
+    */
+  private def sourceValue(e: VExpr, b: Batch, scratch: LongScratch = null): Vec =
     e match
       case c: ColRef =>
         b.deferredSource(c.index)
@@ -94,7 +97,11 @@ private[exec] object DenseSelectedRows:
             case _ =>
               x.children.foreach(fill)
         fill(e)
-        e.eval(Batch(cols, size))
+        e match
+          case f: FusedDecimalMul if scratch != null =>
+            f.evalWith(Batch(cols, size), scratch)
+          case _ =>
+            e.eval(Batch(cols, size))
 
   /** The arguments of fused aggregates over the source rows, at `sel` */
   final class FusedArgs(val args: Array[Array[Vec]], val sel: Array[Int])
@@ -103,7 +110,12 @@ private[exec] object DenseSelectedRows:
     * The arguments of the aggregates with `unfiltered(a)` (null for the others) over the source
     * rows of b, when they all qualify for [[eval]] at the same positions without -1; null otherwise
     */
-  def fusedArgs(aggs: IndexedSeq[AggCall], unfiltered: Array[Boolean], b: Batch): FusedArgs =
+  def fusedArgs(
+      aggs: IndexedSeq[AggCall],
+      unfiltered: Array[Boolean],
+      b: Batch,
+      scratch: LongScratch = null
+  ): FusedArgs =
     if !b.isDeferred then
       return null
     var sel: Array[Int] = null
@@ -122,7 +134,7 @@ private[exec] object DenseSelectedRows:
     val args =
       Array.tabulate(aggs.size) { a =>
         if unfiltered(a) then
-          aggs(a).args.map(sourceValue(_, b)).toArray
+          aggs(a).args.map(sourceValue(_, b, scratch)).toArray
         else
           null
       }
@@ -148,7 +160,8 @@ private[exec] object DenseSelectedRows:
     * Fold the rows of b with [[FusedAccumulators]] reading the arguments of the aggregates without
     * FILTER at their positions ([[fusedArgs]]), and the other such aggregates over one argument
     * with [[Accumulator.updateSelected]]. Null when the arguments don't qualify, and nothing is
-    * folded
+    * folded. With `scratch`, fused decimal products compute into its arrays, valid until it is
+    * reset (`agg_scratch_buffers`)
     */
   def fold(
       aggs: IndexedSeq[AggCall],
@@ -157,9 +170,19 @@ private[exec] object DenseSelectedRows:
       groups: Array[Int],
       numGroups: Int,
       b: Batch,
-      columnMajor: Boolean = false
+      columnMajor: Boolean = false,
+      scratch: LongScratch = null
   ): Folded =
-    val dense = fusedArgs(aggs, unfiltered, b)
+    // The batch's products are done with once folded, so this batch takes the arrays from the first
+    val dense = fusedArgs(
+      aggs,
+      unfiltered,
+      b,
+      if scratch == null then
+        null
+      else
+        scratch.reset()
+    )
     if dense == null then
       return null
     val n      = b.size
@@ -193,9 +216,15 @@ private[exec] object DenseSelectedRows:
 
   /**
     * Group ids of the rows of b: string keys that are deferred columns at the same positions look
-    * up their codes there ([[GroupTable.groupIdsAt]]); other keys evaluate as usual
+    * up their codes there ([[GroupTable.groupIdsAt]]); other keys evaluate as usual. With
+    * `scratch`, the ids may be an array the table reuses for the next batch (`agg_scratch_buffers`)
     */
-  def groupIds(table: GroupTable, keys: IndexedSeq[VExpr], b: Batch): Array[Int] =
+  def groupIds(
+      table: GroupTable,
+      keys: IndexedSeq[VExpr],
+      b: Batch,
+      scratch: Boolean = false
+  ): Array[Int] =
     var sel: Array[Int] = null
     val srcs            = new Array[Vec](keys.size)
     var k               = 0
@@ -213,7 +242,7 @@ private[exec] object DenseSelectedRows:
     if sel == null || hasNullRows(sel, b.size) then
       table.groupIds(keys.map(_.eval(b)).toArray, b.size)
     else
-      table.groupIdsAt(srcs, sel, b.size)
+      table.groupIdsAt(srcs, sel, b.size, scratch)
 
   end groupIds
 

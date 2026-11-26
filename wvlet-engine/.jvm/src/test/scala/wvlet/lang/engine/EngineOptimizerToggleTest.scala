@@ -234,6 +234,10 @@ class EngineOptimizerToggleTest extends UniTest:
     Optimization.DenseSelectedRows ->
       "Changes how projections and aggregations read a filter's deferred columns",
     // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
+    // AggScratchBuffersTest that reused arrays give the same results
+    Optimization.AggScratchBuffers ->
+      "Changes which arrays hash aggregations compute into, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
     // LongGroupTableTest that the table gives the same groups as a GroupTable
     Optimization.LongGroupTables ->
       "Changes how hash aggregations look up single Int64 keys, not the plan",

@@ -71,9 +71,23 @@ case class FusedDecimalMul(x: VExpr, inner: Arith, innerLeft: Boolean, ptype: PT
   def eval(b: Batch): Vec = evalOver(x.eval(b), y.eval(b))
 
   /**
-    * The product over the values xv of x and yv of y, as [[eval]] computes it
+    * [[eval]] with the outputs of this product, and of fused products among its operands, in arrays
+    * of `scratch` (`agg_scratch_buffers`): the result is valid only until the scratch is reset
     */
-  private[engine] def evalOver(xv: Vec, yv: Vec): Vec =
+  private[engine] def evalWith(b: Batch, scratch: LongScratch): Vec =
+    def operand(e: VExpr): Vec =
+      e match
+        case f: FusedDecimalMul =>
+          f.evalWith(b, scratch)
+        case _ =>
+          e.eval(b)
+    evalOver(operand(x), operand(y), scratch)
+
+  /**
+    * The product over the values xv of x and yv of y, as [[eval]] computes it, into an array of
+    * `scratch` when given
+    */
+  private[engine] def evalOver(xv: Vec, yv: Vec, scratch: LongScratch = null): Vec =
     val n  = xv.size
     val xs = unscaledOf(xv, xScale)
     val ys = unscaledOf(yv, yScale)
@@ -81,7 +95,12 @@ case class FusedDecimalMul(x: VExpr, inner: Arith, innerLeft: Boolean, ptype: PT
       if xs == null || ys == null then
         null
       else
-        compute(xs, null, ys, null, n)
+        val out =
+          if scratch == null then
+            new Array[Long](n)
+          else
+            scratch.take(n)
+        compute(xs, null, ys, null, n, out)
     if o != null then
       LongVec(ptype, o, Kernels.orNulls(xv.nulls, yv.nulls, n))
     else
@@ -120,9 +139,14 @@ case class FusedDecimalMul(x: VExpr, inner: Arith, innerLeft: Boolean, ptype: PT
       xs: Array[Int],
       ya: Array[Long],
       ys: Array[Int],
-      n: Int
+      n: Int,
+      out: Array[Long] = null
   ): Array[Long] =
-    val o  = new Array[Long](n)
+    val o =
+      if out == null then
+        new Array[Long](n)
+      else
+        out
     val cc = c
     var ok = true
     var i  = 0

@@ -798,6 +798,18 @@ class HashAggOp(
     denseSelected = enabled
     this
 
+  // Arrays [[denseSelected]] reuses across batches, or null (`agg_scratch_buffers`)
+  private[engine] var scratch: LongScratch = LongScratch()
+
+  /** Reuse scratch arrays across batches for dense selected rows (`agg_scratch_buffers`) */
+  def withScratchBuffers(enabled: Boolean): this.type =
+    scratch =
+      if enabled then
+        LongScratch()
+      else
+        null
+    this
+
   /**
     * Whether a single Int64 key, packed or not, groups through a [[LongGroupTable]]
     * (`long_group_tables`)
@@ -845,7 +857,16 @@ class HashAggOp(
       accs.foreach(_.ensureGroups(numGroups))
       val dense =
         if denseSelected then
-          DenseSelectedRows.fold(aggs, unfiltered, accs, groups, numGroups, b, columnMajorSums)
+          DenseSelectedRows.fold(
+            aggs,
+            unfiltered,
+            accs,
+            groups,
+            numGroups,
+            b,
+            columnMajorSums,
+            scratch
+          )
         else
           null
       if dense != null then
@@ -868,6 +889,7 @@ class HashAggOp(
           numGroups,
           columnMajor = columnMajorSums
         )
+    end if
     val routed = RoutedAggFilters.update(router, accs, groups, numGroups, b)
     var a      = 0
     while a < accs.size do
@@ -1048,7 +1070,7 @@ class HashAggOp(
             case p: PackedGroupTable if selectedInputs =>
               SelectedInputs.groupIds(p, keys, b)
             case g: GroupTable if denseSelected && b.isDeferred =>
-              DenseSelectedRows.groupIds(g, keys, b)
+              DenseSelectedRows.groupIds(g, keys, b, scratch != null)
             case _ =>
               table.groupIds(keys.map(_.eval(b)).toArray, b.size)
       val numGroups =

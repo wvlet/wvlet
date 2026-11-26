@@ -144,6 +144,8 @@ class Planner(
       Planner.disableLateGather(pruned)
     if !enabled(Optimization.DenseSelectedRows) then
       Planner.disableDenseSelected(pruned)
+    if !enabled(Optimization.AggScratchBuffers) then
+      Planner.disableScratchBuffers(pruned)
     if !enabled(Optimization.ScanJoinRowFilters) then
       Planner.disableSourceJoinFilters(pruned)
     if !enabled(Optimization.JoinRowFiltersFirst) then
@@ -210,6 +212,8 @@ class Planner(
       Planner.disableColumnMajorSums(physical)
     if !enabled(Optimization.DenseSelectedRows) then
       Planner.disableDenseSelected(physical)
+    if !enabled(Optimization.AggScratchBuffers) then
+      Planner.disableScratchBuffers(physical)
     if !enabled(Optimization.LongGroupTables) then
       Planner.disableLongGroupTables(physical)
     if !enabled(Optimization.SortedGroupRuns) then
@@ -4316,6 +4320,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableDenseSelected)
     op.sharedInputs.foreach(disableDenseSelected)
+
+  /** Make the hash aggregations of a physical plan allocate their arrays per batch */
+  private[engine] def disableScratchBuffers(op: Operator): Unit =
+    op match
+      case a: HashAggOp =>
+        a.withScratchBuffers(false)
+      case _ =>
+    op.children.foreach(disableScratchBuffers)
+    op.sharedInputs.foreach(disableScratchBuffers)
 
   /**
     * Make the hash aggregations of a physical plan group single Int64 keys through [[GroupTable]]s

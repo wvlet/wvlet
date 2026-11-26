@@ -142,6 +142,16 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options.withDisabled(Optimization.DenseSelectedRows), dense).contains(true) shouldBe false
   }
 
+  test("reuse scratch arrays across batches with agg_scratch_buffers") {
+    val scratch: PartialFunction[Operator, Boolean] = { case a: HashAggOp =>
+      a.scratch != null
+    }
+    flags(options, scratch) shouldContain true
+    flags(options, scratch).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.AggScratchBuffers), scratch).contains(true) shouldBe
+      false
+  }
+
   test("group single Int64 keys through long group tables with long_group_tables") {
     val long: PartialFunction[Operator, Boolean] = {
       case a: HashAggOp =>
