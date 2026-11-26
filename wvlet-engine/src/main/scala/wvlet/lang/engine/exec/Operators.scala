@@ -787,6 +787,17 @@ class HashAggOp(
     denseSelected = enabled
     this
 
+  /**
+    * Whether a single Int64 key, packed or not, groups through a [[LongGroupTable]]
+    * (`long_group_tables`)
+    */
+  var longGroupTables: Boolean = true
+
+  /** Set [[longGroupTables]] */
+  def withLongGroupTables(enabled: Boolean): this.type =
+    longGroupTables = enabled
+    this
+
   // Aggregates without FILTER, which FusedAccumulators may fold
   private lazy val unfiltered: Array[Boolean] = aggs.map(_.filter.isEmpty).toArray
 
@@ -981,7 +992,8 @@ class HashAggOp(
       presize,
       packKeys,
       longDecimalKeys,
-      stableCodes = true
+      stableCodes = true,
+      longTables = longGroupTables
     )
     val accs = aggs.map(_.newAccumulator())
     if presize > 0 then

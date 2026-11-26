@@ -167,6 +167,10 @@ class EngineOptimizerToggleTest extends UniTest:
         // aggregations, and DenseSelectedRowsTest that computing over the source rows gives the
         // same results
         ignore("Changes how projections and aggregations read a filter's deferred columns")
+      if o == Optimization.LongGroupTables then
+        // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
+        // LongGroupTableTest that the table gives the same groups as a GroupTable
+        ignore("Changes how hash aggregations look up single Int64 keys, not the plan")
       if o == Optimization.DictionaryFilters then
         // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
         // evaluation keeps the same rows

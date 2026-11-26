@@ -49,7 +49,8 @@ object Parallelizer:
       longDecimalKeys: Boolean = true,
       fusedAccumulators: Boolean = true,
       oneRowPartials: Boolean = true,
-      selectedInputs: Boolean = true
+      selectedInputs: Boolean = true,
+      longGroupTables: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -67,7 +68,8 @@ object Parallelizer:
         longDecimalKeys,
         fusedAccumulators,
         oneRowPartials,
-        selectedInputs
+        selectedInputs,
+        longGroupTables
       )
       rewrite(op, runner)
 
@@ -89,7 +91,8 @@ object Parallelizer:
       longDecimalKeys: Boolean,
       fusedAccumulators: Boolean,
       oneRowPartials: Boolean,
-      selectedInputs: Boolean
+      selectedInputs: Boolean,
+      longGroupTables: Boolean
   )
 
   /**
@@ -396,7 +399,8 @@ object Parallelizer:
             o.longDecimalKeys,
             o.fusedAccumulators,
             o.oneRowPartials,
-            o.selectedInputs
+            o.selectedInputs,
+            o.longGroupTables
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -723,7 +727,8 @@ private[plan] object TwoPhaseAgg:
       longDecimalKeys: Boolean = false,
       fusedAccumulators: Boolean = true,
       oneRowPartials: Boolean = true,
-      selectedInputs: Boolean = true
+      selectedInputs: Boolean = true,
+      longGroupTables: Boolean = true
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -757,6 +762,7 @@ private[plan] object TwoPhaseAgg:
               .withOneRowPartials(oneRowPartials)
               .withSelectedInputs(selectedInputs)
               .withDenseSelected(a.denseSelected)
+              .withLongGroupTables(longGroupTables)
         )
       ),
       partialSchema,
@@ -770,6 +776,7 @@ private[plan] object TwoPhaseAgg:
             .withFusedAccumulators(fusedAccumulators)
             .withSelectedInputs(selectedInputs)
             .withDenseSelected(a.denseSelected)
+            .withLongGroupTables(longGroupTables)
       )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
