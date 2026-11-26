@@ -309,6 +309,16 @@ enum Optimization(val name: String):
   case KeySetRowGroups extends Optimization("key_set_row_groups")
 
   /**
+    * A folder (or glob) of plain Parquet files, without partition folders or Iceberg / Delta
+    * metadata and whose files all have its columns, is read as its files' single-file sources
+    * (`catalog/ParquetFolder.scala`): a scan splits into every file's row groups and tests a row
+    * filter while decoding, and planning gets row counts, ranges and samples from the files'
+    * footers. Otherwise uni's dataset reader reads the folder on one thread without statistics:
+    * TPC-DS q17 over a folder of store_sales files took ~10x its single-file time
+    */
+  case FolderFileScans extends Optimization("folder_file_scans")
+
+  /**
     * A LEFT hash join under a filter that tests one of its build key columns for NULL emits only
     * its unmatched probe rows, in probe order, with NULL build columns: a matched row's build key
     * equals a non-NULL probe key, so the filter drops every matched pair. The join skips the match

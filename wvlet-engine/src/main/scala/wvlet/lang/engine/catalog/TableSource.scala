@@ -181,13 +181,16 @@ class MemTable(
 /**
   * A Parquet file, a directory of Parquet files (Hive partitions), or an Iceberg table. With
   * `footerCache`, planning reads (schema, row count, statistics) of a single file open it through
-  * [[ParquetFooterCache]]; scans do when their [[ScanSpec]] says so
+  * [[ParquetFooterCache]]; scans do when their [[ScanSpec]] says so. With `folderFiles`, a folder
+  * of plain Parquet files is read as its files' single-file sources ([[ParquetFolder]],
+  * `folder_file_scans`)
   */
 class ParquetSource(
     val name: String,
     val path: String,
     val footerCache: Boolean = false,
-    declaredKeys: Seq[Seq[String]] = Nil
+    declaredKeys: Seq[Seq[String]] = Nil,
+    val folderFiles: Boolean = true
 ) extends TableSource:
   override def key: Any = ("parquet", path)
 
@@ -205,6 +208,65 @@ class ParquetSource(
 
   /** Whether `path` names one Parquet file, rather than a folder or a glob */
   val isSingleFile: Boolean = path.endsWith(".parquet") && !path.exists(c => c == '*' || c == '{')
+
+  // When the folder was last listed (System.nanoTime), its listing, and its plain files
+  @volatile
+  private var checkedFolder: (Long, Option[IndexedSeq[(String, Long)]], Option[ParquetFolder]) =
+    null
+
+  /**
+    * The files of a folder of plain Parquet files, read as single-file sources ([[ParquetFolder]],
+    * `folder_file_scans`); None for a single file, or a folder that uni's dataset reader reads. The
+    * folder is listed again at most every [[ParquetSource.VersionRecheckNanos]] (a source in a
+    * catalog outlives a query), and its files are reopened only when the listing changed
+    */
+  private[catalog] def folder: Option[ParquetFolder] =
+    if !mayBePlainFolder then
+      None
+    else
+      val now     = System.nanoTime()
+      val checked = checkedFolder
+      if checked != null && now - checked._1 < ParquetSource.VersionRecheckNanos then
+        checked._3
+      else
+        val (listing, current) =
+          try
+            val listing = ParquetFolder.listing(path)
+            if checked != null && checked._2 == listing then
+              (listing, checked._3)
+            else
+              (listing, listing.flatMap(ParquetFolder.open(name, _, footerCache, columnTypes)))
+          catch
+            case _: Exception =>
+              (None, None)
+        checkedFolder = (now, listing, current)
+        current
+
+  // Whether `path` may be a folder of plain files, decided without listing it
+  private lazy val mayBePlainFolder: Boolean =
+    !isSingleFile && folderFiles && ParquetFolder.mayBePlain(path)
+
+  /**
+    * The top-level columns' names with their Parquet physical and logical types (a nested column's
+    * engine type), which a folder's files must share to be read as single files
+    */
+  private[catalog] lazy val columnTypes: IndexedSeq[(String, Any)] =
+    parquetSchema
+      .fields
+      .map {
+        case p: ParquetField.Primitive =>
+          (p.name, (p.physicalType, p.logicalType, p.isRepeated))
+        case f =>
+          (f.name, ParquetSource.ptypeOf(f))
+      }
+      .toIndexedSeq
+
+  /** This source without `folderFiles`: a folder is read through uni's dataset reader */
+  lazy val withoutFolderFiles: ParquetSource =
+    if isSingleFile || !folderFiles then
+      this
+    else
+      ParquetSource(name, path, footerCache, declaredKeys, folderFiles = false)
 
   /** Open the single file, through the footer cache when `cached` */
   private def openFile(cached: Boolean): ParquetFooterCache.Opened =
@@ -245,8 +307,11 @@ class ParquetSource(
         true
     }
 
-  /** Single files only: a folder or Iceberg table still filters rows after decoding them */
-  override def supportsRowFilter: Boolean = isSingleFile
+  /**
+    * Single files, and folders read as their files: uni's dataset reader (an Iceberg table, or a
+    * folder with partitions) still filters rows after decoding them
+    */
+  override def supportsRowFilter: Boolean = isSingleFile || folder.isDefined
 
   /**
     * A folder or Iceberg table too: uni skips each file's row groups by the row-group filter, and
@@ -315,6 +380,8 @@ class ParquetSource(
           min <- s.min.flatMap(asLong)
           max <- s.max.flatMap(asLong)
         yield (min, max)
+      case Some(PType.Int32 | PType.Int64 | PType.Date) if !isSingleFile =>
+        folder.flatMap(_.columnRange(column))
       case _ =>
         None
 
@@ -335,6 +402,8 @@ class ParquetSource(
   override def partRanges(column: String): Option[IndexedSeq[ColumnPartRange]] =
     if columnRange(column).isEmpty then
       return None
+    if !isSingleFile then
+      return folder.flatMap(_.partRanges(column))
     parquetSchema.field(column) match
       case Some(p: ParquetField.Primitive) if rowGroupMeta.nonEmpty =>
         val n =
@@ -377,7 +446,13 @@ class ParquetSource(
 
   end partRanges
 
-  override lazy val estimatedRows: Option[Long] =
+  override def estimatedRows: Option[Long] =
+    if isSingleFile then
+      fileRows
+    else
+      folder.flatMap(_.estimatedRows)
+
+  private lazy val fileRows: Option[Long] =
     try
       if isSingleFile then
         val f = openFile(footerCache).file
@@ -408,7 +483,7 @@ class ParquetSource(
     * [[estimatedDistinct]] is
     */
   override def valueCounts(column: String): Option[ValueCounts] =
-    if !isSingleFile || !schema.fields.exists(f => f.name == column && f.ptype == PType.Str) then
+    if !schema.fields.exists(f => f.name == column && f.ptype == PType.Str) then
       None
     else
       cachedPerVersion(column, ParquetSource.ValueCountsStat)(computeValueCounts(column))
@@ -418,8 +493,7 @@ class ParquetSource(
     * [[valueCounts]] samples. Cached per file version as [[estimatedDistinct]] is
     */
   override def keyRunLength(column: String): Option[Double] =
-    if !isSingleFile ||
-      !schema
+    if !schema
         .fields
         .exists(f =>
           f.name == column && (
@@ -440,7 +514,8 @@ class ParquetSource(
     */
   private def cachedPerVersion[A](column: String, stat: String)(compute: => Option[A]): Option[A] =
     if !isSingleFile then
-      None
+      // A folder read as its files: once per listing
+      folder.flatMap(_.cached(column, stat)(compute))
     else
       fileVersion() match
         case None =>
@@ -485,49 +560,75 @@ class ParquetSource(
 
   private def computeValueCounts(column: String): Option[ValueCounts] =
     try
-      val f = openFile(footerCache).file
-      try ValueCounts.count(sampleBatches(f, column), ParquetSource.MaxSampleValues)
-      finally f.close()
+      ValueCounts.count(
+        sampleColumn(column, ParquetSource.ValueSampleRowGroups),
+        ParquetSource.MaxSampleValues
+      )
     catch
       case _: Exception =>
         None
 
   private def computeRunLength(column: String): Option[Double] =
     try
-      val f = openFile(footerCache).file
-      try
-        var rows = 0L
-        var runs = 0L
-        sampleBatches(f, column).foreach { b =>
-          if b.size > 0 then
-            // A run starts at each row group's first row: the sampled groups aren't adjacent
-            val v = b.column(0)
-            rows += b.size
-            runs += 1
-            var i = 1
-            while i < b.size do
-              if v.isNull(i) != v.isNull(i - 1) || !v.isNull(i) && v.get(i) != v.get(i - 1) then
-                runs += 1
-              i += 1
-        }
-        Option.when(runs > 0)(rows.toDouble / runs)
-      finally
-        f.close()
+      var rows = 0L
+      var runs = 0L
+      sampleColumn(column, ParquetSource.ValueSampleRowGroups).foreach { b =>
+        if b.size > 0 then
+          // A run starts at each row group's first row: the sampled groups aren't adjacent
+          val v = b.column(0)
+          rows += b.size
+          runs += 1
+          var i = 1
+          while i < b.size do
+            if v.isNull(i) != v.isNull(i - 1) || !v.isNull(i) && v.get(i) != v.get(i - 1) then
+              runs += 1
+            i += 1
+      }
+      Option.when(runs > 0)(rows.toDouble / runs)
     catch
       case _: Exception =>
         None
 
   /**
-    * Column `column` of up to [[ParquetSource.ValueSampleRowGroups]] row groups spread over the
-    * file, until [[ParquetSource.ValueSampleRows]] rows, string pages as dictionary codes where
-    * they are dictionary-encoded
+    * Column `column` of up to `samples` row groups spread over the file (or over a folder's files,
+    * [[ParquetFolder.sampleColumn]]), as [[sampleBatches]] reads them
     */
-  private def sampleBatches(f: ParquetFile, column: String): Iterator[Batch] =
-    val groups  = f.rowGroups
-    val n       = groups.size
-    val samples = math.min(n, ParquetSource.ValueSampleRowGroups)
+  private[catalog] def sampleColumn(column: String, samples: Int): Iterator[Batch] =
+    folder match
+      case Some(d) =>
+        d.sampleColumn(column, samples)
+      case None =>
+        val f = openFile(footerCache).file
+        try sampleBatches(f, column, samples).toVector.iterator
+        finally f.close()
+
+  /** The single file's row group count */
+  private[catalog] def rowGroupCount: Int = rowGroupMeta.size
+
+  /** Column `column` of the single file's row groups `groups`, read for sampling */
+  private[catalog] def sampleRowGroups(column: String, groups: Seq[Int]): Iterator[Batch] =
+    val f = openFile(footerCache).file
+    try
+      val (cols, types, options) = readOptions(ScanSpec(Some(Seq(column))))
+      groups
+        .map(g =>
+          ParquetSource.toBatch(f.readRowGroup(g, options), cols, types, dictionaryCodes = true)
+        )
+        .iterator
+    finally
+      f.close()
+
+  /**
+    * Column `column` of up to `samples` row groups spread over the file, until
+    * [[ParquetSource.ValueSampleRows]] rows, string pages as dictionary codes where they are
+    * dictionary-encoded
+    */
+  private def sampleBatches(f: ParquetFile, column: String, samples: Int): Iterator[Batch] =
+    val groups = f.rowGroups
+    val n      = groups.size
+    val picks  = math.min(n, samples)
     // Spread over the file: generated and appended data is often ordered by a key
-    val picked                 = (0 until samples).map(i => (i.toLong * n / samples).toInt).distinct
+    val picked                 = (0 until picks).map(i => (i.toLong * n / picks).toInt).distinct
     val (cols, types, options) = readOptions(ScanSpec(Some(Seq(column))))
     var sampled                = 0L
     picked
@@ -539,51 +640,53 @@ class ParquetSource(
       }
 
   private def computeDistinct(column: String): Option[Double] =
-    if !isSingleFile then
-      None
-    else
-      try
+    try
+      if !isSingleFile then
+        // A folder read as its files: their null counts aren't summed, so every row counts
+        estimatedRows.flatMap(rows => distinctOf(column, rows, rows.toDouble))
+      else
         val opened = openFile(footerCache)
         val f      = opened.file
         try
           val rows    = f.numRows
           val stats   = opened.columnStatistics.get(column)
           val nonNull = stats.flatMap(_.numNulls).map(n => rows - n).getOrElse(rows).toDouble
-          schema.fields.find(_.name == column).map(_.ptype) match
-            case Some(PType.Int32 | PType.Int64 | PType.Date) =>
-              columnRange(column).map((min, max) =>
-                math.min(nonNull, max.toDouble - min.toDouble + 1)
-              )
-            case Some(PType.Str) if rows <= ParquetSource.DistinctScanLimit =>
-              val seen = scala.collection.mutable.HashSet.empty[Any]
-              scan(ScanSpec(Some(Seq(column)), footerCache = footerCache)).foreach { b =>
-                val v = b.columns(0)
-                var i = 0
-                while i < b.size do
-                  val x = v.get(i)
-                  if x != null then
-                    seen += x
-                  i += 1
-              }
-              Some(math.max(1.0, seen.size.toDouble))
-            case _ =>
-              None
+          distinctOf(column, rows, nonNull)
         finally
           f.close()
-        end try
-      catch
-        case _: Exception =>
-          None
+    catch
+      case _: Exception =>
+        None
+
+  /** [[estimatedDistinct]] of a column of `rows` rows, `nonNull` of them not null */
+  private def distinctOf(column: String, rows: Long, nonNull: Double): Option[Double] =
+    schema.fields.find(_.name == column).map(_.ptype) match
+      case Some(PType.Int32 | PType.Int64 | PType.Date) =>
+        columnRange(column).map((min, max) => math.min(nonNull, max.toDouble - min.toDouble + 1))
+      case Some(PType.Str) if rows <= ParquetSource.DistinctScanLimit =>
+        val seen = scala.collection.mutable.HashSet.empty[Any]
+        scan(ScanSpec(Some(Seq(column)), footerCache = footerCache)).foreach { b =>
+          val v = b.columns(0)
+          var i = 0
+          while i < b.size do
+            val x = v.get(i)
+            if x != null then
+              seen += x
+            i += 1
+        }
+        Some(math.max(1.0, seen.size.toDouble))
+      case _ =>
+        None
 
   private def readOptions(spec: ScanSpec): (Seq[String], Seq[PType], ParquetReadOptions) =
     ParquetSource.readOptions(schema, spec)
 
-  override def canSplit: Boolean = isSingleFile
+  override def canSplit: Boolean = isSingleFile || folder.isDefined
 
-  /** One part per row group the filter doesn't skip */
+  /** One part per row group the filter doesn't skip (in every file of a [[folder]]) */
   override def scanSplits(spec: ScanSpec): Option[ScanSplits] =
     if !isSingleFile then
-      None
+      folder.flatMap(_.scanSplits(spec))
     else
       val (cols, types, options) = readOptions(spec)
       val f                      = openFile(spec.footerCache).file
@@ -611,6 +714,29 @@ class ParquetSource(
         }
         val meta = f.rowGroups
         Some(ScanSplits(parts, () => f.close(), groups.map(g => meta(g).numRows)))
+
+  /** The single file's row groups that `spec` doesn't skip, with their row counts */
+  private[catalog] def selectedRowGroups(spec: ScanSpec): IndexedSeq[(Int, Long)] =
+    val f = openForScan(spec)
+    try
+      val meta = f.rowGroups
+      ParquetSource.selectRowGroups(f, spec, readOptions(spec)._3).map(g => (g, meta(g).numRows))
+    finally
+      f.close()
+
+  /** The single file, opened for a scan with `spec` */
+  private[catalog] def openForScan(spec: ScanSpec): ParquetFile = openFile(spec.footerCache).file
+
+  /** Row group `g` of `f` (this single file), read with `spec` */
+  private[catalog] def readRowGroup(f: ParquetFile, g: Int, spec: ScanSpec): Batch =
+    val (cols, types, options) = readOptions(spec)
+    ParquetSource.toBatch(
+      f.readRowGroup(g, options),
+      cols,
+      types,
+      spec.dictionaryCodes,
+      spec.lazyStrings
+    )
 
   def scan(spec: ScanSpec): Iterator[Batch] =
     val (cols, types, options)       = readOptions(spec)
@@ -642,8 +768,12 @@ class ParquetSource(
             throw e
       ParquetSource.closing(it, () => f.close())
     else
-      val ds = ParquetSource.openDataset(path)
-      ParquetSource.closing(ds.readBatches(options).map(batch), () => ds.close())
+      folder match
+        case Some(d) =>
+          d.files.iterator.flatMap(_.scan(spec))
+        case None =>
+          val ds = ParquetSource.openDataset(path)
+          ParquetSource.closing(ds.readBatches(options).map(batch), () => ds.close())
     end if
 
   end scan
@@ -886,7 +1016,7 @@ object ParquetSource:
             e
           )
 
-  private def isIcebergPath(path: String): Boolean =
+  private[catalog] def isIcebergPath(path: String): Boolean =
     path.endsWith(".metadata.json") || IcebergWriter.isTable(path)
 
   def closing[A](it: Iterator[A], close: () => Unit): Iterator[A] =
