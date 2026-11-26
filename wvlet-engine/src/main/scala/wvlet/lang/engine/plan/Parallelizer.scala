@@ -220,6 +220,8 @@ object Parallelizer:
             .withDirectIndex(j.directIndex)
             .withParallelBuild(j.parallelBuild)
             .withStringCodes(j.stringCodes)
+            .withUnmatchedOnly(j.unmatchedOnly)
+            .withMissFilter(j.joinBuild.missFilter)
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
             close = p.close :+ (() => template.right.close())
@@ -685,6 +687,8 @@ object Parallelizer:
               .withDirectIndex(j.directIndex)
               .withParallelBuild(j.parallelBuild)
               .withStringCodes(j.stringCodes)
+              .withUnmatchedOnly(j.unmatchedOnly)
+              .withMissFilter(j.joinBuild.missFilter)
           case j: NestedLoopJoinOp =>
             NestedLoopJoinOp(r(j.left), r(j.right), j.cond, j.kind, j.schema)
           case s: SetOpOp if !s.all =>

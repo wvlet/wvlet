@@ -28,6 +28,13 @@ import wvlet.lang.engine.vector.*
   * hash; the low bits pick the entry inside it. Partitions are built in parallel, each writing its
   * own region, and a probe goes straight to a row's region and entry, so it reads probe keys in row
   * order with no partition split or gather. Built once, then only read.
+  *
+  * With `missFilter` (`probe_miss_filter`), the table also keeps a register-blocked Bloom filter of
+  * its keys (one 64-bit word per key, 4 bits set, about 8 bits per key), split into the same
+  * partitions, so a probe reads a word of a filter that stays in cache before the entries, which
+  * take 16 to 64 bytes per key. Probes of joins that keep their unmatched rows (anti joins, the
+  * unmatched-only LEFT joins of TPC-DS q78) mostly miss, and the entries of a large build are out
+  * of cache.
   */
 final class LongJoinTable private (
     entries: Array[Long],
@@ -35,7 +42,10 @@ final class LongJoinTable private (
     regionBits: Int,
     // The smallest key, and the largest key - min; narrow entries when range < 2^32
     min: Long,
-    range: Long
+    range: Long,
+    // The Bloom filter words of each partition, 2^bloomBits of them, or null
+    bloom: Array[Long],
+    bloomBits: Int
 ):
   import LongJoinTable.*
 
@@ -45,6 +55,14 @@ final class LongJoinTable private (
   /** The first slot of key hash h */
   private inline def slotOf(h: Int): Int =
     (((h.toLong & 0xffffffffL) >>> (32 - partBits)).toInt << regionBits) | (h & regionMask)
+
+  /** The Bloom word of key hash h and key mix m, in h's partition */
+  private inline def wordOf(h: Int, m: Long): Int =
+    (((h.toLong & 0xffffffffL) >>> (32 - partBits)).toInt << bloomBits) |
+      (m >>> (64 - bloomBits)).toInt
+
+  /** Whether the table keeps a Bloom filter of its keys (for tests) */
+  def hasMissFilter: Boolean = bloom != null
 
   /** The next slot after s, wrapping inside s's region */
   private inline def nextSlot(s: Int): Int = (s & ~regionMask) | ((s + 1) & regionMask)
@@ -65,18 +83,32 @@ final class LongJoinTable private (
   ): Unit =
     val e = entries
     // Slots first, in a pass of their own: the entry loads below then do not wait on hashing, and
-    // the cache misses of neighboring rows overlap
+    // the cache misses of neighboring rows overlap. A key the Bloom filter rejects gets slot -1
     var i = 0
-    while i < n do
-      out(i) = slotOf(hash(keyAt(i)))
-      i += 1
+    if bloom == null then
+      while i < n do
+        out(i) = slotOf(hash(keyAt(i)))
+        i += 1
+    else
+      val f = bloom
+      while i < n do
+        val k = keyAt(i)
+        val h = hash(k)
+        val m = RowKeyFilter.mix(k)
+        val b = RowKeyFilter.maskOf(m)
+        out(i) =
+          if (f(wordOf(h, m)) & b) == b then
+            slotOf(h)
+          else
+            -1
+        i += 1
     i = 0
     if narrow then
       while i < n do
         val d = keyAt(i) - min
         // Keys outside the build range (d < 0 also when the subtraction overflowed) match nothing
         var row = -1
-        if d >= 0 && d <= range && (nulls == null || !nulls(i)) then
+        if d >= 0 && d <= range && out(i) >= 0 && (nulls == null || !nulls(i)) then
           var s         = out(i)
           var searching = true
           while searching do
@@ -95,7 +127,7 @@ final class LongJoinTable private (
         val key       = keyAt(i)
         var s         = out(i)
         var row       = -1
-        var searching = true
+        var searching = s >= 0
         while searching do
           val r = e(2 * s + 1).toInt
           if r < 0 then
@@ -114,6 +146,17 @@ final class LongJoinTable private (
     end if
 
   end probe
+
+  /** Add the keys of build rows `rows` to the Bloom filter */
+  private def addToFilter(key: Array[Long], rows: Array[Int]): Unit =
+    val f = bloom
+    var j = 0
+    while j < rows.length do
+      val k = key(rows(j))
+      val m = RowKeyFilter.mix(k)
+      val w = wordOf(hash(k), m)
+      f(w) = f(w) | RowKeyFilter.maskOf(m)
+      j += 1
 
   /** Insert the build rows in reverse, so chains enumerate them in input order */
   private def insertAll(key: Array[Long], rows: Array[Int], chain: Array[Int]): Boolean =
@@ -175,6 +218,12 @@ object LongJoinTable:
   /** The most slots of a table, so that the indexes of two-Long entries fit in an Int */
   inline val MaxSlots = 1L << 28
 
+  /**
+    * The smallest table, in bytes of entries, that keeps a Bloom filter with `missFilter`: smaller
+    * ones mostly stay in cache, so probing them directly is as fast
+    */
+  inline val MinMissFilterBytes = 16L << 20
+
   /** The key hash; the top bits pick the partition, the low bits the slot */
   inline def hash(x: Long): Int = GroupTable.fmix(GroupTable.hashLong(x))
 
@@ -183,14 +232,18 @@ object LongJoinTable:
     * of [[hash]]), whose keys are `key(row)`. `chain(row)` is set to the next row with the same
     * key, in input order, and must start at -1. Returns the table and whether no two rows share a
     * key, or a null table, leaving `chain` untouched, when it would take more than
-    * [[MaxSlotsPerRow]] slots per row (partitions skewed by a frequent key) or [[MaxSlots]] slots
+    * [[MaxSlotsPerRow]] slots per row (partitions skewed by a frequent key) or [[MaxSlots]] slots.
+    * With `missFilter`, a table of at least `minFilterBytes` of entries also keeps a Bloom filter
+    * of its keys
     */
   def build(
       key: Array[Long],
       rowsOf: Array[Array[Int]],
       partBits: Int,
       chain: Array[Int],
-      runner: TaskRunner
+      runner: TaskRunner,
+      missFilter: Boolean = false,
+      minFilterBytes: Long = MinMissFilterBytes
   ): (LongJoinTable, Boolean) =
     val parts   = rowsOf.length
     var maxRows = 0
@@ -233,14 +286,29 @@ object LongJoinTable:
         2
     val entries = new Array[Long](width * slots.toInt)
     java.util.Arrays.fill(entries, Empty)
-    val table  = LongJoinTable(entries, partBits, regionBits, lo, range)
+    // About 8 bits (an eighth of a word) per key of the largest partition, rounded up: 1.75x faster
+    // probes of 2.9M keys that miss 90% of the time than 16 or 4 bits
+    val bloomBits =
+      if missFilter && width * slots * 8L >= minFilterBytes then
+        64 - java.lang.Long.numberOfLeadingZeros(math.max(1L, (maxRows + 7L) / 8 - 1))
+      else
+        0
+    val bloom =
+      if bloomBits > 0 then
+        new Array[Long](parts << bloomBits)
+      else
+        null
+    val table  = LongJoinTable(entries, partBits, regionBits, lo, range, bloom, bloomBits)
     val unique = new Array[Boolean](parts)
+    // Partitions own disjoint entry regions and Bloom words
+    def insertPart(p: Int): Unit =
+      unique(p) = table.insertAll(key, rowsOf(p), chain)
+      if bloom != null then
+        table.addToFilter(key, rowsOf(p))
     if parts == 1 then
-      unique(0) = table.insertAll(key, rowsOf(0), chain)
+      insertPart(0)
     else
-      (0 until parts)
-        .map(p => runner.submit(() => unique(p) = table.insertAll(key, rowsOf(p), chain)))
-        .foreach(_.get())
+      (0 until parts).map(p => runner.submit(() => insertPart(p))).foreach(_.get())
     (table, !unique.contains(false))
 
   end build

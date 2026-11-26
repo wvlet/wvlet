@@ -152,4 +152,48 @@ class LongJoinTableTest extends UniTest:
     allMatches(skewed, probe)(0).size shouldBe n - n / 100
   }
 
+  test("should find the same first rows through a Bloom filter of the keys") {
+    val rnd = java.util.Random(7)
+    // Narrow (range < 2^32) and wide entries
+    Seq(1_000_000L, 1L << 40).foreach { span =>
+      val n                      = 20_000
+      val keys                   = Array.fill(n)((rnd.nextLong() & Long.MaxValue) % span)
+      val parts                  = 4
+      val h                      = keys.map(LongJoinTable.hash)
+      val rows                   = GroupTable.partitionRows(h, n, parts)
+      def table(filter: Boolean) =
+        val (t, _) = LongJoinTable.build(
+          keys,
+          rows,
+          2,
+          Array.fill(n)(-1),
+          TaskRunner.Sequential,
+          missFilter = filter,
+          minFilterBytes = 0L
+        )
+        t
+      val plain    = table(false)
+      val filtered = table(true)
+      plain.hasMissFilter shouldBe false
+      filtered.hasMissFilter shouldBe true
+      // Half build keys, half other values, and some NULLs
+      val m     = 8192
+      val probe =
+        Array.tabulate(m)(i =>
+          if i % 2 == 0 then
+            keys(rnd.nextInt(n))
+          else
+            (rnd.nextLong() & Long.MaxValue) % span
+        )
+      val nulls  = Array.tabulate(m)(_ % 7 == 0)
+      val expect = new Array[Int](m)
+      val actual = new Array[Int](m)
+      plain.firstRows(probe, nulls, m, expect)
+      filtered.firstRows(probe, nulls, m, actual)
+      actual.toSeq shouldBe expect.toSeq
+      // Every build key is found
+      expect.indices.count(i => i % 2 == 0 && !nulls(i) && expect(i) < 0) shouldBe 0
+    }
+  }
+
 end LongJoinTableTest
