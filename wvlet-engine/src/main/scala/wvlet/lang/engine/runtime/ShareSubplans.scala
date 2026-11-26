@@ -33,8 +33,9 @@ object ShareSubplans:
     * Equality is conservative. Expressions compare as values after renumbering (floating-point
     * constants by their bits), so a row function compares its function by reference. Literal
     * counts, which only steer join order estimates, are left out. A plan with `Values` rows or a
-    * `CTERef`, whose batches and CTEs only compare by reference, or one reading a column it doesn't
-    * define (an outer reference), has no key.
+    * `CTERef`, whose batches and CTEs only compare by reference, one reading a column it doesn't
+    * define (an outer reference), or one with a non-deterministic expression (`random()`) has no
+    * key.
     */
   def key(p: RuntimePlan): Option[Any] =
     val ids = mutable.HashMap.empty[Int, Int]
@@ -74,7 +75,11 @@ object ShareSubplans:
 
     // With the bits of its floating-point constants, since `==` on boxed values equates 0.0 and
     // -0.0 (and Scala.js prints both as 0)
+    // A non-deterministic expression (random()) has no key: two of them draw independently, so
+    // plans reading them never compute the same rows
     private def expr(e: BExpr): Any =
+      if !PushDownFilters.isDeterministic(e.expr) then
+        throw NoKey()
       val v = renumber(e)
       (v, floatBits(v))
 

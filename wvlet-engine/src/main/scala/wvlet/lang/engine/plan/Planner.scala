@@ -575,7 +575,8 @@ class Planner(
       s.query match
         case p: Project
             if p.selectItems.size == 1 && Binder.containsAggregate(p.selectItems.head) &&
-              !scalarResults.containsKey(p) && !prefetchTried.containsKey(p) =>
+              !scalarResults.containsKey(p) && !prefetchTried.containsKey(p) &&
+              !callsVolatile(p.selectItems.head) =>
           prefetchTried.put(p, ())
           if !readsCTE(p.child, cteNames) then
             inputKey(p.child).foreach(k => subs += k -> p)
@@ -3371,6 +3372,19 @@ class Planner(
     (marked, markName)
 
   end decorrelateExists
+
+  /**
+    * Whether `e` calls a non-deterministic function (`random()`), whose calls each draw their own
+    * values: merged into one query, equal calls would be computed once
+    */
+  private def callsVolatile(e: Expression): Boolean =
+    var found = false
+    e.traverseExpressions {
+      case f: FunctionApply
+          if ScalarFunctions.volatileFunctions.contains(Binder.functionName(f).toLowerCase) =>
+        found = true
+    }
+    found
 
   /** Uncorrelated scalar subquery as a constant */
   def bindScalarSubquery(binder: Binder, sub: Relation): VExpr =

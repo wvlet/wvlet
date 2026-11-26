@@ -16,6 +16,7 @@ package wvlet.lang.engine.plan
 import wvlet.lang.engine.exec.AggCall
 import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.VExpr
+import wvlet.lang.engine.runtime.PushDownFilters
 import wvlet.lang.engine.vector.Batch
 import wvlet.lang.engine.vector.PType
 import wvlet.lang.engine.vector.Schema
@@ -46,18 +47,21 @@ private[engine] object SharedGroups:
   /**
     * Whether aggregating the values of `c` over groups gives its value over the groups' rows: a sum
     * of sums (integers or decimals, whose sums are exact), the min of mins, and the max of maxes.
-    * Counts are left out, since a count over no groups is NULL rather than 0
+    * Counts are left out, since a count over no groups is NULL rather than 0. A call over a
+    * non-deterministic expression (`random()`) is left out too: another call of the same text draws
+    * its own values
     */
   def mergeable(c: AggCall): Boolean =
-    !c.distinct && c.order.isEmpty && (
-      c.name.toLowerCase match
-        case "min" | "max" =>
-          true
-        case "sum" =>
-          c.ptype == PType.Int64 || c.ptype.isInstanceOf[PType.Decimal]
-        case _ =>
-          false
-    )
+    !c.distinct && c.order.isEmpty && c.args.forall(PushDownFilters.isDeterministic) &&
+      c.filter.forall(PushDownFilters.isDeterministic) && (
+        c.name.toLowerCase match
+          case "min" | "max" =>
+            true
+          case "sum" =>
+            c.ptype == PType.Int64 || c.ptype.isInstanceOf[PType.Decimal]
+          case _ =>
+            false
+      )
 
   /** `e` over canonical column ids: column `i` reads `ids(i)`, and names are dropped */
   def canon(e: VExpr, ids: IndexedSeq[Int]): VExpr = VExprs.mapRefs(
@@ -87,7 +91,8 @@ private[engine] object SharedGroups:
       val ki = keys.map(k => g.keys.indexOf(canon(k, ids)))
       val ci = calls.map(c => g.calls.indexOf(canon(c, ids)))
       Option.when(
-        keys.nonEmpty && ki.forall(_ >= 0) && ci.forall(_ >= 0) && calls.forall(mergeable)
+        keys.nonEmpty && ki.forall(_ >= 0) && ci.forall(_ >= 0) && calls.forall(mergeable) &&
+          keys.forall(PushDownFilters.isDeterministic)
       ) {
         val s           = g.schema
         val mergedKeys  = ki.map(i => ColRef(i, s(i).ptype, s(i).name))
