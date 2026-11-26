@@ -989,6 +989,15 @@ enum Optimization(val name: String):
     */
   case SemiAntiOneProbe extends Optimization("semi_anti_one_probe")
 
+  /**
+    * A sort with a limit reads the string columns of a scan that only pass through to its output
+    * for its N rows alone: the top-N is computed without them, and a second scan of the table,
+    * filtered by the N rows' declared unique key, joins them back
+    * ([[wvlet.lang.engine.runtime.LateColumns]]). TPC-H q10 decoded the name, address, phone and
+    * comment of 381K customers for its top 20
+    */
+  case LateColumns extends Optimization("late_columns")
+
 end Optimization
 
 object Optimization:
