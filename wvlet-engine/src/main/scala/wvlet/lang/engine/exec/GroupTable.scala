@@ -430,8 +430,25 @@ final class GroupTable(
   // The group ids [[DictionaryIdsAt]] returns, reused across batches
   private var idScratch: Array[Int] = null
 
-  /** For [[DictionaryIdsAt]]: whether key k is held as strings */
-  private[exec] def strKey(k: Int): Boolean = stores(k).isInstanceOf[StrStore]
+  /**
+    * The number of combinations of the keys' dictionary codes, or -1 unless every key is a string
+    * carrying codes and the combinations number at most half of the n rows
+    */
+  private[exec] def codeCombinations(norm: Array[Vec], n: Int): Int =
+    if width == 0 then
+      return -1
+    var combos = 1L
+    var k      = 0
+    while k < width do
+      norm(k) match
+        case v: StrVec if v.hasCodes && stores(k).isInstanceOf[StrStore] =>
+          combos *= v.dictSize
+        case _ =>
+          return -1
+      if combos * 2 > n then
+        return -1
+      k += 1
+    combos.toInt
 
   /** For [[DictionaryIdsAt]]: [[codeGroups]] for m combinations, all -1 */
   private[exec] def codeGroupsFor(m: Int): Array[Int] =
@@ -468,23 +485,11 @@ final class GroupTable(
       h: Array[Int],
       sel: Array[Int] = null
   ): Array[Int] =
-    if width == 0 then
+    val m = codeCombinations(norm, n)
+    if m < 0 then
       return null
-    var combos = 1L
-    var k      = 0
-    while k < width do
-      norm(k) match
-        case v: StrVec if v.hasCodes && stores(k).isInstanceOf[StrStore] =>
-          combos *= v.dictSize
-        case _ =>
-          return null
-      if combos * 2 > n then
-        return null
-      k += 1
-    val m = combos.toInt
-    if codeGroups == null || codeGroups.length < m then
-      codeGroups = new Array[Int](math.max(m, 64))
-    java.util.Arrays.fill(codeGroups, 0, m, -1)
+    codeGroupsFor(m)
+    var k = 0
     if rowCodes == null || rowCodes.length < n then
       rowCodes = new Array[Int](n)
     val c = rowCodes

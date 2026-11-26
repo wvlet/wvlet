@@ -781,8 +781,8 @@ enum Optimization(val name: String):
 
   /**
     * Hash aggregations over dense selected rows ([[DenseSelectedRows]]) compute fused decimal
-    * products into Long arrays reused from batch to batch, and look the group ids of two string
-    * keys up from their dictionary codes in one pass into a reused id array
+    * products into Long arrays reused from batch to batch, and look the group ids of one or two
+    * string keys up from their dictionary codes in one pass into a reused id array
     * ([[wvlet.lang.engine.expr.LongScratch]], [[wvlet.lang.engine.exec.DictionaryIdsAt]]). TPC-H q1
     * spent about 2% of its CPU zeroing fresh product arrays and 5% combining the codes of its two
     * keys column by column

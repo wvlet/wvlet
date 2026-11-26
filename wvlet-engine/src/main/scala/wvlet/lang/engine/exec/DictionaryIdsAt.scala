@@ -33,20 +33,10 @@ private[exec] object DictionaryIdsAt:
     */
   def ids(table: GroupTable, norm: Array[Vec], n: Int, sel: Array[Int]): Array[Int] =
     val width = norm.length
-    if width == 0 || width > 2 then
+    val m     = table.codeCombinations(norm, n)
+    if m < 0 || width > 2 then
       return null
-    var combos = 1L
-    var k      = 0
-    while k < width do
-      norm(k) match
-        case v: StrVec if v.hasCodes && table.strKey(k) =>
-          combos *= v.dictSize
-        case _ =>
-          return null
-      if combos * 2 > n then
-        return null
-      k += 1
-    val groups = table.codeGroupsFor(combos.toInt)
+    val groups = table.codeGroupsFor(m)
     val ids    = table.idsFor(n)
     val c0     = norm(0).asInstanceOf[StrVec].codes
     var i      = 0
