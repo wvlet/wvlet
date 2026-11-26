@@ -221,9 +221,16 @@ class Planner(
   private[engine] var rootPlans: Option[RootPlans] = None
 
   /** Plan a relation, then drop columns no operator needs so that scans read fewer columns */
-  def plan(r: Relation): Operator =
+  def plan(rel: Relation): Operator =
     planDepth += 1
     try
+      val r =
+        if planDepth == 1 && enabled(Optimization.ShareSubqueryScans) &&
+          enabled(Optimization.ShareCTEs)
+        then
+          SharedScans.rewrite(this, rel)
+        else
+          rel
       if enabled(Optimization.PrefetchScalarSubqueries) then
         prefetchScalarSubqueries(r)
       if planDepth == 1 then
@@ -476,17 +483,22 @@ class Planner(
     * The names of the CTEs in scope and of those `r` defines. CTE names are resolved by scope while
     * planning, so a relation reading one of these names may read a CTE
     */
-  private def cteNamesIn(r: Relation): Set[String] =
+  private[engine] def cteNamesIn(r: Relation): Set[String] =
     val names = mutable.Set.from(cteDefs.keys)
     r.traverse { case w: WithQuery =>
       w.queryDefs.foreach(d => names += d.alias.leafName.toLowerCase)
     }
     names.toSet
 
-  /** Whether `rel` reads a table named as one of `cteNames` */
+  /**
+    * Whether `rel` reads a table named as one of `cteNames`, or a shared scan's CTE through a
+    * filter the tree doesn't show it in ([[sharedScanOf]])
+    */
   private def readsCTE(rel: Relation, cteNames: Set[String]): Boolean =
     var found = false
     rel.traverse {
+      case f: Filter if sharedScans.containsKey(f) =>
+        found = true
       case t: TableRef if cteNames.contains(t.name.leafName.toLowerCase) =>
         found = true
       case t: TableScan if cteNames.contains(t.name.name.toLowerCase) =>
@@ -697,6 +709,22 @@ class Planner(
         }
     )
 
+  // Filters over a table whose scan is shared (`share_subquery_scans`), with the relation each
+  // reads instead: its other conjuncts over the shared CTE
+  private val sharedScans = java.util.IdentityHashMap[Filter, Relation]()
+  // Reads of the shared scans' CTEs, which their tree doesn't show
+  private val sharedScanReads = mutable.HashMap.empty[String, Int]
+
+  /** Read the filter `f` as `r`, a filter over a shared scan ([[SharedScans]]) */
+  private[engine] def readSharedScan(f: Filter, r: Relation): Unit = sharedScans.put(f, r)
+
+  /** Count `n` reads of the CTE `name` of a shared scan */
+  private[engine] def addCTEReads(name: String, n: Int): Unit =
+    sharedScanReads(name.toLowerCase) = n
+
+  /** The relation the filter `f` reads instead, when it reads a shared scan */
+  private[engine] def sharedScanOf(f: Filter): Option[Relation] = Option(sharedScans.get(f))
+
   /** Count the references to each CTE of `w`, including those in subqueries */
   private def countCTERefs(w: WithQuery): Unit =
     val names = w.queryDefs.map(_.alias.leafName.toLowerCase).toSet
@@ -711,6 +739,7 @@ class Planner(
       case t: TableScan =>
         count(t.name.name.toLowerCase)
     }
+    names.foreach(n => sharedScanReads.get(n).foreach(k => cteRefCounts(n) = cteRefCounts(n) + k))
 
   /** The source of a catalog table (not a CTE) */
   private[engine] def tableSource(name: String, fullName: String): TableSource = catalog

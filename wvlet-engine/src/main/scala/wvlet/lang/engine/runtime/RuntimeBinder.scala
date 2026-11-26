@@ -301,6 +301,13 @@ class RuntimeBinder(planner: Planner):
         renamed(child, fields.map(newColumn))
 
   private def filter(f: Filter): RuntimePlan =
+    planner.sharedScanOf(f) match
+      case Some(r) =>
+        bind(r)
+      case None =>
+        filterInPlace(f)
+
+  private def filterInPlace(f: Filter): RuntimePlan =
     f.child match
       case _: GroupBy =>
         // HAVING without a selection

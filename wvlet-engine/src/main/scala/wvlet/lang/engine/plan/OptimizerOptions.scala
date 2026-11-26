@@ -155,6 +155,13 @@ enum Optimization(val name: String):
     */
   case ShareInSubqueryGroups extends Optimization("share_in_subquery_groups")
 
+  /**
+    * Read a table once, filtered by the conjuncts an uncorrelated scalar subquery and the rest of
+    * the query share, as a CTE of the columns the query names, when the conjuncts keep few rows:
+    * the subquery computes it at plan time, and the other reads scan it (TPC-H q22, TPC-DS q44)
+    */
+  case ShareSubqueryScans extends Optimization("share_subquery_scans")
+
   /** Compute a CTE referenced more than once only once */
   case ShareCTEs extends Optimization("share_ctes")
 
