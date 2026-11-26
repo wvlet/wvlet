@@ -20,9 +20,12 @@ import wvlet.lang.engine.vector.*
   * first build row side by side, so a probe reads one cache line instead of a slot, then the stored
   * key, then the group's first row (as DuckDB's salted entries and DataFusion's JoinHashMap).
   *
-  * When the build keys span less than 2^32 values, an entry is one Long, `(key - min) << 32 | row`,
-  * so the table is half as large; otherwise an entry is two Longs, the key then the row. Empty
-  * entries are -1 (no row is -1).
+  * When the build keys span fewer values than fit beside a row number, an entry is one Long,
+  * `(key - min) << rowBits | row`, so the table is half as large; otherwise an entry is two Longs,
+  * the key then the row. With `fitRowBits` (`narrow_join_entries`), `rowBits` is the fewest bits
+  * that hold every build row, so packed multi-column keys of up to 64 - rowBits bits (TPC-DS q78's
+  * year, item and customer, about 39 bits) still take one Long; otherwise it is 32. Empty entries
+  * are -1 (no row is all ones in its bits).
   *
   * The entries are split into one region per hash partition, picked by the top bits of the key
   * hash; the low bits pick the entry inside it. Partitions are built in parallel, each writing its
@@ -40,9 +43,11 @@ final class LongJoinTable private (
     entries: Array[Long],
     partBits: Int,
     regionBits: Int,
-    // The smallest key, and the largest key - min; narrow entries when range < 2^32
+    // The smallest key, and the largest key - min; narrow entries when range < 2^(64 - rowBits)
     min: Long,
     range: Long,
+    // The low bits of a narrow entry that hold its row
+    rowBits: Int,
     // The Bloom filter words of each partition, 2^bloomBits of them, or null
     bloom: Array[Long],
     bloomBits: Int
@@ -50,7 +55,8 @@ final class LongJoinTable private (
   import LongJoinTable.*
 
   private val regionMask = (1 << regionBits) - 1
-  private val narrow     = range < (1L << 32)
+  private val narrow     = fitsNarrow(range, rowBits)
+  private val rowMask    = (1L << rowBits) - 1
 
   /** The first slot of key hash h */
   private inline def slotOf(h: Int): Int =
@@ -60,6 +66,9 @@ final class LongJoinTable private (
   private inline def wordOf(h: Int, m: Long): Int =
     (((h.toLong & 0xffffffffL) >>> (32 - partBits)).toInt << bloomBits) |
       (m >>> (64 - bloomBits)).toInt
+
+  /** Whether an entry is one Long (for tests) */
+  def hasNarrowEntries: Boolean = narrow
 
   /** Whether the table keeps a Bloom filter of its keys (for tests) */
   def hasMissFilter: Boolean = bloom != null
@@ -115,8 +124,8 @@ final class LongJoinTable private (
             val x = e(s)
             if x == Empty then
               searching = false
-            else if (x >>> 32) == d then
-              row = x.toInt
+            else if (x >>> rowBits) == d then
+              row = (x & rowMask).toInt
               searching = false
             else
               s = nextSlot(s)
@@ -173,11 +182,11 @@ final class LongJoinTable private (
         while !done do
           val x = e(s)
           if x == Empty then
-            e(s) = (d << 32) | row.toLong
+            e(s) = (d << rowBits) | row.toLong
             done = true
-          else if (x >>> 32) == d then
-            chain(row) = x.toInt
-            e(s) = (d << 32) | row.toLong
+          else if (x >>> rowBits) == d then
+            chain(row) = (x & rowMask).toInt
+            e(s) = (d << rowBits) | row.toLong
             dup = true
             done = true
           else
@@ -224,6 +233,20 @@ object LongJoinTable:
     */
   inline val MinMissFilterBytes = 16L << 20
 
+  /** Whether keys spanning `range` fit beside `rowBits` row bits in one Long */
+  private def fitsNarrow(range: Long, rowBits: Int): Boolean =
+    rowBits >= 1 && rowBits <= 32 && range < (1L << (64 - rowBits))
+
+  /**
+    * The row bits of a narrow entry over `size` build rows: the fewest that hold rows 0 until size
+    * without all ones (the empty entry), or 32 without `fitRowBits`
+    */
+  private[exec] def rowBitsOf(size: Int, fitRowBits: Boolean): Int =
+    if fitRowBits then
+      64 - java.lang.Long.numberOfLeadingZeros(size.toLong)
+    else
+      32
+
   /** The key hash; the top bits pick the partition, the low bits the slot */
   inline def hash(x: Long): Int = GroupTable.fmix(GroupTable.hashLong(x))
 
@@ -234,7 +257,8 @@ object LongJoinTable:
     * key, or a null table, leaving `chain` untouched, when it would take more than
     * [[MaxSlotsPerRow]] slots per row (partitions skewed by a frequent key) or [[MaxSlots]] slots.
     * With `missFilter`, a table of at least `minFilterBytes` of entries also keeps a Bloom filter
-    * of its keys
+    * of its keys. With `fitRowBits` (`narrow_join_entries`), narrow entries give the row only the
+    * bits the build rows need
     */
   def build(
       key: Array[Long],
@@ -243,7 +267,8 @@ object LongJoinTable:
       chain: Array[Int],
       runner: TaskRunner,
       missFilter: Boolean = false,
-      minFilterBytes: Long = MinMissFilterBytes
+      minFilterBytes: Long = MinMissFilterBytes,
+      fitRowBits: Boolean = true
   ): (LongJoinTable, Boolean) =
     val parts   = rowsOf.length
     var maxRows = 0
@@ -279,8 +304,9 @@ object LongJoinTable:
     val slots = parts.toLong << regionBits
     if slots > MaxSlots || slots > math.max(1024L, rows * MaxSlotsPerRow) then
       return (null, false)
-    val width =
-      if range < (1L << 32) then
+    val rowBits = rowBitsOf(math.max(1, key.length), fitRowBits)
+    val width   =
+      if fitsNarrow(range, rowBits) then
         1
       else
         2
@@ -298,7 +324,7 @@ object LongJoinTable:
         new Array[Long](parts << bloomBits)
       else
         null
-    val table  = LongJoinTable(entries, partBits, regionBits, lo, range, bloom, bloomBits)
+    val table  = LongJoinTable(entries, partBits, regionBits, lo, range, rowBits, bloom, bloomBits)
     val unique = new Array[Boolean](parts)
     // Partitions own disjoint entry regions and Bloom words
     def insertPart(p: Int): Unit =

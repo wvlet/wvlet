@@ -147,6 +147,8 @@ class Planner(
       Planner.markMissFilters(pruned)
     if !enabled(Optimization.JoinDirectIndex) then
       Planner.disableJoinDirectIndex(pruned)
+    if !enabled(Optimization.NarrowJoinEntries) then
+      Planner.disableNarrowJoinEntries(pruned)
     if !enabled(Optimization.ParallelJoinBuild) then
       Planner.disableParallelJoinBuild(pruned)
     if !enabled(Optimization.JoinBuildStringCodes) then
@@ -4147,6 +4149,15 @@ object Planner:
       case _ =>
     op.children.foreach(markMissFilters)
     op.sharedInputs.foreach(markMissFilters)
+
+  /** Give the narrow flat table entries of a physical plan 32 row bits (`narrow_join_entries`) */
+  private[engine] def disableNarrowJoinEntries(op: Operator): Unit =
+    op match
+      case j: HashJoinOp =>
+        j.withNarrowEntries(false)
+      case _ =>
+    op.children.foreach(disableNarrowJoinEntries)
+    op.sharedInputs.foreach(disableNarrowJoinEntries)
 
   /** Make the hash joins of a physical plan use hash tables for every key (`join_direct_index`) */
   private[engine] def disableJoinDirectIndex(op: Operator): Unit =

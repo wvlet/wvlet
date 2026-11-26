@@ -1344,6 +1344,9 @@ final class JoinBuild(
   /** Whether a large flat table keeps a Bloom filter of its keys (`probe_miss_filter`) */
   var missFilter: Boolean = false
 
+  /** Whether narrow flat entries fit the row number in fewer bits (`narrow_join_entries`) */
+  var narrowEntries: Boolean = true
+
   /** Whether the build probes through a direct index instead of hash tables (for tests) */
   def usesDirectIndex: Boolean = directHeads != null
 
@@ -1584,7 +1587,8 @@ final class JoinBuild(
       Integer.numberOfTrailingZeros(parts),
       chain,
       runner,
-      missFilter
+      missFilter,
+      fitRowBits = narrowEntries
     )
     // A null table: a skewed build, which GroupTables take
     if table != null then
