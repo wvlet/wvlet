@@ -122,6 +122,40 @@ class LongJoinTableTest extends UniTest:
     m shouldBe Seq(Seq(1), Seq(0), Nil, Nil, Seq(2), Nil)
   }
 
+  /** The first rows of `probe` through a table over `key`, and whether its entries are narrow */
+  private def firstRowsOf(key: Array[Long], probe: Array[Long], fitRowBits: Boolean) =
+    val chain  = Array.fill(key.length)(-1)
+    val (t, _) = LongJoinTable.build(
+      key,
+      Array(key.indices.toArray),
+      0,
+      chain,
+      TaskRunner.Sequential,
+      fitRowBits = fitRowBits
+    )
+    val out = new Array[Int](probe.length)
+    t.firstRows(probe, null, probe.length, out)
+    (out.toSeq, t.hasNarrowEntries)
+
+  test("should fit keys wider than 32 bits beside few row bits in one Long") {
+    // 3 rows take 2 row bits, leaving 62 bits for the key range
+    for (hi, narrow) <- Seq((1L << 40, true), ((1L << 62) - 1, true), (1L << 62, false)) do
+      val key   = Array(-3L, hi - 3L, 7L)
+      val probe = Array(hi - 3L, -3L, 7L, hi - 2L, -4L, 8L)
+      firstRowsOf(key, probe, fitRowBits = true) shouldBe (Seq(1, 0, 2, -1, -1, -1), narrow)
+      // 32 row bits leave too few for any of these ranges
+      firstRowsOf(key, probe, fitRowBits = false) shouldBe (Seq(1, 0, 2, -1, -1, -1), false)
+  }
+
+  test("should find duplicate keys of a wide range through narrow entries") {
+    val n              = 5000
+    val key            = Array.tabulate(n)(i => (i % 1000).toLong * 1000000007L)
+    val probe          = Array.tabulate(1200)(i => i.toLong * 1000000007L + (i % 2))
+    val (rows, narrow) = firstRowsOf(key, probe, fitRowBits = true)
+    narrow shouldBe true
+    rows shouldBe probe.toSeq.map(k => key.indexWhere(_ == k))
+  }
+
   test("should find matches when keys collide in one region") {
     // Many keys in a small region stress linear probing
     val keys   = (0 until 50).map(i => i.toLong << 40)

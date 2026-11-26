@@ -328,6 +328,14 @@ enum Optimization(val name: String):
   case ProbeMissFilter extends Optimization("probe_miss_filter")
 
   /**
+    * The one-Long entries of a flat join hash table, `(key - min) << rowBits | row`, give the row
+    * only the bits the build rows need instead of 32, so keys spanning up to 64 - rowBits bits
+    * still take one Long instead of two. TPC-DS q78's LEFT joins on (year, item, customer) pack
+    * their keys into about 39 bits, which took 16-byte entries
+    */
+  case NarrowJoinEntries extends Optimization("narrow_join_entries")
+
+  /**
     * Pre-size the group tables and aggregate state of hash aggregations from estimated group
     * counts, so they grow less often
     */
