@@ -333,7 +333,7 @@ enum Optimization(val name: String):
     * dropped anyway. TPC-DS q78 keeps the (year, item, customer) groups of store_sales that web or
     * catalog sales have (`coalesce(ws_qty, 0) > 0 or coalesce(cs_qty, 0) > 0`), ~6K of its ~5M
     * input rows at SF10, so the aggregation and the joins see ~6K rows. The filter turns itself off
-    * when it keeps most rows
+    * once it has seen 64K rows and kept more than half of them
     */
   case LeftMatchPrefilter extends Optimization("left_match_prefilter")
 

@@ -27,9 +27,9 @@ import wvlet.lang.engine.vector.*
   * and that join's build, bound when the join is made (the joins
   * [[wvlet.lang.engine.plan.Parallelizer]] makes bind it again). The joins build before their probe
   * side runs, so the filter reads their tables. A build that isn't ready, or a filter that keeps
-  * most of the rows it has seen (more than half of the first [[BuildKeyMatch.SampleRows]]), keeps
-  * every row: the joins and the filter above them still drop the rows, so the filter only saves
-  * work.
+  * most of the rows it has seen (more than half, checked on each batch once it has seen
+  * [[BuildKeyMatch.SampleRows]]), keeps every row: the joins and the filter above them still drop
+  * the rows, so the filter only saves work.
   */
 final class BuildKeyMatch(val sources: IndexedSeq[BuildKeyMatch.Source]) extends VExpr:
   import BuildKeyMatch.*
@@ -46,6 +46,9 @@ final class BuildKeyMatch(val sources: IndexedSeq[BuildKeyMatch.Source]) extends
     s"build_key_match(${sources.map(_.keys.map(_.sig).mkString("[", ",", "]")).mkString(",")})"
 
   override def isConstant: Boolean = false
+
+  // The key columns read, so that column passes see them (and an unknown remap fails loudly)
+  override def children: Seq[VExpr] = sources.flatMap(_.keys)
 
   /** The rows the filter has seen and kept so far (for tests) */
   private[engine] def counts: (Long, Long) = (seen, kept)
