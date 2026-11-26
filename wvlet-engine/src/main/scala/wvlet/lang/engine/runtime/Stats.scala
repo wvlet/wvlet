@@ -29,6 +29,7 @@ import wvlet.lang.engine.expr.LikeExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.CardinalityEstimator
 import wvlet.lang.engine.plan.JoinOrderOptimizer
+import wvlet.lang.engine.plan.KeyCoverage
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.plan.ScanFilters
@@ -128,7 +129,7 @@ object Stats:
   def distinct(p: RuntimePlan, id: ColumnId): Option[Double] = sourceStat(
     p,
     id,
-    _.estimatedDistinct(_),
+    (s, i) => s.source.estimatedDistinct(s.sourceColumnName(i)),
     // Counted from the result once it is computed, as the CTE table's `estimatedDistinct`
     // returns it to CardinalityEstimator
     _.distinct(_)
@@ -141,26 +142,26 @@ object Stats:
   def range(p: RuntimePlan, id: ColumnId): Option[(Long, Long)] = sourceStat(
     p,
     id,
-    _.columnRange(_),
+    (s, i) => s.source.columnRange(s.sourceColumnName(i)),
     (_, _) => None
   )
 
   /**
-    * A statistic of the source column that column `id` of p reads: `scan` of a source column, `cte`
+    * A statistic of the source column that column `id` of p reads: `scan` of a scan's column, `cte`
     * of a shared CTE result column, traced through filters, samples, plain projections and hash
     * joins
     */
   private def sourceStat[A](
       p: RuntimePlan,
       id: ColumnId,
-      scan: (TableSource, String) => Option[A],
+      scan: (Scan, Int) => Option[A],
       cte: (SharedCTE, Int) => Option[A]
   ): Option[A] =
     def trace(p: RuntimePlan, id: ColumnId): Option[A] =
       p match
         case s @ Scan(source, columns, _, _) =>
           val i = columns.indexWhere(_.id == id)
-          Option.when(i >= 0)(i).flatMap(i => scan(source, s.sourceColumnName(i)))
+          Option.when(i >= 0)(i).flatMap(scan(s, _))
         case Filter(child, _, _) =>
           trace(child, id)
         case Sample(child, _) =>
@@ -194,6 +195,80 @@ object Stats:
     trace(p, id)
 
   end sourceStat
+
+  /**
+    * What the declared unique keys say about `keys` over p (`key_join_estimates`): columns traced,
+    * as [[distinct]] traces them, to one scan of a table that declares unique keys either cover one
+    * of them or none. A key that is no column, or columns of several scans, are
+    * [[KeyCoverage.Unknown]]
+    */
+  def keyCoverage(p: RuntimePlan, keys: Seq[VExpr]): KeyCoverage =
+    val traced = keys.map {
+      case c: ColRef =>
+        sourceStat(p, ColumnId(c.index), (s, i) => Some((s, s.sourceColumnName(i))), (_, _) => None)
+      case _ =>
+        None
+    }
+    if traced.isEmpty || traced.exists(_.isEmpty) then
+      KeyCoverage.Unknown
+    else
+      val scan     = traced.head.get._1
+      val declared = scan.source.uniqueKeys
+      if declared.isEmpty || traced.exists(!_.get._1.eq(scan)) then
+        KeyCoverage.Unknown
+      else
+        val names = traced.map(_.get._2.toLowerCase).toSet
+        if declared.exists(k => k.nonEmpty && k.forall(c => names.contains(c.toLowerCase))) then
+          scan
+            .source
+            .estimatedRows
+            .map(r => KeyCoverage.Unique(r.toDouble))
+            .getOrElse(KeyCoverage.Unknown)
+        else
+          KeyCoverage.NotUnique
+
+  /**
+    * Estimated rows of an inner equi-join of `left` and `right` on `leftKeys` = `rightKeys`
+    * ([[CardinalityEstimator.joinOutputRows]]); with `key_join_estimates`, keys of several pairs
+    * are estimated from the tables' declared unique keys
+    * ([[CardinalityEstimator.compositeDivisor]])
+    */
+  def joinRows(
+      left: RuntimePlan,
+      leftRows: Double,
+      leftKeys: IndexedSeq[VExpr],
+      right: RuntimePlan,
+      rightRows: Double,
+      rightKeys: IndexedSeq[VExpr],
+      options: OptimizerOptions
+  ): Double =
+    val ld        = leftKeys.map(distinct(left, _))
+    val rd        = rightKeys.map(distinct(right, _))
+    val composite =
+      if leftKeys.size > 1 && options.isEnabled(Optimization.KeyJoinEstimates) then
+        CardinalityEstimator.compositeDivisor(
+          leftRows,
+          ld,
+          rightRows,
+          rd,
+          keyCoverage(left, leftKeys),
+          keyCoverage(right, rightKeys)
+        )
+      else
+        None
+    composite match
+      case Some(d) =>
+        CardinalityEstimator.joinOutputRows(
+          leftRows,
+          IndexedSeq.empty,
+          rightRows,
+          IndexedSeq.empty,
+          Seq(d)
+        )
+      case None =>
+        CardinalityEstimator.joinOutputRows(leftRows, ld, rightRows, rd)
+
+  end joinRows
 
   /**
     * Estimated groups of an aggregation of p by `keys`: the product of the keys' distinct values,
@@ -348,11 +423,14 @@ object Stats:
           else
             groups(child, keys.map(_.expr)).map(math.min(_, r)).getOrElse(r)
       case Join(left, right, JoinKind.Inner, lk, rk, _, _) if lk.nonEmpty =>
-        CardinalityEstimator.joinOutputRows(
+        joinRows(
+          left,
           treeRows(left, options, build),
-          lk.map(k => distinct(left, k.expr)),
+          lk.map(_.expr),
+          right,
           treeRows(right, options, build),
-          rk.map(k => distinct(right, k.expr))
+          rk.map(_.expr),
+          options
         )
       case Join(left, _, JoinKind.Left | JoinKind.Semi | JoinKind.Anti, lk, _, _, _)
           if lk.nonEmpty =>
@@ -391,7 +469,7 @@ object Stats:
   def valueCounts(p: RuntimePlan, id: ColumnId): Option[ValueCounts] = sourceStat(
     p,
     id,
-    _.valueCounts(_),
+    (s, i) => s.source.valueCounts(s.sourceColumnName(i)),
     (_, _) => None
   )
 

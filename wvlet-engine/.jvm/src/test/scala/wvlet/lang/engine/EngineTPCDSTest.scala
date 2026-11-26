@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine
 
+import wvlet.lang.engine.catalog.BenchmarkKeys
 import wvlet.uni.test.UniTest
 
 import java.nio.file.Files
@@ -38,7 +39,10 @@ class EngineTPCDSTest extends UniTest:
   private def newConformance(specPath: String) = EngineConformance(
     specPath,
     tables.map(t => s"create view ${t} as select * from '${dataDir}/${t}.parquet'"),
-    engine => tables.foreach(t => engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet"))
+    engine =>
+      tables.foreach(t =>
+        engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet", BenchmarkKeys.tpcds(t))
+      )
   )
 
   private val wv  = newConformance("spec/tpcds")

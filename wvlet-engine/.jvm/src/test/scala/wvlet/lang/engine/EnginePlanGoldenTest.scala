@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine
 
+import wvlet.lang.engine.catalog.BenchmarkKeys
 import wvlet.lang.engine.exec.TaskRunner
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.uni.test.UniTest
@@ -85,7 +86,10 @@ object EnginePlanGolden:
       val c              = EngineConformance(
         specPath,
         Nil,
-        engine => tables.foreach(t => engine.catalog.registerParquet(t, s"${data}/${t}.parquet")),
+        engine =>
+          tables.foreach(t =>
+            engine.catalog.registerParquet(t, s"${data}/${t}.parquet", BenchmarkKeys.of(name, t))
+          ),
         optimizer
       )
       try

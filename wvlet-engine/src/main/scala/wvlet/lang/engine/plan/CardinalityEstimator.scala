@@ -128,28 +128,82 @@ object CardinalityEstimator:
       leftDistinct: IndexedSeq[Option[Double]],
       rightRows: Double,
       rightDistinct: IndexedSeq[Option[Double]]
+  ): Double = joinOutputRows(leftRows, leftDistinct, rightRows, rightDistinct, Nil)
+
+  /**
+    * [[joinOutputRows]] over the key pairs of `leftDistinct` and `rightDistinct`, also divided by
+    * `divisors`: those of the key groups estimated by [[compositeDivisor]], which the cap of
+    * correlated keys doesn't cover
+    */
+  def joinOutputRows(
+      leftRows: Double,
+      leftDistinct: IndexedSeq[Option[Double]],
+      rightRows: Double,
+      rightDistinct: IndexedSeq[Option[Double]],
+      divisors: Seq[Double]
   ): Double =
-    val divisors = leftDistinct
+    val keyDivisors = leftDistinct
       .indices
-      .map { k =>
-        val l = leftDistinct(k).map(math.min(_, leftRows))
-        val r = rightDistinct(k).map(math.min(_, rightRows))
-        val d =
-          (l, r) match
-            case (Some(a), Some(b)) =>
-              math.max(a, b)
-            // Containment: the side of unknown distinct count has at most the other's values
-            case (Some(a), None) =>
-              a
-            case (None, Some(b)) =>
-              b
-            // Neither known: the smaller side holds the unique (primary) key
-            case (None, None) =>
-              math.min(leftRows, rightRows)
-        math.max(1.0, d)
-      }
-    val divisor = math.min(divisors.product, math.max(math.max(leftRows, rightRows), 1.0))
-    math.max(1.0, leftRows * rightRows / divisor)
+      .map(k => keyDivisor(leftRows, leftDistinct(k), rightRows, rightDistinct(k)))
+    val capped = math.min(keyDivisors.product, math.max(math.max(leftRows, rightRows), 1.0))
+    math.max(1.0, leftRows * rightRows / (capped * divisors.product))
+
+  /** The divisor of one key pair: the larger of its sides' distinct values, at most their rows */
+  private def keyDivisor(
+      leftRows: Double,
+      leftDistinct: Option[Double],
+      rightRows: Double,
+      rightDistinct: Option[Double]
+  ): Double =
+    val l = leftDistinct.map(math.min(_, leftRows))
+    val r = rightDistinct.map(math.min(_, rightRows))
+    val d =
+      (l, r) match
+        case (Some(a), Some(b)) =>
+          math.max(a, b)
+        // Containment: the side of unknown distinct count has at most the other's values
+        case (Some(a), None) =>
+          a
+        case (None, Some(b)) =>
+          b
+        // Neither known: the smaller side holds the unique (primary) key
+        case (None, None) =>
+          math.min(leftRows, rightRows)
+    math.max(1.0, d)
+
+  /**
+    * The divisor of an equi-join on several key pairs, all reading one table on each side, from the
+    * unique keys the tables declare (`key_join_estimates`). Keys covering a declared key of a side
+    * of `rows` base rows join as a foreign key to that primary key: values from a domain of `rows`,
+    * so |L| * |R| / rows as a single-column key would. Keys that are no declared key of either
+    * table are independent columns: the product of the pairs' divisors, without the cap that
+    * [[joinOutputRows]] gives correlated keys. None when a side's keys are unknown
+    */
+  def compositeDivisor(
+      leftRows: Double,
+      leftDistinct: IndexedSeq[Option[Double]],
+      rightRows: Double,
+      rightDistinct: IndexedSeq[Option[Double]],
+      left: KeyCoverage,
+      right: KeyCoverage
+  ): Option[Double] =
+    def domain(rows: Double): Double = keyDivisor(leftRows, Some(rows), rightRows, Some(rows))
+    (left, right) match
+      case (KeyCoverage.Unique(a), KeyCoverage.Unique(b)) =>
+        Some(domain(math.max(a, b)))
+      case (KeyCoverage.Unique(a), _) =>
+        Some(domain(a))
+      case (_, KeyCoverage.Unique(b)) =>
+        Some(domain(b))
+      case (KeyCoverage.NotUnique, KeyCoverage.NotUnique) =>
+        Some(
+          leftDistinct
+            .indices
+            .map(k => keyDivisor(leftRows, leftDistinct(k), rightRows, rightDistinct(k)))
+            .product
+        )
+      case _ =>
+        None
 
   /**
     * The number of literals a condition compares an expression to, when it is `x = literal` (1) or
@@ -187,3 +241,14 @@ object CardinalityEstimator:
         isNonNullLiteral(other)
 
 end CardinalityEstimator
+
+/** What the declared unique keys of a table say about the columns one side of a join reads */
+enum KeyCoverage:
+  /** Nothing known: the columns don't all read one table, or the table declares no keys */
+  case Unknown
+
+  /** The columns read one table that declares unique keys, and cover none of them */
+  case NotUnique
+
+  /** The columns cover a declared unique key of a table of `rows` rows */
+  case Unique(rows: Double)

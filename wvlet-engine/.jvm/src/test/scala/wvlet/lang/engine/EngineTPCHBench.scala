@@ -15,6 +15,7 @@ package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.engine.catalog.BenchmarkKeys
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.model.plan.*
 import wvlet.uni.log.LogSupport
@@ -169,7 +170,9 @@ object EngineTPCHBench extends LogSupport:
         execute(conn, s"create view ${t} as select * from '${dataDir}/${t}.parquet'")
       }
       val engine = WvletEngine(baseDir = specPath, accelerator = accelerator)
-      tables.foreach(t => engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet"))
+      tables.foreach(t =>
+        engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet", BenchmarkKeys.of(label, t))
+      )
       // The engine with the A/B optimizations disabled, over the same tables
       // offAccelerator, when given, replaces the accelerator there (to A/B accelerator settings)
       val offEngine = opts

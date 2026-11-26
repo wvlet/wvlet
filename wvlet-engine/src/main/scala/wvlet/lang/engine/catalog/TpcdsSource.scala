@@ -165,6 +165,9 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
   end estimatedDistinct
 
   // Tables of the same name at the same scale factor hold the same rows
+  /** The primary key of the table in the TPC-DS specification */
+  override def uniqueKeys: Seq[Seq[String]] = BenchmarkKeys.tpcds(table)
+
   override def key: Any = ("tpcds", gen.sf, table)
 
 end TpcdsSource

@@ -136,7 +136,9 @@ class OptimizerOptionsTest extends UniTest:
         "dense_selected_rows",
         "long_group_tables",
         "sorted_group_runs",
-        "clustered_group_estimates"
+        "clustered_group_estimates",
+        "key_join_estimates",
+        "probe_scan_cost"
       )
   }
 
