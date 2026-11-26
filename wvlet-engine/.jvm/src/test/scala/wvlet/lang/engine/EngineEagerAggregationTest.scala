@@ -248,4 +248,40 @@ class EngineEagerAggregationTest extends UniTest:
     on shouldBe off
   }
 
+  private val noLookupProjection = keyed
+    .engine
+    .withOptimizer(options.withDisabled(Optimization.EagerLookupProjection))
+
+  test("project the partial results when the join looks up one customer per partial group") {
+    // c_custkey determines o_custkey through the join, and each o_custkey finds one customer
+    val (on, off) = check(
+      """from orders, customer
+        |where o_custkey = c_custkey
+        |group by c_custkey, c_name
+        |select c_custkey, c_name, sum(o_totalprice) as s, count(*) as n, count(o_comment) as c,
+        |  min(o_orderdate) as first, max(o_orderdate) as last
+        |order by c_custkey
+        |""".stripMargin,
+      noLookupProjection,
+      keyed
+    )
+    aggregations(on) shouldBe 1
+    aggregations(off) shouldBe 2
+  }
+
+  test("merge the partial results when an outer group may span several partial groups") {
+    // c_name isn't a declared key: one name may stand for several customers
+    val (on, off) = check(
+      """from orders, customer
+        |where o_custkey = c_custkey
+        |group by c_name, c_address
+        |select c_name, c_address, sum(o_totalprice) as s, count(*) as n
+        |order by c_name
+        |""".stripMargin,
+      noLookupProjection,
+      keyed
+    )
+    on shouldBe off
+  }
+
 end EngineEagerAggregationTest

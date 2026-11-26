@@ -200,15 +200,29 @@ object EagerAggregation extends Pass:
             split.forall(_.isDefined) && other.output.exists(c => keyRefs.contains(c.id)) &&
               retained(other, options)
           )(split.flatten.flatten.toSet)
+        // With `eager_lookup_projection`: the join looks up at most one row of `other` per row of
+        // the pre-aggregation, and every call is computed before the join
+        def lookup(eagerCalls: Set[Int], other: RuntimePlan, otherKeys: Seq[BExpr]): Boolean =
+          options.isEnabled(Optimization.EagerLookupProjection) &&
+            eagerCalls.size == a.calls.size && DependentGroupKeys.looksUp(other, otherKeys)
         val pushed =
           pushable(left, right) match
             case Some(eagerCalls) =>
-              eager(a, eagerCalls, left, lk ++ conds, options, newId).map { (pre, m, outer) =>
-                (j.copy(left = pre, leftKeys = lk.map(remap(_, m))), m, outer)
-              }
+              eager(a, eagerCalls, left, lk ++ conds, lookup(eagerCalls, right, rk), options, newId)
+                .map { (pre, m, outer) =>
+                  (j.copy(left = pre, leftKeys = lk.map(remap(_, m))), m, outer)
+                }
             case None =>
               pushable(right, left).flatMap { eagerCalls =>
-                eager(a, eagerCalls, right, rk ++ conds, options, newId).map { (pre, m, outer) =>
+                eager(
+                  a,
+                  eagerCalls,
+                  right,
+                  rk ++ conds,
+                  lookup(eagerCalls, left, lk),
+                  options,
+                  newId
+                ).map { (pre, m, outer) =>
                   (j.copy(right = pre, rightKeys = rk.map(remap(_, m))), m, outer)
                 }
               }
@@ -229,13 +243,17 @@ object EagerAggregation extends Pass:
   /**
     * The partial aggregation of side `in` of the join under `a`, by the columns of `in` that a's
     * keys and `exprs` (the side's join keys and the conditions over the join) read, if it reduces
-    * `in` enough: with the new columns of those columns, and the outer aggregation over the join
+    * `in` enough: with the new columns of those columns, and the outer aggregation over the join.
+    * When the join is a `lookup` (one row of the other side per partial group, all calls computed
+    * eagerly) and a's keys determine the partial groups ([[DependentGroupKeys.determines]]), each
+    * outer group is one joined row, and the outer aggregation is a projection of the partials
     */
   private def eager(
       a: Aggregate,
       eagerCalls: Set[Int],
       in: RuntimePlan,
       exprs: Seq[BExpr],
+      lookup: Boolean,
       options: OptimizerOptions,
       newId: () => ColumnId
   ): Option[(RuntimePlan, Map[ColumnId, Column], RuntimePlan => RuntimePlan)] =
@@ -290,7 +308,11 @@ object EagerAggregation extends Pass:
           case None =>
             c
       }
-      Some((pre, m, j => Aggregate(j, a.keys.map(remap(_, m)), merges, a.columns)))
+      val keys = a.keys.map(remap(_, m))
+      if lookup && DependentGroupKeys.determines(a, in, groups.map(_.id)) then
+        Some((pre, m, j => Project(j, keys ++ partialCols.map(p => BExpr.ref(p._2)), a.columns)))
+      else
+        Some((pre, m, j => Aggregate(j, keys, merges, a.columns)))
     end if
 
   end eager
@@ -389,10 +411,8 @@ object EagerAggregation extends Pass:
             // x, and is best done first
             def side(x: RuntimePlan, other: RuntimePlan, otherKeys: Seq[BExpr]): Option[Pushed] =
               val lookup =
-                residual.isEmpty && otherKeys.forall(_.expr.isInstanceOf[ColRef]) &&
-                  other.output.exists(c => needed.contains(c.id)) &&
-                  DependentGroupKeys.uniqueOn(other, otherKeys.flatMap(_.refs)) &&
-                  retainedTree(other, options) &&
+                residual.isEmpty && other.output.exists(c => needed.contains(c.id)) &&
+                  DependentGroupKeys.looksUp(other, otherKeys) && retainedTree(other, options) &&
                   Stats.treeRows(j, options) >= MinRetention * Stats.treeRows(x, options)
               if lookup then
                 preAggregate(x, below, sub).orElse(down(x, below, sub))
