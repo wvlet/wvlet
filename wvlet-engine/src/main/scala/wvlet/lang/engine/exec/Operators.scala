@@ -158,9 +158,6 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
     */
   var dictionarySelection: Boolean = true
 
-  /** Whether per-entry parts keep results per shared dictionary (`shared_dictionary_filters`) */
-  var sharedDictionaries: Boolean = true
-
   /** The evaluation settings of `f`, for a copy of it over another input */
   def withSettingsOf(f: FilterOp): this.type =
     lateGather = f.lateGather
@@ -168,13 +165,12 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
     reorderConjuncts = f.reorderConjuncts
     dictionaryFilters = f.dictionaryFilters
     dictionarySelection = f.dictionarySelection
-    sharedDictionaries = f.sharedDictionaries
     this
 
   // The condition as evaluated, prepared on the first batch after the settings are final
   private lazy val evalCond: VExpr =
     if dictionaryFilters then
-      DictionaryPredicates.wrap(cond, dictionarySelection && shortCircuit, sharedDictionaries)
+      DictionaryPredicates.wrap(cond, whole = dictionarySelection && shortCircuit)
     else
       cond
 

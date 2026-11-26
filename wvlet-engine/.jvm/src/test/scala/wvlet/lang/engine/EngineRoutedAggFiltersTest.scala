@@ -16,7 +16,6 @@ package wvlet.lang.engine
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.AggCall
-import wvlet.lang.engine.exec.FilterOp
 import wvlet.lang.engine.exec.HashAggOp
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.PartitionedAggOp
@@ -26,15 +25,13 @@ import wvlet.lang.model.plan.*
 import wvlet.uni.test.UniTest
 
 /**
-  * `routed_agg_filters` marks aggregate FILTERs to route by dictionary code, and
-  * `shared_dictionary_filters` keeps filter results per shared dictionary; both return the same
-  * rows as without them, over a join build's string column as in TPC-DS q59
+  * `routed_agg_filters` marks aggregate FILTERs to route by dictionary code, and returns the same
+  * rows as without it, over a join build's string column as in TPC-DS q59
   */
 class EngineRoutedAggFiltersTest extends UniTest:
   private val options = OptimizerOptions().withValidatePlans(true)
   private val on      = WvletEngine(optimizer = options)
   private val noRoute = on.withOptimizer(options.withDisabled(Optimization.RoutedAggFilters))
-  private val noShare = on.withOptimizer(options.withDisabled(Optimization.SharedDictionaryFilters))
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
@@ -57,12 +54,6 @@ class EngineRoutedAggFiltersTest extends UniTest:
       |  sum(if day = 'Saturday' then price else null) as sat_sum,
       |  sum(price) as total
       |order by g""".stripMargin
-
-  private val filterQuery =
-    s"""${from}
-      |where day = 'Sunday' or price > 30
-      |select g, price
-      |order by g, price""".stripMargin
 
   private def run[A](query: String)(body: Relation => Context ?=> A): A =
     val unit           = CompilationUnit.fromWvletString(query)
@@ -110,22 +101,6 @@ class EngineRoutedAggFiltersTest extends UniTest:
     val r = rows(on, aggQuery)
     r shouldBe rows(noRoute, aggQuery)
     r shouldBe Seq("1,10,1,40,null,70", "2,30,2,null,null,41", "3,null,0,9,7,16")
-  }
-
-  test("set shared dictionaries on filters only with shared_dictionary_filters") {
-    def filters(e: WvletEngine) =
-      collect(physical(e, filterQuery)) { case f: FilterOp =>
-        Seq(f)
-      }
-    filters(on).nonEmpty shouldBe true
-    filters(on).forall(_.sharedDictionaries) shouldBe true
-    filters(noShare).exists(_.sharedDictionaries) shouldBe false
-  }
-
-  test("return the same filtered rows with and without shared_dictionary_filters") {
-    val r = rows(on, filterQuery)
-    r shouldBe rows(noShare, filterQuery)
-    r shouldBe Seq("1,10", "1,40", "1,null", "2,30")
   }
 
 end EngineRoutedAggFiltersTest

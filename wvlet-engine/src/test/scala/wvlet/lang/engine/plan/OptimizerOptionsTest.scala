@@ -138,7 +138,6 @@ class OptimizerOptionsTest extends UniTest:
         "case_agg_filters",
         "dictionary_agg_filters",
         "routed_agg_filters",
-        "shared_dictionary_filters",
         "one_row_partials",
         "substring_in_lists",
         "deferred_null_checks",

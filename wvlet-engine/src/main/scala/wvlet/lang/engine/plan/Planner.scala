@@ -132,16 +132,14 @@ class Planner(
     if !enabled(Optimization.KeySetRowGroups) then
       Planner.disableKeySetRowGroups(pruned)
     if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) ||
-      !enabled(Optimization.DictionaryFilters) || !enabled(Optimization.DictionarySelection) ||
-      !enabled(Optimization.SharedDictionaryFilters)
+      !enabled(Optimization.DictionaryFilters) || !enabled(Optimization.DictionarySelection)
     then
       Planner.configureFilters(
         pruned,
         shortCircuit = enabled(Optimization.ShortCircuitFilters),
         reorder = enabled(Optimization.ReorderConjuncts),
         dictionary = enabled(Optimization.DictionaryFilters),
-        dictionarySelection = enabled(Optimization.DictionarySelection),
-        sharedDictionaries = enabled(Optimization.SharedDictionaryFilters)
+        dictionarySelection = enabled(Optimization.DictionarySelection)
       )
     if enabled(Optimization.UnmatchedLeftProbe) then
       Planner.markUnmatchedLeftProbes(pruned)
@@ -4092,8 +4090,7 @@ object Planner:
       shortCircuit: Boolean,
       reorder: Boolean,
       dictionary: Boolean,
-      dictionarySelection: Boolean = true,
-      sharedDictionaries: Boolean = true
+      dictionarySelection: Boolean = true
   ): Unit =
     op match
       case f: FilterOp =>
@@ -4101,18 +4098,10 @@ object Planner:
         f.reorderConjuncts = reorder
         f.dictionaryFilters = dictionary
         f.dictionarySelection = dictionarySelection
-        f.sharedDictionaries = sharedDictionaries
       case _ =>
-    def configure(o: Operator): Unit = configureFilters(
-      o,
-      shortCircuit,
-      reorder,
-      dictionary,
-      dictionarySelection,
-      sharedDictionaries
-    )
-    op.children.foreach(configure)
-    op.sharedInputs.foreach(configure)
+    op.children.foreach(configureFilters(_, shortCircuit, reorder, dictionary, dictionarySelection))
+    op.sharedInputs
+      .foreach(configureFilters(_, shortCircuit, reorder, dictionary, dictionarySelection))
 
   /**
     * Make each LEFT hash join under a filter that has a conjunct `k IS NULL`, for `k` one of the

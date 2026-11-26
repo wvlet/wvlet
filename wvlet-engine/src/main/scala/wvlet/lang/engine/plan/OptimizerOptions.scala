@@ -710,14 +710,6 @@ enum Optimization(val name: String):
   case RoutedAggFilters extends Optimization("routed_agg_filters")
 
   /**
-    * Filter conditions over one string column holding a hash-join build's codes keep their results
-    * per dictionary entry across batches, as `dictionary_agg_filters` does for aggregate FILTERs,
-    * instead of finding each batch's distinct entries
-    * ([[wvlet.lang.engine.expr.PerSharedDictEntry]])
-    */
-  case SharedDictionaryFilters extends Optimization("shared_dictionary_filters")
-
-  /**
     * Partial aggregates that stop grouping ([[AdaptivePartialAggs]]) emit each row's partial
     * results from the aggregates' arguments (a sum's value, a count's 0 or 1) instead of folding
     * every passed-through batch into new accumulators with one group per row (TPC-DS q78, q97)

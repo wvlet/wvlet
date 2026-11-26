@@ -25,7 +25,7 @@ import wvlet.lang.engine.vector.*
   * entries than half the rows (or no codes), `inner` runs over the batch as is. The signature is
   * `inner`'s: the values are the same, only the evaluation differs.
   */
-case class PerDictEntry(inner: VExpr, column: Int, local: VExpr) extends PerEntryCondition:
+case class PerDictEntry(inner: VExpr, column: Int, local: VExpr) extends VExpr:
   def ptype: PType                  = inner.ptype
   def sig: String                   = inner.sig
   override def children: Seq[VExpr] = Seq(inner)
@@ -57,18 +57,6 @@ case class PerDictEntry(inner: VExpr, column: Int, local: VExpr) extends PerEntr
 
 end PerDictEntry
 
-/**
-  * A condition over one string column evaluated once per dictionary entry ([[PerDictEntry]],
-  * [[PerSharedDictEntry]]), which can also select the positions where it holds
-  */
-trait PerEntryCondition extends VExpr:
-  /**
-    * The positions of `sel` (every row of `b` when null), in order, at which the condition is TRUE,
-    * computed once per dictionary entry; null when the column carries no usable codes, so the
-    * caller evaluates it per row
-    */
-  def selectPositions(b: Batch, sel: Array[Int]): Array[Int]
-
 object DictionaryPredicates:
 
   /**
@@ -76,33 +64,27 @@ object DictionaryPredicates:
     * lists, LIKE, IS NULL, and NOT over them, as a [[PerDictEntry]]. ANDs and ORs stay outside, so
     * [[Selection]] still short-circuits them when a part runs per row; anything else stays as is.
     * With `whole`, an AND / OR reading only one string column becomes one [[PerDictEntry]] too (`x =
-    * 'a' or x = 'b'` runs once per entry, not twice). With `shared`, the parts are
-    * [[PerSharedDictEntry]]s, which keep their results across batches sharing a dictionary
-    * (`shared_dictionary_filters`)
+    * 'a' or x = 'b'` runs once per entry, not twice)
     */
-  def wrap(cond: VExpr, whole: Boolean = false, shared: Boolean = false): VExpr =
-    def entry(e: VExpr, c: Int): VExpr =
-      if shared then
-        PerSharedDictEntry(e, c, rebase(e, c))
-      else
-        PerDictEntry(e, c, rebase(e, c))
+  def wrap(cond: VExpr, whole: Boolean = false): VExpr =
     cond match
       case _: AndExpr | _: OrExpr
           if whole && cond.ptype == PType.Bool && !cond.isConstant &&
             singleStrColumn(cond).isDefined =>
-        entry(cond, singleStrColumn(cond).get)
+        val c = singleStrColumn(cond).get
+        PerDictEntry(cond, c, rebase(cond, c))
       case AndExpr(l, r) =>
-        AndExpr(wrap(l, whole, shared), wrap(r, whole, shared))
+        AndExpr(wrap(l, whole), wrap(r, whole))
       case OrExpr(l, r) =>
-        OrExpr(wrap(l, whole, shared), wrap(r, whole, shared))
+        OrExpr(wrap(l, whole), wrap(r, whole))
       case _ =>
         singleStrColumn(cond) match
           case Some(c) if cond.ptype == PType.Bool && !cond.isConstant =>
-            entry(cond, c)
+            PerDictEntry(cond, c, rebase(cond, c))
           case _ =>
             cond match
               case NotExpr(c) =>
-                NotExpr(wrap(c, whole, shared))
+                NotExpr(wrap(c, whole))
               case other =>
                 other
 
@@ -110,7 +92,20 @@ object DictionaryPredicates:
     * `cond`, an aggregate FILTER, wrapped as [[wrap]] does with `whole`, its per-entry parts as
     * [[PerSharedDictEntry]]s, which keep their results across batches sharing a dictionary
     */
-  def wrapShared(cond: VExpr): VExpr = wrap(cond, whole = true, shared = true)
+  def wrapShared(cond: VExpr): VExpr =
+    def shared(e: VExpr): VExpr =
+      e match
+        case p: PerDictEntry =>
+          PerSharedDictEntry(p.inner, p.column, p.local)
+        case AndExpr(l, r) =>
+          AndExpr(shared(l), shared(r))
+        case OrExpr(l, r) =>
+          OrExpr(shared(l), shared(r))
+        case NotExpr(c) =>
+          NotExpr(shared(c))
+        case other =>
+          other
+    shared(wrap(cond, whole = true))
 
   /** The one string column `e` reads, when every node of it is one `wrap` evaluates per entry */
   private[engine] def singleStrColumn(e: VExpr): Option[Int] =

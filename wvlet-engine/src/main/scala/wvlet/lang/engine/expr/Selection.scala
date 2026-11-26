@@ -58,7 +58,7 @@ object Selection:
     * rows ([[DictionaryPredicates.selectPerEntry]]), with the estimated cost per row of a [[Leaf]]
     * of it, for ordering and for the rows without codes
     */
-  case class DictLeaf(expr: PerEntryCondition, cost: Int) extends Node
+  case class DictLeaf(expr: PerDictEntry, cost: Int) extends Node
 
   /** The condition as nested ANDs and ORs over leaves, the parts reordered when `reorder` */
   def compile(cond: VExpr, reorder: Boolean, dictionaryPositions: Boolean = false): Node =
@@ -80,7 +80,7 @@ object Selection:
           Conj(order(conjuncts(e).map(build)))
         case _: OrExpr =>
           Disj(order(disjuncts(e).map(build)))
-        case p: PerEntryCondition if dictionaryPositions =>
+        case p: PerDictEntry if dictionaryPositions =>
           DictLeaf(p, cost(p))
         case other =>
           Leaf(other, cost(other))
@@ -137,7 +137,7 @@ object Selection:
           true
         case _: Compare | _: NullSafeDistinct | _: IsNullExpr | _: InList | _: LikeExpr |
             _: AndExpr | _: OrExpr | _: NotExpr | _: InExprs | _: Coalesce | _: CaseWhen |
-            _: PerEntryCondition =>
+            _: PerDictEntry =>
           true
         case Arith(op, _, _, PType.Float64) =>
           op == ArithOp.Add || op == ArithOp.Sub || op == ArithOp.Mul
@@ -173,7 +173,7 @@ object Selection:
           false
     val self =
       e match
-        case _: ColRef | _: Const | _: Materialized | _: PerEntryCondition =>
+        case _: ColRef | _: Const | _: Materialized | _: PerDictEntry =>
           0
         case Compare(_, l, _) =>
           if isPrimitive(l.ptype) then
@@ -335,7 +335,7 @@ object Selection:
 
   end leaf
 
-  private def dictLeaf(e: PerEntryCondition, c: Int, b: Batch, sel: Array[Int]): Array[Int] =
+  private def dictLeaf(e: PerDictEntry, c: Int, b: Batch, sel: Array[Int]): Array[Int] =
     if sel != null && sel.length == 0 then
       sel
     else
