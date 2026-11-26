@@ -29,6 +29,7 @@ on:
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/Normalize.scala'
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/ReduceSemiJoins.scala'
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/SelfJoinAggregate.scala'
+      - 'wvlet-engine/src/main/scala/wvlet/lang/engine/runtime/AggregateWindows.scala'
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/expr/VExpr.scala'
       - 'wvlet-engine/src/main/scala/wvlet/lang/engine/plan/Planner.scala'
       - 'wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/**'
@@ -152,3 +153,8 @@ jobs:
           lake exe self-join-aggregate-traces
           git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/self-join-aggregate-traces.json \
             || (echo "::error::The self-join aggregation conformance fixture is stale. Run 'cd formal && lake exe self-join-aggregate-traces' and commit the result." && exit 1)
+      - name: Check aggregate windows conformance fixture freshness
+        run: |
+          lake exe aggregate-windows-traces
+          git diff --exit-code -- ../wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/aggregate-windows-traces.json \
+            || (echo "::error::The aggregate windows conformance fixture is stale. Run 'cd formal && lake exe aggregate-windows-traces' and commit the result." && exit 1)
