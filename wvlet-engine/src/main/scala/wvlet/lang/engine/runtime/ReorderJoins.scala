@@ -46,19 +46,8 @@ object ReorderJoins extends Pass:
         if ctx.options.isEnabled(Optimization.ReorderJoins) then
           ctx.fired(name)
         order(j, ctx)
-      case j @ Join(left, right, JoinKind.Left | JoinKind.Right | JoinKind.Full, lk, _, _, false)
-          if lk.nonEmpty =>
-        // An outer hash join builds on its left input when the right one is much larger, as
-        // `Planner.joinOn` decides it
-        if JoinOrderOptimizer.swapBuild(
-            ctx.options,
-            Stats.outerBuildRows(right, right, ctx.options),
-            Stats.outerBuildRows(left, right, ctx.options)
-          )
-        then
-          j.copy(buildLeft = true)
-        else
-          j
+      case j: Join if isOuterHashJoin(j) =>
+        outerBuild(j, ctx)
       case j @ Join(left, right, JoinKind.Semi | JoinKind.Anti, lk, _, _, buildLeft)
           if lk.nonEmpty && ctx.replanSemiJoinBuilds &&
             (readsComputedCTE(left) || readsComputedCTE(right)) =>
@@ -78,6 +67,42 @@ object ReorderJoins extends Pass:
           j.copy(buildLeft = swap)
       case other =>
         other
+
+  private def isOuterHashJoin(j: Join): Boolean =
+    j.leftKeys.nonEmpty && !j.buildLeft &&
+      (j.kind == JoinKind.Left || j.kind == JoinKind.Right || j.kind == JoinKind.Full)
+
+  /**
+    * An outer hash join building on its left input when the right one is much larger, as
+    * `Planner.joinOn` decides it
+    */
+  private def outerBuild(j: Join, ctx: OptimizerContext): Join =
+    if JoinOrderOptimizer.swapOuterBuild(
+        ctx.options,
+        Stats.outerBuildRows(j.right, j.right, ctx.options),
+        Stats.outerBuildRows(j.left, j.right, ctx.options),
+        Stats.aggregates(j.right)
+      )
+    then
+      j.copy(buildLeft = true)
+    else
+      j
+
+  /**
+    * p with the build sides of its outer hash joins building on the right chosen again, for a
+    * shared CTE body once its readers' filters are pushed into it (TPC-DS q75's `d_year in (2001,
+    * 2002)` reduces the sales side of its LEFT joins below the returns). Only with
+    * `smaller_outer_builds`
+    */
+  def outerBuilds(p: RuntimePlan, ctx: OptimizerContext): RuntimePlan =
+    if !ctx.options.isEnabled(Optimization.SmallerOuterBuilds) then
+      p
+    else
+      p.withChildren(p.children.map(outerBuilds(_, ctx))) match
+        case j: Join if isOuterHashJoin(j) =>
+          outerBuild(j, ctx)
+        case other =>
+          other
 
   /** Whether p reads a shared CTE whose rows are known */
   private def readsComputedCTE(p: RuntimePlan): Boolean =
@@ -123,10 +148,11 @@ object ReorderJoins extends Pass:
       // (Stats.rows reads only the probe side's source rows)
       val buildLeft =
         l.leftKeys.nonEmpty &&
-          JoinOrderOptimizer.swapBuild(
+          JoinOrderOptimizer.swapOuterBuild(
             ctx.options,
             Stats.outerBuildRows(l.right, l.right, ctx.options),
-            rows
+            rows,
+            Stats.aggregates(l.right)
           )
       // Every row of the tree is kept, with its matches
       (l.copy(left = tree, buildLeft = buildLeft), rows)

@@ -815,6 +815,30 @@ enum Optimization(val name: String):
     */
   case PackedAggRouting extends Optimization("packed_agg_routing")
 
+  /**
+    * A right / full join's unmatched build rows, emitted after every probe part, are emitted by
+    * tasks over disjoint ranges of the build rows, each through its own copy of the operators above
+    * the join, instead of in one run on the calling thread. Only when the pipeline has one right /
+    * full join and the build has at least [[wvlet.lang.engine.exec.MorselOp.MinTailSplitRows]] rows
+    */
+  case ParallelOuterTail extends Optimization("parallel_outer_tail")
+
+  /**
+    * An outer join builds on its other input once its build input is estimated
+    * [[JoinOrderOptimizer.SwapOuterBuildRatio]] times larger instead of
+    * [[JoinOrderOptimizer.SwapBuildRatio]], as `parallel_outer_tail` (which it needs) emits a RIGHT
+    * join's unmatched build rows in parallel. The build's keys then filter the larger input's scan
+    * (TPC-DS q75 builds on the filtered sales rows and probes the returns)
+    */
+  case SmallerOuterBuilds extends Optimization("smaller_outer_builds")
+
+  /**
+    * An `or` of comparisons of one expression with literals (`d_year = 2002 or d_year = 2001`)
+    * keeps n / ndv of the rows, as `x in (n literals)` does, instead of the default selectivity.
+    * TPC-DS q75's CTE readers push such an `or` into its body
+    */
+  case OrEqualsSelectivity extends Optimization("or_equals_selectivity")
+
 end Optimization
 
 object Optimization:

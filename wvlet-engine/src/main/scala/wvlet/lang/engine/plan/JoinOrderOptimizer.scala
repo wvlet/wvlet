@@ -318,6 +318,32 @@ object JoinOrderOptimizer:
     options.isEnabled(Optimization.SwapBuildSide) && rows > SwapBuildRatio * otherRows
 
   /**
+    * How much larger an outer join's build input must be before it builds on the other input, with
+    * `smaller_outer_builds`
+    */
+  val SwapOuterBuildRatio: Double = 2.0
+
+  /**
+    * Whether an outer (LEFT / RIGHT / FULL) join builds on the other input, as this one (`rows`) is
+    * larger: by [[SwapOuterBuildRatio]] with `smaller_outer_builds`, whose unmatched build rows are
+    * emitted in parallel (`parallel_outer_tail`), otherwise by [[SwapBuildRatio]]. A build that
+    * `aggregates` keeps [[SwapBuildRatio]], as its estimate is its input's rows: TPC-DS q10's
+    * decorrelated `exists` (a distinct of store_sales customers) ran 1.15x slower as a RIGHT join
+    */
+  def swapOuterBuild(
+      options: OptimizerOptions,
+      rows: Double,
+      otherRows: Double,
+      aggregates: Boolean = false
+  ): Boolean =
+    if options.isEnabled(Optimization.SmallerOuterBuilds) &&
+      options.isEnabled(Optimization.ParallelOuterTail) && !aggregates
+    then
+      options.isEnabled(Optimization.SwapBuildSide) && rows > SwapOuterBuildRatio * otherRows
+    else
+      swapBuild(options, rows, otherRows)
+
+  /**
     * Whether a semi / anti join builds on its outer (left) input, as the subquery input has more
     * rows (`rows`) than the outer one (`otherRows`): by any margin with `semi_join_build_side`,
     * otherwise by [[SwapBuildRatio]] as for other joins. A subquery that `aggregates` keeps the

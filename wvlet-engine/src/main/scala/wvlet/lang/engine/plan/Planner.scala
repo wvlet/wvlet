@@ -165,7 +165,8 @@ class Planner(
           longGroupTables = enabled(Optimization.LongGroupTables),
           sortedGroupRuns = enabled(Optimization.SortedGroupRuns),
           unionDistinctOnce = enabled(Optimization.UnionDistinctOnce),
-          anyValuePartials = enabled(Optimization.DependentGroupKeys)
+          anyValuePartials = enabled(Optimization.DependentGroupKeys),
+          parallelOuterTail = enabled(Optimization.ParallelOuterTail)
         )
       else
         pruned
@@ -1633,7 +1634,7 @@ class Planner(
           if pushed.isEmpty then
             pruned
           else
-            runtimeOptimizer.eagerAggregation(pruned)
+            runtimeOptimizer.eagerAggregation(runtimeOptimizer.outerBuilds(pruned))
         ),
         reduced
       )
@@ -3778,14 +3779,15 @@ class Planner(
       left: P,
       right: P
   ): Boolean =
+    val aggregates         = CardinalityEstimator.aggregates(builder.op(right))
     def rows(p: P): Double =
-      if CardinalityEstimator.aggregates(builder.op(right)) then
+      if aggregates then
         CardinalityEstimator.rows(builder.op(p))
       else
         builder.buildRows(p)
     kind match
       case JoinKind.Left | JoinKind.Right | JoinKind.Full =>
-        swapBuild(rows(right), rows(left))
+        JoinOrderOptimizer.swapOuterBuild(options, rows(right), rows(left), aggregates)
       case _ =>
         false
 

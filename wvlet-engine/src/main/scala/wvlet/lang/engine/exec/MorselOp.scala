@@ -32,8 +32,11 @@ import scala.collection.mutable
   * emits them. A segment's scan is split when its parts are first needed, on the calling thread; a
   * segment whose source has a single part runs on the calling thread, after the parts before it.
   *
-  * With `tail` (right / full joins), one more run over an empty input of the first segment's scan
-  * follows the parts, on the calling thread, to emit the build rows no part matched.
+  * With `tails` (right / full joins), one more run over an empty input of its scan follows the
+  * parts, on the calling thread, to emit the build rows no part matched. A splittable tail
+  * (`parallel_outer_tail`) of a large build instead runs as tasks over disjoint ranges of the build
+  * rows, and several tails (the inputs of a UNION ALL) run as tasks, emitted in tail and range
+  * order.
   *
   * Falls back to running the pipeline over the whole scan when a single segment's source has a
   * single part.
@@ -47,7 +50,7 @@ class MorselOp(
     runner: TaskRunner,
     prepare: List[() => Unit],
     release: List[() => Unit],
-    tail: Option[Operator => Operator]
+    tails: Seq[MorselOp.Tail]
 ) extends Operator:
   import MorselOp.*
 
@@ -59,8 +62,8 @@ class MorselOp(
       runner: TaskRunner,
       prepare: List[() => Unit] = Nil,
       release: List[() => Unit] = Nil,
-      tail: Option[Operator => Operator] = None
-  ) = this(Seq(MorselOp.Segment(scan, pipeline)), schema, runner, prepare, release, tail)
+      tail: Option[MorselOp.Tail] = None
+  ) = this(Seq(MorselOp.Segment(scan, pipeline)), schema, runner, prepare, release, tail.toSeq)
 
   require(segments.nonEmpty, "MorselOp needs a segment")
 
@@ -88,11 +91,32 @@ class MorselOp(
   /** The number of steps run before the parts start (for tests) */
   def prepareSteps: Int = prepare.size
 
-  /** The tail pipeline over an empty input, run on the calling thread after every part */
-  private def runTail(): Seq[Batch] =
-    val op = tail.get(IteratorOp(scan.schema, () => Iterator.empty, scan.name))
+  /** The number of tasks the tails ran as (for tests); 0 when they ran on the calling thread */
+  def tailTasks: Int        = tailTaskCount
+  private var tailTaskCount = 0
+
+  /** The tail pipeline over an empty input, for the unmatched build rows in [from, until) */
+  private def runTail(t: Tail, from: Int, until: Int): Seq[Batch] =
+    val sc = t.scan.getOrElse(scan)
+    val op = t.run(from, until)(IteratorOp(sc.schema, () => Iterator.empty, sc.name))
     try op.drain()
     finally op.close()
+
+  /**
+    * Run the tails after every part: as tasks over ranges of the build rows when a tail splits and
+    * its build is large, queued in tail and range order; one run of a single tail on the calling
+    * thread
+    */
+  private def startTails(): Unit =
+    val runs = tails.flatMap(t => MorselOp.tailRanges(t, runner.parallelism).map((t, _)))
+    if runs.size <= 1 then
+      current = runs.flatMap((t, r) => runTail(t, r._1, r._2)).iterator
+    else
+      tailTaskCount = runs.size
+      runs.foreach { case (t, (from, until)) =>
+        inFlight.enqueue(Item.Task(runner.submit(() => runTail(t, from, until)), null))
+        running += 1
+      }
 
   private def runPart(seg: Segment, s: ScanSplits, k: Int): Seq[Batch] =
     val rows =
@@ -159,7 +183,7 @@ class MorselOp(
             openParts(s, sp)
           case None =>
             // A single run is both the only part and the tail
-            sequential = tail.getOrElse(s.pipeline)(s.scan)
+            sequential = tails.headOption.map(_.run(0, Int.MaxValue)).getOrElse(s.pipeline)(s.scan)
     if sequential != null then
       return sequential.next()
     while !current.hasNext do
@@ -171,10 +195,10 @@ class MorselOp(
         streaming = null
       fill()
       if inFlight.isEmpty then
-        if tail.isEmpty || tailDone then
+        if tails.isEmpty || tailDone then
           return null
         tailDone = true
-        current = runTail().iterator
+        startTails()
       else
         inFlight.dequeue() match
           case Item.Task(h, last) =>
@@ -219,7 +243,59 @@ object MorselOp:
   /** A scan and the pipeline that each of its parts runs through */
   case class Segment(scan: ScanOp, pipeline: Operator => Operator)
 
+  /**
+    * The run after every part that emits a right / full join's unmatched build rows. `run(from,
+    * until)` makes the copy of the operators that emits those of the build rows at [from, until).
+    * With `splittable` (one right / full join, `parallel_outer_tail`), several runs over disjoint
+    * ranges together emit every unmatched row once; `buildRows` is the build's size once the parts
+    * have run. `scan`: the scan whose empty input the tail reads, when not the first segment's (an
+    * input of a UNION ALL)
+    */
+  case class Tail(
+      run: (Int, Int) => Operator => Operator,
+      buildRows: () => Int = () => 0,
+      splittable: Boolean = false,
+      scan: Option[ScanOp] = None
+  ):
+    /** The same tail with f over its output */
+    def map(f: Operator => Operator): Tail = copy(run =
+      (from, until) => x => f(run(from, until)(x))
+    )
+
+  object Tail:
+    /** A tail that runs once, over every build row */
+    def whole(run: Operator => Operator): Tail = Tail((_, _) => run)
+
+  /** Build rows below which a tail runs once on the calling thread */
+  val MinTailSplitRows: Int = 1 << 16
+
+  /**
+    * Ranges [from, until) of the build rows that the tail's runs cover, one when it doesn't split
+    */
+  private[exec] def tailRanges(t: Tail, parallelism: Int): Seq[(Int, Int)] =
+    val n =
+      if t.splittable && parallelism > 1 then
+        t.buildRows()
+      else
+        0
+    if n < MinTailSplitRows then
+      Seq((0, Int.MaxValue))
+    else
+      val count = math.min(parallelism * 2, (n + MinTailSplitRows / 2 - 1) / (MinTailSplitRows / 2))
+      val step  = (n + count - 1) / count
+      (0 until count).map(k =>
+        (
+          k * step,
+          if k == count - 1 then
+            Int.MaxValue
+          else
+            (k + 1) * step
+        )
+      )
+
   private enum Item:
     /** A part; `last`, when it is its segment's last part, the segment's splits */
     case Task(handle: TaskRunner.Handle[Seq[Batch]], last: ScanSplits)
     case OnCaller(segment: Segment)
+
+end MorselOp

@@ -69,10 +69,15 @@ class UnionDistinctOnceTest extends UniTest:
         .sortBy(_.toString)
     finally op.close()
 
-  private def parallel(op: Operator, once: Boolean = true): Operator = Parallelizer(
+  private def parallel(
+      op: Operator,
+      once: Boolean = true,
+      parallelOuterTail: Boolean = true
+  ): Operator = Parallelizer(
     op,
     FourAtATime,
-    unionDistinctOnce = once
+    unionDistinctOnce = once,
+    parallelOuterTail = parallelOuterTail
   )
 
   private def count(text: String, word: String): Int = text.split(word, -1).length - 1
@@ -117,7 +122,9 @@ class UnionDistinctOnceTest extends UniTest:
     rows(op) shouldBe Seq(Seq(1L, 10L), Seq(2L, 20L), Seq(3L, 30L), Seq(7L, 70L)).sortBy(_.toString)
   }
 
-  test("should keep the per-input distincts when an input emits unmatched build rows") {
+  test(
+    "should run one distinct when an input emits unmatched build rows, or per input without parallel_outer_tail"
+  ) {
     val d = MemTable("d", schema, Seq(Batch(Array(longs(1, 6), longs(100, 600)), 2)))
     // A right join emits its unmatched build rows after its parts: no union pipeline
     def keys: Operator =
@@ -136,10 +143,15 @@ class UnionDistinctOnceTest extends UniTest:
         schema
       )
     def plan = DistinctOp(UnionAllOp(Seq(keys, DistinctOp(UnionAllOp(Seq(b, c), schema))), schema))
-    val op   = parallel(plan)
-    op.explain() shouldContain "UnionAll"
     val want = (expected ++ Seq(Seq(1L, 100L), Seq(6L, 600L))).sortBy(_.toString)
+    // The right join's tail runs after every part of the union
+    val op = parallel(plan)
+    op.explain() shouldNotContain "UnionAll"
+    count(op.explain(), "PartitionedAgg") shouldBe 1
     rows(op) shouldBe want
+    val off = parallel(plan, parallelOuterTail = false)
+    off.explain() shouldContain "UnionAll"
+    rows(off) shouldBe want
     rows(plan) shouldBe want
   }
 

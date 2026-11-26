@@ -106,10 +106,15 @@ class UnionAllPipelinesTest extends UniTest:
         )
     finally op.close()
 
-  private def parallel(op: Operator, unionPipelines: Boolean = true): Operator = Parallelizer(
+  private def parallel(
+      op: Operator,
+      unionPipelines: Boolean = true,
+      parallelOuterTail: Boolean = true
+  ): Operator = Parallelizer(
     op,
     FourAtATime,
-    unionPipelines = unionPipelines
+    unionPipelines = unionPipelines,
+    parallelOuterTail = parallelOuterTail
   )
 
   test("probe a hash join over a UNION ALL as one morsel pipeline, in input and part order") {
@@ -149,26 +154,38 @@ class UnionAllPipelinesTest extends UniTest:
     rows(op).sortBy(_.toString) shouldBe rows(agg).sortBy(_.toString)
   }
 
+  def tailUnderJoin: Operator =
+    val right = join(JoinKind.Right)
+    val u     = UnionAllOp(Seq(right, join(JoinKind.Inner)), right.schema)
+    val b     = build
+    HashJoinOp(
+      u,
+      b,
+      IndexedSeq(ColRef(2, PType.Int64, "dk")),
+      IndexedSeq(ColRef(0, PType.Int64, "dk")),
+      JoinKind.Inner,
+      None,
+      Schema(u.schema.fields ++ b.schema.fields)
+    )
+
   test("keep the union's own pipelines when an input emits unmatched build rows after its parts") {
-    def plan: Operator =
-      val right = join(JoinKind.Right)
-      val u     = UnionAllOp(Seq(right, join(JoinKind.Inner)), right.schema)
-      val b     = build
-      HashJoinOp(
-        u,
-        b,
-        IndexedSeq(ColRef(2, PType.Int64, "dk")),
-        IndexedSeq(ColRef(0, PType.Int64, "dk")),
-        JoinKind.Inner,
-        None,
-        Schema(u.schema.fields ++ b.schema.fields)
-      )
-    val op = parallel(plan)
+    val op = parallel(tailUnderJoin, parallelOuterTail = false)
     // The right join's tail runs after its own parts, so the join above runs over the union
     op shouldMatch { case _: HashJoinOp =>
     }
     op.explain() shouldContain "UnionAll"
-    rows(op).sortBy(_.toString) shouldBe rows(plan).sortBy(_.toString)
+    rows(op).sortBy(_.toString) shouldBe rows(tailUnderJoin).sortBy(_.toString)
+  }
+
+  test(
+    "run an input's unmatched build rows through the union's pipeline with parallel_outer_tail"
+  ) {
+    val op = parallel(tailUnderJoin)
+    // The right join's tail runs after every part of the union, through the join above it
+    op shouldMatch { case _: MorselOp =>
+    }
+    op.explain() shouldNotContain "UnionAll"
+    rows(op).sortBy(_.toString) shouldBe rows(tailUnderJoin).sortBy(_.toString)
   }
 
   test("keep the union's own pipelines without the toggle, or with nothing above it") {

@@ -158,6 +158,16 @@ class Optimizer(
       PlanValidator.validate(next)
     next
 
+  /**
+    * The plan with the build sides of its outer joins chosen again ([[ReorderJoins.outerBuilds]]),
+    * for a shared CTE body once its readers' filters are pushed into it
+    */
+  def outerBuilds(p: RuntimePlan): RuntimePlan =
+    val next = ReorderJoins.outerBuilds(p, ctx)
+    if options.validatePlans && (next ne p) then
+      PlanValidator.validate(next)
+    next
+
   /** The plan with the row-group filters of its scans recomputed ([[PushScanFilters]]) */
   def pushScanFilters(p: RuntimePlan): RuntimePlan =
     val next = PushScanFilters.run(p, ctx)

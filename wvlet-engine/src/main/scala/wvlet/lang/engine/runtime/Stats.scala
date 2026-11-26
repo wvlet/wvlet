@@ -26,6 +26,7 @@ import wvlet.lang.engine.expr.Const
 import wvlet.lang.engine.expr.InList
 import wvlet.lang.engine.expr.Kernels
 import wvlet.lang.engine.expr.LikeExpr
+import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.CardinalityEstimator
 import wvlet.lang.engine.plan.JoinOrderOptimizer
@@ -512,9 +513,44 @@ object Stats:
           case l: LikeExpr
               if options.isEnabled(Optimization.PrefixLikeSelectivity) && PrefixLike.isPrefix(l) =>
             PrefixLike.Selectivity
+          case o: OrExpr if options.isEnabled(Optimization.OrEqualsSelectivity) =>
+            orEqualsSelectivity(p, o).getOrElse(CardinalityEstimator.DefaultSelectivity)
           case _ =>
             CardinalityEstimator.DefaultSelectivity
       }
+
+  /**
+    * n / ndv for an `or` of n comparisons of one expression with literals (`x = a or x = b`, also
+    * `x in (...)` disjuncts), as for `x in (a, b)`. TPC-DS q75's readers push `d_year = 2002 or
+    * d_year = 2001` into its CTE body. None for other `or`s, or when ndv is unknown
+    */
+  private def orEqualsSelectivity(p: RuntimePlan, o: OrExpr): Option[Double] =
+    def literals(e: VExpr): Option[(VExpr, Int)] =
+      e match
+        case Compare(CmpOp.Eq, x, Const(v, _)) if v != null =>
+          Some(x -> 1)
+        case Compare(CmpOp.Eq, Const(v, _), x) if v != null =>
+          Some(x -> 1)
+        case in: InList if !in.negate =>
+          Some(in.child -> in.values.size)
+        case _ =>
+          None
+    def disjuncts(e: VExpr): List[VExpr] =
+      e match
+        case OrExpr(l, r) =>
+          disjuncts(l) ++ disjuncts(r)
+        case other =>
+          List(other)
+    val parts = disjuncts(o).map(literals)
+    if parts.exists(_.isEmpty) then
+      None
+    else
+      val xs = parts.flatten
+      val x  = xs.head._1
+      if xs.exists(_._1 != x) then
+        None
+      else
+        distinct(p, x).filter(_ >= 1).map(d => math.min(1.0, xs.map(_._2).sum / d))
 
   /**
     * The distinct non-NULL values of column k of a computed result, grouped as DISTINCT groups them
