@@ -330,7 +330,7 @@ class ScanOp(
     * ticket numbers matching a handful of returns (q17, q25), leave most row groups unread
     */
   private def keySetRowGroupFilters(): Seq[ParquetFilter] =
-    if !keySetRowGroups || rowFilters.isEmpty || !source.supportsRowFilter then
+    if !keySetRowGroups || rowFilters.isEmpty || !source.supportsKeySetRowGroups then
       return Nil
     rowFilters
       .toSeq

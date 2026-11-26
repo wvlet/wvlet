@@ -73,6 +73,14 @@ trait TableSource:
   def canRowFilterOn(column: String): Boolean = false
 
   /**
+    * Whether `scan` uses `In` conjuncts of `spec.filter` over a set of keys to skip the parts (row
+    * groups, or files of other partition values) holding none of them (`key_set_row_groups`), for
+    * the columns [[canRowFilterOn]] accepts. Such conjuncts only skip parts: rows are still tested
+    * by the engine
+    */
+  def supportsKeySetRowGroups: Boolean = supportsRowFilter
+
+  /**
     * The [min, max] range of an integer (or date, in epoch days) column's non-null values, from
     * metadata only, for estimating how many rows a range condition keeps. None when unknown
     */
@@ -239,6 +247,12 @@ class ParquetSource(
 
   /** Single files only: a folder or Iceberg table still filters rows after decoding them */
   override def supportsRowFilter: Boolean = isSingleFile
+
+  /**
+    * A folder or Iceberg table too: uni skips each file's row groups by the row-group filter, and
+    * the files whose partition value isn't in the set
+    */
+  override def supportsKeySetRowGroups: Boolean = true
 
   /**
     * Top-level primitive columns that uni's row filter compares as the engine compares their

@@ -104,6 +104,41 @@ class EngineScanRowFiltersTest extends UniTest:
       conn.close()
     path.toString
 
+  /**
+    * A folder of 2 Parquet files and a Hive-partitioned folder (`p=0` to `p=3`, which uni reads as
+    * strings), each holding the 20480 ids of [[joinFile]] in row groups of 2048, clustered by file
+    * and row group
+    */
+  private lazy val joinFolders: (String, String) =
+    val dir = Paths.get("target/engine-test/scan_join_row_filters_dataset").toAbsolutePath
+    def clean(p: java.nio.file.Path): Unit =
+      if Files.isDirectory(p) then
+        Files.list(p).forEach(clean)
+      Files.deleteIfExists(p)
+    clean(dir)
+    val files       = dir.resolve("files")
+    val partitioned = dir.resolve("partitioned")
+    Class.forName("org.duckdb.DuckDBDriver")
+    val conn = DriverManager.getConnection("jdbc:duckdb:")
+    try
+      val st = conn.createStatement()
+      try
+        def write(from: Int, rows: Int, path: java.nio.file.Path): Unit =
+          Files.createDirectories(path.getParent)
+          st.execute(s"""copy (
+               |  select range::bigint as id, (range % 50)::decimal(12, 2) as qty
+               |  from range(${from}, ${from + rows})
+               |) to '${path}' (format parquet, row_group_size 2048)""".stripMargin)
+        (0 until 2).foreach(i => write(i * 10240, 10240, files.resolve(s"part-${i}.parquet")))
+        (0 until 4).foreach(i =>
+          write(i * 5120, 5120, partitioned.resolve(s"p=${i}").resolve("data.parquet"))
+        )
+      finally
+        st.close()
+    finally
+      conn.close()
+    (files.toString, partitioned.toString)
+
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
   private def run[A](e: WvletEngine, query: String)(body: Relation => Context ?=> A): A =
@@ -311,6 +346,47 @@ class EngineScanRowFiltersTest extends UniTest:
       val groups = keys.map(_ / 2048L).toSet
       kept.filter(keys.contains) shouldBe keys.filter(_ < 20480L).toSeq
       kept shouldBe scannedIds(scan(keys, pruneByKeys = false)).filter(i => groups(i / 2048L))
+    }
+  }
+
+  test("skip the row groups of a folder's files holding none of a join filter's few build keys") {
+    val (files, partitioned)                                     = joinFolders
+    def filter(column: String, keys: Array[Long]): RuntimeFilter =
+      val rf = RuntimeFilter(0, column, (_, _) => None, rows = true)
+      rf.set(LongVec(PType.Int64, keys, null), keys.indices.toArray, keys.length)
+      rf
+    // The ids the source reads (whole row groups: a folder has no row filter)
+    def read(path: String, f: RuntimeFilter, pruneByKeys: Boolean): Seq[Long] =
+      val src = ParquetSource("t", path)
+      src.supportsRowFilter shouldBe false
+      val spec = ScanOp(src, src.schema, None, None, Seq(f)).withKeySetRowGroups(pruneByKeys).spec
+      val out  = Seq.newBuilder[Long]
+      src
+        .scan(spec.copy(columns = Some(Seq("id"))))
+        .foreach { b =>
+          (0 until b.size).foreach(i => out += b.column(0).get(i).asInstanceOf[Long])
+        }
+      out.result()
+    def groups(ids: Seq[Long]): Set[Long] = ids.map(_ / 2048L).toSet
+    // Row groups 0 and 5 (one in each file) hold the keys; their range spans most row groups
+    val keys = Array(5L, 12000L)
+    groups(read(files, filter("id", keys), pruneByKeys = true)) shouldBe Set(0L, 5L)
+    // These filters have no range filter: without the keys, every row group is read
+    groups(read(files, filter("id", keys), pruneByKeys = false)) shouldBe (0L until 10L).toSet
+    groups(read(partitioned, filter("id", keys), pruneByKeys = true)) shouldBe Set(0L, 5L)
+  }
+
+  test("return the same rows joining a folder with key-set row groups on and off") {
+    val (files, partitioned) = joinFolders
+    val noKeySet             = on.withOptimizer(options.withDisabled(Optimization.KeySetRowGroups))
+    Seq(files, partitioned).foreach { path =>
+      val q =
+        s"""from '${path}' as t
+         |join { from $$j where id = 5 or id = 12000 or id = 20000 select id as kid } on t.id = kid
+         |select t.id, t.qty""".stripMargin
+      val r = rows(on, q)
+      r.size shouldBe 3
+      r shouldBe rows(noKeySet, q)
     }
   }
 
