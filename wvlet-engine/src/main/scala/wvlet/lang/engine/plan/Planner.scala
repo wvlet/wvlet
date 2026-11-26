@@ -84,7 +84,8 @@ class Planner(
     caseAggFilters = enabled(Optimization.CaseAggFilters),
     substringInLists = enabled(Optimization.SubstringInLists),
     valueSelectivity = enabled(Optimization.StringValueSelectivity),
-    columnImpliedRowFilters = enabled(Optimization.ColumnImpliedRowFilters)
+    columnImpliedRowFilters = enabled(Optimization.ColumnImpliedRowFilters),
+    deferredNullChecks = enabled(Optimization.DeferredNullChecks)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

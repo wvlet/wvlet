@@ -18,6 +18,7 @@ import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.expr.DeferredNullChecks
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.Planner
 import wvlet.lang.engine.plan.ScanFilters
@@ -64,7 +65,8 @@ object Lowering:
     * `valueSelectivity`, the row-filter gate estimates string conjuncts from the source's sampled
     * values ([[ScanFilters.valueSelectivity]]). With `columnImpliedRowFilters`, a row filter also
     * takes the per-column filters implied by a multi-column `or` conjunct
-    * ([[ScanFilters.columnImplied]])
+    * ([[ScanFilters.columnImplied]]). With `deferredNullChecks`, IS NULL of a column not gathered
+    * yet reads the column's positions and source nulls ([[DeferredNullChecks]])
     */
   def apply(
       p: RuntimePlan,
@@ -91,7 +93,8 @@ object Lowering:
       substringInLists: Boolean = false,
       windowTopNStream: Boolean = false,
       valueSelectivity: Boolean = false,
-      columnImpliedRowFilters: Boolean = false
+      columnImpliedRowFilters: Boolean = false,
+      deferredNullChecks: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -116,7 +119,8 @@ object Lowering:
       substringInLists,
       windowTopNStream,
       valueSelectivity,
-      columnImpliedRowFilters
+      columnImpliedRowFilters,
+      deferredNullChecks
     )
     if inSet then
       l.markInSet(p)
@@ -159,7 +163,8 @@ object Lowering:
       substringInLists: Boolean,
       windowTopNStream: Boolean,
       valueSelectivity: Boolean,
-      columnImpliedRowFilters: Boolean
+      columnImpliedRowFilters: Boolean,
+      deferredNullChecks: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -206,7 +211,8 @@ object Lowering:
               caseAggFilters = caseAggFilters,
               substringInLists = substringInLists,
               valueSelectivity = valueSelectivity,
-              columnImpliedRowFilters = columnImpliedRowFilters
+              columnImpliedRowFilters = columnImpliedRowFilters,
+              deferredNullChecks = deferredNullChecks
             )
         )
       ) match
@@ -225,11 +231,16 @@ object Lowering:
           FoldConstants(x)
         else
           x
-      val masked = MaskCaseWhen(folded, mask = maskedCaseWhen, consts = constCaseSelect)
-      if substringInLists then
-        SubstringInLists(masked)
+      val masked  = MaskCaseWhen(folded, mask = maskedCaseWhen, consts = constCaseSelect)
+      val regions =
+        if substringInLists then
+          SubstringInLists(masked)
+        else
+          masked
+      if deferredNullChecks then
+        DeferredNullChecks(regions)
       else
-        masked
+        regions
 
     /**
       * The input with the common subexpressions of `exprs` appended ([[CommonSubexpressions]]), and

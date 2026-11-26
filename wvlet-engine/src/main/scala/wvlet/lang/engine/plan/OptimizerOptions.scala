@@ -629,6 +629,13 @@ enum Optimization(val name: String):
   case SubstringInLists extends Optimization("substring_in_lists")
 
   /**
+    * IS NULL of a column that a join or filter output has not gathered yet reads the column's row
+    * positions (-1 for a padded NULL row) and its source's nulls, without gathering the column
+    * (TPC-DS q97's null checks over the FULL join output)
+    */
+  case DeferredNullChecks extends Optimization("deferred_null_checks")
+
+  /**
     * Estimate string `=`, IN, LIKE and IS NULL conditions (and AND / OR / NOT of them) over one
     * column of a Parquet file from the values of a few sampled row groups
     * ([[wvlet.lang.engine.catalog.ValueCounts]]), cached per file version, for the scan row-filter

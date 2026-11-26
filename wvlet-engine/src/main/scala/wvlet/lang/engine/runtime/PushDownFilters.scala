@@ -517,9 +517,9 @@ object PushDownFilters extends Pass:
   private def rejectsNull(e: VExpr, cols: Set[ColumnId]): Boolean =
     strict(e, cols) || (
       e match
-        case IsNullExpr(c, true) =>
+        case IsNullExpr(c, true, _) =>
           isColumnOf(c, cols)
-        case NotExpr(IsNullExpr(c, false)) =>
+        case NotExpr(IsNullExpr(c, false, _)) =>
           isColumnOf(c, cols)
         case AndExpr(a, b) =>
           rejectsNull(a, cols) || rejectsNull(b, cols)
@@ -562,7 +562,7 @@ object PushDownFilters extends Pass:
   /** `key is not null`, which a hash join already implies for both inputs' keys */
   private def isNotNullKey(e: VExpr): Boolean =
     e match
-      case IsNullExpr(_: ColRef, true) =>
+      case IsNullExpr(_: ColRef, true, _) =>
         true
       case _ =>
         false
