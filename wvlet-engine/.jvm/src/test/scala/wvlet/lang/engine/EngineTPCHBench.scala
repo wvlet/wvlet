@@ -55,7 +55,8 @@ import java.util.concurrent.TimeoutException
   *   - `WVLET_ENGINE_BENCH_DUCKDB_PROFILE`: set 1 to write DuckDB's JSON profile (per-operator
   *     timings) of one extra run of each query to `target/engine-bench/<label>-<query>.duckdb.json`
   *   - `WVLET_ENGINE_BENCH_EXPLAIN`: set 1 to write each engine plan to
-  *     `target/engine-bench/<suite>-<query>.plan`
+  *     `target/engine-bench/<suite>-<query>.plan`; with `WVLET_ENGINE_BENCH_AB`, also the plan with
+  *     the A/B optimizations disabled to `<suite>-<query>.off.plan`, to diff a suite's plans
   *   - `WVLET_ENGINE_BENCH_AB`: comma-separated optimization names (see `Optimization`). Instead of
   *     comparing with DuckDB, each query runs on the engine with every optimization ("on") and with
   *     these disabled ("off"), alternating on/off and off/on run by run in the same JVM, so that
@@ -206,6 +207,12 @@ object EngineTPCHBench extends LogSupport:
             // A timed-out engine run may still occupy the worker thread
             QueryTiming(name, Nil, Nil, -1, -1, Some("skipped after a timeout"))
           case Some(q) if offEngine.isDefined =>
+            if opts.explain then
+              Files.writeString(File(outDir, s"${label}-${name}.plan").toPath, engine.explain(q))
+              Files.writeString(
+                File(outDir, s"${label}-${name}.off.plan").toPath,
+                offEngine.get.explain(q)
+              )
             val task = worker.submit(() => abTiming(name, q, engine, offEngine.get, opts.runs))
             try
               val r = task.get(opts.timeoutSeconds.toLong, TimeUnit.SECONDS)
