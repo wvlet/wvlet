@@ -844,6 +844,14 @@ enum Optimization(val name: String):
   case DependentGroupKeys extends Optimization("dependent_group_keys")
 
   /**
+    * Readers of a shared CTE joined on a string column that copies a declared unique key join on a
+    * long declared key of the same table instead, which the body carries as one more column
+    * ([[wvlet.lang.engine.runtime.CTEJoinKeys]]). TPC-DS q04, q11 and q74 join their `year_total`
+    * readers on `c_customer_sk` instead of `c_customer_id`
+    */
+  case CTEDeterminingJoinKeys extends Optimization("cte_determining_join_keys")
+
+  /**
     * The fused fold of `fused_accumulators` adds one sum at a time over the batch, into four
     * partial sums per group that consecutive rows rotate over, with one overflow check per group
     * when the values' magnitudes bound the batch's sum, instead of updating every accumulator per

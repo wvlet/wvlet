@@ -637,6 +637,12 @@ trait SharedCTE:
   /** The bound and optimized body, whose output the readers read */
   def body: RuntimePlan
 
+  /**
+    * The columns a new reader reads: the body's, without the long keys added for joins of its
+    * readers ([[CTEJoinKeys]])
+    */
+  def readerSchema: Schema = body.schema
+
   /** The exact rows of the result, once it is computed for planning (None before) */
   def rows: Option[Long] = None
 

@@ -153,6 +153,7 @@ class OptimizerOptionsTest extends UniTest:
         "sorted_agg_splits",
         "union_distinct_once",
         "dependent_group_keys",
+        "cte_determining_join_keys",
         "column_major_fused_sums",
         "fused_decimal_arith",
         "packed_agg_routing",
