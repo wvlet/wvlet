@@ -87,6 +87,7 @@ class OptimizerOptionsTest extends UniTest:
         "folder_file_scans",
         "unmatched_left_probe",
         "probe_miss_filter",
+        "left_match_prefilter",
         "narrow_join_entries",
         "parallel_column_decode",
         "presize_aggregates",

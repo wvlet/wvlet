@@ -338,6 +338,16 @@ enum Optimization(val name: String):
   case ProbeMissFilter extends Optimization("probe_miss_filter")
 
   /**
+    * An aggregation whose output LEFT joins probe, under a filter that drops the rows none of those
+    * joins matched, filters its input rows by their builds first: a group whose key no build has is
+    * dropped anyway. TPC-DS q78 keeps the (year, item, customer) groups of store_sales that web or
+    * catalog sales have (`coalesce(ws_qty, 0) > 0 or coalesce(cs_qty, 0) > 0`), ~6K of its ~5M
+    * input rows at SF10, so the aggregation and the joins see ~6K rows. The filter turns itself off
+    * once it has seen 64K rows and kept more than half of them
+    */
+  case LeftMatchPrefilter extends Optimization("left_match_prefilter")
+
+  /**
     * The one-Long entries of a flat join hash table, `(key - min) << rowBits | row`, give the row
     * only the bits the build rows need instead of 32, so keys spanning up to 64 - rowBits bits
     * still take one Long instead of two. TPC-DS q78's LEFT joins on (year, item, customer) pack
