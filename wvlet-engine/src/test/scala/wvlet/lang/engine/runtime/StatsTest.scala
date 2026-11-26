@@ -180,6 +180,38 @@ class StatsTest extends UniTest:
     ) shouldBe None
   }
 
+  test("estimate an aggregation of an aggregation from the distinct values of its key") {
+    // Sums by (store, item) over 1M rows, then their average by store, as in TPC-DS q65
+    val store = Column(ColumnId(1), "store", PType.Int64)
+    val item  = Column(ColumnId(2), "item", PType.Int64)
+    val sales = RuntimePlan.CTERef(
+      Computed(Some(100), None, rowCount = 1000000),
+      IndexedSeq(store, item)
+    )
+    val byItem = RuntimePlan.Aggregate(
+      sales,
+      IndexedSeq(BExpr(ColRef(1, PType.Int64, "store")), BExpr(ColRef(2, PType.Int64, "item"))),
+      IndexedSeq.empty,
+      IndexedSeq(
+        Column(ColumnId(3), "store", PType.Int64),
+        Column(ColumnId(4), "item", PType.Int64)
+      )
+    )
+    val byStore = RuntimePlan.Aggregate(
+      byItem,
+      IndexedSeq(BExpr(ColRef(3, PType.Int64, "store"))),
+      IndexedSeq.empty,
+      IndexedSeq(Column(ColumnId(5), "store", PType.Int64))
+    )
+    val on  = OptimizerOptions()
+    val off = on.withDisabled(Optimization.NestedGroupEstimates)
+    // The store key keeps its 100 distinct values through the inner grouping
+    Stats.aggregatedRows(byStore, on) shouldBe Some(100.0)
+    // Without it, the outer aggregation has the inner one's rows
+    Stats.aggregatedRows(byStore, off) shouldBe Stats.aggregatedRows(byItem, off)
+    Stats.aggregatedRows(byItem, on) shouldBe Stats.aggregatedRows(byItem, off)
+  }
+
   test("choose a semi join's build side from join-tree estimates") {
     // EXISTS over the star join, whose subquery reads 1M rows
     val sub    = Column(ColumnId(4), "s", PType.Int64)

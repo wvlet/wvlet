@@ -875,6 +875,14 @@ enum Optimization(val name: String):
     */
   case SizePartitionsByRows extends Optimization("size_partitions_by_rows")
 
+  /**
+    * The estimated groups of an aggregation read its keys' distinct values through the grouping
+    * keys of an aggregation below it (`Stats.treeRows`), instead of taking the inner aggregation's
+    * rows: TPC-DS q65's average revenue by store, over sums by store and item, is about 100 rows,
+    * not the 5.8M of the sums, so the join builds on it
+    */
+  case NestedGroupEstimates extends Optimization("nested_group_estimates")
+
 end Optimization
 
 object Optimization:
