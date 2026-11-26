@@ -198,6 +198,7 @@ object Optimizer:
     AggregateWindows,
     EagerAggregation,
     DependentGroupKeys,
+    DimensionGroupIds,
     PruneColumns,
     PushScanFilters
   )
