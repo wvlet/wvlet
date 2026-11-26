@@ -51,6 +51,10 @@ import wvlet.lang.engine.vector.PType
   * drop most of A's rows in the join (and its runtime join filters would skip them in A's scan)
   * before they are aggregated. The outer aggregation needs keys, as a count over no rows is 0 while
   * the sum of no partial counts is NULL.
+  *
+  * With [[Optimization.EagerOtherSideMinMax]], calls that are mins or maxes of D's columns stay in
+  * the outer aggregation over the joined rows (a block repeats D's row, which doesn't change them),
+  * and D may be a cross join with a one-row side (a scalar subquery's result) that keeps its rows.
   */
 object EagerAggregation extends Pass:
   import RuntimePlan.*
@@ -90,6 +94,13 @@ object EagerAggregation extends Pass:
         node
 
   private def lower(c: AggregateCall): String = c.name.toLowerCase
+
+  /**
+    * Whether `c` is a min or max without a filter, whose value over the joined rows of an outer
+    * group doesn't depend on how many times each row repeats
+    */
+  private def isMinMax(c: AggregateCall): Boolean =
+    c.filter.isEmpty && Set("min", "max").contains(lower(c))
 
   /** Whether `c` counts rows, so that its partial results are summed */
   private def isCount(c: AggregateCall): Boolean =
@@ -152,24 +163,42 @@ object EagerAggregation extends Pass:
           if lk.nonEmpty && a.keys.nonEmpty && a.keys.forall(deterministic) &&
             a.calls.forall(supported) &&
             (lk ++ rk ++ residual ++ above.map(_._1)).forall(deterministic) =>
-        val callRefs = a.calls.flatMap(_.exprs).flatMap(_.refs).toSet
-        val keyRefs  = a.keys.flatMap(_.refs).toSet
-        val conds    = residual.toSeq ++ above.map(_._1)
-        def side(in: RuntimePlan, other: RuntimePlan): Boolean =
-          val ids = in.output.map(_.id).toSet
-          callRefs.subsetOf(ids) && other.output.exists(c => keyRefs.contains(c.id)) &&
-          retained(other, options)
+        val keyRefs     = a.keys.flatMap(_.refs).toSet
+        val conds       = residual.toSeq ++ above.map(_._1)
+        val otherMinMax = options.isEnabled(Optimization.EagerOtherSideMinMax)
+        // The calls computed over side `in` before the join, or None when a call reads neither
+        // `in` only nor, as a min or max that stays above the join, `other` only
+        def pushable(in: RuntimePlan, other: RuntimePlan): Option[Set[Int]] =
+          val ids      = in.output.map(_.id).toSet
+          val otherIds = other.output.map(_.id).toSet
+          val split    = a
+            .calls
+            .zipWithIndex
+            .map { (c, i) =>
+              val refs = c.exprs.flatMap(_.refs).toSet
+              if refs.subsetOf(ids) then
+                Some(Some(i))
+              else if otherMinMax && isMinMax(c) && refs.subsetOf(otherIds) then
+                Some(None)
+              else
+                None
+            }
+          Option.when(
+            split.forall(_.isDefined) && other.output.exists(c => keyRefs.contains(c.id)) &&
+              retained(other, options)
+          )(split.flatten.flatten.toSet)
         val pushed =
-          if side(left, right) then
-            eager(a, left, lk ++ conds, options, newId).map { (pre, m, outer) =>
-              (j.copy(left = pre, leftKeys = lk.map(remap(_, m))), m, outer)
-            }
-          else if side(right, left) then
-            eager(a, right, rk ++ conds, options, newId).map { (pre, m, outer) =>
-              (j.copy(right = pre, rightKeys = rk.map(remap(_, m))), m, outer)
-            }
-          else
-            None
+          pushable(left, right) match
+            case Some(eagerCalls) =>
+              eager(a, eagerCalls, left, lk ++ conds, options, newId).map { (pre, m, outer) =>
+                (j.copy(left = pre, leftKeys = lk.map(remap(_, m))), m, outer)
+              }
+            case None =>
+              pushable(right, left).flatMap { eagerCalls =>
+                eager(a, eagerCalls, right, rk ++ conds, options, newId).map { (pre, m, outer) =>
+                  (j.copy(right = pre, rightKeys = rk.map(remap(_, m))), m, outer)
+                }
+              }
         pushed.map { (joined, m, outer) =>
           val withResidual = joined.copy(residual = residual.map(remap(_, m)))
           outer(
@@ -191,6 +220,7 @@ object EagerAggregation extends Pass:
     */
   private def eager(
       a: Aggregate,
+      eagerCalls: Set[Int],
       in: RuntimePlan,
       exprs: Seq[BExpr],
       options: OptimizerOptions,
@@ -224,22 +254,31 @@ object EagerAggregation extends Pass:
     else
       val keyCols     = groups.map(c => Column(newId(), c.name, c.ptype, c.qualifiers))
       val m           = groups.map(_.id).zip(keyCols).toMap
-      val partials    = a.calls
-      val partialCols = partials
-        .zip(a.columns.drop(a.keys.size))
-        .map((p, out) => Column(newId(), out.name, p.ptype))
-      val pre    = Aggregate(in, groups.map(BExpr.ref), partials, keyCols ++ partialCols)
-      val merges = a
-        .calls
-        .zip(partialCols)
-        .map { (c, p) =>
-          val name =
-            if isCount(c) then
-              "sum"
-            else
-              c.name
-          AggregateCall(name, Seq(BExpr.ref(p)), distinct = false, filter = None, c.ptype)
-        }
+      val calls       = a.calls.zip(a.columns.drop(a.keys.size)).zipWithIndex
+      val partials    = calls.filter((_, i) => eagerCalls.contains(i))
+      val partialCols = partials.map { case ((p, out), i) =>
+        i -> Column(newId(), out.name, p.ptype)
+      }
+      val partialOf = partialCols.toMap
+      val pre       = Aggregate(
+        in,
+        groups.map(BExpr.ref),
+        partials.map(_._1._1),
+        keyCols ++ partialCols.map(_._2)
+      )
+      // A min or max of the other side's columns stays as it is, over the joined rows
+      val merges = calls.map { case ((c, _), i) =>
+        partialOf.get(i) match
+          case Some(p) =>
+            val name =
+              if isCount(c) then
+                "sum"
+              else
+                c.name
+            AggregateCall(name, Seq(BExpr.ref(p)), distinct = false, filter = None, c.ptype)
+          case None =>
+            c
+      }
       Some((pre, m, j => Aggregate(j, a.keys.map(remap(_, m)), merges, a.columns)))
     end if
 
@@ -268,6 +307,14 @@ object EagerAggregation extends Pass:
           Some(1.0)
         case Project(child, exprs, _) if exprs.forall(deterministic) =>
           loop(child)
+        case Join(l, r, JoinKind.Cross, _, _, None, _)
+            if options.isEnabled(Optimization.EagerOtherSideMinMax) =>
+          if oneRow(r) then
+            loop(l)
+          else if oneRow(l) then
+            loop(r)
+          else
+            None
         case Filter(child, cond, counts) =>
           loop(child).map { r =>
             r *
@@ -279,6 +326,16 @@ object EagerAggregation extends Pass:
         case _ =>
           None
     loop(p).exists(_ >= MinRetention)
+
+  /** Whether p returns exactly one row: an aggregation without keys under projections */
+  private def oneRow(p: RuntimePlan): Boolean =
+    p match
+      case Aggregate(_, keys, _, _) =>
+        keys.isEmpty
+      case Project(child, _, _) =>
+        oneRow(child)
+      case _ =>
+        false
 
   /**
     * The distinct values of column `id` of p, as [[Stats.distinct]] estimates them, but at most the
