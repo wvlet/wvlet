@@ -35,8 +35,9 @@ class EngineOptimizerToggleTest extends UniTest:
   private class ToggleSuite(open: => EngineConformance, skip: Set[String]):
     private var opened = false
     private lazy val c =
+      val conformance = open
       opened = true
-      open
+      conformance
 
     private case class Query(name: String, fileName: String, relation: Relation, ctx: Context)
 
