@@ -175,4 +175,13 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options.withDisabled(Optimization.SortedAggSplits), splits).contains(true) shouldBe false
   }
 
+  test("route partitioned aggregation rows by a packed key with packed_agg_routing") {
+    val packed: PartialFunction[Operator, Boolean] = { case a: PartitionedAggOp =>
+      a.packedRouting
+    }
+    flags(options, packed) shouldContain true
+    flags(options, packed).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.PackedAggRouting), packed).contains(true) shouldBe false
+  }
+
 end EngineAdaptivePartialAggsTest

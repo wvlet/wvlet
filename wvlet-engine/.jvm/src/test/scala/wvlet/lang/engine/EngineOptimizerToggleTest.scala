@@ -228,6 +228,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // SortedAggSplitsTest that splitting sorted input gives the same groups as hash routing
     Optimization.SortedAggSplits ->
       "Changes how partitioned aggregations split sorted input, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the partitioned aggregations, and
+    // PartitionedAggOpTest that routing by the packed key gives the same groups
+    Optimization.PackedAggRouting ->
+      "Changes how partitioned aggregations route rows to partitions, not the plan",
     // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
     // evaluation keeps the same rows
     Optimization.DictionaryFilters ->

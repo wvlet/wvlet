@@ -117,6 +117,23 @@ class PartitionedAggOp(
     sortedSplits = enabled
     this
 
+  /**
+    * Whether hash-routed input with packable keys is routed by one packed key
+    * (`packed_agg_routing`): the routing tasks pack the keys from their ranges over the whole input
+    * and copy only the packed key and the aggregates' columns into the partitions, which group by
+    * the packed key without packing their rows again. Otherwise every column of the partitions'
+    * rows is copied, and each partition packs its keys from its own ranges
+    */
+  var packedRouting: Boolean = true
+
+  /** Set [[packedRouting]] */
+  def withPackedRouting(enabled: Boolean): this.type =
+    packedRouting = enabled
+    this
+
+  /** Whether the last aggregation routed its rows by a packed key (for tests) */
+  private[engine] var usedPackedRouting: Boolean = false
+
   /** Whether the last aggregation split its input at sorted key changes (for tests) */
   private[engine] var usedSortedSplits: Boolean = false
 
@@ -132,8 +149,16 @@ class PartitionedAggOp(
     // Deferred columns are gathered by the tasks that route the batches
     val input = readInput()
     val total = input.map(_.size).sum
-    // A partition has at most one group per row
-    def aggregateAll(batches: Seq[Batch], groups: Int): Seq[Batch] =
+    // The packed key column appended to the input columns
+    val packedIn = Schema(child.schema.fields :+ Field("__packed_key", PType.Int64))
+    val packedAt = ColRef(child.schema.size, PType.Int64, "__packed_key")
+    // A partition has at most one group per row. With `routed`, the batches hold the packed key of
+    // that packing as one more column
+    def aggregateAll(
+        batches: Seq[Batch],
+        groups: Int,
+        routed: Option[AggKeyPacking] = None
+    ): Seq[Batch] =
       val rows = batches.map(_.size).sum
       def run(in: Schema, bs: Seq[Batch], ks: IndexedSeq[VExpr], out: Schema): Seq[Batch] =
         val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, math.min(groups, rows))
@@ -146,25 +171,30 @@ class PartitionedAggOp(
         try op.drain()
         finally op.close()
       val keyVecs =
-        if packKeys && AggKeyPacking.packable(keys.map(_.ptype), longDecimalKeys) then
+        if routed.isEmpty && packKeys && AggKeyPacking.packable(keys.map(_.ptype), longDecimalKeys)
+        then
           batches.map(b => (keys.map(_.eval(b)).toArray, b.size))
         else
           Nil
       val packing =
-        if keyVecs.isEmpty then
+        if routed.isDefined then
+          routed
+        else if keyVecs.isEmpty then
           None
         else
           AggKeyPacking.of(keys.map(_.ptype), keyVecs, longDecimalKeys)
       packing match
         case Some(packing) =>
           // The packed key as one more input column, whose groups unpack into the key columns
-          val w      = child.schema.size
-          val in     = Schema(child.schema.fields :+ Field("__packed_key", PType.Int64))
-          val packed = batches
-            .zip(keyVecs)
-            .map((b, kv) => Batch(b.columns :+ packing.pack(kv._1, b.size), b.size))
+          val packed =
+            if routed.isDefined then
+              batches
+            else
+              batches
+                .zip(keyVecs)
+                .map((b, kv) => Batch(b.columns :+ packing.pack(kv._1, b.size), b.size))
           val out = Schema(Field("__packed_key", PType.Int64) +: schema.fields.drop(keys.size))
-          run(in, packed, IndexedSeq(ColRef(w, PType.Int64, "__packed_key")), out).map { b =>
+          run(packedIn, packed, IndexedSeq(packedAt), out).map { b =>
             val k = packing.unpack(b.columns(0).asInstanceOf[LongVec], b.size)
             Batch(k ++ b.columns.drop(1), b.size)
           }
@@ -190,34 +220,85 @@ class PartitionedAggOp(
         }
         return handles.iterator.flatMap(_.get())
       case None =>
+    val parallelRuns = parallelPartitioning && input.size > 1
+    // Contiguous runs of input batches, about two per thread, routed as tasks
+    val runs: IndexedSeq[IndexedSeq[Batch]] =
+      if parallelRuns then
+        val n    = math.min(input.size, runner.parallelism * 2)
+        val step = (input.size + n - 1) / n
+        input.grouped(step).toIndexedSeq
+      else
+        IndexedSeq(input)
+    def eachRun[A](f: IndexedSeq[Batch] => A): IndexedSeq[A] =
+      if parallelRuns then
+        runs.map(run => runner.submit(() => f(run))).map(_.get())
+      else
+        runs.map(f)
+    val types = keys.map(_.ptype)
+    // The packing of the keys over the whole input, for routing by the packed key. Only column
+    // keys: they read the same values in both passes, without evaluating an expression twice
+    val packing: Option[AggKeyPacking] =
+      if packedRouting && packKeys && keys.forall(_.isInstanceOf[ColRef]) &&
+        AggKeyPacking.packable(types, longDecimalKeys)
+      then
+        val ranges = eachRun { run =>
+          AggKeyPacking.ranges(
+            types,
+            run.map(b => (keys.map(_.eval(b.compact())).toArray, b.size)),
+            longDecimalKeys
+          )
+        }
+        if ranges.forall(_.isDefined) then
+          AggKeyPacking.ofRanges(types, ranges.flatten)
+        else
+          None
+      else
+        None
+    usedPackedRouting = packing.isDefined
+    // The columns a partition reads when grouping by the packed key: the aggregates' and the key
+    val routedColumns = (PartitionedAggOp.columnRefs(aggs) + packedAt.index).toArray.sorted
     // The rows of each input batch in each partition
     def route(batches: IndexedSeq[Batch]): Array[mutable.ArrayBuffer[Batch]] =
-      val hasher = GroupTable(keys.map(_.ptype), 0, longDecimalKeys)
-      val out    = Array.fill(parts)(mutable.ArrayBuffer.empty[Batch])
+      val hasher =
+        if packing.isDefined then
+          GroupTable(IndexedSeq(PType.Int64), 0, false)
+        else
+          GroupTable(types, 0, longDecimalKeys)
+      val out = Array.fill(parts)(mutable.ArrayBuffer.empty[Batch])
       batches.foreach { deferred =>
         // Copying each partition's rows from compact columns is cheaper than composing every
-        // partition's positions over the deferred columns' sources
-        val b   = deferred.compact()
-        val h   = hasher.keyHashes(keys.map(_.eval(b)).toArray, b.size)
-        val idx = GroupTable.partitionRows(h, b.size, parts)
-        var p   = 0
-        while p < parts do
-          if idx(p).nonEmpty then
-            out(p) += b.gather(idx(p), idx(p).length)
-          p += 1
+        // partition's positions over the deferred columns' sources, and than reading them in place
+        // at the positions
+        val b = deferred.compact()
+        packing match
+          case Some(pk) =>
+            val key  = pk.pack(keys.map(_.eval(b)).toArray, b.size)
+            val idx  = GroupTable.partitionRows(hasher.keyHashes(Array(key), b.size), b.size, parts)
+            val wide = Batch(b.columns :+ key, b.size)
+            var p    = 0
+            while p < parts do
+              if idx(p).nonEmpty then
+                // The columns no aggregate reads stay deferred, never read. The partition task that
+                // reads t starts after this routing task finished
+                val t = wide.take(idx(p), idx(p).length)
+                routedColumns.foreach(t.column)
+                out(p) += t
+              p += 1
+          case None =>
+            val h   = hasher.keyHashes(keys.map(_.eval(b)).toArray, b.size)
+            val idx = GroupTable.partitionRows(h, b.size, parts)
+            var p   = 0
+            while p < parts do
+              if idx(p).nonEmpty then
+                out(p) += b.gather(idx(p), idx(p).length)
+              p += 1
       }
       out
-    val routed: Seq[Array[mutable.ArrayBuffer[Batch]]] =
-      if parallelPartitioning && input.size > 1 then
-        // Contiguous runs of input batches, about two per thread, routed as tasks
-        val runs = math.min(input.size, runner.parallelism * 2)
-        val step = (input.size + runs - 1) / runs
-        input.grouped(step).toIndexedSeq.map(run => runner.submit(() => route(run))).map(_.get())
-      else
-        Seq(route(input))
+    end route
+    val routed  = eachRun(route)
     val handles = (0 until parts).map { p =>
       val ps = routed.flatMap(_(p))
-      runner.submit(() => aggregateAll(ps, expectedGroups / parts))
+      runner.submit(() => aggregateAll(ps, expectedGroups / parts, packing))
     }
     handles.iterator.flatMap(_.get())
 
@@ -235,6 +316,18 @@ class PartitionedAggOp(
 end PartitionedAggOp
 
 object PartitionedAggOp:
+  /** The input columns that the arguments and FILTERs of `aggs` reference */
+  private[exec] def columnRefs(aggs: IndexedSeq[AggCall]): Set[Int] =
+    val refs                  = Set.newBuilder[Int]
+    def visit(e: VExpr): Unit =
+      e match
+        case c: ColRef =>
+          refs += c.index
+        case _ =>
+          e.children.foreach(visit)
+    aggs.foreach(a => (a.args ++ a.filter).foreach(visit))
+    refs.result()
+
   /**
     * Below this many input rows, partitioning costs more than it saves. The
     * wvlet.engine.partitionedAggMinRows system property overrides it (tests use it to exercise the

@@ -123,43 +123,49 @@ final class AggKeyPacking private (
 
   /** The key columns of the first n packed keys */
   def unpack(packed: LongVec, n: Int): Array[Vec] =
-    val p = packed.values
-    Array.tabulate(width) { k =>
-      val mask                  = (1L << widths(k)) - 1
-      val lo                    = mins(k)
-      val shift                 = shifts(k)
-      var nulls: Array[Boolean] = null
-      types(k) match
-        case t @ (PType.Int32 | PType.Date) =>
-          val out = new Array[Int](n)
-          var i   = 0
-          while i < n do
-            val c = (p(i) >>> shift) & mask
-            if c != 0 then
-              out(i) = (c - 1 + lo).toInt
-            else
-              if nulls == null then
-                nulls = new Array[Boolean](n)
-              nulls(i) = true
-            i += 1
-          IntVec(t, out, nulls)
-        case t =>
-          // Int64 or a Long-backed decimal: the unscaled values
-          val out = new Array[Long](n)
-          var i   = 0
-          while i < n do
-            val c = (p(i) >>> shift) & mask
-            if c != 0 then
-              out(i) = c - 1 + lo
-            else
-              if nulls == null then
-                nulls = new Array[Boolean](n)
-              nulls(i) = true
-            i += 1
-          LongVec(t, out, nulls)
-    }
+    val out = new Array[Vec](width)
+    var k   = 0
+    while k < width do
+      out(k) = unpackColumn(packed.values, k, n)
+      k += 1
+    out
 
-  end unpack
+  /** Key column k of the first n packed keys `p` */
+  private def unpackColumn(p: Array[Long], k: Int, n: Int): Vec =
+    val mask                  = (1L << widths(k)) - 1
+    val lo                    = mins(k)
+    val shift                 = shifts(k)
+    var nulls: Array[Boolean] = null
+    types(k) match
+      case t @ (PType.Int32 | PType.Date) =>
+        val out = new Array[Int](n)
+        var i   = 0
+        while i < n do
+          val c = (p(i) >>> shift) & mask
+          if c != 0 then
+            out(i) = (c - 1 + lo).toInt
+          else
+            if nulls == null then
+              nulls = new Array[Boolean](n)
+            nulls(i) = true
+          i += 1
+        IntVec(t, out, nulls)
+      case t =>
+        // Int64 or a Long-backed decimal: the unscaled values
+        val out = new Array[Long](n)
+        var i   = 0
+        while i < n do
+          val c = (p(i) >>> shift) & mask
+          if c != 0 then
+            out(i) = c - 1 + lo
+          else
+            if nulls == null then
+              nulls = new Array[Boolean](n)
+            nulls(i) = true
+          i += 1
+        LongVec(t, out, nulls)
+
+  end unpackColumn
 
 end AggKeyPacking
 
@@ -205,6 +211,45 @@ object AggKeyPacking:
         fromRanges(types, mins, maxs)
       else
         None
+
+  /**
+    * The value ranges `(mins, maxs)` of the non-NULL keys of `keyBatches` (each the key columns of
+    * one batch, and its row count), for [[ofRanges]] to merge with the ranges of other batches;
+    * None when the keys can't be packed ([[of]])
+    */
+  def ranges(
+      types: IndexedSeq[PType],
+      keyBatches: Seq[(Array[Vec], Int)],
+      decimals: Boolean
+  ): Option[(Array[Long], Array[Long])] =
+    if !packable(types, decimals) then
+      None
+    else
+      val mins = Array.fill(types.size)(Long.MaxValue)
+      val maxs = Array.fill(types.size)(Long.MinValue)
+      if keyBatches.forall((keys, n) => widen(types, keys, n, mins, maxs)) then
+        Some((mins, maxs))
+      else
+        None
+
+  /**
+    * The packing covering every one of `parts` ([[ranges]] of disjoint sets of batches), as [[of]]
+    * over all of their batches gives; None when the codes don't fit in 63 bits
+    */
+  def ofRanges(
+      types: IndexedSeq[PType],
+      parts: Seq[(Array[Long], Array[Long])]
+  ): Option[AggKeyPacking] =
+    val mins = Array.fill(types.size)(Long.MaxValue)
+    val maxs = Array.fill(types.size)(Long.MinValue)
+    parts.foreach { (lo, hi) =>
+      var k = 0
+      while k < types.size do
+        mins(k) = math.min(mins(k), lo(k))
+        maxs(k) = math.max(maxs(k), hi(k))
+        k += 1
+    }
+    fromRanges(types, mins, maxs)
 
   /**
     * A packing covering the first `groups._2` rows of `groups._1` (the keys grouped so far, when

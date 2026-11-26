@@ -109,4 +109,62 @@ class PartitionedAggOpTest extends UniTest:
     run(true) shouldBe sequential
   }
 
+  test("should give the same groups routing by a packed key or not") {
+    // Two Int64 keys, one with NULLs, pack into one; half the input batches are deferred
+    val packSchema = Schema(
+      IndexedSeq(Field("a", PType.Int64), Field("b", PType.Int64), Field("v", PType.Int64))
+    )
+    val input = (0 until 8).map { j =>
+      val n = 1000
+      val r = Array.tabulate(n)(i => j * n + i)
+      val b = Batch(
+        Array(
+          LongVec(PType.Int64, r.map(i => (i % 101).toLong), r.map(_ % 17 == 0)),
+          LongVec(PType.Int64, r.map(i => (i % 7).toLong), null),
+          LongVec(PType.Int64, r.map(i => (i % 31).toLong), null)
+        ),
+        n
+      )
+      if j % 2 == 0 then
+        b.take(Array.tabulate(n / 2)(_ * 2), n / 2)
+      else
+        b
+    }
+    val packKeys = IndexedSeq[VExpr](ColRef(0, PType.Int64, "a"), ColRef(1, PType.Int64, "b"))
+    val packOut  = Schema(
+      IndexedSeq(
+        Field("a", PType.Int64),
+        Field("b", PType.Int64),
+        Field("n", PType.Int64),
+        Field("total", PType.Int64),
+        Field("distinct_v", PType.Int64)
+      )
+    )
+    def run(packed: Boolean): Seq[Seq[Any]] =
+      // Fresh deferred batches per run: reading a deferred column caches it
+      val op = PartitionedAggOp(
+        BatchesOp(packSchema, input.map(b => b.take(Array.tabulate(b.size)(identity), b.size))),
+        packKeys,
+        aggs,
+        packOut,
+        runner,
+        minParallelRows = 0,
+        packKeys = true
+      ).withPackedRouting(packed)
+      try
+        val out = op.drain().flatMap(b => (0 until b.size).map(i => b.row(i).toSeq))
+        op.usedPackedRouting shouldBe packed
+        out
+      finally
+        op.close()
+    // Partitions are chosen by the hash of the packed key, so groups come in another order
+    def sorted(out: Seq[Seq[Any]]): Seq[String] =
+      out.map(_.map(String.valueOf).mkString(",")).sorted
+    val expected = rows(HashAggOp(BatchesOp(packSchema, input), packKeys, aggs, packOut))
+    val copied   = run(false)
+    copied.exists(_.head == null) shouldBe true
+    sorted(copied) shouldBe expected
+    sorted(run(true)) shouldBe expected
+  }
+
 end PartitionedAggOpTest
