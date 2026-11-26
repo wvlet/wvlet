@@ -67,7 +67,8 @@ object Lowering:
     * values ([[ScanFilters.valueSelectivity]]). With `columnImpliedRowFilters`, a row filter also
     * takes the per-column filters implied by a multi-column `or` conjunct
     * ([[ScanFilters.columnImplied]]). With `deferredNullChecks`, IS NULL of a column not gathered
-    * yet reads the column's positions and source nulls ([[DeferredNullChecks]])
+    * yet reads the column's positions and source nulls ([[DeferredNullChecks]]). With
+    * `fusedDecimalArith`, decimal `x * (c ± y)` computes in one loop ([[FuseDecimalArith]])
     */
   def apply(
       p: RuntimePlan,
@@ -96,7 +97,8 @@ object Lowering:
       windowTopNStream: Boolean = false,
       valueSelectivity: Boolean = false,
       columnImpliedRowFilters: Boolean = false,
-      deferredNullChecks: Boolean = false
+      deferredNullChecks: Boolean = false,
+      fusedDecimalArith: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -123,7 +125,8 @@ object Lowering:
       windowTopNStream,
       valueSelectivity,
       columnImpliedRowFilters,
-      deferredNullChecks
+      deferredNullChecks,
+      fusedDecimalArith
     )
     if inSet then
       l.markInSet(p)
@@ -168,7 +171,8 @@ object Lowering:
       windowTopNStream: Boolean,
       valueSelectivity: Boolean,
       columnImpliedRowFilters: Boolean,
-      deferredNullChecks: Boolean
+      deferredNullChecks: Boolean,
+      fusedDecimalArith: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -237,7 +241,12 @@ object Lowering:
           FoldConstants(x)
         else
           x
-      val masked  = MaskCaseWhen(folded, mask = maskedCaseWhen, consts = constCaseSelect)
+      val fused =
+        if fusedDecimalArith then
+          FuseDecimalArith(folded)
+        else
+          folded
+      val masked  = MaskCaseWhen(fused, mask = maskedCaseWhen, consts = constCaseSelect)
       val regions =
         if substringInLists then
           SubstringInLists(masked)

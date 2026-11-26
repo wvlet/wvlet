@@ -86,7 +86,8 @@ class Planner(
     substringInLists = enabled(Optimization.SubstringInLists),
     valueSelectivity = enabled(Optimization.StringValueSelectivity),
     columnImpliedRowFilters = enabled(Optimization.ColumnImpliedRowFilters),
-    deferredNullChecks = enabled(Optimization.DeferredNullChecks)
+    deferredNullChecks = enabled(Optimization.DeferredNullChecks),
+    fusedDecimalArith = enabled(Optimization.FusedDecimalArith)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */
@@ -138,6 +139,9 @@ class Planner(
       Planner.disableParallelJoinBuild(pruned)
     if !enabled(Optimization.JoinBuildStringCodes) then
       Planner.disableJoinBuildStringCodes(pruned)
+    // Before parallelizing: the per-part aggregations take the option from these operators
+    if !enabled(Optimization.ColumnMajorFusedSums) then
+      Planner.disableColumnMajorSums(pruned)
     val physical =
       if enabled(Optimization.Parallelize) then
         Parallelizer(
@@ -171,6 +175,8 @@ class Planner(
       Planner.disableFusedAccumulators(physical)
     if !enabled(Optimization.AggregateSelectedRows) then
       Planner.disableSelectedInputs(physical)
+    if !enabled(Optimization.ColumnMajorFusedSums) then
+      Planner.disableColumnMajorSums(physical)
     if !enabled(Optimization.DenseSelectedRows) then
       Planner.disableDenseSelected(physical)
     if !enabled(Optimization.LongGroupTables) then
@@ -4090,6 +4096,21 @@ object Planner:
       case _ =>
     op.children.foreach(disableFusedAccumulators)
     op.sharedInputs.foreach(disableFusedAccumulators)
+
+  /**
+    * Make the fused folds of hash aggregations update every accumulator per row
+    * (`column_major_fused_sums`). The partial aggregates that two-phase aggregations create per
+    * part take the option from the hash aggregations they split
+    */
+  private[engine] def disableColumnMajorSums(op: Operator): Unit =
+    op match
+      case a: HashAggOp =>
+        a.withColumnMajorSums(false)
+      case a: PartitionedAggOp =>
+        a.withColumnMajorSums(false)
+      case _ =>
+    op.children.foreach(disableColumnMajorSums)
+    op.sharedInputs.foreach(disableColumnMajorSums)
 
   /**
     * Make the hash aggregations of a physical plan gather deferred input columns before reading

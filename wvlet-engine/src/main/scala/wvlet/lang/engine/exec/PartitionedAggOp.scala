@@ -77,6 +77,14 @@ class PartitionedAggOp(
     fuseAccumulators = enabled
     this
 
+  /** Whether the partitions' fused folds are column-major (`column_major_fused_sums`) */
+  var columnMajorSums: Boolean = true
+
+  /** Set [[columnMajorSums]] */
+  def withColumnMajorSums(enabled: Boolean): this.type =
+    columnMajorSums = enabled
+    this
+
   /** Whether the partitions group a single Int64 key through a [[LongGroupTable]] */
   var longGroupTables: Boolean = true
 
@@ -132,6 +140,7 @@ class PartitionedAggOp(
           // The keys are packed here from the partition's exact ranges, when they can be
           .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
           .withFusedAccumulators(fuseAccumulators)
+          .withColumnMajorSums(columnMajorSums)
           .withLongGroupTables(longGroupTables)
           .withSortedGroupRuns(sortedGroupRuns)
         try op.drain()

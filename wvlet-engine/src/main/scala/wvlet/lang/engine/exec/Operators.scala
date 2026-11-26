@@ -764,6 +764,17 @@ class HashAggOp(
     this
 
   /**
+    * Whether the fused fold adds one accumulator at a time over the batch ([[ColumnMajorSums]],
+    * `column_major_fused_sums`)
+    */
+  var columnMajorSums: Boolean = true
+
+  /** Set [[columnMajorSums]] */
+  def withColumnMajorSums(enabled: Boolean): this.type =
+    columnMajorSums = enabled
+    this
+
+  /**
     * Whether group keys and aggregate arguments over deferred columns read the columns' sources at
     * the selected positions instead of gathering them first ([[SelectedInputs]],
     * `aggregate_selected_rows`)
@@ -832,7 +843,7 @@ class HashAggOp(
       accs.foreach(_.ensureGroups(numGroups))
       val dense =
         if denseSelected then
-          DenseSelectedRows.fold(aggs, unfiltered, accs, groups, numGroups, b)
+          DenseSelectedRows.fold(aggs, unfiltered, accs, groups, numGroups, b, columnMajorSums)
         else
           null
       if dense != null then
@@ -846,7 +857,15 @@ class HashAggOp(
             else
               null
           )
-        folded = FusedAccumulators.update(accs, unfiltered, args, groups, b.size, numGroups)
+        folded = FusedAccumulators.update(
+          accs,
+          unfiltered,
+          args,
+          groups,
+          b.size,
+          numGroups,
+          columnMajor = columnMajorSums
+        )
     var a = 0
     while a < accs.size do
       if folded == null || !folded(a) then

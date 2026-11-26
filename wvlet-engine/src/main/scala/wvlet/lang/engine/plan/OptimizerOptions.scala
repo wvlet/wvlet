@@ -780,6 +780,22 @@ enum Optimization(val name: String):
     */
   case DependentGroupKeys extends Optimization("dependent_group_keys")
 
+  /**
+    * The fused fold of `fused_accumulators` adds one sum at a time over the batch, into four
+    * partial sums per group that consecutive rows rotate over, with one overflow check per group
+    * when the values' magnitudes bound the batch's sum, instead of updating every accumulator per
+    * row with a per-row overflow check (TPC-H q1's five decimal sums over four groups)
+    */
+  case ColumnMajorFusedSums extends Optimization("column_major_fused_sums")
+
+  /**
+    * Decimal `x * (c ± y)` for a constant c computes `c ± y` and the product per row in one loop
+    * over unscaled Longs, with an overflow check that divides only for operands outside the Int
+    * range, instead of an intermediate array and a Long division per row (TPC-H q1's
+    * `l_extendedprice * (1 - l_discount) * (1 + l_tax)`, q3/q5/q10's revenue)
+    */
+  case FusedDecimalArith extends Optimization("fused_decimal_arith")
+
 end Optimization
 
 object Optimization:

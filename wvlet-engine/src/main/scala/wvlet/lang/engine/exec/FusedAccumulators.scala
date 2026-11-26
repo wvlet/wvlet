@@ -23,7 +23,8 @@ import wvlet.lang.engine.vector.Vec
   * those independent updates overlap, and reads each row's group id once.
   *
   * Fused: `count(*)`, `count(x)` of a batch without NULLs, and decimal `sum(x)` of a batch without
-  * NULLs whose values are unscaled Longs, all without FILTER. The rest update on their own
+  * NULLs whose values are unscaled Longs, all without FILTER. The rest update on their own. With
+  * `column_major_fused_sums`, [[ColumnMajorSums]] folds them one accumulator at a time instead
   */
 private[exec] object FusedAccumulators:
 
@@ -51,7 +52,8 @@ private[exec] object FusedAccumulators:
       groups: Array[Int],
       n: Int,
       numGroups: Int,
-      sel: Array[Int] = null
+      sel: Array[Int] = null,
+      columnMajor: Boolean = false
   ): Array[Boolean] =
     if !foldsBatch(numGroups, n) then
       return null
@@ -88,7 +90,10 @@ private[exec] object FusedAccumulators:
     if nc + ns < 2 then
       null
     else
-      fewGroups(counts, nc, sums, slots, values, ns, groups, n, numGroups, sel)
+      if columnMajor then
+        ColumnMajorSums.fold(counts, nc, sums, slots, values, ns, groups, n, numGroups, sel)
+      else
+        fewGroups(counts, nc, sums, slots, values, ns, groups, n, numGroups, sel)
       folded
 
   end update

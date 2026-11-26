@@ -24,8 +24,9 @@ import wvlet.lang.engine.vector.*
   * at the positions ([[Accumulator.updateSelected]]), `+` / `-` subtrees of arguments over columns
   * compute one output array from the sources ([[eval]], also for the one-row partial results of
   * passed-through rows), and packed group keys pack from the sources
-  * ([[PackedGroupTable.groupIdsAt]]). A position of -1 (a row of NULLs of an outer join) reads as
-  * NULL.
+  * ([[PackedGroupTable.groupIdsAt]]). Fused decimal `x * (c ± y)` products ([[FusedDecimalMul]])
+  * read their column operands in place too. A position of -1 (a row of NULLs of an outer join)
+  * reads as NULL.
   */
 private[exec] object SelectedInputs:
 
@@ -41,6 +42,9 @@ private[exec] object SelectedInputs:
         src != null && acc.updateSelected(groups, b.size, src, b.deferredPositions(c.index))
       case a: Arith if readsInPlace(a, b) =>
         acc.update(groups, b.size, Array(eval(a, b)))
+        true
+      case f: FusedDecimalMul if readsInPlace(f, b) =>
+        acc.update(groups, b.size, Array(eval(f, b)))
         true
       case _ =>
         false
@@ -62,6 +66,12 @@ private[exec] object SelectedInputs:
           v
         else
           Kernels.arith(a.op, eval(a.left, b), eval(a.right, b), a.ptype)
+      case f: FusedDecimalMul if readsInPlace(f, b) =>
+        val v = fusedMul(f, b)
+        if v != null then
+          v
+        else
+          f.evalOver(eval(f.x, b), eval(f.y, b), b)
       case _ =>
         e.eval(b)
 
@@ -70,6 +80,8 @@ private[exec] object SelectedInputs:
     e match
       case a: Arith =>
         readsInPlace(a.left, b) || readsInPlace(a.right, b)
+      case f: FusedDecimalMul =>
+        readsInPlace(f.x, b) || readsInPlace(f.y, b)
       case c: ColRef =>
         b.deferredSource(c.index) != null
       case _ =>
@@ -172,6 +184,35 @@ private[exec] object SelectedInputs:
         DoubleVec(doubles(e, ls.iterator, n), nullsOf(ls, n))
 
   end arith
+
+  /**
+    * The value of fused `x * (c ± y)` ([[FusedDecimalMul]]) with deferred column operands read at
+    * their positions, and other operands computed as [[eval]] does; null when an operand isn't held
+    * as unscaled Longs at its scale or a value overflows a Long (then f is evaluated as usual)
+    */
+  private def fusedMul(f: FusedDecimalMul, b: Batch): Vec =
+    def operand(e: VExpr): Leaf =
+      e match
+        case c: ColRef =>
+          val src = b.deferredSource(c.index)
+          if src != null then
+            Leaf(src, b.deferredPositions(c.index))
+          else
+            Leaf(b.column(c.index), null)
+        case _ =>
+          Leaf(eval(e, b), null)
+    val xl = operand(f.x)
+    val yl = operand(f.y)
+    val xa = f.unscaledOf(xl.vec, f.xValueScale)
+    val ya = f.unscaledOf(yl.vec, f.yValueScale)
+    if xa == null || ya == null then
+      return null
+    val n = b.size
+    val o = f.compute(xa, xl.sel, ya, yl.sel, n)
+    if o == null then
+      null
+    else
+      LongVec(f.ptype, o, nullsOf(List(xl, yl), n))
 
   /** Whether values of types a and b are stored alike: Int64, Float64, or decimals at one scale */
   private def sameStorage(a: PType, b: PType): Boolean =

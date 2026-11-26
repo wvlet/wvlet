@@ -99,13 +99,15 @@ class FusedAccumulatorsTest extends UniTest:
   private def aggregate(
       batches: Seq[Batch],
       fuse: Boolean,
-      calls: IndexedSeq[AggCall] = aggs
+      calls: IndexedSeq[AggCall] = aggs,
+      columnMajor: Boolean = false
   ): Map[Any, Seq[Any]] =
     val outSchema = Schema(
       Field("k", PType.Int64) +: calls.indices.map(i => Field(s"a${i}", calls(i).ptype))
     )
     val op = HashAggOp(BatchesOp(in, batches), IndexedSeq(k), calls, outSchema)
       .withFusedAccumulators(fuse)
+      .withColumnMajorSums(columnMajor)
     val out =
       try op.drain()
       finally op.close()
@@ -147,6 +149,47 @@ class FusedAccumulatorsTest extends UniTest:
     val fused = aggregate(batches, fuse = true)
     fused.map((key, v) => key -> v(4).asInstanceOf[JBigDecimal].stripTrailingZeros) shouldBe
       expected.map((key, v) => key -> v.stripTrailingZeros)
+  }
+
+  test("should fold column-major as separate accumulators do, in batches of odd sizes") {
+    for groups <- Seq(4, 60) do
+      val batches = input(20000, 1023, groups)
+      aggregate(batches, fuse = true, columnMajor = true) shouldBe aggregate(batches, fuse = false)
+  }
+
+  test("should fold column-major sums without a count as separate accumulators do") {
+    val batches = input(20000, 1021, groups = 4)
+    val sums    = IndexedSeq(aggs(0), aggs(2), aggs(4))
+    aggregate(batches, fuse = true, sums, columnMajor = true) shouldBe
+      aggregate(batches, fuse = false, sums)
+  }
+
+  test("should sum large decimals column-major when their magnitudes don't bound the batch") {
+    // Magnitudes near 2^55: the bound fails at 1024 rows, though the sums fit in a Long
+    val rnd     = scala.util.Random(11)
+    val batches = (0 until 8).map { _ =>
+      Batch(
+        Array(
+          LongVec(PType.Int64, Array.fill(1024)(rnd.nextInt(4).toLong), null),
+          LongVec(dec, Array.fill(1024)(rnd.nextLong() >> 8), null),
+          LongVec(dec, Array.fill(1024)(rnd.nextLong() % 1000L), null),
+          LongVec(wide, Array.fill(1024)(Long.MinValue + rnd.nextLong(1000L)), null),
+          BoolVec(Array.fill(1024)(false), null)
+        ),
+        1024
+      )
+    }
+    val sums = IndexedSeq(aggs(0), aggs(2), aggs(4), aggs(5))
+    aggregate(batches, fuse = true, sums, columnMajor = true) shouldBe
+      aggregate(batches, fuse = false, sums)
+  }
+
+  test("should bound batch sums by the values' magnitudes") {
+    ColumnMajorSums.bounded(0L, 2048) shouldBe true
+    ColumnMajorSums.bounded((1L << 49) - 1, 2048) shouldBe true
+    ColumnMajorSums.bounded(1L << 49, 2048) shouldBe true
+    ColumnMajorSums.bounded(1L << 50, 2048) shouldBe false
+    ColumnMajorSums.bounded(Long.MaxValue, 1) shouldBe false
   }
 
 end FusedAccumulatorsTest

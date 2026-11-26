@@ -95,6 +95,20 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options.withDisabled(Optimization.FusedAccumulators), fused).contains(true) shouldBe false
   }
 
+  test("fold fused sums one at a time with column_major_fused_sums") {
+    val columnMajor: PartialFunction[Operator, Boolean] = {
+      case a: HashAggOp =>
+        a.columnMajorSums
+      case a: PartitionedAggOp =>
+        a.columnMajorSums
+    }
+    flags(options, columnMajor) shouldContain true
+    flags(options, columnMajor).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.ColumnMajorFusedSums), columnMajor).contains(
+      true
+    ) shouldBe false
+  }
+
   test("build one-row partial results with one_row_partials") {
     val oneRows: PartialFunction[Operator, Boolean] = {
       case a: HashAggOp if a.skip != null =>

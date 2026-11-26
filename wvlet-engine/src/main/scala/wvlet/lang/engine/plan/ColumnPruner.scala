@@ -408,6 +408,8 @@ object VExprs:
         x.copy(child = f(x.child))
       case x: Arith =>
         x.copy(left = f(x.left), right = f(x.right))
+      case x: FusedDecimalMul =>
+        x.mapChildren(f)
       case x: Negate =>
         x.copy(child = f(x.child))
       case x: Compare =>
