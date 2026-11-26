@@ -69,4 +69,16 @@ class TpchGenQueriesTest extends UniTest:
       }
   }
 
+  test("should run TPC-H q1 at SF 1 by generating line items while scanning") {
+    val e = WvletEngine()
+    TpchGen.register(e.catalog, 1.0)
+    val unit                               = CompilationUnit.fromFile("spec/tpch/q1.wv")
+    val r                                  = compiler.compileSingleUnit(unit)
+    given ctx: wvlet.lang.compiler.Context = r.context
+    val start                              = System.nanoTime()
+    val res = e.execute(GenSQL.expand(EngineTPCHBench.queryOf(unit).get, ctx))
+    debug(f"q1 at SF 1: ${(System.nanoTime() - start) / 1e9}%.1f s")
+    res.numRows shouldBe 4
+  }
+
 end TpchGenQueriesTest

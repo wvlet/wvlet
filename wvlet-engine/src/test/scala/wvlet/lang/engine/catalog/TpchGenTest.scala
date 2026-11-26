@@ -24,6 +24,7 @@ import wvlet.lang.model.plan.ExecuteQuery
 import wvlet.lang.model.plan.ExecuteTasks
 import wvlet.lang.engine.EngineResult
 import wvlet.lang.engine.WvletEngine
+import wvlet.lang.engine.vector.Batch
 import wvlet.lang.model.plan.Relation
 import wvlet.uni.test.UniTest
 
@@ -105,6 +106,124 @@ class TpchGenTest extends UniTest:
     intercept[WvletLangException] {
       TpchGen.tables(TpchGen.maxScaleFactor * 2)
     }
+    intercept[WvletLangException] {
+      TpchGen.sources(TpchGen.maxStreamingScaleFactor * 2)
+    }
+  }
+
+  private val sources = TpchGen.sources(sf).map(s => s.name -> s).toMap
+
+  private def values(b: Batch, col: Int): Seq[Any] =
+    Iterator.range(0, b.size).map(b.row(_)(col)).toSeq
+
+  test("should scan split parts to the same rows as the whole scan, in part order") {
+    // At SF 0.01, orders and line items span 2 blocks of 10,000 orders
+    Seq("supplier", "orders", "lineitem", "partsupp").foreach { name =>
+      val s     = sources(name)
+      val whole = s.scan(ScanSpec()).flatMap(b => Iterator.range(0, b.size).map(b.row(_).toSeq))
+      val parts =
+        s.scanSplits(ScanSpec()) match
+          case Some(sp) =>
+            sp.parts
+              .iterator
+              .flatMap(_())
+              .flatMap(b => Iterator.range(0, b.size).map(b.row(_).toSeq))
+          case None =>
+            s.scan(ScanSpec()).flatMap(b => Iterator.range(0, b.size).map(b.row(_).toSeq))
+      (name, parts.toSeq == whole.toSeq) shouldBe (name, true)
+    }
+    sources("orders").scanSplits(ScanSpec()).map(_.parts.size) shouldBe Some(2)
+    sources("orders").scanSplits(ScanSpec()).map(_.rows) shouldBe Some(IndexedSeq(10000L, 5000L))
+    // Line item counts per block are known only after generating them
+    sources("lineitem").scanSplits(ScanSpec()).map(_.rows) shouldBe Some(IndexedSeq.empty)
+  }
+
+  test("should generate the materialized tables' rows while scanning") {
+    rows("lineitem") shouldBe
+      sources("lineitem")
+        .scan(ScanSpec())
+        .flatMap(b => Iterator.range(0, b.size).map(b.row(_).toIndexedSeq))
+        .toSeq
+  }
+
+  test("should return the requested columns in the requested order") {
+    val b = sources("orders")
+      .scan(ScanSpec(columns = Some(Seq("o_orderdate", "o_orderkey"))))
+      .next()
+    b.numColumns shouldBe 2
+    b.size shouldBe Batch.DefaultSize
+    values(b, 1).take(3) shouldBe Seq(1L, 2L, 3L)
+    // No columns, e.g. for count(*)
+    sources("orders").scan(ScanSpec(columns = Some(Nil))).map(_.size).sum shouldBe 15000
+  }
+
+  test("should bound every column's values by its range and distinct estimates") {
+    sources
+      .values
+      .foreach { s =>
+        val all = rows(s.name)
+        s.schema
+          .names
+          .zipWithIndex
+          .foreach { (c, i) =>
+            val vs = all.map(_(i))
+            s.columnRange(c)
+              .foreach { (lo, hi) =>
+                // Dates are epoch days
+                val longs = vs.map {
+                  case x: Long =>
+                    x
+                  case x: Int =>
+                    x.toLong
+                  case x =>
+                    fail(s"Unexpected value of ${c}: ${x}")
+                }
+                (c, longs.min >= lo && longs.max <= hi) shouldBe (c, true)
+              }
+            s.estimatedDistinct(c)
+              .foreach { d =>
+                // Exact for keys and enums; o_custkey estimates the customers that order
+                (c, vs.distinct.size <= math.ceil(d)) shouldBe (c, true)
+              }
+          }
+      }
+  }
+
+  test("should give each part the key range of its rows") {
+    val s     = sources("lineitem")
+    val parts = s.partRanges("l_orderkey").get
+    parts.size shouldBe 2
+    val firstPart = s.scanSplits(ScanSpec(columns = Some(Seq("l_orderkey")))).get.parts(0)()
+    val keys      = firstPart.flatMap(values(_, 0)).map(_.asInstanceOf[Long]).toSeq
+    (keys.min, keys.max) shouldBe (parts(0).min, parts(0).max)
+    s.partRanges("l_comment") shouldBe None
+  }
+
+  test("should scale streaming sources beyond what tables materializes") {
+    val big = TpchGen.sources(10).map(s => s.name -> s).toMap
+    big("lineitem").estimatedRows shouldBe Some(60000000L)
+    big("orders").scanSplits(ScanSpec()).map(_.parts.size) shouldBe Some(1500)
+    big("orders").columnRange("o_orderkey") shouldBe Some((1L, 59999976L))
+  }
+
+  test("should run queries over the streaming sources") {
+    val e = WvletEngine()
+    TpchGen.register(e.catalog, sf)
+    val unit = CompilationUnit.fromWvletString("from lineitem select cnt = _.count")
+    val r    = compiler.compileSingleUnit(unit)
+    given wvlet.lang.compiler.Context = r.context
+    val q                             =
+      unit.executionPlan match
+        case ExecuteQuery(q: Relation) =>
+          q
+        case ExecuteTasks(ts) =>
+          ts.collectFirst { case ExecuteQuery(q: Relation) =>
+              q
+            }
+            .get
+        case other =>
+          fail(s"Unexpected plan: ${other}")
+    e.execute(q).rows.next()(0) shouldBe rows("lineitem").size.toLong
   }
 
 end TpchGenTest
