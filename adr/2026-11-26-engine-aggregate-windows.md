@@ -1,6 +1,6 @@
 # ADR: Compute a correlated min, max, or avg as a window over the outer join's rows
 
-Date: 2026-11-26 · PR #TBD
+Date: 2026-11-26 · PR #2486
 
 ## Context
 

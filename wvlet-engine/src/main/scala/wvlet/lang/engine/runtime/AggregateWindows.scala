@@ -123,20 +123,19 @@ object AggregateWindows extends Pass:
       leaves: mutable.ArrayBuffer[RuntimePlan],
       conds: mutable.ArrayBuffer[VExpr]
   ): Boolean =
+    // A non-deterministic condition keeps a random subset of rows, which differs between O and I
+    def add(es: Iterable[VExpr]): Boolean =
+      conds ++= es.flatMap(e => FactorOr.conjuncts(e))
+      es.forall(PushDownFilters.isDeterministic)
     p match
       case Join(l, r, JoinKind.Inner, lk, rk, residual, _) =>
-        lk.indices.foreach(i => conds += Compare(CmpOp.Eq, lk(i).expr, rk(i).expr))
-        residual.foreach(e => conds ++= FactorOr.conjuncts(e.expr))
-        flatten(l, leaves, conds) && flatten(r, leaves, conds)
+        add(
+          lk.indices.map(i => Compare(CmpOp.Eq, lk(i).expr, rk(i).expr)) ++ residual.map(_.expr)
+        ) && flatten(l, leaves, conds) && flatten(r, leaves, conds)
       case InnerJoins(inputs, cs) =>
-        cs.foreach(c => conds ++= FactorOr.conjuncts(c.cond.expr))
-        inputs.forall(flatten(_, leaves, conds))
+        add(cs.map(_.cond.expr)) && inputs.forall(flatten(_, leaves, conds))
       case Filter(child, cond, _) =>
-        if !PushDownFilters.isDeterministic(cond.expr) then
-          false
-        else
-          conds ++= FactorOr.conjuncts(cond.expr)
-          flatten(child, leaves, conds)
+        add(Seq(cond.expr)) && flatten(child, leaves, conds)
       case other =>
         leaves += other
         true
@@ -331,7 +330,6 @@ object AggregateWindows extends Pass:
     }
     if !allFound then
       return None
-    val iIds = used.iterator.flatMap(k => oLeaves(k).output.map(_.id.value)).toSet
     val eIds =
       oLeaves.indices.filterNot(used.contains).flatMap(k => oLeaves(k).output.map(_.id.value)).toSet
     val keyIds = groupKeys.map(g => idMap.get(g)).flatten
@@ -403,19 +401,18 @@ object AggregateWindows extends Pass:
               None
         (k, keyOf)
       }
-    val keyCovered = keyIds
-      .indices
-      .forall(j =>
-        pairs.exists((k, keyOf) =>
-          keyOf.contains(j) && (
-            oKeys(k).expr match
-              case c: ColRef =>
-                equal(j).contains(c.index)
-              case _ =>
-                false
-          )
-        )
-      )
+    // A pair on key j holds for every row of O exactly when its O side is equated with the key
+    def onKey(k: Int, j: Int): Boolean =
+      oKeys(k).expr match
+        case c: ColRef =>
+          equal(j).contains(c.index)
+        case _ =>
+          false
+    val keyPairs = pairs.collect { case (k, Some(j)) =>
+      (k, j)
+    }
+    val keyCovered =
+      keyPairs.forall(onKey) && keyIds.indices.forall(j => keyPairs.exists(_._2 == j))
     val valuePairs = pairs.filter(_._2.isEmpty).map(_._1)
     if !keyCovered || (!inner && valuePairs.nonEmpty) then
       return None

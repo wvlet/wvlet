@@ -126,6 +126,21 @@ class EngineAggregateWindowsTest extends UniTest:
     windowed(query) shouldBe false
   }
 
+  test("leave a subquery whose key is also equated with an outer column the join doesn't equate") {
+    // The window would keep the outer rows whose l_suppkey differs from their part key
+    val query =
+      """from lineitem, part
+        |where p_partkey = l_partkey and p_brand = 'Brand#23'
+        |  and l_quantity < {
+        |    from lineitem as l2
+        |    where l2.l_partkey = p_partkey and l2.l_partkey = l_suppkey
+        |    select l2.l_quantity.avg
+        |  }
+        |select l_extendedprice.sum as total
+        |""".stripMargin
+    windowed(query) shouldBe false
+  }
+
   test("leave an outer join on another column than the subquery's key") {
     // The parts of a brand keep the lineitem rows of some parts only, so the rows of a supplier in
     // the join are not all of its rows
