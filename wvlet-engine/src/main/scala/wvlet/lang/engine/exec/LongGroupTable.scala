@@ -96,25 +96,31 @@ final class LongGroupTable(keyType: PType, expectedGroups: Int = 0, sortedRuns: 
     * last group's key: the number of rows given ids
     */
   private def runIds(x: Array[Long], ns: Array[Boolean], n: Int, ids: Array[Int]): Int =
-    var g    = count - 1
-    var last =
-      if g >= 0 then
-        values(g)
-      else
-        Long.MinValue
-    var i = 0
-    while i < n do
-      if ns != null && ns(i) then
-        return i
+    // Rows before the first NULL
+    var end = n
+    if ns != null then
+      var j = 0
+      while j < end do
+        if ns(j) then
+          end = j
+        j += 1
+    if end == 0 then
+      return 0
+    var g = count - 1
+    if g < 0 then
+      g = add(x(0))
+    var last = values(g)
+    var i    = 0
+    while i < end do
       val k = x(i)
-      if g < 0 || k > last then
+      if k > last then
         g = add(k)
         last = k
       else if k != last then
         return i
       ids(i) = g
       i += 1
-    n
+    end
 
   private def nullId(): Int =
     if nullGroup < 0 then
