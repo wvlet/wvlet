@@ -162,6 +162,13 @@ enum Optimization(val name: String):
     */
   case ShareSubqueryScans extends Optimization("share_subquery_scans")
 
+  /**
+    * Replace a table of an aggregation's inner join by the groups of an IN subquery that groups it
+    * by the join key, when the aggregation only sums, mins, or maxes its columns: the aggregation
+    * totals the subquery's per-key values instead of reading the table again (TPC-H q18)
+    */
+  case ReuseInSubqueryAggregates extends Optimization("reuse_in_subquery_aggregates")
+
   /** Compute a CTE referenced more than once only once */
   case ShareCTEs extends Optimization("share_ctes")
 

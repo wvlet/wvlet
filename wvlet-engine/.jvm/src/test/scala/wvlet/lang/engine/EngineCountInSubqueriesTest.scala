@@ -25,7 +25,11 @@ import wvlet.uni.test.UniTest
   * (`count_in_subqueries`), with the rows DuckDB returns
   */
 class EngineCountInSubqueriesTest extends UniTest:
-  private val options     = OptimizerOptions().withValidatePlans(true)
+  // reuse_in_subquery_aggregates would drop the q18-shaped IN these tests place
+  private val options = OptimizerOptions()
+    .withValidatePlans(true)
+    .withDisabled(Optimization.ReuseInSubqueryAggregates)
+
   private val conformance = EngineConformance.tpch(options)
   private val disabled    = conformance
     .engine
