@@ -32,6 +32,11 @@ import scala.util.Random
   *
   * Column types match the Parquet files that DuckDB's `dbgen` writes: keys are `bigint`, money and
   * quantities `decimal(15, 2)`, and dates `date`.
+  *
+  * Each table is cut into blocks of [[blockRows]] rows (of that many orders with their line items
+  * for `orders` and `lineitem`, and of that many parts' rows for `partsupp`), and each block draws
+  * from its own seeded random stream. A block generates on its own, so [[TpchSource]] generates a
+  * table while it's scanned, block by block and in parallel, and never holds the whole table.
   */
 object TpchGen:
 
@@ -47,34 +52,161 @@ object TpchGen:
     "lineitem"
   )
 
-  /** The largest scale factor allowed, so a browser tab can't be asked for gigabytes */
+  /**
+    * The largest scale factor [[tables]] materializes, so a browser tab can't be asked for
+    * gigabytes
+    */
   val maxScaleFactor: Double = 1.0
 
+  /** The largest scale factor [[sources]] generates: 1.5 billion orders still fit Int indexes */
+  val maxStreamingScaleFactor: Double = 1000.0
+
+  /** Rows (orders for lineitem, parts for partsupp) per generated block */
+  val blockRows: Int = 10000
+
   /**
-    * Generate every table at scale factor `sf` (0.01 is 60K line items; 1.0 is 6M).
+    * The tables at scale factor `sf` as sources that generate their rows while they're scanned.
+    *
+    * @param sf
+    *   the scale factor, in (0, [[maxStreamingScaleFactor]]]
+    */
+  def sources(sf: Double): Seq[TpchSource] =
+    checkScaleFactor(sf, maxStreamingScaleFactor)
+    val gen = TpchGen(sf)
+    tableNames.map(TpchSource(_, gen))
+
+  /**
+    * Generate every table at scale factor `sf` in memory (0.01 is 60K line items; 1.0 is 6M).
     *
     * @param sf
     *   the scale factor, in (0, [[maxScaleFactor]]]
     */
   def tables(sf: Double): Seq[MemTable] =
-    if !(sf > 0 && sf <= maxScaleFactor) then
-      throw StatusCode
-        .INVALID_ARGUMENT
-        .newException(s"TPC-H scale factor must be in (0, ${maxScaleFactor}]: ${sf}")
-    TpchGen(sf).all
+    checkScaleFactor(sf, maxScaleFactor)
+    val gen = TpchGen(sf)
+    // Orders and line items come from one pass per block, not one per table
+    val (orders, lineitems) = Seq.tabulate(gen.numBlocks("orders"))(gen.ordersAndLineitems).unzip
+    tableNames.map { t =>
+      val s = TpchSource(t, gen)
+      t match
+        case "orders" =>
+          s.materialize(orders)
+        case "lineitem" =>
+          s.materialize(lineitems)
+        case _ =>
+          s.materialize
+    }
 
-  /** Register every table at scale factor `sf` in `catalog` */
-  def register(catalog: EngineCatalog, sf: Double): Seq[MemTable] =
-    val ts = tables(sf)
+  /** Register every table at scale factor `sf` in `catalog`, generated while it's scanned */
+  def register(catalog: EngineCatalog, sf: Double): Seq[TpchSource] =
+    val ts = sources(sf)
     ts.foreach(catalog.register)
     ts
+
+  private def checkScaleFactor(sf: Double, max: Double): Unit =
+    if !(sf > 0 && sf <= max) then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(s"TPC-H scale factor must be in (0, ${max}]: ${sf}")
 
   private val Money: PType = PType.decimal(15, 2)
 
   // Dates as days since 1970-01-01
-  private val StartDate   = 8035  // 1992-01-01
-  private val CurrentDate = 9298  // 1995-06-17
-  private val EndDate     = 10591 // 1998-12-31
+  private[catalog] val StartDate   = 8035  // 1992-01-01
+  private[catalog] val CurrentDate = 9298  // 1995-06-17
+  private[catalog] val EndDate     = 10591 // 1998-12-31
+
+  // The latest order date, so that every line item ships by EndDate
+  private[catalog] val LastOrderDate = EndDate - 151
+
+  private def schema(fields: (String, PType)*): Schema = Schema(
+    fields.map((n, t) => Field(n, t)).toIndexedSeq
+  )
+
+  /** The columns of each table */
+  private[catalog] val schemas: Map[String, Schema] = Map(
+    "region" ->
+      schema("r_regionkey" -> PType.Int64, "r_name" -> PType.Str, "r_comment" -> PType.Str),
+    "nation" ->
+      schema(
+        "n_nationkey" -> PType.Int64,
+        "n_name"      -> PType.Str,
+        "n_regionkey" -> PType.Int64,
+        "n_comment"   -> PType.Str
+      ),
+    "supplier" ->
+      schema(
+        "s_suppkey"   -> PType.Int64,
+        "s_name"      -> PType.Str,
+        "s_address"   -> PType.Str,
+        "s_nationkey" -> PType.Int64,
+        "s_phone"     -> PType.Str,
+        "s_acctbal"   -> Money,
+        "s_comment"   -> PType.Str
+      ),
+    "customer" ->
+      schema(
+        "c_custkey"    -> PType.Int64,
+        "c_name"       -> PType.Str,
+        "c_address"    -> PType.Str,
+        "c_nationkey"  -> PType.Int64,
+        "c_phone"      -> PType.Str,
+        "c_acctbal"    -> Money,
+        "c_mktsegment" -> PType.Str,
+        "c_comment"    -> PType.Str
+      ),
+    "part" ->
+      schema(
+        "p_partkey"     -> PType.Int64,
+        "p_name"        -> PType.Str,
+        "p_mfgr"        -> PType.Str,
+        "p_brand"       -> PType.Str,
+        "p_type"        -> PType.Str,
+        "p_size"        -> PType.Int32,
+        "p_container"   -> PType.Str,
+        "p_retailprice" -> Money,
+        "p_comment"     -> PType.Str
+      ),
+    "partsupp" ->
+      schema(
+        "ps_partkey"    -> PType.Int64,
+        "ps_suppkey"    -> PType.Int64,
+        "ps_availqty"   -> PType.Int64,
+        "ps_supplycost" -> Money,
+        "ps_comment"    -> PType.Str
+      ),
+    "orders" ->
+      schema(
+        "o_orderkey"      -> PType.Int64,
+        "o_custkey"       -> PType.Int64,
+        "o_orderstatus"   -> PType.Str,
+        "o_totalprice"    -> Money,
+        "o_orderdate"     -> PType.Date,
+        "o_orderpriority" -> PType.Str,
+        "o_clerk"         -> PType.Str,
+        "o_shippriority"  -> PType.Int32,
+        "o_comment"       -> PType.Str
+      ),
+    "lineitem" ->
+      schema(
+        "l_orderkey"      -> PType.Int64,
+        "l_partkey"       -> PType.Int64,
+        "l_suppkey"       -> PType.Int64,
+        "l_linenumber"    -> PType.Int64,
+        "l_quantity"      -> Money,
+        "l_extendedprice" -> Money,
+        "l_discount"      -> Money,
+        "l_tax"           -> Money,
+        "l_returnflag"    -> PType.Str,
+        "l_linestatus"    -> PType.Str,
+        "l_shipdate"      -> PType.Date,
+        "l_commitdate"    -> PType.Date,
+        "l_receiptdate"   -> PType.Date,
+        "l_shipinstruct"  -> PType.Str,
+        "l_shipmode"      -> PType.Str,
+        "l_comment"       -> PType.Str
+      )
+  )
 
   private val regions = IndexedSeq("AFRICA", "AMERICA", "ASIA", "EUROPE", "MIDDLE EAST")
 
@@ -425,23 +557,98 @@ object TpchGen:
 
 end TpchGen
 
-/** One generation run at a scale factor; each table draws from its own seeded random stream */
-private class TpchGen(sf: Double):
+/**
+  * The generator at a scale factor. A table is a sequence of blocks ([[TpchGen.blockRows]]); each
+  * block draws from its own seeded random stream, so blocks generate independently, concurrently,
+  * and in any order, with the same rows every time.
+  */
+private[catalog] class TpchGen(val sf: Double):
   import TpchGen.*
 
-  private val numSuppliers = math.max(1, (10000 * sf).toInt)
-  private val numParts     = math.max(1, (200000 * sf).toInt)
-  private val numCustomers = math.max(1, (150000 * sf).toInt)
-  private val numOrders    = math.max(1, (1500000 * sf).toInt)
-  private val numClerks    = math.max(1, (1000 * sf).toInt)
+  val numSuppliers: Int = math.max(1, (10000 * sf).toInt)
+  val numParts: Int     = math.max(1, (200000 * sf).toInt)
+  val numCustomers: Int = math.max(1, (150000 * sf).toInt)
+  val numOrders: Int    = math.max(1, (1500000 * sf).toInt)
+  val numClerks: Int    = math.max(1, (1000 * sf).toInt)
 
-  private def rnd(table: Int): Random = Random(19620718L + table * 1000003L)
+  // The units a table's blocks cut: parts for partsupp, orders for lineitem
+  private def units(table: String): Int =
+    table match
+      case "region" =>
+        regions.size
+      case "nation" =>
+        nations.size
+      case "supplier" =>
+        numSuppliers
+      case "customer" =>
+        numCustomers
+      case "part" | "partsupp" =>
+        numParts
+      case "orders" | "lineitem" =>
+        numOrders
+      case other =>
+        throw StatusCode.TABLE_NOT_FOUND.newException(s"Not a TPC-H table: ${other}")
 
-  private def field(name: String, t: PType): Field = Field(name, t)
+  /** The number of blocks of `table` */
+  def numBlocks(table: String): Int = (units(table) + blockRows - 1) / blockRows
 
-  private def table(name: String, fields: Seq[Field], columns: Seq[Vec]): MemTable =
-    val n = columns.headOption.map(_.size).getOrElse(0)
-    MemTable(name, Schema(fields.toIndexedSeq), Seq(Batch(columns.toArray, n)))
+  /** The first unit (row, part, or order index) of block `b` */
+  def blockStart(b: Int): Int = b * blockRows
+
+  /** The units in block `b` of `table` */
+  def blockUnits(table: String, b: Int): Int = math.min(blockRows, units(table) - blockStart(b))
+
+  /** The rows of block `b` of `table`, or None for lineitem, whose count only generating tells */
+  def blockRowCount(table: String, b: Int): Option[Long] =
+    table match
+      case "partsupp" =>
+        Some(blockUnits(table, b) * 4L)
+      case "lineitem" =>
+        None
+      case _ =>
+        Some(blockUnits(table, b).toLong)
+
+  /** The rows of `table`: exact, except lineitem's (4 line items per order on average) */
+  def estimatedRows(table: String): Long =
+    table match
+      case "partsupp" | "lineitem" =>
+        units(table) * 4L
+      case t =>
+        units(t).toLong
+
+  /** The order key of the i-th order: only the first 8 of every 32 keys are used (4.2.3) */
+  def orderKey(i: Int): Long = (i / 8).toLong * 32 + (i % 8) + 1
+
+  /** Generate block `b` of `table`, with every column */
+  def block(table: String, b: Int): Batch =
+    table match
+      case "region" =>
+        region
+      case "nation" =>
+        nation
+      case "supplier" =>
+        supplier(b)
+      case "customer" =>
+        customer(b)
+      case "part" =>
+        part(b)
+      case "partsupp" =>
+        partsupp(b)
+      case "orders" =>
+        ordersAndLineitems(b)._1
+      case "lineitem" =>
+        ordersAndLineitems(b)._2
+      case other =>
+        throw StatusCode.TABLE_NOT_FOUND.newException(s"Not a TPC-H table: ${other}")
+
+  private def rnd(table: Int, block: Int): Random = Random(
+    19620718L + table * 1000003L + block * 2654435761L
+  )
+
+  private def batch(columns: Vec*): Batch = Batch(
+    columns.toArray,
+    columns.headOption.map(_.size).getOrElse(0)
+  )
 
   private def longs(n: Int)(f: Int => Long): Vec  = LongVec(PType.Int64, Array.tabulate(n)(f), null)
   private def ints(n: Int)(f: Int => Int): Vec    = IntVec(PType.Int32, Array.tabulate(n)(f), null)
@@ -503,43 +710,27 @@ private class TpchGen(sf: Double):
       )
     sb.toString.take(target).trim
 
-  private def region: MemTable =
-    val r = rnd(1)
-    table(
-      "region",
-      Seq(
-        field("r_regionkey", PType.Int64),
-        field("r_name", PType.Str),
-        field("r_comment", PType.Str)
-      ),
-      Seq(
-        longs(regions.size)(_.toLong),
-        strs(regions.size)(regions(_)),
-        strs(regions.size)(_ => text(r, 31, 115))
-      )
+  private def region: Batch =
+    val r = rnd(1, 0)
+    batch(
+      longs(regions.size)(_.toLong),
+      strs(regions.size)(regions(_)),
+      strs(regions.size)(_ => text(r, 31, 115))
     )
 
-  private def nation: MemTable =
-    val r = rnd(2)
-    table(
-      "nation",
-      Seq(
-        field("n_nationkey", PType.Int64),
-        field("n_name", PType.Str),
-        field("n_regionkey", PType.Int64),
-        field("n_comment", PType.Str)
-      ),
-      Seq(
-        longs(nations.size)(_.toLong),
-        strs(nations.size)(nations(_)._1),
-        longs(nations.size)(nations(_)._2.toLong),
-        strs(nations.size)(_ => text(r, 31, 114))
-      )
+  private def nation: Batch =
+    val r = rnd(2, 0)
+    batch(
+      longs(nations.size)(_.toLong),
+      strs(nations.size)(nations(_)._1),
+      longs(nations.size)(nations(_)._2.toLong),
+      strs(nations.size)(_ => text(r, 31, 114))
     )
 
-  private def supplier: MemTable =
-    val r       = rnd(3)
-    val n       = numSuppliers
+  private def supplier(b: Int): Batch =
+    val r       = rnd(3, b)
+    val start   = blockStart(b)
+    val n       = blockUnits("supplier", b)
     val nations = Array.fill(n)(r.nextInt(25))
     // 5 per 10,000 suppliers have complaints and 5 have recommendations (4.2.3)
     val comments =
@@ -553,96 +744,59 @@ private class TpchGen(sf: Double):
           case _ =>
             c
       }
-    table(
-      "supplier",
-      Seq(
-        field("s_suppkey", PType.Int64),
-        field("s_name", PType.Str),
-        field("s_address", PType.Str),
-        field("s_nationkey", PType.Int64),
-        field("s_phone", PType.Str),
-        field("s_acctbal", Money),
-        field("s_comment", PType.Str)
-      ),
-      Seq(
-        longs(n)(_ + 1L),
-        strs(n)(i => keyName("Supplier", i + 1L)),
-        strs(n)(_ => address(r)),
-        longs(n)(nations(_).toLong),
-        strs(n)(i => phone(r, nations(i))),
-        money(Array.fill(n)(cents(r, -99999, 999999))),
-        strs(n)(comments(_))
-      )
+    batch(
+      longs(n)(start + _ + 1L),
+      strs(n)(i => keyName("Supplier", start + i + 1L)),
+      strs(n)(_ => address(r)),
+      longs(n)(nations(_).toLong),
+      strs(n)(i => phone(r, nations(i))),
+      money(Array.fill(n)(cents(r, -99999, 999999))),
+      strs(n)(comments(_))
     )
 
   end supplier
 
-  private def customer: MemTable =
-    val r       = rnd(4)
-    val n       = numCustomers
+  private def customer(b: Int): Batch =
+    val r       = rnd(4, b)
+    val start   = blockStart(b)
+    val n       = blockUnits("customer", b)
     val nations = Array.fill(n)(r.nextInt(25))
-    table(
-      "customer",
-      Seq(
-        field("c_custkey", PType.Int64),
-        field("c_name", PType.Str),
-        field("c_address", PType.Str),
-        field("c_nationkey", PType.Int64),
-        field("c_phone", PType.Str),
-        field("c_acctbal", Money),
-        field("c_mktsegment", PType.Str),
-        field("c_comment", PType.Str)
-      ),
-      Seq(
-        longs(n)(_ + 1L),
-        strs(n)(i => keyName("Customer", i + 1L)),
-        strs(n)(_ => address(r)),
-        longs(n)(nations(_).toLong),
-        strs(n)(i => phone(r, nations(i))),
-        money(Array.fill(n)(cents(r, -99999, 999999))),
-        strs(n)(_ => pick(r, segments)),
-        strs(n)(_ => text(r, 29, 116))
-      )
+    batch(
+      longs(n)(start + _ + 1L),
+      strs(n)(i => keyName("Customer", start + i + 1L)),
+      strs(n)(_ => address(r)),
+      longs(n)(nations(_).toLong),
+      strs(n)(i => phone(r, nations(i))),
+      money(Array.fill(n)(cents(r, -99999, 999999))),
+      strs(n)(_ => pick(r, segments)),
+      strs(n)(_ => text(r, 29, 116))
     )
 
   // The retail price of a part in cents (4.2.3)
   private def retailPrice(partKey: Long): Long =
     90000 + ((partKey / 10) % 20001) + 100 * (partKey % 1000)
 
-  private def part: MemTable =
-    val r     = rnd(5)
-    val n     = numParts
+  private def part(b: Int): Batch =
+    val r     = rnd(5, b)
+    val start = blockStart(b)
+    val n     = blockUnits("part", b)
     val names =
       Array.fill(n) {
         r.shuffle(colors.indices.toList).take(5).map(colors(_)).mkString(" ")
       }
     val mfgr = Array.fill(n)(between(r, 1, 5))
-    table(
-      "part",
-      Seq(
-        field("p_partkey", PType.Int64),
-        field("p_name", PType.Str),
-        field("p_mfgr", PType.Str),
-        field("p_brand", PType.Str),
-        field("p_type", PType.Str),
-        field("p_size", PType.Int32),
-        field("p_container", PType.Str),
-        field("p_retailprice", Money),
-        field("p_comment", PType.Str)
+    batch(
+      longs(n)(start + _ + 1L),
+      strs(n)(names(_)),
+      strs(n)(i => s"Manufacturer#${mfgr(i)}"),
+      strs(n)(i => s"Brand#${mfgr(i)}${between(r, 1, 5)}"),
+      strs(n)(_ =>
+        s"${pick(r, typeSyllable1)} ${pick(r, typeSyllable2)} ${pick(r, typeSyllable3)}"
       ),
-      Seq(
-        longs(n)(_ + 1L),
-        strs(n)(names(_)),
-        strs(n)(i => s"Manufacturer#${mfgr(i)}"),
-        strs(n)(i => s"Brand#${mfgr(i)}${between(r, 1, 5)}"),
-        strs(n)(_ =>
-          s"${pick(r, typeSyllable1)} ${pick(r, typeSyllable2)} ${pick(r, typeSyllable3)}"
-        ),
-        ints(n)(_ => between(r, 1, 50)),
-        strs(n)(_ => s"${pick(r, containers1)} ${pick(r, containers2)}"),
-        money(Array.tabulate(n)(i => retailPrice(i + 1L))),
-        strs(n)(_ => text(r, 5, 22))
-      )
+      ints(n)(_ => between(r, 1, 50)),
+      strs(n)(_ => s"${pick(r, containers1)} ${pick(r, containers2)}"),
+      money(Array.tabulate(n)(i => retailPrice(start + i + 1L))),
+      strs(n)(_ => text(r, 5, 22))
     )
 
   end part
@@ -652,31 +806,23 @@ private class TpchGen(sf: Double):
     val s = numSuppliers.toLong
     (partKey + (i * ((s / 4) + (partKey - 1) / s))) % s + 1
 
-  private def partsupp: MemTable =
-    val r = rnd(6)
-    val n = numParts * 4
-    table(
-      "partsupp",
-      Seq(
-        field("ps_partkey", PType.Int64),
-        field("ps_suppkey", PType.Int64),
-        field("ps_availqty", PType.Int64),
-        field("ps_supplycost", Money),
-        field("ps_comment", PType.Str)
-      ),
-      Seq(
-        longs(n)(i => i / 4 + 1L),
-        longs(n)(i => supplierOf(i / 4 + 1L, i % 4)),
-        longs(n)(_ => between(r, 1, 9999).toLong),
-        money(Array.fill(n)(cents(r, 100, 100000))),
-        strs(n)(_ => text(r, 49, 198))
-      )
+  private def partsupp(b: Int): Batch =
+    val r     = rnd(6, b)
+    val start = blockStart(b)
+    val n     = blockUnits("partsupp", b) * 4
+    batch(
+      longs(n)(i => start + i / 4 + 1L),
+      longs(n)(i => supplierOf(start + i / 4 + 1L, i % 4)),
+      longs(n)(_ => between(r, 1, 9999).toLong),
+      money(Array.fill(n)(cents(r, 100, 100000))),
+      strs(n)(_ => text(r, 49, 198))
     )
 
-  // Orders and their line items, generated together for the derived status and total price
-  private def ordersAndLineitems: (MemTable, MemTable) =
-    val r = rnd(7)
-    val n = numOrders
+  // A block of orders and their line items, generated together for the derived status and total
+  def ordersAndLineitems(b: Int): (Batch, Batch) =
+    val r     = rnd(7, b)
+    val start = blockStart(b)
+    val n     = blockUnits("orders", b)
 
     val oKey      = new Array[Long](n)
     val oCust     = new Array[Long](n)
@@ -706,14 +852,13 @@ private class TpchGen(sf: Double):
 
     var i = 0
     while i < n do
-      // Only the first 8 of every 32 keys are used (4.2.3)
-      val key = (i / 8).toLong * 32 + (i % 8) + 1
+      val key = orderKey(start + i)
       // Customers with a key divisible by 3 place no orders
       var cust = between(r, 1, numCustomers).toLong
       if numCustomers >= 3 then
         while cust % 3 == 0 do
           cust = between(r, 1, numCustomers).toLong
-      val date  = between(r, StartDate, EndDate - 151)
+      val date  = between(r, StartDate, LastOrderDate)
       val lines = between(r, 1, 7)
       // Sum of extendedprice * (100 + tax) * (100 - discount), in 1/10000 cents
       var total = 0L
@@ -783,76 +928,37 @@ private class TpchGen(sf: Double):
       i += 1
     end while
 
-    val orders = table(
-      "orders",
-      Seq(
-        field("o_orderkey", PType.Int64),
-        field("o_custkey", PType.Int64),
-        field("o_orderstatus", PType.Str),
-        field("o_totalprice", Money),
-        field("o_orderdate", PType.Date),
-        field("o_orderpriority", PType.Str),
-        field("o_clerk", PType.Str),
-        field("o_shippriority", PType.Int32),
-        field("o_comment", PType.Str)
-      ),
-      Seq(
-        LongVec(PType.Int64, oKey, null),
-        LongVec(PType.Int64, oCust, null),
-        StrVec(oStatus, null),
-        money(oTotal),
-        dates(oDate),
-        StrVec(oPriority, null),
-        StrVec(oClerk, null),
-        ints(n)(_ => 0),
-        StrVec(oComment, null)
-      )
+    val orders = batch(
+      LongVec(PType.Int64, oKey, null),
+      LongVec(PType.Int64, oCust, null),
+      StrVec(oStatus, null),
+      money(oTotal),
+      dates(oDate),
+      StrVec(oPriority, null),
+      StrVec(oClerk, null),
+      ints(n)(_ => 0),
+      StrVec(oComment, null)
     )
-    val lineitem = table(
-      "lineitem",
-      Seq(
-        field("l_orderkey", PType.Int64),
-        field("l_partkey", PType.Int64),
-        field("l_suppkey", PType.Int64),
-        field("l_linenumber", PType.Int64),
-        field("l_quantity", Money),
-        field("l_extendedprice", Money),
-        field("l_discount", Money),
-        field("l_tax", Money),
-        field("l_returnflag", PType.Str),
-        field("l_linestatus", PType.Str),
-        field("l_shipdate", PType.Date),
-        field("l_commitdate", PType.Date),
-        field("l_receiptdate", PType.Date),
-        field("l_shipinstruct", PType.Str),
-        field("l_shipmode", PType.Str),
-        field("l_comment", PType.Str)
-      ),
-      Seq(
-        LongVec(PType.Int64, lOrder.result(), null),
-        LongVec(PType.Int64, lPart.result(), null),
-        LongVec(PType.Int64, lSupp.result(), null),
-        LongVec(PType.Int64, lLine.result(), null),
-        money(lQty.result()),
-        money(lPrice.result()),
-        money(lDisc.result()),
-        money(lTax.result()),
-        StrVec(lFlag.result(), null),
-        StrVec(lStatus.result(), null),
-        dates(lShip.result()),
-        dates(lCommit.result()),
-        dates(lReceipt.result()),
-        StrVec(lInstr.result(), null),
-        StrVec(lMode.result(), null),
-        StrVec(lComment.result(), null)
-      )
+    val lineitem = batch(
+      LongVec(PType.Int64, lOrder.result(), null),
+      LongVec(PType.Int64, lPart.result(), null),
+      LongVec(PType.Int64, lSupp.result(), null),
+      LongVec(PType.Int64, lLine.result(), null),
+      money(lQty.result()),
+      money(lPrice.result()),
+      money(lDisc.result()),
+      money(lTax.result()),
+      StrVec(lFlag.result(), null),
+      StrVec(lStatus.result(), null),
+      dates(lShip.result()),
+      dates(lCommit.result()),
+      dates(lReceipt.result()),
+      StrVec(lInstr.result(), null),
+      StrVec(lMode.result(), null),
+      StrVec(lComment.result(), null)
     )
     (orders, lineitem)
 
   end ordersAndLineitems
-
-  def all: Seq[MemTable] =
-    val (orders, lineitem) = ordersAndLineitems
-    Seq(region, nation, supplier, customer, part, partsupp, orders, lineitem)
 
 end TpchGen
