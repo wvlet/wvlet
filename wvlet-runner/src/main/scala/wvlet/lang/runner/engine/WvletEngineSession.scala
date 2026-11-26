@@ -158,12 +158,12 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
   // name that a dataDir / tables entry or the other benchmark also registers is an error
   private def registerBenchmarkTables(): Unit =
     def scaleFactor(key: String): Double = property(key, "a number")(_.toDoubleOption).getOrElse(
-      WvletEngineSession.defaultTpchScaleFactor
+      WvletEngineSession.defaultScaleFactor
     )
     if booleanProperty("prepareTPCH") then
-      TpchGen.sources(scaleFactor("tpchScaleFactor")).foreach(t => registerUnique(t, originOf(t)))
+      TpchGen.sources(scaleFactor("tpchScaleFactor")).foreach(registerUnique(_))
     if booleanProperty("prepareTPCDS") then
-      TpcdsGen.sources(scaleFactor("tpcdsScaleFactor")).foreach(t => registerUnique(t, originOf(t)))
+      TpcdsGen.sources(scaleFactor("tpcdsScaleFactor")).foreach(registerUnique(_))
 
   end registerBenchmarkTables
 
@@ -178,17 +178,18 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
 
   // Register a table that no other source may name, so a query never silently reads the other
   // table. `origin` says where `t` comes from
-  private def registerUnique(t: TableSource, origin: String): Unit =
+  private def registerUnique(t: TableSource, origin: Option[String] = None): Unit =
     engine
       .catalog
       .find(t.name)
       .foreach { other =>
+        val thisOrigin  = origin.getOrElse(originOf(t))
         val otherOrigin = originOf(other)
         throw StatusCode
           .INVALID_ARGUMENT
           .newException(
             s"Table ${t.name} of connector '${config
-                .name}' is both ${origin} and ${otherOrigin}; " + "rename one of them"
+                .name}' is both ${thisOrigin} and ${otherOrigin}; " + "rename one of them"
           )
       }
     register(t)
@@ -203,7 +204,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
           Catalog.CreateMode.CREATE_IF_NOT_EXISTS
         )
       }
-    w.tables.foreach(t => registerUnique(t, s"in the warehouse (${t.path})"))
+    w.tables.foreach(t => registerUnique(t, Some(s"in the warehouse (${t.path})")))
   }
 
   private def resolvePath(path: String): String =
@@ -717,7 +718,7 @@ object WvletEngineSession:
     * The TPC-H / TPC-DS scale factor of `prepareTPCH` / `prepareTPCDS` without `tpchScaleFactor` /
     * `tpcdsScaleFactor`, as on DuckDB
     */
-  val defaultTpchScaleFactor: Double = 0.01
+  val defaultScaleFactor: Double = 0.01
 
   /**
     * True when the connector runs on the in-process engine: type `wvlet` without a host. A `wvlet`

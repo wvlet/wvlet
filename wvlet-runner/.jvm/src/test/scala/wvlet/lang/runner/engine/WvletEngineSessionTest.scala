@@ -125,6 +125,9 @@ class WvletEngineSessionTest extends UniTest:
     session.tableNames shouldContain "store_sales"
     session.catalog.getTable("main", "item").columns.map(_.name) shouldContain "i_category"
     session.engine.catalog.get("customer").estimatedRows shouldBe Some(10000L)
+    // The default scale factor is DuckDB's, 0.01
+    val small = WvletEngineSession(tpchConfig("prepareTPCH" -> false, "prepareTPCDS" -> true), ".")
+    small.engine.catalog.get("customer").estimatedRows shouldBe Some(1000L)
   }
 
   test("reject TPC-H and TPC-DS tables of the same name and names files also register") {

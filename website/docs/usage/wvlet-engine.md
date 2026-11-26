@@ -152,6 +152,23 @@ wvlet run --profile tpch "from lineitem group by l_returnflag agg _.count"
 
 `prepareTPCDS: true` registers the 24 TPC-DS tables (`store_sales`, `item`, `date_dim`, ...) the same way, sized by `tpcdsScaleFactor` (default 0.01, 29K store sales lines; up to 10):
 
+```jsonc title='~/.wvlet/profiles.json'
+{
+  "profiles": [
+    {
+      "name": "tpcds",
+      "connectors": [
+        {
+          "name": "wvlet",
+          "type": "wvlet",
+          "properties": { "prepareTPCDS": true, "tpcdsScaleFactor": 1 }
+        }
+      ]
+    }
+  ]
+}
+```
+
 ```bash
 wvlet run --profile tpcds "from store_sales join item on ss_item_sk = i_item_sk group by i_category agg _.count"
 ```
