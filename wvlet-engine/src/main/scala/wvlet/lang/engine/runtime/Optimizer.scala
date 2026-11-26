@@ -186,6 +186,7 @@ object Optimizer:
     ReorderJoins,
     GroupKeySemiJoins,
     EagerAggregation,
+    DependentGroupKeys,
     PruneColumns,
     PushScanFilters
   )
@@ -206,3 +207,5 @@ object Optimizer:
       options: OptimizerOptions = OptimizerOptions(),
       newColumnId: Option[() => ColumnId] = None
   ): Optimizer = Optimizer(Seq(pass), options, newColumnId = newColumnId)
+
+end Optimizer

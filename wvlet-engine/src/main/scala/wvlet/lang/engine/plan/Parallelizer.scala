@@ -52,7 +52,8 @@ object Parallelizer:
       selectedInputs: Boolean = true,
       longGroupTables: Boolean = true,
       sortedGroupRuns: Boolean = true,
-      unionDistinctOnce: Boolean = true
+      unionDistinctOnce: Boolean = true,
+      anyValuePartials: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -73,7 +74,8 @@ object Parallelizer:
         selectedInputs,
         longGroupTables,
         sortedGroupRuns,
-        unionDistinctOnce
+        unionDistinctOnce,
+        anyValuePartials
       )
       rewrite(op, runner)
 
@@ -98,7 +100,9 @@ object Parallelizer:
       selectedInputs: Boolean,
       longGroupTables: Boolean,
       sortedGroupRuns: Boolean,
-      unionDistinctOnce: Boolean
+      unionDistinctOnce: Boolean,
+      // any_value splits into two phases (`dependent_group_keys`, which emits it)
+      anyValuePartials: Boolean
   )
 
   /**
@@ -419,7 +423,7 @@ object Parallelizer:
   /** A hash aggregation run in parallel: in two phases over a pipeline, or partitioned by key */
   private def aggregate(a: HashAggOp, runner: TaskRunner)(using o: AboveBreakers): Operator =
     def r(x: Operator): Operator = rewrite(x, runner)
-    if TwoPhaseAgg.supports(a) then
+    if TwoPhaseAgg.supports(a, o.anyValuePartials) then
       pipeline(a.child, runner) match
         case Some(p) =>
           TwoPhaseAgg.plan(
@@ -681,12 +685,18 @@ private[plan] object TwoPhaseAgg:
       case _ =>
         false
 
-  def supports(a: HashAggOp): Boolean = supportsCalls(a.aggs)
+  def supports(a: HashAggOp, anyValue: Boolean): Boolean = supportsCalls(a.aggs, anyValue)
 
-  /** Whether every aggregate's partial results combine with another aggregate */
-  def supportsCalls(calls: Seq[AggCall]): Boolean = calls.forall { c =>
-    !c.distinct && c.order.isEmpty &&
-    (isCount(c) || Set("sum", "min", "max", "avg", "mean").contains(lower(c)))
+  /**
+    * Whether every aggregate's partial results combine with another aggregate; with `anyValue`,
+    * any_value and arbitrary too (any_value of their partials)
+    */
+  def supportsCalls(calls: Seq[AggCall], anyValue: Boolean): Boolean = calls.forall { c =>
+    !c.distinct && c.order.isEmpty && (
+      isCount(c) || Set("sum", "min", "max", "avg", "mean").contains(lower(c)) ||
+        anyValue &&
+        (lower(c) == "any_value" || lower(c) == "arbitrary")
+    )
   }
 
   /**

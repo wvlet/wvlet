@@ -158,7 +158,8 @@ class Planner(
           selectedInputs = enabled(Optimization.AggregateSelectedRows),
           longGroupTables = enabled(Optimization.LongGroupTables),
           sortedGroupRuns = enabled(Optimization.SortedGroupRuns),
-          unionDistinctOnce = enabled(Optimization.UnionDistinctOnce)
+          unionDistinctOnce = enabled(Optimization.UnionDistinctOnce),
+          anyValuePartials = enabled(Optimization.DependentGroupKeys)
         )
       else
         pruned
@@ -2214,7 +2215,8 @@ class Planner(
             .getOrElse(builder.aggregate(aggIn, keys, calls, aggCtx.outputSchema))
         case Some(sets)
             if enabled(Optimization.ChainGroupingSets) && sets.distinct.size > 1 &&
-              sets.contains(sets.reduce(_ ++ _)) && TwoPhaseAgg.supportsCalls(calls) =>
+              sets.contains(sets.reduce(_ ++ _)) &&
+              TwoPhaseAgg.supportsCalls(calls, enabled(Optimization.DependentGroupKeys)) =>
           chainGroupingSets(
             aggIn,
             keys,

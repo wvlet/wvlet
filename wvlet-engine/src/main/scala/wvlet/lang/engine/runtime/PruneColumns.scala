@@ -19,8 +19,9 @@ import wvlet.lang.engine.plan.Optimization
   * Drops the columns no node above needs, by column id, in one top-down walk after
   * [[ReorderJoins]]. A node's needs are the columns its parent needs plus those its own expressions
   * read; projections drop the expressions nobody needs and scans read only the needed columns.
-  * Aggregations and windows keep their calls, and the other leaves (VALUES, CTE reads) keep their
-  * columns. The root keeps its output.
+  * Aggregations and windows keep their calls (but an unneeded any_value with
+  * `dependent_group_keys`), and the other leaves (VALUES, CTE reads) keep their columns. The root
+  * keeps its output.
   *
   * The planner also runs it over a shared CTE body with the columns its readers read, so that the
   * body computes only those ([[prune]]).
@@ -73,9 +74,26 @@ object PruneColumns extends Pass:
         p.withChildren(Seq(prune(child, needed, ctx)))
       case Sample(child, _) =>
         p.withChildren(Seq(prune(child, needed, ctx)))
-      case Aggregate(child, keys, calls, _) =>
-        val reads = (keys ++ calls.flatMap(_.exprs)).flatMap(_.refs).toSet
-        p.withChildren(Seq(prune(child, reads, ctx)))
+      case Aggregate(child, keys, calls, columns) =>
+        // An any_value nobody needs is dropped (`dependent_group_keys` adds them for the group
+        // keys it no longer groups by): its rows are counted by the other calls and keys
+        val nk   = keys.size
+        val keep =
+          if ctx.options.isEnabled(Optimization.DependentGroupKeys) then
+            calls
+              .indices
+              .filterNot(i =>
+                calls(i).name.equalsIgnoreCase("any_value") && !needed.contains(columns(nk + i).id)
+              )
+          else
+            calls.indices
+        val reads = (keys ++ keep.flatMap(calls(_).exprs)).flatMap(_.refs).toSet
+        val c     = prune(child, reads, ctx)
+        if keep.size == calls.size then
+          p.withChildren(Seq(c))
+        else
+          ctx.fired(name)
+          Aggregate(c, keys, keep.map(calls), columns.take(nk) ++ keep.map(i => columns(nk + i)))
       case Join(left, right, _, lk, rk, residual, _) =>
         val reads = needed ++ (lk ++ rk ++ residual).flatMap(_.refs)
         p.withChildren(Seq(prune(left, reads, ctx), prune(right, reads, ctx)))
