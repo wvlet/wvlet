@@ -197,6 +197,11 @@ class Planner(
   // Groups computed at plan time that aggregations of an IN subquery over the same input merge
   // (`share_in_subquery_groups`)
   private val sharedGroups = mutable.ArrayBuffer.empty[SharedGroups]
+  // Aggregation inputs whose IN filter couldn't share groups, planned with the filter instead
+  private val inShareDeclined = java.util.IdentityHashMap[Relation, Unit]()
+  // Groups computed for an IN filter and the subquery's values, by the input's loose key, keys,
+  // calls, and IN target: an aggregation planned again (e.g. for a hidden sort key) reuses them
+  private val inGroupsComputed = mutable.HashMap.empty[Any, (Batch, Batch, PType)]
 
   /** Window function calls collected while binding a projection */
   private var windowCollector: Option[WindowCollector] = None
@@ -1932,11 +1937,14 @@ class Planner(
           (Some(g), Some(cond))
         case _ =>
           (None, None)
-    val source = groupBy.map(_.child).getOrElse(input)
+    val source           = groupBy.map(_.child).getOrElse(input)
+    val hiddenSeqAtStart = hiddenSeq
     // A filter `key in (subquery)` whose subquery aggregates the same input: the input is planned
     // without it, and the groups are filtered instead (`share_in_subquery_groups`)
     val inShare =
-      if groupBy.isDefined && enabled(Optimization.ShareInSubqueryGroups) then
+      if groupBy.isDefined && enabled(Optimization.ShareInSubqueryGroups) &&
+        !inShareDeclined.containsKey(source)
+      then
         inSubqueryShare(source)
       else
         None
@@ -2114,19 +2122,13 @@ class Planner(
               groupsFromShared(source, inOp.schema, keys, calls, builder)
             case _ =>
               None
-        fromGroups.getOrElse {
-          inShare match
-            case Some(_) =>
-              // The input with its IN filter
-              val full = plan(source)
-              if builder.op(full).schema != inOp.schema then
-                throw StatusCode
-                  .INTERNAL_ERROR
-                  .newException("An IN filter changed the columns of an aggregation's input")
-              (full, keys, calls)
-            case None =>
-              (in, keys, calls)
-        }
+        if fromGroups.isEmpty && inShare.isDefined then
+          // The groups can't be shared: plan the aggregation again over the input with its IN
+          // filter, from the same hidden names
+          inShareDeclined.put(source, ())
+          hiddenSeq = hiddenSeqAtStart
+          return aggregation(input, items, defaultItems, plan, filter, builder)
+        fromGroups.getOrElse((in, keys, calls))
       end val
       val inSchema = builder.op(aggIn).schema
       groupingSets match
@@ -2268,7 +2270,7 @@ class Planner(
     source match
       case Filter(child, cond, span) =>
         val conds                              = splitConjuncts(cond)
-        val cteNames                           = cteNamesIn(source)
+        lazy val cteNames                      = cteNamesIn(source)
         def looseKey(r: Relation): Option[Any] = boundInput(r)
           .flatMap(ShareSubplans.looseKey)
           .map(_._1)
@@ -2330,31 +2332,38 @@ class Planner(
       None
     else
       looseInputKey(s.rest, schema).flatMap { (key, ids) =>
-        val out     = aggCtx.outputSchema
-        val gSchema = Schema(out.fields.take(n) ++ out.fields.drop(keys.size))
-        val rows    = builder.compute(builder.aggregate(in, baseKeys, calls, gSchema))
-        val g       = SharedGroups(
-          key,
-          baseKeys.map(SharedGroups.canon(_, ids)),
-          calls.map(SharedGroups.canon(_, ids)),
-          gSchema,
-          rows
-        )
-        sharedGroups += g
-        val values =
-          try
-            val op = Planner.nested(this).plan(s.sub)
-            Option.when(op.schema.size == 1 && op.schema(0).ptype == tType)(
-              Operator.materialize(op)
-            )
-          finally
-            sharedGroups -= g
-        values.flatMap { b =>
-          val col    = b.columns(0)
+        val out       = aggCtx.outputSchema
+        val gSchema   = Schema(out.fields.take(n) ++ out.fields.drop(keys.size))
+        val canonKeys = baseKeys.map(SharedGroups.canon(_, ids))
+        val canonCall = calls.map(SharedGroups.canon(_, ids))
+        val memoKey   = (key, canonKeys, canonCall, t, s.sub)
+        val computed  = inGroupsComputed
+          .get(memoKey)
+          .orElse {
+            val rows = builder.compute(builder.aggregate(in, baseKeys, calls, gSchema))
+            val g    = SharedGroups(key, canonKeys, canonCall, gSchema, rows)
+            sharedGroups += g
+            val values =
+              try
+                val op = Planner.nested(this).plan(s.sub)
+                Option.when(op.schema.size == 1)((Operator.materialize(op), op.schema(0).ptype))
+              finally
+                sharedGroups -= g
+            values.map { (b, bt) =>
+              inGroupsComputed(memoKey) = (rows, b, bt)
+              (rows, b, bt)
+            }
+          }
+        computed.flatMap { (rows, b, bt) =>
+          val g = SharedGroups(key, canonKeys, canonCall, gSchema, rows)
+          // The subquery's values in a type both sides compare in, as `bindInSubquery` does
+          val vt     = PType.common(tType, bt)
+          val col    = Kernels.castTo(b.columns(0), vt)
           val set    = (0 until b.size).map(col.get).filter(_ != null).toSet
-          val target = ColRef(t, tType, gSchema(t).name)
+          val target = castExpr(ColRef(t, tType, gSchema(t).name), vt)
           SharedGroups
             .merge(g, baseKeys, calls, ids)
+            .filter(_ => vt != PType.Float64)
             .map { (ks, cs) =>
               val kept = builder.filter(
                 builder.values(gSchema, rows),
@@ -2452,20 +2461,7 @@ class Planner(
         val value = Binder(this, BindScope(ctx.outputSchema), Some(ctx)).bind(item)
         val refs  = mutable.BitSet.empty
         VExprs.collectRefs(value, refs)
-        refs.forall(_ >= numKeys) &&
-        ctx
-          .calls
-          .forall(c =>
-            !c.distinct && c.order.isEmpty && (
-              c.name match
-                case "min" | "max" =>
-                  true
-                case "sum" =>
-                  c.ptype == PType.Int64 || c.ptype.isInstanceOf[PType.Decimal]
-                case _ =>
-                  false
-            )
-          )
+        refs.forall(_ >= numKeys) && ctx.calls.forall(SharedGroups.mergeable)
       catch
         case NonFatal(_) =>
           false

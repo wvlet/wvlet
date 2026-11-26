@@ -137,9 +137,10 @@ object ShareSubplans:
           ("asof_join", l, r, kind, exprs(lk), exprs(rk), expr(lv), expr(rv), op)
         case RuntimePlan.InnerJoins(inputs, conds) if loose =>
           // Inputs in the order of their own keys, each numbered apart, then numbered in that order
-          val sorted = inputs.sortBy(in =>
-            Canonicalizer(mutable.HashMap.empty, loose).canon(in).toString
-          )
+          val sorted = inputs
+            .map(in => (Canonicalizer(mutable.HashMap.empty, loose).canon(in).toString, in))
+            .sortBy(_._1)
+            .map(_._2)
           val in = sorted.map(canon)
           ("inner_joins", in, conds.map(c => expr(c.cond)).sortBy(_.toString))
         case RuntimePlan.InnerJoins(inputs, conds) =>

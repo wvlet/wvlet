@@ -129,6 +129,24 @@ class EngineInSubqueryGroupsTest extends UniTest:
     }
   }
 
+  test("compare the key with subquery values of another type") {
+    // An int key against bigint values
+    val query =
+      """from supplier, nation
+        |where s_nationkey = n_nationkey and n_nationkey in ({
+        |  from nation, supplier
+        |  where s_nationkey = n_nationkey
+        |  group by n_nationkey
+        |  where s_acctbal.sum > 0
+        |  select n_nationkey.to_long
+        |})
+        |group by n_nationkey
+        |select n_nationkey, s_acctbal.sum as total
+        |order by n_nationkey
+        |""".stripMargin
+    filtersGroups(query) shouldBe true
+  }
+
   test("plan the IN filter as before when the groups can't be shared") {
     Seq(
       // The IN target is no grouping key
