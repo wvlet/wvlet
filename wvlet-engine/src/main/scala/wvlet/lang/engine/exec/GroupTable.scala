@@ -531,7 +531,7 @@ final class GroupTable(
     var k = 0
     while k < width do
       val v = norm(k).asInstanceOf[StrVec]
-      val s = v.values(i)
+      val s = v.str(i)
       if s != null && !v.isNull(i) then
         x = x * 31 + s.hashCode
       k += 1
@@ -958,10 +958,9 @@ object GroupTable:
         i += 1
 
     def equalsAt(g: Int, v: Vec, i: Int): Boolean =
-      nullsEqual(g, v, i)(values(g) == v.asInstanceOf[StrVec].values(i))
+      nullsEqual(g, v, i)(values(g) == v.asInstanceOf[StrVec].str(i))
 
-    protected def addValue(g: Int, v: Vec, i: Int): Unit =
-      values(g) = v.asInstanceOf[StrVec].values(i)
+    protected def addValue(g: Int, v: Vec, i: Int): Unit = values(g) = v.asInstanceOf[StrVec].str(i)
 
     def result(n: Int): Vec = StrVec(java.util.Arrays.copyOf(values, n), resultNulls(n))
 

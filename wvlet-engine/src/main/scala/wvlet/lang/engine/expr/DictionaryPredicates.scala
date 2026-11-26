@@ -186,7 +186,7 @@ object DictionaryPredicates:
         null
     var j = 0
     while j < m do
-      values(j) = s.values(reps(j))
+      values(j) = s.str(reps(j))
       j += 1
     if nullEntry >= 0 then
       nulls(nullEntry) = true
@@ -256,7 +256,7 @@ object DictionaryPredicates:
         null
     var j = 0
     while j < m do
-      values(j) = s.values(reps(j))
+      values(j) = s.str(reps(j))
       j += 1
     if nullEntry >= 0 then
       nulls(nullEntry) = true

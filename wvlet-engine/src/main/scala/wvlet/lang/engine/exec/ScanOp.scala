@@ -81,7 +81,8 @@ class ScanOp(
       footerCache,
       conjuncts.reduceOption(_ && _),
       dictionaryCodes,
-      dictionaryEntries
+      dictionaryEntries,
+      lazyStrings
     )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
@@ -114,6 +115,17 @@ class ScanOp(
 
   def withDictionaryEntries(enabled: Boolean): this.type =
     dictionaryEntries = enabled
+    this
+
+  /**
+    * Whether Parquet strings decoded from a dictionary are held as their codes and entries,
+    * building per-row strings only on first use (`lazy_dictionary_strings`,
+    * [[ScanSpec.lazyStrings]])
+    */
+  var lazyStrings: Boolean = false
+
+  def withLazyStrings(enabled: Boolean): this.type =
+    lazyStrings = enabled
     this
 
   /**
@@ -150,6 +162,7 @@ class ScanOp(
   private def withFlagsOf(s: ScanOp): ScanOp = withLateGather(s.lateGather)
     .withDictionaryCodes(s.dictionaryCodes)
     .withDictionaryEntries(s.dictionaryEntries)
+    .withLazyStrings(s.lazyStrings)
     .withSourceJoinFilters(s.sourceJoinFilters)
     .withJoinFiltersFirst(s.joinFiltersFirst)
     .withRowFilterPassRate(s.rowFilterPassRate)
