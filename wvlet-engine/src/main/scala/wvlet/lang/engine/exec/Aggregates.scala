@@ -260,7 +260,11 @@ object Aggregates:
         MinMax(out, isMax = false)
       case "max" =>
         MinMax(out, isMax = true)
-      case "arbitrary" | "any_value" | "first" =>
+      case "any_value" =>
+        // The first non-NULL value in primitive arrays: dependent_group_keys carries its
+        // dropped keys this way
+        MinMax(out, isMax = false, keepFirst = true)
+      case "arbitrary" | "first" =>
         First(out)
       case "last" =>
         Last(out)
@@ -711,7 +715,12 @@ object Aggregates:
 
   end Avg
 
-  final class MinMax(val ptype: PType, isMax: Boolean) extends SeenAccumulator:
+  /**
+    * The min or max of each group, or with `keepFirst` its first non-NULL value (any_value), held
+    * as longs, doubles or objects by type
+    */
+  final class MinMax(val ptype: PType, isMax: Boolean, keepFirst: Boolean = false)
+      extends SeenAccumulator:
     private var longs: Array[Long]     = null
     private var doubles: Array[Double] = null
     private var objs: Array[Any]       = null
@@ -762,7 +771,8 @@ object Aggregates:
             if v.nulls == null || !v.nulls(i) then
               val g = groups(i)
               val x = a(i)
-              if !seen(g) || (
+              if !seen(g) ||
+                !keepFirst && (
                   if isMax then
                     x > longs(g)
                   else
@@ -779,7 +789,8 @@ object Aggregates:
             if v.nulls == null || !v.nulls(i) then
               val g = groups(i)
               val x = a(i)
-              if !seen(g) || (
+              if !seen(g) ||
+                !keepFirst && (
                   if isMax then
                     x > doubles(g)
                   else
@@ -787,6 +798,17 @@ object Aggregates:
                 )
               then
                 doubles(g) = x
+                seen(g) = true
+            i += 1
+        case _ if keepFirst =>
+          // Read a row's value only until its group has one
+          var i = 0
+          while i < n do
+            val g = groups(i)
+            if !seen(g) then
+              val x = v.get(i)
+              if x != null then
+                objs(g) = x
                 seen(g) = true
             i += 1
         case _ =>
@@ -819,7 +841,8 @@ object Aggregates:
             if k >= 0 && (vn == null || !vn(k)) then
               val g = groups(i)
               val x = a(k)
-              if !seen(g) || (
+              if !seen(g) ||
+                !keepFirst && (
                   if isMax then
                     x > longs(g)
                   else
@@ -838,7 +861,8 @@ object Aggregates:
             if k >= 0 && (vn == null || !vn(k)) then
               val g = groups(i)
               val x = a(k)
-              if !seen(g) || (
+              if !seen(g) ||
+                !keepFirst && (
                   if isMax then
                     x > doubles(g)
                   else

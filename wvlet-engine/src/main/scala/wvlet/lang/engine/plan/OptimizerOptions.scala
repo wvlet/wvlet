@@ -772,6 +772,14 @@ enum Optimization(val name: String):
     */
   case UnionDistinctOnce extends Optimization("union_distinct_once")
 
+  /**
+    * An aggregation groups only by the keys that determine its others through declared unique keys
+    * and inner join equalities, carrying the rest as `any_value` of each group
+    * ([[wvlet.lang.engine.runtime.DependentGroupKeys]]): TPC-H q10 groups by `c_custkey` alone
+    * instead of seven customer columns and the nation name
+    */
+  case DependentGroupKeys extends Optimization("dependent_group_keys")
+
 end Optimization
 
 object Optimization:
