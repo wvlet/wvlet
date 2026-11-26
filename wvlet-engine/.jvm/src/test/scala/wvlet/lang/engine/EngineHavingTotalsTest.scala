@@ -135,4 +135,23 @@ class EngineHavingTotalsTest extends UniTest:
     computesGroups(query) shouldBe false
   }
 
+  test("evaluate subqueries on their own beside other subqueries or inside aggregate calls") {
+    Seq(
+      // An IN subquery, which binding the condition early would evaluate once more
+      """s_acctbal.sum > { from supplier select s_acctbal.sum / 50 }
+        |  and s_nationkey in (from nation where n_regionkey = 1 select n_nationkey)""".stripMargin,
+      // A subquery inside an aggregate call, whose call changes once the value is known
+      "(s_acctbal - { from supplier select s_acctbal.max }).sum < { from supplier select s_acctbal.max }"
+    ).foreach { cond =>
+      val query =
+        s"""from supplier
+           |group by s_nationkey
+           |where ${cond}
+           |select s_nationkey, s_acctbal.sum as total
+           |order by s_nationkey
+           |""".stripMargin
+      computesGroups(query) shouldBe false
+    }
+  }
+
 end EngineHavingTotalsTest

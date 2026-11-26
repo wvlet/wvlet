@@ -2179,6 +2179,10 @@ class Planner(
       builder: AggPlanBuilder[P]
   ): Option[(P, Int)] =
     val subs = List.newBuilder[Project]
+    // Whether the condition has other subqueries, or subqueries inside aggregate calls: binding
+    // it before the groups are computed would evaluate them, or register calls that differ once
+    // the subqueries' values are known
+    var others = false
     // Subqueries of the condition itself, not those nested in other subqueries
     def visit(x: Expression): Expression =
       x match
@@ -2190,8 +2194,14 @@ class Planner(
                   !hasSubquery(p.selectItems.head) =>
               subs += p
             case _ =>
+              others = true
           x
         case _: Exists | _: InRelation | _: NotInRelation =>
+          others = true
+          x
+        case f: FunctionApply
+            if f.window.isEmpty && Aggregates.isAggregate(Binder.functionName(f)) =>
+          others ||= hasSubquery(f)
           x
         case other =>
           other.mapChildExpressions(visit)
@@ -2229,19 +2239,31 @@ class Planner(
         !isCorrelated(p, Schema.empty) && !readsCTE(p.child, cteNames) &&
         inputKey(p.child) == sourceKey
     )
-    if shared.isEmpty then
+    if others || shared.isEmpty || shared.size != candidates.size then
       None
     else
-      // Register the calls of the condition and of the subqueries before computing the groups
-      aggBinder.bind(withoutScalarSubqueries(having))
       val values = shared.map(p => p -> aggBinder.bind(p.selectItems.head))
-      val schema = aggCtx.outputSchema
-      val calls  = aggCtx.calls.toIndexedSeq
-      val rows   = builder.compute(builder.aggregate(in, aggCtx.keys, calls, schema))
-      values.foreach { (p, value) =>
-        scalarResults.put(p, groupTotal(rows, schema, calls, numKeys, value))
+      // Register the condition's calls before computing the groups, with a NULL of each
+      // subquery's type in place of its value
+      values.foreach((p, value) => scalarResults.put(p, Const(null, value.ptype)))
+      val bound =
+        try
+          aggBinder.bind(having)
+          true
+        catch
+          case NonFatal(e) =>
+            debug(s"Not totaling over the groups: ${e.getMessage}")
+            values.foreach((p, _) => scalarResults.remove(p))
+            false
+      Option.when(bound) {
+        val schema = aggCtx.outputSchema
+        val calls  = aggCtx.calls.toIndexedSeq
+        val rows   = builder.compute(builder.aggregate(in, aggCtx.keys, calls, schema))
+        values.foreach { (p, value) =>
+          scalarResults.put(p, groupTotal(rows, schema, calls, numKeys, value))
+        }
+        (builder.values(schema, rows), calls.size)
       }
-      Some((builder.values(schema, rows), calls.size))
 
   end computeGroupTotals
 
