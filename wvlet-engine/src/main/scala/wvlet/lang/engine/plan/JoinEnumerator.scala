@@ -207,18 +207,13 @@ class JoinEnumerator(options: OptimizerOptions):
             0.0
         val probe     = s & ~build
         val probeScan =
-          val single = Integer.bitCount(probe) == 1
-          if probeScanCost && (single || joinProbeScanCost) then
-            val (probeDistinct, buildDistinct) =
+          val singleProbe = Integer.bitCount(probe) == 1
+          if probeScanCost && (singleProbe || joinProbeScanCost) then
+            val (probeDistinct, buildDistinct, probeInputs, buildInputs) =
               if probe == s1 then
-                (ad1, ad2)
+                (ad1, ad2, in1, in2)
               else
-                (ad2, ad1)
-            val (probeInputs, buildInputs) =
-              if probe == s1 then
-                (in1, in2)
-              else
-                (in2, in1)
+                (ad2, ad1, in2, in1)
             // Inner joins never add key values: a build key has at most the rows of every join
             // of the build's tree holding its input (TPC-DS q72's item key, not the rows that
             // joining date_dim by week multiplied)
@@ -227,7 +222,7 @@ class JoinEnumerator(options: OptimizerOptions):
               .map(k => buildDistinct(k).map(d => math.min(d, pathRows(dp, build, buildInputs(k)))))
             // A probe that is a join holds at most its joins' rows of each key, likewise
             val probeCapped =
-              if single then
+              if singleProbe then
                 probeDistinct
               else
                 probeDistinct
