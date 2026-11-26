@@ -429,6 +429,16 @@ enum Optimization(val name: String):
   case DictionaryGroupKeys extends Optimization("dictionary_group_keys")
 
   /**
+    * Parquet scans read the rows of a string column decoded from a dictionary page as their
+    * dictionary entries only, without copying each row's bytes (uni's
+    * `ParquetReadOptions.dictionaryCodesOnly`): every row's String is the entry's one String
+    * anyway, so the per-row copy only fed a buffer nothing reads (TPC-H q1's `l_returnflag` /
+    * `l_linestatus`, DuckDB's dictionary vectors). Columns a scan row filter reads are read as
+    * before
+    */
+  case DictionaryEntryScans extends Optimization("dictionary_entry_scans")
+
+  /**
     * Filter conditions over one string column, made of comparisons, IN lists, LIKE, and IS NULL,
     * run once per distinct dictionary entry of a batch whose column carries the codes that
     * `dictionary_group_keys` scans keep, and each row takes its entry's result (TPC-H q16's

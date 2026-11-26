@@ -75,6 +75,7 @@ class Planner(
     windowSortKernels = enabled(Optimization.WindowSortKernels),
     scanRowFilters = enabled(Optimization.ScanRowFilters),
     dictionaryCodes = enabled(Optimization.DictionaryGroupKeys),
+    dictionaryEntries = enabled(Optimization.DictionaryEntryScans),
     selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters),
     maskedCaseWhen = enabled(Optimization.MaskedCaseWhen),
     windowSharePartitions = enabled(Optimization.WindowSharePartitions),

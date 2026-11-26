@@ -174,6 +174,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // grouping by dictionary codes gives the same groups
     Optimization.DictionaryGroupKeys ->
       "Changes how scans decode strings and aggregations compare them, not the plan",
+    // EngineDictionaryEntryScansTest checks that the flag reaches the scans and that reading
+    // dictionary entries only gives the same strings
+    Optimization.DictionaryEntryScans ->
+      "Changes how scans copy dictionary-encoded strings, not the plan",
     // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
     // FusedAccumulatorsTest that the fused loop gives the same counts and sums
     Optimization.FusedAccumulators ->

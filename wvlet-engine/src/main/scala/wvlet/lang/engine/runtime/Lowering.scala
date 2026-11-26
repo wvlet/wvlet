@@ -51,10 +51,11 @@ object Lowering:
     * into the scan's row filter ([[ScanOp.rowFilter]]); with `selectiveRowFilters`, only when they
     * are estimated to keep at most [[ScanFilters.MaxRowFilterSelectivity]] of its rows. With
     * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
-    * ([[ScanOp.dictionaryCodes]]) With `maskedCaseWhen`, a CASE of one WHEN without ELSE masks its
-    * THEN vector ([[MaskCaseWhen]]). With `windowSharePartitions`, window calls with the same
-    * PARTITION BY and ORDER BY are partitioned and sorted once ([[WindowOp.callGroups]]). With
-    * `constCaseSelect`, a CASE of one WHEN with constant THEN and ELSE picks one per row
+    * ([[ScanOp.dictionaryCodes]]); with `dictionaryEntries`, such rows are read as their dictionary
+    * entries only ([[ScanOp.dictionaryEntries]]). With `maskedCaseWhen`, a CASE of one WHEN without
+    * ELSE masks its THEN vector ([[MaskCaseWhen]]). With `windowSharePartitions`, window calls with
+    * the same PARTITION BY and ORDER BY are partitioned and sorted once ([[WindowOp.callGroups]]).
+    * With `constCaseSelect`, a CASE of one WHEN with constant THEN and ELSE picks one per row
     * ([[MaskCaseWhen]]). With `caseAggFilters`, an aggregate of a CASE of one WHEN without ELSE
     * aggregates its THEN value with the condition as FILTER ([[CaseAggFilters]]). With
     * `substringInLists`, `substring(s, k, n) IN (strings)` compares string regions with the values
@@ -81,6 +82,7 @@ object Lowering:
       windowSortKernels: Boolean = false,
       scanRowFilters: Boolean = false,
       dictionaryCodes: Boolean = false,
+      dictionaryEntries: Boolean = false,
       selectiveRowFilters: Boolean = false,
       maskedCaseWhen: Boolean = false,
       windowSharePartitions: Boolean = false,
@@ -105,6 +107,7 @@ object Lowering:
       windowSortKernels,
       scanRowFilters,
       dictionaryCodes,
+      dictionaryEntries,
       selectiveRowFilters,
       maskedCaseWhen,
       windowSharePartitions,
@@ -147,6 +150,7 @@ object Lowering:
       windowSortKernels: Boolean,
       scanRowFilters: Boolean,
       dictionaryCodes: Boolean,
+      dictionaryEntries: Boolean,
       selectiveRowFilters: Boolean,
       maskedCaseWhen: Boolean,
       windowSharePartitions: Boolean,
@@ -195,6 +199,7 @@ object Lowering:
               foldConstants = foldConstants,
               scanRowFilters = scanRowFilters,
               dictionaryCodes = dictionaryCodes,
+              dictionaryEntries = dictionaryEntries,
               selectiveRowFilters = selectiveRowFilters,
               maskedCaseWhen = maskedCaseWhen,
               constCaseSelect = constCaseSelect,
@@ -250,6 +255,7 @@ object Lowering:
         case Scan(source, _, read, filter) =>
           ScanOp(source, p.schema, read, filter, scanFilters(p.output), footerCache)
             .withDictionaryCodes(dictionaryCodes)
+            .withDictionaryEntries(dictionaryEntries)
         case Values(columns, rows) if columns.isEmpty && rows.size == 1 =>
           // One row without columns (a query without FROM), as the planner plans it
           SingleRowOp()
