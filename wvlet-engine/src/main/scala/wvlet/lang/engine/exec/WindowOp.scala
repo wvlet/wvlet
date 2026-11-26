@@ -1299,22 +1299,7 @@ object WindowOp:
           conjuncts(l) ++ conjuncts(r)
         case other =>
           List(other)
-    def bound(op: CmpOp, k: Long): Option[Long] =
-      op match
-        case CmpOp.Le | CmpOp.Eq =>
-          Some(k)
-        case CmpOp.Lt =>
-          Some(k - 1)
-        case _ =>
-          None
-    def limitOf(e: VExpr): Option[Long] =
-      e match
-        case Compare(op, ColRef(i, _, _), Const(v: (Int | Long), _)) if i >= width =>
-          bound(op, v.asInstanceOf[Number].longValue)
-        case Compare(op, Const(v: (Int | Long), _), ColRef(i, _, _)) if i >= width =>
-          bound(op.flip, v.asInstanceOf[Number].longValue)
-        case _ =>
-          None
+    def limitOf(e: VExpr): Option[Long] = rankBound(e, _ >= width).map(_._2)
     if !eligible then
       None
     else
@@ -1324,6 +1309,28 @@ object WindowOp:
         .map(l => TopN(math.max(0L, l), ties = calls.exists(_.name == "rank")))
 
   end topNOf
+
+  /**
+    * The column index and the largest value a conjunct `e` allows for a ranking column (one that
+    * `ranked` accepts) bounded by an integer constant: `r <= k` and `r = k` allow k, `r < k` allows
+    * k - 1, either way round
+    */
+  def rankBound(e: VExpr, ranked: Int => Boolean): Option[(Int, Long)] =
+    def bound(op: CmpOp, k: Long): Option[Long] =
+      op match
+        case CmpOp.Le | CmpOp.Eq =>
+          Some(k)
+        case CmpOp.Lt =>
+          Some(k - 1)
+        case _ =>
+          None
+    e match
+      case Compare(op, ColRef(i, _, _), Const(v: (Int | Long), _)) if ranked(i) =>
+        bound(op, v.asInstanceOf[Number].longValue).map(i -> _)
+      case Compare(op, Const(v: (Int | Long), _), ColRef(i, _, _)) if ranked(i) =>
+        bound(op.flip, v.asInstanceOf[Number].longValue).map(i -> _)
+      case _ =>
+        None
 
   /**
     * Aggregates whose accumulator folds rows one at a time in row order and whose `result` leaves

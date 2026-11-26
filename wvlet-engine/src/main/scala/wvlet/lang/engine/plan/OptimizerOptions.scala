@@ -893,6 +893,14 @@ enum Optimization(val name: String):
     */
   case NestedGroupEstimates extends Optimization("nested_group_estimates")
 
+  /**
+    * An input of an inner join graph that filters a row_number() or rank() by a constant (`rnk <
+    * 11`) is estimated as at most that many rows per partition of the window, instead of the rows
+    * below the window, so that TPC-DS q44's two top-10 rankings are built on and the item scans
+    * probe them
+    */
+  case RankFilterRows extends Optimization("rank_filter_rows")
+
 end Optimization
 
 object Optimization:
