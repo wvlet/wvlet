@@ -51,7 +51,8 @@ object Parallelizer:
       oneRowPartials: Boolean = true,
       selectedInputs: Boolean = true,
       longGroupTables: Boolean = true,
-      sortedGroupRuns: Boolean = true
+      sortedGroupRuns: Boolean = true,
+      unionDistinctOnce: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -71,7 +72,8 @@ object Parallelizer:
         oneRowPartials,
         selectedInputs,
         longGroupTables,
-        sortedGroupRuns
+        sortedGroupRuns,
+        unionDistinctOnce
       )
       rewrite(op, runner)
 
@@ -95,7 +97,8 @@ object Parallelizer:
       oneRowPartials: Boolean,
       selectedInputs: Boolean,
       longGroupTables: Boolean,
-      sortedGroupRuns: Boolean
+      sortedGroupRuns: Boolean,
+      unionDistinctOnce: Boolean
   )
 
   /**
@@ -371,6 +374,38 @@ object Parallelizer:
       case _ =>
         false
 
+  /**
+    * The inputs of a UNION ALL under a distinct, with each input that is itself the distinct rows
+    * of a UNION ALL of the same column types replaced by that union's inputs: the outer distinct
+    * removes the same rows, and casting an input to the outer types directly gives the values the
+    * inner union's casts would
+    */
+  private def distinctUnionInputs(u: UnionAllOp): Seq[Operator] = u
+    .inputs
+    .flatMap {
+      case d: DistinctOp =>
+        d.child match
+          case inner: UnionAllOp if inner.schema.types == u.schema.types =>
+            distinctUnionInputs(inner)
+          case _ =>
+            Seq(d)
+      case other =>
+        Seq(other)
+    }
+
+  /**
+    * With `union_distinct_once`, the union (nested UNION (distinct) inputs flattened) that a
+    * distinct over a UNION ALL reads, when it is one pipeline to aggregate in two phases
+    */
+  private def onceDistinctUnion(d: DistinctOp, runner: TaskRunner)(using
+      o: AboveBreakers
+  ): Option[UnionAllOp] =
+    d.child match
+      case u: UnionAllOp if o.unionDistinctOnce =>
+        Some(UnionAllOp(distinctUnionInputs(u), u.schema)).filter(parallelDistinct(_, runner))
+      case _ =>
+        None
+
   /** The distinct rows of a set operation input, unless they already are */
   private def distinctInput(op: Operator, runner: TaskRunner)(using AboveBreakers): Operator =
     op match
@@ -544,6 +579,11 @@ object Parallelizer:
             LimitOp(r(l.child), l.limit, l.offset)
           case s: SortOp =>
             SortOp(r(s.child), s.keys, s.limit, runner)
+          case d: DistinctOp if onceDistinctUnion(d, runner).isDefined =>
+            // UNION (distinct) over pipelines: one two-phase distinct over the union of the
+            // inputs' pipelines (nested UNION (distinct) inputs included), whose partials reduce
+            // each scan part
+            r(distinctAgg(onceDistinctUnion(d, runner).get))
           case d: DistinctOp
               if d.schema.size > 0 && (
                 d.child match

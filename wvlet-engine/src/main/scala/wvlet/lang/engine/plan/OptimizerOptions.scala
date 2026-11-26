@@ -763,6 +763,15 @@ enum Optimization(val name: String):
     */
   case SortedAggSplits extends Optimization("sorted_agg_splits")
 
+  /**
+    * UNION (distinct) runs one two-phase distinct over the union of its inputs' pipelines, with a
+    * partial distinct per scan part and one final distinct partitioned by key, as DuckDB does,
+    * instead of a full distinct of each input before the final one. Nested UNION (distinct) inputs
+    * join the outer union, as `distinct(a ∪ distinct(b ∪ c)) = distinct(a ∪ b ∪ c)`. TPC-DS q75's
+    * store and web sales rows were reduced to their distinct rows three times
+    */
+  case UnionDistinctOnce extends Optimization("union_distinct_once")
+
 end Optimization
 
 object Optimization:
