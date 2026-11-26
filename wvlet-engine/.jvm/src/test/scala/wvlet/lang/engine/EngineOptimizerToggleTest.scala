@@ -192,6 +192,14 @@ class EngineOptimizerToggleTest extends UniTest:
     // FusedAccumulatorsTest that the fused loop gives the same counts and sums
     Optimization.FusedAccumulators ->
       "Changes how hash aggregations fold their aggregates, not the plan",
+    // FusedDecimalMulTest checks that the fused products equal Arith's, and that the flag reaches
+    // the projections
+    Optimization.FusedDecimalArith ->
+      "Changes how decimal products of a constant sum evaluate; they print as before",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
+    // FusedAccumulatorsTest that the column-major fold gives the same counts and sums
+    Optimization.ColumnMajorFusedSums ->
+      "Changes the order in which fused hash aggregations fold their sums, not the plan",
     // EngineAdaptivePartialAggsTest checks that the flag reaches the partial aggregates, and
     // PartialAggSkipTest that one-row partial results give the same groups
     Optimization.OneRowPartials ->

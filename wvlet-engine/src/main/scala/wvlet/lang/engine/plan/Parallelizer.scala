@@ -814,6 +814,7 @@ private[plan] object TwoPhaseAgg:
               skip
             ).withKeyOptions(streamPackAggKeys, longDecimalKeys)
               .withFusedAccumulators(fusedAccumulators)
+              .withColumnMajorSums(a.columnMajorSums)
               .withOneRowPartials(oneRowPartials)
               .withSelectedInputs(selectedInputs)
               .withDenseSelected(a.denseSelected)
@@ -830,6 +831,7 @@ private[plan] object TwoPhaseAgg:
           HashAggOp(t(x), a.keys, partialAggs, partialSchema)
             .withKeyOptions(streamPackAggKeys, longDecimalKeys)
             .withFusedAccumulators(fusedAccumulators)
+            .withColumnMajorSums(a.columnMajorSums)
             .withSelectedInputs(selectedInputs)
             .withDenseSelected(a.denseSelected)
             .withLongGroupTables(longGroupTables)

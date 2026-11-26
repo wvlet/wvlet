@@ -189,6 +189,9 @@ object Selection:
             1
           else
             3
+        case _: FusedDecimalMul =>
+          // Costs as the decimal Arith it replaces, so that fusing doesn't reorder conjuncts
+          3
         case c: CastExpr =>
           if c.ptype == PType.Str || c.child.ptype == PType.Str then
             8

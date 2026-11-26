@@ -156,14 +156,24 @@ private[exec] object DenseSelectedRows:
       accs: IndexedSeq[Accumulator],
       groups: Array[Int],
       numGroups: Int,
-      b: Batch
+      b: Batch,
+      columnMajor: Boolean = false
   ): Folded =
     val dense = fusedArgs(aggs, unfiltered, b)
     if dense == null then
       return null
     val n      = b.size
     val sel    = dense.sel
-    var folded = FusedAccumulators.update(accs, unfiltered, dense.args, groups, n, numGroups, sel)
+    var folded = FusedAccumulators.update(
+      accs,
+      unfiltered,
+      dense.args,
+      groups,
+      n,
+      numGroups,
+      sel,
+      columnMajor
+    )
     if folded == null then
       folded = new Array[Boolean](aggs.size)
     val args =
@@ -256,6 +266,9 @@ private[exec] object DenseSelectedRows:
         (a.op == ArithOp.Add || a.op == ArithOp.Sub || a.op == ArithOp.Mul) &&
         (a.ptype.isDecimal || a.ptype == PType.Float64) && operand(a.left.ptype, a.ptype) &&
         operand(a.right.ptype, a.ptype) && total(a.left) && total(a.right)
+      case f: FusedDecimalMul =>
+        // Decimal products and sums of decimals neither throw nor divide
+        total(f.x) && total(f.inner)
       case _ =>
         false
 
