@@ -168,7 +168,8 @@ class OptimizerOptionsTest extends UniTest:
         "nested_group_estimates",
         "rank_filter_rows",
         "dimension_group_ids",
-        "semi_anti_one_probe"
+        "semi_anti_one_probe",
+        "late_columns"
       )
   }
 

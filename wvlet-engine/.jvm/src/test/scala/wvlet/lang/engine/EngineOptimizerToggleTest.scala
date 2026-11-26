@@ -116,6 +116,10 @@ class EngineOptimizerToggleTest extends UniTest:
     * tests that check that they take effect
     */
   private val noPlanChange: Map[Optimization, String] = Map(
+    // EngineLateColumnsTest checks the rewrite and its rows; it needs 64x the limit's rows at the
+    // sort, which the golden scales don't reach (TPC-H q10 sorts at most 150 customers)
+    Optimization.LateColumns ->
+      "Fires only above 64 rows per kept row at the sort, beyond the golden plans' scales",
     // The subqueries become the same constants either way, one query per group or per subquery
     Optimization.PrefetchScalarSubqueries ->
       "Changes how scalar subqueries are evaluated while planning, not the plan",
