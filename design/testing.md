@@ -8,6 +8,7 @@ This page owns the spec-driven test layout, the CI ratchets outside the engine, 
 
 - `spec/basic/`: core functionality. `spec/neg/`: expected compilation or execution errors. `spec/cdp_*/`: Customer Data Platform behavior.
 - `spec/tpch/`, `spec/tpcds/`: benchmark queries in Wvlet. `spec/tpcds/*.wv` is generated from `spec/sql/tpc-ds/*.sql`: `./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.TPCDSWvletSpecGenerator"`.
+- `spec/snowflake-sql/`: the golden Snowflake SQL of the stdlib specs; see [stdlib](stdlib.md#snowflake-variants).
 - `spec/sql/basic/`, `spec/sql/tpc-h/`, `spec/sql/tpc-ds/`: SqlParser tests. They run against DuckDB, so use `VALUES` instead of tables that do not exist.
 
 `.wv` files carry their assertions in `test` statements:

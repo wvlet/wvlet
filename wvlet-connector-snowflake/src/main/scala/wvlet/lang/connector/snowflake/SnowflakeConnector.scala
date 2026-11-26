@@ -41,7 +41,14 @@ import java.util.Properties
   * @param user
   *   User name
   * @param password
-  *   Password
+  *   Password. Snowflake requires MFA for human users who sign in with a password and rejects
+  *   passwords for service users, so prefer privateKeyFile or token for programs
+  * @param privateKeyFile
+  *   Path to a PKCS#8 private key (.p8) for key-pair authentication (authenticator SNOWFLAKE_JWT)
+  * @param privateKeyPassword
+  *   Passphrase of an encrypted private key file
+  * @param token
+  *   Programmatic access token (authenticator PROGRAMMATIC_ACCESS_TOKEN)
   */
 case class SnowflakeConfig(
     account: String,
@@ -50,7 +57,10 @@ case class SnowflakeConfig(
     warehouse: Option[String] = None,
     role: Option[String] = None,
     user: Option[String] = None,
-    password: Option[String] = None
+    password: Option[String] = None,
+    privateKeyFile: Option[String] = None,
+    privateKeyPassword: Option[String] = None,
+    token: Option[String] = None
 ):
   def withAccount(account: String): SnowflakeConfig     = copy(account = account)
   def withDatabase(database: String): SnowflakeConfig   = copy(database = database)
@@ -63,6 +73,41 @@ case class SnowflakeConfig(
   def noUser(): SnowflakeConfig                         = copy(user = None)
   def withPassword(password: String): SnowflakeConfig   = copy(password = Some(password))
   def noPassword(): SnowflakeConfig                     = copy(password = None)
+  def withPrivateKeyFile(path: String): SnowflakeConfig = copy(privateKeyFile = Some(path))
+  def noPrivateKeyFile(): SnowflakeConfig               = copy(privateKeyFile = None)
+  def withPrivateKeyPassword(passphrase: String): SnowflakeConfig = copy(privateKeyPassword =
+    Some(passphrase)
+  )
+
+  def noPrivateKeyPassword(): SnowflakeConfig   = copy(privateKeyPassword = None)
+  def withToken(token: String): SnowflakeConfig = copy(token = Some(token))
+  def noToken(): SnowflakeConfig                = copy(token = None)
+
+  /**
+    * The JDBC connection properties. Key-pair authentication wins over a token, and a token over a
+    * password
+    */
+  def jdbcProperties: Properties =
+    val properties = Properties()
+    user.foreach(x => properties.put("user", x))
+    (privateKeyFile, token) match
+      case (Some(keyFile), _) =>
+        properties.put("authenticator", "SNOWFLAKE_JWT")
+        properties.put("private_key_file", keyFile)
+        privateKeyPassword.foreach(x => properties.put("private_key_pwd", x))
+      case (None, Some(t)) =>
+        // The driver reads a programmatic access token from the password property
+        properties.put("authenticator", "PROGRAMMATIC_ACCESS_TOKEN")
+        properties.put("password", t)
+      case _ =>
+        password.foreach(x => properties.put("password", x))
+    warehouse.foreach(x => properties.put("warehouse", x))
+    properties.put("db", database)
+    properties.put("schema", schema)
+    role.foreach(x => properties.put("role", x))
+    properties
+
+end SnowflakeConfig
 
 /**
   * Snowflake connector using JDBC driver
@@ -86,15 +131,7 @@ class SnowflakeConnector(val config: SnowflakeConfig, workEnv: WorkEnv)
 
     trace(s"Connecting to Snowflake: ${jdbcUrl}")
 
-    val properties = new Properties()
-    config.user.foreach(x => properties.put("user", x))
-    config.password.foreach(x => properties.put("password", x))
-    config.warehouse.foreach(x => properties.put("warehouse", x))
-    properties.put("db", config.database)
-    properties.put("schema", config.schema)
-    config.role.foreach(x => properties.put("role", x))
-
-    DBConnection(DriverManager.getConnection(jdbcUrl, properties))
+    DBConnection(DriverManager.getConnection(jdbcUrl, config.jdbcProperties))
 
   override def close(): Unit = Control.closeResources(newConnection)
 

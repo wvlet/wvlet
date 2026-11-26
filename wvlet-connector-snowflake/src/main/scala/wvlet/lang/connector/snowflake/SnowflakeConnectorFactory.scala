@@ -37,7 +37,10 @@ object SnowflakeConnectorFactory extends ConnectorFactory:
       warehouse = config.properties.get("warehouse").map(_.toString),
       role = config.properties.get("role").map(_.toString),
       user = config.user,
-      password = config.password
+      password = config.password,
+      privateKeyFile = config.properties.get("private_key_file").map(_.toString),
+      privateKeyPassword = config.properties.get("private_key_pwd").map(_.toString),
+      token = config.properties.get("token").map(_.toString)
     ),
     workEnv
   ).withName(config.name)
