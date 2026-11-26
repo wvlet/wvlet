@@ -157,7 +157,8 @@ class Planner(
           oneRowPartials = enabled(Optimization.OneRowPartials),
           selectedInputs = enabled(Optimization.AggregateSelectedRows),
           longGroupTables = enabled(Optimization.LongGroupTables),
-          sortedGroupRuns = enabled(Optimization.SortedGroupRuns)
+          sortedGroupRuns = enabled(Optimization.SortedGroupRuns),
+          unionDistinctOnce = enabled(Optimization.UnionDistinctOnce)
         )
       else
         pruned
