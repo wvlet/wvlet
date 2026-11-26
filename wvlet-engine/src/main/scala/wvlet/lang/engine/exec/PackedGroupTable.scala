@@ -67,6 +67,22 @@ final class PackedGroupTable(
       repack(keys, n)
       groupIds(keys, n)
 
+  /**
+    * Group ids of n rows where key k is `keys(k)` at the positions `sels(k)` (-1 for NULL) when
+    * `sels(k)` is not null: packed in place from the key sources while the keys pack, and gathered
+    * otherwise
+    */
+  def groupIdsAt(keys: Array[Vec], sels: Array[Array[Int]], n: Int): Array[Int] =
+    val p =
+      if unpacked != null || packing.isEmpty then
+        null
+      else
+        packing.get.tryPack(keys, sels, n)
+    if p != null then
+      packed.groupIds(Array(p), n)
+    else
+      groupIds(SelectedInputs.gathered(keys, sels, n), n)
+
   /** Re-add the groups so far keyed to cover the first n rows of keys too */
   private def repack(keys: Array[Vec], n: Int): Unit =
     val count   = numGroups

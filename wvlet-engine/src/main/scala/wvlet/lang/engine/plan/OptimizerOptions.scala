@@ -622,6 +622,15 @@ enum Optimization(val name: String):
     */
   case ColumnImpliedRowFilters extends Optimization("column_implied_row_filters")
 
+  /**
+    * Hash aggregations read the deferred columns of a filter's or join probe's output at their
+    * selected positions instead of gathering them first: aggregates over a column (sum, min, max,
+    * count of Int64, Double, and Long-backed decimals), `+` / `-` arguments over such columns (one
+    * output array), and packed group keys ([[wvlet.lang.engine.exec.SelectedInputs]]). TPC-DS
+    * q04/q11 spent about 11% of their CPU gathering sales columns for `sum(a - b)` and its keys
+    */
+  case AggregateSelectedRows extends Optimization("aggregate_selected_rows")
+
 end Optimization
 
 object Optimization:

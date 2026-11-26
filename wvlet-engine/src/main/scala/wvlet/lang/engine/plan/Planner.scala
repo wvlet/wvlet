@@ -149,7 +149,8 @@ class Planner(
           longDecimalKeys = enabled(Optimization.LongDecimalKeys),
           unionPipelines = enabled(Optimization.UnionAllPipelines),
           fusedAccumulators = enabled(Optimization.FusedAccumulators),
-          oneRowPartials = enabled(Optimization.OneRowPartials)
+          oneRowPartials = enabled(Optimization.OneRowPartials),
+          selectedInputs = enabled(Optimization.AggregateSelectedRows)
         )
       else
         pruned
@@ -159,6 +160,8 @@ class Planner(
       Planner.setAggKeyOptions(physical, streamPack, longDecimals)
     if !enabled(Optimization.FusedAccumulators) then
       Planner.disableFusedAccumulators(physical)
+    if !enabled(Optimization.AggregateSelectedRows) then
+      Planner.disableSelectedInputs(physical)
     physical
 
   end optimizePhysical
@@ -3766,6 +3769,19 @@ object Planner:
       case _ =>
     op.children.foreach(disableFusedAccumulators)
     op.sharedInputs.foreach(disableFusedAccumulators)
+
+  /**
+    * Make the hash aggregations of a physical plan gather deferred input columns before reading
+    * them (`aggregate_selected_rows`). The partial aggregates that two-phase aggregations create
+    * per part get the option from [[Parallelizer]]
+    */
+  private[engine] def disableSelectedInputs(op: Operator): Unit =
+    op match
+      case a: HashAggOp =>
+        a.withSelectedInputs(false)
+      case _ =>
+    op.children.foreach(disableSelectedInputs)
+    op.sharedInputs.foreach(disableSelectedInputs)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =
