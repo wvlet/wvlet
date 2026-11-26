@@ -1,6 +1,6 @@
 # ADR: TPC-DS tables are generated to dsdgen's shape from the queries' literals, not dsdgen's distributions
 
-Date: 2026-11-26 · PR #2470
+Date: 2026-11-26 · PR #2472
 
 ## Context
 
