@@ -90,12 +90,41 @@ tables:
 ```
 
 ```bash
-wvlet run -p local-engine "from orders join customer on o_custkey = c_custkey agg _.count"
+wvlet run --profile local-engine "from orders join customer on o_custkey = c_custkey agg _.count"
 ```
 
 Relative paths resolve against the working folder. The compiler sees the schemas of Parquet and
 Iceberg tables (read from file footers), so their column names are checked as for other engines.
 JSON and CSV tables are read only when a query scans them.
+
+### TPC-H tables
+
+`prepareTPCH: true` registers the eight TPC-H tables (`lineitem`, `orders`, `customer`, ...), generated while queries scan them, with no data files and no DuckDB. `tpchScaleFactor` sets the size (default 0.01, 60K line items; up to 1000). These are the same properties as the DuckDB connector's, so one profile works on both engines:
+
+```jsonc title='~/.wvlet/profiles.json'
+{
+  "profiles": [
+    {
+      "name": "tpch",
+      "connectors": [
+        {
+          "name": "wvlet",
+          "type": "wvlet",
+          "properties": { "prepareTPCH": true, "tpchScaleFactor": 1 }
+        }
+      ]
+    }
+  ]
+}
+```
+
+```bash
+wvlet run --profile tpch "from lineitem group by l_returnflag agg _.count"
+```
+
+- Rows, keys, and value domains follow the TPC-H specification, but the values aren't those of the reference `dbgen`, so query answers differ from the official ones. For benchmarks, generate Parquet files with DuckDB's `dbgen` and register them with `dataDir`.
+- The tables are read-only, and a name that `dataDir` / `tables` also registers is an error.
+- TPC-DS generation (`prepareTPCDS`) is supported only on DuckDB.
 
 ## Saving results
 

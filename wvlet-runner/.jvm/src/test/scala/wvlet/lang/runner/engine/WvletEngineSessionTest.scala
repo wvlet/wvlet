@@ -91,4 +91,62 @@ class WvletEngineSessionTest extends UniTest:
     WvletEngineSession.tableNameOf("iceberg_table") shouldBe "iceberg_table"
   }
 
+  private def tpchConfig(props: (String, Any)*): ConnectorConfig = ConnectorConfig(
+    name = "wvlet",
+    `type` = "wvlet",
+    properties = Map[String, Any]("prepareTPCH" -> true) ++ props
+  )
+
+  test("register TPC-H tables generated in memory with prepareTPCH") {
+    val session = WvletEngineSession(tpchConfig(), ".")
+    session.tableNames.sorted shouldBe
+      Seq("customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier")
+    // Typed for the compiler, so stdlib methods on columns resolve
+    session.catalog.getTable("main", "orders").columns.map(_.name) shouldContain "o_comment"
+    // The default scale factor is DuckDB's, 0.01
+    session.engine.catalog.get("orders").estimatedRows shouldBe Some(15000L)
+  }
+
+  test("generate TPC-H tables at tpchScaleFactor") {
+    val session = WvletEngineSession(tpchConfig("tpchScaleFactor" -> "0.1"), ".")
+    session.engine.catalog.get("orders").estimatedRows shouldBe Some(150000L)
+    val e = intercept[WvletLangException] {
+      WvletEngineSession(tpchConfig("tpchScaleFactor" -> "large"), ".")
+    }
+    e.getMessage shouldContain "tpchScaleFactor"
+  }
+
+  test("reject prepareTPCDS on the engine and TPC-H names that files also register") {
+    val ds = intercept[WvletLangException] {
+      WvletEngineSession(tpchConfig("prepareTPCH" -> false, "prepareTPCDS" -> true), ".")
+    }
+    ds.getMessage shouldContain "TPC-DS"
+    val clash = intercept[WvletLangException] {
+      WvletEngineSession(tpchConfig("dataDir" -> "data"), "spec/tpch")
+    }
+    clash.getMessage shouldContain "prepareTPCH"
+  }
+
+  test("reject writes to TPC-H tables") {
+    val profile  = Profile("test", List(tpchConfig()))
+    val workEnv  = WorkEnv(".", logLevel = LogLevel.WARN)
+    val compiler = Compiler(
+      CompilerOptions(sourceFolders = Nil, workEnv = workEnv, dbType = DBType.Wvlet)
+    )
+    val unit = CompilationUnit.fromWvletString("""from nation
+                                                 |where n_nationkey = 0
+                                                 |delete""".stripMargin)
+    val result = compiler.compileSingleUnit(unit)
+    result.reportAllErrors
+    val ctx      = result.context.withCompilationUnit(unit).newContext(Symbol.NoSymbol)
+    val provider = SqlConnectorProvider(profile)
+    try
+      val e = intercept[WvletLangException] {
+        PlanExecutor(provider, profile, workEnv).execute(ExecutionPlanner.plan(unit, ctx), ctx)
+      }
+      e.getMessage shouldContain "read-only"
+    finally
+      provider.close()
+  }
+
 end WvletEngineSessionTest

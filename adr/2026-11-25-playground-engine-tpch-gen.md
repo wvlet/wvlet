@@ -18,4 +18,4 @@ The web playground compiled Wvlet to SQL and ran it on DuckDB-Wasm, which downlo
 
 - The playground needs no network after load and shows only what the engine supports. Forms the engine can't run yet (`_1` grouping-key references in `select`, `count_if` on the engine) are left out of the examples until it does.
 - Queries run on the main thread; a scale factor above 0.1 would block the page, so the UI offers 0.001 to 0.1 (`TpchGen` allows up to 1).
-- `TpchGen` can also back a CLI or test data source without DuckDB; not done yet.
+- `TpchGen` also backs the `wvlet` connector's `prepareTPCH` tables, generated block by block while scanned ([the plan](../plans/2026-11-25-tpch-engine-connector.md)).

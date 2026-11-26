@@ -34,6 +34,17 @@ class RunnerSpecWvletEngineTPCH
       engineProfile = Some(WvletEngineProfiles.of(Map("dataDir" -> "data")))
     )
 
+/**
+  * spec/tpch on the wvlet engine over TPC-H tables generated while they're scanned (`prepareTPCH`),
+  * with no data files. Values differ from dbgen's, so only that queries run is checked
+  */
+class RunnerSpecWvletEngineTPCHGen
+    extends RunnerSpec(
+      "spec/tpch",
+      ignoredSpec = Map("q1-test.wv" -> "Asserts dbgen's answer; generated values differ"),
+      engineProfile = Some(WvletEngineProfiles.of(Map("prepareTPCH" -> true)))
+    )
+
 /** spec/basic on the wvlet engine, except for specs using features the engine lacks */
 class RunnerSpecWvletEngineBasic
     extends RunnerSpec(

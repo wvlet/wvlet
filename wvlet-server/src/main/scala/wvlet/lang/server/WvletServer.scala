@@ -49,7 +49,10 @@ case class WvletServerConfig(
       description = "Quit the server immediately after starting. Only for boot testing"
     )
     quitImmediately: Boolean = false,
-    @option(prefix = "--tpch", description = "Load a small demo TPC-H data (DuckDB only)")
+    @option(
+      prefix = "--tpch",
+      description = "Load small demo TPC-H tables (scale factor 0.01, or tpchScaleFactor)"
+    )
     prepareTPCH: Boolean = false,
     @option(
       prefix = "--auth-token",
@@ -62,6 +65,8 @@ case class WvletServerConfig(
 
   /** The effective bearer token: the explicit option, else the WVLET_SERVER_TOKEN env variable */
   def resolvedAuthToken: Option[String] = authToken.orElse(sys.env.get("WVLET_SERVER_TOKEN"))
+
+end WvletServerConfig
 
 object WvletServer extends LogSupport:
 
@@ -206,6 +211,22 @@ object WvletServer extends LogSupport:
     else
       unusedPortFrom(start, counter + 1)
 
+  /**
+    * The profile queries run with: the named one, or the in-process engine like `wvlet run` and
+    * `wv`. With `--tpch`, its default connector (DuckDB or the wvlet engine) gets the TPC-H tables
+    */
+  def profileOf(config: WvletServerConfig): Profile =
+    val profile = Profile.getProfile(
+      config.profile,
+      config.catalog,
+      config.schema,
+      Profile.defaultWvletProfile
+    )
+    if config.prepareTPCH then
+      profile.withProperty("prepareTPCH", true)
+    else
+      profile
+
   def design(config: WvletServerConfig): Design =
     // Bind the actual port that was acquired so downstream consumers of
     // WvletServerConfig observe the same port the Netty server is listening on.
@@ -215,15 +236,7 @@ object WvletServer extends LogSupport:
       .newSilentDesign
       .bindInstance[WvletServerConfig](resolvedConf)
       .bindInstance[WorkEnv](resolvedConf.workEnv)
-      .bindInstance[Profile](
-        Profile.getProfile(
-          resolvedConf.profile,
-          resolvedConf.catalog,
-          resolvedConf.schema,
-          // Like `wvlet run` and `wv`, queries without a profile run on the in-process engine
-          Profile.defaultWvletProfile
-        )
-      )
+      .bindInstance[Profile](profileOf(resolvedConf))
       .bindProvider[Profile, WvletScriptRunnerConfig] { (profile: Profile) =>
         WvletScriptRunnerConfig(
           interactive = false,

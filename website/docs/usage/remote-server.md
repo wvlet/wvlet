@@ -54,7 +54,7 @@ A profile entry can hold the connection settings so you only pass `-p`:
 ```
 
 ```bash
-wvlet run -p remote "from lineitem select count(*)"
+wvlet run --profile remote "from lineitem select count(*)"
 ```
 
 ## Authentication
