@@ -341,7 +341,9 @@ object Stats:
           val r = treeRows(child, options, build)
           if options.isEnabled(Optimization.ClusteredGroupEstimates) then
             combinations(child, keys.map(_.expr))
-              .map(ClusteredGroups.groups(child, keys.map(_.expr), _, r))
+              .map(c =>
+                ClusteredGroups.groups(child, keys.map(_.expr), math.min(c, rows(child)), r)
+              )
               .getOrElse(r)
           else
             groups(child, keys.map(_.expr)).map(math.min(_, r)).getOrElse(r)

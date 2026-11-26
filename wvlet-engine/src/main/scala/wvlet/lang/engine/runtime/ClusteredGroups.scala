@@ -48,7 +48,8 @@ object ClusteredGroups:
   def groups(p: RuntimePlan, keys: Seq[VExpr], combinations: Double, rows: Double): Double =
     val bound = math.min(combinations, rows)
     run(p, keys) match
-      case Some(r) if r >= MinRun && rows > 0 =>
+      // An overflowed product of distinct values would make the formula NaN
+      case Some(r) if r >= MinRun && rows > 0 && !combinations.isInfinite =>
         val d = math.max(1.0, combinations)
         math.max(1.0, math.min(bound, d * -math.expm1(-(rows / r) / d)))
       case _ =>
