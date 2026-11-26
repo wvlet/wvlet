@@ -85,6 +85,7 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
   override def onMount(node: Any): Unit =
     state.revealLine = line => editor.revealLine(line)
     subscriptions = Seq(
+      narrowScreenDrawer(),
       // Run the statement being edited shortly after typing stops
       state
         .text
@@ -116,6 +117,26 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
 
   end onMount
 
+  /**
+    * On a phone-width screen the sidebar is a drawer over the page, so keep it closed there: close
+    * it at startup and whenever the window narrows, and restore its wide-screen state when the
+    * window widens again.
+    */
+  private def narrowScreenDrawer(): Cancelable =
+    val query    = dom.window.matchMedia(s"(max-width: ${PlaygroundState.narrowMaxWidth}px)")
+    var wideOpen = state.sidebarOpen.get
+    def apply(narrow: Boolean): Unit =
+      if narrow then
+        wideOpen = state.sidebarOpen.get
+        state.sidebarOpen := false
+      else
+        state.sidebarOpen := wideOpen
+    if query.matches then
+      apply(true)
+    val listener: js.Function1[dom.Event, Unit] = _ => apply(query.matches)
+    query.addEventListener("change", listener)
+    Cancelable(() => query.removeEventListener("change", listener))
+
   override def beforeUnmount: Unit =
     subscriptions.foreach(_.cancel)
     subscriptions = Nil
@@ -144,11 +165,6 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
         span(cls -> "pg-brand__sub", "Playground")
       ),
       div(cls -> "pg-header__mode", modeTabs),
-      Button("Run")
-        .withVariant(ButtonVariant.Primary)
-        .withSize(ButtonSize.Small)
-        .withLabel("Run the statement at the cursor (Cmd/Ctrl+Enter)")
-        .onClick(() => runAtCursor(QuerySelection.Single)),
       Button("Describe")
         .withSize(ButtonSize.Small)
         .withLabel("Show the columns of the query at the cursor (Shift+Enter)")
@@ -167,9 +183,7 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
             js.timers.setTimeout(30)(state.rerun())
           }
       ),
-      Select(state.theme, options = ColorScheme.values.toSeq, optionLabel = _.label).withLabel(
-        "Color theme"
-      ),
+      ThemeSwitch(state.theme),
       Button("Share")
         .withSize(ButtonSize.Small)
         .withVariant(ButtonVariant.Ghost)
@@ -209,16 +223,7 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
               "Edits run automatically. Pick an example on the left to start from."
             )
           )
-      },
-    span(
-      cls -> "pg-info__keys",
-      Kbd("⌘↵"),
-      " run ",
-      Kbd("⇧↵"),
-      " describe ",
-      Kbd("⌃↵"),
-      " subquery"
-    )
+      }
   )
 
   private def resultHeader: RxElement = div(
@@ -255,6 +260,15 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
     headerBar,
     div(
       cls -> "pg-body",
+      // Shown only on narrow screens, behind the sidebar drawer: a tap outside closes the drawer
+      div(
+        cls            -> "pg-backdrop",
+        data("open")   -> state.sidebarOpen.map(_.toString),
+        aria("hidden") -> "true",
+        onclick        -> { (_: dom.MouseEvent) =>
+          state.sidebarOpen := false
+        }
+      ),
       FoldablePane(
         state.sidebarOpen,
         width = state.sidebarWidth,
@@ -296,7 +310,20 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
       span(cls -> "pg-status__dot", data("error") -> state.output.map(_.hasError.toString)),
       state.status.map(s => span(s)),
       span(cls -> "pg-grow"),
-      state.scaleFactor.map(sf => span(s"Wvlet engine (Scala.js) · TPC-H SF ${sf} in memory")),
+      span(
+        cls -> "pg-status__keys",
+        Kbd("⌘↵"),
+        " run ",
+        Kbd("⇧↵"),
+        " describe ",
+        Kbd("⌃↵"),
+        " subquery"
+      ),
+      state
+        .scaleFactor
+        .map(sf =>
+          span(cls -> "pg-status__engine", s"Wvlet engine (Scala.js) · TPC-H SF ${sf} in memory")
+        ),
       state.mode.map(m => span(cls -> "pg-status__mode", m.label))
     ),
     toasts

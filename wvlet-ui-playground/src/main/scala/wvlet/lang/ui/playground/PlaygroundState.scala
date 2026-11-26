@@ -122,6 +122,11 @@ class PlaygroundState extends LogSupport:
         info(f"Generated TPC-H SF${scaleFactor.get} in ${millis}%.0f ms")
         e
 
+  /** Close the sidebar drawer after a pick on a narrow screen, so the editor shows */
+  def closeSidebarOnNarrow(): Unit =
+    if PlaygroundState.isNarrow then
+      sidebarOpen := false
+
   /** Show an example in the editor and run it */
   def open(e: Example): Unit =
     example         := Some(e)
@@ -208,6 +213,13 @@ end PlaygroundState
 
 object PlaygroundState:
   private val prefix = "wvlet-playground."
-  val sidebarRange   = SizeRange(min = 200, default = 280, max = 520)
-  val outputRange    = SizeRange(min = 280, default = 520, max = 1200)
-  val resultRange    = SizeRange(min = 120, default = 320, max = 1200)
+
+  /** The widest screen that gets the stacked phone layout; matches `index.css` */
+  val narrowMaxWidth = 760
+
+  /** True on a phone-sized screen, where the panels stack and the sidebar is a drawer */
+  def isNarrow: Boolean = dom.window.matchMedia(s"(max-width: ${narrowMaxWidth}px)").matches
+
+  val sidebarRange = SizeRange(min = 200, default = 280, max = 520)
+  val outputRange  = SizeRange(min = 280, default = 520, max = 1200)
+  val resultRange  = SizeRange(min = 120, default = 320, max = 1200)
