@@ -234,6 +234,19 @@ class GroupTableTest extends UniTest:
     k.codes.toSeq shouldBe Seq(0, 1, -1, 2, 0)
   }
 
+  test("should group string codes through a long group table with longTables") {
+    val dict  = Array("x", "y", "z")
+    val types = IndexedSeq(PType.Str, PType.Int64)
+    val t     = GroupTable(types, stableCodes = true, longTables = true)
+    val p     = GroupTable(types)
+    val b1    = Array[Vec](shared(dict, "x", "y", null, "x", "z"), longs(1, 1, 2, 1, 3))
+    val b2    = Array[Vec](shared(dict, "z", "x", null, "y"), longs(3, 2, 2, 1))
+    t.groupIds(b1, 5).toSeq shouldBe p.groupIds(b1.map(k => plainOf(k)), 5).toSeq
+    t.groupIds(b2, 4).toSeq shouldBe p.groupIds(b2.map(plainOf), 4).toSeq
+    t.usesStableCodes shouldBe true
+    values(t) shouldBe values(p)
+  }
+
   test("should move code-keyed groups to their strings for a batch without the dict") {
     val dict  = Array("x", "y")
     val types = IndexedSeq(PType.Str)

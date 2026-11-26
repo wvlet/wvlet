@@ -72,6 +72,14 @@ class PartitionedAggOp(
     fuseAccumulators = enabled
     this
 
+  /** Whether the partitions group a single Int64 key through a [[LongGroupTable]] */
+  var longGroupTables: Boolean = true
+
+  /** Set [[longGroupTables]] */
+  def withLongGroupTables(enabled: Boolean): this.type =
+    longGroupTables = enabled
+    this
+
   def next(): Batch =
     if result == null then
       result = aggregate()
@@ -92,6 +100,7 @@ class PartitionedAggOp(
           // The keys are packed here from the partition's exact ranges, when they can be
           .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
           .withFusedAccumulators(fuseAccumulators)
+          .withLongGroupTables(longGroupTables)
         try op.drain()
         finally op.close()
       val keyVecs =

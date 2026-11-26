@@ -86,14 +86,16 @@ end GroupKey
   * With `longDecimals`, decimal key columns are stored and compared as unscaled Long values
   * ([[GroupTable.DecimalStore]]) instead of boxed BigDecimals. With `stableCodes`, groups whose
   * string keys carry codes shared across batches are keyed by the codes ([[StrVec.dict]]), packed
-  * with the other keys into Int64 values with `packCodes`.
+  * with the other keys into Int64 values with `packCodes`, grouped by a [[LongGroupTable]] with
+  * `longTables`.
   */
 final class GroupTable(
     keyTypes: IndexedSeq[PType],
     expectedGroups: Int = 0,
     longDecimals: Boolean = false,
     stableCodes: Boolean = false,
-    packCodes: Boolean = true
+    packCodes: Boolean = true,
+    longTables: Boolean = false
 ) extends GroupIndex:
   import GroupTable.*
 
@@ -367,7 +369,13 @@ final class GroupTable(
           else
             keyTypes(k)
         }
-      coded = PackedGroupTable.forKeys(types, expectedGroups, packCodes, longDecimals)
+      coded = PackedGroupTable.forKeys(
+        types,
+        expectedGroups,
+        packCodes,
+        longDecimals,
+        longTables = longTables
+      )
     val codeKeys =
       Array.tabulate(width) { k =>
         if codeDicts(k) != null then
@@ -662,7 +670,7 @@ object GroupTable:
   inline val MaxPresizeGroups = 1 << 18
 
   /** Slots for n groups at most half full: a power of two of at least 1024 */
-  private def slotCapacity(n: Int): Int =
+  private[exec] def slotCapacity(n: Int): Int =
     val want = math.max(1024L, n.toLong * 2)
     if want >= (1 << 30) then
       1 << 30

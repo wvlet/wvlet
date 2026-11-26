@@ -152,7 +152,8 @@ class Planner(
           unionPipelines = enabled(Optimization.UnionAllPipelines),
           fusedAccumulators = enabled(Optimization.FusedAccumulators),
           oneRowPartials = enabled(Optimization.OneRowPartials),
-          selectedInputs = enabled(Optimization.AggregateSelectedRows)
+          selectedInputs = enabled(Optimization.AggregateSelectedRows),
+          longGroupTables = enabled(Optimization.LongGroupTables)
         )
       else
         pruned
@@ -166,6 +167,8 @@ class Planner(
       Planner.disableSelectedInputs(physical)
     if !enabled(Optimization.DenseSelectedRows) then
       Planner.disableDenseSelected(physical)
+    if !enabled(Optimization.LongGroupTables) then
+      Planner.disableLongGroupTables(physical)
     physical
 
   end optimizePhysical
@@ -3801,6 +3804,21 @@ object Planner:
       case _ =>
     op.children.foreach(disableDenseSelected)
     op.sharedInputs.foreach(disableDenseSelected)
+
+  /**
+    * Make the hash aggregations of a physical plan group single Int64 keys through [[GroupTable]]s
+    * (`long_group_tables`). The partial aggregates that two-phase aggregations create per part get
+    * the option from [[Parallelizer]]
+    */
+  private[engine] def disableLongGroupTables(op: Operator): Unit =
+    op match
+      case a: HashAggOp =>
+        a.withLongGroupTables(false)
+      case a: PartitionedAggOp =>
+        a.withLongGroupTables(false)
+      case _ =>
+    op.children.foreach(disableLongGroupTables)
+    op.sharedInputs.foreach(disableLongGroupTables)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =

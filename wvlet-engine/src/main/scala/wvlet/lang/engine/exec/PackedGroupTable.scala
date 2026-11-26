@@ -29,13 +29,14 @@ import wvlet.lang.engine.vector.*
 final class PackedGroupTable(
     keyTypes: IndexedSeq[PType],
     expectedGroups: Int = 0,
-    longDecimals: Boolean = false
+    longDecimals: Boolean = false,
+    longTables: Boolean = false
 ) extends GroupIndex:
   require(AggKeyPacking.packable(keyTypes, longDecimals), s"Keys can't be packed: ${keyTypes}")
 
   private var packing: Option[AggKeyPacking] = None
   // Groups by the packed key while packing is defined
-  private var packed: GroupTable = null
+  private var packed: GroupIndex = null
   // Groups by the key columns once they don't pack
   private var unpacked: GroupTable = null
 
@@ -94,7 +95,11 @@ final class PackedGroupTable(
     val presize = math.max(expectedGroups, count * 2)
     AggKeyPacking.covering(keyTypes, Option(current).map((_, count)), keys, n, longDecimals) match
       case Some(next) =>
-        val table = GroupTable(IndexedSeq(PType.Int64), presize)
+        val table =
+          if longTables then
+            LongGroupTable(PType.Int64, presize)
+          else
+            GroupTable(IndexedSeq(PType.Int64), presize)
         if count > 0 then
           table.groupIds(Array(next.pack(current, count)), count)
           repacks += 1
@@ -122,19 +127,31 @@ end PackedGroupTable
 
 object PackedGroupTable:
   /**
-    * A [[PackedGroupTable]] when `pack` and the keys can be packed, and a [[GroupTable]] over the
-    * key columns otherwise, keyed by the codes of string keys that carry them with `stableCodes`
+    * A [[PackedGroupTable]] when `pack` and the keys can be packed, a [[LongGroupTable]] for one
+    * Int64 key with `longTables` (and inside a [[PackedGroupTable]] for the packed key), and a
+    * [[GroupTable]] over the key columns otherwise, keyed by the codes of string keys that carry
+    * them with `stableCodes`
     */
   def forKeys(
       keyTypes: IndexedSeq[PType],
       expectedGroups: Int,
       pack: Boolean,
       longDecimals: Boolean,
-      stableCodes: Boolean = false
+      stableCodes: Boolean = false,
+      longTables: Boolean = false
   ): GroupIndex =
     if pack && AggKeyPacking.packable(keyTypes, longDecimals) then
-      new PackedGroupTable(keyTypes, expectedGroups, longDecimals)
+      new PackedGroupTable(keyTypes, expectedGroups, longDecimals, longTables)
+    else if longTables && LongGroupTable.supports(keyTypes) then
+      LongGroupTable(keyTypes(0), expectedGroups)
     else
-      GroupTable(keyTypes, expectedGroups, longDecimals, stableCodes, packCodes = pack)
+      GroupTable(
+        keyTypes,
+        expectedGroups,
+        longDecimals,
+        stableCodes,
+        packCodes = pack,
+        longTables = longTables
+      )
 
 end PackedGroupTable
