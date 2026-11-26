@@ -16,6 +16,7 @@ package wvlet.lang.engine.plan
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.expr.VExpr
+import wvlet.lang.engine.runtime.PushDownFilters
 import wvlet.lang.engine.vector.Schema
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -267,7 +268,9 @@ private[engine] object SharedScans extends LogSupport:
             None
           else
             try
+              // A non-deterministic conjunct (random() < 0.1) draws its own values in each read
               Some(VExprs.mapRefs(Binder(planner, BindScope(schema)).bind(c), _.copy(name = "")))
+                .filter(PushDownFilters.isDeterministic)
             catch
               case NonFatal(_) =>
                 None
