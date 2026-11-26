@@ -204,8 +204,7 @@ object EagerAggregation extends Pass:
         // the pre-aggregation, and every call is computed before the join
         def lookup(eagerCalls: Set[Int], other: RuntimePlan, otherKeys: Seq[BExpr]): Boolean =
           options.isEnabled(Optimization.EagerLookupProjection) &&
-            eagerCalls.size == a.calls.size && otherKeys.forall(_.expr.isInstanceOf[ColRef]) &&
-            DependentGroupKeys.uniqueOn(other, otherKeys.flatMap(_.refs))
+            eagerCalls.size == a.calls.size && DependentGroupKeys.looksUp(other, otherKeys)
         val pushed =
           pushable(left, right) match
             case Some(eagerCalls) =>
@@ -412,10 +411,8 @@ object EagerAggregation extends Pass:
             // x, and is best done first
             def side(x: RuntimePlan, other: RuntimePlan, otherKeys: Seq[BExpr]): Option[Pushed] =
               val lookup =
-                residual.isEmpty && otherKeys.forall(_.expr.isInstanceOf[ColRef]) &&
-                  other.output.exists(c => needed.contains(c.id)) &&
-                  DependentGroupKeys.uniqueOn(other, otherKeys.flatMap(_.refs)) &&
-                  retainedTree(other, options) &&
+                residual.isEmpty && other.output.exists(c => needed.contains(c.id)) &&
+                  DependentGroupKeys.looksUp(other, otherKeys) && retainedTree(other, options) &&
                   Stats.treeRows(j, options) >= MinRetention * Stats.treeRows(x, options)
               if lookup then
                 preAggregate(x, below, sub).orElse(down(x, below, sub))

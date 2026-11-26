@@ -268,15 +268,20 @@ object DependentGroupKeys extends Pass:
         }
         uniqueOn(child, copies)
       case Join(left, right, JoinKind.Inner, lk, rk, _, _) if lk.nonEmpty =>
-        def lookup(side: RuntimePlan, keys: Seq[BExpr]): Boolean =
-          keys.forall(_.expr.isInstanceOf[ColRef]) && uniqueOn(side, keys.flatMap(_.refs))
         def on(side: RuntimePlan): Seq[ColumnId] =
           val ids = side.output.map(_.id).toSet
           cols.filter(ids.contains)
-        (lookup(right, rk) && uniqueOn(left, on(left))) ||
-        (lookup(left, lk) && uniqueOn(right, on(right)))
+        (looksUp(right, rk) && uniqueOn(left, on(left))) ||
+        (looksUp(left, lk) && uniqueOn(right, on(right)))
       case _ =>
         false
+
+  /**
+    * Whether a join by `keys` finds at most one row of `side`: the keys are plain columns, and
+    * `side` is unique on them ([[uniqueOn]])
+    */
+  private[runtime] def looksUp(side: RuntimePlan, keys: Seq[BExpr]): Boolean =
+    keys.forall(_.expr.isInstanceOf[ColRef]) && uniqueOn(side, keys.flatMap(_.refs))
 
   /** The aggregation grouped by the keys that determine the others, if any key is determined */
   private def reduce(a: Aggregate): Option[RuntimePlan] =
