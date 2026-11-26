@@ -132,6 +132,13 @@ enum Optimization(val name: String):
   /** Evaluate uncorrelated scalar subqueries over the same input as one query */
   case PrefetchScalarSubqueries extends Optimization("prefetch_scalar_subqueries")
 
+  /**
+    * Compute an aggregation's groups at plan time when scalar subqueries of its condition aggregate
+    * the same input, and total the subqueries' sums, mins, and maxes over the groups instead of
+    * reading the input again (TPC-H q11)
+    */
+  case HavingTotalsFromGroups extends Optimization("having_totals_from_groups")
+
   /** Compute a CTE referenced more than once only once */
   case ShareCTEs extends Optimization("share_ctes")
 
