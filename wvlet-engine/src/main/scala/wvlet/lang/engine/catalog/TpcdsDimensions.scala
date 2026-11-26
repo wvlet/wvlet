@@ -276,10 +276,16 @@ private[catalog] object TpcdsDimensions:
   )
 
   /**
-    * Row counts at scale factor 1 and 10 (dsdgen's), the rounding unit between them, and whether
-    * the count stays fixed from scale factor 1
+    * Row counts at scale factor 1 and 10 (dsdgen's) and the rounding unit between them. `fixed`
+    * tables keep their scale factor 1 count above it, and `always` ones at every scale factor
     */
-  private case class Scaling(at1: Int, at10: Int, unit: Int = 1, fixed: Boolean = false)
+  private case class Scaling(
+      at1: Int,
+      at10: Int,
+      unit: Int = 1,
+      fixed: Boolean = false,
+      always: Boolean = false
+  )
 
   private val scaling: Map[String, Scaling] = Map(
     "item"             -> Scaling(18000, 102000, unit = 2000),
@@ -291,9 +297,9 @@ private[catalog] object TpcdsDimensions:
     "web_site"         -> Scaling(30, 42, unit = 2),
     "web_page"         -> Scaling(60, 200, unit = 2),
     "promotion"        -> Scaling(300, 500),
-    "catalog_page"     -> Scaling(11718, 11718, fixed = true),
+    "catalog_page"     -> Scaling(11718, 11718, always = true),
     "reason"           -> Scaling(75, 75, fixed = true),
-    "ship_mode"        -> Scaling(20, 20, fixed = true)
+    "ship_mode"        -> Scaling(20, 20, always = true)
   )
 
   /**
@@ -303,7 +309,7 @@ private[catalog] object TpcdsDimensions:
     */
   def rows(table: String, sf: Double): Int =
     val s = scaling(table)
-    if table == "ship_mode" || table == "catalog_page" then
+    if s.always then
       s.at1
     else if sf < 1 then
       math.max(1, math.floor(s.at1 * sf + 1e-9).toInt)
@@ -919,7 +925,6 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
   private def addressColumns(
       c: DimColumns,
       r: Random,
-      n: Int,
       city: Int => String,
       county: Int => String,
       state: Int => String,
@@ -950,22 +955,26 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
   end addressColumns
 
   // Stores, warehouses, call centers, and web sites are in Williamson County, TN, as in dsdgen
-  private def localAddress(c: DimColumns, r: Random, n: Int, cityOf: Int => String): Unit =
-    addressColumns(
-      c,
-      r,
-      n,
-      cityOf,
-      _ => "Williamson County",
-      _ => "TN",
-      i =>
-        if cityOf(i) == "Midway" then
-          "31904"
-        else
-          "35709"
-      ,
-      _ => -5
-    )
+  private def localAddress(c: DimColumns, r: Random, cityOf: Int => String): Unit = addressColumns(
+    c,
+    r,
+    cityOf,
+    _ => "Williamson County",
+    _ => "TN",
+    i =>
+      if cityOf(i) == "Midway" then
+        "31904"
+      else
+        "35709"
+    ,
+    _ => -5
+  )
+
+  private val locationTypes = IndexedSeq("apartment", "condo", "single family")
+  private val emailDomains  = IndexedSeq("com", "org", "edu")
+  private val centerClasses = IndexedSeq("small", "medium", "large")
+  private val centerHours   = IndexedSeq("8AM-4PM", "8AM-8AM")
+  private val storeHours    = IndexedSeq("8AM-4PM", "8AM-12AM", "8AM-8AM")
 
   private def twoCities(r: Random): String =
     if r.nextBoolean() then
@@ -1006,7 +1015,7 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         c.str(_ => text(r, 10, 20))
         c.long(_ => betweenLong(r, 50000, 1000000))
         val city = Array.fill(n)(twoCities(r))
-        localAddress(c, r, n, city(_))
+        localAddress(c, r, city(_))
       case "call_center" =>
         val names = IndexedSeq(
           "NY Metro",
@@ -1024,10 +1033,10 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         c.long(_ => Long.MinValue, nullable = false)
         c.long(_ => dateSk(epoch(1998, 1, 1)) + between(r, 0, 300))
         c.str(i => names(((rev(i).id - 1) % names.size).toInt))
-        c.str(_ => pick(r, IndexedSeq("small", "medium", "large")))
+        c.str(_ => pick(r, centerClasses))
         c.long(_ => between(r, 1, 7).toLong)
         c.long(_ => between(r, 600, 4200).toLong)
-        c.str(_ => pick(r, IndexedSeq("8AM-4PM", "8AM-8AM")))
+        c.str(_ => pick(r, centerHours))
         c.str(_ => s"${personName(r.nextInt(5000))} ${personName(r.nextInt(5000))}")
         c.long(_ => between(r, 1, 6).toLong)
         c.str(_ => text(r, 20, 50))
@@ -1039,7 +1048,7 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         val company = Array.fill(n)(between(r, 1, 6))
         c.long(company(_).toLong)
         c.str(i => syllableName(company(i)))
-        localAddress(c, r, n, _ => "Midway")
+        localAddress(c, r, _ => "Midway")
         c.decimal(PType.decimal(5, 2), _ => between(r, 0, 12).toLong)
       case "web_site" =>
         val rev = Array.tabulate(n)(i => revision(start + i, (1997, 8, 16)))
@@ -1065,7 +1074,7 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         c.long(company(_).toLong)
         c.str(i => syllableName(company(i)))
         val city = Array.fill(n)(twoCities(r))
-        localAddress(c, r, n, city(_))
+        localAddress(c, r, city(_))
         c.decimal(PType.decimal(5, 2), _ => between(r, 0, 12).toLong)
       case "web_page" =>
         val types = IndexedSeq(
@@ -1091,9 +1100,9 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
           else
             "N"
         )
-        // Pages generated for a customer
+        // 70% of the pages not generated automatically are a customer's (35% of all, as in dsdgen)
         c.long(i =>
-          if r.nextInt(100) < 35 then
+          if !autogen(i) && r.nextInt(100) < 70 then
             betweenLong(r, 1, rowsOf("customer"))
           else
             Long.MinValue
@@ -1120,7 +1129,7 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         c.str(i => syllables((rev(i).id % 10).toInt))
         c.long(_ => between(r, 200, 300).toLong)
         c.long(_ => between(r, 5000000, 10000000).toLong)
-        c.str(_ => pick(r, IndexedSeq("8AM-4PM", "8AM-12AM", "8AM-8AM")))
+        c.str(_ => pick(r, storeHours))
         c.str(_ => s"${personName(r.nextInt(5000))} ${personName(r.nextInt(5000))}")
         c.long(_ => between(r, 1, 10).toLong)
         c.str(_ => "Unknown")
@@ -1131,7 +1140,7 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         c.long(_ => 1L)
         c.str(_ => "Unknown")
         val city = Array.fill(n)(twoCities(r))
-        localAddress(c, r, n, city(_))
+        localAddress(c, r, city(_))
         c.decimal(PType.decimal(5, 2), _ => between(r, 0, 11).toLong)
       case "promotion" =>
         val startSk = Array.fill(n)(dateSk(epoch(1995, 12, 31)) + between(r, 0, 813))
@@ -1174,7 +1183,6 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         addressColumns(
           c,
           r,
-          n,
           _ => pick(r, cities),
           _ => pick(r, counties),
           i => states(state(i))._1,
@@ -1188,7 +1196,7 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
           ,
           i => states(state(i))._2
         )
-        c.str(_ => pick(r, IndexedSeq("apartment", "condo", "single family")))
+        c.str(_ => pick(r, locationTypes))
       case "customer" =>
         val first    = Array.fill(n)(personName(r.nextInt(4000)))
         val last     = Array.fill(n)(personName(4000 + r.nextInt(5000)))
@@ -1217,7 +1225,7 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         c.str(i =>
           s"${first(i)}.${last(i)}@${(0 until between(r, 8, 16))
               .map(_ => ('a' + r.nextInt(26)).toChar)
-              .mkString}.${pick(r, IndexedSeq("com", "org", "edu"))}"
+              .mkString}.${pick(r, emailDomains)}"
         )
         c.int(_ => (dateSk(epoch(2002, 1, 1)) + between(r, 0, 365)).toInt)
       case "item" =>

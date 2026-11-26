@@ -137,9 +137,9 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
             "cp_catalog_page_sk" | "cp_catalog_page_id" | "r_reason_sk" | "r_reason_id" |
             "r_reason_desc" | "sm_ship_mode_sk" | "sm_ship_mode_id" | "sm_carrier" =>
           Some(rows)
-        // Business ids of slowly changing dimensions: 3 for every 6 rows
+        // Business ids of slowly changing dimensions: 3 for every 6 rows, in revisions of 1, 2, and 3
         case "i_item_id" | "s_store_id" | "cc_call_center_id" | "web_site_id" | "wp_web_page_id" =>
-          Some(math.ceil(rows / 2.0))
+          Some(3 * (rows / 6) + IndexedSeq(0, 1, 2, 2, 3, 3)(rows % 6))
         case "i_category" | "i_category_id" =>
           Some(TpcdsDimensions.categories.size)
         case "i_class" =>

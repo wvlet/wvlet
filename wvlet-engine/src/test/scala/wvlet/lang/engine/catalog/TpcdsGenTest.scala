@@ -325,6 +325,14 @@ class TpcdsGenTest extends UniTest:
     ) shouldBe true
   }
 
+  test("should estimate the business ids of a partial revision group") {
+    // 22 stores at SF 2: 3 groups of 6 rows (9 ids), then 4 rows holding 3 more ids
+    val stores = TpcdsGen.sources(2).find(_.name == "store").get
+    val ids    = values(stores, "s_store_id").map(_(0)).distinct.size
+    ids shouldBe 12
+    stores.estimatedDistinct("s_store_id") shouldBe Some(12.0)
+  }
+
   test("should keep half the revisions of slowly changing dimensions current") {
     val items = values(sf1("item"), "i_item_id", "i_rec_end_date")
     items.count(_(1) == null) shouldBe items.size / 2
