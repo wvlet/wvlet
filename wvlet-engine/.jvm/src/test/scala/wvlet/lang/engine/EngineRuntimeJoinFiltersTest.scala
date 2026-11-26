@@ -291,12 +291,13 @@ class EngineRuntimeJoinFiltersTest extends UniTest:
   }
 
   test("combine per-row filters on several columns into one row filter") {
-    // Each filter alone keeps too many rows, but together they keep few
+    // Each filter alone keeps too many rows (14% of the orders, 18% of the parts), but together
+    // they keep few
     val q =
       """select l_orderkey, l_linenumber from lineitem
         |join orders on l_orderkey = o_orderkey
         |join part on l_partkey = p_partkey
-        |where o_orderdate < date '1994-01-01' and p_size < 10
+        |where o_orderdate < date '1993-01-01' and p_size < 10
         |order by 1, 2""".stripMargin
     val (rows, filters) = rowFilters(engine, q)
     debug(filters)
