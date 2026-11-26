@@ -858,6 +858,16 @@ enum Optimization(val name: String):
     */
   case ParallelResultStats extends Optimization("parallel_result_stats")
 
+  /**
+    * A partition of a partitioned aggregation whose group estimate reached
+    * [[wvlet.lang.engine.exec.GroupTable.MaxPresizeGroups]] sizes its group table and aggregate
+    * state for its row count (an upper bound on its groups, up to that cap), instead of an even
+    * share of the capped estimate. TPC-DS q97's and q78's final partitions hold ~50K groups each at
+    * SF10 but were sized for 4096, and their rehashes and state growth were ~30% of the final
+    * stage's CPU
+    */
+  case SizePartitionsByRows extends Optimization("size_partitions_by_rows")
+
 end Optimization
 
 object Optimization:

@@ -167,4 +167,25 @@ class PartitionedAggOpTest extends UniTest:
     sorted(run(true)) shouldBe expected
   }
 
+  test("should give the same output sizing partitions by rows under a capped group estimate") {
+    def run(byRows: Boolean, pack: Boolean): Seq[Seq[Any]] =
+      val op = PartitionedAggOp(
+        BatchesOp(schema, batches),
+        keys.take(1),
+        aggs,
+        Schema(outSchema.fields.patch(1, Nil, 1)),
+        runner,
+        minParallelRows = 0,
+        expectedGroups = GroupTable.MaxPresizeGroups,
+        packKeys = pack
+      ).withSizeByRows(byRows)
+      try op.drain().flatMap(b => (0 until b.size).map(i => b.row(i).toSeq))
+      finally op.close()
+    Seq(false, true).foreach { pack =>
+      val split = run(false, pack)
+      split.size shouldBe 997
+      run(true, pack) shouldBe split
+    }
+  }
+
 end PartitionedAggOpTest

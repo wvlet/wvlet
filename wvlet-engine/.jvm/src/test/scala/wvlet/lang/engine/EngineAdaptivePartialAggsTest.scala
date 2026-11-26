@@ -184,4 +184,14 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options.withDisabled(Optimization.PackedAggRouting), packed).contains(true) shouldBe false
   }
 
+  test("size partitioned aggregation tables by rows with size_partitions_by_rows") {
+    val sized: PartialFunction[Operator, Boolean] = { case a: PartitionedAggOp =>
+      a.sizeByRows
+    }
+    flags(options, sized) shouldContain true
+    flags(options, sized).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.SizePartitionsByRows), sized).contains(true) shouldBe
+      false
+  }
+
 end EngineAdaptivePartialAggsTest
