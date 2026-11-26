@@ -38,8 +38,8 @@ import scala.util.control.NonFatal
   *
   * The CTE has only the columns the query names, so the rewrite applies only when no column can
   * reach the output unnamed: the query selects its output explicitly, and has no `*`, set
-  * operations, natural joins, pivots, inspections (`describe`), or aggregations without a selection
-  * (whose default output lists every input column)
+  * operations, natural joins, pivots, `dedup`, inspections (`describe`), or aggregations without a
+  * selection (whose default output lists every input column)
   */
 private[engine] object SharedScans extends LogSupport:
 
@@ -109,14 +109,15 @@ private[engine] object SharedScans extends LogSupport:
         case s: SubQueryExpression =>
           walk(s.query, s.query :: subs)
         // count(*) reads no column
-        case a: FunctionArg if a.value.isInstanceOf[AllColumns] =>
-        case _: AllColumns | _: NaturalJoin                     =>
+        case f: FunctionApply if isCountStar(f) =>
+          (f.base, f.window, f.filter).productIterator.foreach(walk(_, subs))
+        case _: AllColumns | _: NaturalJoin =>
           unsafe = true
         case i: Identifier =>
           names += i.leafName.toLowerCase
         case e: Expression =>
           e.productIterator.foreach(walk(_, subs))
-        case _: SetOperation | _: RelationInspector | _: Pivot | _: Unpivot =>
+        case _: SetOperation | _: RelationInspector | _: Pivot | _: Unpivot | _: Dedup =>
           unsafe = true
         case g: GroupBy if !selected.containsKey(g) =>
           unsafe = true
@@ -163,34 +164,48 @@ private[engine] object SharedScans extends LogSupport:
       val reads = sites.groupMapReduce(_.source.key)(_ => 1)(_ + _)
       // having_totals_from_groups computes the groups once when a subquery of an aggregation's
       // condition reads the aggregation's own input: such a pair isn't shared
+      // A filter in a correlated subquery is planned by `planCorrelated`, which reads the table
+      def correlated(s: Site): Boolean       = s.subs.nonEmpty && !planTime(s)
       def totaled(s: Site, o: Site): Boolean =
         planner.enabled(Optimization.HavingTotalsFromGroups) &&
           s.subs.headOption.exists(q => havingInputs.get(q) eq o.filter) &&
           s.canon.forall(_.isDefined) && o.canon.forall(_.isDefined) &&
           s.canon.flatten.map(_.sig).toSet == o.canon.flatten.map(_.sig).toSet
       val shares = sharedGroups(
-        sites.toList.filter(s => reads(s.source.key) > 1),
+        sites.toList.filter(s => reads(s.source.key) > 1 && !correlated(s)),
         planTime,
         totaled
       )
       if shares.isEmpty then
         r
       else
-        val defs = shares.map { (members, common) =>
+        val built = shares.map { (members, common) =>
           val name = planner.hiddenName("scan")
-          members.foreach(m => planner.readSharedScan(m.filter, siteOverCTE(m, common, name)))
-          planner.addCTEReads(name, members.size)
-          debug(
-            s"Sharing ${members.size} filtered scans of ${members.head.leafName} as CTE ${name}"
+          (
+            cteDef(name, members.head, common, names),
+            members.map(m => m.filter -> siteOverCTE(m, common, name))
           )
-          cteDef(name, members.head, common, names)
         }
+        // Registered only once every CTE is built, so that a failure leaves the planner as it was
+        built.foreach { (d, reads) =>
+          reads.foreach(planner.readSharedScan)
+          planner.addCTEReads(d.alias.leafName, reads.size)
+          debug(s"Sharing ${reads.size} filtered scans as CTE ${d.alias.leafName}")
+        }
+        val defs = built.map(_._1)
         // The filters stay in place: the runtime binder reads each over its CTE
         // ([[Planner.sharedScanOf]]), since rewriting the tree would copy the subqueries
         WithQuery(false, defs, r, NoSpan)
     end if
 
   end rewriteSites
+
+  private def isCountStar(f: FunctionApply): Boolean =
+    f.base match
+      case n: NameExpr if n.leafName.equalsIgnoreCase("count") =>
+        f.args.size == 1 && f.args.head.value.isInstanceOf[AllColumns]
+      case _ =>
+        false
 
   /** Whether the output columns of `r` are a selection, so that each is named */
   private def selectsOutput(r: Relation): Boolean =

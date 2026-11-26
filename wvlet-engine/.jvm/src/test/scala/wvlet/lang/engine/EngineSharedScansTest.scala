@@ -124,4 +124,17 @@ class EngineSharedScansTest extends UniTest:
     sharesScan(query) shouldBe false
   }
 
+  test("keep reading the table when dedup compares every column") {
+    val query =
+      """from customer
+        |where c_mktsegment = 'BUILDING'
+        |  and c_acctbal > {
+        |    from customer where c_mktsegment = 'BUILDING' select c_acctbal.avg
+        |  }
+        |dedup
+        |count
+        |""".stripMargin
+    sharesScan(query) shouldBe false
+  }
+
 end EngineSharedScansTest

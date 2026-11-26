@@ -486,10 +486,15 @@ class Planner(
     }
     names.toSet
 
-  /** Whether `rel` reads a table named as one of `cteNames` */
+  /**
+    * Whether `rel` reads a table named as one of `cteNames`, or a shared scan's CTE through a
+    * filter the tree doesn't show it in ([[sharedScanOf]])
+    */
   private def readsCTE(rel: Relation, cteNames: Set[String]): Boolean =
     var found = false
     rel.traverse {
+      case f: Filter if sharedScans.containsKey(f) =>
+        found = true
       case t: TableRef if cteNames.contains(t.name.leafName.toLowerCase) =>
         found = true
       case t: TableScan if cteNames.contains(t.name.name.toLowerCase) =>
