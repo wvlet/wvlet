@@ -13,6 +13,7 @@
  */
 package wvlet.lang.compiler.typer
 
+import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Catalog.TableName
@@ -890,9 +891,64 @@ object Typer extends Phase("typer") with LogSupport:
         .declaredTableBindings
         .exists(b => TableBindings.qualifierMatches(qualifier, b))
       if governed && TableBindings.declarationFor(table.fullName).isEmpty &&
-        !ctx.catalog.tableExists(target.schema.getOrElse(ctx.defaultSchema), target.name)
+        !ctx.catalog.tableExists(target.schema.getOrElse(ctx.defaultSchema), target.name) &&
+        !createdEarlierInThisUnit(target, table.span)
       then
         ctx.addTyperError(UnknownStaticCatalogTarget(statement, table.fullName, table.span))
+
+  /**
+    * Returns true if the compiling unit itself creates the table (`save to`, `create table`,
+    * `create table ... as`, or `rename table ... to`) before the statement at `before`. Such a
+    * table is absent from both the imported snapshot and the live catalog at compile time, yet
+    * exists once the script runs its earlier statements
+    */
+  private def createdEarlierInThisUnit(target: TableName, before: Span)(using
+      ctx: Context
+  ): Boolean =
+    def resolve(t: TableName): (String, String, String) =
+      (t.catalog.getOrElse(ctx.catalog.catalogName), t.schema.getOrElse(ctx.defaultSchema), t.name)
+    val (catalog, schema, name)          = resolve(target)
+    def sameTable(t: TableName): Boolean =
+      val (c, s, n) = resolve(t)
+      n.equalsIgnoreCase(name) && s.equalsIgnoreCase(schema) && c.equalsIgnoreCase(catalog)
+    def created(fullName: String): Boolean = sameTable(TableName.parse(fullName))
+    // A bare rename target stays in the source table's catalog and schema
+    def renamedTo(source: NameExpr, newName: NameExpr): Boolean =
+      val src = TableName.parse(source.fullName)
+      val dst = TableName.parse(newName.fullName)
+      sameTable(
+        if dst.schema.isEmpty then
+          TableName(src.catalog, src.schema, dst.name)
+        else
+          dst
+      )
+    var found = false
+    ctx
+      .compilationUnit
+      .unresolvedPlan
+      .traverseOnce {
+        // Prune subtrees once found, and those not earlier than the checked statement
+        case p: LogicalPlan if found || p.span.start >= before.start =>
+        case s: SaveTo if s.isForTable && created(s.targetName)      =>
+          found = true
+        case c: CreateTableAs if c.isForTable && created(c.targetName) =>
+          found = true
+        case c: CreateTable if created(c.table.fullName) =>
+          found = true
+        case a: AlterTable
+            if a
+              .operations
+              .exists {
+                case r: RenameTableOp =>
+                  renamedTo(a.table, r.newName)
+                case _ =>
+                  false
+              } =>
+          found = true
+      }
+    found
+
+  end createdEarlierInThisUnit
 
   /**
     * Returns true if the relation tree may contain function applications, method or native function

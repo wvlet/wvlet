@@ -93,6 +93,47 @@ class StaticCatalogDdlWarningTest extends UniTest:
     warnings(compile(importedCatalog, "drop table other_schema.some_table\n")) shouldBe Nil
   }
 
+  test("stay silent on dropping a table the same script creates") {
+    val query =
+      """from [[1, 'a']] as t(id, name)
+        |save to sales.snapshot
+        |
+        |drop table sales.snapshot
+        |""".stripMargin
+    warnings(compile(importedCatalog, query)) shouldBe Nil
+  }
+
+  test("stay silent on dropping the new name of a renamed table") {
+    val query =
+      "rename table sales.orders to sales.archived_orders\n\ndrop table sales.archived_orders\n"
+    warnings(compile(importedCatalog, query)) shouldBe Nil
+  }
+
+  test("still warn on a created table in another location") {
+    val query =
+      """from [[1, 'a']] as t(id, name)
+        |save to other_schema.snapshot
+        |
+        |truncate sales.snapshot
+        |""".stripMargin
+    warnings(compile(importedCatalog, query)).size shouldBe 1
+  }
+
+  test("still warn when the script creates the table only after the drop") {
+    val query =
+      """drop table sales.snapshot
+        |
+        |from [[1, 'a']] as t(id, name)
+        |save to sales.snapshot
+        |""".stripMargin
+    warnings(compile(importedCatalog, query)).size shouldBe 1
+  }
+
+  test("keep a bare rename target in the source table's schema") {
+    val query = "rename table sales.orders to archived_orders\n\ndrop table sales.archived_orders\n"
+    warnings(compile(importedCatalog, query)) shouldBe Nil
+  }
+
   test("never fail the compilation, even in strict mode") {
     val compiler  = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
     val defsUnit  = CompilationUnit.fromWvletString(importedCatalog)
