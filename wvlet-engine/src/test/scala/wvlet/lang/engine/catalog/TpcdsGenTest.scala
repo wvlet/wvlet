@@ -480,6 +480,17 @@ class TpcdsGenTest extends UniTest:
     parts shouldBe whole
     val inv = facts("inventory")
     inv.scanSplits(ScanSpec()).get.rows shouldBe inv.partRanges("inv_date_sk").get.map(_.rows)
+    // Estimates cover the inventory columns too
+    inv.columnRange("inv_item_sk") shouldBe Some((1L, 180L))
+    inv.estimatedDistinct("inv_date_sk") shouldBe Some(261.0)
+    facts("store_sales").columnRange("ss_item_sk") shouldBe Some((1L, 180L))
+  }
+
+  test("should generate orders with fewer items than lines per order") {
+    // SF 0.0005 has 9 items, fewer than a store ticket's 8 to 16 lines
+    val tiny  = TpcdsGen.sources(0.0005).find(_.name == "store_sales").get
+    val lines = values(tiny, "ss_ticket_number", "ss_item_sk").groupBy(_(0))
+    lines.values.forall(t => t.size <= 9 && t.map(_(1)).distinct.size == t.size) shouldBe true
   }
 
 end TpcdsGenTest

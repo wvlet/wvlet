@@ -412,7 +412,9 @@ private[catalog] class TpcdsFactGen(gen: TpcdsGen):
           (4, 14)
         case _ =>
           (8, 16)
-    val perOrderLines = Array.fill(count)(between(r, minL, maxL))
+    // Items are distinct within an order, so an order has at most as many lines as there are
+    // items (below scale factor 0.001)
+    val perOrderLines = Array.fill(count)(math.min(between(r, minL, maxL), numItems))
     val n             = perOrderLines.sum
     def longs         = new Array[Long](n)
     val l             = Lines(
@@ -580,8 +582,6 @@ private[catalog] class TpcdsFactGen(gen: TpcdsGen):
       while i < l.n do
         a(i) = f(i)
         i += 1
-    val numCd   = gen.numCustomerDemographics.toLong
-    val numAddr = dim("customer_address")
     val ext     = (i: Int) => l.quantity(i) * l.sales(i)
     val netPaid = (i: Int) => ext(i) - l.coupon(i)
     val tax     = (i: Int) => netPaid(i) * l.taxRate(i) / 100
@@ -802,9 +802,12 @@ private[catalog] class TpcdsFactGen(gen: TpcdsGen):
 
   end inventory
 
+  // A column's name without its table prefix (ss_, cr_, inv_, ...)
+  private def unprefixed(column: String): String = column.substring(column.indexOf('_') + 1)
+
   /** The range of a fact column's values, from the specification of the generator */
   def columnRange(table: String, column: String): Option[(Long, Long)] =
-    val name = column.drop(3)
+    val name = unprefixed(column)
     name match
       case "sold_date_sk" =>
         Some((FirstSaleSk, FirstSaleSk + SaleDays - 1))
@@ -828,7 +831,7 @@ private[catalog] class TpcdsFactGen(gen: TpcdsGen):
 
   /** Ranges of the order numbers in each block, which number orders block by block */
   def partRanges(table: String, column: String): Option[IndexedSeq[ColumnPartRange]] =
-    val name = column.drop(3)
+    val name = unprefixed(column)
     if (name == "ticket_number" || name == "order_number") && !table.endsWith("_returns") then
       Some(
         IndexedSeq.tabulate(numBlocks(table)) { b =>
@@ -849,7 +852,7 @@ private[catalog] class TpcdsFactGen(gen: TpcdsGen):
   /** Distinct values of a fact column, for join ordering */
   def estimatedDistinct(table: String, column: String): Option[Double] =
     val rows              = estimatedRows(table).toDouble
-    val name              = column.drop(3)
+    val name              = unprefixed(column)
     val n: Option[Double] =
       name match
         case "sold_date_sk" | "returned_date_sk" =>
