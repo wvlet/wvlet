@@ -63,6 +63,12 @@ trait TableSource:
   def canRowFilterOn(column: String): Boolean = false
 
   /**
+    * Whether `spec.rowFilter` may compare this decimal or floating-point column, with the constants
+    * and operators that [[wvlet.lang.engine.plan.ScanFilters.exact]] translates under `numeric`
+    */
+  def canRowFilterNumericOn(column: String): Boolean = false
+
+  /**
     * The [min, max] range of an integer (or date, in epoch days) column's non-null values, from
     * metadata only, for estimating how many rows a range condition keeps. None when unknown
     */
@@ -213,6 +219,26 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
           case (PhysicalType.INT64, Some(LogicalType.Timestamp(_, unit))) =>
             unit == TimeUnit.MILLIS || unit == TimeUnit.MICROS
           case (PhysicalType.BYTE_ARRAY, None | Some(LogicalType.String | LogicalType.Enum)) =>
+            true
+          case _ =>
+            false
+      case _ =>
+        false
+    }
+
+  /**
+    * Top-level DECIMAL columns stored as INT32 or INT64, which uni compares by unscaled value, and
+    * FLOAT or DOUBLE columns. Byte-array decimals (precision above 18) aren't comparable in uni
+    */
+  override def canRowFilterNumericOn(column: String): Boolean = parquetSchema
+    .fields
+    .find(_.name == column)
+    .exists {
+      case p: ParquetField.Primitive if !p.isRepeated =>
+        (p.physicalType, p.logicalType) match
+          case (PhysicalType.INT32 | PhysicalType.INT64, Some(_: LogicalType.Decimal)) =>
+            true
+          case (PhysicalType.FLOAT | PhysicalType.DOUBLE, None) =>
             true
           case _ =>
             false

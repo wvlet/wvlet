@@ -94,11 +94,31 @@ object ScanFilters:
     * doesn't translate. Unlike [[toParquet]], no conjunct is dropped. NULLs agree with the engine:
     * the translation has no negation, and a row is kept only when the filter is TRUE.
     * `columnName(i)` is the Parquet column name of input position i, or None when the source can't
-    * filter rows by that column exactly
+    * filter rows by that column exactly. With `numeric`, also decimal comparisons and IN lists (the
+    * constants as `java.math.BigDecimal`, which uni compares exactly by unscaled value), and
+    * floating-point `<`, `<=` and `=` with a constant other than 0.0 and NaN ([[exactNumeric]])
     */
-  def exact(cond: VExpr, columnName: Int => Option[String]): Option[ParquetFilter] =
+  def exact(
+      cond: VExpr,
+      columnName: Int => Option[String],
+      numeric: Boolean = false
+  ): Option[ParquetFilter] =
     def go(e: VExpr): Option[ParquetFilter] =
       e match
+        case Compare(op, c: ColRef, k: Const) if numeric && isNumeric(c.ptype) =>
+          columnName(c.index).flatMap(exactNumeric(_, c.ptype, op, k))
+        case Compare(op, k: Const, c: ColRef) if numeric && isNumeric(c.ptype) =>
+          columnName(c.index).flatMap(exactNumeric(_, c.ptype, flip(op), k))
+        case InList(c: ColRef, values, _, false, _) if numeric && isNumeric(c.ptype) =>
+          columnName(c.index).flatMap { name =>
+            if values.isEmpty || values.size > 64 then
+              None
+            else
+              val eqs = values
+                .toSeq
+                .map(v => exactNumeric(name, c.ptype, CmpOp.Eq, Const(v, c.ptype)))
+              Option.when(eqs.forall(_.isDefined))(eqs.flatten.reduce(_ || _))
+          }
         case AndExpr(a, b) =>
           for
             x <- go(a)
@@ -117,13 +137,69 @@ object ScanFilters:
           toParquet(e, columnName, numeric = false)
     go(cond)
 
+  end exact
+
+  private def isNumeric(t: PType): Boolean =
+    t match
+      case _: PType.Decimal | PType.Float64 =>
+        true
+      case _ =>
+        false
+
+  /**
+    * A decimal or floating-point comparison that uni's row filter evaluates exactly as the engine
+    * does. uni follows IEEE 754 (NaN matches nothing, -0.0 equals 0.0) while the engine orders by
+    * `Double.compare` (NaN above every number, -0.0 below 0.0): they agree on `<`, `<=` and `=`
+    * with a constant other than 0.0 and NaN, which no NaN row satisfies in either order. `>` and
+    * `>=`, which NaN rows satisfy in the engine, stay out
+    */
+  private def exactNumeric(column: String, t: PType, op: CmpOp, k: Const): Option[ParquetFilter] =
+    if k.value == null || k.ptype != t then
+      None
+    else
+      val col = ParquetFilter.col(column)
+      (t, k.value) match
+        case (_: PType.Decimal, d: JBigDecimal) =>
+          op match
+            case CmpOp.Eq =>
+              Some(col === d)
+            case CmpOp.Lt =>
+              Some(col < d)
+            case CmpOp.Le =>
+              Some(col <= d)
+            case CmpOp.Gt =>
+              Some(col > d)
+            case CmpOp.Ge =>
+              Some(col >= d)
+            case CmpOp.Ne =>
+              None
+        case (PType.Float64, v) =>
+          val d = ValueOps.toDouble(v)
+          if d.isNaN || d == 0.0 then
+            None
+          else
+            op match
+              case CmpOp.Eq =>
+                Some(col === d)
+              case CmpOp.Lt =>
+                Some(col < d)
+              case CmpOp.Le =>
+                Some(col <= d)
+              case _ =>
+                None
+        case _ =>
+          None
+      end match
+
   /**
     * The row filters of `conds` (conjuncts with their [[exact]] filters) as one AND, most selective
     * first: a source decodes the first conjunct's columns for every row, and later ones only for
     * the rows still kept. Conjuncts over the same column are estimated together and stay adjacent
     * ([[selectivity]]); on a tie, conjuncts over a numeric column come before strings, which cost
-    * more to decode. `columnName(i)` is the source column name of input position i. With `values`,
-    * string conjuncts are estimated from the source's sampled values ([[selectivity]])
+    * more to decode. Decimal and floating-point conjuncts, whose selectivity isn't estimated from
+    * statistics, come last ([[unestimated]]). `columnName(i)` is the source column name of input
+    * position i. With `values`, string conjuncts are estimated from the source's sampled values
+    * ([[selectivity]])
     */
   def ordered(
       conds: Seq[(VExpr, ParquetFilter)],
@@ -135,7 +211,8 @@ object ScanFilters:
     .zipWithIndex
     .sortBy { case ((cols, members), pos) =>
       val strings = cols.size != 1 || members.exists(m => refType(m._1).contains(PType.Str))
-      (selectivity(cols, members.map(_._1), source, columnName, values), strings, pos)
+      val last    = unestimated(members.map(_._1))
+      (last, selectivity(cols, members.map(_._1), source, columnName, values), strings, pos)
     }
     .flatMap(_._1._2.map(_._2))
     .reduce(_ && _)
@@ -149,9 +226,11 @@ object ScanFilters:
 
   /**
     * The estimated fraction of rows passing all `conds` together (conjuncts over the same input
-    * positions estimated together by [[selectivity]], independent otherwise). `columnName(i)` is
-    * the source column name of input position i. With `values`, string conjuncts are estimated from
-    * the source's sampled values ([[selectivity]])
+    * positions estimated together by [[selectivity]], independent otherwise). Decimal and
+    * floating-point conjuncts count as keeping every row ([[unestimated]]), so that they alone
+    * don't make a scan look selective. `columnName(i)` is the source column name of input position
+    *   i. With `values`, string conjuncts are estimated from the source's sampled values
+    *      ([[selectivity]])
     */
   def estimatedSelectivity(
       conds: Seq[VExpr],
@@ -160,8 +239,27 @@ object ScanFilters:
       values: Boolean = false
   ): Double =
     byColumns(conds)(identity)
-      .map((cols, members) => selectivity(cols, members, source, columnName, values))
+      .map((cols, members) =>
+        if unestimated(members) then
+          1.0
+        else
+          selectivity(cols, members, source, columnName, values)
+      )
       .product
+
+  /**
+    * Whether `conds` read a decimal or floating-point column, whose comparisons [[selectivity]]
+    * counts at the default selectivity: on TPC-H q19 and TPC-DS q13/q48 such ranges keep most rows
+    * while the default makes them look selective
+    */
+  private def unestimated(conds: Seq[VExpr]): Boolean =
+    def numericRef(e: VExpr): Boolean =
+      e match
+        case c: ColRef =>
+          isNumeric(c.ptype)
+        case other =>
+          other.children.exists(numericRef)
+    conds.exists(numericRef)
 
   /**
     * The fraction of rows for which `cond` is TRUE, from the sampled values ([[ValueCounts]]) of

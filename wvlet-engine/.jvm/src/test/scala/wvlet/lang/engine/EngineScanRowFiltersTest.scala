@@ -140,13 +140,14 @@ class EngineScanRowFiltersTest extends UniTest:
   test("move exact conjuncts into the scan and keep the others in the filter") {
     val q =
       """from $t
-              |where k = 3 and d >= '2020-03-01'::date and qty < 20 and mode = 'm1'
+              |where k = 3 and d >= '2020-03-01'::date and qty < 20 and mode = 'm1' and id % 2 = 0
               |select id""".stripMargin
     val plan = explain(on, q)
     plan shouldContain "row_filter="
-    // The decimal comparison stays in the engine's filter
+    // The arithmetic comparison stays in the engine's filter
     plan shouldContain "Filter"
-    plan shouldContain "qty"
+    // A decimal comparison moves too (decimal_float_row_filters)
+    plan shouldContain "Compare(qty,Lt,20.00)"
     // Most selective first: the date range (about 0.85 of the rows) after k = 3 and mode = 'm1'
     val rowFilter = plan.linesIterator.find(_.contains("row_filter=")).get
     rowFilter.indexOf("Compare(d,") > rowFilter.indexOf("Compare(k,") shouldBe true
