@@ -1,7 +1,13 @@
 -- q22#1
 Scan[orders](columns=o_custkey join_filter=o_custkey) -> [o_custkey:long]
-  Scan[customer](columns=c_custkey,c_phone,c_acctbal) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
-  ↓ Filter((in(substring(#1,lit(1:long),lit(2:long)),23,13,17,31,18,30,29,false) and (cast(#2 as double)>lit(5017.600775193799:double)))) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+    (shared)
+      Scan[customer](columns=c_custkey,c_phone,c_acctbal) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+      ↓ Filter(in(substring(#1,lit(1:long),lit(2:long)),23,13,17,31,18,30,29,false)) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+      ↓ Project(#0, #1, #2) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+      ↓ Project(#0, #1, #2) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+      ↓ Morsel[parallelism=N] -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+  ↙ Scan[CTE[__wv_scan1]]() -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
+  ↓ Filter((cast(#2 as double)>lit(5017.600775193799:double))) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
   ↓ Morsel[parallelism=N] -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
 ↙ HashJoin[RightAnti](#0 = #0) -> [c_custkey:long, c_phone:string, c_acctbal:decimal(15,2)]
 ↓ Project(substring(#1,lit(1:long),lit(2:long)), #2) -> [cntrycode:string, c_acctbal:decimal(15,2)]
