@@ -42,6 +42,17 @@ class LongGroupTableTest extends UniTest:
         grouped(GroupTable(IndexedSeq(PType.Int64)), batches)
   }
 
+  test("should give the same groups with zeroed empty slots (lean_agg_results)") {
+    for
+      (spread, nullEvery) <- Seq((50L, 0), (50L, 7), (1L << 40, 0), (1L << 40, 13))
+      presize             <- Seq(0, 100000)
+      sorted              <- Seq(false, true)
+    do
+      val batches = (0 until 8).map(i => batch(4096, i, spread, nullEvery))
+      grouped(LongGroupTable(PType.Int64, presize, sorted, zeroEmpty = true), batches) shouldBe
+        grouped(GroupTable(IndexedSeq(PType.Int64)), batches)
+  }
+
   test("should keep the key type of its groups") {
     val t = LongGroupTable(PType.Timestamp)
     t.groupIds(Array(LongVec(PType.Timestamp, Array(5L, 3L, 5L), null)), 3).toSeq shouldBe

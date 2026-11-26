@@ -32,15 +32,29 @@ import wvlet.lang.engine.vector.*
   * by `l_orderkey`): a key equal to the last group's key is that group, and a greater one is a new
   * group, so no key is hashed. The first key below the last group's key, or the first NULL, inserts
   * the groups so far into slots and groups the rest by hashing.
+  *
+  * With `zeroEmpty` (`lean_agg_results`), a slot holds its group id + 1, so a new slot array is
+  * already all empty as allocated and needs no fill; otherwise it holds the group id, and -1 marks
+  * an empty slot.
   */
-final class LongGroupTable(keyType: PType, expectedGroups: Int = 0, sortedRuns: Boolean = false)
-    extends GroupIndex:
+final class LongGroupTable(
+    keyType: PType,
+    expectedGroups: Int = 0,
+    sortedRuns: Boolean = false,
+    zeroEmpty: Boolean = false
+) extends GroupIndex:
   import LongGroupTable.*
 
   private val store = GroupTable.KeyStore(keyType).asInstanceOf[GroupTable.LongStore]
   // Whether every key so far came in non-decreasing order with no NULL, with no slots in use
   private var sorted = sortedRuns
-  // The group id of each slot, or Empty
+  // The group id + base of each slot, or base - 1 when the slot is empty
+  private val base =
+    if zeroEmpty then
+      1
+    else
+      0
+
   private var cap   = 0
   private var slots = Array.emptyIntArray
   private var mask  = 0
@@ -131,10 +145,10 @@ final class LongGroupTable(keyType: PType, expectedGroups: Int = 0, sortedRuns: 
   private def idOf(k: Long): Int =
     var idx = hash(k) & mask
     while true do
-      val g = slots(idx)
-      if g == Empty then
+      val g = slots(idx) - base
+      if g < 0 then
         val id = add(k)
-        slots(idx) = id
+        slots(idx) = id + base
         if count * 2 > cap then
           grow()
         return id
@@ -166,9 +180,9 @@ final class LongGroupTable(keyType: PType, expectedGroups: Int = 0, sortedRuns: 
       if g != nullGroup then
         val k   = values(g)
         var idx = hash(k) & mask
-        while slots(idx) != Empty do
+        while slots(idx) >= base do
           idx = (idx + 1) & mask
-        slots(idx) = g
+        slots(idx) = g + base
       g += 1
 
   def keyVectors(): Array[Vec] =
@@ -181,11 +195,16 @@ final class LongGroupTable(keyType: PType, expectedGroups: Int = 0, sortedRuns: 
         a
     Array(LongVec(keyType, java.util.Arrays.copyOf(values, count), nulls))
 
+  /** Slots of capacity cap, all empty */
+  private def emptySlots(cap: Int): Array[Int] =
+    val a = new Array[Int](cap)
+    if base == 0 then
+      java.util.Arrays.fill(a, -1)
+    a
+
 end LongGroupTable
 
 object LongGroupTable:
-  private inline val Empty = -1
-
   /** Whether keys of these types can be grouped by a [[LongGroupTable]] */
   def supports(keyTypes: IndexedSeq[PType]): Boolean =
     keyTypes.size == 1 && (
@@ -198,10 +217,5 @@ object LongGroupTable:
 
   /** The hash a [[GroupTable]] gives one Int64 key */
   private inline def hash(k: Long): Int = GroupTable.fmix(GroupTable.hashLong(k))
-
-  private def emptySlots(cap: Int): Array[Int] =
-    val a = new Array[Int](cap)
-    java.util.Arrays.fill(a, Empty)
-    a
 
 end LongGroupTable

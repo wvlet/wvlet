@@ -399,10 +399,26 @@ object Aggregates:
     )
 
   /** Shared bookkeeping for "has the group seen a non-null value" */
+  /**
+    * An accumulator that tracks which groups saw a non-NULL value. With [[leanResult]]
+    * (`lean_agg_results`), [[nullsOf]] allocates the NULL flags only when a group saw none, and a
+    * decimal sum without overflow copies its sums into the result instead of adding each to a
+    * builder
+    */
   abstract class SeenAccumulator extends Accumulator:
     protected var seen: Array[Boolean]        = new Array[Boolean](0)
     protected def growSeen(newCap: Int): Unit = seen = java.util.Arrays.copyOf(seen, newCap)
+
+    /** Whether the result is built with fewer passes and copies (`lean_agg_results`) */
+    private[exec] var leanResult: Boolean = false
+
     protected def nullsOf(numGroups: Int): Array[Boolean] =
+      if leanResult then
+        var i = 0
+        while i < numGroups && seen(i) do
+          i += 1
+        if i == numGroups then
+          return null
       var any = false
       val o   = new Array[Boolean](numGroups)
       var i   = 0
@@ -512,8 +528,10 @@ object Aggregates:
     */
   final class SumDecimal(val ptype: PType.Decimal) extends SeenAccumulator:
     // Read by FusedAccumulators, which adds the rows of a batch to them
-    private[exec] var sums: Array[Long]   = new Array[Long](0)
-    private var big: Array[JBigDecimal]   = new Array[JBigDecimal](0)
+    private[exec] var sums: Array[Long] = new Array[Long](0)
+    private var big: Array[JBigDecimal] = new Array[JBigDecimal](0)
+    // Whether any group has a BigDecimal part
+    private var anyBig                    = false
     protected def grow(newCap: Int): Unit =
       sums = java.util.Arrays.copyOf(sums, newCap)
       big = java.util.Arrays.copyOf(big, newCap)
@@ -533,6 +551,7 @@ object Aggregates:
 
     /** Add `y` to group g whose Long part `sums(g) + y` overflows */
     private[exec] def spill(g: Int, y: Long): Unit =
+      anyBig = true
       val x = JBigDecimal.valueOf(sums(g), ptype.scale)
       big(g) =
         if big(g) == null then
@@ -560,6 +579,7 @@ object Aggregates:
             else
               sums(g) = z
           else
+            anyBig = true
             val add = ValueOps.rescale(ValueOps.toBigDecimal(v.get(i)), ptype.scale)
             big(g) =
               if big(g) == null then
@@ -600,6 +620,9 @@ object Aggregates:
           false
 
     def result(numGroups: Int): Vec =
+      if leanResult && !anyBig then
+        // Every sum is its Long part: the unscaled values, 0 for a group that saw no value
+        return LongVec(ptype, java.util.Arrays.copyOf(sums, numGroups), nullsOf(numGroups))
       val b = VecBuilder(ptype, numGroups).asInstanceOf[VecBuilder.DecimalBuilder]
       var g = 0
       while g < numGroups do

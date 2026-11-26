@@ -31,7 +31,8 @@ final class PackedGroupTable(
     expectedGroups: Int = 0,
     longDecimals: Boolean = false,
     longTables: Boolean = false,
-    sortedRuns: Boolean = false
+    sortedRuns: Boolean = false,
+    lean: Boolean = false
 ) extends GroupIndex:
   require(AggKeyPacking.packable(keyTypes, longDecimals), s"Keys can't be packed: ${keyTypes}")
 
@@ -92,13 +93,13 @@ final class PackedGroupTable(
       if packed == null then
         null
       else
-        packing.get.unpack(packed.keyVectors()(0).asInstanceOf[LongVec], count)
+        packing.get.unpack(packed.keyVectors()(0).asInstanceOf[LongVec], count, lean)
     val presize = math.max(expectedGroups, count * 2)
     AggKeyPacking.covering(keyTypes, Option(current).map((_, count)), keys, n, longDecimals) match
       case Some(next) =>
         val table =
           if longTables then
-            LongGroupTable(PType.Int64, presize, sortedRuns)
+            LongGroupTable(PType.Int64, presize, sortedRuns, lean)
           else
             GroupTable(IndexedSeq(PType.Int64), presize)
         if count > 0 then
@@ -122,7 +123,7 @@ final class PackedGroupTable(
     else if packed == null then
       GroupTable(keyTypes, 0, longDecimals).keyVectors()
     else
-      packing.get.unpack(packed.keyVectors()(0).asInstanceOf[LongVec], packed.numGroups)
+      packing.get.unpack(packed.keyVectors()(0).asInstanceOf[LongVec], packed.numGroups, lean)
 
 end PackedGroupTable
 
@@ -141,12 +142,13 @@ object PackedGroupTable:
       longDecimals: Boolean,
       stableCodes: Boolean = false,
       longTables: Boolean = false,
-      sortedRuns: Boolean = false
+      sortedRuns: Boolean = false,
+      lean: Boolean = false
   ): GroupIndex =
     if pack && AggKeyPacking.packable(keyTypes, longDecimals) then
-      new PackedGroupTable(keyTypes, expectedGroups, longDecimals, longTables, sortedRuns)
+      new PackedGroupTable(keyTypes, expectedGroups, longDecimals, longTables, sortedRuns, lean)
     else if longTables && LongGroupTable.supports(keyTypes) then
-      LongGroupTable(keyTypes(0), expectedGroups, sortedRuns)
+      LongGroupTable(keyTypes(0), expectedGroups, sortedRuns, lean)
     else
       GroupTable(
         keyTypes,

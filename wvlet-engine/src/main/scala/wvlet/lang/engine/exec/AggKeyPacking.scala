@@ -121,14 +121,86 @@ final class AggKeyPacking private (
 
   end tryPack
 
-  /** The key columns of the first n packed keys */
-  def unpack(packed: LongVec, n: Int): Array[Vec] =
+  /**
+    * The key columns of the first n packed keys. With `branchFree` (`lean_agg_results`), a column
+    * unpacks in one pass without a NULL check per value, and a second pass marks the NULLs only
+    * when the first found a NULL code
+    */
+  def unpack(packed: LongVec, n: Int, branchFree: Boolean = false): Array[Vec] =
     val out = new Array[Vec](width)
     var k   = 0
     while k < width do
-      out(k) = unpackColumn(packed.values, k, n)
+      out(k) =
+        if branchFree then
+          unpackBranchFree(packed.values, k, n)
+        else
+          unpackColumn(packed.values, k, n)
       k += 1
     out
+
+  /**
+    * Key column k of the first n packed keys `p`, decoding every code as a value (code 0, NULL,
+    * decodes to `min - 1`), then marking the NULLs and zeroing their values when there are any
+    */
+  private def unpackBranchFree(p: Array[Long], k: Int, n: Int): Vec =
+    val mask  = (1L << widths(k)) - 1
+    val from  = mins(k) - 1
+    val shift = shifts(k)
+    // The smallest code: 0 when there is a NULL
+    var least = mask
+    types(k) match
+      case t @ (PType.Int32 | PType.Date) =>
+        val out = new Array[Int](n)
+        var i   = 0
+        while i < n do
+          val c = (p(i) >>> shift) & mask
+          least = math.min(least, c)
+          out(i) = (c + from).toInt
+          i += 1
+        val nulls =
+          if least == 0 then
+            nullsOf(p, k, n, i => out(i) = 0)
+          else
+            null
+        IntVec(t, out, nulls)
+      case t =>
+        // Int64 or a Long-backed decimal: the unscaled values
+        val out = new Array[Long](n)
+        var i   = 0
+        while i < n do
+          val c = (p(i) >>> shift) & mask
+          least = math.min(least, c)
+          out(i) = c + from
+          i += 1
+        val nulls =
+          if least == 0 then
+            nullsOf(p, k, n, i => out(i) = 0L)
+          else
+            null
+        LongVec(t, out, nulls)
+    end match
+
+  end unpackBranchFree
+
+  /**
+    * The NULL flags of key column k of the first n packed keys `p`, calling clear(i) on each NULL
+    */
+  private inline def nullsOf(
+      p: Array[Long],
+      k: Int,
+      n: Int,
+      inline clear: Int => Unit
+  ): Array[Boolean] =
+    val mask  = (1L << widths(k)) - 1
+    val shift = shifts(k)
+    val nulls = new Array[Boolean](n)
+    var i     = 0
+    while i < n do
+      if ((p(i) >>> shift) & mask) == 0 then
+        nulls(i) = true
+        clear(i)
+      i += 1
+    nulls
 
   /** Key column k of the first n packed keys `p` */
   private def unpackColumn(p: Array[Long], k: Int, n: Int): Vec =

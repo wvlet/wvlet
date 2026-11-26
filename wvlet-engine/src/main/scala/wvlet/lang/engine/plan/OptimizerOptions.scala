@@ -875,6 +875,17 @@ enum Optimization(val name: String):
     */
   case SizePartitionsByRows extends Optimization("size_partitions_by_rows")
 
+  /**
+    * Hash aggregations build their output with fewer passes and copies: a
+    * [[wvlet.lang.engine.exec.LongGroupTable]] stores group id + 1 in its slots, so a new slot
+    * array is already empty without a fill; Int64 and decimal sums without overflow copy their
+    * accumulator arrays into the result instead of adding each group to a builder, with a nulls
+    * array only when a group saw no value; and packed keys unpack in one branch-free pass per
+    * column, with a NULL fix-up pass only when a NULL code appears. TPC-DS q78's and q97's final
+    * aggregation partitions spent ~12% of their CPU on these at SF10
+    */
+  case LeanAggResults extends Optimization("lean_agg_results")
+
 end Optimization
 
 object Optimization:

@@ -165,6 +165,7 @@ class Planner(
           selectedInputs = enabled(Optimization.AggregateSelectedRows),
           longGroupTables = enabled(Optimization.LongGroupTables),
           sortedGroupRuns = enabled(Optimization.SortedGroupRuns),
+          leanAggResults = enabled(Optimization.LeanAggResults),
           unionDistinctOnce = enabled(Optimization.UnionDistinctOnce),
           anyValuePartials = enabled(Optimization.DependentGroupKeys),
           parallelOuterTail = enabled(Optimization.ParallelOuterTail)
@@ -193,6 +194,8 @@ class Planner(
       Planner.disablePackedAggRouting(physical)
     if !enabled(Optimization.SizePartitionsByRows) then
       Planner.disableSizePartitionsByRows(physical)
+    if !enabled(Optimization.LeanAggResults) then
+      Planner.disableLeanAggResults(physical)
     physical
 
   end optimizePhysical
@@ -4231,6 +4234,22 @@ object Planner:
       case _ =>
     op.children.foreach(disableSizePartitionsByRows)
     op.sharedInputs.foreach(disableSizePartitionsByRows)
+
+  /**
+    * Make the hash aggregations of a physical plan fill empty group slots, add every group's sum to
+    * a builder, and unpack packed keys with a NULL check per value (`lean_agg_results`). The
+    * partial aggregates that two-phase aggregations create per part get the option from
+    * [[Parallelizer]]
+    */
+  private[engine] def disableLeanAggResults(op: Operator): Unit =
+    op match
+      case a: HashAggOp =>
+        a.withLeanResults(false)
+      case a: PartitionedAggOp =>
+        a.withLeanResults(false)
+      case _ =>
+    op.children.foreach(disableLeanAggResults)
+    op.sharedInputs.foreach(disableLeanAggResults)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =

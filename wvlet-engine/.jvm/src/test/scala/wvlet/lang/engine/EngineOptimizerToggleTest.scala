@@ -239,6 +239,11 @@ class EngineOptimizerToggleTest extends UniTest:
     // PartitionedAggOpTest that sizing by rows gives the same groups
     Optimization.SizePartitionsByRows ->
       "Changes how partitioned aggregations size their group tables, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the aggregations, and
+    // LongGroupTableTest, AggKeyPackingTest, and FusedAccumulatorsTest that the lean paths give the
+    // same groups and values
+    Optimization.LeanAggResults ->
+      "Changes how aggregations build their group slots and results, not the plan",
     // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
     // evaluation keeps the same rows
     Optimization.DictionaryFilters ->

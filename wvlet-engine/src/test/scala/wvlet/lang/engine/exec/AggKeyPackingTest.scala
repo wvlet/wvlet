@@ -48,6 +48,23 @@ class AggKeyPackingTest extends UniTest:
     byPacked.size shouldBe original.distinct.size
   }
 
+  test("should unpack branch-free as with a NULL check per value") {
+    val n = 3000
+    for seed <- Seq(5, 6) do
+      val ks     = keys(n, seed)
+      val p      = AggKeyPacking.of(types, Seq((ks, n))).getOrElse(fail("Expected a packing"))
+      val packed = p.pack(ks, n)
+      val lean   = p.unpack(packed, n, branchFree = true)
+      val plain  = p.unpack(packed, n)
+      rows(lean, n) shouldBe rows(plain, n)
+      lean.map(_.ptype).toSeq shouldBe types
+      // NULL flags only for the columns with NULLs, and NULL values zeroed as before
+      lean.map(_.nulls == null).toSeq shouldBe plain.map(_.nulls == null).toSeq
+      lean(0).asInstanceOf[IntVec].values.toSeq shouldBe plain(0).asInstanceOf[IntVec].values.toSeq
+      lean(2).asInstanceOf[LongVec].values.toSeq shouldBe
+        plain(2).asInstanceOf[LongVec].values.toSeq
+  }
+
   test("should take the ranges of every batch and pack columns of only NULLs") {
     val a = keys(100, 1)
     val b = keys(100, 2)

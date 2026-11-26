@@ -820,6 +820,27 @@ class HashAggOp(
     sortedGroupRuns = enabled
     this
 
+  /**
+    * Whether the group table and sums build their output with fewer passes and copies
+    * (`lean_agg_results`): see [[LongGroupTable]], [[Aggregates.SeenAccumulator]], and
+    * [[AggKeyPacking.unpack]]
+    */
+  var leanResults: Boolean = true
+
+  /** Set [[leanResults]] */
+  def withLeanResults(enabled: Boolean): this.type =
+    leanResults = enabled
+    this
+
+  /** A new accumulator of aggregate a, building its result as [[leanResults]] says */
+  private def newAccumulator(a: AggCall): Accumulator =
+    val acc = a.newAccumulator()
+    acc match
+      case s: Aggregates.SeenAccumulator =>
+        s.leanResult = leanResults
+      case _ =>
+    acc
+
   // Aggregates without FILTER, which FusedAccumulators may fold
   private lazy val unfiltered: Array[Boolean] = aggs.map(_.filter.isEmpty).toArray
 
@@ -965,7 +986,7 @@ class HashAggOp(
     if !oneRowPartials then
       if rowIds.length < n then
         rowIds = Array.tabulate(n)(identity)
-      val accs = aggs.map(_.newAccumulator())
+      val accs = aggs.map(newAccumulator)
       update(accs, rowIds, n, b)
       return Batch(keys.map(_.eval(b)).toArray ++ accs.map(_.result(n)), n)
     if rowIds.length < n then
@@ -989,7 +1010,7 @@ class HashAggOp(
         d
       else
         // No direct one-row result: fold the batch with one group per row
-        val acc = a.newAccumulator()
+        val acc = newAccumulator(a)
         updateOne(a, acc, rowIds, n, b, args)
         acc.result(n)
     }
@@ -1024,9 +1045,10 @@ class HashAggOp(
       longDecimalKeys,
       stableCodes = true,
       longTables = longGroupTables,
-      sortedRuns = sortedGroupRuns
+      sortedRuns = sortedGroupRuns,
+      lean = leanResults
     )
-    val accs = aggs.map(_.newAccumulator())
+    val accs = aggs.map(newAccumulator)
     if presize > 0 then
       accs.foreach(_.ensureGroups(presize))
     var zeros: Array[Int] = Array.emptyIntArray

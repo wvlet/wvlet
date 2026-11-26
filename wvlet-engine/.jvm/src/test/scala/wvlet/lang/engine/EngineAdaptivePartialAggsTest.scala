@@ -194,4 +194,16 @@ class EngineAdaptivePartialAggsTest extends UniTest:
       false
   }
 
+  test("build lean aggregation results with lean_agg_results") {
+    val lean: PartialFunction[Operator, Boolean] = {
+      case a: HashAggOp =>
+        a.leanResults
+      case a: PartitionedAggOp =>
+        a.leanResults
+    }
+    flags(options, lean) shouldContain true
+    flags(options, lean).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.LeanAggResults), lean).contains(true) shouldBe false
+  }
+
 end EngineAdaptivePartialAggsTest

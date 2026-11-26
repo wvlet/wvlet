@@ -52,6 +52,7 @@ object Parallelizer:
       selectedInputs: Boolean = true,
       longGroupTables: Boolean = true,
       sortedGroupRuns: Boolean = true,
+      leanAggResults: Boolean = true,
       unionDistinctOnce: Boolean = true,
       anyValuePartials: Boolean = true,
       parallelOuterTail: Boolean = true
@@ -75,6 +76,7 @@ object Parallelizer:
         selectedInputs,
         longGroupTables,
         sortedGroupRuns,
+        leanAggResults,
         unionDistinctOnce,
         anyValuePartials,
         parallelOuterTail
@@ -102,6 +104,7 @@ object Parallelizer:
       selectedInputs: Boolean,
       longGroupTables: Boolean,
       sortedGroupRuns: Boolean,
+      leanAggResults: Boolean,
       unionDistinctOnce: Boolean,
       // any_value splits into two phases (`dependent_group_keys`, which emits it)
       anyValuePartials: Boolean,
@@ -494,7 +497,8 @@ object Parallelizer:
             o.oneRowPartials,
             o.selectedInputs,
             o.longGroupTables,
-            o.sortedGroupRuns
+            o.sortedGroupRuns,
+            o.leanAggResults
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -834,7 +838,8 @@ private[plan] object TwoPhaseAgg:
       oneRowPartials: Boolean = true,
       selectedInputs: Boolean = true,
       longGroupTables: Boolean = true,
-      sortedGroupRuns: Boolean = true
+      sortedGroupRuns: Boolean = true,
+      leanAggResults: Boolean = true
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -871,6 +876,7 @@ private[plan] object TwoPhaseAgg:
               .withDenseSelected(a.denseSelected)
               .withLongGroupTables(longGroupTables)
               .withSortedGroupRuns(sortedGroupRuns)
+              .withLeanResults(leanAggResults)
         )
       ),
       partialSchema,
@@ -887,6 +893,7 @@ private[plan] object TwoPhaseAgg:
             .withDenseSelected(a.denseSelected)
             .withLongGroupTables(longGroupTables)
             .withSortedGroupRuns(sortedGroupRuns)
+            .withLeanResults(leanAggResults)
         )
       )
     )

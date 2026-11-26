@@ -100,7 +100,8 @@ class FusedAccumulatorsTest extends UniTest:
       batches: Seq[Batch],
       fuse: Boolean,
       calls: IndexedSeq[AggCall] = aggs,
-      columnMajor: Boolean = false
+      columnMajor: Boolean = false,
+      lean: Boolean = true
   ): Map[Any, Seq[Any]] =
     val outSchema = Schema(
       Field("k", PType.Int64) +: calls.indices.map(i => Field(s"a${i}", calls(i).ptype))
@@ -108,6 +109,7 @@ class FusedAccumulatorsTest extends UniTest:
     val op = HashAggOp(BatchesOp(in, batches), IndexedSeq(k), calls, outSchema)
       .withFusedAccumulators(fuse)
       .withColumnMajorSums(columnMajor)
+      .withLeanResults(lean)
     val out =
       try op.drain()
       finally op.close()
@@ -190,6 +192,32 @@ class FusedAccumulatorsTest extends UniTest:
     ColumnMajorSums.bounded(1L << 49, 2048) shouldBe true
     ColumnMajorSums.bounded(1L << 50, 2048) shouldBe false
     ColumnMajorSums.bounded(Long.MaxValue, 1) shouldBe false
+  }
+
+  test("should give the same sums with lean_agg_results, with and without fusing") {
+    val batches = input(5000, 512, groups = 300)
+    for (fuse, columnMajor) <- Seq((false, false), (true, false), (true, true)) do
+      aggregate(batches, fuse, columnMajor = columnMajor, lean = true) shouldBe
+        aggregate(batches, fuse, columnMajor = columnMajor, lean = false)
+  }
+
+  test("should mark the groups a lean decimal sum saw no value of as NULL") {
+    def sums(lean: Boolean): Vec =
+      val acc = Aggregates.SumDecimal(sumDec)
+      acc.leanResult = lean
+      acc.ensureGroups(4)
+      val v = LongVec(dec, Array(150L, 7L, 25L), Array(false, true, false))
+      acc.update(Array(0, 1, 2), 3, Array(v))
+      acc.result(4)
+    val lean = sums(lean = true)
+    (0 until 4).map(lean.get) shouldBe (0 until 4).map(sums(lean = false).get)
+    (0 until 4).map(lean.isNull) shouldBe Seq(false, true, false, true)
+    // With every group seen, there are no NULL flags
+    val acc = Aggregates.SumDecimal(sumDec)
+    acc.leanResult = true
+    acc.ensureGroups(2)
+    acc.update(Array(0, 1), 2, Array(LongVec(dec, Array(1L, 2L), null)))
+    acc.result(2).nulls shouldBe null
   }
 
 end FusedAccumulatorsTest

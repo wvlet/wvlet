@@ -109,6 +109,17 @@ class PartitionedAggOp(
     this
 
   /**
+    * Whether the partitions build their output with fewer passes and copies (`lean_agg_results`,
+    * [[HashAggOp.leanResults]])
+    */
+  var leanResults: Boolean = true
+
+  /** Set [[leanResults]] */
+  def withLeanResults(enabled: Boolean): this.type =
+    leanResults = enabled
+    this
+
+  /**
     * Whether input sorted by an integer grouping key is split at key changes into contiguous runs
     * aggregated as the partitions, instead of hashing and scattering its rows (`sorted_agg_splits`,
     * [[SortedAggSplits]])
@@ -192,6 +203,7 @@ class PartitionedAggOp(
           .withColumnMajorSums(columnMajorSums)
           .withLongGroupTables(longGroupTables)
           .withSortedGroupRuns(sortedGroupRuns)
+          .withLeanResults(leanResults)
         try op.drain()
         finally op.close()
       val keyVecs =
@@ -219,7 +231,7 @@ class PartitionedAggOp(
                 .map((b, kv) => Batch(b.columns :+ packing.pack(kv._1, b.size), b.size))
           val out = Schema(Field("__packed_key", PType.Int64) +: schema.fields.drop(keys.size))
           run(packedIn, packed, IndexedSeq(packedAt), out).map { b =>
-            val k = packing.unpack(b.columns(0).asInstanceOf[LongVec], b.size)
+            val k = packing.unpack(b.columns(0).asInstanceOf[LongVec], b.size, leanResults)
             Batch(k ++ b.columns.drop(1), b.size)
           }
         case None =>
