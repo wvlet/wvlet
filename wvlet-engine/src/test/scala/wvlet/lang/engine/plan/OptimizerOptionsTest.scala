@@ -156,6 +156,7 @@ class OptimizerOptionsTest extends UniTest:
         "smaller_outer_builds",
         "or_equals_selectivity",
         "eager_aggregation_in_join_trees",
+        "eager_lookup_projection",
         "parallel_result_stats",
         "size_partitions_by_rows",
         "nested_group_estimates"

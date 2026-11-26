@@ -867,6 +867,15 @@ enum Optimization(val name: String):
   case EagerAggregationInJoinTrees extends Optimization("eager_aggregation_in_join_trees")
 
   /**
+    * With [[EagerAggregation]], when the join under an aggregation looks up at most one row of its
+    * other side by a declared unique key, and the group keys determine the partial groups, the
+    * outer aggregation becomes a projection of the partial results: each outer group is one partial
+    * group joined to one row. TPC-DS q04, q11 and q74 sum their sales per customer key and year,
+    * look up the customer, and no longer group the sums again by `c_customer_id` and year
+    */
+  case EagerLookupProjection extends Optimization("eager_lookup_projection")
+
+  /**
     * The statistics of a shared CTE result computed for planning ([[CTEReaderStats]]) are computed
     * by the engine's tasks instead of on the planning thread, and a string column's distinct values
     * are counted by their hash codes and lengths in a set of longs instead of a string group table
