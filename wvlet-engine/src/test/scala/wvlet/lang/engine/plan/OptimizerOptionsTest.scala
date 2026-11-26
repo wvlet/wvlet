@@ -54,6 +54,7 @@ class OptimizerOptionsTest extends UniTest:
         "group_key_semi_joins",
         "chain_grouping_sets",
         "prefix_like_selectivity",
+        "constant_list_selectivity",
         "exact_join_order",
         "swap_build_side",
         "aggregate_input_rows",

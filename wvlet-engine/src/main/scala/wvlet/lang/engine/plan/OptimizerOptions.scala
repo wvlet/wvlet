@@ -114,6 +114,14 @@ enum Optimization(val name: String):
   case PrefixLikeSelectivity extends Optimization("prefix_like_selectivity")
 
   /**
+    * Estimate `x = c` and `x in (c1, ...)` by the distinct values of x when the compared values are
+    * constant expressions (`1999 + 1`), not only literals, so a dimension filtered by such a list
+    * reads as small as it is and an aggregated star join over it builds the final join (TPC-DS q68,
+    * q46's `d_year in (1999, 1999 + 1, 1999 + 2)`)
+    */
+  case ConstantListSelectivity extends Optimization("constant_list_selectivity")
+
+  /**
     * Enumerate the join trees of small inner join graphs exactly, including bushy trees, instead of
     * multi-start greedy search
     */
