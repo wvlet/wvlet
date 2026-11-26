@@ -73,7 +73,7 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 
 - Physical plans of spec/tpch and spec/tpcds are golden files under `spec/engine-plans/` (TPC-DS at SF0.1, TPC-H on the tiny `spec/tpch/data`). `EnginePlanGoldenTest` fails on drift.
 - After an intended planner change, regenerate them: `./sbt "engineJVM/Test/runMain wvlet.lang.engine.EnginePlanGolden"`.
-- SF1 plans can differ from the golden ones for estimate-based changes; check them with `WVLET_ENGINE_BENCH_EXPLAIN=1`.
+- SF1 plans can differ from the golden ones for estimate-based changes; check them with `WVLET_ENGINE_BENCH_EXPLAIN=1`. With `WVLET_ENGINE_BENCH_AB=<toggle>` it also writes each query's plan with the toggle off (`<suite>-<query>.off.plan`), so one run diffs a suite's plans.
 
 ## Function coverage ratchets
 
