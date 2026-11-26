@@ -77,7 +77,7 @@ class ScanOp(
         rowFilter ++ join
     ScanSpec(
       columns.map(_.map(source.schema(_).name)),
-      (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _),
+      (filter ++ runtimeFilters.flatMap(_.filter) ++ keySetRowGroupFilters()).reduceOption(_ && _),
       footerCache,
       conjuncts.reduceOption(_ && _),
       dictionaryCodes,
@@ -159,6 +159,16 @@ class ScanOp(
     this
 
   /**
+    * Whether [[spec]] lets the source skip the row groups whose [min, max] holds none of a per-row
+    * runtime filter's build keys (`key_set_row_groups`, [[keySetRowGroupFilters]])
+    */
+  var keySetRowGroups: Boolean = true
+
+  def withKeySetRowGroups(enabled: Boolean): this.type =
+    keySetRowGroups = enabled
+    this
+
+  /**
     * The estimated fraction of the rows [[rowFilter]] keeps (1.0 when unknown), to order it against
     * the per-row runtime filters in [[spec]]
     */
@@ -176,6 +186,7 @@ class ScanOp(
     .withSourceJoinFilters(s.sourceJoinFilters)
     .withJoinFiltersFirst(s.joinFiltersFirst)
     .withSparseKeyPassRates(s.sparseKeyPassRates)
+    .withKeySetRowGroups(s.keySetRowGroups)
     .withRowFilterPassRate(s.rowFilterPassRate)
 
   def withSchema(s: Schema): ScanOp = ScanOp(
@@ -259,17 +270,8 @@ class ScanOp(
       .indices
       .flatMap { i =>
         val (f, pos) = rowFilters(i)
-        val rf       = f.rowFilter
         val column   = f.column
-        val typed    =
-          schema(pos).ptype match
-            case PType.Int32 | PType.Int64 | PType.Date =>
-              true
-            case _ =>
-              false
-        if rf == null || !typed || !source.canRowFilterOn(column) then
-          None
-        else
+        sourceTestable(f, pos).flatMap { rf =>
           passRate(column, rf, sparse = false)
             .filter(_ <= ScanOp.MaxConjunctPassRate)
             .map { rate =>
@@ -280,6 +282,7 @@ class ScanOp(
                   rate
               (i, rf, rate, order)
             }
+        }
       }
       .sortBy(_._4)
     val kept = chosen.map(_._3).product
@@ -298,13 +301,54 @@ class ScanOp(
   end joinRowFilters
 
   /**
-    * The fraction of the rows in the parts (row groups) that `rf`'s range doesn't skip that `rf` is
-    * expected to keep: in each part, the share of its [min, max] that `rf` accepts, weighted by its
-    * rows. Data clustered by the key (e.g. sales by date) leaves few parts whose rows mostly pass,
-    * which the share of the whole column's [min, max] would underestimate. None when the source has
-    * no statistics for the column. With `sparse`, the build keys' share counts the column's
-    * distinct values ([[sparseness]]); a range filter keeps every value of its range, so its share
-    * is exact either way
+    * Row-group filters (`In` over [[RowKeyFilter.prunedSet]]) for the per-row runtime filters set
+    * by now whose build keys skip more row groups than their [min, max] range: the source skips a
+    * row group whose statistics hold no build key, without testing rows (a source may ignore them).
+    * A few build keys on a probe column the file is clustered by, such as TPC-DS store_sales'
+    * ticket numbers matching a handful of returns (q17, q25), leave most row groups unread
+    */
+  private def keySetRowGroupFilters(): Seq[ParquetFilter] =
+    if !keySetRowGroups || rowFilters.isEmpty || !source.supportsRowFilter then
+      return Nil
+    rowFilters
+      .toSeq
+      .flatMap { (f, pos) =>
+        sourceTestable(f, pos)
+          .filter(_.prunesBeyondRange)
+          .map(rf => ParquetFilter.col(f.column).isIn(rf.prunedSet))
+      }
+
+  /**
+    * The per-row filter of `f` (over output position `pos`) once set, when the source can test it:
+    * an integer or date column the source's row filter compares as the engine does
+    */
+  private def sourceTestable(f: RuntimeFilter, pos: Int): Option[RowKeyFilter] =
+    val rf    = f.rowFilter
+    val typed =
+      schema(pos).ptype match
+        case PType.Int32 | PType.Int64 | PType.Date =>
+          true
+        case _ =>
+          false
+    Option(rf).filter(_ => typed && source.canRowFilterOn(f.column))
+
+  /**
+    * Whether the source reads a part with [min, max] of `rf`'s column ([[keySetRowGroupFilters]])
+    */
+  private def partRead(rf: RowKeyFilter, min: Long, max: Long): Boolean =
+    if keySetRowGroups && rf.prunesBeyondRange then
+      rf.mayIntersect(min, max)
+    else
+      max >= rf.integerSet.min && min <= rf.integerSet.max
+
+  /**
+    * The fraction of the rows in the parts (row groups) the source reads ([[partRead]]) that `rf`
+    * is expected to keep: in each part, the share of its [min, max] that `rf` accepts, weighted by
+    * its rows. Data clustered by the key (e.g. sales by date) leaves few parts whose rows mostly
+    * pass, which the share of the whole column's [min, max] would underestimate. None when the
+    * source has no statistics for the column. With `sparse`, the build keys' share counts the
+    * column's distinct values ([[sparseness]]); a range filter keeps every value of its range, so
+    * its share is exact either way
     */
   private def passRate(column: String, rf: RowKeyFilter, sparse: Boolean): Option[Double] =
     val density =
@@ -330,11 +374,10 @@ class ScanOp(
         )
     source.partRanges(column) match
       case Some(parts) =>
-        val set  = rf.integerSet
         var rows = 0.0
         var kept = 0.0
         parts.foreach { p =>
-          if p.max >= set.min && p.min <= set.max then
+          if partRead(rf, p.min, p.max) then
             rows += p.rows
             kept += p.rows * share(p.min, p.max)
         }

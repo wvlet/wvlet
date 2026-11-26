@@ -126,6 +126,8 @@ class Planner(
       Planner.disableJoinFiltersFirst(pruned)
     if !enabled(Optimization.SparseKeyPassRates) then
       Planner.disableSparseKeyPassRates(pruned)
+    if !enabled(Optimization.KeySetRowGroups) then
+      Planner.disableKeySetRowGroups(pruned)
     if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) ||
       !enabled(Optimization.DictionaryFilters) || !enabled(Optimization.DictionarySelection)
     then
@@ -4062,6 +4064,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableSparseKeyPassRates)
     op.sharedInputs.foreach(disableSparseKeyPassRates)
+
+  /** Skip row groups by the per-row join filters' [min, max] ranges only (`key_set_row_groups`) */
+  private[engine] def disableKeySetRowGroups(op: Operator): Unit =
+    op match
+      case s: ScanOp =>
+        s.keySetRowGroups = false
+      case _ =>
+    op.children.foreach(disableKeySetRowGroups)
+    op.sharedInputs.foreach(disableKeySetRowGroups)
 
   /** Set how the filters of a physical plan evaluate AND / OR (`short_circuit_filters`) */
   private[engine] def configureFilters(
