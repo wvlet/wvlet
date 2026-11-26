@@ -37,7 +37,6 @@ usage: ui
  --quit-immediately   Quit the server immediately after starting. Only for boot testing
  --tpch               Load small demo TPC-H tables (scale factor 0.01, or tpchScaleFactor)
 ```
-```
 
 ## Shortcut Keys
 

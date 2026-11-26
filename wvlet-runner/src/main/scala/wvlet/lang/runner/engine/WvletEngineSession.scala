@@ -151,7 +151,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
   ).getOrElse(false)
 
   // The TPC-H tables (prepareTPCH), generated while they're scanned. A name that a dataDir / tables
-  // entry also registers is an error, as between warehouse and file tables
+  // entry also registers is an error
   private def registerTpchTables(): Unit =
     if booleanProperty("prepareTPCDS") then
       throw StatusCode
@@ -164,27 +164,34 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
       val sf = property("tpchScaleFactor", "a number")(_.toDoubleOption).getOrElse(
         WvletEngineSession.defaultTpchScaleFactor
       )
-      TpchGen
-        .sources(sf)
-        .foreach { t =>
-          engine
-            .catalog
-            .find(t.name)
-            .foreach { other =>
-              throw StatusCode
-                .INVALID_ARGUMENT
-                .newException(
-                  s"Table ${t.name} of connector '${config.name}' is both a TPC-H table " +
-                    "(prepareTPCH) and registered from files; rename one of them"
-                )
-            }
-          register(t)
-        }
+      TpchGen.sources(sf).foreach(registerUnique(_, "a TPC-H table (prepareTPCH)"))
 
   end registerTpchTables
 
-  // Tables of the warehouse; a name that a dataDir / tables entry also registers is an error, so
-  // a query never silently reads the other table
+  // Register a table that no other source may name, so a query never silently reads the other
+  // table. `origin` says where `t` comes from
+  private def registerUnique(t: TableSource, origin: String): Unit =
+    engine
+      .catalog
+      .find(t.name)
+      .foreach { other =>
+        val otherOrigin =
+          other match
+            case _: TpchSource =>
+              "a TPC-H table (prepareTPCH)"
+            case _ =>
+              "registered from files"
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            s"Table ${t.name} of connector '${config
+                .name}' is both ${origin} and ${otherOrigin}; " + "rename one of them"
+          )
+      }
+    register(t)
+
+  // Tables of the warehouse; a name that a dataDir / tables entry or prepareTPCH also registers is
+  // an error
   private def registerWarehouseTables(): Unit = warehouse.foreach { w =>
     w.schemas
       .foreach { s =>
@@ -193,21 +200,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
           Catalog.CreateMode.CREATE_IF_NOT_EXISTS
         )
       }
-    w.tables
-      .foreach { t =>
-        engine
-          .catalog
-          .find(t.name)
-          .foreach { other =>
-            throw StatusCode
-              .INVALID_ARGUMENT
-              .newException(
-                s"Table ${t.name} of connector '${config.name}' is both in the warehouse (${t
-                    .path}) and registered from files; rename one of them"
-              )
-          }
-        register(t)
-      }
+    w.tables.foreach(t => registerUnique(t, s"in the warehouse (${t.path})"))
   }
 
   private def resolvePath(path: String): String =

@@ -8,6 +8,7 @@ import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.activity.{ItemStores, TaskQueue}
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.lang.runner.{ThreadManager, WvletScriptRunnerConfig}
 import wvlet.uni.cli.launcher.option
 import wvlet.uni.control.Control.withResource
@@ -223,6 +224,12 @@ object WvletServer extends LogSupport:
       Profile.defaultWvletProfile
     )
     if config.prepareTPCH then
+      val c = profile.defaultEngine
+      if !(c.`type`.equalsIgnoreCase("duckdb") || WvletEngineSession.isInProcess(c)) then
+        warn(
+          s"--tpch loads TPC-H tables only on DuckDB and the in-process wvlet engine, not on " +
+            s"connector '${c.name}' (${c.`type`})"
+        )
       profile.withProperty("prepareTPCH", true)
     else
       profile

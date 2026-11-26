@@ -125,6 +125,7 @@ class WvletEngineSessionTest extends UniTest:
       WvletEngineSession(tpchConfig("dataDir" -> "data"), "spec/tpch")
     }
     clash.getMessage shouldContain "prepareTPCH"
+    clash.getMessage shouldContain "registered from files"
   }
 
   test("reject writes to TPC-H tables") {
