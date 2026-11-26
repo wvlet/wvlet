@@ -150,7 +150,8 @@ object EngineTPCHBench extends LogSupport:
 
   /**
     * Time the q<N>.wv queries in specPath on DuckDB and the engine, both reading
-    * `<dataDir>/<table>.parquet`, and write `target/engine-bench/<label>-sf<sf>.tsv`
+    * `<dataDir>/<table>.parquet` (or the files of a `<dataDir>/<table>/` folder), and write
+    * `target/engine-bench/<label>-sf<sf>.tsv`
     */
   def runBench(
       label: String,
@@ -167,12 +168,27 @@ object EngineTPCHBench extends LogSupport:
     val worker = Executors.newSingleThreadExecutor()
     try
       opts.duckdbThreads.foreach(t => execute(conn, s"set threads = ${t}"))
+      // A `<table>/` folder of Parquet files, when there is one, is read instead of the single
+      // file, to time multi-file scans
+      def folder(t: String): Option[String] = Option(s"${dataDir}/${t}").filter(d =>
+        Files.isDirectory(Paths.get(d))
+      )
       tables.foreach { t =>
-        execute(conn, s"create view ${t} as select * from '${dataDir}/${t}.parquet'")
+        // Nested files too, with `key=value` folders as columns, as the engine reads a folder
+        val from = folder(t)
+          .map(d => s"read_parquet('${d}/**/*.parquet', hive_partitioning = true)")
+          .getOrElse(s"'${dataDir}/${t}.parquet'")
+        execute(conn, s"create view ${t} as select * from ${from}")
       }
       val engine = WvletEngine(baseDir = specPath, accelerator = accelerator)
       tables.foreach(t =>
-        engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet", BenchmarkKeys.of(label, t))
+        engine
+          .catalog
+          .registerParquet(
+            t,
+            folder(t).getOrElse(s"${dataDir}/${t}.parquet"),
+            BenchmarkKeys.of(label, t)
+          )
       )
       // The engine with the A/B optimizations disabled, over the same tables
       // offAccelerator, when given, replaces the accelerator there (to A/B accelerator settings)
