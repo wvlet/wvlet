@@ -102,6 +102,7 @@ class Sidebar(state: PlaygroundState) extends RxElement:
     .onSelect {
       case ExampleNode.Leaf(e) =>
         state.open(e)
+        state.closeSidebarOnNarrow()
       case c: ExampleNode.Category =>
         expanded.update(s =>
           if s.contains(c.key) then
@@ -143,6 +144,7 @@ class Sidebar(state: PlaygroundState) extends RxElement:
         state.mode    := InputMode.Wvlet
         state.text    := q
         state.run(RunRequest(q, InputMode.Wvlet))
+        state.closeSidebarOnNarrow()
       case _ =>
     }
 

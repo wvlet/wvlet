@@ -175,9 +175,8 @@ body {
     flex-basis: 100%;
 }
 
-.pg-info__keys {
+.pg-status__keys {
     color: var(--uni-faint);
-    font-size: var(--uni-font-size-sm);
     white-space: nowrap;
 }
 
@@ -491,7 +490,7 @@ body {
 }
 
 @media (max-width: 760px) {
-    .pg-info__keys,
+    .pg-status__keys,
     .pg-brand__sub,
     .pg-link {
         display: none;
@@ -507,7 +506,6 @@ body {
 }
 
 @media (max-width: 1100px) {
-    .pg-info__keys,
     .pg-field > span {
         display: none;
     }
@@ -672,4 +670,159 @@ summary.pg-engine-section__title {
 .pg-mono {
     font-family: var(--uni-font-mono);
     font-size: 12px;
+}
+
+/* Medium screens: keep the editor visible beside the output panel */
+.pg-top > .uni-pane {
+    max-width: 60%;
+}
+
+.pg-backdrop {
+    display: none;
+}
+
+/* The output toolbar moves below the tabs when the panel is narrow */
+.pg-output .pg-panel-header {
+    flex-wrap: wrap;
+    padding: 2px 8px;
+}
+
+/*
+ * Phones (PlaygroundState.narrowMaxWidth): one scrolling column of editor, result, and output; the
+ * sidebar becomes a drawer over the page that a tap on the backdrop closes.
+ */
+@media (max-width: 760px) {
+    body {
+        overflow: auto;
+    }
+
+    .pg-app {
+        height: auto;
+        min-height: 100dvh;
+    }
+
+    .pg-header {
+        flex-wrap: wrap;
+        height: auto;
+        min-height: 44px;
+        padding: 4px 8px;
+        row-gap: 4px;
+    }
+
+    .pg-header .pg-grow {
+        display: none;
+    }
+
+    .pg-brand {
+        margin-right: 0;
+    }
+
+    .pg-body,
+    .pg-main {
+        flex-direction: column;
+    }
+
+    /* Lay the editor, result, and output out in one column, the result right below the editor */
+    .pg-top {
+        display: contents;
+    }
+
+    .pg-editor-pane {
+        order: 1;
+        flex: none;
+        height: 50dvh;
+        min-width: 0;
+    }
+
+    .pg-bottom {
+        order: 2;
+        height: 60dvh !important;
+        border-top: 1px solid var(--uni-line);
+    }
+
+    .pg-top > .uni-pane {
+        order: 3;
+        max-width: none;
+        border-left: none;
+        border-top: 1px solid var(--uni-line);
+    }
+
+    .pg-top > .uni-pane[data-state='open'] {
+        width: auto !important;
+        height: 60dvh;
+    }
+
+    .pg-vsplit,
+    .uni-splitter {
+        display: none;
+    }
+
+    .pg-body > .uni-pane {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 50;
+        max-width: 85vw;
+        background: var(--uni-surface);
+        box-shadow: 0 0 24px rgb(0 0 0 / 0.25);
+    }
+
+    .pg-body > .uni-pane[data-state='closed'] {
+        box-shadow: none;
+    }
+
+    .pg-backdrop[data-open='true'] {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 49;
+        background: rgb(0 0 0 / 0.35);
+    }
+
+    .pg-status__engine {
+        display: none;
+    }
+}
+
+/* Theme switch: three icon buttons in one rounded group */
+.pg-theme {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--uni-line);
+    border-radius: 999px;
+    flex: none;
+}
+
+.pg-theme__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--uni-muted);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.pg-theme__button:hover {
+    color: var(--uni-fg);
+    background: var(--uni-hover);
+}
+
+.pg-theme__button[aria-pressed="true"] {
+    color: var(--uni-accent);
+    background: var(--uni-accent-soft);
+}
+
+.pg-theme__button:focus-visible {
+    outline: 2px solid var(--uni-accent);
+    outline-offset: 1px;
 }
