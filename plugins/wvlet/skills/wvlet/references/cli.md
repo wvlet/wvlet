@@ -35,6 +35,10 @@ Global options: `--profile <name>`, `-w <folder>` (working folder), `--catalog`,
   connector with `"prepareTPCH": true` (and `"tpchScaleFactor"`, default 0.01) generates the
   TPC-H tables in memory; values differ from `dbgen`'s, so don't compare answers with official
   ones. `wvlet ui --tpch` does the same.
+- To give the wvlet engine the keys of Parquet files (for join order), write a sidecar
+  `<name>.keys.json` next to `<name>.parquet`, or `_keys.json` in a folder, e.g.
+  `{"primaryKey": ["l_orderkey", "l_linenumber"], "uniqueKeys": [["l_comment"]]}`. Keys never
+  change results; there is no DDL for them.
 - `-t duckdb` (also `wv -t duckdb`) runs on DuckDB: needed for `sql"..."` / `execute`,
   `.duckdb` files, extensions, and `read_csv(...)`-style table functions. `wvlet compile` emits
   DuckDB SQL by default. `wvlet build` and `wvlet flow` run on the wvlet engine, keeping tables

@@ -97,6 +97,29 @@ Relative paths resolve against the working folder. The compiler sees the schemas
 Iceberg tables (read from file footers), so their column names are checked as for other engines.
 JSON and CSV tables are read only when a query scans them.
 
+### Declaring table keys
+
+Parquet files carry no key information, so the engine can't tell a join on a composite primary key from a join on columns that merely share values. Declare keys in a sidecar JSON file and the join planner uses them to estimate multi-column joins: a join that covers a declared key of one side is estimated as a foreign key to that primary key, and a join on columns that are no key of either table as independent columns.
+
+- `<name>.keys.json` next to `<name>.parquet` declares the keys of that file. `<name>.parquet.keys.json` works too.
+- `_keys.json` inside a folder of Parquet files declares the keys of that folder table. A `_keys.json` in a `dataDir` may instead hold `{"tables": {"<table>": {...}}}`, the keys of each Parquet file in the folder by table name.
+
+```json title='data/lineitem.keys.json'
+{
+  "primaryKey": ["l_orderkey", "l_linenumber"],
+  "uniqueKeys": [["l_comment"]],
+  "foreignKeys": [
+    {"columns": ["l_partkey", "l_suppkey"], "references": "partsupp", "referencedColumns": ["ps_partkey", "ps_suppkey"]}
+  ]
+}
+```
+
+- `primaryKey` is one column list; `uniqueKeys` is a list of column lists. Both mean that no two rows share all the listed columns' values.
+- `foreignKeys` are recorded but not yet used in planning.
+- Declare every unique key of a table once you declare one: a join on columns outside every declared key is then taken to be a non-key join.
+- Keys only steer join order and build sides, never results. A wrong declaration can make a plan slower but can't change its answer.
+- A sidecar that can't be parsed, or a key naming a column the table doesn't have, is ignored with a warning. Tables made by `create table` keep their declared `primary key` / `unique` columns themselves.
+
 ### TPC-H tables
 
 `prepareTPCH: true` registers the eight TPC-H tables (`lineitem`, `orders`, `customer`, ...), generated while queries scan them, with no data files and no DuckDB. `tpchScaleFactor` sets the size (default 0.01, 60K line items; up to 1000). These are the same properties as the DuckDB connector's, so one profile works on both engines:
