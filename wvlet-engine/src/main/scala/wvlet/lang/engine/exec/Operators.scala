@@ -895,8 +895,16 @@ class HashAggOp(
         rowIds(i) = i
         i += 1
     val values = aggs.map { a =>
-      val args = a.args.map(_.eval(b)).toArray
-      val d    = OneRowPartials.of(a, args, b)
+      val args =
+        a.args
+          .map(e =>
+            if selectedInputs then
+              SelectedInputs.eval(e, b)
+            else
+              e.eval(b)
+          )
+          .toArray
+      val d = OneRowPartials.of(a, args, b)
       if d != null then
         d
       else
@@ -906,6 +914,8 @@ class HashAggOp(
         acc.result(n)
     }
     Batch(keys.map(_.eval(b)).toArray ++ values, n)
+
+  end passThrough
 
   def next(): Batch =
     if passing then

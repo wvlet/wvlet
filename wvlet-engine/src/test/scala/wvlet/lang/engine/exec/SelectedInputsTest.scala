@@ -80,6 +80,9 @@ class SelectedInputsTest extends UniTest:
     sum(add(sub(sub(x, y), z), x)),
     sum(sub(a, b)),
     sum(sub(d, add(e, d))),
+    // q04's shape: a `+` / `-` tree under a division by a constant
+    sum(Arith(ArithOp.Div, sub(x, y), Const(2, PType.Int32), PType.Decimal(14, 6))),
+    sum(Arith(ArithOp.Mul, a, Const(3L, PType.Int64), PType.Int64)),
     // Overflows a Long: computed as usual
     sum(add(w, w)),
     // DISTINCT reads gathered values
@@ -129,23 +132,29 @@ class SelectedInputsTest extends UniTest:
 
   end input
 
+  private def rows(
+      batches: Seq[Batch],
+      selected: Boolean,
+      keys: IndexedSeq[VExpr],
+      skip: PartialAggSkip = null
+  ): Seq[Seq[Any]] =
+    val outSchema = Schema(
+      keys.zipWithIndex.map((c, i) => Field(s"k${i}", c.ptype)) ++
+        aggs.indices.map(i => Field(s"a${i}", aggs(i).ptype))
+    )
+    val op = HashAggOp(BatchesOp(in, batches), keys, aggs, outSchema, skip = skip)
+      .withSelectedInputs(selected)
+    val out =
+      try op.drain()
+      finally op.close()
+    out.flatMap(r => (0 until r.size).map(i => r.columns.map(_.get(i)).toSeq))
+
   private def aggregate(
       batches: Seq[Batch],
       selected: Boolean,
       keys: IndexedSeq[VExpr] = IndexedSeq(k, j)
   ): Map[Seq[Any], Seq[Any]] =
-    val outSchema = Schema(
-      keys.zipWithIndex.map((c, i) => Field(s"k${i}", c.ptype)) ++
-        aggs.indices.map(i => Field(s"a${i}", aggs(i).ptype))
-    )
-    val op  = HashAggOp(BatchesOp(in, batches), keys, aggs, outSchema).withSelectedInputs(selected)
-    val out =
-      try op.drain()
-      finally op.close()
-    out
-      .flatMap(r => (0 until r.size).map(i => r.columns.map(_.get(i)).toSeq))
-      .map(r => r.take(keys.size) -> r.drop(keys.size))
-      .toMap
+    rows(batches, selected, keys).map(r => r.take(keys.size) -> r.drop(keys.size)).toMap
 
   test("should aggregate deferred columns in place as over gathered ones") {
     val inPlace  = aggregate(input(20000, 1024, groups = 3000), selected = true)
@@ -165,10 +174,26 @@ class SelectedInputsTest extends UniTest:
       aggregate(input(5000, 512, groups = 10), selected = false, keys = IndexedSeq.empty)
   }
 
+  test("should give passed-through rows the same one-row partial results in place") {
+    def passed(selected: Boolean): Seq[String] =
+      rows(
+        input(8192, 1024, groups = 3000),
+        selected,
+        IndexedSeq(k, j),
+        // Stops grouping after the first batch
+        PartialAggSkip(minRows = 1, minRatio = 0.0)
+      ).map(_.mkString(",")).sorted
+    val inPlace = passed(selected = true)
+    // More rows than groups: most batches passed through
+    (inPlace.size > 4000) shouldBe true
+    inPlace shouldBe passed(selected = false)
+  }
+
   test("should read the group keys and the aggregated columns without gathering them") {
     val batches = input(4096, 1024, groups = 3000)
     aggregate(batches, selected = true)
-    val untouched = Seq(0, 1, 2, 3, 4, 5, 6, 7, 8)
+    // `a * 3` gathers `a`: only `+` / `-` trees read in place
+    val untouched = Seq(0, 1, 3, 4, 5, 6, 7, 8)
     batches.foreach { bt =>
       untouched.foreach(i => (bt.deferredSource(i) != null) shouldBe true)
       // Gathered for the decimal overflow fallback and the DISTINCT sum

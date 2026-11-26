@@ -21,8 +21,9 @@ import wvlet.lang.engine.vector.*
   * (`aggregate_selected_rows`): a filter or a join probe hands its output columns on as source
   * vectors and row positions ([[Batch.take]]), and gathering them copies every selected value into
   * a new array that the aggregation reads once. Instead, aggregates over a column read its source
-  * at the positions ([[Accumulator.updateSelected]]), `+` / `-` arguments over columns compute one
-  * output array from the sources ([[arith]]), and packed group keys pack from the sources
+  * at the positions ([[Accumulator.updateSelected]]), `+` / `-` subtrees of arguments over columns
+  * compute one output array from the sources ([[eval]], also for the one-row partial results of
+  * passed-through rows), and packed group keys pack from the sources
   * ([[PackedGroupTable.groupIdsAt]]). A position of -1 (a row of NULLs of an outer join) reads as
   * NULL.
   */
@@ -38,13 +39,39 @@ private[exec] object SelectedInputs:
       case c: ColRef =>
         val src = b.deferredSource(c.index)
         src != null && acc.updateSelected(groups, b.size, src, b.deferredPositions(c.index))
-      case a: Arith =>
-        val v = arith(a, b)
-        if v == null then
-          false
+      case a: Arith if readsInPlace(a, b) =>
+        acc.update(groups, b.size, Array(eval(a, b)))
+        true
+      case _ =>
+        false
+
+  /**
+    * The value of `e` over b, with its `+` / `-` subtrees over deferred columns computed from the
+    * columns' sources ([[arith]]) and the other arithmetic over them as [[Arith.eval]] does; other
+    * expressions evaluate as usual
+    */
+  def eval(e: VExpr, b: Batch): Vec =
+    e match
+      case a: Arith if readsInPlace(a, b) =>
+        val v =
+          if a.op == ArithOp.Add || a.op == ArithOp.Sub then
+            arith(a, b)
+          else
+            null
+        if v != null then
+          v
         else
-          acc.update(groups, b.size, Array(v))
-          true
+          Kernels.arith(a.op, eval(a.left, b), eval(a.right, b), a.ptype)
+      case _ =>
+        e.eval(b)
+
+  /** Whether arithmetic `e` reads a deferred column of b, which [[eval]] may read in place */
+  private def readsInPlace(e: VExpr, b: Batch): Boolean =
+    e match
+      case a: Arith =>
+        readsInPlace(a.left, b) || readsInPlace(a.right, b)
+      case c: ColRef =>
+        b.deferredSource(c.index) != null
       case _ =>
         false
 
