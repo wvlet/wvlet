@@ -282,11 +282,12 @@ enum Optimization(val name: String):
   case JoinRowFiltersFirst extends Optimization("join_row_filters_first")
 
   /**
-    * With `scan_join_row_filters`, a per-row join filter's expected pass rate counts the probe
-    * column's distinct values rather than the width of its [min, max] range, which overstates a
-    * sparse column's values: TPC-H's order keys use a quarter of their range, so q7's `l_orderkey`
-    * Bloom filter looked four times as selective as it is and ran ahead of the cheaper and equally
-    * selective `l_suppkey` bitmap, testing every lineitem row
+    * With `scan_join_row_filters`, the per-row join filters in a probe scan's row filter are
+    * ordered by expected pass rates that count the probe column's distinct values rather than the
+    * width of its [min, max] range, which overstates a sparse column's values: TPC-H's order keys
+    * use a quarter of their range, so q7's `l_orderkey` Bloom filter looked four times as selective
+    * as it is and ran ahead of the cheaper and equally selective `l_suppkey` bitmap, testing every
+    * lineitem row. Which filters go into the row filter is decided as before
     */
   case SparseKeyPassRates extends Optimization("sparse_key_pass_rates")
 
