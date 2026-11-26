@@ -131,6 +131,8 @@ lake exe factor-or-traces   # regenerate the OR factoring conformance fixture
 | `WvletFormal/SelfJoinAggregate/Traces.lean`, `SelfJoinAggregateTraces.lean` | — | exports the self-join aggregation conformance fixture |
 | `WvletFormal/AggregateWindows/Rule.lean` | `part`: the rows of a key; `mult`: the rows of E of a key; `joined`: I joined with E on I's group key alone (O); `total`: a total of a function over values | `part_joined`: O's partition of a non-NULL key, read at x, is I's group of the key with each row repeated once per row of E of the key; `total_scales`: every total (a value's count, a sum, the non-NULL count) over the partition is that multiple of the group's; `avg_eq`: an avg agrees; `mem_iff`: the partition and the group hold the same values, so a min or max agrees; `covered`: every row of O has a non-NULL key held by I and E. Gap: the engine's plan matching (O's and I's leaves and conditions up to column ids, the semi join by a relation covering O's keys) is not modeled |
 | `WvletFormal/AggregateWindows/Traces.lean`, `AggregateWindowsTraces.lean` | — | exports the aggregate windows conformance fixture |
+| `WvletFormal/SemiAntiProbe/Rule.lean` | `fused`: the left rows with a right row satisfying the EXISTS's condition `m` and none satisfying the NOT EXISTS's `e`, in one pass over the right rows | `anti_semi_eq`: an anti join over a semi join of the same right rows, each filtered by a condition over the right columns (`q`, `p`), keeps the rows `fused` keeps with `q and on₁` and `p and on₂`, in order, duplicates included; `semi_anti_eq`: so does the other nesting. Gap: the engine's plan matching (the same source and keys, column ids across the two scans, the union of their columns and row-group filters) is not modeled |
+| `WvletFormal/SemiAntiProbe/Traces.lean`, `SemiAntiProbeTraces.lean` | — | exports the one-probe EXISTS / NOT EXISTS conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -259,6 +261,14 @@ behavior as traces:
   t2.x`, its left side whole or filtered. `SelfJoinAggregateConformanceTest` (engineJVM) runs each
   query with `self_join_aggregate` on and off, compares rows with the model and DuckDB, and checks
   that the rule turned the whole-table self join into an aggregation and left the filtered ones.
+- `lake exe semi-anti-probe-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/semi-anti-probe-traces.json`:
+  an outer table `b(k, s, id)` and a table `t(k, s, a, c, id)` with NULL keys and values, with the
+  rows that `exists (t on k [and s <>] and q) and not exists (t on k [and s <>] and p)` keeps, in
+  either order, with and without each residual, for 2 filters `q` and 2 three-valued filters `p`.
+  `SemiAntiProbeConformanceTest` (engineJVM) pads t with rows of keys b doesn't have (so that both
+  joins build on b), runs each query with `semi_anti_one_probe` on and off, compares rows with the
+  model and DuckDB, and checks that the two joins became one RIGHT SEMI join with an exclusion.
 - `lake exe aggregate-windows-traces` writes
   `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/aggregate-windows-traces.json`:
   tables `i(g, x, id)` and `e(e, w)` with a NULL key, a NULL value, a repeated key of e, and keys

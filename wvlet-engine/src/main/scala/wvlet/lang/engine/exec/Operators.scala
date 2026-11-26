@@ -1278,7 +1278,8 @@ final class JoinBuild(
     packKeys: Boolean = true,
     flatTable: Boolean = true,
     nullsEqual: Boolean = false,
-    outputsBuild: Boolean = true
+    outputsBuild: Boolean = true,
+    trackExclusions: Boolean = false
 ):
   @volatile
   private var built = false
@@ -1355,6 +1356,9 @@ final class JoinBuild(
     */
   var matched: Array[Boolean] = null
 
+  /** Build rows a probe row excluded (`exclude` of a RIGHT SEMI join), shared as `matched` is */
+  var excluded: Array[Boolean] = null
+
   def ensureBuilt(): Unit =
     if !built then
       synchronized {
@@ -1417,6 +1421,8 @@ final class JoinBuild(
       buildHashed(keyVecs, types, valid, nv)
     if trackMatches then
       matched = new Array[Boolean](build.size)
+    if trackExclusions then
+      excluded = new Array[Boolean](build.size)
 
   end buildTable
 
@@ -1877,7 +1883,7 @@ enum OuterMode:
   * Anti: left columns only). `residual` is an extra condition over the joined row.
   *
   * `shared` is a build already made for this join elsewhere: copies of the join that probe parts of
-  * the left input in parallel share one build
+  * the left input in parallel share one build. `exclude`: see [[BuildExclusions]]
   */
 class HashJoinOp(
     val left: Operator,
@@ -1891,7 +1897,8 @@ class HashJoinOp(
     outerMode: OuterMode = OuterMode.Own,
     buildRunner: TaskRunner = TaskRunner.Sequential,
     val runtimeFilters: Seq[RuntimeFilter] = Nil,
-    val nullsEqual: Boolean = false
+    val nullsEqual: Boolean = false,
+    val exclude: Option[VExpr] = None
 ) extends Operator:
   override def children: Seq[Operator] = Seq(left, right)
   override def name: String            = s"HashJoin[${kind}]"
@@ -1900,7 +1907,7 @@ class HashJoinOp(
   override protected def details =
     s"(${leftKeys.map(_.sig).mkString(",")} = ${rightKeys.map(_.sig).mkString(",")}${residual
         .map(r => s", residual=${r.sig}")
-        .getOrElse("")}${Operator.eagerTag(lateGather)}${
+        .getOrElse("")}${BuildExclusions.tag(exclude)}${Operator.eagerTag(lateGather)}${
         if directIndex then
           ""
         else
@@ -1929,7 +1936,8 @@ class HashJoinOp(
         runner = buildRunner,
         filters = runtimeFilters,
         nullsEqual = nullsEqual,
-        outputsBuild = !kind.outputsProbeOnly
+        outputsBuild = !kind.outputsProbeOnly,
+        trackExclusions = exclude.nonEmpty
       )
 
   /** The same join over another left input, sharing this join's build */
@@ -1943,7 +1951,8 @@ class HashJoinOp(
     schema,
     joinBuild,
     mode,
-    nullsEqual = nullsEqual
+    nullsEqual = nullsEqual,
+    exclude = exclude
   ).withLateGather(lateGather).withUnmatchedOnly(unmatchedOnly)
 
   override def close(): Unit =
@@ -1953,11 +1962,12 @@ class HashJoinOp(
     else
       left.close()
 
-  private var built                        = false
-  private var build: Batch                 = null
-  private var buildMatched: Array[Boolean] = null
-  private var emittedUnmatched             = false
-  private val leftWidth                    = left.schema.size
+  private var built                         = false
+  private var build: Batch                  = null
+  private var buildMatched: Array[Boolean]  = null
+  private var buildExcluded: Array[Boolean] = null
+  private var emittedUnmatched              = false
+  private val leftWidth                     = left.schema.size
 
   /** Whether the output columns are deferred instead of gathered (`late_gather`) */
   var lateGather: Boolean = true
@@ -2029,6 +2039,8 @@ class HashJoinOp(
             new Array[Boolean](build.size)
           case _ =>
             joinBuild.matched
+    if exclude.nonEmpty then
+      buildExcluded = BuildExclusions.marks(joinBuild, outerMode, shared != null, build.size)
     built = true
 
   def next(): Batch =
@@ -2048,7 +2060,7 @@ class HashJoinOp(
     emittedUnmatched = true
     // RIGHT SEMI emits the matched build rows; the other kinds the unmatched ones
     val wanted = kind == JoinKind.RightSemi
-    val idx    = BuildPositions.in(buildMatched, build.size, tailRange, wanted)
+    val idx = BuildExclusions.positions(buildMatched, buildExcluded, build.size, tailRange, wanted)
     if idx.isEmpty then
       return null
     val n = idx.length
@@ -2097,15 +2109,24 @@ class HashJoinOp(
     if np < lIdx.length then
       lIdx = java.util.Arrays.copyOf(lIdx, np)
       rIdx = java.util.Arrays.copyOf(rIdx, np)
+    // The pairs' columns, gathered once for the exclusion and the residual
+    var pairs: Batch = null
+    if exclude.nonEmpty && lIdx.nonEmpty then
+      pairs = joined(probe, lIdx, rIdx)
+      BuildExclusions.mark(exclude.get.eval(pairs), rIdx, buildExcluded)
     // The pairs the residual condition kept, reusing the columns it gathered (late_gather only)
     var kept: Batch = null
     // Apply the residual condition on candidate pairs
     residual.foreach { cond =>
       if lIdx.nonEmpty then
         // Only the columns the condition reads are gathered
-        val candidates = joined(probe, lIdx, rIdx)
-        val mask       = Kernels.trueMask(cond.eval(candidates))
-        val keep       = HashJoinOp.trueRows(mask, lIdx.length)
+        val candidates =
+          if pairs != null then
+            pairs
+          else
+            joined(probe, lIdx, rIdx)
+        val mask = Kernels.trueMask(cond.eval(candidates))
+        val keep = HashJoinOp.trueRows(mask, lIdx.length)
         lIdx = HashJoinOp.pick(lIdx, keep)
         rIdx = HashJoinOp.pick(rIdx, keep)
         if lateGather then

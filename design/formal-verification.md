@@ -32,6 +32,7 @@ For every row: update the Lean model first, regenerate the fixture with `cd form
 | Where the engine reduces inner joins to semi joins (`ReduceSemiJoins`, its duplicate-insensitive contexts, or the shared CTE readers it trusts) | `WvletFormal/SemiReduce/` | `semi-reduce-traces` | `./sbt "engineJVM/testOnly *SemiReduceConformanceTest"` |
 | Which self semi joins on a key with a different value become `group by k having min(x) <> max(x)` (`SelfJoinAggregate`: the matched shape, NULL handling, the keys-only form in a duplicate-insensitive context) | `WvletFormal/SelfJoinAggregate/` | `self-join-aggregate-traces` | `./sbt "engineJVM/testOnly *SelfJoinAggregateConformanceTest"` |
 | Which joins with a per-key min, max, or avg of the same rows become a window over the join (`AggregateWindows`: O is I joined with other relations on I's group key alone, the aggregates it takes, the semi join it allows) | `WvletFormal/AggregateWindows/` | `aggregate-windows-traces` | `./sbt "engineJVM/testOnly *AggregateWindowsConformanceTest"` |
+| Which EXISTS / NOT EXISTS pairs over the same table probe it once (`SemiAntiProbe` in `Lowering`, `semi_anti_one_probe`: an anti join over a semi join of the same table, or the reverse, on the same keys, both building on the outer rows; `HashJoinOp`'s `exclude`) | `WvletFormal/SemiAntiProbe/` | `semi-anti-probe-traces` | `./sbt "engineJVM/testOnly *SemiAntiProbeConformanceTest"` |
 
 ## Cross-model rules
 

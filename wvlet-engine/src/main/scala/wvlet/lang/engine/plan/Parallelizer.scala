@@ -215,7 +215,8 @@ object Parallelizer:
             j.schema,
             buildRunner = runner,
             runtimeFilters = j.runtimeFilters,
-            nullsEqual = j.nullsEqual
+            nullsEqual = j.nullsEqual,
+            exclude = j.exclude
           ).withLateGather(j.lateGather)
             .withDirectIndex(j.directIndex)
             .withParallelBuild(j.parallelBuild)
@@ -682,7 +683,8 @@ object Parallelizer:
               j.schema,
               buildRunner = runner,
               runtimeFilters = j.runtimeFilters,
-              nullsEqual = j.nullsEqual
+              nullsEqual = j.nullsEqual,
+              exclude = j.exclude
             ).withLateGather(j.lateGather)
               .withDirectIndex(j.directIndex)
               .withParallelBuild(j.parallelBuild)

@@ -938,6 +938,15 @@ enum Optimization(val name: String):
     */
   case DimensionGroupIds extends Optimization("dimension_group_ids")
 
+  /**
+    * A NOT EXISTS and an EXISTS over the same table on the same key, decorrelated into an anti and
+    * a semi join that both build on the outer rows, probe the table once: one RIGHT SEMI join marks
+    * each build row matched by the EXISTS's rows and excluded by the NOT EXISTS's, and emits the
+    * matched rows not excluded ([[wvlet.lang.engine.runtime.SemiAntiProbe]]). TPC-H q21 read
+    * lineitem three times, once per join and once for its outer rows
+    */
+  case SemiAntiOneProbe extends Optimization("semi_anti_one_probe")
+
 end Optimization
 
 object Optimization:

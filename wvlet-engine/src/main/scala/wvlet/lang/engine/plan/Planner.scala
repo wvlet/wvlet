@@ -88,7 +88,8 @@ class Planner(
     valueSelectivity = enabled(Optimization.StringValueSelectivity),
     columnImpliedRowFilters = enabled(Optimization.ColumnImpliedRowFilters),
     deferredNullChecks = enabled(Optimization.DeferredNullChecks),
-    fusedDecimalArith = enabled(Optimization.FusedDecimalArith)
+    fusedDecimalArith = enabled(Optimization.FusedDecimalArith),
+    semiAntiOneProbe = enabled(Optimization.SemiAntiOneProbe)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

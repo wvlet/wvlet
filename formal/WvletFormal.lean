@@ -53,5 +53,7 @@ import WvletFormal.SemiReduce.Rule
 import WvletFormal.SemiReduce.Traces
 import WvletFormal.SelfJoinAggregate.Rule
 import WvletFormal.SelfJoinAggregate.Traces
+import WvletFormal.SemiAntiProbe.Rule
+import WvletFormal.SemiAntiProbe.Traces
 import WvletFormal.AggregateWindows.Rule
 import WvletFormal.AggregateWindows.Traces
