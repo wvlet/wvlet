@@ -25,6 +25,7 @@ import wvlet.lang.engine.plan.JoinSearch
 import wvlet.lang.engine.plan.KeyCoverage
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.vector.PType
 
 /**
   * Orders inner joins: replaces each [[RuntimePlan.InnerJoins]], from the bottom up, with a tree of
@@ -175,7 +176,15 @@ object ReorderJoins extends Pass:
             JoinEdge(c.cond, r, sides)
         }
         .toList
-    val graph                   = JoinGraph(pushed.map(_._1), pushed.map(_._2), edges)
+    val graph = JoinGraph(
+      pushed.map(_._1),
+      pushed.map(_._2),
+      edges,
+      if options.isEnabled(Optimization.BuildRowWidth) then
+        pushed.map(x => rowBytes(x._1))
+      else
+        IndexedSeq.empty
+    )
     val (tree, remaining, rows) = JoinOrderOptimizer(options).planWithRows(graph, Search(options))
     if remaining.isEmpty then
       (tree, rows)
@@ -183,6 +192,31 @@ object ReorderJoins extends Pass:
       (Filter(tree, and(remaining)), rows)
 
   end orderTree
+
+  /**
+    * Estimated bytes of a row of p: fixed widths for numeric and date columns, [[StringBytes]] for
+    * a string
+    */
+  private[runtime] def rowBytes(p: RuntimePlan): Double = p
+    .output
+    .iterator
+    .map(c =>
+      c.ptype match
+        case PType.Bool =>
+          1.0
+        case PType.Int32 | PType.Date =>
+          4.0
+        case PType.Str =>
+          StringBytes
+        case PType.Decimal(precision, _) if precision > 18 =>
+          16.0
+        case _ =>
+          8.0
+    )
+    .sum
+
+  /** The bytes [[rowBytes]] counts for a string column, as no statistics give string widths */
+  private val StringBytes = 24.0
 
   private def and(conds: Seq[BExpr]): BExpr = BExpr(conds.map(_.expr).reduce(AndExpr(_, _)))
 

@@ -780,6 +780,14 @@ enum Optimization(val name: String):
     */
   case DependentGroupKeys extends Optimization("dependent_group_keys")
 
+  /**
+    * The exact join search weights each build's rows by the bytes of its rows (the sum of its
+    * inputs' column widths over [[JoinEnumerator.NarrowRowBytes]], at least 1 and at most
+    * [[JoinEnumerator.MaxWidthWeight]]), as DuckDB weighs build sides by row width, so that a build
+    * of wide string rows loses close calls to a narrow one
+    */
+  case BuildRowWidth extends Optimization("build_row_width")
+
 end Optimization
 
 object Optimization:

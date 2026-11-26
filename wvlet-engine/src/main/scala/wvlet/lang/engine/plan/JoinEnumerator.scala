@@ -34,6 +34,7 @@ class JoinEnumerator(options: OptimizerOptions):
 
   private val probeScanCost     = options.isEnabled(Optimization.ProbeScanCost)
   private val joinProbeScanCost = probeScanCost && options.isEnabled(Optimization.JoinProbeScanCost)
+  private val buildRowWidth     = options.isEnabled(Optimization.BuildRowWidth)
 
   /**
     * The cheapest join tree and the conditions left to apply over it (those reading no input), or
@@ -66,9 +67,12 @@ class JoinEnumerator(options: OptimizerOptions):
     val n    = g.inputs.size
     val full = (1 << n) - 1
     val dp   = Table(1 << n)
+    val widths = buildRowWidth && g.bytes.size == n
     for i <- 0 until n do
       dp.rows(1 << i) = g.rows(i)
       dp.planned(1 << i) = true
+      if widths then
+        dp.bytes(1 << i) = g.bytes(i)
     var pairs = 0
     var s     = 3
     while s <= full && pairs <= PairBudget do
@@ -187,22 +191,24 @@ class JoinEnumerator(options: OptimizerOptions):
       )
       if filters > 0 then
         out = math.max(1.0, out * math.pow(CardinalityEstimator.DefaultSelectivity, filters))
-      val base                                  = dp.cost(s1) + dp.cost(s2) + out
+      val base = dp.cost(s1) + dp.cost(s2) + out
+      dp.bytes(s) = dp.bytes(s1) + dp.bytes(s2)
       lazy val ad1                              = all1.result()
       lazy val ad2                              = all2.result()
       lazy val in1                              = ins1.result()
       lazy val in2                              = ins2.result()
       def consider(left: Int, right: Int): Unit =
-        val buildLeft = JoinOrderOptimizer.swapBuild(options, dp.rows(right), dp.rows(left))
+        val buildLeft = JoinOrderOptimizer.swapBuild(options, buildCost(dp, right), buildCost(dp, left))
         val build     =
           if buildLeft then
             left
           else
             right
         val buildRows     = dp.rows(build)
+        val buildWork     = buildCost(dp, build)
         val pipelineBreak =
           if Integer.bitCount(build) > 1 then
-            buildRows
+            buildWork
           else
             0.0
         val probe     = s & ~build
@@ -235,7 +241,7 @@ class JoinEnumerator(options: OptimizerOptions):
             0.0
           end if
         end probeScan
-        val cost = base + buildRows + pipelineBreak + probeScan
+        val cost = base + buildWork + pipelineBreak + probeScan
         if !dp.planned(s) || cost < dp.cost(s) then
           dp.planned(s) = true
           dp.cost(s) = cost
@@ -250,6 +256,17 @@ class JoinEnumerator(options: OptimizerOptions):
     keys > 0
 
   end emit
+
+  /**
+    * The rows of a build on input set s, weighted by the bytes of its rows when they are known
+    * ([[Optimization.BuildRowWidth]]): bytes over [[NarrowRowBytes]], from 1 to [[MaxWidthWeight]]
+    */
+  private def buildCost(dp: Table, s: Int): Double =
+    val bytes = dp.bytes(s)
+    if bytes > 0 then
+      dp.rows(s) * math.min(MaxWidthWeight, math.max(1.0, bytes / NarrowRowBytes))
+    else
+      dp.rows(s)
 
   /**
     * The fewest rows of the joins in the best tree of input set s that hold input i, down to i
@@ -343,6 +360,12 @@ object JoinEnumerator:
     */
   val PairBudget: Int = 10000
 
+  /** The row bytes of a build that [[Optimization.BuildRowWidth]] leaves unweighted: two keys */
+  val NarrowRowBytes: Double = 16.0
+
+  /** The most that [[Optimization.BuildRowWidth]] multiplies a build's rows by */
+  val MaxWidthWeight: Double = 4.0
+
   /** Best plans by input bitset */
   private[plan] class Table(size: Int):
     val planned: Array[Boolean]   = Array.ofDim(size)
@@ -351,6 +374,8 @@ object JoinEnumerator:
     val left: Array[Int]          = Array.ofDim(size)
     val right: Array[Int]         = Array.ofDim(size)
     val buildLeft: Array[Boolean] = Array.ofDim(size)
+    // Estimated row bytes of each input set, 0 when unknown
+    val bytes: Array[Double] = Array.ofDim(size)
 
   /**
     * A condition as input bitsets: an equality between disjoint input sets (left and right) with

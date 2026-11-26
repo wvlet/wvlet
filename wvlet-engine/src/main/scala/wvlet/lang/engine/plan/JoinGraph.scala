@@ -46,10 +46,12 @@ object JoinEdge:
   * Inputs of a tree of inner joins, with their estimated rows after their single-input conditions,
   * and the conditions between them. The inputs each condition reads are computed once, as the join
   * order search checks them at every step. `P` is the plan form of the inputs, and `C` the form of
-  * the conditions
+  * the conditions. `bytes` holds the estimated bytes of a row of each input (empty when unknown),
+  * for weighting build rows by their width ([[Optimization.BuildRowWidth]])
   */
 case class JoinGraph[P, C](
     inputs: IndexedSeq[P],
     rows: IndexedSeq[Double],
-    edges: List[JoinEdge[C]]
+    edges: List[JoinEdge[C]],
+    bytes: IndexedSeq[Double] = IndexedSeq.empty
 )

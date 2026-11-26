@@ -145,7 +145,8 @@ class OptimizerOptionsTest extends UniTest:
         "join_probe_scan_cost",
         "sorted_agg_splits",
         "union_distinct_once",
-        "dependent_group_keys"
+        "dependent_group_keys",
+        "build_row_width"
       )
   }
 

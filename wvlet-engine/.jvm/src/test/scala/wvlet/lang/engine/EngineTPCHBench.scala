@@ -206,6 +206,12 @@ object EngineTPCHBench extends LogSupport:
             // A timed-out engine run may still occupy the worker thread
             QueryTiming(name, Nil, Nil, -1, -1, Some("skipped after a timeout"))
           case Some(q) if offEngine.isDefined =>
+            if opts.explain then
+              Files.writeString(File(outDir, s"${label}-${name}.plan").toPath, engine.explain(q))
+              Files.writeString(
+                File(outDir, s"${label}-${name}.off.plan").toPath,
+                offEngine.get.explain(q)
+              )
             val task = worker.submit(() => abTiming(name, q, engine, offEngine.get, opts.runs))
             try
               val r = task.get(opts.timeoutSeconds.toLong, TimeUnit.SECONDS)
