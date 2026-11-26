@@ -35,7 +35,12 @@ class TpcdsGenTest extends UniTest:
   )
 
   test("should scale row counts as dsdgen does") {
-    val counts: Map[String, Long] = sources.view.mapValues(_.estimatedRows.get).toMap
+    val counts: Map[String, Long] =
+      sources
+        .view
+        .filterKeys(TpcdsGen.tableNames.take(5).contains)
+        .mapValues(_.estimatedRows.get)
+        .toMap
     counts shouldBe
       Map(
         "date_dim"               -> 73049L,
@@ -171,15 +176,17 @@ class TpcdsGenTest extends UniTest:
             val vs = all.map(_(i))
             s.columnRange(c)
               .foreach { (lo, hi) =>
-                val ls = vs.map {
-                  case x: Long =>
-                    x
-                  case x: Int =>
-                    x.toLong
-                  case x =>
-                    fail(s"Unexpected value of ${c}: ${x}")
-                }
-                (c, ls.min, ls.max) shouldBe (c, lo, hi)
+                val ls = vs
+                  .filter(_ != null)
+                  .map {
+                    case x: Long =>
+                      x
+                    case x: Int =>
+                      x.toLong
+                    case x =>
+                      fail(s"Unexpected value of ${c}: ${x}")
+                  }
+                (c, ls.min >= lo && ls.max <= hi) shouldBe (c, true)
               }
             s.partRanges(c)
               .foreach { parts =>
@@ -207,6 +214,123 @@ class TpcdsGenTest extends UniTest:
               }
           }
       }
+  }
+
+  test("should scale dimension row counts as dsdgen does") {
+    // Counts DuckDB's dsdgen writes at each scale factor
+    val expected = Map(
+      0.01 -> Seq(180, 1000, 500, 1, 1, 1, 1, 1, 3, 11718, 1, 20),
+      0.05 -> Seq(900, 5000, 2500, 1, 1, 1, 1, 3, 15, 11718, 3, 20),
+      0.1  -> Seq(1800, 10000, 5000, 1, 1, 1, 3, 6, 30, 11718, 7, 20),
+      0.5  -> Seq(9000, 50000, 25000, 6, 2, 3, 15, 30, 150, 11718, 37, 20),
+      1.0  -> Seq(18000, 100000, 50000, 12, 5, 6, 30, 60, 300, 11718, 75, 20),
+      2.0  -> Seq(26000, 144000, 72000, 22, 5, 8, 30, 74, 322, 11718, 75, 20),
+      3.0  -> Seq(36000, 188000, 94000, 32, 6, 10, 32, 90, 344, 11718, 75, 20),
+      5.0  -> Seq(54000, 277000, 138000, 52, 7, 14, 34, 122, 388, 11718, 75, 20),
+      10.0 -> Seq(102000, 500000, 250000, 102, 10, 24, 42, 200, 500, 11718, 75, 20)
+    )
+    val tables = Seq(
+      "item",
+      "customer",
+      "customer_address",
+      "store",
+      "warehouse",
+      "call_center",
+      "web_site",
+      "web_page",
+      "promotion",
+      "catalog_page",
+      "reason",
+      "ship_mode"
+    )
+    expected.foreach { (sf, counts) =>
+      (sf, tables.map(TpcdsDimensions.rows(_, sf))) shouldBe (sf, counts)
+    }
+  }
+
+  private lazy val sf1 = TpcdsGen.sources(1).map(s => s.name -> s).toMap
+
+  private def values(s: TpcdsSource, columns: String*): IndexedSeq[IndexedSeq[Any]] =
+    s.scan(ScanSpec(columns = Some(columns)))
+      .flatMap(b => Iterator.range(0, b.size).map(b.row(_).toIndexedSeq))
+      .toIndexedSeq
+
+  test("should generate the values the TPC-DS queries filter on") {
+    val items = values(sf1("item"), "i_category", "i_class").toSet
+    Seq(
+      "Books"       -> "computers",
+      "Books"       -> "reference",
+      "Books"       -> "self-help",
+      "Electronics" -> "personal",
+      "Electronics" -> "portable",
+      "Electronics" -> "stereo",
+      "Sports"      -> "football",
+      "Men"         -> "accessories",
+      "Men"         -> "pants",
+      "Men"         -> "shirts",
+      "Women"       -> "dresses",
+      "Women"       -> "fragrances",
+      "Women"       -> "maternity",
+      "Music"       -> "classical",
+      "Jewelry"     -> "birdal"
+    ).foreach { (cat, cls) =>
+      (cat, cls, items.contains(IndexedSeq(cat, cls))) shouldBe (cat, cls, true)
+    }
+    values(sf1("store"), "s_store_name").flatten shouldContain "ese"
+    values(sf1("web_site"), "web_company_name").flatten shouldContain "pri"
+    val carriers = values(sf1("ship_mode"), "sm_carrier").flatten
+    carriers shouldContain "DHL"
+    carriers shouldContain "BARIAN"
+    val addresses = values(sf1("customer_address"), "ca_state", "ca_city", "ca_zip")
+    val states    = addresses.map(_(0)).toSet
+    Seq(
+      "AR",
+      "CA",
+      "CO",
+      "CT",
+      "GA",
+      "IA",
+      "IL",
+      "IN",
+      "KY",
+      "LA",
+      "MN",
+      "MS",
+      "ND",
+      "NJ",
+      "NM",
+      "OH",
+      "OK",
+      "OR",
+      "TX",
+      "VA",
+      "WA",
+      "WI"
+    ).foreach(st => (st, states(st)) shouldBe (st, true))
+    addresses.map(_(1)) shouldContain "Edgewood"
+    val zips = addresses.map(_(2)).toSet
+    TpcdsDimensions.queryZips.foreach(z => (z, zips(z)) shouldBe (z, true))
+  }
+
+  test("should point foreign keys at existing rows") {
+    val customers = values(sf1("customer"), "c_current_addr_sk", "c_current_cdemo_sk")
+    customers.forall(r =>
+      r(0) == null || r(0).asInstanceOf[Long] <= sf1("customer_address").estimatedRows.get
+    ) shouldBe true
+    customers.forall(r =>
+      r(1) == null || r(1).asInstanceOf[Long] <= sf1("customer_demographics").estimatedRows.get
+    ) shouldBe true
+    values(sf1("promotion"), "p_item_sk").forall(r =>
+      r(0) == null || r(0).asInstanceOf[Long] <= sf1("item").estimatedRows.get
+    ) shouldBe true
+  }
+
+  test("should keep half the revisions of slowly changing dimensions current") {
+    val items = values(sf1("item"), "i_item_id", "i_rec_end_date")
+    items.count(_(1) == null) shouldBe items.size / 2
+    items.map(_(0)).distinct.size shouldBe items.size / 2
+    // Every business id has exactly one current revision
+    items.groupBy(_(0)).values.forall(_.count(_(1) == null) == 1) shouldBe true
   }
 
 end TpcdsGenTest

@@ -59,7 +59,10 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
         Some(_.toLong)
       case "t_hour" =>
         Some(_ / 3600L)
-      case "cd_demo_sk" | "hd_demo_sk" | "ib_income_band_sk" =>
+      case "cd_demo_sk" | "hd_demo_sk" | "ib_income_band_sk" | "i_item_sk" | "c_customer_sk" |
+          "ca_address_sk" | "s_store_sk" | "w_warehouse_sk" | "cc_call_center_sk" | "web_site_sk" |
+          "wp_web_page_sk" | "p_promo_sk" | "cp_catalog_page_sk" | "r_reason_sk" |
+          "sm_ship_mode_sk" =>
         Some(_ + 1L)
       case _ =>
         None
@@ -83,6 +86,24 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
         Some((0L, 9L))
       case "hd_vehicle_count" =>
         Some((-1L, 4L))
+      case "i_category_id" =>
+        Some((1L, TpcdsDimensions.categories.size.toLong))
+      case "i_class_id" =>
+        Some((1L, TpcdsDimensions.categories.map(_._2.size).max.toLong))
+      case "i_manufact_id" =>
+        Some((1L, 1000L))
+      case "i_manager_id" =>
+        Some((1L, 100L))
+      case "c_birth_year" =>
+        Some((1924L, 1992L))
+      case "c_birth_month" =>
+        Some((1L, 12L))
+      case "c_current_hdemo_sk" =>
+        Some((1L, 7200L))
+      case "c_current_cdemo_sk" =>
+        Some((1L, gen.numCustomerDemographics.toLong))
+      case "c_current_addr_sk" =>
+        Some((1L, gen.rows("customer_address").toLong))
       case _ =>
         None
 
@@ -110,8 +131,53 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
       column match
         case "d_date_sk" | "d_date_id" | "d_date" | "t_time_sk" | "t_time_id" | "t_time" |
             "cd_demo_sk" | "hd_demo_sk" | "ib_income_band_sk" | "ib_lower_bound" |
-            "ib_upper_bound" =>
+            "ib_upper_bound" | "i_item_sk" | "c_customer_sk" | "c_customer_id" | "ca_address_sk" |
+            "ca_address_id" | "s_store_sk" | "w_warehouse_sk" | "w_warehouse_id" |
+            "cc_call_center_sk" | "web_site_sk" | "wp_web_page_sk" | "p_promo_sk" | "p_promo_id" |
+            "cp_catalog_page_sk" | "cp_catalog_page_id" | "r_reason_sk" | "r_reason_id" |
+            "r_reason_desc" | "sm_ship_mode_sk" | "sm_ship_mode_id" | "sm_carrier" =>
           Some(rows)
+        // Business ids of slowly changing dimensions: 3 for every 6 rows
+        case "i_item_id" | "s_store_id" | "cc_call_center_id" | "web_site_id" | "wp_web_page_id" =>
+          Some(math.ceil(rows / 2.0))
+        case "i_category" | "i_category_id" =>
+          Some(TpcdsDimensions.categories.size)
+        case "i_class" =>
+          Some(TpcdsDimensions.categories.map(_._2.size).sum)
+        case "i_class_id" =>
+          Some(TpcdsDimensions.categories.map(_._2.size).max)
+        case "i_manufact_id" | "i_manufact" =>
+          Some(1000)
+        case "i_manager_id" =>
+          Some(100)
+        case "i_color" =>
+          Some(TpcdsDimensions.colors.size)
+        case "i_size" =>
+          Some(TpcdsDimensions.sizes.size)
+        case "i_units" =>
+          Some(TpcdsDimensions.units.size)
+        case "ca_state" =>
+          Some(TpcdsDimensions.states.size)
+        case "ca_city" =>
+          Some(TpcdsDimensions.cities.size)
+        case "ca_county" =>
+          Some(TpcdsDimensions.counties.size)
+        case "ca_zip" =>
+          Some(4000)
+        case "c_birth_country" =>
+          Some(TpcdsDimensions.countries.size)
+        case "c_birth_year" =>
+          Some(69)
+        case "c_birth_month" =>
+          Some(12)
+        case "c_current_hdemo_sk" =>
+          Some(7200)
+        case "c_current_addr_sk" =>
+          Some(gen.rows("customer_address"))
+        case "c_current_cdemo_sk" =>
+          Some(gen.numCustomerDemographics)
+        case "c_preferred_cust_flag" | "p_channel_dmail" | "wp_autogen_flag" =>
+          Some(2)
         case "d_year" | "d_fy_year" =>
           Some(201)
         case "d_month_seq" =>

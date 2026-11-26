@@ -32,8 +32,12 @@ class TpcdsGenDuckDBTest extends UniTest:
   private def rowsOf(t: TableSource): IndexedSeq[Array[Any]] =
     t.scan(ScanSpec()).flatMap(b => Iterator.range(0, b.size).map(b.row(_))).toIndexedSeq
 
+  // Tables fully defined by the specification: equal to dsdgen's row by row
+  private val exactTables = TpcdsGen.tableNames.take(5)
+
   TpcdsGen
     .sources(0.1)
+    .filter(s => exactTables.contains(s.name))
     .foreach { gen =>
       test(s"should generate ${gen.name} as dsdgen does") {
         val ref = ParquetSource(gen.name, s"${dsdgenDir}/${gen.name}.parquet")
@@ -58,6 +62,32 @@ class TpcdsGenDuckDBTest extends UniTest:
               )
           }
         diffs shouldBe Seq.empty
+      }
+    }
+
+  // The other tables: dsdgen's columns, row counts, and share of NULLs
+  TpcdsGen
+    .sources(0.1)
+    .filterNot(s => exactTables.contains(s.name))
+    .foreach { gen =>
+      test(s"should generate ${gen.name} with dsdgen's columns, rows, and NULL shares") {
+        val ref = ParquetSource(gen.name, s"${dsdgenDir}/${gen.name}.parquet")
+        ref.schema.names shouldBe gen.schema.names
+        ref.schema.types shouldBe gen.schema.types
+        val expected = rowsOf(ref)
+        val actual   = rowsOf(gen)
+        actual.size shouldBe expected.size
+        if expected.size >= 1000 then
+          def share(rows: IndexedSeq[Array[Any]], i: Int): Double =
+            rows.count(_(i) == null).toDouble / rows.size
+          gen
+            .schema
+            .names
+            .indices
+            .foreach { i =>
+              val c = gen.schema.names(i)
+              (c, math.abs(share(actual, i) - share(expected, i)) < 0.02) shouldBe (c, true)
+            }
       }
     }
 

@@ -21,9 +21,9 @@ import GenColumns.*
   * Generates TPC-DS tables in memory, on every platform, with no DuckDB or data files, block by
   * block while they're scanned ([[TpcdsSource]]).
   *
-  * The tables here are the ones the TPC-DS specification defines completely, so their rows equal
-  * those DuckDB's `dsdgen` writes, including dsdgen's calendar (it treats 1900 as a leap year,
-  * which shifts the weekdays of January and February 1900 and the day-of-year holidays):
+  * The tables the TPC-DS specification defines completely equal those DuckDB's `dsdgen` writes,
+  * including dsdgen's calendar (it treats 1900 as a leap year, which shifts the weekdays of January
+  * and February 1900 and the day-of-year holidays):
   *   - `date_dim`: every day from 1900-01-02 to 2100-01-01, keyed by Julian day number
   *   - `time_dim`: every second of a day
   *   - `customer_demographics`: the cross product of its column domains (1,920,800 rows at scale
@@ -33,21 +33,22 @@ import GenColumns.*
   * The one known difference is `d_last_dom`, the last day of the month: dsdgen's values don't
   * follow the calendar, and these follow it.
   *
-  * Column types match the Parquet files DuckDB's `dsdgen` writes.
+  * The other dimension tables ([[TpcdsDimensions]]: `item`, `customer`, `store`, ...) draw random
+  * values from the query literals and generic lists, with dsdgen's row counts, keys, and null
+  * shares.
+  *
+  * Column types match the Parquet files DuckDB's `dsdgen` writes. Row counts follow dsdgen's up to
+  * scale factor 10, the largest one checked against it.
   */
 object TpcdsGen:
 
   /** The generated tables */
-  val tableNames: Seq[String] = Seq(
-    "date_dim",
-    "time_dim",
-    "customer_demographics",
-    "household_demographics",
-    "income_band"
-  )
+  val tableNames: Seq[String] =
+    Seq("date_dim", "time_dim", "customer_demographics", "household_demographics", "income_band") ++
+      TpcdsDimensions.tableNames
 
-  /** The largest scale factor [[sources]] generates */
-  val maxScaleFactor: Double = 1000.0
+  /** The largest scale factor [[sources]] generates: dsdgen's row counts are known up to it */
+  val maxScaleFactor: Double = 10.0
 
   /** Rows per generated block */
   val blockRows: Int = 10000
@@ -86,74 +87,75 @@ object TpcdsGen:
   private val Str = PType.Str
 
   /** The columns of each table */
-  private[catalog] val schemas: Map[String, Schema] = Map(
-    "date_dim" ->
-      schema(
-        "d_date_sk"           -> I64,
-        "d_date_id"           -> Str,
-        "d_date"              -> PType.Date,
-        "d_month_seq"         -> I64,
-        "d_week_seq"          -> I64,
-        "d_quarter_seq"       -> I64,
-        "d_year"              -> I64,
-        "d_dow"               -> I64,
-        "d_moy"               -> I64,
-        "d_dom"               -> I64,
-        "d_qoy"               -> I64,
-        "d_fy_year"           -> I64,
-        "d_fy_quarter_seq"    -> I64,
-        "d_fy_week_seq"       -> I64,
-        "d_day_name"          -> Str,
-        "d_quarter_name"      -> Str,
-        "d_holiday"           -> Str,
-        "d_weekend"           -> Str,
-        "d_following_holiday" -> Str,
-        "d_first_dom"         -> I64,
-        "d_last_dom"          -> I64,
-        "d_same_day_ly"       -> I64,
-        "d_same_day_lq"       -> I64,
-        "d_current_day"       -> Str,
-        "d_current_week"      -> Str,
-        "d_current_month"     -> Str,
-        "d_current_quarter"   -> Str,
-        "d_current_year"      -> Str
-      ),
-    "time_dim" ->
-      schema(
-        "t_time_sk"   -> I64,
-        "t_time_id"   -> Str,
-        "t_time"      -> I64,
-        "t_hour"      -> I64,
-        "t_minute"    -> I64,
-        "t_second"    -> I64,
-        "t_am_pm"     -> Str,
-        "t_shift"     -> Str,
-        "t_sub_shift" -> Str,
-        "t_meal_time" -> Str
-      ),
-    "customer_demographics" ->
-      schema(
-        "cd_demo_sk"            -> I64,
-        "cd_gender"             -> Str,
-        "cd_marital_status"     -> Str,
-        "cd_education_status"   -> Str,
-        "cd_purchase_estimate"  -> I64,
-        "cd_credit_rating"      -> Str,
-        "cd_dep_count"          -> I64,
-        "cd_dep_employed_count" -> I64,
-        "cd_dep_college_count"  -> I32
-      ),
-    "household_demographics" ->
-      schema(
-        "hd_demo_sk"        -> I64,
-        "hd_income_band_sk" -> I64,
-        "hd_buy_potential"  -> Str,
-        "hd_dep_count"      -> I64,
-        "hd_vehicle_count"  -> I32
-      ),
-    "income_band" ->
-      schema("ib_income_band_sk" -> I64, "ib_lower_bound" -> I64, "ib_upper_bound" -> I32)
-  )
+  private[catalog] val schemas: Map[String, Schema] =
+    Map(
+      "date_dim" ->
+        schema(
+          "d_date_sk"           -> I64,
+          "d_date_id"           -> Str,
+          "d_date"              -> PType.Date,
+          "d_month_seq"         -> I64,
+          "d_week_seq"          -> I64,
+          "d_quarter_seq"       -> I64,
+          "d_year"              -> I64,
+          "d_dow"               -> I64,
+          "d_moy"               -> I64,
+          "d_dom"               -> I64,
+          "d_qoy"               -> I64,
+          "d_fy_year"           -> I64,
+          "d_fy_quarter_seq"    -> I64,
+          "d_fy_week_seq"       -> I64,
+          "d_day_name"          -> Str,
+          "d_quarter_name"      -> Str,
+          "d_holiday"           -> Str,
+          "d_weekend"           -> Str,
+          "d_following_holiday" -> Str,
+          "d_first_dom"         -> I64,
+          "d_last_dom"          -> I64,
+          "d_same_day_ly"       -> I64,
+          "d_same_day_lq"       -> I64,
+          "d_current_day"       -> Str,
+          "d_current_week"      -> Str,
+          "d_current_month"     -> Str,
+          "d_current_quarter"   -> Str,
+          "d_current_year"      -> Str
+        ),
+      "time_dim" ->
+        schema(
+          "t_time_sk"   -> I64,
+          "t_time_id"   -> Str,
+          "t_time"      -> I64,
+          "t_hour"      -> I64,
+          "t_minute"    -> I64,
+          "t_second"    -> I64,
+          "t_am_pm"     -> Str,
+          "t_shift"     -> Str,
+          "t_sub_shift" -> Str,
+          "t_meal_time" -> Str
+        ),
+      "customer_demographics" ->
+        schema(
+          "cd_demo_sk"            -> I64,
+          "cd_gender"             -> Str,
+          "cd_marital_status"     -> Str,
+          "cd_education_status"   -> Str,
+          "cd_purchase_estimate"  -> I64,
+          "cd_credit_rating"      -> Str,
+          "cd_dep_count"          -> I64,
+          "cd_dep_employed_count" -> I64,
+          "cd_dep_college_count"  -> I32
+        ),
+      "household_demographics" ->
+        schema(
+          "hd_demo_sk"        -> I64,
+          "hd_income_band_sk" -> I64,
+          "hd_buy_potential"  -> Str,
+          "hd_dep_count"      -> I64,
+          "hd_vehicle_count"  -> I32
+        ),
+      "income_band" ->
+        schema("ib_income_band_sk" -> I64, "ib_lower_bound" -> I64, "ib_upper_bound" -> I32)
+    ) ++ TpcdsDimensions.schemas
 
   private[catalog] val dayNames = IndexedSeq(
     "Sunday",
@@ -212,6 +214,8 @@ private[catalog] class TpcdsGen(val sf: Double):
   val numCustomerDemographics: Int =
     math.min(MaxCustomerDemographics.toLong, math.round(MaxCustomerDemographics * sf)).max(1L).toInt
 
+  private val dimensions = TpcdsDimensionGen(sf, numCustomerDemographics)
+
   /** The rows of `table` */
   def rows(table: String): Int =
     table match
@@ -225,6 +229,8 @@ private[catalog] class TpcdsGen(val sf: Double):
         7200
       case "income_band" =>
         20
+      case t if TpcdsDimensions.schemas.contains(t) =>
+        dimensions.rowsOf(t)
       case other =>
         throw StatusCode.TABLE_NOT_FOUND.newException(s"Not a generated TPC-DS table: ${other}")
 
@@ -250,8 +256,15 @@ private[catalog] class TpcdsGen(val sf: Double):
         customerDemographics(start, n)
       case "household_demographics" =>
         householdDemographics(start, n)
-      case _ =>
+      case "income_band" =>
         incomeBand(start, n)
+      case t =>
+        dimensions.block(t, start, n, rnd(t, b))
+
+  // Each block of each table draws from its own seeded random stream
+  private def rnd(table: String, b: Int): scala.util.Random = scala
+    .util
+    .Random(20020716L + tableNames.indexOf(table) * 1000003L + b * 2654435761L)
 
   private def flags(n: Int)(f: Int => Boolean): Vec =
     strs(n)(i =>
