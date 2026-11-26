@@ -107,6 +107,9 @@ trait TableSource:
     */
   def uniqueKeys: Seq[Seq[String]] = Nil
 
+  /** Foreign keys declared for this source (recorded; join estimates don't read them yet) */
+  def foreignKeys: Seq[ForeignKey] = Nil
+
   /** EXPLAIN lines of what a scan of this source reads, nested above the scan (at `indent`) */
   def explainDetail(indent: Int): Option[String] = None
 
@@ -172,7 +175,17 @@ class ParquetSource(
 ) extends TableSource:
   override def key: Any = ("parquet", path)
 
-  override def uniqueKeys: Seq[Seq[String]] = declaredKeys
+  // Keys of a sidecar file (`<name>.keys.json`, or `_keys.json` in a folder), read when first asked
+  private lazy val sidecarKeys: TableKeys = TableKeys.forPath(path).over(schema.names)
+
+  /** The keys given at registration, or else those of the data's sidecar key file */
+  override def uniqueKeys: Seq[Seq[String]] =
+    if declaredKeys.nonEmpty then
+      declaredKeys
+    else
+      sidecarKeys.uniqueKeys
+
+  override def foreignKeys: Seq[ForeignKey] = sidecarKeys.foreignKeys
 
   /** Whether `path` names one Parquet file, rather than a folder or a glob */
   val isSingleFile: Boolean = path.endsWith(".parquet") && !path.exists(c => c == '*' || c == '{')
