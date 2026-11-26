@@ -1985,6 +1985,24 @@ class Planner(
         inSubqueryShare(source)
       else
         None
+    // An IN subquery grouping one of the input's tables by the join key: the table is replaced by
+    // the subquery's groups, whose totals the aggregation merges (`reuse_in_subquery_aggregates`)
+    if inShare.isEmpty && enabled(Optimization.ReuseInSubqueryAggregates) then
+      for
+        g   <- groupBy
+        its <- items
+        if g.groupingKeys.forall(_.isInstanceOf[UnresolvedGroupingKey])
+        rewritten <- InSubqueryAggregates.rewrite(this, g, having, its)
+      do
+        val grouped = g.copy(child = rewritten)
+        val reused  =
+          input match
+            case f: Filter =>
+              f.copy(child = grouped)
+            case _ =>
+              grouped
+        hiddenSeq = hiddenSeqAtStart
+        return aggregation(reused, items, defaultItems, plan, filter, builder)
     val in                      = plan(inShare.map(_.rest).getOrElse(source))
     val inOp                    = builder.op(in)
     val scope                   = BindScope(inOp.schema)
