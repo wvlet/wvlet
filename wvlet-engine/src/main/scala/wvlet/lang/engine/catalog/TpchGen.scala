@@ -83,7 +83,19 @@ object TpchGen:
     */
   def tables(sf: Double): Seq[MemTable] =
     checkScaleFactor(sf, maxScaleFactor)
-    sources(sf).map(_.materialize)
+    val gen = TpchGen(sf)
+    // Orders and line items come from one pass per block, not one per table
+    val (orders, lineitems) = Seq.tabulate(gen.numBlocks("orders"))(gen.ordersAndLineitems).unzip
+    tableNames.map { t =>
+      val s = TpchSource(t, gen)
+      t match
+        case "orders" =>
+          s.materialize(orders)
+        case "lineitem" =>
+          s.materialize(lineitems)
+        case _ =>
+          s.materialize
+    }
 
   /** Register every table at scale factor `sf` in `catalog`, generated while it's scanned */
   def register(catalog: EngineCatalog, sf: Double): Seq[TpchSource] =
@@ -807,7 +819,7 @@ private[catalog] class TpchGen(val sf: Double):
     )
 
   // A block of orders and their line items, generated together for the derived status and total
-  private def ordersAndLineitems(b: Int): (Batch, Batch) =
+  def ordersAndLineitems(b: Int): (Batch, Batch) =
     val r     = rnd(7, b)
     val start = blockStart(b)
     val n     = blockUnits("orders", b)

@@ -34,10 +34,11 @@ class TpchSource private[catalog] (val table: String, gen: TpchGen) extends Tabl
   // The block's rows as batches of the engine's batch size, with the requested columns
   private def blockBatches(b: Int, columns: Option[Array[Int]]): Iterator[Batch] =
     val full = gen.block(table, b)
-    val out  = columns.fold(full)(full.select)
-    Iterator
-      .range(0, out.size, Batch.DefaultSize)
-      .map(from => out.slice(from, math.min(from + Batch.DefaultSize, out.size)))
+    slices(columns.fold(full)(full.select))
+
+  private def slices(b: Batch): Iterator[Batch] = Iterator
+    .range(0, b.size, Batch.DefaultSize)
+    .map(from => b.slice(from, math.min(from + Batch.DefaultSize, b.size)))
 
   private def columnIndexes(spec: ScanSpec): Option[Array[Int]] = spec
     .columns
@@ -175,5 +176,12 @@ class TpchSource private[catalog] (val table: String, gen: TpchGen) extends Tabl
 
   /** All rows of the table, in memory */
   def materialize: MemTable = MemTable(name, schema, scan(ScanSpec()).toSeq)
+
+  /** The table in memory from its already generated blocks, with every column */
+  private[catalog] def materialize(blocks: Seq[Batch]): MemTable = MemTable(
+    name,
+    schema,
+    blocks.flatMap(slices)
+  )
 
 end TpchSource
