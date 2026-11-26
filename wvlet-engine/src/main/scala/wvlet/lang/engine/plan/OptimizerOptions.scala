@@ -998,6 +998,15 @@ enum Optimization(val name: String):
     */
   case LateColumns extends Optimization("late_columns")
 
+  /**
+    * With [[EagerAggregation]], a DISTINCT (an aggregation without calls) over a projection of an
+    * inner join is computed over the join with the projection inlined into its keys, so that the
+    * join's input is first deduplicated by the columns the keys and join keys read. TPC-DS q38 and
+    * q87 deduplicate 5.4M store sales rows by customer key and date (481K at SF10) before joining
+    * the customer names, instead of gathering and hashing the names of every sale row
+    */
+  case EagerDistinct extends Optimization("eager_distinct")
+
 end Optimization
 
 object Optimization:

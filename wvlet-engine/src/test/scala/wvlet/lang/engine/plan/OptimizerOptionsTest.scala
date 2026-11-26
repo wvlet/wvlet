@@ -170,7 +170,8 @@ class OptimizerOptionsTest extends UniTest:
         "rank_filter_rows",
         "dimension_group_ids",
         "semi_anti_one_probe",
-        "late_columns"
+        "late_columns",
+        "eager_distinct"
       )
   }
 

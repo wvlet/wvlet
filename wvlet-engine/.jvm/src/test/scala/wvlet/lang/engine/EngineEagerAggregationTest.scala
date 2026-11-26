@@ -99,6 +99,23 @@ class EngineEagerAggregationTest extends UniTest:
     aggregations(on) shouldBe aggregations(off) + 1
   }
 
+  test("deduplicate a join input by its keys before a distinct over the joined strings") {
+    // Many parts share a name prefix: the result is the distinct prefixes, not the distinct
+    // (part, flag) keys that the pre-aggregation groups by
+    val noDistinct = conformance
+      .engine
+      .withOptimizer(options.withDisabled(Optimization.EagerDistinct))
+    val (on, off) = check(
+      """from lineitem, part
+        |where l_partkey = p_partkey
+        |select distinct substring(p_name, 1, 5) as prefix, l_returnflag
+        |order by prefix, l_returnflag
+        |""".stripMargin,
+      disabled = noDistinct
+    )
+    aggregations(on) shouldBe aggregations(off) + 1
+  }
+
   test("not aggregate into groups much finer than the outer ones") {
     // 1,500 partial groups (customers) for 5 outer groups (market segments)
     val (on, off) = check("""from orders, customer
