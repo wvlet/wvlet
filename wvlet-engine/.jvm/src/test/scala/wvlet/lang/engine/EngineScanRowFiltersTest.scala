@@ -279,6 +279,41 @@ class EngineScanRowFiltersTest extends UniTest:
     scannedIds(scan(0.76, first = false)) shouldBe expected
   }
 
+  test("skip the row groups holding none of a join filter's few build keys") {
+    // ids are clustered by row group (2048 each): the build keys 5 and 12000 lie in row groups 0
+    // and 5, while their range spans most row groups. 1000000 makes the keys a Bloom filter
+    val src                                                   = ParquetSource("t", joinFile)
+    def scan(keys: Array[Long], pruneByKeys: Boolean): ScanOp =
+      val rf = RuntimeFilter(0, "id", (_, _) => None, rows = true)
+      rf.set(LongVec(PType.Int64, keys, null), keys.indices.toArray, keys.length)
+      ScanOp(src, src.schema, None, None, Seq(rf)).withKeySetRowGroups(pruneByKeys)
+    def parts(s: ScanOp): Int =
+      val splits = src.scanSplits(s.spec).getOrElse(fail("no splits"))
+      splits.close()
+      splits.parts.size
+    def scannedIds(s: ScanOp): Seq[Long] =
+      val out = Seq.newBuilder[Long]
+      var b   = s.next()
+      while b != null do
+        val v = b.column(0)
+        (0 until b.size).foreach(i => out += v.get(i).asInstanceOf[Long])
+        b = s.next()
+      s.close()
+      out.result()
+    Seq(Array(5L, 12000L, 18000L), Array(5L, 12000L, 1000000L)).foreach { keys =>
+      // Without the keys, only the row groups outside [min, max] are skipped
+      parts(scan(keys, pruneByKeys = false)) shouldBe
+        (0 until 10).count(g => g * 2048L <= keys.max && g * 2048L + 2047L >= keys.min)
+      parts(scan(keys, pruneByKeys = true)) shouldBe keys.count(_ < 20480L)
+      // The scans return the build keys, plus a Bloom filter's false positives (which the join
+      // drops): the same rows in the row groups both read
+      val kept   = scannedIds(scan(keys, pruneByKeys = true))
+      val groups = keys.map(_ / 2048L).toSet
+      kept.filter(keys.contains) shouldBe keys.filter(_ < 20480L).toSeq
+      kept shouldBe scannedIds(scan(keys, pruneByKeys = false)).filter(i => groups(i / 2048L))
+    }
+  }
+
   test("order a sparse key's join filter by the column's distinct values, not its range") {
     // sk = 4 * id uses a quarter of its range, like TPC-H's order keys. Every 10th sk keeps 10% of
     // the rows, which its range alone puts at 2.5%; every 12th id keeps 8.3%

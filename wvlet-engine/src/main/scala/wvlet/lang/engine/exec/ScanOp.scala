@@ -77,7 +77,7 @@ class ScanOp(
         rowFilter ++ join
     ScanSpec(
       columns.map(_.map(source.schema(_).name)),
-      (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _),
+      (filter ++ runtimeFilters.flatMap(_.filter) ++ keySetRowGroupFilters()).reduceOption(_ && _),
       footerCache,
       conjuncts.reduceOption(_ && _),
       dictionaryCodes,
@@ -159,6 +159,16 @@ class ScanOp(
     this
 
   /**
+    * Whether [[spec]] lets the source skip the row groups whose [min, max] holds none of a per-row
+    * runtime filter's build keys (`key_set_row_groups`, [[keySetRowGroupFilters]])
+    */
+  var keySetRowGroups: Boolean = true
+
+  def withKeySetRowGroups(enabled: Boolean): this.type =
+    keySetRowGroups = enabled
+    this
+
+  /**
     * The estimated fraction of the rows [[rowFilter]] keeps (1.0 when unknown), to order it against
     * the per-row runtime filters in [[spec]]
     */
@@ -176,6 +186,7 @@ class ScanOp(
     .withSourceJoinFilters(s.sourceJoinFilters)
     .withJoinFiltersFirst(s.joinFiltersFirst)
     .withSparseKeyPassRates(s.sparseKeyPassRates)
+    .withKeySetRowGroups(s.keySetRowGroups)
     .withRowFilterPassRate(s.rowFilterPassRate)
 
   def withSchema(s: Schema): ScanOp = ScanOp(
@@ -296,6 +307,32 @@ class ScanOp(
       )
 
   end joinRowFilters
+
+  /**
+    * Row-group filters (`In` over [[RowKeyFilter.prunedSet]]) for the per-row runtime filters set
+    * by now whose build keys skip more row groups than their [min, max] range: the source skips a
+    * row group whose statistics hold no build key, without testing rows (a source may ignore them).
+    * A few build keys on a probe column the file is clustered by, such as TPC-DS store_sales'
+    * ticket numbers matching a handful of returns (q17, q25), leave most row groups unread
+    */
+  private def keySetRowGroupFilters(): Seq[ParquetFilter] =
+    if !keySetRowGroups || rowFilters.isEmpty || !source.supportsRowFilter then
+      return Nil
+    rowFilters
+      .toSeq
+      .flatMap { (f, pos) =>
+        val rf    = f.rowFilter
+        val typed =
+          schema(pos).ptype match
+            case PType.Int32 | PType.Int64 | PType.Date =>
+              true
+            case _ =>
+              false
+        if rf != null && typed && rf.prunesBeyondRange && source.canRowFilterOn(f.column) then
+          Some(ParquetFilter.col(f.column).isIn(rf.prunedSet))
+        else
+          None
+      }
 
   /**
     * The fraction of the rows in the parts (row groups) that `rf`'s range doesn't skip that `rf` is

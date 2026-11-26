@@ -137,4 +137,32 @@ class RowKeyFilterTest extends UniTest:
     on.rowFilter.mayContain(6L) shouldBe false
   }
 
+  test("should tell whether a range holds a build key, exactly for few keys") {
+    // A bitmap over a dense range
+    val dense = filterOf(Array(10L, 12L, 20L))
+    dense.kind shouldBe RowKeyFilter.Kind.Bitmap
+    dense.prunesBeyondRange shouldBe true
+    dense.mayIntersect(13L, 19L) shouldBe false
+    dense.mayIntersect(13L, 20L) shouldBe true
+    dense.mayIntersect(0L, 9L) shouldBe false
+    // A Bloom filter keeping its few sorted keys
+    val sparse = filterOf(Array(5L, 12000L, 12000L, 1000000L))
+    sparse.kind shouldBe RowKeyFilter.Kind.Bloom
+    sparse.prunesBeyondRange shouldBe true
+    sparse.mayIntersect(0L, 4L) shouldBe false
+    sparse.mayIntersect(0L, 5L) shouldBe true
+    sparse.mayIntersect(6L, 11999L) shouldBe false
+    sparse.mayIntersect(12000L, 12000L) shouldBe true
+    sparse.mayIntersect(12001L, 999999L) shouldBe false
+    sparse.mayIntersect(999999L, 2000000L) shouldBe true
+    // uni's set prunes by the keys only for prunedSet
+    sparse.prunedSet.mayIntersect(6L, 11999L) shouldBe false
+    sparse.integerSet.mayIntersect(6L, 11999L) shouldBe true
+    // Above MaxSortedKeys a Bloom filter checks the range only
+    val many = filterOf(Array.tabulate(RowKeyFilter.MaxSortedKeys + 1)(i => i * 1000L))
+    many.kind shouldBe RowKeyFilter.Kind.Bloom
+    many.prunesBeyondRange shouldBe false
+    many.mayIntersect(1L, 999L) shouldBe true
+  }
+
 end RowKeyFilterTest

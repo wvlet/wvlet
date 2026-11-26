@@ -29,6 +29,10 @@ import java.util.concurrent.atomic.AtomicLong
   *     hi], with about 1% false positives at 16 bits per key.
   *   - `Range`: only [lo, hi], for builds with more keys than [[RowKeyFilter.MaxKeys]].
   *
+  * A Bloom filter over at most [[RowKeyFilter.MaxSortedKeys]] build rows also keeps their keys
+  * sorted (`sorted`), so that [[mayIntersect]] can tell exactly whether a Parquet row group's [min,
+  * max] holds a build key ([[prunedSet]], `key_set_row_groups`).
+  *
   * A filter that keeps most of the rows it checks pauses: after [[RowKeyFilter.SampleRows]] rows
   * that pass at least `threshold` of the time, the next batches skip it, twice as many after each
   * pause in a row, then it samples again (DuckDB's selectivity-optional filters). The counters are
@@ -41,7 +45,8 @@ final class RowKeyFilter private (
     hi: Long,
     bits: Array[Long],
     shift: Int,
-    keys: Int
+    keys: Int,
+    sorted: Array[Long] = null
 ):
   import RowKeyFilter.*
 
@@ -134,15 +139,61 @@ final class RowKeyFilter private (
   private inline def bitsBefore(w: Int): Long = prefixBits(w)
 
   /**
-    * The filter as a uni set ([[ParquetFilter.In]]), so that a Parquet scan tests it while decoding
-    * and decodes the other columns only for the rows it accepts
+    * Whether some value in [a, b] may be a build key: exact for a bitmap and for a Bloom filter
+    * keeping its sorted keys, otherwise whether [a, b] overlaps [lo, hi]
     */
-  lazy val integerSet: ParquetFilter.IntegerSet =
-    new ParquetFilter.IntegerSet:
-      def contains(v: Long): Boolean = mayContain(v)
-      def min: Long                  = lo
-      def max: Long                  = hi
-      override def toString: String  = RowKeyFilter.this.toString
+  def mayIntersect(a: Long, b: Long): Boolean =
+    if a > hi || b < lo then
+      false
+    else
+      kind match
+        case Kind.Bitmap =>
+          acceptedIn(a, b) > 0.0
+        case Kind.Bloom if sorted != null =>
+          // The first key at or above a, if any, must be at most b
+          var l = 0
+          var r = sorted.length
+          while l < r do
+            val m = (l + r) >>> 1
+            if sorted(m) < a then
+              l = m + 1
+            else
+              r = m
+          l < sorted.length && sorted(l) <= b
+        case _ =>
+          true
+
+  /**
+    * Whether [[mayIntersect]] skips more row groups than the [lo, hi] range does: a bitmap, or a
+    * Bloom filter keeping its sorted keys
+    */
+  def prunesBeyondRange: Boolean = kind == Kind.Bitmap || (kind == Kind.Bloom && sorted != null)
+
+  /**
+    * The filter as a uni set ([[ParquetFilter.In]]), so that a Parquet scan tests it while decoding
+    * and decodes the other columns only for the rows it accepts. It skips the row groups whose
+    * statistics lie outside [lo, hi]
+    */
+  lazy val integerSet: ParquetFilter.IntegerSet = new KeySet(pruneByKeys = false)
+
+  /**
+    * [[integerSet]] that also skips the row groups whose [min, max] holds no build key
+    * ([[mayIntersect]], `key_set_row_groups`): a few build keys on a probe column clustered in the
+    * file (TPC-DS store_sales by ticket number) leave most row groups unread
+    */
+  lazy val prunedSet: ParquetFilter.IntegerSet = new KeySet(pruneByKeys = true)
+
+  private final class KeySet(pruneByKeys: Boolean) extends ParquetFilter.IntegerSet:
+    def contains(v: Long): Boolean                       = mayContain(v)
+    def min: Long                                        = lo
+    def max: Long                                        = hi
+    override def mayIntersect(a: Long, b: Long): Boolean =
+      if pruneByKeys then
+        RowKeyFilter.this.mayIntersect(a, b)
+      else
+        a <= hi && b >= lo
+
+    override def toString: String = RowKeyFilter.this.toString
 
   /** Probe rows the filter has dropped so far, over every scan applying it */
   def droppedRows: Long = dropped.get()
@@ -253,6 +304,13 @@ object RowKeyFilter:
   /** Up to how many bits per build row a bitmap may use instead of a Bloom filter */
   val BitmapBits: Int = 32
 
+  /**
+    * Up to how many build rows a Bloom filter keeps its keys sorted, for skipping row groups
+    * ([[RowKeyFilter.mayIntersect]]). More keys hit nearly every row group of a probe column they
+    * spread over
+    */
+  val MaxSortedKeys: Int = 1 << 12
+
   /** Ranges up to this many values always use a bitmap (8 KB) */
   val SmallBitmap: Long = 1L << 16
 
@@ -320,7 +378,19 @@ object RowKeyFilter:
         val h = mix(key(j))
         bits((h >>> shift).toInt) |= maskOf(h)
         j += 1
-      Some(RowKeyFilter(Kind.Bloom, lo, hi, bits, shift, n))
+      val sorted =
+        if n <= MaxSortedKeys then
+          val a = new Array[Long](n)
+          var i = 0
+          while i < n do
+            a(i) = key(i)
+            i += 1
+          java.util.Arrays.sort(a)
+          a
+        else
+          null
+      Some(RowKeyFilter(Kind.Bloom, lo, hi, bits, shift, n, sorted))
+    end if
 
   end of
 

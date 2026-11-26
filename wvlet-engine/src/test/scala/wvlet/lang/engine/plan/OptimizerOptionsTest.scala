@@ -83,6 +83,7 @@ class OptimizerOptionsTest extends UniTest:
         "scan_join_row_filters",
         "join_row_filters_first",
         "sparse_key_pass_rates",
+        "key_set_row_groups",
         "presize_aggregates",
         "window_top_n",
         "window_top_n_stream",

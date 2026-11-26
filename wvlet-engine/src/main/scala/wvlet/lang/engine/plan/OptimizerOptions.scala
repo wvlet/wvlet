@@ -299,6 +299,16 @@ enum Optimization(val name: String):
   case SparseKeyPassRates extends Optimization("sparse_key_pass_rates")
 
   /**
+    * Per-row runtime join filters over a bitmap or a few build keys (a Bloom filter over at most
+    * `RowKeyFilter.MaxSortedKeys` rows) also skip a Parquet probe scan's row groups whose [min,
+    * max] holds no build key, not only those outside the keys' range. TPC-DS q17 and q25 probe
+    * store_sales, clustered by ticket number, with the ~15 tickets of a catalog_sales ⋈
+    * store_returns build: the range spans most of the file, but the keys hit a few row groups.
+    * Needs `row_join_filters`
+    */
+  case KeySetRowGroups extends Optimization("key_set_row_groups")
+
+  /**
     * Pre-size the group tables and aggregate state of hash aggregations from estimated group
     * counts, so they grow less often
     */
