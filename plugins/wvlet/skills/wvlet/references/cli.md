@@ -33,8 +33,9 @@ Global options: `--profile <name>`, `-w <folder>` (working folder), `--catalog`,
 - The in-process wvlet engine is the default for `wvlet run` and `wv`: it reads Parquet, JSON,
   CSV, and Iceberg files (`from 'file.parquet'`) with no setup and no DuckDB. A `wvlet`
   connector with `"prepareTPCH": true` (and `"tpchScaleFactor"`, default 0.01) generates the
-  TPC-H tables in memory; values differ from `dbgen`'s, so don't compare answers with official
-  ones. `wvlet ui --tpch` does the same.
+  TPC-H tables in memory, and `"prepareTPCDS": true` (`"tpcdsScaleFactor"`, up to 10) the
+  TPC-DS tables; values differ from `dbgen` / `dsdgen`'s, so don't compare answers with
+  official ones. `wvlet ui --tpch` does the same for TPC-H.
 - To give the wvlet engine the keys of Parquet files (for join order), write a sidecar
   `<name>.keys.json` next to `<name>.parquet`, or `_keys.json` in a folder, e.g.
   `{"primaryKey": ["l_orderkey", "l_linenumber"], "uniqueKeys": [["l_comment"]]}`. Keys never

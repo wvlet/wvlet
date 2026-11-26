@@ -39,6 +39,9 @@ import wvlet.lang.engine.catalog.ManagedTable
 import wvlet.lang.engine.catalog.MemTable
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.engine.catalog.GeneratedSource
+import wvlet.lang.engine.catalog.TpcdsGen
+import wvlet.lang.engine.catalog.TpcdsSource
 import wvlet.lang.engine.catalog.TpchGen
 import wvlet.lang.engine.catalog.TpchSource
 import wvlet.lang.engine.catalog.Warehouse
@@ -62,7 +65,8 @@ import scala.util.control.NonFatal
   *     without extension)
   *   - `prepareTPCH`: `true` registers the eight TPC-H tables at scale factor `tpchScaleFactor`
   *     (default 0.01), generated while they're scanned ([[TpchGen]]), as the DuckDB connector's
-  *     properties of the same names do
+  *     properties of the same names do. `prepareTPCDS` registers the 24 TPC-DS tables at
+  *     `tpcdsScaleFactor` ([[TpcdsGen]]) likewise
   *
   * Relative paths resolve against `baseDir` (the work folder). Local files referenced in queries
   * (`from 'x.parquet'`) need no registration.
@@ -131,7 +135,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     }
 
   registerConfiguredTables()
-  registerTpchTables()
+  registerBenchmarkTables()
   registerWarehouseTables()
 
   private def property[A](key: String, expected: String)(parse: String => Option[A]): Option[A] =
@@ -150,23 +154,27 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     _.toBooleanOption
   ).getOrElse(false)
 
-  // The TPC-H tables (prepareTPCH), generated while they're scanned. A name that a dataDir / tables
-  // entry also registers is an error
-  private def registerTpchTables(): Unit =
-    if booleanProperty("prepareTPCDS") then
-      throw StatusCode
-        .NOT_IMPLEMENTED
-        .newException(
-          s"prepareTPCDS of connector '${config.name}': the wvlet engine can't generate TPC-DS " +
-            "tables yet; use a duckdb connector"
-        )
+  // The TPC-H (prepareTPCH) and TPC-DS (prepareTPCDS) tables, generated while they're scanned. A
+  // name that a dataDir / tables entry or the other benchmark also registers is an error
+  private def registerBenchmarkTables(): Unit =
+    def scaleFactor(key: String): Double = property(key, "a number")(_.toDoubleOption).getOrElse(
+      WvletEngineSession.defaultTpchScaleFactor
+    )
     if booleanProperty("prepareTPCH") then
-      val sf = property("tpchScaleFactor", "a number")(_.toDoubleOption).getOrElse(
-        WvletEngineSession.defaultTpchScaleFactor
-      )
-      TpchGen.sources(sf).foreach(registerUnique(_, "a TPC-H table (prepareTPCH)"))
+      TpchGen.sources(scaleFactor("tpchScaleFactor")).foreach(t => registerUnique(t, originOf(t)))
+    if booleanProperty("prepareTPCDS") then
+      TpcdsGen.sources(scaleFactor("tpcdsScaleFactor")).foreach(t => registerUnique(t, originOf(t)))
 
-  end registerTpchTables
+  end registerBenchmarkTables
+
+  private def originOf(t: TableSource): String =
+    t match
+      case _: TpchSource =>
+        "a TPC-H table (prepareTPCH)"
+      case _: TpcdsSource =>
+        "a TPC-DS table (prepareTPCDS)"
+      case _ =>
+        "registered from files"
 
   // Register a table that no other source may name, so a query never silently reads the other
   // table. `origin` says where `t` comes from
@@ -175,12 +183,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
       .catalog
       .find(t.name)
       .foreach { other =>
-        val otherOrigin =
-          other match
-            case _: TpchSource =>
-              "a TPC-H table (prepareTPCH)"
-            case _ =>
-              "registered from files"
+        val otherOrigin = originOf(other)
         throw StatusCode
           .INVALID_ARGUMENT
           .newException(
@@ -190,8 +193,8 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
       }
     register(t)
 
-  // Tables of the warehouse; a name that a dataDir / tables entry or prepareTPCH also registers is
-  // an error
+  // Tables of the warehouse; a name that a dataDir / tables entry, prepareTPCH, or prepareTPCDS
+  // also registers is an error
   private def registerWarehouseTables(): Unit = warehouse.foreach { w =>
     w.schemas
       .foreach { s =>
@@ -262,7 +265,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
   def register(source: TableSource): Unit =
     engine.catalog.register(source)
     source match
-      case _: ParquetSource | _: MemTable | _: TpchSource =>
+      case _: ParquetSource | _: MemTable | _: GeneratedSource =>
         registerSchema(source)
       case _ =>
 
@@ -710,7 +713,10 @@ end WvletEngineSession
 object WvletEngineSession:
   val connectorType: String = "wvlet"
 
-  /** The TPC-H scale factor of `prepareTPCH` without `tpchScaleFactor`, as on DuckDB */
+  /**
+    * The TPC-H / TPC-DS scale factor of `prepareTPCH` / `prepareTPCDS` without `tpchScaleFactor` /
+    * `tpcdsScaleFactor`, as on DuckDB
+    */
   val defaultTpchScaleFactor: Double = 0.01
 
   /**

@@ -45,6 +45,17 @@ class RunnerSpecWvletEngineTPCHGen
       engineProfile = Some(WvletEngineProfiles.of(Map("prepareTPCH" -> true)))
     )
 
+/**
+  * spec/tpcds on the wvlet engine over TPC-DS tables generated while they're scanned
+  * (`prepareTPCDS`), with no data files. Values differ from dsdgen's, so only that queries run is
+  * checked; [[wvlet.lang.engine.TpcdsGenQueriesTest]] checks which return rows
+  */
+class RunnerSpecWvletEngineTPCDSGen
+    extends RunnerSpec(
+      "spec/tpcds",
+      engineProfile = Some(WvletEngineProfiles.of(Map("prepareTPCDS" -> true)))
+    )
+
 /** spec/basic on the wvlet engine, except for specs using features the engine lacks */
 class RunnerSpecWvletEngineBasic
     extends RunnerSpec(
