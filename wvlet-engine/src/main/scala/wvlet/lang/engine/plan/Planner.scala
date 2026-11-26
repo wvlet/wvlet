@@ -123,6 +123,8 @@ class Planner(
       Planner.disableSourceJoinFilters(pruned)
     if !enabled(Optimization.JoinRowFiltersFirst) then
       Planner.disableJoinFiltersFirst(pruned)
+    if !enabled(Optimization.SparseKeyPassRates) then
+      Planner.disableSparseKeyPassRates(pruned)
     if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) ||
       !enabled(Optimization.DictionaryFilters) || !enabled(Optimization.DictionarySelection)
     then
@@ -4036,6 +4038,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableJoinFiltersFirst)
     op.sharedInputs.foreach(disableJoinFiltersFirst)
+
+  /** Estimate per-row join filters' pass rates over the width of the probe key's range */
+  private[engine] def disableSparseKeyPassRates(op: Operator): Unit =
+    op match
+      case s: ScanOp =>
+        s.sparseKeyPassRates = false
+      case _ =>
+    op.children.foreach(disableSparseKeyPassRates)
+    op.sharedInputs.foreach(disableSparseKeyPassRates)
 
   /** Set how the filters of a physical plan evaluate AND / OR (`short_circuit_filters`) */
   private[engine] def configureFilters(

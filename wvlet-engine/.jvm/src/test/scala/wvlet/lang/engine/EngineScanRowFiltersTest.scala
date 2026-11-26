@@ -279,6 +279,60 @@ class EngineScanRowFiltersTest extends UniTest:
     scannedIds(scan(0.76, first = false)) shouldBe expected
   }
 
+  test("order a sparse key's join filter by the column's distinct values, not its range") {
+    // sk = 4 * id uses a quarter of its range, like TPC-H's order keys. Every 10th sk keeps 10% of
+    // the rows, which its range alone puts at 2.5%; every 12th id keeps 8.3%
+    val dir = Paths.get("target/engine-test").toAbsolutePath
+    Files.createDirectories(dir)
+    val path = dir.resolve("scan_sparse_key_filters.parquet")
+    Files.deleteIfExists(path)
+    Class.forName("org.duckdb.DuckDBDriver")
+    val conn = DriverManager.getConnection("jdbc:duckdb:")
+    try
+      val st = conn.createStatement()
+      try st.execute(s"""copy (
+             |  select range::bigint as id, (range * 4)::bigint as sk from range(20480)
+             |) to '${path}' (format parquet, row_group_size 2048)""".stripMargin)
+      finally st.close()
+    finally
+      conn.close()
+    val src                                                      = ParquetSource("t", path.toString)
+    def filter(column: String, keys: Array[Long]): RuntimeFilter =
+      val rf = RuntimeFilter(0, column, (_, _) => None, rows = true)
+      rf.set(LongVec(PType.Int64, keys, null), keys.indices.toArray, keys.length)
+      rf
+    val sparse = (0L until 20480L).filter(_ % 10 == 0).map(_ * 4).toArray
+    val dense  = (0L until 20480L).filter(_ % 12 == 0).toArray
+    def scan(sparseRates: Boolean): ScanOp = ScanOp(
+      src,
+      src.schema,
+      None,
+      None,
+      Seq(filter("sk", sparse), filter("id", dense))
+    ).withSparseKeyPassRates(sparseRates)
+    def rowFilter(s: ScanOp): String     = s.spec.rowFilter.map(_.toString).getOrElse("")
+    def scannedIds(s: ScanOp): Seq[Long] =
+      val out = Seq.newBuilder[Long]
+      var b   = s.next()
+      while b != null do
+        val v = b.column(0)
+        (0 until b.size).foreach(i => out += v.get(i).asInstanceOf[Long])
+        b = s.next()
+      s.close()
+      out.result()
+    val sparseFirst = rowFilter(scan(sparseRates = false))
+    val denseFirst  = rowFilter(scan(sparseRates = true))
+    debug(denseFirst)
+    sparseFirst.indexOf("In(sk") < sparseFirst.indexOf("In(id") shouldBe true
+    denseFirst.indexOf("In(id") < denseFirst.indexOf("In(sk") shouldBe true
+    // The sk filter is a Bloom filter: its false positives pass too, whatever the order
+    val expected = (0L until 20480L).filter(i => i % 10 == 0 && i % 12 == 0)
+    val scanned  = scannedIds(scan(sparseRates = true))
+    scanned shouldBe scannedIds(scan(sparseRates = false))
+    expected.forall(scanned.toSet) shouldBe true
+    scanned.forall(_ % 12 == 0) shouldBe true
+  }
+
   test("read the range of a column in each row group") {
     val src   = ParquetSource("t", joinFile)
     val parts = src.partRanges("id").getOrElse(fail("no row group ranges"))

@@ -149,6 +149,16 @@ class ScanOp(
     this
 
   /**
+    * Whether [[passRate]] scales by how sparse the probe column's values are within its range
+    * (`sparse_key_pass_rates`)
+    */
+  var sparseKeyPassRates: Boolean = true
+
+  def withSparseKeyPassRates(enabled: Boolean): this.type =
+    sparseKeyPassRates = enabled
+    this
+
+  /**
     * The estimated fraction of the rows [[rowFilter]] keeps (1.0 when unknown), to order it against
     * the per-row runtime filters in [[spec]]
     */
@@ -165,6 +175,7 @@ class ScanOp(
     .withLazyStrings(s.lazyStrings)
     .withSourceJoinFilters(s.sourceJoinFilters)
     .withJoinFiltersFirst(s.joinFiltersFirst)
+    .withSparseKeyPassRates(s.sparseKeyPassRates)
     .withRowFilterPassRate(s.rowFilterPassRate)
 
   def withSchema(s: Schema): ScanOp = ScanOp(
@@ -236,7 +247,10 @@ class ScanOp(
     * other columns only for the rows passing all, which costs more than decoding everything unless
     * few rows pass (and the source's filter, unlike [[narrow]], doesn't pause). The hash joins
     * still match every key, so a filter that stays in [[narrow]], or is in neither, only keeps more
-    * rows. Returns the conjuncts and the fraction of rows they are expected to keep together
+    * rows. With `sparseKeyPassRates`, the conjuncts are ordered by fractions that count a sparse
+    * column's distinct values ([[sparseness]]), while the limits above still apply to the fractions
+    * over the column's range width, which they were tuned with. Returns the conjuncts and the
+    * fraction of rows they are expected to keep together, by the fractions they are ordered by
     */
   private def joinRowFilters(): (Seq[ParquetFilter], Double) =
     if !sourceJoinFilters || rowFilters.isEmpty || !source.supportsRowFilter then
@@ -256,20 +270,29 @@ class ScanOp(
         if rf == null || !typed || !source.canRowFilterOn(column) then
           None
         else
-          passRate(column, rf).map((i, rf, _)).filter(_._3 <= ScanOp.MaxConjunctPassRate)
+          passRate(column, rf, sparse = false)
+            .filter(_ <= ScanOp.MaxConjunctPassRate)
+            .map { rate =>
+              val order =
+                if sparseKeyPassRates then
+                  passRate(column, rf, sparse = true).getOrElse(rate)
+                else
+                  rate
+              (i, rf, rate, order)
+            }
       }
-      .sortBy(_._3)
+      .sortBy(_._4)
     val kept = chosen.map(_._3).product
     if chosen.isEmpty || kept > ScanOp.MaxSourcePassRate then
       inSource = null
       (Nil, 1.0)
     else
       val flags = new Array[Boolean](rowFilters.length)
-      chosen.foreach((i, _, _) => flags(i) = true)
+      chosen.foreach((i, _, _, _) => flags(i) = true)
       inSource = flags
       (
-        chosen.map((i, rf, _) => ParquetFilter.col(rowFilters(i)._1.column).isIn(rf.integerSet)),
-        kept
+        chosen.map((i, rf, _, _) => ParquetFilter.col(rowFilters(i)._1.column).isIn(rf.integerSet)),
+        chosen.map(_._4).product
       )
 
   end joinRowFilters
@@ -279,11 +302,32 @@ class ScanOp(
     * expected to keep: in each part, the share of its [min, max] that `rf` accepts, weighted by its
     * rows. Data clustered by the key (e.g. sales by date) leaves few parts whose rows mostly pass,
     * which the share of the whole column's [min, max] would underestimate. None when the source has
-    * no statistics for the column
+    * no statistics for the column. With `sparse`, the build keys' share counts the column's
+    * distinct values ([[sparseness]]); a range filter keeps every value of its range, so its share
+    * is exact either way
     */
-  private def passRate(column: String, rf: RowKeyFilter): Option[Double] =
+  private def passRate(column: String, rf: RowKeyFilter, sparse: Boolean): Option[Double] =
+    val density =
+      if sparse && rf.kind != RowKeyFilter.Kind.Range then
+        sparseness(column)
+      else
+        1.0
+    // A Bloom filter's false positives are a share of the probe values themselves: only the build
+    // keys' share scales
+    val falsePositives =
+      if rf.kind == RowKeyFilter.Kind.Bloom then
+        RowKeyFilter.BloomFalsePositives
+      else
+        0.0
     inline def share(lo: Long, hi: Long): Double =
-      rf.acceptedIn(lo, hi) / (hi.toDouble - lo.toDouble + 1.0)
+      val accepted = rf.acceptedIn(lo, hi) / (hi.toDouble - lo.toDouble + 1.0)
+      if density == 1.0 then
+        accepted
+      else
+        math.min(
+          1.0,
+          math.max(0.0, accepted - falsePositives) * density + math.min(accepted, falsePositives)
+        )
     source.partRanges(column) match
       case Some(parts) =>
         val set  = rf.integerSet
@@ -302,6 +346,32 @@ class ScanOp(
         )
       case None =>
         source.columnRange(column).map(share)
+
+  end passRate
+
+  /**
+    * How many values of the range of `column` there are per distinct value it holds (at least 1.0;
+    * 1.0 when unknown): the build keys of a join filter are values of the probe column, so the
+    * share of the probe rows they keep is their count over the column's distinct values in the
+    * range, not over its width. A column whose equal values come in runs (lineitem's order keys,
+    * about 4 lines per order) has at most its rows over the mean run length distinct values, which
+    * metadata-only distinct estimates (at most the range width) miss
+    */
+  private def sparseness(column: String): Double =
+    val r =
+      for
+        (lo, hi) <- source.columnRange(column)
+        d        <- source.estimatedDistinct(column)
+      yield
+        val runs =
+          for
+            rows <- source.estimatedRows
+            run  <- source.keyRunLength(column)
+            if run > 1.0
+          yield rows.toDouble / run
+        val distinct = runs.fold(d)(math.min(d, _))
+        (hi.toDouble - lo.toDouble + 1.0) / math.max(1.0, distinct)
+    r.map(math.max(1.0, _)).getOrElse(1.0)
 
   /**
     * The rows of `b` (a batch the source returned) that pass the per-row filters set so far. A
