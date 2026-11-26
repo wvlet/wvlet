@@ -92,9 +92,9 @@ object GpuExprs:
         isBool(l) && isBool(r) && supports(l) && supports(r)
       case NotExpr(c) =>
         isBool(c) && supports(c)
-      case IsNullExpr(c, _) =>
+      case IsNullExpr(c, _, _) =>
         supports(c)
-      case InList(c, values, _, _) =>
+      case InList(c, values, _, _, _) =>
         supports(c) && inListType(c.ptype) && values.forall(v => v != null)
       case l: LikeExpr =>
         !l.caseInsensitive && l.escape.isEmpty && l.child.ptype == PType.Str && supports(l.child)
@@ -319,7 +319,7 @@ object GpuExprs:
         logical(l, r, BinaryOp.NULL_LOGICAL_OR, input, rows)
       case NotExpr(c) =>
         withColumn(evalAs(c, PType.Bool, input, rows), rows)(cv => col(cv.not()))
-      case IsNullExpr(c, negate) =>
+      case IsNullExpr(c, negate, _) =>
         withColumn(eval(c, input, rows), rows) { cv =>
           col(
             if negate then
@@ -328,7 +328,7 @@ object GpuExprs:
               cv.isNull()
           )
         }
-      case InList(c, values, hasNull, negate) =>
+      case InList(c, values, hasNull, negate, _) =>
         inList(c, values, hasNull, negate, input, rows)
       case l: LikeExpr =>
         withColumn(eval(l.child, input, rows), rows) { cv =>
