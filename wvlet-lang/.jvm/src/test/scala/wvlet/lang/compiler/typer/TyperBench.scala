@@ -21,11 +21,14 @@ import java.io.File
 /**
   * A lightweight timing probe for compiler performance work (issue #392): compiles the spec/basic
   * corpus repeatedly after warmup and logs the median wall time. No assertion — the numbers are for
-  * comparing before/after within a single machine and JVM session.
+  * comparing before/after within a single machine and JVM session. It takes minutes, so it is
+  * ignored unless `WVLET_TYPER_BENCH` is set (e.g. `WVLET_TYPER_BENCH=1`).
   */
 class TyperBench extends UniTest:
 
   test("time spec/basic corpus compilation") {
+    if !sys.env.get("WVLET_TYPER_BENCH").exists(_.trim.nonEmpty) then
+      ignore("Set WVLET_TYPER_BENCH=1 to time spec/basic corpus compilation")
     val specDir = File("spec/basic")
     val wvFiles = Option(specDir.listFiles())
       .getOrElse(Array.empty[File])

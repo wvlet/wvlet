@@ -32,7 +32,7 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 ## Optimizer toggles
 
 - `Optimization` (`plan/OptimizerOptions.scala`) names each planner optimization. Turn them off with `wvlet.engine.optimizer.disabled=<names>`, `WVLET_ENGINE_OPTIMIZER_DISABLED`, or `WvletEngine(optimizer = ...)`.
-- `EngineOptimizerToggleTest` checks results with each optimization off.
+- `EngineOptimizerToggleTest` checks results with each optimization off, and that each one changes some TPC-H or TPC-DS plan. It compiles the queries and runs DuckDB once for all toggles, so a new toggle costs only the engine runs. A toggle that changes no plan (a runtime-only change) needs an entry with its reason in `noPlanChange`.
 - A new toggle must be listed in `OptimizerOptionsTest`, or the JS and Native CI jobs fail.
 - Give every executor or planner change an `Optimization` toggle from the start, so it can be benchmarked on one build.
 
