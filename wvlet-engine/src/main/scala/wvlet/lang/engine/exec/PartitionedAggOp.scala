@@ -80,6 +80,18 @@ class PartitionedAggOp(
     longGroupTables = enabled
     this
 
+  /**
+    * Whether the partitions group runs of non-decreasing single Int64 keys without hashing them
+    * (`sorted_group_runs`). Partials of a scan sorted by the key arrive in part order, so each
+    * partition's rows keep the order
+    */
+  var sortedGroupRuns: Boolean = true
+
+  /** Set [[sortedGroupRuns]] */
+  def withSortedGroupRuns(enabled: Boolean): this.type =
+    sortedGroupRuns = enabled
+    this
+
   def next(): Batch =
     if result == null then
       result = aggregate()
@@ -101,6 +113,7 @@ class PartitionedAggOp(
           .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
           .withFusedAccumulators(fuseAccumulators)
           .withLongGroupTables(longGroupTables)
+          .withSortedGroupRuns(sortedGroupRuns)
         try op.drain()
         finally op.close()
       val keyVecs =

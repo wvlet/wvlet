@@ -26,15 +26,29 @@ import wvlet.lang.engine.vector.*
   * kept outside the slots.
   *
   * Group ids and their order are the same as a [[GroupTable]] over the key gives.
+  *
+  * With `sortedRuns` (`sorted_group_runs`), the table starts without slots while the keys come in
+  * non-decreasing order with no NULL, as the lines of a file sorted by the key do (TPC-H lineitem
+  * by `l_orderkey`): a key equal to the last group's key is that group, and a greater one is a new
+  * group, so no key is hashed. The first key below the last group's key, or the first NULL, inserts
+  * the groups so far into slots and groups the rest by hashing.
   */
-final class LongGroupTable(keyType: PType, expectedGroups: Int = 0) extends GroupIndex:
+final class LongGroupTable(keyType: PType, expectedGroups: Int = 0, sortedRuns: Boolean = false)
+    extends GroupIndex:
   import LongGroupTable.*
 
   private val store = GroupTable.KeyStore(keyType).asInstanceOf[GroupTable.LongStore]
+  // Whether every key so far came in non-decreasing order with no NULL, with no slots in use
+  private var sorted = sortedRuns
   // The group id of each slot, or Empty
-  private var cap   = GroupTable.slotCapacity(expectedGroups)
-  private var slots = emptySlots(cap)
-  private var mask  = cap - 1
+  private var cap   = 0
+  private var slots = Array.emptyIntArray
+  private var mask  = 0
+  if !sorted then
+    cap = GroupTable.slotCapacity(expectedGroups)
+    slots = emptySlots(cap)
+    mask = cap - 1
+
   // The key of each group in id order, and whether it is the NULL group
   private var values    = new Array[Long](math.max(16, math.min(expectedGroups, 1 << 20)))
   private var count     = 0
@@ -42,18 +56,32 @@ final class LongGroupTable(keyType: PType, expectedGroups: Int = 0) extends Grou
 
   def numGroups: Int = count
 
+  /**
+    * Whether the keys so far were grouped as runs of non-decreasing keys, with no slots (for tests)
+    */
+  private[exec] def isSorted: Boolean = sorted
+
   def groupIds(keys: Array[Vec], n: Int): Array[Int] =
-    val v   = store.normalize(keys(0)).asInstanceOf[LongVec]
-    val x   = v.values
-    val ns  = v.nulls
-    val ids = new Array[Int](n)
+    val v     = store.normalize(keys(0)).asInstanceOf[LongVec]
+    val x     = v.values
+    val ns    = v.nulls
+    val ids   = new Array[Int](n)
+    var start = 0
+    if sorted then
+      start = runIds(x, ns, n, ids)
+      if start == n then
+        return ids
+      // A key below the last group's, or a NULL: group the rest by hashing
+      sorted = false
+      cap = GroupTable.slotCapacity(math.max(expectedGroups, count))
+      rehash()
     if ns == null then
-      var i = 0
+      var i = start
       while i < n do
         ids(i) = idOf(x(i))
         i += 1
     else
-      var i = 0
+      var i = start
       while i < n do
         ids(i) =
           if ns(i) then
@@ -62,6 +90,37 @@ final class LongGroupTable(keyType: PType, expectedGroups: Int = 0) extends Grou
             idOf(x(i))
         i += 1
     ids
+
+  /**
+    * Group ids of the rows from the start while their keys are non-NULL and non-decreasing from the
+    * last group's key: the number of rows given ids
+    */
+  private def runIds(x: Array[Long], ns: Array[Boolean], n: Int, ids: Array[Int]): Int =
+    // Rows before the first NULL
+    var end = n
+    if ns != null then
+      var j = 0
+      while j < end do
+        if ns(j) then
+          end = j
+        j += 1
+    if end == 0 then
+      return 0
+    var g = count - 1
+    if g < 0 then
+      g = add(x(0))
+    var last = values(g)
+    var i    = 0
+    while i < end do
+      val k = x(i)
+      if k > last then
+        g = add(k)
+        last = k
+      else if k != last then
+        return i
+      ids(i) = g
+      i += 1
+    end
 
   private def nullId(): Int =
     if nullGroup < 0 then
@@ -96,6 +155,10 @@ final class LongGroupTable(keyType: PType, expectedGroups: Int = 0) extends Grou
   /** Twice the slots, with every non-NULL group re-inserted in id order */
   private def grow(): Unit =
     cap *= 2
+    rehash()
+
+  /** New slots of capacity `cap`, with every non-NULL group inserted in id order */
+  private def rehash(): Unit =
     mask = cap - 1
     slots = emptySlots(cap)
     var g = 0

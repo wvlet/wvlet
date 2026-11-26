@@ -678,6 +678,15 @@ enum Optimization(val name: String):
   case LongGroupTables extends Optimization("long_group_tables")
 
   /**
+    * Hash aggregations over one Int64-backed key group runs of equal keys without hashing them
+    * while the keys come in non-decreasing order, falling back to hashing at the first key out of
+    * order ([[wvlet.lang.engine.exec.LongGroupTable]]). Partial aggregations over a scan sorted by
+    * the key (TPC-H lineitem by `l_orderkey`) and their final partitions, which get the partials in
+    * part order, then assign group ids with one comparison per row
+    */
+  case SortedGroupRuns extends Optimization("sorted_group_runs")
+
+  /**
     * Group counts of rows that come in clusters sharing their keys, such as the lines of an order
     * sharing its customer and date, are estimated over the clusters instead of the rows
     * ([[wvlet.lang.engine.runtime.ClusteredGroups]]), with cluster sizes from the mean run length

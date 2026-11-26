@@ -30,7 +30,8 @@ final class PackedGroupTable(
     keyTypes: IndexedSeq[PType],
     expectedGroups: Int = 0,
     longDecimals: Boolean = false,
-    longTables: Boolean = false
+    longTables: Boolean = false,
+    sortedRuns: Boolean = false
 ) extends GroupIndex:
   require(AggKeyPacking.packable(keyTypes, longDecimals), s"Keys can't be packed: ${keyTypes}")
 
@@ -97,7 +98,7 @@ final class PackedGroupTable(
       case Some(next) =>
         val table =
           if longTables then
-            LongGroupTable(PType.Int64, presize)
+            LongGroupTable(PType.Int64, presize, sortedRuns)
           else
             GroupTable(IndexedSeq(PType.Int64), presize)
         if count > 0 then
@@ -130,7 +131,8 @@ object PackedGroupTable:
     * A [[PackedGroupTable]] when `pack` and the keys can be packed, a [[LongGroupTable]] for one
     * Int64 key with `longTables` (and inside a [[PackedGroupTable]] for the packed key), and a
     * [[GroupTable]] over the key columns otherwise, keyed by the codes of string keys that carry
-    * them with `stableCodes`
+    * them with `stableCodes`. With `sortedRuns`, a [[LongGroupTable]] groups runs of non-decreasing
+    * keys without hashing them while the keys come in that order
     */
   def forKeys(
       keyTypes: IndexedSeq[PType],
@@ -138,12 +140,13 @@ object PackedGroupTable:
       pack: Boolean,
       longDecimals: Boolean,
       stableCodes: Boolean = false,
-      longTables: Boolean = false
+      longTables: Boolean = false,
+      sortedRuns: Boolean = false
   ): GroupIndex =
     if pack && AggKeyPacking.packable(keyTypes, longDecimals) then
-      new PackedGroupTable(keyTypes, expectedGroups, longDecimals, longTables)
+      new PackedGroupTable(keyTypes, expectedGroups, longDecimals, longTables, sortedRuns)
     else if longTables && LongGroupTable.supports(keyTypes) then
-      LongGroupTable(keyTypes(0), expectedGroups)
+      LongGroupTable(keyTypes(0), expectedGroups, sortedRuns)
     else
       GroupTable(
         keyTypes,

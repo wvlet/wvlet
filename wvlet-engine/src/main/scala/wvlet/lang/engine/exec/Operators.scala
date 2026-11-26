@@ -798,6 +798,17 @@ class HashAggOp(
     longGroupTables = enabled
     this
 
+  /**
+    * Whether a [[LongGroupTable]] groups runs of non-decreasing keys without hashing them while the
+    * keys come in that order (`sorted_group_runs`)
+    */
+  var sortedGroupRuns: Boolean = true
+
+  /** Set [[sortedGroupRuns]] */
+  def withSortedGroupRuns(enabled: Boolean): this.type =
+    sortedGroupRuns = enabled
+    this
+
   // Aggregates without FILTER, which FusedAccumulators may fold
   private lazy val unfiltered: Array[Boolean] = aggs.map(_.filter.isEmpty).toArray
 
@@ -993,7 +1004,8 @@ class HashAggOp(
       packKeys,
       longDecimalKeys,
       stableCodes = true,
-      longTables = longGroupTables
+      longTables = longGroupTables,
+      sortedRuns = sortedGroupRuns
     )
     val accs = aggs.map(_.newAccumulator())
     if presize > 0 then

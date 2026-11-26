@@ -140,4 +140,16 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options.withDisabled(Optimization.LongGroupTables), long).contains(true) shouldBe false
   }
 
+  test("group runs of sorted keys without hashing with sorted_group_runs") {
+    val runs: PartialFunction[Operator, Boolean] = {
+      case a: HashAggOp =>
+        a.sortedGroupRuns
+      case a: PartitionedAggOp =>
+        a.sortedGroupRuns
+    }
+    flags(options, runs) shouldContain true
+    flags(options, runs).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.SortedGroupRuns), runs).contains(true) shouldBe false
+  }
+
 end EngineAdaptivePartialAggsTest
