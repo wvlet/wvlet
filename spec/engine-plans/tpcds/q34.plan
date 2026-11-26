@@ -23,6 +23,7 @@ Scan[customer](columns=c_customer_sk,c_salutation,c_first_name,c_last_name,c_pre
   ↓ Project(#0, #1, #2) -> [ss_ticket_number:long, ss_customer_sk:long, cnt:long]
   ↓ Morsel[parallelism=N] -> [ss_ticket_number:long, ss_customer_sk:long, cnt:long]
 ↙ HashJoin[Inner](#0 = #1) -> [c_customer_sk:long, c_salutation:string, c_first_name:string, c_last_name:string, c_preferred_cust_flag:string, ss_ticket_number:long, ss_customer_sk:long, cnt:long]
-↓ Project(#3, #2, #1, #4, #5, #7) -> [c_last_name:string, c_first_name:string, c_salutation:string, c_preferred_cust_flag:string, ss_ticket_number:long, cnt:long]
+↓ Project(#5, #7, #1, #2, #3, #4) -> [ss_ticket_number:long, cnt:long, c_salutation:string, c_first_name:string, c_last_name:string, c_preferred_cust_flag:string]
+↓ Project(#4, #3, #2, #5, #0, #1) -> [c_last_name:string, c_first_name:string, c_salutation:string, c_preferred_cust_flag:string, ss_ticket_number:long, cnt:long]
 ↓ Morsel[parallelism=N] -> [c_last_name:string, c_first_name:string, c_salutation:string, c_preferred_cust_flag:string, ss_ticket_number:long, cnt:long]
 ↓ Sort[parallelism=N](#0, #1, #2, #3 desc, #4) -> [c_last_name:string, c_first_name:string, c_salutation:string, c_preferred_cust_flag:string, ss_ticket_number:long, cnt:long]

@@ -153,20 +153,37 @@ object CardinalityEstimator:
 
   /**
     * The number of literals a condition compares an expression to, when it is `x = literal` (1) or
-    * `x in (n literals)` (n): the conditions whose selectivity reads the distinct count of x
+    * `x in (n literals)` (n): the conditions whose selectivity reads the distinct count of x. With
+    * `constants` (`constant_list_selectivity`), a constant expression of literals (`1999 + 1`)
+    * counts as a literal too
     */
-  def literalCount(c: Expression): Option[Int] =
+  def literalCount(c: Expression, constants: Boolean = false): Option[Int] =
+    def isValue(e: Expression): Boolean = isNonNullLiteral(e) || constants && isConstant(e)
     c match
-      case Eq(_, l: Literal, _) if !l.isInstanceOf[NullLiteral] =>
+      case Eq(_, l, _) if isValue(l) =>
         Some(1)
-      case Eq(l: Literal, _, _) if !l.isInstanceOf[NullLiteral] =>
+      case Eq(l, _, _) if isValue(l) =>
         Some(1)
-      case In(_, list, _) if list.forall(isNonNullLiteral) =>
+      case In(_, list, _) if list.forall(isValue) =>
         Some(list.size)
       case _ =>
         None
 
   private def isNonNullLiteral(e: Expression): Boolean =
     e.isInstanceOf[Literal] && !e.isInstanceOf[NullLiteral]
+
+  /** Whether e is arithmetic, casts and parentheses over non-NULL literals only */
+  private def isConstant(e: Expression): Boolean =
+    e match
+      case a: ArithmeticBinaryExpr =>
+        isConstant(a.left) && isConstant(a.right)
+      case u: ArithmeticUnaryExpr =>
+        isConstant(u.child)
+      case c: Cast =>
+        isConstant(c.expr)
+      case p: ParenthesizedExpression =>
+        isConstant(p.child)
+      case other =>
+        isNonNullLiteral(other)
 
 end CardinalityEstimator

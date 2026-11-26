@@ -666,7 +666,8 @@ class RuntimeBinder(planner: Planner):
     * signature of each, walking the condition and its binding together
     */
   private def literalCounts(e: Expression, bound: VExpr): Map[String, Int] =
-    val counts                              = Map.newBuilder[String, Int]
+    val constants = planner.options.isEnabled(Optimization.ConstantListSelectivity)
+    val counts    = Map.newBuilder[String, Int]
     def loop(e: Expression, b: VExpr): Unit =
       (e, b) match
         case (p: ParenthesizedExpression, _) =>
@@ -678,7 +679,7 @@ class RuntimeBinder(planner: Planner):
           loop(o.left, l)
           loop(o.right, r)
         case _ =>
-          CardinalityEstimator.literalCount(e).foreach(n => counts += b.sig -> n)
+          CardinalityEstimator.literalCount(e, constants).foreach(n => counts += b.sig -> n)
     loop(e, bound)
     counts.result()
 
