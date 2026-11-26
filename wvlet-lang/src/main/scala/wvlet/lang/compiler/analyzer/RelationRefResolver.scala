@@ -285,9 +285,7 @@ object RelationRefResolver extends ContextLogSupport:
       ref
     else
       val tableName = TableName.parse(ref.name.fullName)
-      context
-        .catalog
-        .findTable(tableName.schema.getOrElse(context.defaultSchema), tableName.name) match
+      context.catalog.findTable(tableName, context.defaultSchema) match
         case Some(tbl) =>
           TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
         case None =>

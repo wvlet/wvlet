@@ -120,6 +120,19 @@ Parquet files carry no key information, so the engine can't tell a join on a com
 - Keys only steer join order and build sides, never results. A wrong declaration can make a plan slower but can't change its answer.
 - A sidecar that can't be parsed, or a key naming a column the table doesn't have, is ignored with a warning. Tables made by `create table` keep their declared `primary key` / `unique` columns themselves.
 
+### Built-in tpch and tpcds catalogs
+
+Every session can read generated TPC-H and TPC-DS tables as `tpch.<schema>.<table>` and `tpcds.<schema>.<table>`, with no profile setting. The schema names the scale factor, as in Trino's tpch and tpcds connectors: `tiny` is 0.01, and `sf<n>` is n (`sf1`, `sf10`, `sf100`). Rows are generated only while a query scans them:
+
+```bash
+wvlet run "from tpch.sf1.lineitem group by l_returnflag agg _.count"
+wvlet run "from tpcds.tiny.store_sales join tpcds.tiny.item on ss_item_sk = i_item_sk group by i_category agg _.count"
+```
+
+- TPC-H goes up to `sf1000` and TPC-DS up to `sf10`; values differ from `dbgen` / `dsdgen`'s, as described below.
+- Columns keep their TPC prefixes (`l_orderkey`), as in DuckDB's tables; Trino's tpch connector drops them unless `tpch.column-naming=STANDARD`.
+- A table you register under the same qualified name takes precedence. To name the tables without a qualifier, use the profile properties below.
+
 ### TPC-H tables
 
 `prepareTPCH: true` registers the eight TPC-H tables (`lineitem`, `orders`, `customer`, ...), generated while queries scan them, with no data files and no DuckDB. `tpchScaleFactor` sets the size (default 0.01, 60K line items; up to 1000). These are the same properties as the DuckDB connector's, so one profile works on both engines:

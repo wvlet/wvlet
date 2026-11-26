@@ -1027,14 +1027,17 @@ class EngineCatalog:
     c.register(source)
     c
 
-  /** The table a reference (`name`, qualified as `fullName`) points to */
+  /**
+    * The table a reference (`name`, qualified as `fullName`) points to. A registered table comes
+    * first, then a built-in benchmark table (`tpch.sf1.lineitem`, see [[BenchmarkCatalogs]])
+    */
   def lookup(name: String, fullName: String): Option[TableSource] =
     nameKey match
       case Some(key) =>
-        find(key(fullName))
+        find(key(fullName)).orElse(BenchmarkCatalogs.find(fullName))
       case None =>
         // A qualified reference names its table exactly; the bare name is the fallback
-        find(fullName).orElse(find(name))
+        find(fullName).orElse(BenchmarkCatalogs.find(fullName)).orElse(find(name))
 
   /**
     * information_schema views of this catalog. Tables live in the `main` schema of the `memory`
@@ -1081,6 +1084,27 @@ object EngineCatalog:
   val SchemaName  = "main"
 
   /**
+    * An empty compile-time catalog named `catalogName` that also resolves the built-in benchmark
+    * tables (`tpch.sf1.lineitem`, see [[BenchmarkCatalogs]]), so the typer knows their columns
+    */
+  def compileCatalog(
+      catalogName: String,
+      dbType: wvlet.lang.compiler.DBType = wvlet.lang.compiler.DBType.Wvlet
+  ): wvlet.lang.catalog.InMemoryCatalog =
+    import wvlet.lang.catalog.Catalog
+    new wvlet.lang.catalog.InMemoryCatalog(catalogName, Nil, dbType):
+      override def findTable(
+          tableName: Catalog.TableName,
+          defaultSchema: String
+      ): Option[Catalog.TableDef] =
+        // Registered tables come first, as in EngineCatalog.lookup. The default lookup ignores
+        // the catalog part, so another catalog's name reaches it only after the benchmarks
+        if tableName.catalog.forall(_.equalsIgnoreCase(this.catalogName)) then
+          super.findTable(tableName, defaultSchema)
+        else
+          BenchmarkCatalogs.tableDef(tableName).orElse(super.findTable(tableName, defaultSchema))
+
+  /**
     * A compile-time catalog with the columns of `tables` in the `main` schema, for the `wvlet`
     * dialect: with it, the typer knows each column's type, so stdlib methods such as
     * `o_comment.like(...)` resolve. Pass it to `Compiler.setDefaultCatalog`. `dbType` is the SQL
@@ -1091,10 +1115,7 @@ object EngineCatalog:
       dbType: wvlet.lang.compiler.DBType = wvlet.lang.compiler.DBType.Wvlet
   ): wvlet.lang.catalog.InMemoryCatalog =
     import wvlet.lang.catalog.Catalog
-    val c = wvlet
-      .lang
-      .catalog
-      .InMemoryCatalog(catalogName = CatalogName, functions = Nil, catalogDBType = dbType)
+    val c = compileCatalog(CatalogName, dbType)
     c.createSchema(
       Catalog.TableSchema(Some(CatalogName), SchemaName),
       Catalog.CreateMode.CREATE_IF_NOT_EXISTS

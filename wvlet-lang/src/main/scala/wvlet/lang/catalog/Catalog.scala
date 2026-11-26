@@ -49,6 +49,16 @@ trait Catalog extends LogSupport:
   def listTables(schemaName: String): Seq[Catalog.TableDef]
   def findTable(schemaName: String, tableName: String): Option[Catalog.TableDef]
 
+  /**
+    * The table a reference names, with `defaultSchema` for an unqualified name. The catalog part is
+    * ignored by default; a catalog that also serves other catalogs' tables (e.g. the wvlet engine's
+    * built-in `tpch` catalog) overrides this
+    */
+  def findTable(tableName: TableName, defaultSchema: String): Option[Catalog.TableDef] = findTable(
+    tableName.schema.getOrElse(defaultSchema),
+    tableName.name
+  )
+
   def getTable(tableName: TableName): Option[Catalog.TableDef] =
     tableName.catalog match
       case c if c.isEmpty || c.exists(_ == catalogName) =>

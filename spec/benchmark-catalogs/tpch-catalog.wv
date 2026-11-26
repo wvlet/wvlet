@@ -1,0 +1,17 @@
+-- The built-in tpch catalog: no profile setting, schema names the scale factor
+from tpch.tiny.nation
+test _.size should be 25
+
+from tpch.sf1.region
+test _.size should be 5
+
+-- tiny is scale factor 0.01: 1,500 customers
+from tpch.tiny.customer
+agg _.count
+test _.rows should be [[1500]]
+
+-- Columns are typed for the compiler, so stdlib methods resolve
+from tpch.tiny.part
+where p_type.like('%BRASS')
+agg _.count
+test _.rows should be [[394]]
