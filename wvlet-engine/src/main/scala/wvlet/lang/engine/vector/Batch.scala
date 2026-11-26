@@ -221,6 +221,17 @@ object Batch:
   /** A batch with no columns that still carries a row count (e.g. `select 1` input) */
   def ofRows(n: Int): Batch = Batch(Array.empty, n)
 
+  /**
+    * A batch of n rows whose column i is `cols(i)`, or, where that is null, deferred: the rows of
+    * `srcs(i)` at `sels(i)` (-1 for NULL). The arrays are owned by the batch afterwards
+    */
+  private[engine] def withDeferred(
+      cols: Array[Vec],
+      srcs: Array[Vec],
+      sels: Array[Array[Int]],
+      n: Int
+  ): Batch = new Batch(cols, srcs, sels, n)
+
   /** `outer` positions mapped through `inner` positions; -1 (a row of NULLs) stays -1 */
   private def compose(inner: Array[Int], outer: Array[Int], n: Int): Array[Int] =
     val out = new Array[Int](n)

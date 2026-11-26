@@ -249,10 +249,24 @@ class ProjectOp(val child: Operator, val exprs: IndexedSeq[VExpr], val schema: S
     extends Operator:
   override def children: Seq[Operator] = Seq(child)
   override protected def details       = s"(${exprs.map(_.sig).mkString(", ")})"
-  def next(): Batch                    =
+
+  /**
+    * Whether columns of a deferred input pass through deferred, and expressions over them compute
+    * over their source rows when [[DenseSelectedRows]] allows (`dense_selected_rows`)
+    */
+  var denseSelected: Boolean = true
+
+  /** Set [[denseSelected]] */
+  def withDenseSelected(enabled: Boolean): this.type =
+    denseSelected = enabled
+    this
+
+  def next(): Batch =
     val b = child.next()
     if b == null then
       null
+    else if denseSelected && b.isDeferred then
+      DenseSelectedRows.project(exprs, b)
     else
       Batch(exprs.map(_.eval(b)).toArray, b.size)
 
@@ -761,6 +775,18 @@ class HashAggOp(
     selectedInputs = enabled
     this
 
+  /**
+    * Whether string group keys and aggregate arguments over the deferred columns of a filter's
+    * output read or compute over the columns' source rows ([[DenseSelectedRows]],
+    * `dense_selected_rows`)
+    */
+  var denseSelected: Boolean = true
+
+  /** Set [[denseSelected]] */
+  def withDenseSelected(enabled: Boolean): this.type =
+    denseSelected = enabled
+    this
+
   // Aggregates without FILTER, which FusedAccumulators may fold
   private lazy val unfiltered: Array[Boolean] = aggs.map(_.filter.isEmpty).toArray
 
@@ -782,14 +808,23 @@ class HashAggOp(
       (!selectedInputs || FusedAccumulators.foldsBatch(numGroups, b.size))
     then
       accs.foreach(_.ensureGroups(numGroups))
-      args =
-        Array.tabulate(aggs.size)(a =>
-          if unfiltered(a) then
-            aggs(a).args.map(_.eval(b)).toArray
-          else
-            null
-        )
-      folded = FusedAccumulators.update(accs, unfiltered, args, groups, b.size, numGroups)
+      val dense =
+        if denseSelected then
+          DenseSelectedRows.fold(aggs, unfiltered, accs, groups, numGroups, b)
+        else
+          null
+      if dense != null then
+        args = dense.args
+        folded = dense.folded
+      else
+        args =
+          Array.tabulate(aggs.size)(a =>
+            if unfiltered(a) then
+              aggs(a).args.map(_.eval(b)).toArray
+            else
+              null
+          )
+        folded = FusedAccumulators.update(accs, unfiltered, args, groups, b.size, numGroups)
     var a = 0
     while a < accs.size do
       if folded == null || !folded(a) then
@@ -820,6 +855,10 @@ class HashAggOp(
     acc.ensureGroups(numGroups)
     if selectedInputs && evaluated == null && agg.filter.isEmpty && agg.args.size == 1 &&
       SelectedInputs.update(acc, agg.args(0), groups, b)
+    then
+      return
+    if denseSelected && evaluated == null && agg.filter.isEmpty && agg.args.size == 1 &&
+      DenseSelectedRows.update(acc, agg.args(0), groups, b)
     then
       return
     // Without a FILTER row, the arguments aren't evaluated
@@ -962,6 +1001,8 @@ class HashAggOp(
           table match
             case p: PackedGroupTable if selectedInputs =>
               SelectedInputs.groupIds(p, keys, b)
+            case g: GroupTable if denseSelected && b.isDeferred =>
+              DenseSelectedRows.groupIds(g, keys, b)
             case _ =>
               table.groupIds(keys.map(_.eval(b)).toArray, b.size)
       val numGroups =

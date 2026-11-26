@@ -113,6 +113,8 @@ class Planner(
     )
     if !enabled(Optimization.LateGather) then
       Planner.disableLateGather(pruned)
+    if !enabled(Optimization.DenseSelectedRows) then
+      Planner.disableDenseSelected(pruned)
     if !enabled(Optimization.ScanJoinRowFilters) then
       Planner.disableSourceJoinFilters(pruned)
     if !enabled(Optimization.JoinRowFiltersFirst) then
@@ -162,6 +164,8 @@ class Planner(
       Planner.disableFusedAccumulators(physical)
     if !enabled(Optimization.AggregateSelectedRows) then
       Planner.disableSelectedInputs(physical)
+    if !enabled(Optimization.DenseSelectedRows) then
+      Planner.disableDenseSelected(physical)
     physical
 
   end optimizePhysical
@@ -3782,6 +3786,21 @@ object Planner:
       case _ =>
     op.children.foreach(disableSelectedInputs)
     op.sharedInputs.foreach(disableSelectedInputs)
+
+  /**
+    * Make the projections and hash aggregations of a plan gather the deferred columns of a filter's
+    * output before computing over them (`dense_selected_rows`). Their per-part copies in
+    * [[Parallelizer]] take the option from these operators
+    */
+  private[engine] def disableDenseSelected(op: Operator): Unit =
+    op match
+      case p: ProjectOp =>
+        p.withDenseSelected(false)
+      case a: HashAggOp =>
+        a.withDenseSelected(false)
+      case _ =>
+    op.children.foreach(disableDenseSelected)
+    op.sharedInputs.foreach(disableDenseSelected)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =

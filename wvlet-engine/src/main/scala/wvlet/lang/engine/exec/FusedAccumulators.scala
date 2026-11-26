@@ -41,7 +41,8 @@ private[exec] object FusedAccumulators:
     * Fold the rows of a batch into the fusable accumulators among `accs` (those with `fusable(a)`),
     * whose arguments are `args(a)`, and return which accumulators were folded, or null when fewer
     * than two can be (one accumulator gains nothing from the fused loop). Accumulators must have
-    * room for `numGroups` groups
+    * room for `numGroups` groups. With `sel`, row i of the batch is row `sel(i)` of the arguments
+    * (none of them -1, `dense_selected_rows`)
     */
   def update(
       accs: IndexedSeq[Accumulator],
@@ -49,7 +50,8 @@ private[exec] object FusedAccumulators:
       args: Array[Array[Vec]],
       groups: Array[Int],
       n: Int,
-      numGroups: Int
+      numGroups: Int,
+      sel: Array[Int] = null
   ): Array[Boolean] =
     if !foldsBatch(numGroups, n) then
       return null
@@ -86,7 +88,7 @@ private[exec] object FusedAccumulators:
     if nc + ns < 2 then
       null
     else
-      fewGroups(counts, nc, sums, slots, values, ns, groups, n, numGroups)
+      fewGroups(counts, nc, sums, slots, values, ns, groups, n, numGroups, sel)
       folded
 
   end update
@@ -104,7 +106,8 @@ private[exec] object FusedAccumulators:
       ns: Int,
       groups: Array[Int],
       n: Int,
-      numGroups: Int
+      numGroups: Int,
+      sel: Array[Int]
   ): Unit =
     // Without a count, a zeroed scratch array counts the batch's rows, which are then its increase
     val rows =
@@ -117,22 +120,30 @@ private[exec] object FusedAccumulators:
         java.util.Arrays.copyOf(rows, numGroups)
       else
         null
-    var i = 0
-    while i < n do
+    // Row i reads its values at r; the two loops keep the dense one free of the indirection
+    inline def fold(i: Int, r: Int): Unit =
       val g = groups(i)
       rows(g) += 1
       var j = 0
       while j < ns do
         val s = slots(j)
         val x = s(g)
-        val y = values(j)(i)
+        val y = values(j)(r)
         val z = x + y
         if ((x ^ z) & (y ^ z)) < 0 then
           sums(j).spill(g, y)
         else
           s(g) = z
         j += 1
-      i += 1
+    var i = 0
+    if sel == null then
+      while i < n do
+        fold(i, i)
+        i += 1
+    else
+      while i < n do
+        fold(i, sel(i))
+        i += 1
     var g = 0
     while g < numGroups do
       val added =
