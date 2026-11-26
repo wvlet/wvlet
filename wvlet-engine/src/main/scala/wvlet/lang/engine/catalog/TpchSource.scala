@@ -16,56 +16,22 @@ package wvlet.lang.engine.catalog
 import wvlet.lang.engine.vector.*
 
 /**
-  * A TPC-H table generated while it's scanned ([[TpchGen]]). Each block of the table is a part of
-  * the scan that generates on its own, so the engine reads the parts in parallel and a scan never
-  * holds the whole table. Row counts, key ranges, and distinct counts come from the specification,
-  * so planning needs no generated data.
+  * A TPC-H table generated while it's scanned ([[TpchGen]]), block by block. Row counts, key
+  * ranges, and distinct counts come from the specification, so planning needs no generated data.
   */
-class TpchSource private[catalog] (val table: String, gen: TpchGen) extends TableSource:
+class TpchSource private[catalog] (val table: String, gen: TpchGen) extends GeneratedSource:
   import TpchGen.*
 
   val name: String   = table
   val schema: Schema = schemas(table)
 
-  private val numBlocks = gen.numBlocks(table)
+  protected val numBlocks: Int = gen.numBlocks(table)
 
   override def estimatedRows: Option[Long] = Some(gen.estimatedRows(table))
 
-  // The block's rows as batches of the engine's batch size, with the requested columns
-  private def blockBatches(b: Int, columns: Option[Array[Int]]): Iterator[Batch] =
-    val full = gen.block(table, b)
-    slices(columns.fold(full)(full.select))
+  protected def generateBlock(b: Int): Batch = gen.block(table, b)
 
-  private def slices(b: Batch): Iterator[Batch] = Iterator
-    .range(0, b.size, Batch.DefaultSize)
-    .map(from => b.slice(from, math.min(from + Batch.DefaultSize, b.size)))
-
-  private def columnIndexes(spec: ScanSpec): Option[Array[Int]] = spec
-    .columns
-    .map(_.map(c => schema.names.indexOf(c)).toArray)
-
-  def scan(spec: ScanSpec): Iterator[Batch] =
-    val cols = columnIndexes(spec)
-    Iterator.range(0, numBlocks).flatMap(blockBatches(_, cols))
-
-  override def canSplit: Boolean = numBlocks > 1
-
-  override def scanSplits(spec: ScanSpec): Option[ScanSplits] =
-    if numBlocks <= 1 then
-      None
-    else
-      val cols   = columnIndexes(spec)
-      val counts = IndexedSeq.tabulate(numBlocks)(gen.blockRowCount(table, _))
-      Some(
-        ScanSplits(
-          IndexedSeq.tabulate(numBlocks)(b => () => blockBatches(b, cols)),
-          () => (),
-          if counts.forall(_.isDefined) then
-            counts.flatten
-          else
-            IndexedSeq.empty
-        )
-      )
+  protected def blockRowCount(b: Int): Option[Long] = gen.blockRowCount(table, b)
 
   // Columns whose values grow with the block: the table's own key, numbered in block order
   private def blockKeyRange(column: String, b: Int): Option[(Long, Long)] =
@@ -173,15 +139,5 @@ class TpchSource private[catalog] (val table: String, gen: TpchGen) extends Tabl
 
   // Tables of the same name at the same scale factor hold the same rows
   override def key: Any = ("tpch", gen.sf, table)
-
-  /** All rows of the table, in memory */
-  def materialize: MemTable = MemTable(name, schema, scan(ScanSpec()).toSeq)
-
-  /** The table in memory from its already generated blocks, with every column */
-  private[catalog] def materialize(blocks: Seq[Batch]): MemTable = MemTable(
-    name,
-    schema,
-    blocks.flatMap(slices)
-  )
 
 end TpchSource

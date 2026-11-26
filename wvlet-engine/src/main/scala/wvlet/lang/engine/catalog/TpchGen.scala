@@ -15,6 +15,7 @@ package wvlet.lang.engine.catalog
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.vector.*
+import GenColumns.*
 
 import scala.util.Random
 
@@ -71,7 +72,7 @@ object TpchGen:
     *   the scale factor, in (0, [[maxStreamingScaleFactor]]]
     */
   def sources(sf: Double): Seq[TpchSource] =
-    checkScaleFactor(sf, maxStreamingScaleFactor)
+    checkScaleFactor("TPC-H", sf, maxStreamingScaleFactor)
     val gen = TpchGen(sf)
     tableNames.map(TpchSource(_, gen))
 
@@ -82,7 +83,7 @@ object TpchGen:
     *   the scale factor, in (0, [[maxScaleFactor]]]
     */
   def tables(sf: Double): Seq[MemTable] =
-    checkScaleFactor(sf, maxScaleFactor)
+    checkScaleFactor("TPC-H", sf, maxScaleFactor)
     val gen = TpchGen(sf)
     // Orders and line items come from one pass per block, not one per table
     val (orders, lineitems) = Seq.tabulate(gen.numBlocks("orders"))(gen.ordersAndLineitems).unzip
@@ -103,12 +104,6 @@ object TpchGen:
     ts.foreach(catalog.register)
     ts
 
-  private def checkScaleFactor(sf: Double, max: Double): Unit =
-    if !(sf > 0 && sf <= max) then
-      throw StatusCode
-        .INVALID_ARGUMENT
-        .newException(s"TPC-H scale factor must be in (0, ${max}]: ${sf}")
-
   private val Money: PType = PType.decimal(15, 2)
 
   // Dates as days since 1970-01-01
@@ -118,10 +113,6 @@ object TpchGen:
 
   // The latest order date, so that every line item ships by EndDate
   private[catalog] val LastOrderDate = EndDate - 151
-
-  private def schema(fields: (String, PType)*): Schema = Schema(
-    fields.map((n, t) => Field(n, t)).toIndexedSeq
-  )
 
   /** The columns of each table */
   private[catalog] val schemas: Map[String, Schema] = Map(
@@ -650,11 +641,8 @@ private[catalog] class TpchGen(val sf: Double):
     columns.headOption.map(_.size).getOrElse(0)
   )
 
-  private def longs(n: Int)(f: Int => Long): Vec  = LongVec(PType.Int64, Array.tabulate(n)(f), null)
-  private def ints(n: Int)(f: Int => Int): Vec    = IntVec(PType.Int32, Array.tabulate(n)(f), null)
-  private def dates(a: Array[Int]): Vec           = IntVec(PType.Date, a, null)
-  private def money(a: Array[Long]): Vec          = LongVec(Money, a, null)
-  private def strs(n: Int)(f: Int => String): Vec = StrVec(Array.tabulate(n)(f), null)
+  private def dates(a: Array[Int]): Vec             = IntVec(PType.Date, a, null)
+  private def money(a: Array[Long]): Vec            = LongVec(Money, a, null)
   private def pick[A](r: Random, xs: IndexedSeq[A]) = xs(r.nextInt(xs.size))
 
   // A uniform integer in [lo, hi]
