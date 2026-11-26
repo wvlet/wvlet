@@ -1862,7 +1862,10 @@ enum OuterMode:
   /** One part of a split probe: marks the shared build's matches, emits no unmatched rows */
   case Part
 
-  /** The last run after every part: marks the shared matches, then emits the unmatched rows */
+  /**
+    * The last run after every part: marks the shared matches, then emits the unmatched rows (those
+    * in [[HashJoinOp.withTailRange]] only, `parallel_outer_tail`)
+    */
   case Tail
 
 /**
@@ -1959,6 +1962,14 @@ class HashJoinOp(
     lateGather = enabled
     this
 
+  // The build positions [from, until) whose unmatched rows a tail run emits
+  private var tailRange = (0, Int.MaxValue)
+
+  /** Emit only the unmatched build rows at positions [from, until) (`parallel_outer_tail`) */
+  def withTailRange(from: Int, until: Int): this.type =
+    tailRange = (from, until)
+    this
+
   /** Whether the build may use a direct index for a dense integer key (`join_direct_index`) */
   def directIndex: Boolean = joinBuild.directIndex
 
@@ -2022,7 +2033,7 @@ class HashJoinOp(
     emittedUnmatched = true
     // RIGHT SEMI emits the matched build rows; the other kinds the unmatched ones
     val wanted = kind == JoinKind.RightSemi
-    val idx    = HashJoinOp.positionsOf(buildMatched, build.size, wanted)
+    val idx    = BuildPositions.in(buildMatched, build.size, tailRange, wanted)
     if idx.isEmpty then
       return null
     val n = idx.length

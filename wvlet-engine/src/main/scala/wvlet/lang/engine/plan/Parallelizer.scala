@@ -53,7 +53,8 @@ object Parallelizer:
       longGroupTables: Boolean = true,
       sortedGroupRuns: Boolean = true,
       unionDistinctOnce: Boolean = true,
-      anyValuePartials: Boolean = true
+      anyValuePartials: Boolean = true,
+      parallelOuterTail: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -75,7 +76,8 @@ object Parallelizer:
         longGroupTables,
         sortedGroupRuns,
         unionDistinctOnce,
-        anyValuePartials
+        anyValuePartials,
+        parallelOuterTail
       )
       rewrite(op, runner)
 
@@ -102,7 +104,8 @@ object Parallelizer:
       sortedGroupRuns: Boolean,
       unionDistinctOnce: Boolean,
       // any_value splits into two phases (`dependent_group_keys`, which emits it)
-      anyValuePartials: Boolean
+      anyValuePartials: Boolean,
+      parallelOuterTail: Boolean
   )
 
   /**
@@ -121,15 +124,16 @@ object Parallelizer:
     * Scans and the operators over them that can run on parts of the scans independently: each
     * segment's `pipeline(input)` makes a copy of those operators over another input of its scan. A
     * pipeline has one segment, or one per scan of the inputs of a UNION ALL
-    * (`union_all_pipelines`), whose operators above the union are the same. `tail`, when the
-    * pipeline has right / full joins, makes the copy that runs once after every part over an empty
-    * input of the first scan, emitting the build rows no part matched. `prepare` runs before parts
-    * start (hash join builds), on the calling thread or, with `concurrent_join_builds`, together on
-    * coordinator threads, and `close` releases what the copies share
+    * (`union_all_pipelines`), whose operators above the union are the same. `tails`, when the
+    * pipeline has right / full joins, make the copies that run after every part over an empty input
+    * of a scan, emitting the build rows no part matched (one per union input with such joins).
+    * `prepare` runs before parts start (hash join builds), on the calling thread or, with
+    * `concurrent_join_builds`, together on coordinator threads, and `close` releases what the
+    * copies share
     */
   private case class Pipeline(
       segments: Seq[MorselOp.Segment],
-      tail: Option[Operator => Operator],
+      tails: Seq[MorselOp.Tail],
       prepare: List[() => Unit],
       close: List[() => Unit],
       hasWork: Boolean = false
@@ -146,18 +150,18 @@ object Parallelizer:
       */
     def map(f: Operator => Operator, work: Boolean = true): Pipeline = copy(
       segments = segments.map(s => s.copy(pipeline = x => f(s.pipeline(x)))),
-      tail = tail.map(t => x => f(t(x))),
+      tails = tails.map(_.map(f)),
       hasWork = hasWork || work
     )
 
     /** The parts of every segment in order, as one [[MorselOp]] */
     def morsels(schema: Schema, runner: TaskRunner, prepareSteps: List[() => Unit]): MorselOp =
-      MorselOp(segments, schema, runner, prepareSteps, close, tail)
+      MorselOp(segments, schema, runner, prepareSteps, close, tails)
 
   private object Pipeline:
     def of(scan: ScanOp, close: List[() => Unit] = Nil): Pipeline = Pipeline(
       Seq(MorselOp.Segment(scan, x => x)),
-      None,
+      Nil,
       Nil,
       close
     )
@@ -222,17 +226,50 @@ object Parallelizer:
           )
           if isOuterBuild(j.kind) then
             // Parts mark matched build rows; the tail emits the rest once every part is done
+            val tail =
+              p.tails match
+                case Seq(inner) =>
+                  // The inner joins' unmatched rows probe this join, which emits its own after
+                  // them: one run over every build row
+                  MorselOp
+                    .Tail
+                    .whole(x => template.withLeft(inner.run(0, Int.MaxValue)(x), OuterMode.Tail))
+                    .copy(scan = inner.scan)
+                case inner if inner.nonEmpty =>
+                  // The tails of several union inputs, as one union of their rows
+                  MorselOp
+                    .Tail
+                    .whole(_ =>
+                      template.withLeft(
+                        UnionAllOp(
+                          inner.map(t =>
+                            t.run(0, Int.MaxValue)(emptyInput(t.scan.getOrElse(p.scan)))
+                          ),
+                          j.left.schema
+                        ),
+                        OuterMode.Tail
+                      )
+                    )
+                case _ =>
+                  MorselOp.Tail(
+                    (from, until) =>
+                      x =>
+                        template.withLeft(p.rebuild(x), OuterMode.Tail).withTailRange(from, until),
+                    () => template.joinBuild.build.size,
+                    splittable = breakers.parallelOuterTail
+                  )
             shared.copy(
               segments = p
                 .segments
                 .map(s => s.copy(pipeline = x => template.withLeft(s.pipeline(x), OuterMode.Part))),
-              tail = Some(x => template.withLeft(p.tail.getOrElse(p.rebuild)(x), OuterMode.Tail)),
+              tails = Seq(tail),
               // A join is work: without it, `rewrite` would keep only the projections over an
               // aggregation below and drop the join
               hasWork = true
             )
           else
             shared.map(x => template.withLeft(x))
+          end if
         }
       case j: NestedLoopJoinOp if j.kind == JoinKind.Cross && j.cond.isEmpty =>
         // A cross join (e.g. with a one-row aggregate): the right rows are computed once before
@@ -260,17 +297,18 @@ object Parallelizer:
     * A UNION ALL of pipelines as one pipeline (`union_all_pipelines`): the segments of every input
     * in input order, each cast to the union's columns, so that the operators above the union (hash
     * join probes over one shared build, partial aggregates) run on the parts of every input. None
-    * when an input is no pipeline or has a tail (right / full joins), which runs after its own
-    * parts; checked before building the inputs' pipelines, as [[startsPipeline]] does
+    * when an input is no pipeline, or has a tail (right / full joins) without
+    * `parallel_outer_tail`; with it, the inputs' tails run after every part of the union. Checked
+    * before building the inputs' pipelines, as [[startsPipeline]] does
     */
   private def unionPipeline(u: UnionAllOp, runner: TaskRunner)(using
-      AboveBreakers
+      breakers: AboveBreakers
   ): Option[Pipeline] =
     if !startsPipeline(u) then
       None
     else
       val inputs = u.inputs.map(pipeline(_, runner))
-      if inputs.exists(p => p.isEmpty || p.get.tail.nonEmpty) then
+      if inputs.exists(p => p.isEmpty || (p.get.tails.nonEmpty && !breakers.parallelOuterTail)) then
         None
       else
         val ps = inputs.flatten
@@ -280,12 +318,25 @@ object Parallelizer:
               // The input's output columns, as UnionAllOp casts them
               p.segments.map(s => s.copy(pipeline = x => asUnionColumns(s.pipeline(x), u.schema)))
             },
-            None,
+            // With `parallel_outer_tail`, each input's tails, over an empty input of its own scan
+            ps.flatMap(p =>
+              p.tails
+                .map(t =>
+                  t.copy(scan = t.scan.orElse(Some(p.scan))).map(asUnionColumns(_, u.schema))
+                )
+            ),
             ps.flatMap(_.prepare).toList,
             ps.flatMap(_.close).toList,
             ps.exists(_.hasWork)
           )
         )
+
+  /** An input of no rows with the columns of scan */
+  private def emptyInput(scan: ScanOp): Operator = IteratorOp(
+    scan.schema,
+    () => Iterator.empty,
+    scan.name
+  )
 
   /** op with the columns of a UNION ALL's schema, cast as UnionAllOp casts them */
   private def asUnionColumns(op: Operator, schema: Schema): Operator =
@@ -340,7 +391,7 @@ object Parallelizer:
         j.kind == JoinKind.Cross && j.cond.isEmpty && startsPipeline(j.left)
       case u: UnionAllOp =>
         breakers.unionPipelines && u.inputs.nonEmpty &&
-        u.inputs.forall(i => startsPipeline(i) && !hasTail(i))
+        u.inputs.forall(i => startsPipeline(i) && (breakers.parallelOuterTail || !hasTail(i)))
       case _ =>
         false
 
@@ -429,7 +480,7 @@ object Parallelizer:
           TwoPhaseAgg.plan(
             a,
             p.segments,
-            p.tail,
+            p.tails,
             runner,
             prepareSteps(p, runner),
             p.close,
@@ -769,7 +820,7 @@ private[plan] object TwoPhaseAgg:
   def plan(
       a: HashAggOp,
       segments: Seq[MorselOp.Segment],
-      tail: Option[Operator => Operator],
+      tails: Seq[MorselOp.Tail],
       runner: TaskRunner,
       prepare: List[() => Unit],
       release: List[() => Unit],
@@ -826,9 +877,9 @@ private[plan] object TwoPhaseAgg:
       runner,
       prepare,
       release,
-      tail.map(t =>
-        (x: Operator) =>
-          HashAggOp(t(x), a.keys, partialAggs, partialSchema)
+      tails.map(t =>
+        t.map((x: Operator) =>
+          HashAggOp(x, a.keys, partialAggs, partialSchema)
             .withKeyOptions(streamPackAggKeys, longDecimalKeys)
             .withFusedAccumulators(fusedAccumulators)
             .withColumnMajorSums(a.columnMajorSums)
@@ -836,6 +887,7 @@ private[plan] object TwoPhaseAgg:
             .withDenseSelected(a.denseSelected)
             .withLongGroupTables(longGroupTables)
             .withSortedGroupRuns(sortedGroupRuns)
+        )
       )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)

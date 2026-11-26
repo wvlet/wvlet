@@ -149,7 +149,10 @@ class OptimizerOptionsTest extends UniTest:
         "dependent_group_keys",
         "column_major_fused_sums",
         "fused_decimal_arith",
-        "packed_agg_routing"
+        "packed_agg_routing",
+        "parallel_outer_tail",
+        "smaller_outer_builds",
+        "or_equals_selectivity"
       )
   }
 
