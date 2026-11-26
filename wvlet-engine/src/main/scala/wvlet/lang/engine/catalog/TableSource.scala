@@ -29,14 +29,16 @@ import scala.collection.mutable
   * the rows it matches, and the engine doesn't evaluate it again. Only a source that
   * [[TableSource.supportsRowFilter]] gets one; its columns may be outside `columns`. With
   * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
-  * ([[StrVec.codes]])
+  * ([[StrVec.codes]]). With `dictionaryEntries`, Parquet sources read such strings as their
+  * dictionary entries only, without copying each row's bytes
   */
 case class ScanSpec(
     columns: Option[Seq[String]] = None,
     filter: Option[ParquetFilter] = None,
     footerCache: Boolean = false,
     rowFilter: Option[ParquetFilter] = None,
-    dictionaryCodes: Boolean = false
+    dictionaryCodes: Boolean = false,
+    dictionaryEntries: Boolean = false
 )
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -634,6 +636,16 @@ object ParquetSource:
       .withInt32DecimalAsLong(true)
     spec.filter.foreach(f => options = options.withRowGroupFilter(f))
     spec.rowFilter.foreach(f => options = options.withFilter(f))
+    if spec.dictionaryEntries then
+      // Each row's String is its entry's one String: uni need not copy the entry's bytes per row.
+      // uni reads the columns its row filter tests as before
+      val strings = cols
+        .zip(types)
+        .collect { case (c, PType.Str) =>
+          c
+        }
+      if strings.nonEmpty then
+        options = options.withDictionaryCodesOnly(strings*)
     (cols, types, options)
 
   /**

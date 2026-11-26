@@ -80,7 +80,8 @@ class ScanOp(
       (filter ++ runtimeFilters.flatMap(_.filter)).reduceOption(_ && _),
       footerCache,
       conjuncts.reduceOption(_ && _),
-      dictionaryCodes
+      dictionaryCodes,
+      dictionaryEntries
     )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
@@ -103,6 +104,16 @@ class ScanOp(
 
   def withDictionaryCodes(enabled: Boolean): this.type =
     dictionaryCodes = enabled
+    this
+
+  /**
+    * Whether Parquet strings decoded from a dictionary are read as their entries only, without
+    * copying each row's bytes (`dictionary_entry_scans`, [[ScanSpec.dictionaryEntries]])
+    */
+  var dictionaryEntries: Boolean = false
+
+  def withDictionaryEntries(enabled: Boolean): this.type =
+    dictionaryEntries = enabled
     this
 
   /**
@@ -138,6 +149,7 @@ class ScanOp(
   /** Take the flags of `s`, the scan this one rebuilds */
   private def withFlagsOf(s: ScanOp): ScanOp = withLateGather(s.lateGather)
     .withDictionaryCodes(s.dictionaryCodes)
+    .withDictionaryEntries(s.dictionaryEntries)
     .withSourceJoinFilters(s.sourceJoinFilters)
     .withJoinFiltersFirst(s.joinFiltersFirst)
     .withRowFilterPassRate(s.rowFilterPassRate)

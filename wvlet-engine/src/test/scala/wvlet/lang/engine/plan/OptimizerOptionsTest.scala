@@ -104,6 +104,7 @@ class OptimizerOptionsTest extends UniTest:
         "stream_pack_agg_keys",
         "long_decimal_keys",
         "dictionary_group_keys",
+        "dictionary_entry_scans",
         "dictionary_filters",
         "dictionary_selection",
         "join_build_string_codes",
