@@ -653,10 +653,9 @@ enum Optimization(val name: String):
 
   /**
     * Hash aggregations group a single Int64 key, such as the packed key of several integer keys,
-    * through a table whose slots hold the key and its group id side by side
-    * ([[wvlet.lang.engine.exec.LongGroupTable]]): a probe compares the key in the slot it reads.
-    * The final stages of TPC-DS q97's near-unique (customer, item) groups spent about 5% of their
-    * CPU assigning group ids
+    * through a table of 4-byte group-id slots, half a GroupTable slot, comparing keys from the
+    * groups' key array ([[wvlet.lang.engine.exec.LongGroupTable]]). The final stages of TPC-DS
+    * q97's near-unique (customer, item) groups spent about 5% of their CPU assigning group ids
     */
   case LongGroupTables extends Optimization("long_group_tables")
 

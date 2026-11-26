@@ -145,6 +145,13 @@ object PackedGroupTable:
     else if longTables && LongGroupTable.supports(keyTypes) then
       LongGroupTable(keyTypes(0), expectedGroups)
     else
-      GroupTable(keyTypes, expectedGroups, longDecimals, stableCodes, packCodes = pack)
+      GroupTable(
+        keyTypes,
+        expectedGroups,
+        longDecimals,
+        stableCodes,
+        packCodes = pack,
+        longTables = longTables
+      )
 
 end PackedGroupTable

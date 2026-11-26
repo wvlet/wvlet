@@ -32,7 +32,7 @@ final class LongGroupTable(keyType: PType, expectedGroups: Int = 0) extends Grou
 
   private val store = GroupTable.KeyStore(keyType).asInstanceOf[GroupTable.LongStore]
   // The group id of each slot, or Empty
-  private var cap   = slotCapacity(expectedGroups)
+  private var cap   = GroupTable.slotCapacity(expectedGroups)
   private var slots = emptySlots(cap)
   private var mask  = cap - 1
   // The key of each group in id order, and whether it is the NULL group
@@ -135,14 +135,6 @@ object LongGroupTable:
 
   /** The hash a [[GroupTable]] gives one Int64 key */
   private inline def hash(k: Long): Int = GroupTable.fmix(GroupTable.hashLong(k))
-
-  /** Slots for n groups at most half full: a power of two of at least 1024 */
-  private def slotCapacity(n: Int): Int =
-    val want = math.max(1024L, n.toLong * 2)
-    if want >= (1 << 28) then
-      1 << 28
-    else
-      Integer.highestOneBit((want - 1).toInt) << 1
 
   private def emptySlots(cap: Int): Array[Int] =
     val a = new Array[Int](cap)
