@@ -93,4 +93,21 @@ class PerSharedDictEntryTest extends UniTest:
     DictionaryPredicates.wrapShared(cond) shouldBe cond
   }
 
+  test("select the positions where the condition holds, over all rows or a selection") {
+    for
+      cond      <- conditions
+      withNulls <- Seq(false, true)
+    do
+      val e = DictionaryPredicates.wrap(cond, whole = true, shared = true)
+      e match
+        case p: PerSharedDictEntry =>
+          for b <- Seq(batch(100, withNulls), batch(37, withNulls)) do
+            val mask = Kernels.trueMask(cond.eval(b))
+            p.selectPositions(b, null).toSeq shouldBe (0 until b.size).filter(mask(_))
+            val sel = (0 until b.size by 3).toArray
+            p.selectPositions(b, sel).toSeq shouldBe sel.filter(mask(_)).toSeq
+        case other =>
+          fail(s"Not wrapped: ${other.sig}")
+  }
+
 end PerSharedDictEntryTest

@@ -158,6 +158,9 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
     */
   var dictionarySelection: Boolean = true
 
+  /** Whether per-entry parts keep results per shared dictionary (`shared_dictionary_filters`) */
+  var sharedDictionaries: Boolean = true
+
   /** The evaluation settings of `f`, for a copy of it over another input */
   def withSettingsOf(f: FilterOp): this.type =
     lateGather = f.lateGather
@@ -165,12 +168,13 @@ class FilterOp(val child: Operator, val cond: VExpr, val keep: Array[Int] = null
     reorderConjuncts = f.reorderConjuncts
     dictionaryFilters = f.dictionaryFilters
     dictionarySelection = f.dictionarySelection
+    sharedDictionaries = f.sharedDictionaries
     this
 
   // The condition as evaluated, prepared on the first batch after the settings are final
   private lazy val evalCond: VExpr =
     if dictionaryFilters then
-      DictionaryPredicates.wrap(cond, whole = dictionarySelection && shortCircuit)
+      DictionaryPredicates.wrap(cond, dictionarySelection && shortCircuit, sharedDictionaries)
     else
       cond
 
@@ -822,6 +826,8 @@ class HashAggOp(
 
   // Aggregates without FILTER, which FusedAccumulators may fold
   private lazy val unfiltered: Array[Boolean] = aggs.map(_.filter.isEmpty).toArray
+  // FILTERs over one shared dictionary, routed by code in one pass (`routed_agg_filters`)
+  private lazy val router: RoutedAggFilters = RoutedAggFilters.of(aggs)
 
   // Scratch arrays reused across batches: accumulators read group ids only during update
   private var idx: Array[Int] = Array.emptyIntArray
@@ -866,9 +872,10 @@ class HashAggOp(
           numGroups,
           columnMajor = columnMajorSums
         )
-    var a = 0
+    val routed = RoutedAggFilters.update(router, accs, groups, numGroups, b)
+    var a      = 0
     while a < accs.size do
-      if folded == null || !folded(a) then
+      if (folded == null || !folded(a)) && (routed == null || !routed(a)) then
         updateOne(
           aggs(a),
           accs(a),

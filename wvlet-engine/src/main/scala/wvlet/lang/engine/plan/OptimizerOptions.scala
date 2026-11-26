@@ -701,6 +701,23 @@ enum Optimization(val name: String):
   case DictionaryAggFilters extends Optimization("dictionary_agg_filters")
 
   /**
+    * Several aggregate FILTERs over one string column holding a hash-join build's codes, which no
+    * code passes twice (`dictionary_agg_filters`), route each row to the aggregate its code passes
+    * in one pass over the codes, instead of each FILTER making its own mask, count and gather
+    * (TPC-DS q59, q43 and q02's seven `filter (where d_day_name = '...')`,
+    * [[wvlet.lang.engine.exec.RoutedAggFilters]])
+    */
+  case RoutedAggFilters extends Optimization("routed_agg_filters")
+
+  /**
+    * Filter conditions over one string column holding a hash-join build's codes keep their results
+    * per dictionary entry across batches, as `dictionary_agg_filters` does for aggregate FILTERs,
+    * instead of finding each batch's distinct entries
+    * ([[wvlet.lang.engine.expr.PerSharedDictEntry]])
+    */
+  case SharedDictionaryFilters extends Optimization("shared_dictionary_filters")
+
+  /**
     * Partial aggregates that stop grouping ([[AdaptivePartialAggs]]) emit each row's partial
     * results from the aggregates' arguments (a sum's value, a count's 0 or 1) instead of folding
     * every passed-through batch into new accumulators with one group per row (TPC-DS q78, q97)

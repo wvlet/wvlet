@@ -27,7 +27,7 @@ import wvlet.lang.engine.vector.*
   * runs as a [[PerDictEntry]] does. The signature is `inner`'s: the values are the same, only the
   * evaluation differs.
   */
-case class PerSharedDictEntry(inner: VExpr, column: Int, local: VExpr) extends VExpr:
+case class PerSharedDictEntry(inner: VExpr, column: Int, local: VExpr) extends PerEntryCondition:
   def ptype: PType                  = inner.ptype
   def sig: String                   = inner.sig
   override def children: Seq[VExpr] = Seq(inner)
@@ -49,6 +49,17 @@ case class PerSharedDictEntry(inner: VExpr, column: Int, local: VExpr) extends V
       case _ =>
         perBatch.eval(b)
 
+  def selectPositions(b: Batch, sel: Array[Int]): Array[Int] =
+    b.column(column) match
+      case s: StrVec if s.dict != null && s.hasCodes =>
+        val r = resultsFor(s.dict, b.size)
+        if r == null then
+          perBatch.selectPositions(b, sel)
+        else
+          r.select(s.codes, sel, b.size)
+      case _ =>
+        perBatch.selectPositions(b, sel)
+
   // Without a shared dictionary: once per dictionary entry of the batch, or per row
   private val perBatch = PerDictEntry(inner, column, local)
 
@@ -58,7 +69,7 @@ case class PerSharedDictEntry(inner: VExpr, column: Int, local: VExpr) extends V
     * first dictionary is kept, so batches alternating between builds (a union of joins, partitioned
     * builds) run per batch instead of recomputing the results for each
     */
-  private def resultsFor(dict: Array[String], rows: Int): PerSharedDictEntry.Results =
+  private[engine] def resultsFor(dict: Array[String], rows: Int): PerSharedDictEntry.Results =
     val c = cached
     if c != null && (c.dict eq dict) then
       c
@@ -122,6 +133,44 @@ object PerSharedDictEntry:
           )
           j += 1
         BoolVec(o, on)
+
+    /**
+      * The positions of `sel` (all of 0 until `size` when null), in order, whose code (-1 for NULL)
+      * has a TRUE result
+      */
+    def select(codes: Array[Int], sel: Array[Int], size: Int): Array[Int] =
+      val nullAt = dict.length
+      val n      =
+        if sel == null then
+          size
+        else
+          sel.length
+      val out = new Array[Int](n)
+      var k   = 0
+      var i   = 0
+      while i < n do
+        val p =
+          if sel == null then
+            i
+          else
+            sel(i)
+        val c = codes(p)
+        if values(
+            if c >= 0 then
+              c
+            else
+              nullAt
+          )
+        then
+          out(k) = p
+          k += 1
+        i += 1
+      if k == n then
+        out
+      else
+        java.util.Arrays.copyOf(out, k)
+
+    end select
 
   end Results
 
