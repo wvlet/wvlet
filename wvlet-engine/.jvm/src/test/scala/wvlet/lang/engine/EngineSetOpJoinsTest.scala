@@ -35,8 +35,8 @@ class EngineSetOpJoinsTest extends UniTest:
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
   /**
-    * The query matches DuckDB with the rewrite on and off, and returns the plan with it on and the
-    * engine options, and the plan with `off` disabled
+    * The query matches DuckDB with the rewrite on and off; returns its plan with the rewrite on,
+    * and its plan with `off` disabled
     */
   private def checkPlans(query: String, off: Optimization): (String, String) =
     val on = conformance.compareQuery(query)

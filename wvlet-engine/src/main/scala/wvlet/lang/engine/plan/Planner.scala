@@ -112,11 +112,12 @@ class Planner(
   private[engine] def physical(op: Operator): Operator = optimizePhysical(op)
 
   /**
-    * The join toggles of [[optimizePhysical]] for a hash join made after its passes ran: the
-    * INTERSECT / EXCEPT joins of [[Parallelizer]] (`set_op_joins`), so that turning a toggle off
-    * reaches them and `probe_miss_filter` gives their anti joins a miss filter
+    * The join toggles of [[optimizePhysical]] for one hash join: the planned joins, and the
+    * INTERSECT / EXCEPT joins [[Parallelizer]] makes after them (`set_op_joins`), so that turning a
+    * toggle off reaches those too. With `probe_miss_filter`, joins whose probes mostly miss (anti
+    * joins and unmatched-only LEFT joins) get a Bloom filter of their build keys
     */
-  private def configureLateJoin(j: HashJoinOp): Unit =
+  private def configureJoin(j: HashJoinOp): Unit =
     if !enabled(Optimization.LateGather) then
       j.lateGather = false
     if enabled(Optimization.ProbeMissFilter) && Planner.missFilterFits(j) then
@@ -165,16 +166,7 @@ class Planner(
     if enabled(Optimization.UnmatchedLeftProbe) then
       Planner.markUnmatchedLeftProbes(pruned)
     // After the unmatched-only LEFT joins are known
-    if enabled(Optimization.ProbeMissFilter) then
-      Planner.markMissFilters(pruned)
-    if !enabled(Optimization.JoinDirectIndex) then
-      Planner.disableJoinDirectIndex(pruned)
-    if !enabled(Optimization.NarrowJoinEntries) then
-      Planner.disableNarrowJoinEntries(pruned)
-    if !enabled(Optimization.ParallelJoinBuild) then
-      Planner.disableParallelJoinBuild(pruned)
-    if !enabled(Optimization.JoinBuildStringCodes) then
-      Planner.disableJoinBuildStringCodes(pruned)
+    Planner.foreachHashJoin(pruned)(configureJoin)
     // Before parallelizing: the per-part aggregations take the option from these operators
     if !enabled(Optimization.ColumnMajorFusedSums) then
       Planner.disableColumnMajorSums(pruned)
@@ -201,7 +193,7 @@ class Planner(
           unionDistinctOnce = enabled(Optimization.UnionDistinctOnce),
           anyValuePartials = enabled(Optimization.DependentGroupKeys),
           parallelOuterTail = enabled(Optimization.ParallelOuterTail),
-          configureJoin = configureLateJoin
+          configureJoin = configureJoin
         )
       else
         pruned
@@ -4236,39 +4228,18 @@ object Planner:
     op.children.foreach(markUnmatchedLeftProbes)
     op.sharedInputs.foreach(markUnmatchedLeftProbes)
 
-  /**
-    * Give the anti joins and unmatched-only LEFT joins of a physical plan, whose probes mostly
-    * miss, a Bloom filter of their build keys (`probe_miss_filter`)
-    */
-  private[engine] def markMissFilters(op: Operator): Unit =
+  /** Apply f to every hash join of a physical plan */
+  private[engine] def foreachHashJoin(op: Operator)(f: HashJoinOp => Unit): Unit =
     op match
-      case j: HashJoinOp if missFilterFits(j) =>
-        j.withMissFilter(true)
+      case j: HashJoinOp =>
+        f(j)
       case _ =>
-    op.children.foreach(markMissFilters)
-    op.sharedInputs.foreach(markMissFilters)
+    op.children.foreach(foreachHashJoin(_)(f))
+    op.sharedInputs.foreach(foreachHashJoin(_)(f))
 
   /** Whether a join's probes mostly miss: an anti join or an unmatched-only LEFT join */
   private[engine] def missFilterFits(j: HashJoinOp): Boolean =
     j.kind == JoinKind.Anti || j.unmatchedOnly
-
-  /** Give the narrow flat table entries of a physical plan 32 row bits (`narrow_join_entries`) */
-  private[engine] def disableNarrowJoinEntries(op: Operator): Unit =
-    op match
-      case j: HashJoinOp =>
-        j.withNarrowEntries(false)
-      case _ =>
-    op.children.foreach(disableNarrowJoinEntries)
-    op.sharedInputs.foreach(disableNarrowJoinEntries)
-
-  /** Make the hash joins of a physical plan use hash tables for every key (`join_direct_index`) */
-  private[engine] def disableJoinDirectIndex(op: Operator): Unit =
-    op match
-      case j: HashJoinOp =>
-        j.withDirectIndex(false)
-      case _ =>
-    op.children.foreach(disableJoinDirectIndex)
-    op.sharedInputs.foreach(disableJoinDirectIndex)
 
   /**
     * Set how the aggregations and DISTINCTs of a physical plan key their groups
@@ -4410,24 +4381,6 @@ object Planner:
       case _ =>
     op.children.foreach(disableSizePartitionsByRows)
     op.sharedInputs.foreach(disableSizePartitionsByRows)
-
-  /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
-  private[engine] def disableParallelJoinBuild(op: Operator): Unit =
-    op match
-      case j: HashJoinOp =>
-        j.withParallelBuild(false)
-      case _ =>
-    op.children.foreach(disableParallelJoinBuild)
-    op.sharedInputs.foreach(disableParallelJoinBuild)
-
-  /** Make the hash joins of a physical plan keep their string columns as they are */
-  private[engine] def disableJoinBuildStringCodes(op: Operator): Unit =
-    op match
-      case j: HashJoinOp =>
-        j.withStringCodes(false)
-      case _ =>
-    op.children.foreach(disableJoinBuildStringCodes)
-    op.sharedInputs.foreach(disableJoinBuildStringCodes)
 
   /**
     * The keys and the inequality of an ASOF join, each bound over its input: a left row matches the
