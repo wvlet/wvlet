@@ -138,6 +138,11 @@ class Planner(
         dictionary = enabled(Optimization.DictionaryFilters),
         dictionarySelection = enabled(Optimization.DictionarySelection)
       )
+    if enabled(Optimization.UnmatchedLeftProbe) then
+      Planner.markUnmatchedLeftProbes(pruned)
+    // After the unmatched-only LEFT joins are known
+    if enabled(Optimization.ProbeMissFilter) then
+      Planner.markMissFilters(pruned)
     if !enabled(Optimization.JoinDirectIndex) then
       Planner.disableJoinDirectIndex(pruned)
     if !enabled(Optimization.ParallelJoinBuild) then
@@ -4092,6 +4097,54 @@ object Planner:
     op.children.foreach(configureFilters(_, shortCircuit, reorder, dictionary, dictionarySelection))
     op.sharedInputs
       .foreach(configureFilters(_, shortCircuit, reorder, dictionary, dictionarySelection))
+
+  /**
+    * Make each LEFT hash join under a filter that has a conjunct `k IS NULL`, for `k` one of the
+    * join's build key columns, emit only its unmatched probe rows (`unmatched_left_probe`): the
+    * build key of a matched row equals the probe's non-NULL key, so the filter drops every matched
+    * pair, and the NULL-padded unmatched rows are what it reads
+    */
+  private[engine] def markUnmatchedLeftProbes(op: Operator): Unit =
+    op match
+      case f: FilterOp =>
+        f.child match
+          case j: HashJoinOp
+              if j.kind == JoinKind.Left && j.residual.isEmpty && !j.nullsEqual &&
+                j.schema.size == j.left.schema.size + j.right.schema.size =>
+            val lw = j.left.schema.size
+            // Build columns the join matches on, by their position in the join output
+            val keyCols =
+              j.rightKeys
+                .collect { case c: ColRef =>
+                  c.index + lw
+                }
+                .toSet
+            def testsKey(e: VExpr): Boolean =
+              e match
+                case AndExpr(a, b) =>
+                  testsKey(a) || testsKey(b)
+                case IsNullExpr(c: ColRef, false, _) =>
+                  keyCols.contains(c.index)
+                case _ =>
+                  false
+            if testsKey(f.cond) then
+              j.withUnmatchedOnly(true)
+          case _ =>
+      case _ =>
+    op.children.foreach(markUnmatchedLeftProbes)
+    op.sharedInputs.foreach(markUnmatchedLeftProbes)
+
+  /**
+    * Give the anti joins and unmatched-only LEFT joins of a physical plan, whose probes mostly
+    * miss, a Bloom filter of their build keys (`probe_miss_filter`)
+    */
+  private[engine] def markMissFilters(op: Operator): Unit =
+    op match
+      case j: HashJoinOp if j.kind == JoinKind.Anti || j.unmatchedOnly =>
+        j.withMissFilter(true)
+      case _ =>
+    op.children.foreach(markMissFilters)
+    op.sharedInputs.foreach(markMissFilters)
 
   /** Make the hash joins of a physical plan use hash tables for every key (`join_direct_index`) */
   private[engine] def disableJoinDirectIndex(op: Operator): Unit =

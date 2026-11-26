@@ -1340,6 +1340,9 @@ final class JoinBuild(
     */
   var stringCodes: Boolean = true
 
+  /** Whether a large flat table keeps a Bloom filter of its keys (`probe_miss_filter`) */
+  var missFilter: Boolean = false
+
   /** Whether the build probes through a direct index instead of hash tables (for tests) */
   def usesDirectIndex: Boolean = directHeads != null
 
@@ -1574,7 +1577,8 @@ final class JoinBuild(
       rowsOf,
       Integer.numberOfTrailingZeros(parts),
       chain,
-      runner
+      runner,
+      missFilter
     )
     // A null table: a skewed build, which GroupTables take
     if table != null then
@@ -1911,7 +1915,7 @@ class HashJoinOp(
           ", nulls equal"
         else
           ""
-      })"
+      }${ProbeRows.tags(this)})"
 
   /** The build this join probes */
   val joinBuild: JoinBuild =
@@ -1940,7 +1944,7 @@ class HashJoinOp(
     joinBuild,
     mode,
     nullsEqual = nullsEqual
-  ).withLateGather(lateGather)
+  ).withLateGather(lateGather).withUnmatchedOnly(unmatchedOnly)
 
   override def close(): Unit =
     // A shared build's right input belongs to the join that made the build
@@ -1960,6 +1964,17 @@ class HashJoinOp(
 
   def withLateGather(enabled: Boolean): this.type =
     lateGather = enabled
+    this
+
+  /** Whether this LEFT join emits only its unmatched rows (`unmatched_left_probe`) */
+  var unmatchedOnly: Boolean = false
+
+  def withUnmatchedOnly(enabled: Boolean): this.type =
+    unmatchedOnly = enabled && kind == JoinKind.Left && residual.isEmpty
+    this
+
+  def withMissFilter(enabled: Boolean): this.type =
+    joinBuild.missFilter = enabled
     this
 
   // The build positions [from, until) whose unmatched rows a tail run emits
@@ -2049,7 +2064,9 @@ class HashJoinOp(
     if residual.isEmpty && kind.outputsProbeOnly then
       // A semi / anti join without a residual only asks whether a match exists: the first one
       // answers it, without walking the chain of build rows sharing the key
-      return probeExists(probe, first)
+      return ProbeRows.exists(probe, first, kind == JoinKind.Semi, lateGather)
+    if unmatchedOnly then
+      return ProbeRows.unmatched(probe, build, first, lateGather)
     val n = probe.size
     // Matching pairs, sized for one match per probe row and doubled on overflow
     var lIdx = new Array[Int](n)
@@ -2175,26 +2192,6 @@ class HashJoinOp(
     end match
 
   end probeBatch
-
-  /** A semi (rows with a match) or anti (rows without one) join's output from first matches */
-  private def probeExists(probe: Batch, first: Array[Int]): Batch =
-    val wantMatch = kind == JoinKind.Semi
-    val keep      = new Array[Boolean](probe.size)
-    var kept      = 0
-    var i         = 0
-    while i < probe.size do
-      if (first(i) >= 0) == wantMatch then
-        keep(i) = true
-        kept += 1
-      i += 1
-    if kept == 0 then
-      null
-    else if kept == probe.size then
-      probe
-    else if lateGather then
-      probe.takeWhere(keep)
-    else
-      probe.filter(keep)
 
 end HashJoinOp
 

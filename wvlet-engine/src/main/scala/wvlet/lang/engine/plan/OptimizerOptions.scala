@@ -309,6 +309,25 @@ enum Optimization(val name: String):
   case KeySetRowGroups extends Optimization("key_set_row_groups")
 
   /**
+    * A LEFT hash join under a filter that tests one of its build key columns for NULL emits only
+    * its unmatched probe rows, in probe order, with NULL build columns: a matched row's build key
+    * equals a non-NULL probe key, so the filter drops every matched pair. The join skips the match
+    * pairs, the matched marks and the reordering of unmatched rows after the matched ones, and the
+    * columns gathered above read the probe rows in order. TPC-DS q78 keeps the sales rows without a
+    * return this way (`where sr_ticket_number is null`)
+    */
+  case UnmatchedLeftProbe extends Optimization("unmatched_left_probe")
+
+  /**
+    * Anti joins and `unmatched_left_probe` LEFT joins, whose probes mostly find no match, give a
+    * large flat hash table (at least `LongJoinTable.MinMissFilterBytes` of entries) a Bloom filter
+    * of its keys, about 8 bits per key, that each probe checks before the entries: a rejected key
+    * reads a cached word instead of an entry out of cache. TPC-DS q78 probes the store_sales rows
+    * of one year against the entries of every store_returns row, and most of them miss
+    */
+  case ProbeMissFilter extends Optimization("probe_miss_filter")
+
+  /**
     * Pre-size the group tables and aggregate state of hash aggregations from estimated group
     * counts, so they grow less often
     */
