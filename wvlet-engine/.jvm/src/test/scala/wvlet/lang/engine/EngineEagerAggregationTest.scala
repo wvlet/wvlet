@@ -140,4 +140,45 @@ class EngineEagerAggregationTest extends UniTest:
     aggregations(on) shouldBe aggregations(off) + 1
   }
 
+  private val noOtherSide = conformance
+    .engine
+    .withOptimizer(options.withDisabled(Optimization.EagerOtherSideMinMax))
+
+  test("keep mins and maxes of the other side's columns above the join") {
+    val (on, off) = check(
+      """from orders, customer
+        |where o_custkey = c_custkey
+        |group by c_name
+        |select c_name, sum(o_totalprice) as s, max(c_acctbal) as b, min(c_nationkey) as n,
+        |  count(*) as c
+        |order by c_name
+        |""".stripMargin,
+      noOtherSide
+    )
+    aggregations(on) shouldBe aggregations(off) + 1
+  }
+
+  test("aggregate before a join with a side crossed with a scalar") {
+    // TPC-DS q23's best customers: each customer's sum against the maximum of the sums
+    val (on, off) = check(
+      """with mx as {
+        |  from {
+        |    from orders
+        |    group by o_custkey
+        |    select o_custkey, sum(o_totalprice) as s
+        |  }
+        |  select max(s) as m
+        |}
+        |from orders, customer, mx
+        |where o_custkey = c_custkey
+        |group by c_custkey
+        |where sum(o_totalprice) > 0.5 * max(m)
+        |select c_custkey, sum(o_totalprice) as s
+        |order by c_custkey
+        |""".stripMargin,
+      noOtherSide
+    )
+    aggregations(on) shouldBe aggregations(off) + 1
+  }
+
 end EngineEagerAggregationTest

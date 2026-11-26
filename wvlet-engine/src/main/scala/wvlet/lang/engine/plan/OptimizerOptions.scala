@@ -541,6 +541,15 @@ enum Optimization(val name: String):
   case EagerGroupingSets extends Optimization("eager_grouping_sets")
 
   /**
+    * With [[EagerAggregation]], also aggregate one side of the join eagerly when the other calls
+    * are mins and maxes of the other side's columns, which the outer aggregation computes over the
+    * joined rows as before (duplicates don't change them), and when the other side is a cross join
+    * with one row: TPC-DS q23's best customers sum 27M store sales per customer key before joining
+    * the customers crossed with the scalar maximum they compare the sums to
+    */
+  case EagerOtherSideMinMax extends Optimization("eager_other_side_min_max")
+
+  /**
     * Count the distinct values of an integer column of a shared CTE result computed for planning
     * ([[CTEReaderStats]]) in a set of longs sized for its rows instead of a growing group table:
     * the same counts, so the same plans, for less planning time (TPC-DS q01 counts 540K customer
