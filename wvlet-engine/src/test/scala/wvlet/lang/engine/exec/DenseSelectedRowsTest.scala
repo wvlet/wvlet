@@ -255,4 +255,21 @@ class DenseSelectedRowsTest extends UniTest:
     p.column(0).get(0) shouldBe 2L
   }
 
+  test("should not convert doubles of dropped rows to decimals") {
+    // A NaN has no BigDecimal value: only the kept row converts
+    val src = Batch(
+      Array[Vec](DoubleVec(Array(Double.NaN, 1.5), null), LongVec(dec, Array(100L, 200L), null)),
+      2
+    ).take(Array(1), 1)
+    val e = Arith(
+      ArithOp.Add,
+      ColRef(0, PType.Float64, "d"),
+      ColRef(1, dec, "x"),
+      PType.Decimal(18, 2)
+    )
+    DenseSelectedRows.eval(e, src) shouldBe null
+    DenseSelectedRows.project(IndexedSeq(e), src).column(0).get(0) shouldBe
+      java.math.BigDecimal("3.50")
+  }
+
 end DenseSelectedRowsTest

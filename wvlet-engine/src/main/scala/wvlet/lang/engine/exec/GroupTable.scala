@@ -428,19 +428,15 @@ final class GroupTable(
     * combinations number at most half the rows, as DuckDB's dictionary aggregation without a
     * dictionary id: a batch's codes don't identify entries of other batches, so each batch looks
     * its combinations up again
+    *
+    * With `sel`, row i is row `sel(i)` of the key vectors (none of them -1, and `h` null)
     */
-  private def dictionaryIds(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] = dictionaryIds(
-    norm,
-    n,
-    h,
-    null
-  )
-
-  /**
-    * [[dictionaryIds]] of the rows of `norm` at `sel` (row i is row `sel(i)` of the key vectors,
-    * none of them -1), or of its first n rows when `sel` is null. `h` must be null with `sel`
-    */
-  private def dictionaryIds(norm: Array[Vec], n: Int, h: Array[Int], sel: Array[Int]): Array[Int] =
+  private def dictionaryIds(
+      norm: Array[Vec],
+      n: Int,
+      h: Array[Int],
+      sel: Array[Int] = null
+  ): Array[Int] =
     if width == 0 then
       return null
     var combos = 1L

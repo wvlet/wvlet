@@ -254,15 +254,21 @@ private[exec] object DenseSelectedRows:
         true
       case a: Arith =>
         (a.op == ArithOp.Add || a.op == ArithOp.Sub || a.op == ArithOp.Mul) &&
-        (a.ptype.isDecimal || a.ptype == PType.Float64) && numeric(a.left.ptype) &&
-        numeric(a.right.ptype) && total(a.left) && total(a.right)
+        (a.ptype.isDecimal || a.ptype == PType.Float64) && operand(a.left.ptype, a.ptype) &&
+        operand(a.right.ptype, a.ptype) && total(a.left) && total(a.right)
       case _ =>
         false
 
-  private def numeric(t: PType): Boolean =
+  /**
+    * Whether a value of type t is an operand of arithmetic of type `out` that never fails: a double
+    * operand of decimal arithmetic converts to BigDecimal, which throws on NaN and infinities
+    */
+  private def operand(t: PType, out: PType): Boolean =
     t match
-      case PType.Int32 | PType.Int64 | PType.Float64 | PType.Decimal(_, _) =>
+      case PType.Int32 | PType.Int64 | PType.Decimal(_, _) =>
         true
+      case PType.Float64 =>
+        out == PType.Float64
       case _ =>
         false
 
