@@ -67,6 +67,19 @@ final class Batch private (
       cols(i) = v
     v
 
+  /**
+    * The source vector of column i while it is deferred (not gathered yet), or null. Its rows are
+    * at [[deferredPositions]]`(i)`, for readers that read them in place instead of gathering them
+    */
+  private[engine] def deferredSource(i: Int): Vec =
+    if srcs == null || cols(i) != null then
+      null
+    else
+      srcs(i)
+
+  /** The positions in [[deferredSource]]`(i)` of the rows of deferred column i (-1 for NULL) */
+  private[engine] def deferredPositions(i: Int): Array[Int] = sels(i)
+
   /** All columns, gathered */
   def columns: Array[Vec] =
     compact()

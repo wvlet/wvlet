@@ -749,6 +749,18 @@ class HashAggOp(
     fuseAccumulators = enabled
     this
 
+  /**
+    * Whether group keys and aggregate arguments over deferred columns read the columns' sources at
+    * the selected positions instead of gathering them first ([[SelectedInputs]],
+    * `aggregate_selected_rows`)
+    */
+  var selectedInputs: Boolean = true
+
+  /** Set [[selectedInputs]] */
+  def withSelectedInputs(enabled: Boolean): this.type =
+    selectedInputs = enabled
+    this
+
   // Aggregates without FILTER, which FusedAccumulators may fold
   private lazy val unfiltered: Array[Boolean] = aggs.map(_.filter.isEmpty).toArray
 
@@ -764,7 +776,11 @@ class HashAggOp(
     // evaluated up front and the fusable accumulators fold first
     var args: Array[Array[Vec]] = null
     var folded: Array[Boolean]  = null
-    if fuseAccumulators && accs.size > 1 then
+    // With selected inputs, arguments are evaluated up front only when fusion can fold the batch,
+    // so that the others can read deferred columns in place
+    if fuseAccumulators && accs.size > 1 &&
+      (!selectedInputs || FusedAccumulators.foldsBatch(numGroups, b.size))
+    then
       accs.foreach(_.ensureGroups(numGroups))
       args =
         Array.tabulate(aggs.size)(a =>
@@ -802,6 +818,10 @@ class HashAggOp(
       evaluated: Array[Vec]
   ): Unit =
     acc.ensureGroups(numGroups)
+    if selectedInputs && evaluated == null && agg.filter.isEmpty && agg.args.size == 1 &&
+      SelectedInputs.update(acc, agg.args(0), groups, b)
+    then
+      return
     // Without a FILTER row, the arguments aren't evaluated
     def argVecs =
       if evaluated != null then
@@ -929,7 +949,11 @@ class HashAggOp(
             zeros = new Array[Int](b.size)
           zeros
         else
-          table.groupIds(keys.map(_.eval(b)).toArray, b.size)
+          table match
+            case p: PackedGroupTable if selectedInputs =>
+              SelectedInputs.groupIds(p, keys, b)
+            case _ =>
+              table.groupIds(keys.map(_.eval(b)).toArray, b.size)
       val numGroups =
         if keys.isEmpty then
           1

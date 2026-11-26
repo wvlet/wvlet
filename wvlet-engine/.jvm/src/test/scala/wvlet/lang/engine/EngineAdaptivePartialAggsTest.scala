@@ -104,4 +104,15 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options.withDisabled(Optimization.OneRowPartials), oneRows).contains(true) shouldBe false
   }
 
+  test("read deferred aggregation inputs in place with aggregate_selected_rows") {
+    val selected: PartialFunction[Operator, Boolean] = { case a: HashAggOp =>
+      a.selectedInputs
+    }
+    flags(options, selected) shouldContain true
+    flags(options, selected).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.AggregateSelectedRows), selected).contains(
+      true
+    ) shouldBe false
+  }
+
 end EngineAdaptivePartialAggsTest

@@ -55,7 +55,13 @@ final class AggKeyPacking private (
     * The packed key of each of the first n rows, or null when a key value is outside the covered
     * ranges or a key column isn't in the representation of its type
     */
-  def tryPack(keys: Array[Vec], n: Int): LongVec =
+  def tryPack(keys: Array[Vec], n: Int): LongVec = tryPack(keys, null, n)
+
+  /**
+    * [[tryPack]] where key k is `keys(k)` at the positions `sels(k)` (-1 for NULL) when `sels` and
+    * `sels(k)` are not null, reading the values in place
+    */
+  def tryPack(keys: Array[Vec], sels: Array[Array[Int]], n: Int): LongVec =
     val out = new Array[Long](n)
     var k   = 0
     while k < width do
@@ -64,11 +70,31 @@ final class AggKeyPacking private (
       val span  = spans(k)
       val shift = shifts(k)
       val vn    = v.nulls
+      val sel   =
+        if sels == null then
+          null
+        else
+          sels(k)
       // Whether a value is outside [lo, lo + span]. `x - lo` can't wrap into that range: lo + span
       // doesn't overflow
       var miss = false
       var i    = 0
+      // A NULL key (or position -1) adds nothing: 0 is the NULL code
+      inline def packAt(inline value: Int => Long): Unit =
+        while i < n do
+          val r = sel(i)
+          if r >= 0 && (vn == null || !vn(r)) then
+            val c = value(r) - lo
+            miss |= c < 0 || c > span
+            out(i) |= (c + 1) << shift
+          i += 1
       v match
+        case iv: IntVec if sel != null && AggKeyPacking.isIntColumn(types(k)) =>
+          val x = iv.values
+          packAt(r => x(r).toLong)
+        case lv: LongVec if sel != null && lv.ptype == types(k) =>
+          val x = lv.values
+          packAt(r => x(r))
         case iv: IntVec if AggKeyPacking.isIntColumn(types(k)) =>
           val x = iv.values
           while i < n do

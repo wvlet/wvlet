@@ -29,6 +29,13 @@ abstract class Accumulator:
   def update(groups: Array[Int], n: Int, args: Array[Vec]): Unit
   def result(numGroups: Int): Vec
 
+  /**
+    * Fold n rows whose only argument is `src` at the positions `sel` (-1 for NULL), reading `src`
+    * in place instead of a gathered copy (`aggregate_selected_rows`). False when this accumulator
+    * doesn't read such input, so that the caller gathers it and calls [[update]]
+    */
+  def updateSelected(groups: Array[Int], n: Int, src: Vec, sel: Array[Int]): Boolean = false
+
   protected var capacity: Int = 0
 
   /** Make room for group ids below numGroups */
@@ -351,11 +358,23 @@ object Aggregates:
             counts(groups(i)) += 1
           i += 1
 
+    override def updateSelected(groups: Array[Int], n: Int, src: Vec, sel: Array[Int]): Boolean =
+      val vn = src.nulls
+      var i  = 0
+      while i < n do
+        val k = sel(i)
+        if k >= 0 && (vn == null || !vn(k)) then
+          counts(groups(i)) += 1
+        i += 1
+      true
+
     def result(numGroups: Int): Vec = LongVec(
       PType.Int64,
       java.util.Arrays.copyOf(counts, numGroups),
       null
     )
+
+  end CountNonNull
 
   final class CountIf extends Accumulator:
     private var counts: Array[Long]       = new Array[Long](0)
@@ -413,11 +432,30 @@ object Aggregates:
           seen(g) = true
         i += 1
 
+    override def updateSelected(groups: Array[Int], n: Int, src: Vec, sel: Array[Int]): Boolean =
+      src match
+        case l: LongVec if l.ptype == PType.Int64 =>
+          val a  = l.values
+          val vn = l.nulls
+          var i  = 0
+          while i < n do
+            val k = sel(i)
+            if k >= 0 && (vn == null || !vn(k)) then
+              val g = groups(i)
+              sums(g) = Math.addExact(sums(g), a(k))
+              seen(g) = true
+            i += 1
+          true
+        case _ =>
+          false
+
     def result(numGroups: Int): Vec = LongVec(
       PType.Int64,
       java.util.Arrays.copyOf(sums, numGroups),
       nullsOf(numGroups)
     )
+
+  end SumLong
 
   final class SumDouble extends SeenAccumulator:
     private var sums: Array[Double]       = new Array[Double](0)
@@ -439,10 +477,29 @@ object Aggregates:
           seen(g) = true
         i += 1
 
+    override def updateSelected(groups: Array[Int], n: Int, src: Vec, sel: Array[Int]): Boolean =
+      src match
+        case d: DoubleVec =>
+          val a  = d.values
+          val vn = d.nulls
+          var i  = 0
+          while i < n do
+            val k = sel(i)
+            if k >= 0 && (vn == null || !vn(k)) then
+              val g = groups(i)
+              sums(g) += a(k)
+              seen(g) = true
+            i += 1
+          true
+        case _ =>
+          false
+
     def result(numGroups: Int): Vec = DoubleVec(
       java.util.Arrays.copyOf(sums, numGroups),
       nullsOf(numGroups)
     )
+
+  end SumDouble
 
   /**
     * Decimal sums on unscaled longs. A group's sum is `big(g) + sums(g)`: when adding to `sums(g)`
@@ -506,6 +563,37 @@ object Aggregates:
               else
                 big(g).add(add)
         i += 1
+
+    private def atScale(t: PType): Boolean =
+      t match
+        case PType.Decimal(_, s) =>
+          s == ptype.scale
+        case _ =>
+          false
+
+    // Unscaled Longs at this sum's scale are added in place; other inputs are gathered
+    override def updateSelected(groups: Array[Int], n: Int, src: Vec, sel: Array[Int]): Boolean =
+      src match
+        case l: LongVec if atScale(l.ptype) =>
+          val u  = l.values
+          val vn = l.nulls
+          var i  = 0
+          while i < n do
+            val k = sel(i)
+            if k >= 0 && (vn == null || !vn(k)) then
+              val g = groups(i)
+              seen(g) = true
+              val x = sums(g)
+              val y = u(k)
+              val z = x + y
+              if ((x ^ z) & (y ^ z)) < 0 then
+                spill(g, y)
+              else
+                sums(g) = z
+            i += 1
+          true
+        case _ =>
+          false
 
     def result(numGroups: Int): Vec =
       val b = VecBuilder(ptype, numGroups).asInstanceOf[VecBuilder.DecimalBuilder]
@@ -718,6 +806,54 @@ object Aggregates:
       end match
 
     end update
+
+    // Int64 and Double values are compared in place; other inputs are gathered
+    override def updateSelected(groups: Array[Int], n: Int, src: Vec, sel: Array[Int]): Boolean =
+      val vn = src.nulls
+      (mode, src) match
+        case (0, l: LongVec) if l.ptype == PType.Int64 && ptype == PType.Int64 =>
+          val a = l.values
+          var i = 0
+          while i < n do
+            val k = sel(i)
+            if k >= 0 && (vn == null || !vn(k)) then
+              val g = groups(i)
+              val x = a(k)
+              if !seen(g) || (
+                  if isMax then
+                    x > longs(g)
+                  else
+                    x < longs(g)
+                )
+              then
+                longs(g) = x
+                seen(g) = true
+            i += 1
+          true
+        case (1, d: DoubleVec) =>
+          val a = d.values
+          var i = 0
+          while i < n do
+            val k = sel(i)
+            if k >= 0 && (vn == null || !vn(k)) then
+              val g = groups(i)
+              val x = a(k)
+              if !seen(g) || (
+                  if isMax then
+                    x > doubles(g)
+                  else
+                    x < doubles(g)
+                )
+              then
+                doubles(g) = x
+                seen(g) = true
+            i += 1
+          true
+        case _ =>
+          false
+      end match
+
+    end updateSelected
 
     def result(numGroups: Int): Vec =
       val nulls = nullsOf(numGroups)

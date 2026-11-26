@@ -34,6 +34,9 @@ private[exec] object FusedAccumulators:
     */
   private val FewGroupsRatio = 16
 
+  /** Whether [[update]] may fold a batch of n rows in `numGroups` groups */
+  def foldsBatch(numGroups: Int, n: Int): Boolean = numGroups.toLong * FewGroupsRatio <= n
+
   /**
     * Fold the rows of a batch into the fusable accumulators among `accs` (those with `fusable(a)`),
     * whose arguments are `args(a)`, and return which accumulators were folded, or null when fewer
@@ -48,7 +51,7 @@ private[exec] object FusedAccumulators:
       n: Int,
       numGroups: Int
   ): Array[Boolean] =
-    if numGroups.toLong * FewGroupsRatio > n then
+    if !foldsBatch(numGroups, n) then
       return null
     val m      = accs.size
     val folded = new Array[Boolean](m)

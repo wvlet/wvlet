@@ -48,7 +48,8 @@ object Parallelizer:
       streamPackAggKeys: Boolean = true,
       longDecimalKeys: Boolean = true,
       fusedAccumulators: Boolean = true,
-      oneRowPartials: Boolean = true
+      oneRowPartials: Boolean = true,
+      selectedInputs: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -65,7 +66,8 @@ object Parallelizer:
         streamPackAggKeys,
         longDecimalKeys,
         fusedAccumulators,
-        oneRowPartials
+        oneRowPartials,
+        selectedInputs
       )
       rewrite(op, runner)
 
@@ -86,7 +88,8 @@ object Parallelizer:
       streamPackAggKeys: Boolean,
       longDecimalKeys: Boolean,
       fusedAccumulators: Boolean,
-      oneRowPartials: Boolean
+      oneRowPartials: Boolean,
+      selectedInputs: Boolean
   )
 
   /**
@@ -392,7 +395,8 @@ object Parallelizer:
             o.streamPackAggKeys,
             o.longDecimalKeys,
             o.fusedAccumulators,
-            o.oneRowPartials
+            o.oneRowPartials,
+            o.selectedInputs
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -718,7 +722,8 @@ private[plan] object TwoPhaseAgg:
       streamPackAggKeys: Boolean = false,
       longDecimalKeys: Boolean = false,
       fusedAccumulators: Boolean = true,
-      oneRowPartials: Boolean = true
+      oneRowPartials: Boolean = true,
+      selectedInputs: Boolean = true
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -750,6 +755,7 @@ private[plan] object TwoPhaseAgg:
             ).withKeyOptions(streamPackAggKeys, longDecimalKeys)
               .withFusedAccumulators(fusedAccumulators)
               .withOneRowPartials(oneRowPartials)
+              .withSelectedInputs(selectedInputs)
         )
       ),
       partialSchema,
@@ -761,6 +767,7 @@ private[plan] object TwoPhaseAgg:
           HashAggOp(t(x), a.keys, partialAggs, partialSchema)
             .withKeyOptions(streamPackAggKeys, longDecimalKeys)
             .withFusedAccumulators(fusedAccumulators)
+            .withSelectedInputs(selectedInputs)
       )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
