@@ -1987,22 +1987,34 @@ class Planner(
         None
     // An IN subquery grouping one of the input's tables by the join key: the table is replaced by
     // the subquery's groups, whose totals the aggregation merges (`reuse_in_subquery_aggregates`)
-    if inShare.isEmpty && enabled(Optimization.ReuseInSubqueryAggregates) then
-      for
-        g   <- groupBy
-        its <- items
-        if g.groupingKeys.forall(_.isInstanceOf[UnresolvedGroupingKey])
-        rewritten <- InSubqueryAggregates.rewrite(this, g, having, its)
-      do
-        val grouped = g.copy(child = rewritten)
-        val reused  =
+    val reused =
+      if inShare.isEmpty && enabled(Optimization.ReuseInSubqueryAggregates) then
+        for
+          g   <- groupBy
+          its <- items
+          if g.groupingKeys.forall(_.isInstanceOf[UnresolvedGroupingKey])
+          rewritten <- InSubqueryAggregates.rewrite(this, g, having, its)
+        yield
+          val grouped = g.copy(child = rewritten)
           input match
             case f: Filter =>
               f.copy(child = grouped)
             case _ =>
               grouped
-        hiddenSeq = hiddenSeqAtStart
-        return aggregation(reused, items, defaultItems, plan, filter, builder)
+      else
+        None
+    val reusedPlan = reused.flatMap { r =>
+      try
+        Some(aggregation(r, items, defaultItems, plan, filter, builder))
+      catch
+        case NonFatal(e) =>
+          // Plan the original input when the rewritten one fails to plan
+          debug(s"Not reusing IN subquery aggregates: ${e.getMessage}")
+          hiddenSeq = hiddenSeqAtStart
+          None
+    }
+    if reusedPlan.isDefined then
+      return reusedPlan.get
     val in                      = plan(inShare.map(_.rest).getOrElse(source))
     val inOp                    = builder.op(in)
     val scope                   = BindScope(inOp.schema)

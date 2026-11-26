@@ -166,6 +166,7 @@ private[engine] object InSubqueryAggregates extends LogSupport:
     * of join or a leaf that is no catalog table
     */
   private def joinLeaves(
+      planner: Planner,
       r: Relation,
       cteNames: Set[String]
   ): Option[(List[Leaf], List[Expression])] =
@@ -180,13 +181,13 @@ private[engine] object InSubqueryAggregates extends LogSupport:
             case NoJoinCriteria =>
               Some(Nil)
             case JoinOn(e, _) =>
-              Some(List(e))
+              Some(planner.splitConjuncts(e))
             case _ =>
               None
         for
           c       <- cond
-          (l, a)  <- joinLeaves(j.left, cteNames)
-          (rr, b) <- joinLeaves(j.right, cteNames)
+          (l, a)  <- joinLeaves(planner, j.left, cteNames)
+          (rr, b) <- joinLeaves(planner, j.right, cteNames)
         yield (l ++ rr, a ++ b ++ c)
       case other =>
         leafOf(other, cteNames).map(l => (List(l), Nil))
@@ -216,7 +217,7 @@ private[engine] object InSubqueryAggregates extends LogSupport:
   ): Option[Relation] =
     for
       sub               <- subOf(in.in, cteNames)
-      (leaves, onConds) <- joinLeaves(filter.child, cteNames)
+      (leaves, onConds) <- joinLeaves(planner, filter.child, cteNames)
       result <- replace(planner, filter, in, others, onConds, leaves, sub, groupBy, having, items)
     yield result
 
@@ -272,8 +273,10 @@ private[engine] object InSubqueryAggregates extends LogSupport:
         case d: DotRef =>
           plainRefs += d.name.leafName.toLowerCase
           d.qualifier match
-            case _: Identifier =>
-            case q             =>
+            case q: Identifier =>
+              // A table qualifier, or a struct column whose field is read
+              plainRefs += q.leafName.toLowerCase
+            case q =>
               visit(q)
         case i: Identifier =>
           plainRefs += i.leafName.toLowerCase
@@ -339,16 +342,24 @@ private[engine] object InSubqueryAggregates extends LogSupport:
           x.leafName.equalsIgnoreCase(y.leafName)
         case _ =>
           false
-    val targetIsKey =
-      isKey(in.a) ||
-        (others ++ onConds).exists {
-          case Eq(l, r, _) =>
-            (isKey(l) && sameColumn(r, in.a)) || (isKey(r) && sameColumn(l, in.a))
-          case _ =>
-            false
-        }
-    val names = aggregated.keySet.toSet + key
-    val ok    =
+    def isColumn(e: Expression): Boolean =
+      e match
+        case _: Identifier | _: DotRef =>
+          true
+        case _ =>
+          false
+    // Columns a conjunct equates with the key. Such a conjunct joins on the key and rejects the
+    // NULL key's group, which the dropped IN filter would have rejected
+    val keyEqs = (others ++ onConds).collect {
+      case Eq(l, r, _) if isKey(l) && !isKey(r) && isColumn(r) =>
+        r
+      case Eq(l, r, _) if isKey(r) && !isKey(l) && isColumn(l) =>
+        l
+    }
+    // The IN target is the key, or a column equated with it
+    val targetIsKey = keyEqs.nonEmpty && (isKey(in.a) || keyEqs.exists(sameColumn(_, in.a)))
+    val names       = aggregated.keySet.toSet + key
+    val ok          =
       !unsafe && aggregated.nonEmpty && targetIsKey && tableColumns.contains(key) &&
         // The table's other columns aren't read, and its column names are unique among the leaves
         plainRefs.forall(c => c == key || !tableColumns.contains(c)) &&
@@ -359,7 +370,13 @@ private[engine] object InSubqueryAggregates extends LogSupport:
       // The subquery's groups, selecting its key and each aggregated column's total under the
       // column's name, read under the outer leaf's name
       val totals = aggregated.map((c, f) => SingleColumn(NameExpr.fromString(c), f, NoSpan)).toList
-      val groups = Project(sub.groups, sub.item :: totals, NoSpan)
+      // The key under its own name, even when the subquery selects it under an alias
+      val keyItem = SingleColumn(
+        NameExpr.fromString(sub.key),
+        UnquotedIdentifier(sub.key, NoSpan),
+        NoSpan
+      )
+      val groups = Project(sub.groups, keyItem :: totals, NoSpan)
       val node   = AliasedRelation(
         groups,
         UnquotedIdentifier(leaf.alias.getOrElse(leaf.leafName), NoSpan),

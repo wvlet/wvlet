@@ -113,8 +113,28 @@ class EngineInSubqueryAggregatesTest extends UniTest:
     reusesGroups(query) shouldBe true
   }
 
+  test("reuse the groups of a subquery selecting its key under an alias, over JOIN ON") {
+    val query =
+      """from orders
+        |join lineitem on o_orderkey = l_orderkey and o_orderstatus = 'O'
+        |where o_orderkey in ({
+        |  from lineitem group by l_orderkey where l_quantity.sum > 200 select l_orderkey as k
+        |})
+        |group by o_orderpriority
+        |select o_orderpriority, l_quantity.sum as q
+        |order by o_orderpriority
+        |""".stripMargin
+    reusesGroups(query) shouldBe true
+  }
+
   test("plan the IN subquery as before when the groups can't be reused") {
     Seq(
+      // No conjunct joins on the key, so nothing would reject the NULL key's group
+      s"""from region, lineitem
+         |where l_orderkey in ${bigOrders}
+         |group by r_name
+         |select r_name, l_quantity.sum as q
+         |order by r_name""".stripMargin,
       // count(*) counts the table's rows
       s"""from orders, lineitem
          |where o_orderkey in ${bigOrders} and o_orderkey = l_orderkey
