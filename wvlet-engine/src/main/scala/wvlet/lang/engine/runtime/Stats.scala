@@ -127,13 +127,20 @@ object Stats:
         rows(child)
 
   /** Distinct values of column `id` of p from source statistics, if traceable */
-  def distinct(p: RuntimePlan, id: ColumnId): Option[Double] = sourceStat(
+  def distinct(p: RuntimePlan, id: ColumnId): Option[Double] = distinct(p, id, false)
+
+  /**
+    * [[distinct]] of column `id`; with `throughGroups`, a grouping key column of an aggregation
+    * traces to the column it groups by, whose distinct values it keeps
+    */
+  def distinct(p: RuntimePlan, id: ColumnId, throughGroups: Boolean): Option[Double] = sourceStat(
     p,
     id,
     (s, i) => s.source.estimatedDistinct(s.sourceColumnName(i)),
     // Counted from the result once it is computed, as the CTE table's `estimatedDistinct`
     // returns it to CardinalityEstimator
-    _.distinct(_)
+    _.distinct(_),
+    throughGroups
   )
 
   /**
@@ -156,7 +163,8 @@ object Stats:
       p: RuntimePlan,
       id: ColumnId,
       scan: (Scan, Int) => Option[A],
-      cte: (SharedCTE, Int) => Option[A]
+      cte: (SharedCTE, Int) => Option[A],
+      throughGroups: Boolean = false
   ): Option[A] =
     def trace(p: RuntimePlan, id: ColumnId): Option[A] =
       p match
@@ -188,6 +196,17 @@ object Stats:
         case CTERef(shared, columns) =>
           val i = columns.indexWhere(_.id == id)
           Option.when(i >= 0)(i).flatMap(cte(shared, _))
+        case Aggregate(child, keys, _, columns) if throughGroups =>
+          // The output columns are the keys, then the calls
+          val i = columns.indexWhere(_.id == id)
+          if i >= 0 && i < keys.size then
+            keys(i).expr match
+              case c: ColRef =>
+                trace(child, ColumnId(c.index))
+              case _ =>
+                None
+          else
+            None
         case Values(_, _) | Sort(_, _, _) | Limit(_, _, _) | Aggregate(_, _, _, _) |
             InnerJoins(_, _) | Union(_, _) | SetOp(_, _, _, _, _) | Distinct(_) | Window(_, _, _) |
             Unnest(_, _, _, _, _) | AsOfJoin(_, _, _, _, _, _, _, _) =>
@@ -273,25 +292,32 @@ object Stats:
 
   /**
     * Estimated groups of an aggregation of p by `keys`: the product of the keys' distinct values,
-    * at most the rows of p. None when a key's distinct values are unknown
+    * at most the rows of p. None when a key's distinct values are unknown. With `throughGroups`,
+    * keys trace through the grouping keys of aggregations below
     */
-  def groups(p: RuntimePlan, keys: Seq[VExpr]): Option[Double] = combinations(p, keys).map(
-    math.min(_, rows(p))
-  )
+  def groups(p: RuntimePlan, keys: Seq[VExpr], throughGroups: Boolean = false): Option[Double] =
+    combinations(p, keys, throughGroups).map(math.min(_, rows(p)))
 
   /** The product of the distinct values of `keys` over p. None when one is unknown */
-  def combinations(p: RuntimePlan, keys: Seq[VExpr]): Option[Double] =
+  def combinations(
+      p: RuntimePlan,
+      keys: Seq[VExpr],
+      throughGroups: Boolean = false
+  ): Option[Double] =
     keys.foldLeft(Option(1.0)) { (acc, k) =>
-      acc.flatMap(a => distinct(p, k).map(d => a * math.max(1.0, d)))
+      acc.flatMap(a => distinct(p, k, throughGroups).map(d => a * math.max(1.0, d)))
     }
 
   /** Distinct values of an expression over p: a column, possibly cast */
-  def distinct(p: RuntimePlan, e: VExpr): Option[Double] =
+  def distinct(p: RuntimePlan, e: VExpr): Option[Double] = distinct(p, e, false)
+
+  /** [[distinct]] of an expression, through grouping keys with `throughGroups` */
+  def distinct(p: RuntimePlan, e: VExpr, throughGroups: Boolean): Option[Double] =
     e match
       case c: ColRef =>
-        distinct(p, ColumnId(c.index))
+        distinct(p, ColumnId(c.index), throughGroups)
       case c: CastExpr =>
-        distinct(p, c.child)
+        distinct(p, c.child, throughGroups)
       case _ =>
         None
 
@@ -415,14 +441,17 @@ object Stats:
           1.0
         else
           val r = treeRows(child, options, build)
+          // An aggregation of an aggregation (TPC-DS q65's average by store of the sums by store
+          // and item) has at most its keys' distinct values below the inner one
+          val throughGroups = options.isEnabled(Optimization.NestedGroupEstimates)
           if options.isEnabled(Optimization.ClusteredGroupEstimates) then
-            combinations(child, keys.map(_.expr))
+            combinations(child, keys.map(_.expr), throughGroups)
               .map(c =>
                 ClusteredGroups.groups(child, keys.map(_.expr), math.min(c, rows(child)), r)
               )
               .getOrElse(r)
           else
-            groups(child, keys.map(_.expr)).map(math.min(_, r)).getOrElse(r)
+            groups(child, keys.map(_.expr), throughGroups).map(math.min(_, r)).getOrElse(r)
       case Join(left, right, JoinKind.Inner, lk, rk, _, _) if lk.nonEmpty =>
         joinRows(
           left,
