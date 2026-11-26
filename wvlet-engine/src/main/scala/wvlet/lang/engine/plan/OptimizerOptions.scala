@@ -806,6 +806,15 @@ enum Optimization(val name: String):
     */
   case FusedDecimalArith extends Optimization("fused_decimal_arith")
 
+  /**
+    * Partitioned aggregations whose keys pack into one Int64
+    * ([[wvlet.lang.engine.exec.AggKeyPacking]]) pack them while routing rows to the key partitions,
+    * from the keys' ranges over the whole input, and copy only the packed key and the aggregates'
+    * columns into the partitions. Copying every column of the partitions' rows was ~2% of TPC-DS
+    * q97's and q78's CPU at SF10, and each partition packed its keys again from its own ranges
+    */
+  case PackedAggRouting extends Optimization("packed_agg_routing")
+
 end Optimization
 
 object Optimization:

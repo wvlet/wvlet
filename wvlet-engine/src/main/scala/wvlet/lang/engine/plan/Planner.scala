@@ -187,6 +187,8 @@ class Planner(
       Planner.disableSortedGroupRuns(physical)
     if !enabled(Optimization.SortedAggSplits) then
       Planner.disableSortedAggSplits(physical)
+    if !enabled(Optimization.PackedAggRouting) then
+      Planner.disablePackedAggRouting(physical)
     physical
 
   end optimizePhysical
@@ -4192,6 +4194,18 @@ object Planner:
       case _ =>
     op.children.foreach(disableSortedAggSplits)
     op.sharedInputs.foreach(disableSortedAggSplits)
+
+  /**
+    * Make the partitioned aggregations of a physical plan copy every column of each partition's
+    * rows and pack their keys per partition (`packed_agg_routing`)
+    */
+  private[engine] def disablePackedAggRouting(op: Operator): Unit =
+    op match
+      case a: PartitionedAggOp =>
+        a.withPackedRouting(false)
+      case _ =>
+    op.children.foreach(disablePackedAggRouting)
+    op.sharedInputs.foreach(disablePackedAggRouting)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =

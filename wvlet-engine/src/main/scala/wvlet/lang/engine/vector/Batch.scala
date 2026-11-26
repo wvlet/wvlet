@@ -44,7 +44,8 @@ object Schema:
   * them. Taking rows of deferred columns composes the index arrays, so a chain of filters and joins
   * gathers each column once, at its reader. Deferred batches stay inside the operator pipeline that
   * made them: buffered batches ([[wvlet.lang.engine.exec.Operator.drain]], [[Batch.concat]]) are
-  * compacted, so the cache is never shared across threads.
+  * compacted, so the cache is never shared across threads. (A `PartitionedAggOp` hands each routed
+  * batch to one partition task, which runs after the routing task that made it.)
   */
 final class Batch private (
     private val cols: Array[Vec],
