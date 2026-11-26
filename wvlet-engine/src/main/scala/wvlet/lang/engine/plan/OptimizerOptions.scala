@@ -754,6 +754,15 @@ enum Optimization(val name: String):
     */
   case JoinProbeScanCost extends Optimization("join_probe_scan_cost")
 
+  /**
+    * Partitioned aggregations whose input comes in non-decreasing order of an integer grouping key
+    * split it at key changes into contiguous runs, aggregated in parallel as the partitions,
+    * instead of hashing and scattering every row ([[wvlet.lang.engine.exec.SortedAggSplits]]). The
+    * partials of a scan sorted by the key (TPC-H lineitem by `l_orderkey`) come in part order, so
+    * only the parts' boundary keys repeat
+    */
+  case SortedAggSplits extends Optimization("sorted_agg_splits")
+
 end Optimization
 
 object Optimization:

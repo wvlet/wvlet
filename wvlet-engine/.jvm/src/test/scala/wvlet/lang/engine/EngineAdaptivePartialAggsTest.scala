@@ -152,4 +152,13 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options.withDisabled(Optimization.SortedGroupRuns), runs).contains(true) shouldBe false
   }
 
+  test("split sorted input of partitioned aggregations with sorted_agg_splits") {
+    val splits: PartialFunction[Operator, Boolean] = { case a: PartitionedAggOp =>
+      a.sortedSplits
+    }
+    flags(options, splits) shouldContain true
+    flags(options, splits).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.SortedAggSplits), splits).contains(true) shouldBe false
+  }
+
 end EngineAdaptivePartialAggsTest

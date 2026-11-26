@@ -213,6 +213,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // LongGroupTableTest that grouping runs gives the same groups as hashing
     Optimization.SortedGroupRuns ->
       "Changes how hash aggregations assign ids to sorted single Int64 keys, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the partitioned aggregations, and
+    // SortedAggSplitsTest that splitting sorted input gives the same groups as hash routing
+    Optimization.SortedAggSplits ->
+      "Changes how partitioned aggregations split sorted input, not the plan",
     // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
     // evaluation keeps the same rows
     Optimization.DictionaryFilters ->

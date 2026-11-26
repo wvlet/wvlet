@@ -32,6 +32,11 @@ import scala.collection.mutable
   * input order, so its rows (and its groups' first-seen order) are the same as routing them on the
   * calling thread.
   *
+  * With `sortedSplits` (`sorted_agg_splits`), input that comes in non-decreasing order of an
+  * integer grouping key is instead cut at key changes into contiguous runs ([[SortedAggSplits]]),
+  * each aggregated as a partition without hashing or scattering its rows; the output is then in key
+  * order.
+  *
   * With `packKeys`, each partition whose key columns are integers or dates that fit in one Int64
   * groups by the packed key ([[AggKeyPacking]], from the ranges of the partition's rows) and
   * unpacks the key columns of its groups.
@@ -92,6 +97,21 @@ class PartitionedAggOp(
     sortedGroupRuns = enabled
     this
 
+  /**
+    * Whether input sorted by an integer grouping key is split at key changes into contiguous runs
+    * aggregated as the partitions, instead of hashing and scattering its rows (`sorted_agg_splits`,
+    * [[SortedAggSplits]])
+    */
+  var sortedSplits: Boolean = true
+
+  /** Set [[sortedSplits]] */
+  def withSortedSplits(enabled: Boolean): this.type =
+    sortedSplits = enabled
+    this
+
+  /** Whether the last aggregation split its input at sorted key changes (for tests) */
+  private[engine] var usedSortedSplits: Boolean = false
+
   def next(): Batch =
     if result == null then
       result = aggregate()
@@ -144,7 +164,23 @@ class PartitionedAggOp(
     end aggregateAll
     if total < minParallelRows || runner.parallelism <= 1 then
       return aggregateAll(input.map(_.compact()), expectedGroups).iterator
-    val parts = GroupTable.partitionCount(runner.parallelism)
+    val parts  = GroupTable.partitionCount(runner.parallelism)
+    val splits =
+      if sortedSplits then
+        SortedAggSplits.of(input, keys, parts)
+      else
+        None
+    splits match
+      case Some(runs) =>
+        // Each run holds every row of its groups, and the runs come in key order
+        usedSortedSplits = true
+        val handles = runs.map { r =>
+          val rows   = r.iterator.map(input(_).size.toLong).sum
+          val groups = (expectedGroups.toLong * rows / math.max(1L, total)).toInt
+          runner.submit(() => aggregateAll(r.map(i => input(i).compact()), groups))
+        }
+        return handles.iterator.flatMap(_.get())
+      case None =>
     // The rows of each input batch in each partition
     def route(batches: IndexedSeq[Batch]): Array[mutable.ArrayBuffer[Batch]] =
       val hasher = GroupTable(keys.map(_.ptype), 0, longDecimalKeys)
