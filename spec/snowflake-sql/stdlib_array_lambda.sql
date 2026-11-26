@@ -65,3 +65,25 @@ from (
   select ARRAY[1, 5, 9] as a
 )
 ;
+select
+  array_to_string(zip_with(ARRAY[1, 2], ARRAY[10, 20], (x, y) ->
+  x + y),',') as sums,
+  array_to_string(zip_with(ARRAY[1, 2, 3], ARRAY[10, 20], (x, y) ->
+  x + coalesce(y, 0)),',') as padded,
+  array_to_string(zip_with(ARRAY['a', 'b'], ARRAY[1, 2], (s, n) ->
+  concat(coalesce(s, ''), coalesce(cast(n as varchar), ''))),',') as labels,
+  array_to_string(zip_with(ARRAY[1, 2], ARRAY[3, 4], (x, y) ->
+  concat(
+    concat(coalesce(array_to_string(transform(ARRAY[x], x -> x * 10),''), ''), '-'),
+    coalesce(cast(y as varchar), '')
+  )),',') as shadowed
+;
+-- Prices in cents
+select
+  id,
+  reduce(zip_with(prices, quantities, (p, q) ->
+  p * q), 0, (acc, v) ->
+  acc + v, s -> s) as total
+from (values (1, ARRAY[250, 400], ARRAY[2, 3]), (2, ARRAY[100], ARRAY[5])) as orders(id, prices, quantities)
+order by id
+;
