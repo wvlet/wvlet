@@ -516,7 +516,8 @@ object EagerAggregation extends Pass:
         )
       }
 
-  private def remap(e: BExpr, m: Map[ColumnId, Column]): BExpr = BExpr(
+  /** e with its references to the keys of `m` replaced by references to their columns */
+  private[runtime] def remap(e: BExpr, m: Map[ColumnId, Column]): BExpr = BExpr(
     VExprs.mapRefs(
       e.expr,
       c =>

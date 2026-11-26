@@ -901,6 +901,15 @@ enum Optimization(val name: String):
     */
   case RankFilterRows extends Optimization("rank_filter_rows")
 
+  /**
+    * An aggregation grouped by string columns of a dimension that a larger input looks up by its
+    * declared unique key groups by a representative key of those strings instead (`min(key) over
+    * (partition by strings)` over the dimension's rows), and joins the strings back per group
+    * ([[wvlet.lang.engine.runtime.DimensionGroupIds]]): TPC-DS q47 and q89 group store sales by two
+    * item and two store strings
+    */
+  case DimensionGroupIds extends Optimization("dimension_group_ids")
+
 end Optimization
 
 object Optimization:
