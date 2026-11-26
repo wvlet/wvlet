@@ -30,7 +30,12 @@ class EngineEagerAggregationTest extends UniTest:
     .engine
     .withOptimizer(options.withDisabled(Optimization.EagerAggregation))
 
-  override def afterAll: Unit = conformance.close()
+  // The TPC-H tables with their declared primary keys
+  private val keyed = EngineConformance.tpch(options, declaredKeys = true)
+
+  override def afterAll: Unit =
+    conformance.close()
+    keyed.close()
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
@@ -44,7 +49,11 @@ class EngineEagerAggregationTest extends UniTest:
     plan
 
   /** The query matches DuckDB with the rewrite on and off, and returns the plans on and off */
-  private def check(query: String, disabled: WvletEngine = disabled): (String, String) =
+  private def check(
+      query: String,
+      disabled: WvletEngine = disabled,
+      conformance: EngineConformance = conformance
+  ): (String, String) =
     val on = conformance.compareQuery(query)
     on.matched shouldBe true
     on.message.startsWith("skipped") shouldBe false
@@ -179,6 +188,64 @@ class EngineEagerAggregationTest extends UniTest:
       noOtherSide
     )
     aggregations(on) shouldBe aggregations(off) + 1
+  }
+
+  private val noJoinTrees = keyed
+    .engine
+    .withOptimizer(options.withDisabled(Optimization.EagerAggregationInJoinTrees))
+
+  /** The plan lines of hash aggregations whose output starts with column `col` */
+  private def aggregationsBy(plan: String, col: String): Int = plan
+    .linesIterator
+    .count(l => l.contains("HashAgg(") && l.contains(s"-> [${col}:"))
+
+  test("sum order lines per customer key before looking up the customer and nation") {
+    // TPC-H q10: every outer group is one customer row, so the pre-aggregation replaces it
+    val (on, off) = check(
+      """from lineitem, orders, customer, nation
+        |where l_orderkey = o_orderkey and o_custkey = c_custkey and c_nationkey = n_nationkey
+        |group by c_custkey, c_name, n_name
+        |select c_custkey, c_name, n_name, sum(l_extendedprice * (1 - l_discount)) as revenue,
+        |  count(*) as n, max(l_shipdate) as last
+        |order by revenue desc, c_custkey
+        |limit 20
+        |""".stripMargin,
+      noJoinTrees,
+      keyed
+    )
+    aggregationsBy(on, "o_custkey") shouldBe 1
+    aggregationsBy(off, "o_custkey") shouldBe 0
+    aggregations(on) shouldBe aggregations(off)
+  }
+
+  test("not aggregate in a join tree when outer groups may span several partial groups") {
+    // c_name isn't a declared key: an outer group may hold several customers' partial sums
+    val (on, off) = check(
+      """from lineitem, orders, customer, nation
+        |where l_orderkey = o_orderkey and o_custkey = c_custkey and c_nationkey = n_nationkey
+        |group by c_name, n_name
+        |select c_name, n_name, sum(l_quantity) as q, count(*) as n
+        |order by c_name
+        |""".stripMargin,
+      noJoinTrees,
+      keyed
+    )
+    on shouldBe off
+  }
+
+  test("not aggregate below a selective join in a join tree") {
+    val (on, off) = check(
+      """from lineitem, orders, customer, nation
+        |where l_orderkey = o_orderkey and o_custkey = c_custkey and c_nationkey = n_nationkey
+        |  and c_mktsegment = 'BUILDING'
+        |group by c_custkey, c_name, n_name
+        |select c_custkey, c_name, n_name, sum(l_quantity) as q
+        |order by c_custkey
+        |""".stripMargin,
+      noJoinTrees,
+      keyed
+    )
+    on shouldBe off
   }
 
 end EngineEagerAggregationTest

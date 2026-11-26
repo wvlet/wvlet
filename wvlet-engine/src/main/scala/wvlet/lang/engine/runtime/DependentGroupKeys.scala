@@ -87,8 +87,16 @@ object DependentGroupKeys extends Pass:
     val scans      = mutable.ArrayBuffer.empty[Scan]
     val equalities = mutable.ArrayBuffer.empty[(Src, Src)]
 
+    /** The traced columns of each node traced so far, by identity */
+    val nodes = java.util.IdentityHashMap[RuntimePlan, Map[ColumnId, Traced]]()
+
     /** The source columns each traced output column of p reads */
     def trace(p: RuntimePlan): Map[ColumnId, Traced] =
+      val t = traceNode(p)
+      nodes.put(p, t)
+      t
+
+    private def traceNode(p: RuntimePlan): Map[ColumnId, Traced] =
       p match
         case s: Scan =>
           val no = scans.size
@@ -195,6 +203,80 @@ object DependentGroupKeys extends Pass:
       cols.forall(covered)
 
   end Lineage
+
+  /**
+    * Whether the keys of `a` determine the columns `cols` of `x`, a node of a's child, through the
+    * declared keys and inner join equalities of a's child
+    */
+  private[runtime] def determines(a: Aggregate, x: RuntimePlan, cols: Seq[ColumnId]): Boolean =
+    val lineage = Lineage()
+    val traced  = lineage.trace(a.child)
+    Option(lineage.nodes.get(x)).exists { xt =>
+      cols.forall(xt.contains) && {
+        val known =
+          a.keys
+            .flatMap(k =>
+              k.expr match
+                case c: ColRef =>
+                  traced.get(ColumnId(c.index)).flatMap(_.copy)
+                case _ =>
+                  None
+            )
+            .toSet
+        lineage.determines(known, cols.flatMap(xt(_).srcs).toSet)
+      }
+    }
+
+  /**
+    * Whether no two rows of p share their values of the columns `cols`: p is a scan whose columns
+    * `cols` copy a declared key of it, under filters, samples and plain-copy projections, or an
+    * inner hash join whose one side is unique on `cols` and whose other side is unique on its join
+    * keys (each row finds at most one match)
+    */
+  private[runtime] def uniqueOn(p: RuntimePlan, cols: Seq[ColumnId]): Boolean =
+    p match
+      case s: Scan =>
+        val names = s.source.schema.fields.map(_.name.toLowerCase)
+        val pos   =
+          cols
+            .flatMap { c =>
+              val i = s.columns.indexWhere(_.id == c)
+              Option.when(i >= 0)(s.sourcePosition(i))
+            }
+            .toSet
+        s.source
+          .uniqueKeys
+          .exists { k =>
+            val kp = k.map(c => names.indexOf(c.toLowerCase))
+            k.nonEmpty && kp.forall(_ >= 0) && kp.toSet.subsetOf(pos)
+          }
+      case Filter(child, _, _) =>
+        uniqueOn(child, cols)
+      case Sample(child, _) =>
+        uniqueOn(child, cols)
+      case Project(child, exprs, columns) =>
+        val copies = cols.flatMap { c =>
+          val i = columns.indexWhere(_.id == c)
+          if i < 0 then
+            None
+          else
+            exprs(i).expr match
+              case r: ColRef =>
+                Some(ColumnId(r.index))
+              case _ =>
+                None
+        }
+        uniqueOn(child, copies)
+      case Join(left, right, JoinKind.Inner, lk, rk, _, _) if lk.nonEmpty =>
+        def lookup(side: RuntimePlan, keys: Seq[BExpr]): Boolean =
+          keys.forall(_.expr.isInstanceOf[ColRef]) && uniqueOn(side, keys.flatMap(_.refs))
+        def on(side: RuntimePlan): Seq[ColumnId] =
+          val ids = side.output.map(_.id).toSet
+          cols.filter(ids.contains)
+        (lookup(right, rk) && uniqueOn(left, on(left))) ||
+        (lookup(left, lk) && uniqueOn(right, on(right)))
+      case _ =>
+        false
 
   /** The aggregation grouped by the keys that determine the others, if any key is determined */
   private def reduce(a: Aggregate): Option[RuntimePlan] =

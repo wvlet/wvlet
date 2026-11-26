@@ -62,6 +62,12 @@ object EagerAggregation extends Pass:
   /** The estimated rows of A per estimated partial group, at least */
   val MinReduction: Double = 4.0
 
+  /**
+    * The estimated rows of X per estimated partial group, at least, when the pre-aggregation
+    * replaces the outer one ([[inJoinTree]])
+    */
+  val MinLookupReduction: Double = 1.5
+
   /** The estimated fraction of D's rows its filters keep, at least */
   val MinRetention: Double = 0.7
 
@@ -88,6 +94,13 @@ object EagerAggregation extends Pass:
           case Some(r) =>
             ctx.fired(name)
             r
+          case None if ctx.options.isEnabled(Optimization.EagerAggregationInJoinTrees) =>
+            inJoinTree(a, ctx.options, newId) match
+              case Some(r) =>
+                ctx.fired(Optimization.EagerAggregationInJoinTrees.name)
+                r
+              case None =>
+                node
           case None =>
             node
       case _ =>
@@ -235,17 +248,7 @@ object EagerAggregation extends Pass:
     // The outer groups, unbounded when a key's distinct values are unknown: few outer groups
     // (TPC-DS q36's 100 item classes) aggregate cheaply after the join, while finer partial
     // groups (its 102K items) cost a second aggregation that the join's savings don't repay
-    val outer =
-      a.keys
-        .foldLeft(Option(1.0)) { (acc, k) =>
-          acc.flatMap(n =>
-            k.expr match
-              case c: ColRef =>
-                distinct(a.child, ColumnId(c.index)).map(d => n * math.max(1.0, d))
-              case _ =>
-                None
-          )
-        }
+    val outer       = outerGroups(a)
     lazy val inRows = Stats.treeRows(in, options)
     // With `clustered_group_estimates`, the partial groups of rows clustered by their keys
     val partialGroups = est.map { e =>
@@ -291,6 +294,227 @@ object EagerAggregation extends Pass:
     end if
 
   end eager
+
+  /**
+    * A pre-aggregation of an input X deeper in the join tree under `a`
+    * ([[Optimization.EagerAggregationInJoinTrees]]): X is a side of an inner hash join below the
+    * aggregation's child join, the calls read X's columns only, and the tree between X and the
+    * aggregation is inner hash joins, filters and projections that read no other columns of X than
+    * its group columns g (the ones the keys, join keys, residuals, filters and projections above
+    * read). Every join above X looks up at most one row of its other side by a declared unique key
+    * ([[DependentGroupKeys.uniqueOn]]), and a's keys determine g
+    * ([[DependentGroupKeys.determines]]). Each output row of the tree is then one X row combined
+    * with rows that depend on it only through g, an outer group holds the X rows of one partial
+    * group, and so the tree over the partial groups is one row per outer group: the outer
+    * aggregation becomes a projection of the partial results, and the pre-aggregation replaces it
+    * once it reduces X at all ([[MinLookupReduction]]). The joins and filters above X keep at least
+    * [[MinRetention]] of their rows, or they would drop most of X's rows before the join.
+    *
+    * TPC-H q10 sums its order lines per `o_custkey` before looking up their customer and nation:
+    * the customer join builds 380K rows instead of 1.15M at SF10, and the aggregation by customer
+    * is gone. Without lookups the outer aggregation would merge the partials; that pays off less
+    * (TPC-DS q04's CTE bodies get their year filters after this pass, and a pre-aggregation below
+    * their date join ran 1.07x slower at SF10), so it isn't done.
+    */
+  private def inJoinTree(
+      a: Aggregate,
+      options: OptimizerOptions,
+      newId: () => ColumnId
+  ): Option[RuntimePlan] =
+    if a.keys.isEmpty || !a.keys.forall(deterministic) || !a.calls.forall(supported) then
+      None
+    else
+      val callRefs = a.calls.flatMap(_.exprs.flatMap(_.refs)).toSet
+      // The plan with the pre-aggregation, the new ids of X's group columns, and the partial
+      // results (one per call)
+      case class Pushed(plan: RuntimePlan, m: Map[ColumnId, Column], partials: Seq[Column])
+
+      def preAggregate(
+          x: RuntimePlan,
+          needed: Set[ColumnId],
+          sub: Map[ColumnId, ColumnId]
+      ): Option[Pushed] =
+        val ids    = x.output.map(_.id).toSet
+        val groups = x.output.filter(c => needed.contains(c.id))
+        if groups.isEmpty || !callRefs.map(sub).subsetOf(ids) ||
+          !DependentGroupKeys.determines(a, x, groups.map(_.id))
+        then
+          None
+        else
+          val est =
+            groups.foldLeft(Option(1.0)) { (acc, c) =>
+              acc.flatMap(n => distinct(x, c.id).map(d => n * math.max(1.0, d)))
+            }
+          lazy val xRows    = Stats.treeRows(x, options)
+          val partialGroups = est.map { e =>
+            if options.isEnabled(Optimization.ClusteredGroupEstimates) then
+              ClusteredGroups.groups(x, groups.map(c => BExpr.ref(c).expr), e, xRows)
+            else
+              e
+          }
+          Option.when(partialGroups.exists(_ * MinLookupReduction <= xRows)) {
+            val keyCols  = groups.map(c => Column(newId(), c.name, c.ptype, c.qualifiers))
+            val calls    = a.calls.zip(a.columns.drop(a.keys.size))
+            val partials = calls.map((c, out) => Column(newId(), out.name, c.ptype))
+            val byId     = x.output.map(c => c.id -> c).toMap
+            val toX      = sub.view.mapValues(byId).toMap
+            val subbed   = calls.map((c, _) =>
+              c.copy(args = c.args.map(remap(_, toX)), filter = c.filter.map(remap(_, toX)))
+            )
+            Pushed(
+              Aggregate(x, groups.map(BExpr.ref), subbed, keyCols ++ partials),
+              groups.map(_.id).zip(keyCols).toMap,
+              partials
+            )
+          }
+        end if
+      end preAggregate
+
+      // `needed`: the columns of p read above it other than by the calls; `sub`: the calls'
+      // columns as columns of p
+      def down(
+          p: RuntimePlan,
+          needed: Set[ColumnId],
+          sub: Map[ColumnId, ColumnId]
+      ): Option[Pushed] =
+        p match
+          case j @ Join(left, right, JoinKind.Inner, lk, rk, residual, _)
+              if lk.nonEmpty && (lk ++ rk ++ residual).forall(deterministic) =>
+            val callIds = callRefs.map(sub)
+            val below   = needed ++ (lk ++ rk ++ residual).flatMap(_.refs)
+            // Every join above the pre-aggregation looks up one row of its other side, and keeps
+            // most rows of its other side and of x: their runtime join filters no longer reach
+            // x's scans, and a selective join would drop most of x's rows before they are
+            // aggregated. A join whose other side the aggregation reads nothing of only filters
+            // x, and is best done first
+            def side(x: RuntimePlan, other: RuntimePlan, otherKeys: Seq[BExpr]): Option[Pushed] =
+              val lookup =
+                residual.isEmpty && otherKeys.forall(_.expr.isInstanceOf[ColRef]) &&
+                  other.output.exists(c => needed.contains(c.id)) &&
+                  DependentGroupKeys.uniqueOn(other, otherKeys.flatMap(_.refs)) &&
+                  retainedTree(other, options) &&
+                  Stats.treeRows(j, options) >= MinRetention * Stats.treeRows(x, options)
+              if lookup then
+                preAggregate(x, below, sub).orElse(down(x, below, sub))
+              else
+                None
+            // Calls reading no columns (count(*)) fit either side
+            def viaLeft = Option
+              .when(callIds.subsetOf(left.output.map(_.id).toSet))(side(left, right, rk))
+              .flatten
+              .map { r =>
+                r.copy(plan =
+                  j.copy(
+                    left = r.plan,
+                    leftKeys = lk.map(remap(_, r.m)),
+                    residual = residual.map(remap(_, r.m))
+                  )
+                )
+              }
+            def viaRight = Option
+              .when(callIds.subsetOf(right.output.map(_.id).toSet))(side(right, left, lk))
+              .flatten
+              .map { r =>
+                r.copy(plan =
+                  j.copy(
+                    right = r.plan,
+                    rightKeys = rk.map(remap(_, r.m)),
+                    residual = residual.map(remap(_, r.m))
+                  )
+                )
+              }
+            viaLeft.orElse(viaRight)
+          case Filter(child, cond, counts)
+              if deterministic(cond) && keeps(child, cond, counts, options) =>
+            down(child, needed ++ cond.refs, sub).map { r =>
+              r.copy(plan = Filter(r.plan, remap(cond, r.m), counts))
+            }
+          case Project(child, exprs, columns) if exprs.forall(deterministic) =>
+            val callIds = callRefs.map(sub)
+            // The calls read plain copies of the child's columns
+            val passed = columns
+              .indices
+              .collect {
+                case i if callIds.contains(columns(i).id) =>
+                  exprs(i).expr match
+                    case c: ColRef =>
+                      Some(columns(i).id -> ColumnId(c.index))
+                    case _ =>
+                      None
+              }
+            if passed.exists(_.isEmpty) then
+              None
+            else
+              val through   = passed.flatten.toMap
+              val neededIdx = columns.indices.filter(i => needed.contains(columns(i).id))
+              val below     = neededIdx.flatMap(i => exprs(i).refs).toSet
+              down(child, below, sub.view.mapValues(through).toMap).flatMap { r =>
+                val childIds = r.plan.output.map(_.id).toSet
+                // The columns the calls alone read are gone below
+                val kept = columns
+                  .indices
+                  .map(i => (remap(exprs(i), r.m), columns(i)))
+                  .filter((e, _) => e.refs.forall(childIds.contains))
+                Option.when(neededIdx.forall(i => kept.exists(_._2.id == columns(i).id))) {
+                  val outIds = columns.map(_.id).toSet
+                  r.copy(
+                    plan = Project(
+                      r.plan,
+                      kept.map(_._1) ++ r.partials.map(BExpr.ref),
+                      kept.map(_._2) ++ r.partials
+                    ),
+                    m = r.m.filterNot((id, _) => outIds.contains(id))
+                  )
+                }
+              }
+            end if
+          case _ =>
+            None
+
+      down(a.child, a.keys.flatMap(_.refs).toSet, callRefs.map(id => id -> id).toMap).map { r =>
+        Project(r.plan, a.keys.map(remap(_, r.m)) ++ r.partials.map(BExpr.ref), a.columns)
+      }
+    end if
+
+  end inJoinTree
+
+  /**
+    * Whether p is [[retained]], or an inner hash join of retained trees that keeps at least
+    * [[MinRetention]] of its larger input's estimated rows (a customer ⋈ nation lookup)
+    */
+  private def retainedTree(p: RuntimePlan, options: OptimizerOptions): Boolean =
+    p match
+      case j @ Join(l, r, JoinKind.Inner, lk, _, _, _) if lk.nonEmpty =>
+        retainedTree(l, options) && retainedTree(r, options) &&
+        Stats.treeRows(j, options) >=
+          MinRetention * math.max(Stats.treeRows(l, options), Stats.treeRows(r, options))
+      case _ =>
+        retained(p, options)
+
+  /** Whether the filter keeps at least [[MinRetention]] of its input's estimated rows */
+  private def keeps(
+      child: RuntimePlan,
+      cond: BExpr,
+      counts: Map[String, Int],
+      options: OptimizerOptions
+  ): Boolean =
+    FactorOr
+      .conjuncts(cond.expr)
+      .map(c => Stats.selectivity(child, JoinCondition(BExpr(c), counts), options))
+      .product >= MinRetention
+
+  /** The estimated groups of `a`, unknown when a key's distinct values are */
+  private def outerGroups(a: Aggregate): Option[Double] =
+    a.keys
+      .foldLeft(Option(1.0)) { (acc, k) =>
+        acc.flatMap(n =>
+          k.expr match
+            case c: ColRef =>
+              distinct(a.child, ColumnId(c.index)).map(d => n * math.max(1.0, d))
+            case _ =>
+              None
+        )
+      }
 
   private def remap(e: BExpr, m: Map[ColumnId, Column]): BExpr = BExpr(
     VExprs.mapRefs(
