@@ -134,12 +134,18 @@ class Planner(
 
   /** The physical passes over a lowered plan: column pruning (with scan filters), parallelism */
   private def optimizePhysical(op: Operator): Operator =
-    val pruned = ColumnPruner(
+    val prunedOnly = ColumnPruner(
       op,
       pruneColumns = enabled(Optimization.PruneColumns),
       scanFilters = enabled(Optimization.PushScanFilters),
       numericScanFilters = enabled(Optimization.DecimalFloatScanFilters)
     )
+    // Right after pruning, before the passes that set the options of the operators it rebuilds
+    val pruned =
+      if enabled(Optimization.LeftMatchPrefilter) then
+        LeftMatchPrefilter(prunedOnly)
+      else
+        prunedOnly
     if !enabled(Optimization.LateGather) then
       Planner.disableLateGather(pruned)
     if !enabled(Optimization.DenseSelectedRows) then
@@ -4238,9 +4244,12 @@ object Planner:
     op.children.foreach(foreachHashJoin(_)(f))
     op.sharedInputs.foreach(foreachHashJoin(_)(f))
 
-  /** Whether a join's probes mostly miss: an anti join or an unmatched-only LEFT join */
+  /**
+    * Whether a join's probes mostly miss: an anti join, an unmatched-only LEFT join, or a LEFT join
+    * whose build a `left_match_prefilter` filter probes
+    */
   private[engine] def missFilterFits(j: HashJoinOp): Boolean =
-    j.kind == JoinKind.Anti || j.unmatchedOnly
+    j.kind == JoinKind.Anti || j.unmatchedOnly || LeftMatchPrefilter.feedsPrefilter(j)
 
   /**
     * Set how the aggregations and DISTINCTs of a physical plan key their groups

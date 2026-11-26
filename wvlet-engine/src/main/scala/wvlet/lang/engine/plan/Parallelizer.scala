@@ -228,6 +228,7 @@ object Parallelizer:
             .withUnmatchedOnly(j.unmatchedOnly)
             .withMissFilter(j.joinBuild.missFilter)
             .withNarrowEntries(j.joinBuild.narrowEntries)
+          BuildKeyMatch.bind(template, j.prefilters)
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
             close = p.close :+ (() => template.right.close())
@@ -679,7 +680,7 @@ object Parallelizer:
           case u: UnionAllOp =>
             UnionAllOp(u.inputs.map(r), u.schema)
           case j: HashJoinOp =>
-            HashJoinOp(
+            val copy = HashJoinOp(
               r(j.left),
               r(j.right),
               j.leftKeys,
@@ -698,6 +699,7 @@ object Parallelizer:
               .withUnmatchedOnly(j.unmatchedOnly)
               .withMissFilter(j.joinBuild.missFilter)
               .withNarrowEntries(j.joinBuild.narrowEntries)
+            BuildKeyMatch.bind(copy, j.prefilters)
           case j: NestedLoopJoinOp =>
             NestedLoopJoinOp(r(j.left), r(j.right), j.cond, j.kind, j.schema)
           case s: SetOpOp if !s.all =>

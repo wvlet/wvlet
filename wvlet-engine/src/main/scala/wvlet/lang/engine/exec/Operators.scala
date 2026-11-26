@@ -1365,6 +1365,9 @@ final class JoinBuild(
   /** Build rows a probe row excluded (`exclude` of a RIGHT SEMI join), shared as `matched` is */
   var excluded: Array[Boolean] = null
 
+  /** Whether the table is built, so that probes may read it */
+  def isBuilt: Boolean = built
+
   def ensureBuilt(): Unit =
     if !built then
       synchronized {
@@ -1993,6 +1996,9 @@ class HashJoinOp(
   def withMissFilter(enabled: Boolean): this.type =
     joinBuild.missFilter = enabled
     this
+
+  /** The filters below the probe side that read this build's keys (`left_match_prefilter`) */
+  var prefilters: Seq[BuildKeyMatch.Source] = Nil
 
   // The build positions [from, until) whose unmatched rows a tail run emits
   private var tailRange = (0, Int.MaxValue)
