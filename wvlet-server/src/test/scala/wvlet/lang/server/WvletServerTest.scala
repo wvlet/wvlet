@@ -26,4 +26,12 @@ class WvletServerTest extends WvletDITest:
     }
   }
 
+  test("give the default connector the TPC-H tables with --tpch") {
+    val profile = WvletServer.profileOf(WvletServerConfig(prepareTPCH = true))
+    profile.defaultEngine.`type` shouldBe "wvlet"
+    profile.defaultEngine.properties.get("prepareTPCH") shouldBe Some(true)
+    WvletServer.profileOf(WvletServerConfig()).defaultEngine.properties.get("prepareTPCH") shouldBe
+      None
+  }
+
 end WvletServerTest

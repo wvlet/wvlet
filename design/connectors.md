@@ -16,3 +16,4 @@ This page owns how query execution reaches a database. The module split is recor
 - `cli` depends on optional connector modules only in Test scope; bundle a new optional module in `cliFull`, not `cli`.
 - Tests that need DuckDB as an oracle depend on `wvlet-connector-duckdb` (or `duckdb_jdbc`) in Test scope.
 - Trino connector tests need JDK 25+.
+- The `wvlet` connector's `prepareTPCH` / `tpchScaleFactor` properties match the DuckDB connector's names and default (0.01), so a profile runs on either engine. Its TPC-H tables are generated while scanned (`TpchSource`), read-only, and not `dbgen`-identical: tests that compare answers with DuckDB keep reading `dbgen` Parquet. `prepareTPCDS` is DuckDB-only and an error on the engine.

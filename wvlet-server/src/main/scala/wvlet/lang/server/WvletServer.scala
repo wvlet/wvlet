@@ -8,6 +8,7 @@ import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.activity.{ItemStores, TaskQueue}
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.lang.runner.{ThreadManager, WvletScriptRunnerConfig}
 import wvlet.uni.cli.launcher.option
 import wvlet.uni.control.Control.withResource
@@ -49,7 +50,10 @@ case class WvletServerConfig(
       description = "Quit the server immediately after starting. Only for boot testing"
     )
     quitImmediately: Boolean = false,
-    @option(prefix = "--tpch", description = "Load a small demo TPC-H data (DuckDB only)")
+    @option(
+      prefix = "--tpch",
+      description = "Load small demo TPC-H tables (scale factor 0.01, or tpchScaleFactor)"
+    )
     prepareTPCH: Boolean = false,
     @option(
       prefix = "--auth-token",
@@ -62,6 +66,8 @@ case class WvletServerConfig(
 
   /** The effective bearer token: the explicit option, else the WVLET_SERVER_TOKEN env variable */
   def resolvedAuthToken: Option[String] = authToken.orElse(sys.env.get("WVLET_SERVER_TOKEN"))
+
+end WvletServerConfig
 
 object WvletServer extends LogSupport:
 
@@ -206,6 +212,28 @@ object WvletServer extends LogSupport:
     else
       unusedPortFrom(start, counter + 1)
 
+  /**
+    * The profile queries run with: the named one, or the in-process engine like `wvlet run` and
+    * `wv`. With `--tpch`, its default connector (DuckDB or the wvlet engine) gets the TPC-H tables
+    */
+  def profileOf(config: WvletServerConfig): Profile =
+    val profile = Profile.getProfile(
+      config.profile,
+      config.catalog,
+      config.schema,
+      Profile.defaultWvletProfile
+    )
+    if config.prepareTPCH then
+      val c = profile.defaultEngine
+      if !(c.`type`.equalsIgnoreCase("duckdb") || WvletEngineSession.isInProcess(c)) then
+        warn(
+          s"--tpch loads TPC-H tables only on DuckDB and the in-process wvlet engine, not on " +
+            s"connector '${c.name}' (${c.`type`})"
+        )
+      profile.withProperty("prepareTPCH", true)
+    else
+      profile
+
   def design(config: WvletServerConfig): Design =
     // Bind the actual port that was acquired so downstream consumers of
     // WvletServerConfig observe the same port the Netty server is listening on.
@@ -215,15 +243,7 @@ object WvletServer extends LogSupport:
       .newSilentDesign
       .bindInstance[WvletServerConfig](resolvedConf)
       .bindInstance[WorkEnv](resolvedConf.workEnv)
-      .bindInstance[Profile](
-        Profile.getProfile(
-          resolvedConf.profile,
-          resolvedConf.catalog,
-          resolvedConf.schema,
-          // Like `wvlet run` and `wv`, queries without a profile run on the in-process engine
-          Profile.defaultWvletProfile
-        )
-      )
+      .bindInstance[Profile](profileOf(resolvedConf))
       .bindProvider[Profile, WvletScriptRunnerConfig] { (profile: Profile) =>
         WvletScriptRunnerConfig(
           interactive = false,

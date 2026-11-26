@@ -703,7 +703,7 @@ class TableWriter(engine: WvletEngine, warehouse: Option[Warehouse] = None) exte
           .NOT_IMPLEMENTED
           .newException(
             s"Cannot ${op} table ${other
-                .name}: tables backed by files are read-only on the wvlet engine"
+                .name}: tables backed by files or generated data are read-only on the wvlet engine"
           )
 
   private def batchesOf(table: TableSource): Seq[Batch] = table.scan(ScanSpec()).toSeq

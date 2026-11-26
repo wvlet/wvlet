@@ -31,7 +31,10 @@ Global options: `--profile <name>`, `-w <folder>` (working folder), `--catalog`,
 ## Engines
 
 - The in-process wvlet engine is the default for `wvlet run` and `wv`: it reads Parquet, JSON,
-  CSV, and Iceberg files (`from 'file.parquet'`) with no setup and no DuckDB.
+  CSV, and Iceberg files (`from 'file.parquet'`) with no setup and no DuckDB. A `wvlet`
+  connector with `"prepareTPCH": true` (and `"tpchScaleFactor"`, default 0.01) generates the
+  TPC-H tables in memory; values differ from `dbgen`'s, so don't compare answers with official
+  ones. `wvlet ui --tpch` does the same.
 - `-t duckdb` (also `wv -t duckdb`) runs on DuckDB: needed for `sql"..."` / `execute`,
   `.duckdb` files, extensions, and `read_csv(...)`-style table functions. `wvlet compile` emits
   DuckDB SQL by default. `wvlet build` and `wvlet flow` run on the wvlet engine, keeping tables
