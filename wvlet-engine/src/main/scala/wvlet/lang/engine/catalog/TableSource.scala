@@ -14,10 +14,12 @@
 package wvlet.lang.engine.catalog
 
 import wvlet.lang.api.StatusCode
+import wvlet.lang.engine.exec.TaskRunner
 import wvlet.lang.engine.vector.*
 import wvlet.uni.cloud.parquet.*
 import wvlet.uni.cloud.parquet.format.LogicalType
 import wvlet.uni.cloud.parquet.format.PhysicalType
+import wvlet.uni.cloud.parquet.format.RowGroupMeta
 import wvlet.uni.cloud.parquet.format.TimeUnit
 
 import scala.collection.mutable
@@ -32,7 +34,9 @@ import scala.collection.mutable
   * ([[StrVec.codes]]). With `dictionaryEntries`, Parquet sources read such strings as their
   * dictionary entries only, without copying each row's bytes. With `lazyStrings` (and
   * `dictionaryCodes`), such vectors hold only the codes and their entries' strings, building the
-  * per-row strings on first use ([[StrVec.ofEntries]])
+  * per-row strings on first use ([[StrVec.ofEntries]]). With `decodeRunner`, a Parquet scan that
+  * reads a single row group without a row filter decodes its columns as tasks of that runner
+  * (`parallel_column_decode`)
   */
 case class ScanSpec(
     columns: Option[Seq[String]] = None,
@@ -41,7 +45,8 @@ case class ScanSpec(
     rowFilter: Option[ParquetFilter] = None,
     dictionaryCodes: Boolean = false,
     dictionaryEntries: Boolean = false,
-    lazyStrings: Boolean = false
+    lazyStrings: Boolean = false,
+    decodeRunner: Option[TaskRunner] = None
 )
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -594,35 +599,139 @@ class ParquetSource(
         Some(ScanSplits(parts, () => f.close(), groups.map(g => meta(g).numRows)))
 
   def scan(spec: ScanSpec): Iterator[Batch] =
-    val (cols, types, options) = readOptions(spec)
+    val (cols, types, options)       = readOptions(spec)
+    def batch(b: ColumnBatch): Batch = ParquetSource.toBatch(
+      b,
+      cols,
+      types,
+      spec.dictionaryCodes,
+      spec.lazyStrings
+    )
     if isSingleFile then
-      val f  = openFile(spec.footerCache).file
-      val it =
+      val f                   = openFile(spec.footerCache).file
+      val it: Iterator[Batch] =
         try
-          if spec.filter.exists(DecimalStats.hasDecimalCompare(_, f.schema)) then
-            // Read only the row groups the decimal statistics don't skip either
-            ParquetSource.selectRowGroups(f, spec, options).iterator.map(f.readRowGroup(_, options))
-          else
-            f.readBatches(options)
+          parallelDecode(f, spec, cols, options) match
+            case Some(b) =>
+              Iterator.single(b)
+            case None if spec.filter.exists(DecimalStats.hasDecimalCompare(_, f.schema)) =>
+              // Read only the row groups the decimal statistics don't skip either
+              ParquetSource
+                .selectRowGroups(f, spec, options)
+                .iterator
+                .map(g => batch(f.readRowGroup(g, options)))
+            case None =>
+              f.readBatches(options).map(batch)
         catch
           case e: Throwable =>
             f.close()
             throw e
-      ParquetSource.closing(
-        it.map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes, spec.lazyStrings)),
-        () => f.close()
-      )
+      ParquetSource.closing(it, () => f.close())
     else
       val ds = ParquetSource.openDataset(path)
-      val it = ds.readBatches(options)
-      ParquetSource.closing(
-        it.map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes, spec.lazyStrings)),
-        () => ds.close()
-      )
+      ParquetSource.closing(ds.readBatches(options).map(batch), () => ds.close())
+    end if
+
+  end scan
+
+  /**
+    * The only row group `f` reads for `spec`, decoded by tasks of `spec.decodeRunner`
+    * (`parallel_column_decode`) when there is no row filter and its columns make more than one task
+    * ([[ParquetSource.decodeTasks]]); None to read it as before
+    */
+  private def parallelDecode(
+      f: ParquetFile,
+      spec: ScanSpec,
+      cols: Seq[String],
+      options: ParquetReadOptions
+  ): Option[Batch] = spec
+    .decodeRunner
+    .filter(r => r.parallelism > 1 && cols.size > 1 && spec.rowFilter.isEmpty)
+    .flatMap { runner =>
+      val groups = ParquetSource.selectRowGroups(f, spec, options)
+      if groups.size == 1 then
+        val tasks = ParquetSource.decodeTasks(f.rowGroups(groups.head), cols)
+        Option.when(tasks.size > 1)(
+          readColumnsInParallel(f, groups.head, spec, cols, tasks, runner)
+        )
+      else
+        None
+    }
+
+  /**
+    * Row group `g` of `f` read with one task of `runner` per group of column positions in `tasks`
+    * ([[ParquetSource.decodeTasks]], `parallel_column_decode`): each task decompresses and decodes
+    * its column chunks and builds their engine vectors, the calling thread taking the first. Only
+    * for a read without a row filter, so that every column holds the same rows
+    */
+  private def readColumnsInParallel(
+      f: ParquetFile,
+      g: Int,
+      spec: ScanSpec,
+      cols: Seq[String],
+      tasks: IndexedSeq[IndexedSeq[Int]],
+      runner: TaskRunner
+  ): Batch =
+    val vecs = new Array[Vec](cols.size)
+    TaskRunner.inParallel(runner, tasks.size) { t =>
+      val positions          = tasks(t)
+      val (names, types, op) = readOptions(spec.copy(columns = Some(positions.map(cols))))
+      val b                  = f.readRowGroup(g, op)
+      positions
+        .indices
+        .foreach { k =>
+          vecs(positions(k)) = ParquetSource.toVec(
+            b.column(names(k)),
+            types(k),
+            spec.dictionaryCodes,
+            spec.lazyStrings
+          )
+        }
+    }
+    Batch(vecs, f.rowGroups(g).numRows.toInt)
 
 end ParquetSource
 
 object ParquetSource:
+
+  /**
+    * At least how many uncompressed bytes of column chunks a task decoding part of a single row
+    * group takes (`parallel_column_decode`): a smaller task costs more than it saves. TPC-DS q06
+    * read item's three small columns (~1.5 MB at SF10) with 8% more CPU as one task per column
+    */
+  val ParallelDecodeMinBytes: Long = 2L * 1024 * 1024
+
+  /**
+    * The positions of `cols` grouped into the tasks decoding row group `meta` in parallel, largest
+    * first: a column of at least [[ParallelDecodeMinBytes]] (uncompressed) is a task of its own,
+    * and smaller ones share tasks of about that size, the last joining the one before when it is
+    * smaller. One task (or none) means decoding on one thread
+    */
+  def decodeTasks(meta: RowGroupMeta, cols: Seq[String]): IndexedSeq[IndexedSeq[Int]] =
+    // A nested column's leaves all count toward its top-level name
+    val sizes = meta.columns.groupMapReduce(_.path.head)(_.totalUncompressedSize)(_ + _)
+    val bytes = cols.map(c => sizes.getOrElse(c, 0L))
+    val tasks = IndexedSeq.newBuilder[IndexedSeq[Int]]
+    var cur   = IndexedSeq.empty[Int]
+    var size  = 0L
+    cols
+      .indices
+      .sortBy(i => -bytes(i))
+      .foreach { i =>
+        cur :+= i
+        size += bytes(i)
+        if size >= ParallelDecodeMinBytes then
+          tasks += cur
+          cur = IndexedSeq.empty
+          size = 0L
+      }
+    val full = tasks.result()
+    if cur.isEmpty then
+      full
+    else if full.isEmpty then
+      IndexedSeq(cur)
+    else
+      full.init :+ (full.last ++ cur)
 
   /** Up to how many rows a string column is read to count its distinct values */
   val DistinctScanLimit: Long = 1000000

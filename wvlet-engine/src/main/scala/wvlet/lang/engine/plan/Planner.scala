@@ -130,6 +130,8 @@ class Planner(
       Planner.disableSparseKeyPassRates(pruned)
     if !enabled(Optimization.KeySetRowGroups) then
       Planner.disableKeySetRowGroups(pruned)
+    if !enabled(Optimization.ParallelColumnDecode) then
+      Planner.disableParallelColumnDecode(pruned)
     if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) ||
       !enabled(Optimization.DictionaryFilters) || !enabled(Optimization.DictionarySelection)
     then
@@ -4082,6 +4084,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableKeySetRowGroups)
     op.sharedInputs.foreach(disableKeySetRowGroups)
+
+  /** Decode a single row group's columns on one thread (`parallel_column_decode`) */
+  private[engine] def disableParallelColumnDecode(op: Operator): Unit =
+    op match
+      case s: ScanOp =>
+        s.parallelColumnDecode = false
+      case _ =>
+    op.children.foreach(disableParallelColumnDecode)
+    op.sharedInputs.foreach(disableParallelColumnDecode)
 
   /** Set how the filters of a physical plan evaluate AND / OR (`short_circuit_filters`) */
   private[engine] def configureFilters(
