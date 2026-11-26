@@ -29,6 +29,7 @@ import wvlet.lang.engine.runtime.BExpr
 import wvlet.lang.engine.runtime.JoinCondition
 import wvlet.lang.engine.runtime.Lowering
 import wvlet.lang.engine.runtime.Optimizer
+import wvlet.lang.engine.runtime.ParallelResultStats
 import wvlet.lang.engine.runtime.PlanAccelerator
 import wvlet.lang.engine.runtime.PlanValidator
 import wvlet.lang.engine.runtime.PushDownFilters
@@ -1507,12 +1508,18 @@ class Planner(
             Option
               .when(k >= 0)(k)
               .map { k =>
-                Stats
-                  .resultDistinct(
-                    batches,
-                    k,
-                    body.schema(position).ptype,
-                    primitive = enabled(Optimization.PrimitiveResultDistinct)
+                (
+                  if enabled(Optimization.ParallelResultStats) then
+                    ParallelResultStats.distinct(batches, k, TaskRunner.default)
+                  else
+                    None
+                ).getOrElse(
+                    Stats.resultDistinct(
+                      batches,
+                      k,
+                      body.schema(position).ptype,
+                      primitive = enabled(Optimization.PrimitiveResultDistinct)
+                    )
                   )
                   .toDouble
               }
@@ -1532,6 +1539,8 @@ class Planner(
             out.indices.foreach(i => pos(out(i).id.value) = keep.indexOf(i))
             if cond.refs.exists(r => r.value >= pos.length || pos(r.value) < 0) then
               None
+            else if enabled(Optimization.ParallelResultStats) then
+              ParallelResultStats.rows(batches, cond.lower(pos), TaskRunner.default)
             else
               Stats.resultRows(batches, cond.lower(pos))
           }

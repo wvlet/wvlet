@@ -127,6 +127,9 @@ class EngineOptimizerToggleTest extends UniTest:
     // StatsTest checks that both ways count the same distinct values
     Optimization.PrimitiveResultDistinct ->
       "Changes how a computed CTE's distinct values are counted, not the counts",
+    // ParallelResultStatsTest checks that both ways count the same values and rows
+    Optimization.ParallelResultStats ->
+      "Changes which threads compute a computed CTE's statistics, not the plans",
     // PartitionedAggOpTest checks that both ways give the same partitions
     Optimization.ParallelAggPartitioning ->
       "Changes how aggregation input is routed to partitions, not the plan",

@@ -849,6 +849,15 @@ enum Optimization(val name: String):
     */
   case EagerAggregationInJoinTrees extends Optimization("eager_aggregation_in_join_trees")
 
+  /**
+    * The statistics of a shared CTE result computed for planning ([[CTEReaderStats]]) are computed
+    * by the engine's tasks instead of on the planning thread, and a string column's distinct values
+    * are counted by their hash codes and lengths in a set of longs instead of a string group table
+    * ([[wvlet.lang.engine.runtime.ParallelResultStats]]). TPC-DS q11 counts its 1M-row `year_total`
+    * result's customer ids and its readers' filtered rows at SF10
+    */
+  case ParallelResultStats extends Optimization("parallel_result_stats")
+
 end Optimization
 
 object Optimization:
