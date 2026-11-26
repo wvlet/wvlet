@@ -101,7 +101,11 @@ object PlanValidator:
             b += s"Unnest has ${columns.size} columns for ${lists.size} lists"
           checkExprs(b, "Unnest", lists, child.output)
         case CTERef(cte, columns) =>
-          if columns.map(_.ptype) != cte.body.output.map(_.ptype) then
+          // A reader bound before long keys were added for joins reads the columns before them
+          val body = cte.body.output
+          if columns.size < cte.readerSchema.size ||
+            columns.map(_.ptype) != body.take(columns.size).map(_.ptype)
+          then
             b +=
               s"CTERef[${cte.name}] columns ${columns.mkString(", ")} differ from ${cte
                   .body

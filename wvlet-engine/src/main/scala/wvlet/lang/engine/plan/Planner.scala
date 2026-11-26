@@ -24,6 +24,7 @@ import wvlet.lang.engine.catalog.*
 import wvlet.lang.engine.exec.*
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.runtime.RuntimeBinder
+import wvlet.lang.engine.runtime.CTEJoinKeys
 import wvlet.lang.engine.runtime.Stats
 import wvlet.lang.engine.runtime.BExpr
 import wvlet.lang.engine.runtime.JoinCondition
@@ -279,7 +280,7 @@ class Planner(
     */
   private def planRoot(r: Relation): Operator =
     try
-      val bound     = runtimeBinder.bind(r)
+      val bound     = cteJoinKeys(runtimeBinder.bind(r))
       val optimized = optimizeRuntime(bound)
       rootPlans = Some(RootPlans(bound, optimized))
       val op = optimizePhysical(lower(optimized))
@@ -697,6 +698,7 @@ class Planner(
               try
                 c.bound = runtimeBinder.bind(d)
                 c.body = optimizeRuntime(c.bound)
+                c.visibleColumns = c.body.output.size
               finally
                 bindingCTEs = bindingCTEs.tail
               c
@@ -704,6 +706,26 @@ class Planner(
         Some(cte)
       case _ =>
         None
+
+  /**
+    * The bound root plan with its equalities between readers of a shared CTE on a string key
+    * rewritten to the long key that determines it (`cte_determining_join_keys`, [[CTEJoinKeys]])
+    */
+  private def cteJoinKeys(bound: RuntimePlan): RuntimePlan =
+    if enabled(Optimization.CTEDeterminingJoinKeys) && deferredCTEs.nonEmpty then
+      CTEJoinKeys.rewrite(
+        bound,
+        (cte, position) =>
+          cte match
+            case d: DeferredCTE =>
+              d.extendKey(position)
+            case _ =>
+              None
+        ,
+        () => runtimeBinder.newColumnId()
+      )
+    else
+      bound
 
   /** The definition of a CTE in scope, by name */
   private[engine] def cteDef(name: String): Option[AliasedRelation] = cteDefs.get(name.toLowerCase)
@@ -1463,6 +1485,45 @@ class Planner(
     var body: RuntimePlan  = null
     // The CTEs that the body reads, which are finalized after this one
     val reads = mutable.LinkedHashSet.empty[DeferredCTE]
+    // The body columns that the query reads by name; the ones after them are long keys added for
+    // readers' joins ([[extendKey]])
+    var visibleColumns = 0
+    // The body position of the long key added for the string key at a body position
+    private val extendedKeys = mutable.Map.empty[Int, Option[Int]]
+
+    override def readerSchema: Schema = Schema(body.schema.fields.take(visibleColumns))
+
+    /**
+      * The body position of a long key that determines the string key at body `position`, added to
+      * the body for joins of its readers ([[CTEJoinKeys]]), if the body can carry one. Only before
+      * the body is lowered or computed
+      */
+    private def columns(p: RuntimePlan): Seq[(String, PType)] = p.output.map(c => (c.name, c.ptype))
+
+    def extendKey(position: Int): Option[Int] = extendedKeys.getOrElseUpdate(
+      position,
+      // Positions are the optimized body's: the bound body must output the same columns
+      if finalized.nonEmpty || rowCount.nonEmpty ||
+        body.schema.names.distinct.size != body.schema.size || columns(bound) != columns(body)
+      then
+        None
+      else
+        CTEJoinKeys
+          .extendBody(bound, position, () => runtimeBinder.newColumnId())
+          .flatMap { extended =>
+            if options.validatePlans then
+              PlanValidator.validate(extended)
+            // A separate run, so that firedRules counts the body's rules once
+            val optimized = Optimizer
+              .default(options, newColumnId = Some(() => runtimeBinder.newColumnId()))
+              .run(extended)
+            Option.when(columns(optimized) == columns(extended)) {
+              bound = extended
+              body = optimized
+              body.output.size - 1
+            }
+          }
+    )
 
     // Positions of the body output that readers read
     private val needed    = mutable.BitSet.empty
@@ -1584,7 +1645,13 @@ class Planner(
           .newException(s"${label} is read for its duplicates after its joins were reduced")
       if uniqueNames then
         readerFilters += filter
-        ScanOp(CTETable(label, body.schema, this, setContext), schema, None, None)
+        // A reader bound before a long key was added for joins reads the columns before it
+        ScanOp(
+          CTETable(label, body.schema, this, setContext),
+          schema,
+          Option.when(schema.size < body.schema.size)(schema.fields.indices),
+          None
+        )
       else
         // An iterator reads every column and row
         readerFilters += None

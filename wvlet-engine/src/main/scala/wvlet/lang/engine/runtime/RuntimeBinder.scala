@@ -250,7 +250,7 @@ class RuntimeBinder(planner: Planner):
       case Some(d) =>
         planner.sharedCTE(name) match
           case Some(cte) =>
-            RuntimePlan.CTERef(cte, columnsOf(cte.body.schema))
+            RuntimePlan.CTERef(cte, columnsOf(cte.readerSchema))
           case None =>
             // A CTE read once (or every CTE, with share_ctes off) is inlined: its body binds in
             // place, so that the passes see through it
