@@ -22,6 +22,14 @@ import wvlet.uni.test.UniTest
 class TpcdsGenTest extends UniTest:
   private val sources = TpcdsGen.sources(0.1).map(s => s.name -> s).toMap
 
+  // Sales, returns, and inventory at SF 0.01 (28,810 store sales lines in dsdgen)
+  private val facts =
+    TpcdsGen
+      .sources(0.01)
+      .filter(s => TpcdsFacts.schemas.contains(s.name))
+      .map(s => s.name -> s)
+      .toMap
+
   private def rowsOf(name: String): IndexedSeq[IndexedSeq[Any]] =
     sources(name)
       .scan(ScanSpec())
@@ -165,19 +173,38 @@ class TpcdsGenTest extends UniTest:
   }
 
   test("should bound every column by its range and distinct estimates") {
-    sources
-      .values
-      .foreach { s =>
-        val all = rowsOf(s.name)
-        s.schema
-          .names
-          .zipWithIndex
-          .foreach { (c, i) =>
-            val vs = all.map(_(i))
-            s.columnRange(c)
-              .foreach { (lo, hi) =>
-                val ls = vs
-                  .filter(_ != null)
+    // Fact tables are checked at a smaller scale below
+    (
+      sources.values.filterNot(s => TpcdsFacts.schemas.contains(s.name)) ++
+        facts.values.filter(s => Seq("store_returns", "inventory").contains(s.name))
+    ).foreach { s =>
+      val all = values(s, s.schema.names*)
+      s.schema
+        .names
+        .zipWithIndex
+        .foreach { (c, i) =>
+          val vs = all.map(_(i))
+          s.columnRange(c)
+            .foreach { (lo, hi) =>
+              val ls = vs
+                .filter(_ != null)
+                .map {
+                  case x: Long =>
+                    x
+                  case x: Int =>
+                    x.toLong
+                  case x =>
+                    fail(s"Unexpected value of ${c}: ${x}")
+                }
+              (c, ls.min >= lo && ls.max <= hi) shouldBe (c, true)
+            }
+          s.partRanges(c)
+            .foreach { parts =>
+              // Each part's range is exactly that of its block's rows
+              var start = 0
+              parts.foreach { p =>
+                val block = vs
+                  .slice(start, start + p.rows.toInt)
                   .map {
                     case x: Long =>
                       x
@@ -186,34 +213,17 @@ class TpcdsGenTest extends UniTest:
                     case x =>
                       fail(s"Unexpected value of ${c}: ${x}")
                   }
-                (c, ls.min >= lo && ls.max <= hi) shouldBe (c, true)
+                (c, start, block.min, block.max) shouldBe (c, start, p.min, p.max)
+                start += p.rows.toInt
               }
-            s.partRanges(c)
-              .foreach { parts =>
-                // Each part's range is exactly that of its block's rows
-                var start = 0
-                parts.foreach { p =>
-                  val block = vs
-                    .slice(start, start + p.rows.toInt)
-                    .map {
-                      case x: Long =>
-                        x
-                      case x: Int =>
-                        x.toLong
-                      case x =>
-                        fail(s"Unexpected value of ${c}: ${x}")
-                    }
-                  (c, start, block.min, block.max) shouldBe (c, start, p.min, p.max)
-                  start += p.rows.toInt
-                }
-                start shouldBe all.size
-              }
-            s.estimatedDistinct(c)
-              .foreach { d =>
-                (c, vs.filter(_ != null).distinct.size <= d) shouldBe (c, true)
-              }
-          }
-      }
+              start shouldBe all.size
+            }
+          s.estimatedDistinct(c)
+            .foreach { d =>
+              (c, vs.filter(_ != null).distinct.size <= d) shouldBe (c, true)
+            }
+        }
+    }
   }
 
   test("should scale dimension row counts as dsdgen does") {
@@ -276,6 +286,11 @@ class TpcdsGenTest extends UniTest:
     ).foreach { (cat, cls) =>
       (cat, cls, items.contains(IndexedSeq(cat, cls))) shouldBe (cat, cls, true)
     }
+    val brands = values(sf1("item"), "i_brand").flatten.toSet
+    TpcdsDimensions.queryBrands.values.flatten.foreach(b => (b, brands(b)) shouldBe (b, true))
+    val counties = values(sf1("customer_address"), "ca_county").flatten.toSet
+    Seq("Rush County", "Toole County", "Jefferson County", "Dona Ana County", "La Porte County")
+      .foreach(c => (c, counties(c)) shouldBe (c, true))
     values(sf1("store"), "s_store_name").flatten shouldContain "ese"
     values(sf1("web_site"), "web_company_name").flatten shouldContain "pri"
     val carriers = values(sf1("ship_mode"), "sm_carrier").flatten
@@ -339,6 +354,143 @@ class TpcdsGenTest extends UniTest:
     items.map(_(0)).distinct.size shouldBe items.size / 2
     // Every business id has exactly one current revision
     items.groupBy(_(0)).values.forall(_.count(_(1) == null) == 1) shouldBe true
+  }
+
+  private def factRows(name: String, columns: String*): IndexedSeq[IndexedSeq[Any]] = values(
+    facts(name),
+    columns*
+  )
+
+  private def long(v: Any): Long = v.asInstanceOf[Long]
+
+  test("should generate dsdgen's fact table sizes") {
+    // dsdgen's counts at SF 0.01; the generated ones are random around them except inventory's
+    val expected = Map(
+      "store_sales"     -> 28810L,
+      "store_returns"   -> 2829L,
+      "catalog_sales"   -> 14313L,
+      "catalog_returns" -> 1377L,
+      "web_sales"       -> 7212L,
+      "web_returns"     -> 685L
+    )
+    expected.foreach { (t, n) =>
+      val actual = facts(t).scan(ScanSpec(columns = Some(Nil))).map(_.size.toLong).sum
+      // About 10% of a few thousand lines are returned, so allow 10%
+      (t, math.abs(actual - n).toDouble / n < 0.1) shouldBe (t, true)
+      (t, math.abs(facts(t).estimatedRows.get - n).toDouble / n < 0.1) shouldBe (t, true)
+    }
+    facts("inventory").scan(ScanSpec(columns = Some(Nil))).map(_.size).sum shouldBe 23490
+    facts("inventory").estimatedRows shouldBe Some(23490L)
+  }
+
+  test("should share a ticket's customer, store, date, and time over distinct items") {
+    val lines = factRows(
+      "store_sales",
+      "ss_ticket_number",
+      "ss_customer_sk",
+      "ss_store_sk",
+      "ss_sold_date_sk",
+      "ss_sold_time_sk",
+      "ss_item_sk",
+      "ss_cdemo_sk",
+      "ss_hdemo_sk",
+      "ss_addr_sk"
+    )
+    val tickets = lines.groupBy(_(0))
+    tickets.size shouldBe 2400
+    tickets.values.forall(t => t.size >= 8 && t.size <= 16) shouldBe true
+    (Seq(1, 2, 3, 4) ++ Seq(6, 7, 8)).foreach { c =>
+      (c, tickets.values.forall(_.map(_(c)).filter(_ != null).distinct.size <= 1)) shouldBe
+        (c, true)
+    }
+    tickets.values.forall(t => t.map(_(5)).distinct.size == t.size) shouldBe true
+    val orders = factRows("catalog_sales", "cs_order_number", "cs_sold_date_sk", "cs_ship_date_sk")
+    orders.groupBy(_(0)).values.forall(o => o.size >= 4 && o.size <= 14) shouldBe true
+    orders
+      .filter(r => r(1) != null && r(2) != null)
+      .forall(r => long(r(2)) - long(r(1)) >= 2 && long(r(2)) - long(r(1)) <= 90) shouldBe true
+  }
+
+  test("should derive sales amounts from quantity and prices") {
+    val rows = factRows(
+      "store_sales",
+      "ss_quantity",
+      "ss_wholesale_cost",
+      "ss_list_price",
+      "ss_sales_price",
+      "ss_ext_sales_price",
+      "ss_coupon_amt",
+      "ss_net_paid",
+      "ss_net_profit",
+      "ss_ext_wholesale_cost",
+      "ss_ext_discount_amt"
+    ).filter(!_.contains(null))
+    def d(v: Any): BigDecimal = BigDecimal(v.asInstanceOf[java.math.BigDecimal])
+    rows.nonEmpty shouldBe true
+    rows.forall(r => d(r(4)) == d(r(3)) * long(r(0))) shouldBe true
+    rows.forall(r => d(r(6)) == d(r(4)) - d(r(5))) shouldBe true
+    rows.forall(r => d(r(7)) == d(r(6)) - d(r(8))) shouldBe true
+    rows.forall(r => d(r(9)) == d(r(5))) shouldBe true
+    rows.forall(r => d(r(2)) >= d(r(1)) && d(r(2)) <= d(r(1)) * 2 && d(r(3)) <= d(r(2))) shouldBe
+      true
+  }
+
+  test("should return lines of their sale") {
+    val sold =
+      factRows(
+        "store_sales",
+        "ss_ticket_number",
+        "ss_item_sk",
+        "ss_quantity",
+        "ss_sales_price",
+        "ss_sold_date_sk"
+      ).map(r => (r(0), r(1)) -> r).toMap
+    val returns = factRows(
+      "store_returns",
+      "sr_ticket_number",
+      "sr_item_sk",
+      "sr_return_quantity",
+      "sr_return_amt",
+      "sr_returned_date_sk",
+      "sr_fee",
+      "sr_return_ship_cost",
+      "sr_return_tax",
+      "sr_net_loss"
+    )
+    def d(v: Any): BigDecimal = BigDecimal(v.asInstanceOf[java.math.BigDecimal])
+    returns.forall(r => sold.contains((r(0), r(1)))) shouldBe true
+    val complete = returns.filter(r => !r.contains(null) && !sold((r(0), r(1))).contains(null))
+    complete.nonEmpty shouldBe true
+    complete.forall { r =>
+      val s = sold((r(0), r(1)))
+      long(r(2)) <= long(s(2)) && d(r(3)) == d(s(3)) * long(r(2)) && long(r(4)) - long(s(4)) >= 4 &&
+      long(r(4)) - long(s(4)) <= 180 && d(r(8)) == d(r(5)) + d(r(6)) + d(r(7))
+    } shouldBe true
+  }
+
+  test("should scan fact parts to the same rows as the whole scan") {
+    val s     = facts("web_returns")
+    val whole = values(s, s.schema.names*)
+    val parts =
+      s.scanSplits(ScanSpec()) match
+        case Some(sp) =>
+          sp.parts.flatMap(_()).flatMap(b => Iterator.range(0, b.size).map(b.row(_).toIndexedSeq))
+        case None =>
+          whole
+    parts shouldBe whole
+    val inv = facts("inventory")
+    inv.scanSplits(ScanSpec()).get.rows shouldBe inv.partRanges("inv_date_sk").get.map(_.rows)
+    // Estimates cover the inventory columns too
+    inv.columnRange("inv_item_sk") shouldBe Some((1L, 180L))
+    inv.estimatedDistinct("inv_date_sk") shouldBe Some(261.0)
+    facts("store_sales").columnRange("ss_item_sk") shouldBe Some((1L, 180L))
+  }
+
+  test("should generate orders with fewer items than lines per order") {
+    // SF 0.0005 has 9 items, fewer than a store ticket's 8 to 16 lines
+    val tiny  = TpcdsGen.sources(0.0005).find(_.name == "store_sales").get
+    val lines = values(tiny, "ss_ticket_number", "ss_item_sk").groupBy(_(0))
+    lines.values.forall(t => t.size <= 9 && t.map(_(1)).distinct.size == t.size) shouldBe true
   }
 
 end TpcdsGenTest

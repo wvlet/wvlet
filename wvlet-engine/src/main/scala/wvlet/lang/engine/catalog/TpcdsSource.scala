@@ -26,7 +26,14 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
   val name: String   = table
   val schema: Schema = schemas(table)
 
-  private val rows = gen.rows(table)
+  private val isFact = gen.isFact(table)
+
+  // Fact row counts are estimates; only dimensions' are exact
+  private val rows: Long =
+    if isFact then
+      gen.facts.estimatedRows(table)
+    else
+      gen.rows(table).toLong
 
   protected val numBlocks: Int = gen.numBlocks(table)
 
@@ -34,7 +41,11 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
 
   protected def generateBlock(b: Int): Batch = gen.block(table, b)
 
-  protected def blockRowCount(b: Int): Option[Long] = Some(gen.blockSize(table, b).toLong)
+  protected def blockRowCount(b: Int): Option[Long] =
+    if isFact then
+      gen.facts.blockRowCount(table, b)
+    else
+      Some(gen.blockSize(table, b).toLong)
 
   private def epochDay(i: Int): Int = FirstEpochDay + i
   private def year(i: Int): Long    = ValueOps.civilFromDays(epochDay(i))._1.toLong
@@ -107,18 +118,31 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
       case _ =>
         None
 
-  override def columnRange(column: String): Option[(Long, Long)] = ascending(column)
-    .map(f => (f(0), f(rows - 1)))
+  override def columnRange(column: String): Option[(Long, Long)] =
+    if isFact then
+      gen.facts.columnRange(table, column)
+    else
+      dimensionRange(column)
+
+  private def dimensionRange(column: String): Option[(Long, Long)] = ascending(column)
+    .map(f => (f(0), f(rows.toInt - 1)))
     .orElse(fixedRange(column))
 
-  override def partRanges(column: String): Option[IndexedSeq[ColumnPartRange]] = ascending(column)
-    .map { f =>
-      IndexedSeq.tabulate(numBlocks) { b =>
-        val start = gen.blockStart(b)
-        val n     = gen.blockSize(table, b)
-        ColumnPartRange(f(start), f(start + n - 1), n.toLong)
-      }
+  override def partRanges(column: String): Option[IndexedSeq[ColumnPartRange]] =
+    if isFact then
+      gen.facts.partRanges(table, column)
+    else
+      dimensionPartRanges(column)
+
+  private def dimensionPartRanges(column: String): Option[IndexedSeq[ColumnPartRange]] = ascending(
+    column
+  ).map { f =>
+    IndexedSeq.tabulate(numBlocks) { b =>
+      val start = gen.blockStart(b)
+      val n     = gen.blockSize(table, b)
+      ColumnPartRange(f(start), f(start + n - 1), n.toLong)
     }
+  }
 
   // The values of a customer_demographics column taking `domain` values, each for `stride` rows
   private def prefixDistinct(domain: Int, stride: Int): Double = math.min(
@@ -127,6 +151,12 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
   )
 
   override def estimatedDistinct(column: String): Option[Double] =
+    if isFact then
+      gen.facts.estimatedDistinct(table, column)
+    else
+      dimensionDistinct(column)
+
+  private def dimensionDistinct(column: String): Option[Double] =
     val n: Option[Double] =
       column match
         case "d_date_sk" | "d_date_id" | "d_date" | "t_time_sk" | "t_time_id" | "t_time" |
@@ -139,7 +169,7 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
           Some(rows)
         // Business ids of slowly changing dimensions: 3 for every 6 rows, in revisions of 1, 2, and 3
         case "i_item_id" | "s_store_id" | "cc_call_center_id" | "web_site_id" | "wp_web_page_id" =>
-          Some(3 * (rows / 6) + IndexedSeq(0, 1, 2, 2, 3, 3)(rows % 6))
+          Some(3 * (rows / 6) + IndexedSeq(0, 1, 2, 2, 3, 3)((rows % 6).toInt))
         case "i_category" | "i_category_id" =>
           Some(TpcdsDimensions.categories.size)
         case "i_class" =>
@@ -228,7 +258,7 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
           None
     n.map(math.min(_, rows.toDouble))
 
-  end estimatedDistinct
+  end dimensionDistinct
 
   // Tables of the same name at the same scale factor hold the same rows
   /** The primary key of the table in the TPC-DS specification */
