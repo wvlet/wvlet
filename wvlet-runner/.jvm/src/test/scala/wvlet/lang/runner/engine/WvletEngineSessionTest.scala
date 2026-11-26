@@ -14,6 +14,7 @@
 package wvlet.lang.runner.engine
 
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.CompilationUnit
@@ -128,6 +129,23 @@ class WvletEngineSessionTest extends UniTest:
     // The default scale factor is DuckDB's, 0.01
     val small = WvletEngineSession(tpchConfig("prepareTPCH" -> false, "prepareTPCDS" -> true), ".")
     small.engine.catalog.get("customer").estimatedRows shouldBe Some(1000L)
+  }
+
+  test("type tpch and tpcds catalog tables with no benchmark properties") {
+    val session = WvletEngineSession(ConnectorConfig(name = "wvlet", `type` = "wvlet"), ".")
+    session.tableNames shouldBe Nil
+    def columns(catalog: String): Seq[String] = session
+      .catalog
+      .findTable(Catalog.TableName(Some(catalog), Some("sf1"), "customer"), "main")
+      .toSeq
+      .flatMap(_.columns.map(_.name))
+    columns("tpch") shouldContain "c_custkey"
+    columns("tpcds") shouldContain "c_customer_sk"
+    session
+      .engine
+      .catalog
+      .lookup("customer", "tpcds.tiny.customer")
+      .flatMap(_.estimatedRows) shouldBe Some(1000L)
   }
 
   test("reject TPC-H and TPC-DS tables of the same name and names files also register") {

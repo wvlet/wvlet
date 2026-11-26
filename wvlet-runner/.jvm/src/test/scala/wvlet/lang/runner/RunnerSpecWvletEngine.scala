@@ -88,3 +88,10 @@ object RunnerSpecWvletEngineBasic:
   )
 
 end RunnerSpecWvletEngineBasic
+
+/**
+  * The built-in `tpch` and `tpcds` catalogs (`from tpch.tiny.nation`) on the wvlet engine with no
+  * benchmark properties in the profile
+  */
+class RunnerSpecWvletEngineBenchmarkCatalogs
+    extends RunnerSpec("spec/benchmark-catalogs", engineProfile = Some(WvletEngineProfiles.of()))

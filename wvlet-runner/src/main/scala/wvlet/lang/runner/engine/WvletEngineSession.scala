@@ -34,6 +34,7 @@ import wvlet.lang.engine.TableWriter
 import wvlet.lang.engine.WvletEngine
 import wvlet.lang.engine.plan.ColumnNotFound
 import wvlet.lang.engine.catalog.CsvSource
+import wvlet.lang.engine.catalog.EngineCatalog
 import wvlet.lang.engine.catalog.JsonSource
 import wvlet.lang.engine.catalog.ManagedTable
 import wvlet.lang.engine.catalog.MemTable
@@ -89,11 +90,7 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     * The compile-time catalog: carries the `wvlet` dialect and the schemas of registered tables, so
     * the typer resolves their columns
     */
-  val catalog: InMemoryCatalog = InMemoryCatalog(
-    catalogName = catalogName,
-    functions = Nil,
-    catalogDBType = DBType.Wvlet
-  )
+  val catalog: InMemoryCatalog = EngineCatalog.compileCatalog(catalogName, DBType.Wvlet)
 
   catalog.createSchema(
     Catalog.TableSchema(Some(catalogName), schemaName),

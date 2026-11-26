@@ -35,7 +35,8 @@ Global options: `--profile <name>`, `-w <folder>` (working folder), `--catalog`,
   connector with `"prepareTPCH": true` (and `"tpchScaleFactor"`, default 0.01) generates the
   TPC-H tables in memory, and `"prepareTPCDS": true` (`"tpcdsScaleFactor"`, up to 10) the
   TPC-DS tables; values differ from `dbgen` / `dsdgen`'s, so don't compare answers with
-  official ones. `wvlet ui --tpch` does the same for TPC-H.
+  official ones. `wvlet ui --tpch` does the same for TPC-H. With no setting, `from tpch.sf1.lineitem`
+  or `tpcds.tiny.store_sales` reads them too (schema `tiny` is scale factor 0.01, `sf<n>` is n).
 - To give the wvlet engine the keys of Parquet files (for join order), write a sidecar
   `<name>.keys.json` next to `<name>.parquet`, or `_keys.json` in a folder, e.g.
   `{"primaryKey": ["l_orderkey", "l_linenumber"], "uniqueKeys": [["l_comment"]]}`. Keys never

@@ -1,0 +1,15 @@
+-- The built-in tpcds catalog; tpch and tpcds both have a customer table
+from tpcds.tiny.customer
+agg _.count
+test _.rows should be [[1000]]
+
+from tpcds.tiny.store_sales
+join tpcds.tiny.item on ss_item_sk = i_item_sk
+group by i_category
+agg _.count
+test _.size should be 10
+
+from tpch.tiny.customer
+join tpcds.tiny.customer on c_custkey = c_customer_sk
+agg _.count
+test _.rows should be [[1000]]

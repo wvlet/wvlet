@@ -49,6 +49,11 @@ class LazyCatalog(
   override def findTable(schemaName: String, tableName: String): Option[Catalog.TableDef] =
     underlying.findTable(schemaName, tableName)
 
+  override def findTable(
+      tableName: Catalog.TableName,
+      defaultSchema: String
+  ): Option[Catalog.TableDef] = underlying.findTable(tableName, defaultSchema)
+
   override def getTable(schemaName: String, tableName: String): Catalog.TableDef = underlying
     .getTable(schemaName, tableName)
 
