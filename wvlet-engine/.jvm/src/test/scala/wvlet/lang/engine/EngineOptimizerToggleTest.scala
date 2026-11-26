@@ -199,6 +199,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // LongGroupTableTest that the table gives the same groups as a GroupTable
     Optimization.LongGroupTables ->
       "Changes how hash aggregations look up single Int64 keys, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
+    // LongGroupTableTest that grouping runs gives the same groups as hashing
+    Optimization.SortedGroupRuns ->
+      "Changes how hash aggregations assign ids to sorted single Int64 keys, not the plan",
     // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
     // evaluation keeps the same rows
     Optimization.DictionaryFilters ->

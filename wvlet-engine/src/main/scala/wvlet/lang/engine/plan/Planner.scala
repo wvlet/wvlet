@@ -154,7 +154,8 @@ class Planner(
           fusedAccumulators = enabled(Optimization.FusedAccumulators),
           oneRowPartials = enabled(Optimization.OneRowPartials),
           selectedInputs = enabled(Optimization.AggregateSelectedRows),
-          longGroupTables = enabled(Optimization.LongGroupTables)
+          longGroupTables = enabled(Optimization.LongGroupTables),
+          sortedGroupRuns = enabled(Optimization.SortedGroupRuns)
         )
       else
         pruned
@@ -170,6 +171,8 @@ class Planner(
       Planner.disableDenseSelected(physical)
     if !enabled(Optimization.LongGroupTables) then
       Planner.disableLongGroupTables(physical)
+    if !enabled(Optimization.SortedGroupRuns) then
+      Planner.disableSortedGroupRuns(physical)
     physical
 
   end optimizePhysical
@@ -4050,6 +4053,21 @@ object Planner:
       case _ =>
     op.children.foreach(disableLongGroupTables)
     op.sharedInputs.foreach(disableLongGroupTables)
+
+  /**
+    * Make the hash aggregations of a physical plan hash every key (`sorted_group_runs`). The
+    * partial aggregates that two-phase aggregations create per part get the option from
+    * [[Parallelizer]]
+    */
+  private[engine] def disableSortedGroupRuns(op: Operator): Unit =
+    op match
+      case a: HashAggOp =>
+        a.withSortedGroupRuns(false)
+      case a: PartitionedAggOp =>
+        a.withSortedGroupRuns(false)
+      case _ =>
+    op.children.foreach(disableSortedGroupRuns)
+    op.sharedInputs.foreach(disableSortedGroupRuns)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =

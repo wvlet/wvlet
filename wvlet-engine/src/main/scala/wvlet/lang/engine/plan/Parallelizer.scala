@@ -50,7 +50,8 @@ object Parallelizer:
       fusedAccumulators: Boolean = true,
       oneRowPartials: Boolean = true,
       selectedInputs: Boolean = true,
-      longGroupTables: Boolean = true
+      longGroupTables: Boolean = true,
+      sortedGroupRuns: Boolean = true
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -69,7 +70,8 @@ object Parallelizer:
         fusedAccumulators,
         oneRowPartials,
         selectedInputs,
-        longGroupTables
+        longGroupTables,
+        sortedGroupRuns
       )
       rewrite(op, runner)
 
@@ -92,7 +94,8 @@ object Parallelizer:
       fusedAccumulators: Boolean,
       oneRowPartials: Boolean,
       selectedInputs: Boolean,
-      longGroupTables: Boolean
+      longGroupTables: Boolean,
+      sortedGroupRuns: Boolean
   )
 
   /**
@@ -400,7 +403,8 @@ object Parallelizer:
             o.fusedAccumulators,
             o.oneRowPartials,
             o.selectedInputs,
-            o.longGroupTables
+            o.longGroupTables,
+            o.sortedGroupRuns
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -728,7 +732,8 @@ private[plan] object TwoPhaseAgg:
       fusedAccumulators: Boolean = true,
       oneRowPartials: Boolean = true,
       selectedInputs: Boolean = true,
-      longGroupTables: Boolean = true
+      longGroupTables: Boolean = true,
+      sortedGroupRuns: Boolean = true
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -763,6 +768,7 @@ private[plan] object TwoPhaseAgg:
               .withSelectedInputs(selectedInputs)
               .withDenseSelected(a.denseSelected)
               .withLongGroupTables(longGroupTables)
+              .withSortedGroupRuns(sortedGroupRuns)
         )
       ),
       partialSchema,
@@ -777,6 +783,7 @@ private[plan] object TwoPhaseAgg:
             .withSelectedInputs(selectedInputs)
             .withDenseSelected(a.denseSelected)
             .withLongGroupTables(longGroupTables)
+            .withSortedGroupRuns(sortedGroupRuns)
       )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)

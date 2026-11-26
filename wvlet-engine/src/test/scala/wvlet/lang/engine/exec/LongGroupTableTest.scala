@@ -76,4 +76,55 @@ class LongGroupTableTest extends UniTest:
     run(PackedGroupTable(types, 0, longTables = true)) shouldBe run(GroupTable(types))
   }
 
+  test("should group sorted runs as hashing does, and hash from the first key out of order") {
+    def sortedBatch(from: Long, n: Int, run: Int): Array[Vec] = Array(
+      LongVec(PType.Int64, Array.tabulate(n)(i => from + i / run), null)
+    )
+    val sorted = (0 until 4).map(i => sortedBatch(i * 1000L, 4000, 4))
+    // A batch that continues the last group's run, then one that goes back, then sorted again
+    val mixed =
+      sorted.take(2) ++ Seq(sortedBatch(1999, 100, 3), sortedBatch(5, 50, 1)) ++ sorted.drop(2)
+    val withNull =
+      sorted.take(2) ++
+        Seq(Array[Vec](LongVec(PType.Int64, Array(3000L, 0L, 3001L), Array(false, true, false)))) ++
+        sorted.drop(2)
+    for
+      batches <- Seq(sorted, mixed, withNull)
+      presize <- Seq(0, 100000)
+    do
+      grouped(LongGroupTable(PType.Int64, presize, sortedRuns = true), batches) shouldBe
+        grouped(GroupTable(IndexedSeq(PType.Int64)), batches)
+    val t = LongGroupTable(PType.Int64, sortedRuns = true)
+    grouped(t, sorted)
+    t.isSorted shouldBe true
+    t.numGroups shouldBe 4000
+    val u = LongGroupTable(PType.Int64, sortedRuns = true)
+    grouped(u, mixed)
+    u.isSorted shouldBe false
+  }
+
+  test("should give the groups of a GroupTable over random keys with sorted runs on") {
+    for (spread, nullEvery) <- Seq((50L, 0), (50L, 7), (1L << 40, 0)) do
+      val batches = (0 until 8).map(i => batch(4096, i, spread, nullEvery))
+      grouped(LongGroupTable(PType.Int64, 0, sortedRuns = true), batches) shouldBe
+        grouped(GroupTable(IndexedSeq(PType.Int64)), batches)
+  }
+
+  test("should keep packed keys of sorted rows in runs across repacks") {
+    val types = IndexedSeq(PType.Int32, PType.Int64)
+    // Sorted by (a, b); later batches widen b's range, so the groups repack
+    val bs = (0 until 4).map { s =>
+      Array[Vec](
+        IntVec(PType.Int32, Array.fill(2000)(s), null),
+        LongVec(PType.Int64, Array.tabulate(2000)(i => i / 2 * (s + 1L)), null)
+      )
+    }
+    def run(t: GroupIndex) =
+      val ids = bs.map(b => t.groupIds(b, 2000).toSeq)
+      val kv  = t.keyVectors()
+      (ids, (0 until t.numGroups).map(i => kv.map(_.get(i)).toSeq))
+    run(PackedGroupTable(types, 0, longTables = true, sortedRuns = true)) shouldBe
+      run(GroupTable(types))
+  }
+
 end LongGroupTableTest
