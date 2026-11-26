@@ -318,50 +318,104 @@ final class DoubleVec(val values: Array[Double], val nulls: Array[Boolean]) exte
   * `dictSize == dict.length`, -1 only for NULL rows), and vectors with the same `dict` instance
   * share the coding, so a code identifies a value across batches. Hash-join builds encode their
   * dictionary-encoded string columns this way ([[StrVec.encodeParts]], `join_build_string_codes`).
+  *
+  * A vector built with `entries` and no `values` ([[StrVec.ofEntries]], `lazy_dictionary_strings`)
+  * holds only the codes and the strings of its batch's dictionary entries: row i is
+  * `entries(codes(i))`, or NULL for code -1. [[str]] reads one row without building the per-row
+  * array, which [[values]] builds on first use, so grouping by the codes never builds it.
   */
 final class StrVec(
-    val values: Array[String],
+    initValues: Array[String],
     val nulls: Array[Boolean],
     initCodes: Array[Int] = null,
     val dictSize: Int = 0,
     val dict: Array[String] = null,
     codeSource: Array[Int] = null,
-    codeIndex: Array[Int] = null
+    codeIndex: Array[Int] = null,
+    entries: Array[String] = null,
+    rows: Int = -1
 ) extends Vec:
   // The codes, gathered from `codeSource` at `codeIndex` on first use: most gathered vectors (join
   // outputs, filtered scans) never read them. Racing first uses compute equal arrays
   @volatile
   private var gatheredCodes: Array[Int] = initCodes
 
+  // The per-row strings of a vector built from entries, once built. The holder's final field
+  // publishes the filled array safely to other threads without a volatile read per access
+  private var built: StrVec.Built = null
+
   /** The dictionary codes of the rows, or null without them */
   def codes: Array[Int] =
     var c = gatheredCodes
     if c == null && codeSource != null then
-      c = StrVec.gatherCodes(codeSource, codeIndex, values.length)
+      c = StrVec.gatherCodes(codeSource, codeIndex, size)
       gatheredCodes = c
     c
 
   /** Whether the rows carry codes, without gathering them */
   def hasCodes: Boolean = gatheredCodes != null || codeSource != null
 
-  def ptype: PType     = PType.Str
-  def size: Int        = values.length
+  /** Whether the rows are held as codes into `entries`, without a per-row array yet */
+  def holdsEntries: Boolean = initValues == null
+
+  /** The string of each row (null for NULL rows), built from the entries on first use */
+  def values: Array[String] =
+    if initValues != null then
+      initValues
+    else
+      var b = built
+      if b == null then
+        b = StrVec.Built(StrVec.decodeEntries(entries, codes, size))
+        built = b
+      b.values
+
+  /** Row i's string (null for a NULL row), without building [[values]] */
+  def str(i: Int): String =
+    if initValues != null then
+      initValues(i)
+    else
+      val c = codes(i)
+      if c >= 0 then
+        entries(c)
+      else
+        null
+
+  def ptype: PType = PType.Str
+  val size: Int    =
+    if initValues != null then
+      initValues.length
+    else
+      rows
+
   def get(i: Int): Any =
     if isNull(i) then
       null
     else
-      values(i)
+      str(i)
 
   def gather(idx: Array[Int], n: Int): Vec =
+    val outNulls = Vec.nullsWithPadding(nulls, idx, n)
+    val c        = gatheredCodes
+    if initValues == null then
+      // Gather the codes only, keeping the entries
+      val src =
+        if c != null then
+          c
+        else
+          codeSource
+      val at =
+        if c != null then
+          java.util.Arrays.copyOf(idx, n)
+        else
+          StrVec.gatherCodes(codeIndex, idx, n)
+      return StrVec(null, outNulls, null, dictSize, dict, src, at, entries, n)
     val out = new Array[String](n)
     var i   = 0
     while i < n do
       val k = idx(i)
       if k >= 0 then
-        out(i) = values(k)
+        out(i) = initValues(k)
       i += 1
-    val outNulls = Vec.nullsWithPadding(nulls, idx, n)
-    val c        = gatheredCodes
     if c != null then
       StrVec(out, outNulls, null, dictSize, dict, c, java.util.Arrays.copyOf(idx, n))
     else if codeSource != null then
@@ -369,6 +423,8 @@ final class StrVec(
       StrVec(out, outNulls, null, dictSize, dict, codeSource, StrVec.gatherCodes(codeIndex, idx, n))
     else
       StrVec(out, outNulls)
+
+  end gather
 
 end StrVec
 
@@ -454,6 +510,26 @@ object StrVec:
       StrVec(v.values, v.nulls, codes, dict.size, dict.toArray)
 
   end encodeParts
+
+  /** The per-row strings of an entries-backed vector, published through a final field */
+  final private class Built(val values: Array[String])
+
+  /**
+    * `n` rows held as `codes` into the strings of their batch's dictionary `entries` (code -1 for a
+    * NULL row), without a per-row array until one is asked for ([[StrVec.values]])
+    */
+  def ofEntries(entries: Array[String], codes: Array[Int], nulls: Array[Boolean], n: Int): StrVec =
+    StrVec(null, nulls, codes, entries.length, entries = entries, rows = n)
+
+  private def decodeEntries(entries: Array[String], codes: Array[Int], n: Int): Array[String] =
+    val out = new Array[String](n)
+    var i   = 0
+    while i < n do
+      val c = codes(i)
+      if c >= 0 then
+        out(i) = entries(c)
+      i += 1
+    out
 
   /** The codes at the given positions, -1 for padding (idx -1) */
   private[vector] def gatherCodes(codes: Array[Int], idx: Array[Int], n: Int): Array[Int] =

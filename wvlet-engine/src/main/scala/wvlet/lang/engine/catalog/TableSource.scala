@@ -30,7 +30,9 @@ import scala.collection.mutable
   * [[TableSource.supportsRowFilter]] gets one; its columns may be outside `columns`. With
   * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
   * ([[StrVec.codes]]). With `dictionaryEntries`, Parquet sources read such strings as their
-  * dictionary entries only, without copying each row's bytes
+  * dictionary entries only, without copying each row's bytes. With `lazyStrings` (and
+  * `dictionaryCodes`), such vectors hold only the codes and their entries' strings, building the
+  * per-row strings on first use ([[StrVec.ofEntries]])
   */
 case class ScanSpec(
     columns: Option[Seq[String]] = None,
@@ -38,7 +40,8 @@ case class ScanSpec(
     footerCache: Boolean = false,
     rowFilter: Option[ParquetFilter] = None,
     dictionaryCodes: Boolean = false,
-    dictionaryEntries: Boolean = false
+    dictionaryEntries: Boolean = false,
+    lazyStrings: Boolean = false
 )
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -578,7 +581,13 @@ class ParquetSource(
       else
         val parts = groups.map { g => () =>
           Iterator.single(
-            ParquetSource.toBatch(f.readRowGroup(g, options), cols, types, spec.dictionaryCodes)
+            ParquetSource.toBatch(
+              f.readRowGroup(g, options),
+              cols,
+              types,
+              spec.dictionaryCodes,
+              spec.lazyStrings
+            )
           )
         }
         val meta = f.rowGroups
@@ -600,14 +609,14 @@ class ParquetSource(
             f.close()
             throw e
       ParquetSource.closing(
-        it.map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes)),
+        it.map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes, spec.lazyStrings)),
         () => f.close()
       )
     else
       val ds = ParquetSource.openDataset(path)
       val it = ds.readBatches(options)
       ParquetSource.closing(
-        it.map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes)),
+        it.map(b => ParquetSource.toBatch(b, cols, types, spec.dictionaryCodes, spec.lazyStrings)),
         () => ds.close()
       )
 
@@ -819,21 +828,28 @@ object ParquetSource:
       b: ColumnBatch,
       cols: Seq[String],
       types: Seq[PType],
-      dictionaryCodes: Boolean = false
+      dictionaryCodes: Boolean = false,
+      lazyStrings: Boolean = false
   ): Batch =
     val vecs = cols
       .indices
       .map { k =>
         val c = b.column(cols(k))
-        toVec(c, types(k), dictionaryCodes)
+        toVec(c, types(k), dictionaryCodes, lazyStrings)
       }
     Batch(vecs.toArray, b.numRows)
 
   /**
     * The engine vector of a uni column. With `dictionaryCodes`, strings decoded from a dictionary
-    * page carry their dictionary codes ([[StrVec.codes]])
+    * page carry their dictionary codes ([[StrVec.codes]]); with `lazyStrings` too, the vector holds
+    * only the codes and the entries' strings when every non-NULL row has a code
     */
-  def toVec(c: ColumnVector, ptype: PType, dictionaryCodes: Boolean = false): Vec =
+  def toVec(
+      c: ColumnVector,
+      ptype: PType,
+      dictionaryCodes: Boolean = false,
+      lazyStrings: Boolean = false
+  ): Vec =
     val nulls = nullsOf(c)
     (c, ptype) match
       case (x: ColumnVector.BooleanColumn, PType.Bool) =>
@@ -868,7 +884,10 @@ object ParquetSource:
       case (x: ColumnVector.DoubleColumn, PType.Float64) =>
         DoubleVec(x.values, nulls)
       case (x: ColumnVector.BinaryColumn, PType.Str) if dictionaryCodes && x.dictionarySize > 0 =>
-        stringsWithCodes(x, nulls)
+        if lazyStrings then
+          entryStrings(x, nulls)
+        else
+          stringsWithCodes(x, nulls)
       case (x: ColumnVector.BinaryColumn, PType.Str) =>
         val n   = x.size
         val out = new Array[String](n)
@@ -916,6 +935,29 @@ object ParquetSource:
         codes(i) = -1
       i += 1
     StrVec(out, nulls, codes, x.dictionarySize)
+
+  /**
+    * The codes of a dictionary-encoded column with the strings of the entries its rows use
+    * ([[StrVec.ofEntries]]), or [[stringsWithCodes]] when a non-NULL row has no entry (a PLAIN
+    * value after a dictionary fallback)
+    */
+  private def entryStrings(x: ColumnVector.BinaryColumn, nulls: Array[Boolean]): StrVec =
+    val n       = x.size
+    val entries = new Array[String](x.dictionarySize)
+    val codes   = new Array[Int](n)
+    var i       = 0
+    while i < n do
+      val k = x.dictionaryIndex(i)
+      if k >= 0 then
+        if entries(k) == null then
+          entries(k) = x.getString(i)
+        codes(i) = k
+      else if nulls == null || !nulls(i) then
+        return stringsWithCodes(x, nulls)
+      else
+        codes(i) = -1
+      i += 1
+    StrVec.ofEntries(entries, codes, nulls, n)
 
   /** Nested Parquet values into engine values (Seq / Map / numbers / strings) */
   private def normalize(v: Any): Any =

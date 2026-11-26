@@ -453,6 +453,15 @@ enum Optimization(val name: String):
   case DictionaryEntryScans extends Optimization("dictionary_entry_scans")
 
   /**
+    * Parquet string vectors decoded from a dictionary hold only their rows' codes and their batch's
+    * entry strings, building the per-row String array on first use ([[StrVec.ofEntries]]). Grouping
+    * by the codes (`dictionary_group_keys`) and per-entry filters never build it, so a scan skips
+    * one String store per row (TPC-H q1's `l_returnflag` / `l_linestatus`, DuckDB's dictionary
+    * vectors). Needs `dictionary_group_keys`, whose scans keep the codes
+    */
+  case LazyDictionaryStrings extends Optimization("lazy_dictionary_strings")
+
+  /**
     * Filter conditions over one string column, made of comparisons, IN lists, LIKE, and IS NULL,
     * run once per distinct dictionary entry of a batch whose column carries the codes that
     * `dictionary_group_keys` scans keep, and each row takes its entry's result (TPC-H q16's

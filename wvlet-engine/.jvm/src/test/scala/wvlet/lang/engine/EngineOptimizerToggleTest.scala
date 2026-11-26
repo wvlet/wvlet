@@ -184,6 +184,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // dictionary entries only gives the same strings
     Optimization.DictionaryEntryScans ->
       "Changes how scans copy dictionary-encoded strings, not the plan",
+    // EngineLazyDictionaryStringsTest checks that the flag reaches the scans and that the
+    // entries-backed vectors give the same strings
+    Optimization.LazyDictionaryStrings ->
+      "Changes how scans hold dictionary-encoded strings, not the plan",
     // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
     // FusedAccumulatorsTest that the fused loop gives the same counts and sums
     Optimization.FusedAccumulators ->

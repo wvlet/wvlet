@@ -76,6 +76,7 @@ class Planner(
     scanRowFilters = enabled(Optimization.ScanRowFilters),
     dictionaryCodes = enabled(Optimization.DictionaryGroupKeys),
     dictionaryEntries = enabled(Optimization.DictionaryEntryScans),
+    lazyStrings = enabled(Optimization.LazyDictionaryStrings),
     selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters),
     maskedCaseWhen = enabled(Optimization.MaskedCaseWhen),
     windowSharePartitions = enabled(Optimization.WindowSharePartitions),
