@@ -116,11 +116,27 @@ class WvletEngineSessionTest extends UniTest:
     e.getMessage shouldContain "tpchScaleFactor"
   }
 
-  test("reject prepareTPCDS on the engine and TPC-H names that files also register") {
-    val ds = intercept[WvletLangException] {
-      WvletEngineSession(tpchConfig("prepareTPCH" -> false, "prepareTPCDS" -> true), ".")
+  test("register TPC-DS tables generated in memory with prepareTPCDS") {
+    val session = WvletEngineSession(
+      tpchConfig("prepareTPCH" -> false, "prepareTPCDS" -> true, "tpcdsScaleFactor" -> 0.1),
+      "."
+    )
+    session.tableNames.size shouldBe 24
+    session.tableNames shouldContain "store_sales"
+    session.catalog.getTable("main", "item").columns.map(_.name) shouldContain "i_category"
+    session.engine.catalog.get("customer").estimatedRows shouldBe Some(10000L)
+    // The default scale factor is DuckDB's, 0.01
+    val small = WvletEngineSession(tpchConfig("prepareTPCH" -> false, "prepareTPCDS" -> true), ".")
+    small.engine.catalog.get("customer").estimatedRows shouldBe Some(1000L)
+  }
+
+  test("reject TPC-H and TPC-DS tables of the same name and names files also register") {
+    val both = intercept[WvletLangException] {
+      WvletEngineSession(tpchConfig("prepareTPCDS" -> true), ".")
     }
-    ds.getMessage shouldContain "TPC-DS"
+    // Both benchmarks have a customer table
+    both.getMessage shouldContain "TPC-DS"
+    both.getMessage shouldContain "TPC-H"
     val clash = intercept[WvletLangException] {
       WvletEngineSession(tpchConfig("dataDir" -> "data"), "spec/tpch")
     }

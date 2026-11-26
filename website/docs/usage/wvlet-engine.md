@@ -147,7 +147,35 @@ wvlet run --profile tpch "from lineitem group by l_returnflag agg _.count"
 
 - Rows, keys, and value domains follow the TPC-H specification, but the values aren't those of the reference `dbgen`, so query answers differ from the official ones. For benchmarks, generate Parquet files with DuckDB's `dbgen` and register them with `dataDir`.
 - The tables are read-only, and a name that `dataDir` / `tables` also registers is an error.
-- TPC-DS generation (`prepareTPCDS`) is supported only on DuckDB.
+
+### TPC-DS tables
+
+`prepareTPCDS: true` registers the 24 TPC-DS tables (`store_sales`, `item`, `date_dim`, ...) the same way, sized by `tpcdsScaleFactor` (default 0.01, 29K store sales lines; up to 10):
+
+```jsonc title='~/.wvlet/profiles.json'
+{
+  "profiles": [
+    {
+      "name": "tpcds",
+      "connectors": [
+        {
+          "name": "wvlet",
+          "type": "wvlet",
+          "properties": { "prepareTPCDS": true, "tpcdsScaleFactor": 1 }
+        }
+      ]
+    }
+  ]
+}
+```
+
+```bash
+wvlet run --profile tpcds "from store_sales join item on ss_item_sk = i_item_sk group by i_category agg _.count"
+```
+
+- `date_dim`, `time_dim`, `customer_demographics`, `household_demographics`, and `income_band` equal those of DuckDB's `dsdgen`. The other tables have `dsdgen`'s columns, row counts, keys, NULL shares, and order structure (ticket lines sharing a customer, returns matching their sale), but random values drawn from the literals the TPC-DS queries filter on, so answers differ from the official ones.
+- 96 of the 99 TPC-DS queries return rows where they do on `dsdgen`'s tables at scale factor 0.1.
+- TPC-H and TPC-DS both have a `customer` table, so a connector can register only one of them.
 
 ## Saving results
 
