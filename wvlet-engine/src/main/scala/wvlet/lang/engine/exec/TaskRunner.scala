@@ -103,6 +103,27 @@ object TaskRunner extends TaskRunnerCompatImpl:
         throw error
 
   /**
+    * f(0), ..., f(n - 1), computed by the runner's tasks and the calling thread: a call no task has
+    * started yet runs on the calling thread when its turn comes ([[ComputeOnce]]), so the caller
+    * never waits for queued work. After a failure, calls not started yet never start, and this
+    * returns once the started ones finish, so no task outlives it
+    */
+  def inParallel[A](runner: TaskRunner, n: Int)(f: Int => A): IndexedSeq[A] =
+    val tasks = IndexedSeq.tabulate(n)(i => ComputeOnce(() => f(i)))
+    if n <= 1 || runner.parallelism <= 1 then
+      tasks.map(_.get())
+    else
+      val handles = tasks.tail.map(t => runner.submit(() => t.run()))
+      try
+        tasks.map(_.get())
+      finally
+        handles.foreach(_.cancel())
+        tasks.foreach { t =>
+          t.runUnless(() => true)
+          t.awaitIfStarted()
+        }
+
+  /**
     * The parallelism to use: the WVLET_ENGINE_PARALLELISM environment variable or the
     * wvlet.engine.parallelism system property when set, otherwise the number of processors
     */

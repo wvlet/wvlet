@@ -68,8 +68,8 @@ object ParallelResultStats:
       val chunks = chunksOf(live, rows, n)
       // One partition per task, rounded up to a power of two
       val pbits  = 64 - java.lang.Long.numberOfLeadingZeros(n - 1L)
-      val mixed  = inParallel(runner, chunks.size)(i => mixKeys(chunks(i), k, pbits))
-      val counts = inParallel(runner, 1 << pbits)(p => countPartition(mixed, p, pbits))
+      val mixed  = TaskRunner.inParallel(runner, chunks.size)(i => mixKeys(chunks(i), k, pbits))
+      val counts = TaskRunner.inParallel(runner, 1 << pbits)(p => countPartition(mixed, p, pbits))
       Some(counts.sum)
 
   /**
@@ -82,18 +82,20 @@ object ParallelResultStats:
     val chunks = chunksOf(live, rows, tasksFor(rows, runner))
     try
       Some(
-        inParallel(runner, chunks.size) { i =>
-          var n = 0L
-          chunks(i).foreach { b =>
-            val mask = Kernels.trueMask(cond.eval(b))
-            var j    = 0
-            while j < b.size do
-              if mask(j) then
-                n += 1
-              j += 1
+        TaskRunner
+          .inParallel(runner, chunks.size) { i =>
+            var n = 0L
+            chunks(i).foreach { b =>
+              val mask = Kernels.trueMask(cond.eval(b))
+              var j    = 0
+              while j < b.size do
+                if mask(j) then
+                  n += 1
+                j += 1
+            }
+            n
           }
-          n
-        }.sum
+          .sum
       )
     catch
       case NonFatal(_) =>
@@ -231,25 +233,5 @@ object ParallelResultStats:
     )
 
   end countPartition
-
-  /**
-    * f(0), ..., f(n - 1), computed by the runner's tasks and the calling thread. After a failure,
-    * chunks not started yet never start, and the call returns once the started ones finish, so no
-    * task outlives it
-    */
-  private def inParallel[A](runner: TaskRunner, n: Int)(f: Int => A): IndexedSeq[A] =
-    val tasks = IndexedSeq.tabulate(n)(i => ComputeOnce(() => f(i)))
-    if n <= 1 || runner.parallelism <= 1 then
-      tasks.map(_.get())
-    else
-      val handles = tasks.tail.map(t => runner.submit(() => t.run()))
-      try
-        tasks.map(_.get())
-      finally
-        handles.foreach(_.cancel())
-        tasks.foreach { t =>
-          t.runUnless(() => true)
-          t.awaitIfStarted()
-        }
 
 end ParallelResultStats

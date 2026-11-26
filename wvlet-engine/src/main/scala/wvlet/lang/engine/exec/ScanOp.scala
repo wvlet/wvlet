@@ -82,7 +82,8 @@ class ScanOp(
       conjuncts.reduceOption(_ && _),
       dictionaryCodes,
       dictionaryEntries,
-      lazyStrings
+      lazyStrings,
+      Option(decodeRunner).filter(_ => parallelColumnDecode)
     )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
@@ -178,6 +179,26 @@ class ScanOp(
     rowFilterPassRate = rate
     this
 
+  /**
+    * Whether [[spec]] passes [[decodeRunner]] to the source, so that a scan run as one part decodes
+    * its columns in parallel (`parallel_column_decode`)
+    */
+  var parallelColumnDecode: Boolean = true
+
+  def withParallelColumnDecode(enabled: Boolean): this.type =
+    parallelColumnDecode = enabled
+    this
+
+  /**
+    * The runner of the pipeline running this scan as a single part ([[MorselOp]]), set before the
+    * scan starts; null otherwise
+    */
+  var decodeRunner: TaskRunner = null
+
+  def withDecodeRunner(runner: TaskRunner): this.type =
+    decodeRunner = runner
+    this
+
   /** Take the flags of `s`, the scan this one rebuilds */
   private def withFlagsOf(s: ScanOp): ScanOp = withLateGather(s.lateGather)
     .withDictionaryCodes(s.dictionaryCodes)
@@ -188,6 +209,7 @@ class ScanOp(
     .withSparseKeyPassRates(s.sparseKeyPassRates)
     .withKeySetRowGroups(s.keySetRowGroups)
     .withRowFilterPassRate(s.rowFilterPassRate)
+    .withParallelColumnDecode(s.parallelColumnDecode)
 
   def withSchema(s: Schema): ScanOp = ScanOp(
     source,

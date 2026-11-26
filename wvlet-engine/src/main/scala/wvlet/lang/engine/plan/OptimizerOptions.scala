@@ -336,6 +336,14 @@ enum Optimization(val name: String):
   case NarrowJoinEntries extends Optimization("narrow_join_entries")
 
   /**
+    * A pipeline scan of a Parquet file with a single row group to read (no parts to run in
+    * parallel) decodes its columns as tasks of the engine's runner, the calling thread taking one.
+    * TPC-H supplier holds 100K rows in one row group at SF10: q2's supplier join build decoded its
+    * four string columns on one thread for ~20 ms while every other thread waited
+    */
+  case ParallelColumnDecode extends Optimization("parallel_column_decode")
+
+  /**
     * Pre-size the group tables and aggregate state of hash aggregations from estimated group
     * counts, so they grow less often
     */

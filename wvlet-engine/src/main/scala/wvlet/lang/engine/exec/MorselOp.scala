@@ -149,6 +149,7 @@ class MorselOp(
         case Some(s) =>
           openParts(seg, s)
         case None =>
+          seg.scan.withDecodeRunner(runner)
           inFlight.enqueue(Item.OnCaller(seg))
       true
 
@@ -182,6 +183,8 @@ class MorselOp(
           case Some(sp) =>
             openParts(s, sp)
           case None =>
+            // The run's scan may still decode its columns in parallel
+            s.scan.withDecodeRunner(runner)
             // A single run is both the only part and the tail
             sequential = tails.headOption.map(_.run(0, Int.MaxValue)).getOrElse(s.pipeline)(s.scan)
     if sequential != null then

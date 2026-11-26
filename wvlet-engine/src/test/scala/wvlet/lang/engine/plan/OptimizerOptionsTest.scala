@@ -87,6 +87,7 @@ class OptimizerOptionsTest extends UniTest:
         "unmatched_left_probe",
         "probe_miss_filter",
         "narrow_join_entries",
+        "parallel_column_decode",
         "presize_aggregates",
         "window_top_n",
         "window_top_n_stream",
