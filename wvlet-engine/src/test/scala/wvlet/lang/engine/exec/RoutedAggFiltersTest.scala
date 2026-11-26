@@ -70,6 +70,8 @@ class RoutedAggFiltersTest extends UniTest:
     call("count", eqDay("Monday")),
     call("max", IsNullExpr(day, negate = false)),
     call("sum", eqDay("Friday")),
+    // The same FILTER as the first: shares its rows (an avg's partial sum and count)
+    call("count", eqDay("Sunday")),
     // Not routed: folds on its own
     call("sum", eqDay("Tuesday"), routed = false),
     AggCall("count_star", Nil, false, None, PType.Int64)
@@ -131,7 +133,7 @@ class RoutedAggFiltersTest extends UniTest:
     val gs     = bs.map(b => Array.fill(b.size)(rnd.nextInt(3)))
     val accs   = calls.map(_.newAccumulator())
     router.update(accs, gs.head, 3, bs.head).toSeq shouldBe
-      Seq(true, true, true, true, false, false)
+      Seq(true, true, true, true, true, false, false)
     RoutedAggFilters.of(calls.map(_.copy(routedFilter = false))) shouldBe null
     RoutedAggFilters.of(calls.take(1)) shouldBe null
   }

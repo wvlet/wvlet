@@ -31,17 +31,28 @@ final class RoutedAggFilters private (
     aggs: IndexedSeq[AggCall],
     members: Array[Int],
     column: Int,
-    conds: Array[PerSharedDictEntry]
+    filters: Array[PerSharedDictEntry]
 ):
+  // Members with the same FILTER (an avg split into a sum and a count) share one slot of rows
+  private val slotSigs: IndexedSeq[String]     = filters.map(_.sig).distinct.toIndexedSeq
+  private val slotOf: Array[Int]               = filters.map(f => slotSigs.indexOf(f.sig))
+  private val conds: Array[PerSharedDictEntry] =
+    slotSigs.map(sig => filters(filters.indexWhere(_.sig == sig))).toArray
+
+  // Members with the same arguments share one evaluation of them per batch
+  private val argSigs: Array[String] = members.map(a => aggs(a).args.map(_.sig).mkString(","))
+  private val argSlot: Array[Int]    = argSigs.map(argSigs.indexOf(_))
+  private val argVecs                = new Array[Array[Vec]](members.length)
+
   // The first shared dictionary seen, and for each of its codes (and NULL at dict.length) the
-  // member whose FILTER it passes (-1 for none); a null route when a code passes two FILTERs
+  // slot whose FILTER it passes (-1 for none); a null route when a code passes two FILTERs
   private var routeDict: Array[String] = null
   private var route: Array[Int]        = null
 
   private val handled = new Array[Boolean](aggs.size)
-  private val counts  = new Array[Int](members.length)
-  private val idx     = Array.fill(members.length)(Array.emptyIntArray)
-  private val gs      = Array.fill(members.length)(Array.emptyIntArray)
+  private val counts  = new Array[Int](conds.length)
+  private val idx     = Array.fill(conds.length)(Array.emptyIntArray)
+  private val gs      = Array.fill(conds.length)(Array.emptyIntArray)
   members.foreach(handled(_) = true)
 
   /**
@@ -122,7 +133,7 @@ final class RoutedAggFilters private (
         counts(k) += 1
       i += 1
     var k = 0
-    while k < members.length do
+    while k < conds.length do
       if idx(k).length < counts(k) then
         idx(k) = new Array[Int](counts(k))
         gs(k) = new Array[Int](counts(k))
@@ -144,29 +155,25 @@ final class RoutedAggFilters private (
         counts(t) = j + 1
       i += 1
     // Arguments evaluated once per distinct signature: the members often aggregate one column
-    var sigs: List[(String, Array[Vec])] = Nil
-    def argsOf(agg: AggCall): Array[Vec] =
-      val sig = agg.args.map(_.sig).mkString(",")
-      sigs.find(_._1 == sig) match
-        case Some((_, v)) =>
-          v
-        case None =>
-          val v = agg.args.map(_.eval(b)).toArray
-          sigs = (sig, v) :: sigs
-          v
-    k = 0
-    while k < members.length do
-      val agg = aggs(members(k))
-      val acc = accs(members(k))
-      val cnt = counts(k)
+    java.util.Arrays.fill(argVecs.asInstanceOf[Array[AnyRef]], null)
+    def argsOf(m: Int): Array[Vec] =
+      val a = argSlot(m)
+      if argVecs(a) == null then
+        argVecs(a) = aggs(members(m)).args.map(_.eval(b)).toArray
+      argVecs(a)
+    var m = 0
+    while m < members.length do
+      val acc = accs(members(m))
+      val t   = slotOf(m)
+      val cnt = counts(t)
       acc.ensureGroups(numGroups)
       if cnt == n then
-        acc.update(groups, n, argsOf(agg))
+        acc.update(groups, n, argsOf(m))
       else if cnt > 0 then
-        val args = argsOf(agg)
-        if !(args.length == 1 && acc.updateSelected(gs(k), cnt, args(0), idx(k))) then
-          acc.update(gs(k), cnt, args.map(_.gather(idx(k), cnt)))
-      k += 1
+        val args = argsOf(m)
+        if !(args.length == 1 && acc.updateSelected(gs(t), cnt, args(0), idx(t))) then
+          acc.update(gs(t), cnt, args.map(_.gather(idx(t), cnt)))
+      m += 1
 
   end fold
 
