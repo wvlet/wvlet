@@ -174,8 +174,11 @@ object EngineTPCHBench extends LogSupport:
         Files.isDirectory(Paths.get(d))
       )
       tables.foreach { t =>
-        val from = folder(t).map(d => s"${d}/*.parquet").getOrElse(s"${dataDir}/${t}.parquet")
-        execute(conn, s"create view ${t} as select * from '${from}'")
+        // Nested files too, with `key=value` folders as columns, as the engine reads a folder
+        val from = folder(t)
+          .map(d => s"read_parquet('${d}/**/*.parquet', hive_partitioning = true)")
+          .getOrElse(s"'${dataDir}/${t}.parquet'")
+        execute(conn, s"create view ${t} as select * from ${from}")
       }
       val engine = WvletEngine(baseDir = specPath, accelerator = accelerator)
       tables.foreach(t =>
