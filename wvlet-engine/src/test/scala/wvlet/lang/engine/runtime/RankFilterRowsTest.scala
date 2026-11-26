@@ -99,6 +99,17 @@ class RankFilterRowsTest extends UniTest:
       )
     )
     RankFilterRows.rows(both) shouldBe Some(100.0)
+    // `rnk between 1 and 10`, which the planner keeps as one conjunct
+    val between = RuntimePlan.Filter(
+      window("rank", false),
+      BExpr(
+        AndExpr(
+          Compare(CmpOp.Ge, ref(rnk), Const(1L, PType.Int64)),
+          Compare(CmpOp.Le, ref(rnk), Const(10L, PType.Int64))
+        )
+      )
+    )
+    RankFilterRows.rows(between) shouldBe Some(10.0)
   }
 
   test("not bound dense_rank, lower bounds, or plans without a ranking filter") {

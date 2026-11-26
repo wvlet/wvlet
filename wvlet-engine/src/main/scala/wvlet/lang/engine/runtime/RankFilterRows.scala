@@ -13,10 +13,8 @@
  */
 package wvlet.lang.engine.runtime
 
-import wvlet.lang.engine.expr.CmpOp
-import wvlet.lang.engine.expr.ColRef
-import wvlet.lang.engine.expr.Compare
-import wvlet.lang.engine.expr.Const
+import wvlet.lang.engine.exec.WindowOp
+import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.VExpr
 
 /**
@@ -61,34 +59,24 @@ object RankFilterRows:
             w.columns(i).id.value -> w.calls(i)
         }
         .toMap
-    def limitOf(e: VExpr): Option[(WindowFunction, Long)] =
+    def conjuncts(e: VExpr): List[VExpr] =
       e match
-        case Compare(op, ColRef(id, _, _), Const(v: (Int | Long), _)) if ranked.contains(id) =>
-          bound(op, v.asInstanceOf[Number].longValue).map(ranked(id) -> _)
-        case Compare(op, Const(v: (Int | Long), _), ColRef(id, _, _)) if ranked.contains(id) =>
-          bound(op.flip, v.asInstanceOf[Number].longValue).map(ranked(id) -> _)
-        case _ =>
-          None
+        case AndExpr(l, r) =>
+          conjuncts(l) ++ conjuncts(r)
+        case other =>
+          List(other)
     if ranked.isEmpty then
       None
     else
-      FactorOr
-        .conjuncts(cond)
-        .flatMap(limitOf)
-        .flatMap { (call, n) =>
-          partitions(w.child, call).map(_ * math.max(0L, n).toDouble)
+      // Split every `and`, so that `rnk between 1 and 10` bounds the ranking as WindowOp.topNOf
+      // reads it
+      conjuncts(cond)
+        .flatMap(WindowOp.rankBound(_, ranked.contains))
+        .flatMap { (id, n) =>
+          partitions(w.child, ranked(id)).map(_ * math.max(0L, n).toDouble)
         }
         .minOption
         .map(math.max(1.0, _))
-
-  private def bound(op: CmpOp, k: Long): Option[Long] =
-    op match
-      case CmpOp.Le | CmpOp.Eq =>
-        Some(k)
-      case CmpOp.Lt =>
-        Some(k - 1)
-      case _ =>
-        None
 
   /** Estimated partitions of a window call: one without PARTITION BY */
   private def partitions(child: RuntimePlan, call: WindowFunction): Option[Double] =
