@@ -175,6 +175,8 @@ class Planner(
       Planner.disableLongGroupTables(physical)
     if !enabled(Optimization.SortedGroupRuns) then
       Planner.disableSortedGroupRuns(physical)
+    if !enabled(Optimization.SortedAggSplits) then
+      Planner.disableSortedAggSplits(physical)
     physical
 
   end optimizePhysical
@@ -4143,6 +4145,18 @@ object Planner:
       case _ =>
     op.children.foreach(disableSortedGroupRuns)
     op.sharedInputs.foreach(disableSortedGroupRuns)
+
+  /**
+    * Make the partitioned aggregations of a physical plan hash-route every row
+    * (`sorted_agg_splits`)
+    */
+  private[engine] def disableSortedAggSplits(op: Operator): Unit =
+    op match
+      case a: PartitionedAggOp =>
+        a.withSortedSplits(false)
+      case _ =>
+    op.children.foreach(disableSortedAggSplits)
+    op.sharedInputs.foreach(disableSortedAggSplits)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =
