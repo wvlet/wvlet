@@ -152,7 +152,8 @@ class OptimizerOptionsTest extends UniTest:
         "packed_agg_routing",
         "parallel_outer_tail",
         "smaller_outer_builds",
-        "or_equals_selectivity"
+        "or_equals_selectivity",
+        "eager_aggregation_in_join_trees"
       )
   }
 

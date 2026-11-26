@@ -457,12 +457,27 @@ class EngineConformance(
 end EngineConformance
 
 object EngineConformance:
-  /** A conformance over the TPC-H sample tables (spec/tpch/data), on DuckDB and the engine */
-  def tpch(optimizer: plan.OptimizerOptions): EngineConformance =
+  /**
+    * A conformance over the TPC-H sample tables (spec/tpch/data), on DuckDB and the engine. With
+    * `declaredKeys`, the engine's tables declare TPC-H's primary keys
+    * ([[wvlet.lang.engine.catalog.BenchmarkKeys]])
+    */
+  def tpch(optimizer: plan.OptimizerOptions, declaredKeys: Boolean = false): EngineConformance =
     val tables = EngineTPCHBench.tables
     EngineConformance(
       "spec/tpch",
       tables.map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
-      e => tables.foreach(t => e.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet")),
+      e =>
+        tables.foreach(t =>
+          e.catalog
+            .registerParquet(
+              t,
+              s"spec/tpch/data/${t}.parquet",
+              if declaredKeys then
+                wvlet.lang.engine.catalog.BenchmarkKeys.tpch(t)
+              else
+                Nil
+            )
+        ),
       optimizer
     )

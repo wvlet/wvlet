@@ -839,6 +839,16 @@ enum Optimization(val name: String):
     */
   case OrEqualsSelectivity extends Optimization("or_equals_selectivity")
 
+  /**
+    * With [[EagerAggregation]], aggregate an input deeper in the join tree under an aggregation
+    * before the joins above it, when the calls read that input only, every join above looks up one
+    * row by a declared unique key, and the group keys determine the input's: the outer aggregation
+    * becomes a projection ([[wvlet.lang.engine.runtime.EagerAggregation]]). TPC-H q10 sums its
+    * order lines per `o_custkey` before looking up customer and nation, so the customer join builds
+    * 380K rows instead of 1.15M at SF10
+    */
+  case EagerAggregationInJoinTrees extends Optimization("eager_aggregation_in_join_trees")
+
 end Optimization
 
 object Optimization:
