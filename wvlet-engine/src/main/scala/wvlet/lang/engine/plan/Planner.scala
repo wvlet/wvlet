@@ -4098,7 +4098,6 @@ object Planner:
     op.sharedInputs
       .foreach(configureFilters(_, shortCircuit, reorder, dictionary, dictionarySelection))
 
-  /** Make the hash joins of a physical plan use hash tables for every key (`join_direct_index`) */
   /**
     * Make each LEFT hash join under a filter that has a conjunct `k IS NULL`, for `k` one of the
     * join's build key columns, emit only its unmatched probe rows (`unmatched_left_probe`): the
@@ -4147,6 +4146,7 @@ object Planner:
     op.children.foreach(markMissFilters)
     op.sharedInputs.foreach(markMissFilters)
 
+  /** Make the hash joins of a physical plan use hash tables for every key (`join_direct_index`) */
   private[engine] def disableJoinDirectIndex(op: Operator): Unit =
     op match
       case j: HashJoinOp =>
