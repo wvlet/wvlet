@@ -18,6 +18,7 @@ import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.HashAggOp
 import wvlet.lang.engine.exec.Operator
 import wvlet.lang.engine.exec.PartitionedAggOp
+import wvlet.lang.engine.exec.ProjectOp
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.uni.test.UniTest
@@ -113,6 +114,18 @@ class EngineAdaptivePartialAggsTest extends UniTest:
     flags(options.withDisabled(Optimization.AggregateSelectedRows), selected).contains(
       true
     ) shouldBe false
+  }
+
+  test("compute over a filter's source rows with dense_selected_rows") {
+    val dense: PartialFunction[Operator, Boolean] = {
+      case a: HashAggOp =>
+        a.denseSelected
+      case p: ProjectOp =>
+        p.denseSelected
+    }
+    flags(options, dense) shouldContain true
+    flags(options, dense).contains(false) shouldBe false
+    flags(options.withDisabled(Optimization.DenseSelectedRows), dense).contains(true) shouldBe false
   }
 
 end EngineAdaptivePartialAggsTest

@@ -129,7 +129,8 @@ class OptimizerOptionsTest extends UniTest:
         "substring_in_lists",
         "string_value_selectivity",
         "column_implied_row_filters",
-        "aggregate_selected_rows"
+        "aggregate_selected_rows",
+        "dense_selected_rows"
       )
   }
 

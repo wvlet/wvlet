@@ -172,7 +172,7 @@ object Parallelizer:
       case pr: ProjectOp =>
         pipeline(pr.child, runner).map(
           _.map(
-            x => ProjectOp(x, pr.exprs, pr.schema),
+            x => ProjectOp(x, pr.exprs, pr.schema).withDenseSelected(pr.denseSelected),
             // Selecting, renaming, or adding constant columns (grouping sets) is not worth a task
             work =
               !pr
@@ -436,7 +436,7 @@ object Parallelizer:
   private def rebuildOver(op: Operator, agg: Operator): Operator =
     op match
       case p: ProjectOp =>
-        ProjectOp(rebuildOver(p.child, agg), p.exprs, p.schema)
+        ProjectOp(rebuildOver(p.child, agg), p.exprs, p.schema).withDenseSelected(p.denseSelected)
       case _ =>
         agg
 
@@ -528,7 +528,7 @@ object Parallelizer:
           case f: FilterOp =>
             FilterOp(r(f.child), f.cond, f.keep).withSettingsOf(f)
           case p: ProjectOp =>
-            ProjectOp(r(p.child), p.exprs, p.schema)
+            ProjectOp(r(p.child), p.exprs, p.schema).withDenseSelected(p.denseSelected)
           case l: LimitOp if l.child.isInstanceOf[DistinctOp] =>
             // DistinctOp streams new rows, so the limit can stop the input early
             LimitOp(DistinctOp(r(l.child.asInstanceOf[DistinctOp].child)), l.limit, l.offset)
@@ -756,6 +756,7 @@ private[plan] object TwoPhaseAgg:
               .withFusedAccumulators(fusedAccumulators)
               .withOneRowPartials(oneRowPartials)
               .withSelectedInputs(selectedInputs)
+              .withDenseSelected(a.denseSelected)
         )
       ),
       partialSchema,
@@ -768,6 +769,7 @@ private[plan] object TwoPhaseAgg:
             .withKeyOptions(streamPackAggKeys, longDecimalKeys)
             .withFusedAccumulators(fusedAccumulators)
             .withSelectedInputs(selectedInputs)
+            .withDenseSelected(a.denseSelected)
       )
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)

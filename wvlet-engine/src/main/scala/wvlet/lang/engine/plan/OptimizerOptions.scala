@@ -640,6 +640,17 @@ enum Optimization(val name: String):
     */
   case AggregateSelectedRows extends Optimization("aggregate_selected_rows")
 
+  /**
+    * Projections and hash aggregations over the deferred columns of a filter that keeps most rows
+    * compute over the filter's input rows instead of gathering the kept ones: column references
+    * pass through deferred, decimal and double `+` / `-` / `*` compute over every source row when
+    * at least half are kept, the fused accumulators read their arguments at the kept positions, and
+    * string group keys look up their dictionary codes there
+    * ([[wvlet.lang.engine.exec.DenseSelectedRows]]). TPC-H q1 spent about 14% of its CPU gathering
+    * the 98% of lineitem rows its date filter keeps
+    */
+  case DenseSelectedRows extends Optimization("dense_selected_rows")
+
 end Optimization
 
 object Optimization:

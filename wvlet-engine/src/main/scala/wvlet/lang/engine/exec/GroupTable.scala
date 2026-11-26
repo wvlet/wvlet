@@ -268,6 +268,31 @@ final class GroupTable(
     assignIds(norm, n, hashesInto(norm, n, hashBuf))
 
   /**
+    * [[groupIds]] of the rows of the key vectors at `sel` (row i is row `sel(i)`, none of them -1):
+    * string keys with dictionary codes look up the codes at the positions, so the keys aren't
+    * gathered first (`dense_selected_rows`). Other keys are gathered, then grouped as usual
+    */
+  def groupIdsAt(keys: Array[Vec], sel: Array[Int], n: Int): Array[Int] =
+    // Groups keyed by stable codes read the codes of gathered keys
+    val plain =
+      coded == null &&
+        keys.forall {
+          case v: StrVec =>
+            v.dict == null
+          case _ =>
+            false
+        }
+    val ids =
+      if plain then
+        dictionaryIds(normalize(keys), n, null, sel)
+      else
+        null
+    if ids != null then
+      ids
+    else
+      groupIds(keys.map(_.gather(sel, n)), n)
+
+  /**
     * [[groupIds]] with each row's hash already computed by [[keyHashes]] (of a table with the same
     * key types), so the keys are not hashed again
     */
@@ -403,8 +428,15 @@ final class GroupTable(
     * combinations number at most half the rows, as DuckDB's dictionary aggregation without a
     * dictionary id: a batch's codes don't identify entries of other batches, so each batch looks
     * its combinations up again
+    *
+    * With `sel`, row i is row `sel(i)` of the key vectors (none of them -1, and `h` null)
     */
-  private def dictionaryIds(norm: Array[Vec], n: Int, h: Array[Int]): Array[Int] =
+  private def dictionaryIds(
+      norm: Array[Vec],
+      n: Int,
+      h: Array[Int],
+      sel: Array[Int] = null
+  ): Array[Int] =
     if width == 0 then
       return null
     var combos = 1L
@@ -434,7 +466,11 @@ final class GroupTable(
       val size  = v.dictSize
       var i     = 0
       while i < n do
-        val x = codes(i)
+        val x =
+          if sel == null then
+            codes(i)
+          else
+            codes(sel(i))
         if c(i) >= 0 then
           c(i) =
             if x >= 0 then
@@ -447,15 +483,20 @@ final class GroupTable(
     var i   = 0
     while i < n do
       val x = c(i)
+      val r =
+        if sel == null then
+          i
+        else
+          sel(i)
       ids(i) =
         if x < 0 then
-          findOrInsert(norm, i, h)
+          findOrInsert(norm, r, h)
         else
           val g = codeGroups(x)
           if g >= 0 then
             g
           else
-            val ng = findOrInsert(norm, i, h)
+            val ng = findOrInsert(norm, r, h)
             codeGroups(x) = ng
             ng
       i += 1
