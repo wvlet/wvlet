@@ -450,57 +450,65 @@ class Planner(
     check(root)
 
   /**
+    * The names of the CTEs in scope and of those `r` defines. CTE names are resolved by scope while
+    * planning, so a relation reading one of these names may read a CTE
+    */
+  private def cteNamesIn(r: Relation): Set[String] =
+    val names = mutable.Set.from(cteDefs.keys)
+    r.traverse { case w: WithQuery =>
+      w.queryDefs.foreach(d => names += d.alias.leafName.toLowerCase)
+    }
+    names.toSet
+
+  /** Whether `rel` reads a table named as one of `cteNames` */
+  private def readsCTE(rel: Relation, cteNames: Set[String]): Boolean =
+    var found = false
+    rel.traverse {
+      case t: TableRef if cteNames.contains(t.name.leafName.toLowerCase) =>
+        found = true
+      case t: TableScan if cteNames.contains(t.name.name.toLowerCase) =>
+        found = true
+    }
+    found
+
+  /**
+    * A key of the bound runtime plan of `rel` ([[ShareSubplans.key]]), equal for inputs that read
+    * the same rows. Binding evaluates subqueries, which the discarded binding would run once more:
+    * an input with subqueries has no key, nor does a correlated one, which fails on its outer
+    * names. The hidden-name counter is restored, so that names don't shift
+    */
+  private def inputKey(rel: Relation): Option[Any] =
+    val seq = hiddenSeq
+    try
+      var subqueries = false
+      rel.traverseExpressions {
+        case _: SubQueryExpression | _: Exists | _: InRelation | _: NotInRelation =>
+          subqueries = true
+      }
+      Option.unless(subqueries)(runtimeBinder.bind(rel)).flatMap(ShareSubplans.key)
+    catch
+      case _: Exception =>
+        None
+    finally
+      hiddenSeq = seq
+
+  /**
     * Evaluate uncorrelated scalar subqueries that aggregate the same input (e.g. the count, avg,
     * and avg of each TPC-DS q09 bucket) as one query, so that the input is read once for all of
     * them. Inputs are the same when their bound runtime plans are equal up to column ids
     * ([[ShareSubplans.key]]). The results fill [[scalarResults]]
     */
   private def prefetchScalarSubqueries(r: Relation): Unit =
-    // CTE names are resolved by scope while planning, not here: skip inputs that may read one
-    val cteNames = mutable.Set.from(cteDefs.keys)
-    r.traverse { case w: WithQuery =>
-      w.queryDefs.foreach(d => cteNames += d.alias.leafName.toLowerCase)
-    }
-    def readsCTE(rel: Relation): Boolean =
-      var found = false
-      rel.traverse {
-        case t: TableRef if cteNames.contains(t.name.leafName.toLowerCase) =>
-          found = true
-        case t: TableScan if cteNames.contains(t.name.name.toLowerCase) =>
-          found = true
-      }
-      found
-    // Binding an input evaluates its subqueries, which the discarded key binding would run once
-    // more (and alone, before they are grouped): such inputs have no key
-    def hasSubqueries(rel: Relation): Boolean =
-      var found = false
-      rel.traverseExpressions {
-        case _: SubQueryExpression | _: Exists | _: InRelation | _: NotInRelation =>
-          found = true
-      }
-      found
-    // The keys' bindings are discarded: restore the hidden-name counter so that names don't shift
-    def inputKey(p: Project): Option[Any] =
-      val seq = hiddenSeq
-      try
-        Option
-          .unless(hasSubqueries(p.child))(runtimeBinder.bind(p.child))
-          .flatMap(ShareSubplans.key)
-      catch
-        case _: Exception =>
-          // Correlated inputs fail on their outer names; they are evaluated on their own
-          None
-      finally
-        hiddenSeq = seq
-    val subs = mutable.ArrayBuffer.empty[(Any, Project)]
+    val cteNames = cteNamesIn(r)
+    val subs     = mutable.ArrayBuffer.empty[(Any, Project)]
     r.traverseExpressions { case s: SubQueryExpression =>
       s.query match
         case p: Project
             if p.selectItems.size == 1 && Binder.containsAggregate(p.selectItems.head) &&
               !scalarResults.containsKey(p) && !prefetchTried.containsKey(p) =>
           prefetchTried.put(p, ())
-          if !readsCTE(p.child) then
-            inputKey(p).foreach(k => subs += k -> p)
+          if !readsCTE(p.child, cteNames) then
+            inputKey(p.child).foreach(k => subs += k -> p)
         case _ =>
     }
     subs
@@ -2019,13 +2027,27 @@ class Planner(
             )
             extraItems += ((e, Field(s"arbitrary(${f.name})", f.ptype)))
         }
+    // The groups, computed at plan time when scalar subqueries of the condition total them
+    // (`having_totals_from_groups`), with the number of calls they compute
+    val computedGroups =
+      having match
+        case Some(h) if groupingSets.isEmpty && enabled(Optimization.HavingTotalsFromGroups) =>
+          computeGroupTotals(h, source, in, aggCtx, aggBinder, builder)
+        case _ =>
+          None
     val havingExpr = having.map(h => aggBinder.bind(h))
     val aggOp: P   =
       val keys  = keyExprs.map(_._2)
       val calls = aggCtx.calls.toIndexedSeq
       groupingSets match
         case None =>
-          builder.aggregate(in, keys, calls, aggCtx.outputSchema)
+          computedGroups
+            .collect {
+              // Binding the condition again registered no new call
+              case (groups, n) if n == calls.size =>
+                groups
+            }
+            .getOrElse(builder.aggregate(in, keys, calls, aggCtx.outputSchema))
         case Some(sets)
             if enabled(Optimization.ChainGroupingSets) && sets.distinct.size > 1 &&
               sets.contains(sets.reduce(_ ++ _)) && TwoPhaseAgg.supportsCalls(calls) =>
@@ -2137,6 +2159,152 @@ class Planner(
     end match
 
   end aggregation
+
+  /**
+    * Compute the groups of an aggregation at plan time when uncorrelated scalar subqueries of its
+    * condition (`having`) aggregate the same input as the aggregation: each subquery's value then
+    * comes from the groups (e.g. TPC-H q11's total value is the sum of the per-part sums), so the
+    * input is read once instead of once more for the subquery. A subquery qualifies when its bound
+    * input equals the aggregation's ([[ShareSubplans.key]]) and its value is an expression of `sum`
+    * over integers or decimals, `min`, and `max`, whose totals over the groups equal their values
+    * over the input. The values fill [[scalarResults]]; the result is the computed groups, with the
+    * number of calls they compute, or None when no subquery qualifies
+    */
+  private def computeGroupTotals[P](
+      having: Expression,
+      source: Relation,
+      in: P,
+      aggCtx: AggContext,
+      aggBinder: Binder,
+      builder: AggPlanBuilder[P]
+  ): Option[(P, Int)] =
+    val subs = List.newBuilder[Project]
+    // Whether the condition has other subqueries, or subqueries inside aggregate calls: binding
+    // it before the groups are computed would evaluate them, or register calls that differ once
+    // the subqueries' values are known
+    var others = false
+    // Subqueries of the condition itself, not those nested in other subqueries
+    def visit(x: Expression): Expression =
+      x match
+        case s: SubQueryExpression =>
+          s.query match
+            case p: Project
+                if p.selectItems.size == 1 && !scalarResults.containsKey(p) &&
+                  Binder.containsAggregate(p.selectItems.head) &&
+                  !hasSubquery(p.selectItems.head) =>
+              subs += p
+            case _ =>
+              others = true
+          x
+        case _: Exists | _: InRelation | _: NotInRelation =>
+          others = true
+          x
+        case f: FunctionApply
+            if f.window.isEmpty && Aggregates.isAggregate(Binder.functionName(f)) =>
+          others ||= hasSubquery(f)
+          x
+        case other =>
+          other.mapChildExpressions(visit)
+    visit(having)
+    val candidates     = subs.result().distinct
+    lazy val cteNames  = cteNamesIn(source)
+    lazy val sourceKey = Option.unless(readsCTE(source, cteNames))(inputKey(source)).flatten
+    val numKeys        = aggCtx.keys.size
+    // Whether the value of a subquery over the aggregation's input totals over its groups
+    def totalsOverGroups(item: Attribute): Boolean =
+      val ctx = AggContext(aggCtx.input, aggCtx.keyNames, aggCtx.keys, aggCtx.groupingId)
+      try
+        val value = Binder(this, BindScope(ctx.outputSchema), Some(ctx)).bind(item)
+        val refs  = mutable.BitSet.empty
+        VExprs.collectRefs(value, refs)
+        refs.forall(_ >= numKeys) &&
+        ctx
+          .calls
+          .forall(c =>
+            !c.distinct && c.order.isEmpty && (
+              c.name match
+                case "min" | "max" =>
+                  true
+                case "sum" =>
+                  c.ptype == PType.Int64 || c.ptype.isInstanceOf[PType.Decimal]
+                case _ =>
+                  false
+            )
+          )
+      catch
+        case NonFatal(_) =>
+          false
+    val shared = candidates.filter(p =>
+      numKeys > 0 && sourceKey.isDefined && totalsOverGroups(p.selectItems.head) &&
+        !isCorrelated(p, Schema.empty) && !readsCTE(p.child, cteNames) &&
+        inputKey(p.child) == sourceKey
+    )
+    if others || shared.isEmpty || shared.size != candidates.size then
+      None
+    else
+      val values = shared.map(p => p -> aggBinder.bind(p.selectItems.head))
+      // Register the condition's calls before computing the groups, with a NULL of each
+      // subquery's type in place of its value
+      values.foreach((p, value) => scalarResults.put(p, Const(null, value.ptype)))
+      val bound =
+        try
+          aggBinder.bind(having)
+          true
+        catch
+          case NonFatal(e) =>
+            debug(s"Not totaling over the groups: ${e.getMessage}")
+            values.foreach((p, _) => scalarResults.remove(p))
+            false
+      Option.when(bound) {
+        val schema = aggCtx.outputSchema
+        val calls  = aggCtx.calls.toIndexedSeq
+        val rows   = builder.compute(builder.aggregate(in, aggCtx.keys, calls, schema))
+        values.foreach { (p, value) =>
+          scalarResults.put(p, groupTotal(rows, schema, calls, numKeys, value))
+        }
+        (builder.values(schema, rows), calls.size)
+      }
+
+  end computeGroupTotals
+
+  /**
+    * The value of `value`, an expression over the calls of an aggregation, over all its groups
+    * (`rows`): each call it reads totals over the groups (a sum of sums, the min of mins, the max
+    * of maxes)
+    */
+  private def groupTotal(
+      rows: Batch,
+      schema: Schema,
+      calls: IndexedSeq[AggCall],
+      numKeys: Int,
+      value: VExpr
+  ): VExpr =
+    val refs = mutable.BitSet.empty
+    VExprs.collectRefs(value, refs)
+    val cols = refs.toIndexedSeq
+    val m    = Array.fill(schema.size)(-1)
+    cols.indices.foreach(i => m(cols(i)) = i)
+    val totals = cols.map { j =>
+      val f = schema(j)
+      AggCall(calls(j - numKeys).name, Seq(ColRef(j, f.ptype, f.name)), false, None, f.ptype)
+    }
+    val totalSchema = Schema(cols.map(schema(_)))
+    val total       = HashAggOp(BatchesOp(schema, Seq(rows)), IndexedSeq.empty, totals, totalSchema)
+    val result      = Operator.materialize(
+      ProjectOp(
+        total,
+        IndexedSeq(VExprs.remap(value, m)),
+        Schema(IndexedSeq(Field("v", value.ptype)))
+      )
+    )
+    val v =
+      if result.size == 0 then
+        null
+      else
+        result.columns(0).get(0)
+    Const(v, value.ptype)
+
+  end groupTotal
 
   /**
     * Select items of an aggregation with each correlated subquery in place of a hidden name, the
@@ -3472,6 +3640,9 @@ private[engine] trait AggPlanBuilder[P]:
   /** Rows computed at plan time, whose columns are `schema` */
   def values(schema: Schema, rows: Batch): P
 
+  /** The rows of `p`, computed at plan time */
+  def compute(p: P): Batch
+
   /** Group `in` by `keys`, outputting the keys then the aggregates (`schema`) */
   def aggregate(in: P, keys: IndexedSeq[VExpr], calls: IndexedSeq[AggCall], schema: Schema): P
 
@@ -3483,6 +3654,8 @@ private[engine] trait AggPlanBuilder[P]:
 
   /** The columns of `p`, then one column per window call over them (`schema`) */
   def window(p: P, calls: IndexedSeq[WindowCall], schema: Schema): P
+
+end AggPlanBuilder
 
 /** A filter conjunct over a subquery: [NOT] EXISTS (sub), or target [NOT] IN (sub) */
 private[engine] enum SubqueryConjunct:

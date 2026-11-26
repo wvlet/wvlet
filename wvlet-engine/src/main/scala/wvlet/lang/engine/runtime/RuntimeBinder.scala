@@ -797,6 +797,10 @@ class RuntimeBinder(planner: Planner):
       val p = RuntimePlan.Values(columnsOf(schema), rows)
       Lowered(p, planner.lower(p))
 
+    override def compute(p: Lowered): Batch = Operator.materialize(
+      planner.physical(lowered(p.plan).op)
+    )
+
     override def union(inputs: IndexedSeq[Lowered], schema: Schema): Lowered = Lowered(
       RuntimePlan.Union(inputs.map(_.plan), columnsOf(schema)),
       UnionAllOp(inputs.map(_.op), schema)
