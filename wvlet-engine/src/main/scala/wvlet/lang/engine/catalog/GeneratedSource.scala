@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.catalog
 
+import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.vector.*
 
 /**
@@ -77,3 +78,22 @@ abstract class GeneratedSource extends TableSource:
   )
 
 end GeneratedSource
+
+/** Schema and column builders shared by the table generators (TPC-H, TPC-DS) */
+private[catalog] object GenColumns:
+  def schema(fields: (String, PType)*): Schema = Schema(
+    fields.map((n, t) => Field(n, t)).toIndexedSeq
+  )
+
+  def longs(n: Int)(f: Int => Long): Vec  = LongVec(PType.Int64, Array.tabulate(n)(f), null)
+  def ints(n: Int)(f: Int => Int): Vec    = IntVec(PType.Int32, Array.tabulate(n)(f), null)
+  def strs(n: Int)(f: Int => String): Vec = StrVec(Array.tabulate(n)(f), null)
+
+  /** Throws unless `sf` is in (0, max] */
+  def checkScaleFactor(benchmark: String, sf: Double, max: Double): Unit =
+    if !(sf > 0 && sf <= max) then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(s"${benchmark} scale factor must be in (0, ${max}]: ${sf}")
+
+end GenColumns

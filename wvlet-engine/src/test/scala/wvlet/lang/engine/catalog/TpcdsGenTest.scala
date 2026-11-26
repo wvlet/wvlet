@@ -183,7 +183,23 @@ class TpcdsGenTest extends UniTest:
               }
             s.partRanges(c)
               .foreach { parts =>
-                parts.map(_.rows).sum shouldBe all.size.toLong
+                // Each part's range is exactly that of its block's rows
+                var start = 0
+                parts.foreach { p =>
+                  val block = vs
+                    .slice(start, start + p.rows.toInt)
+                    .map {
+                      case x: Long =>
+                        x
+                      case x: Int =>
+                        x.toLong
+                      case x =>
+                        fail(s"Unexpected value of ${c}: ${x}")
+                    }
+                  (c, start, block.min, block.max) shouldBe (c, start, p.min, p.max)
+                  start += p.rows.toInt
+                }
+                start shouldBe all.size
               }
             s.estimatedDistinct(c)
               .foreach { d =>

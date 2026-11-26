@@ -15,6 +15,7 @@ package wvlet.lang.engine.catalog
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.vector.*
+import GenColumns.*
 
 /**
   * Generates TPC-DS tables in memory, on every platform, with no DuckDB or data files, block by
@@ -58,10 +59,7 @@ object TpcdsGen:
     *   the scale factor, in (0, [[maxScaleFactor]]]
     */
   def sources(sf: Double): Seq[TpcdsSource] =
-    if !(sf > 0 && sf <= maxScaleFactor) then
-      throw StatusCode
-        .INVALID_ARGUMENT
-        .newException(s"TPC-DS scale factor must be in (0, ${maxScaleFactor}]: ${sf}")
+    checkScaleFactor("TPC-DS", sf, maxScaleFactor)
     val gen = TpcdsGen(sf)
     tableNames.map(TpcdsSource(_, gen))
 
@@ -82,10 +80,6 @@ object TpcdsGen:
 
   /** The full cross product of the customer demographics domains */
   private[catalog] val MaxCustomerDemographics: Int = 1920800
-
-  private def schema(fields: (String, PType)*): Schema = Schema(
-    fields.map((n, t) => Field(n, t)).toIndexedSeq
-  )
 
   private val I64 = PType.Int64
   private val I32 = PType.Int32
@@ -259,9 +253,6 @@ private[catalog] class TpcdsGen(val sf: Double):
       case _ =>
         incomeBand(start, n)
 
-  private def longs(n: Int)(f: Int => Long): Vec  = LongVec(PType.Int64, Array.tabulate(n)(f), null)
-  private def ints(n: Int)(f: Int => Int): Vec    = IntVec(PType.Int32, Array.tabulate(n)(f), null)
-  private def strs(n: Int)(f: Int => String): Vec = StrVec(Array.tabulate(n)(f), null)
   private def flags(n: Int)(f: Int => Boolean): Vec =
     strs(n)(i =>
       if f(i) then
@@ -286,34 +277,36 @@ private[catalog] class TpcdsGen(val sf: Double):
       case _ =>
         31
 
+  private val Mar1st1900 = ValueOps.daysFromCivil(1900, 3, 1)
+
   // dsdgen's weekday (0 = Sunday): it counts 1900 as a leap year, so the days before 1900-03-01
   // (and its last day, 2100-01-01) are one weekday earlier than the calendar's
   private def dsdgenDow(epochDay: Int, sk: Long): Int =
     val dow = Math.floorMod(epochDay + 4, 7)
-    if epochDay < ValueOps.daysFromCivil(1900, 3, 1) || sk == FirstDateSk + NumDates - 1 then
+    if epochDay < Mar1st1900 || sk == FirstDateSk + NumDates - 1 then
       (dow + 6) % 7
     else
       dow
 
-  // dsdgen's day of the year, counting 1900 as a leap year
-  private def dayOfYear(epochDay: Int): Int =
-    val (y, m, _) = ValueOps.civilFromDays(epochDay)
-    val doy       = epochDay - ValueOps.daysFromCivil(y, 1, 1) + 1
+  // dsdgen's day of the year of a date, counting 1900 as a leap year
+  private def dayOfYear(epochDay: Int, y: Int, m: Int): Int =
+    val doy = epochDay - ValueOps.daysFromCivil(y, 1, 1) + 1
     if y == 1900 && m > 2 then
       doy + 1
     else
       doy
 
+  private def dayOfYear(epochDay: Int): Int =
+    val (y, m, _) = ValueOps.civilFromDays(epochDay)
+    dayOfYear(epochDay, y, m)
+
   // dsdgen's holidays are days 1, 186, 360, and 366 of the year (Jan 1, Jul 4, Dec 25, Dec 31 of
   // a leap year)
-  private def isHoliday(epochDay: Int): Boolean =
-    val doy = dayOfYear(epochDay)
-    doy == 1 || doy == 186 || doy == 360 || doy == 366
+  private def isHolidayDay(doy: Int): Boolean = doy == 1 || doy == 186 || doy == 360 || doy == 366
 
   // dsdgen's quarter of the year, from the day of the year with a leap year's quarter ends, so
   // that Apr 1, Jul 1, and Oct 1 of other years fall in the quarter before
-  private def quarterOfYear(epochDay: Int): Int =
-    val doy = dayOfYear(epochDay)
+  private def quarterOfYear(doy: Int): Int =
     if doy <= 91 then
       1
     else if doy <= 182 then
@@ -345,17 +338,25 @@ private[catalog] class TpcdsGen(val sf: Double):
   )
 
   private def dateDim(start: Int, n: Int): Batch =
-    val sk                        = Array.tabulate(n)(i => FirstDateSk + start + i)
-    val epoch                     = Array.tabulate(n)(i => FirstEpochDay + start + i)
-    val ymd                       = epoch.map(ValueOps.civilFromDays)
-    val year                      = ymd.map(_._1)
-    val month                     = ymd.map(_._2)
-    val day                       = ymd.map(_._3)
-    val dow                       = Array.tabulate(n)(i => dsdgenDow(epoch(i), sk(i)))
-    def monthSeq(i: Int): Long    = (year(i) - 1900) * 12L + month(i) - 1
-    def weekSeq(i: Int): Long     = (sk(i) - FirstDateSk + 7) / 7
-    def quarterSeq(i: Int): Long  = (monthSeq(i) + 4) / 3
-    val qoy                       = epoch.map(quarterOfYear)
+    val sk                       = Array.tabulate(n)(i => FirstDateSk + start + i)
+    val epoch                    = Array.tabulate(n)(i => FirstEpochDay + start + i)
+    val ymd                      = epoch.map(ValueOps.civilFromDays)
+    val year                     = ymd.map(_._1)
+    val month                    = ymd.map(_._2)
+    val day                      = ymd.map(_._3)
+    val dow                      = Array.tabulate(n)(i => dsdgenDow(epoch(i), sk(i)))
+    def monthSeq(i: Int): Long   = (year(i) - 1900) * 12L + month(i) - 1
+    def weekSeq(i: Int): Long    = (sk(i) - FirstDateSk + 7) / 7
+    def quarterSeq(i: Int): Long = (monthSeq(i) + 4) / 3
+    val doy                      = Array.tabulate(n)(i => dayOfYear(epoch(i), year(i), month(i)))
+    val qoy                      = doy.map(quarterOfYear)
+    val holiday                  = doy.map(isHolidayDay)
+    // The day before the block's first day is in the block before
+    def followsHoliday(i: Int): Boolean =
+      if i > 0 then
+        holiday(i - 1)
+      else
+        isHolidayDay(dayOfYear(epoch(0) - 1))
     def toSk(epochDay: Int): Long = epochDay - FirstEpochDay + FirstDateSk
     val firstDom                  = Array.tabulate(n)(i => sk(i) - day(i) + 1)
     batch(
@@ -376,9 +377,9 @@ private[catalog] class TpcdsGen(val sf: Double):
       longs(n)(weekSeq),
       strs(n)(i => dayNames(dow(i))),
       strs(n)(i => s"${year(i)}Q${qoy(i)}"),
-      flags(n)(i => isHoliday(epoch(i))),
+      flags(n)(holiday),
       flags(n)(i => dow(i) == 5 || dow(i) == 6),
-      flags(n)(i => isHoliday(epoch(i) - 1)),
+      flags(n)(followsHoliday),
       LongVec(PType.Int64, firstDom, null),
       longs(n)(i => firstDom(i) + daysInMonth(year(i), month(i)) - 1),
       longs(n)(i => toSk(yearEarlier(year(i), month(i), day(i)))),

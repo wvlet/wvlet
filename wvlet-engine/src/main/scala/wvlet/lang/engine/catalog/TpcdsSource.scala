@@ -99,6 +99,12 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
       }
     }
 
+  // The values of a customer_demographics column taking `domain` values, each for `stride` rows
+  private def prefixDistinct(domain: Int, stride: Int): Double = math.min(
+    domain.toDouble,
+    math.ceil(rows.toDouble / stride)
+  )
+
   override def estimatedDistinct(column: String): Option[Double] =
     val n: Option[Double] =
       column match
@@ -128,14 +134,25 @@ class TpcdsSource private[catalog] (val table: String, gen: TpcdsGen) extends Ge
           Some(2)
         case "t_shift" | "t_meal_time" =>
           Some(3)
-        case "t_sub_shift" | "cd_credit_rating" =>
+        case "t_sub_shift" =>
           Some(4)
         case "cd_marital_status" =>
           Some(maritalStatus.size)
-        case "cd_education_status" | "cd_dep_count" | "cd_dep_employed_count" |
-            "cd_dep_college_count" =>
-          Some(7)
-        case "cd_purchase_estimate" | "hd_income_band_sk" =>
+        // Below scale factor 1 the table is a prefix of the cross product, where the slower
+        // varying columns take fewer values
+        case "cd_education_status" =>
+          Some(prefixDistinct(7, 10))
+        case "cd_dep_count" =>
+          Some(prefixDistinct(7, 5600))
+        case "cd_dep_employed_count" =>
+          Some(prefixDistinct(7, 39200))
+        case "cd_dep_college_count" =>
+          Some(prefixDistinct(7, 274400))
+        case "cd_purchase_estimate" =>
+          Some(prefixDistinct(20, 70))
+        case "cd_credit_rating" =>
+          Some(prefixDistinct(4, 1400))
+        case "hd_income_band_sk" =>
           Some(20)
         case "hd_buy_potential" | "hd_vehicle_count" =>
           Some(6)
