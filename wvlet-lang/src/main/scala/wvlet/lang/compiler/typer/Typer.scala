@@ -890,9 +890,49 @@ object Typer extends Phase("typer") with LogSupport:
         .declaredTableBindings
         .exists(b => TableBindings.qualifierMatches(qualifier, b))
       if governed && TableBindings.declarationFor(table.fullName).isEmpty &&
-        !ctx.catalog.tableExists(target.schema.getOrElse(ctx.defaultSchema), target.name)
+        !ctx.catalog.tableExists(target.schema.getOrElse(ctx.defaultSchema), target.name) &&
+        !createdInThisUnit(target)
       then
         ctx.addTyperError(UnknownStaticCatalogTarget(statement, table.fullName, table.span))
+
+  /**
+    * Returns true if the compiling unit itself creates the table (`save to`, `create table`,
+    * `create table ... as`, or `rename table ... to`). Such a table is absent from both the
+    * imported snapshot and the live catalog at compile time, yet exists once the script runs its
+    * earlier statements
+    */
+  private def createdInThisUnit(target: TableName)(using ctx: Context): Boolean =
+    val schema                               = target.schema.getOrElse(ctx.defaultSchema)
+    def sameTable(fullName: String): Boolean =
+      val t = TableName.parse(fullName)
+      t.name.equalsIgnoreCase(target.name) &&
+      t.schema.getOrElse(ctx.defaultSchema).equalsIgnoreCase(schema) &&
+      (t.catalog.isEmpty || target.catalog.isEmpty || t.catalog == target.catalog)
+    var found = false
+    ctx
+      .compilationUnit
+      .unresolvedPlan
+      .traverse {
+        case s: SaveTo if s.isForTable && sameTable(s.targetName) =>
+          found = true
+        case c: CreateTableAs if c.isForTable && sameTable(c.targetName) =>
+          found = true
+        case c: CreateTable if sameTable(c.table.fullName) =>
+          found = true
+        case a: AlterTable
+            if a
+              .operations
+              .exists {
+                case r: RenameTableOp =>
+                  sameTable(r.newName.fullName)
+                case _ =>
+                  false
+              } =>
+          found = true
+      }
+    found
+
+  end createdInThisUnit
 
   /**
     * Returns true if the relation tree may contain function applications, method or native function
