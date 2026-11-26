@@ -54,7 +54,8 @@ object Parallelizer:
       sortedGroupRuns: Boolean = true,
       unionDistinctOnce: Boolean = true,
       anyValuePartials: Boolean = true,
-      parallelOuterTail: Boolean = true
+      parallelOuterTail: Boolean = true,
+      configureJoin: HashJoinOp => Unit = _ => ()
   ): Operator =
     if runner.parallelism <= 1 then
       op
@@ -77,7 +78,8 @@ object Parallelizer:
         sortedGroupRuns,
         unionDistinctOnce,
         anyValuePartials,
-        parallelOuterTail
+        parallelOuterTail,
+        configureJoin
       )
       rewrite(op, runner)
 
@@ -105,7 +107,9 @@ object Parallelizer:
       unionDistinctOnce: Boolean,
       // any_value splits into two phases (`dependent_group_keys`, which emits it)
       anyValuePartials: Boolean,
-      parallelOuterTail: Boolean
+      parallelOuterTail: Boolean,
+      // The planner's join toggles for the joins made here (the INTERSECT / EXCEPT joins)
+      configureJoin: HashJoinOp => Unit
   )
 
   /**
@@ -597,6 +601,7 @@ object Parallelizer:
           probe.schema,
           nullsEqual = true
         )
+        o.configureJoin(join)
         if probe.schema.types == s.schema.types then
           join
         else

@@ -111,6 +111,25 @@ class Planner(
     */
   private[engine] def physical(op: Operator): Operator = optimizePhysical(op)
 
+  /**
+    * The join toggles of [[optimizePhysical]] for a hash join made after its passes ran: the
+    * INTERSECT / EXCEPT joins of [[Parallelizer]] (`set_op_joins`), so that turning a toggle off
+    * reaches them and `probe_miss_filter` gives their anti joins a miss filter
+    */
+  private def configureLateJoin(j: HashJoinOp): Unit =
+    if !enabled(Optimization.LateGather) then
+      j.lateGather = false
+    if enabled(Optimization.ProbeMissFilter) && Planner.missFilterFits(j) then
+      j.withMissFilter(true)
+    if !enabled(Optimization.JoinDirectIndex) then
+      j.withDirectIndex(false)
+    if !enabled(Optimization.NarrowJoinEntries) then
+      j.withNarrowEntries(false)
+    if !enabled(Optimization.ParallelJoinBuild) then
+      j.withParallelBuild(false)
+    if !enabled(Optimization.JoinBuildStringCodes) then
+      j.withStringCodes(false)
+
   /** The physical passes over a lowered plan: column pruning (with scan filters), parallelism */
   private def optimizePhysical(op: Operator): Operator =
     val pruned = ColumnPruner(
@@ -181,7 +200,8 @@ class Planner(
           sortedGroupRuns = enabled(Optimization.SortedGroupRuns),
           unionDistinctOnce = enabled(Optimization.UnionDistinctOnce),
           anyValuePartials = enabled(Optimization.DependentGroupKeys),
-          parallelOuterTail = enabled(Optimization.ParallelOuterTail)
+          parallelOuterTail = enabled(Optimization.ParallelOuterTail),
+          configureJoin = configureLateJoin
         )
       else
         pruned
@@ -4222,11 +4242,15 @@ object Planner:
     */
   private[engine] def markMissFilters(op: Operator): Unit =
     op match
-      case j: HashJoinOp if j.kind == JoinKind.Anti || j.unmatchedOnly =>
+      case j: HashJoinOp if missFilterFits(j) =>
         j.withMissFilter(true)
       case _ =>
     op.children.foreach(markMissFilters)
     op.sharedInputs.foreach(markMissFilters)
+
+  /** Whether a join's probes mostly miss: an anti join or an unmatched-only LEFT join */
+  private[engine] def missFilterFits(j: HashJoinOp): Boolean =
+    j.kind == JoinKind.Anti || j.unmatchedOnly
 
   /** Give the narrow flat table entries of a physical plan 32 row bits (`narrow_join_entries`) */
   private[engine] def disableNarrowJoinEntries(op: Operator): Unit =
