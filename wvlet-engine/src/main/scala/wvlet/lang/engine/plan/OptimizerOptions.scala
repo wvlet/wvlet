@@ -736,6 +736,15 @@ enum Optimization(val name: String):
     */
   case ProbeScanCost extends Optimization("probe_scan_cost")
 
+  /**
+    * With [[ProbeScanCost]], a probe side that is itself a join is charged too, for its output rows
+    * that the build's runtime join filters are expected to keep (its distinct keys capped by the
+    * rows of the joins holding them). Otherwise only single-input probes pay, so the search builds
+    * on a large single input to make it no probe: TPC-H q10 built on customer, all seven of its
+    * grouped columns, rather than probing it with the filtered order lines
+    */
+  case JoinProbeScanCost extends Optimization("join_probe_scan_cost")
+
 end Optimization
 
 object Optimization:

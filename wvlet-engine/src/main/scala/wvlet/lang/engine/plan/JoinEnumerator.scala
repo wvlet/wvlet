@@ -32,7 +32,8 @@ import scala.collection.mutable.ListBuffer
 class JoinEnumerator(options: OptimizerOptions):
   import JoinEnumerator.*
 
-  private val probeScanCost = options.isEnabled(Optimization.ProbeScanCost)
+  private val probeScanCost     = options.isEnabled(Optimization.ProbeScanCost)
+  private val joinProbeScanCost = probeScanCost && options.isEnabled(Optimization.JoinProbeScanCost)
 
   /**
     * The cheapest join tree and the conditions left to apply over it (those reading no input), or
@@ -206,26 +207,39 @@ class JoinEnumerator(options: OptimizerOptions):
             0.0
         val probe     = s & ~build
         val probeScan =
-          if probeScanCost && Integer.bitCount(probe) == 1 then
+          val single = Integer.bitCount(probe) == 1
+          if probeScanCost && (single || joinProbeScanCost) then
             val (probeDistinct, buildDistinct) =
               if probe == s1 then
                 (ad1, ad2)
               else
                 (ad2, ad1)
-            val buildInputs =
+            val (probeInputs, buildInputs) =
               if probe == s1 then
-                in2
+                (in1, in2)
               else
-                in1
+                (in2, in1)
             // Inner joins never add key values: a build key has at most the rows of every join
             // of the build's tree holding its input (TPC-DS q72's item key, not the rows that
             // joining date_dim by week multiplied)
             val capped = buildDistinct
               .indices
               .map(k => buildDistinct(k).map(d => math.min(d, pathRows(dp, build, buildInputs(k)))))
-            dp.rows(probe) * passRate(probeDistinct, capped, buildRows)
+            // A probe that is a join holds at most its joins' rows of each key, likewise
+            val probeCapped =
+              if single then
+                probeDistinct
+              else
+                probeDistinct
+                  .indices
+                  .map(k =>
+                    probeDistinct(k).map(d => math.min(d, pathRows(dp, probe, probeInputs(k))))
+                  )
+            dp.rows(probe) * passRate(probeCapped, capped, buildRows)
           else
             0.0
+          end if
+        end probeScan
         val cost = base + buildRows + pipelineBreak + probeScan
         if !dp.planned(s) || cost < dp.cost(s) then
           dp.planned(s) = true

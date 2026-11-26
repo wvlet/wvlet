@@ -140,7 +140,8 @@ class OptimizerOptionsTest extends UniTest:
         "sorted_group_runs",
         "clustered_group_estimates",
         "key_join_estimates",
-        "probe_scan_cost"
+        "probe_scan_cost",
+        "join_probe_scan_cost"
       )
   }
 

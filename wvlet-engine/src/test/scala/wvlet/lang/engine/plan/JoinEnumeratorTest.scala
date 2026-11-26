@@ -234,6 +234,54 @@ class JoinEnumeratorTest extends UniTest:
     ) shouldBe false
   }
 
+  test("should probe a large input with a join rather than build on it") {
+    // TPC-H q10 at SF10: customer(0) ⋈ filtered orders(1) on custkey (e1), orders ⋈ returned
+    // lineitem(2) on orderkey (e2), customer ⋈ nation(3) (e3)
+    val rows       = IndexedSeq(1.5e6, 573566.0, 1.476e7, 25.0)
+    val distinctOf = Map(
+      "l1" -> 1.5e6,
+      "r1" -> 573566.0,
+      "l2" -> 573566.0,
+      "r2" -> 1.5e7,
+      "l3" -> 25.0,
+      "r3" -> 25.0
+    )
+    val search =
+      new JoinSearch[Tree, String, List[(String, String)]]:
+        export TreeSearch.{keys, outputRows, join, cross, filter}
+        override def distinct(input: Tree, side: String): Option[Double] = distinctOf.get(side)
+        override def keyCoverage(input: Tree, sides: Seq[String]): KeyCoverage =
+          KeyCoverage.NotUnique
+    val g = JoinGraph(
+      (0 to 3).map(i => Leaf(i): Tree),
+      rows,
+      List(edge(1, Set(0), Set(1)), edge(2, Set(1), Set(2)), edge(3, Set(0), Set(3)))
+    )
+    def customerBuild(t: Tree): Option[List[Int]] =
+      t match
+        case Join(l, r, _, buildLeft) if leaves(t).sorted == List(0, 1, 2) =>
+          Some(
+            leaves(
+              if buildLeft then
+                l
+              else
+                r
+            ).sorted
+          )
+        case Join(l, r, _, _) =>
+          customerBuild(l).orElse(customerBuild(r))
+        case Filtered(c, _) =>
+          customerBuild(c)
+        case _ =>
+          None
+    // Customer probes the order lines' build, as its runtime filter keeps 38% of it
+    customerBuild(JoinEnumerator(options).plan(g, search).get._1) shouldBe Some(List(1, 2))
+    // Charging single-input probes alone, customer becomes the build to avoid its probe charge
+    customerBuild(
+      JoinEnumerator(options.withDisabled(Optimization.JoinProbeScanCost)).plan(g, search).get._1
+    ) shouldBe Some(List(0))
+  }
+
 end JoinEnumeratorTest
 
 object JoinEnumeratorTest:
