@@ -884,7 +884,8 @@ object ParquetSource:
       case (x: ColumnVector.DoubleColumn, PType.Float64) =>
         DoubleVec(x.values, nulls)
       case (x: ColumnVector.BinaryColumn, PType.Str) if dictionaryCodes && x.dictionarySize > 0 =>
-        if lazyStrings then
+        // A dictionary larger than the batch would cost more to hold than the rows' strings
+        if lazyStrings && x.dictionarySize <= x.size then
           entryStrings(x, nulls)
         else
           stringsWithCodes(x, nulls)

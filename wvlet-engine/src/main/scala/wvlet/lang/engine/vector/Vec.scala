@@ -373,6 +373,8 @@ final class StrVec(
   def str(i: Int): String =
     if initValues != null then
       initValues(i)
+    else if built != null then
+      built.values(i)
     else
       val c = codes(i)
       if c >= 0 then
