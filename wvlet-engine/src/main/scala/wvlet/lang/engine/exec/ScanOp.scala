@@ -270,17 +270,8 @@ class ScanOp(
       .indices
       .flatMap { i =>
         val (f, pos) = rowFilters(i)
-        val rf       = f.rowFilter
         val column   = f.column
-        val typed    =
-          schema(pos).ptype match
-            case PType.Int32 | PType.Int64 | PType.Date =>
-              true
-            case _ =>
-              false
-        if rf == null || !typed || !source.canRowFilterOn(column) then
-          None
-        else
+        sourceTestable(f, pos).flatMap { rf =>
           passRate(column, rf, sparse = false)
             .filter(_ <= ScanOp.MaxConjunctPassRate)
             .map { rate =>
@@ -291,6 +282,7 @@ class ScanOp(
                   rate
               (i, rf, rate, order)
             }
+        }
       }
       .sortBy(_._4)
     val kept = chosen.map(_._3).product
@@ -321,27 +313,42 @@ class ScanOp(
     rowFilters
       .toSeq
       .flatMap { (f, pos) =>
-        val rf    = f.rowFilter
-        val typed =
-          schema(pos).ptype match
-            case PType.Int32 | PType.Int64 | PType.Date =>
-              true
-            case _ =>
-              false
-        if rf != null && typed && rf.prunesBeyondRange && source.canRowFilterOn(f.column) then
-          Some(ParquetFilter.col(f.column).isIn(rf.prunedSet))
-        else
-          None
+        sourceTestable(f, pos)
+          .filter(_.prunesBeyondRange)
+          .map(rf => ParquetFilter.col(f.column).isIn(rf.prunedSet))
       }
 
   /**
-    * The fraction of the rows in the parts (row groups) that `rf`'s range doesn't skip that `rf` is
-    * expected to keep: in each part, the share of its [min, max] that `rf` accepts, weighted by its
-    * rows. Data clustered by the key (e.g. sales by date) leaves few parts whose rows mostly pass,
-    * which the share of the whole column's [min, max] would underestimate. None when the source has
-    * no statistics for the column. With `sparse`, the build keys' share counts the column's
-    * distinct values ([[sparseness]]); a range filter keeps every value of its range, so its share
-    * is exact either way
+    * The per-row filter of `f` (over output position `pos`) once set, when the source can test it:
+    * an integer or date column the source's row filter compares as the engine does
+    */
+  private def sourceTestable(f: RuntimeFilter, pos: Int): Option[RowKeyFilter] =
+    val rf    = f.rowFilter
+    val typed =
+      schema(pos).ptype match
+        case PType.Int32 | PType.Int64 | PType.Date =>
+          true
+        case _ =>
+          false
+    Option(rf).filter(_ => typed && source.canRowFilterOn(f.column))
+
+  /**
+    * Whether the source reads a part with [min, max] of `rf`'s column ([[keySetRowGroupFilters]])
+    */
+  private def partRead(rf: RowKeyFilter, min: Long, max: Long): Boolean =
+    if keySetRowGroups && rf.prunesBeyondRange then
+      rf.mayIntersect(min, max)
+    else
+      max >= rf.integerSet.min && min <= rf.integerSet.max
+
+  /**
+    * The fraction of the rows in the parts (row groups) the source reads ([[partRead]]) that `rf`
+    * is expected to keep: in each part, the share of its [min, max] that `rf` accepts, weighted by
+    * its rows. Data clustered by the key (e.g. sales by date) leaves few parts whose rows mostly
+    * pass, which the share of the whole column's [min, max] would underestimate. None when the
+    * source has no statistics for the column. With `sparse`, the build keys' share counts the
+    * column's distinct values ([[sparseness]]); a range filter keeps every value of its range, so
+    * its share is exact either way
     */
   private def passRate(column: String, rf: RowKeyFilter, sparse: Boolean): Option[Double] =
     val density =
@@ -367,11 +374,10 @@ class ScanOp(
         )
     source.partRanges(column) match
       case Some(parts) =>
-        val set  = rf.integerSet
         var rows = 0.0
         var kept = 0.0
         parts.foreach { p =>
-          if p.max >= set.min && p.min <= set.max then
+          if partRead(rf, p.min, p.max) then
             rows += p.rows
             kept += p.rows * share(p.min, p.max)
         }
