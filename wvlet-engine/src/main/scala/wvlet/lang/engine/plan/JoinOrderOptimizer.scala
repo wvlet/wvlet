@@ -417,7 +417,9 @@ object JoinOrderOptimizer:
     * reads left ++ right. Without keys it is a nested loop join. A hash join builds on right, or,
     * with `buildLeft`, holds left's rows in the hash table while right is probed in parallel parts
     * marking the matched rows (RIGHT SEMI / RIGHT ANTI), and left's matched (or unmatched) rows are
-    * emitted once at the end
+    * emitted once at the end. `exclude` (over left ++ right, for a semi join building on left)
+    * drops the left rows some right row with an equal key satisfies it for
+    * ([[wvlet.lang.engine.exec.HashJoinOp]])
     */
   def semiJoinOp(
       left: Operator,
@@ -427,8 +429,10 @@ object JoinOrderOptimizer:
       kind: JoinKind,
       residual: Option[VExpr],
       buildLeft: Boolean,
-      filters: Seq[RuntimeFilter] = Nil
+      filters: Seq[RuntimeFilter] = Nil,
+      exclude: Option[VExpr] = None
   ): Operator =
+    require(exclude.isEmpty || (kind == JoinKind.Semi && buildLeft && lk.nonEmpty))
     if lk.isEmpty then
       NestedLoopJoinOp(left, right, residual, kind, left.schema)
     else if buildLeft then
@@ -441,7 +445,8 @@ object JoinOrderOptimizer:
         swappedKind(kind),
         residual.map(VExprs.remap(_, toSwapped)),
         left.schema,
-        runtimeFilters = filters
+        runtimeFilters = filters,
+        exclude = exclude.map(VExprs.remap(_, toSwapped))
       )
     else
       HashJoinOp(left, right, lk, rk, kind, residual, left.schema, runtimeFilters = filters)

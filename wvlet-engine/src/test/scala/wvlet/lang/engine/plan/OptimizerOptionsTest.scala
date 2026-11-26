@@ -163,7 +163,8 @@ class OptimizerOptionsTest extends UniTest:
         "size_partitions_by_rows",
         "nested_group_estimates",
         "rank_filter_rows",
-        "dimension_group_ids"
+        "dimension_group_ids",
+        "semi_anti_one_probe"
       )
   }
 

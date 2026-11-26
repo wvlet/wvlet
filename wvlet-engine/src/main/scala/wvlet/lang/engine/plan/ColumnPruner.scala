@@ -288,12 +288,11 @@ object ColumnPruner:
       splitRequired(required, lw, leftNeed, rightNeed)
     j.leftKeys.foreach(VExprs.collectRefs(_, leftNeed))
     j.rightKeys.foreach(VExprs.collectRefs(_, rightNeed))
-    j.residual
-      .foreach { r =>
-        val refs = mutable.BitSet()
-        VExprs.collectRefs(r, refs)
-        splitRequired(refs, lw, leftNeed, rightNeed)
-      }
+    (j.residual ++ j.exclude).foreach { r =>
+      val refs = mutable.BitSet()
+      VExprs.collectRefs(r, refs)
+      splitRequired(refs, lw, leftNeed, rightNeed)
+    }
     val (left, lKept)  = prune(j.left, sorted(leftNeed))
     val (right, rKept) = prune(j.right, sorted(rightNeed))
     val lm             = mapping(lKept, lw)
@@ -316,7 +315,8 @@ object ColumnPruner:
       j.kind,
       j.residual.map(VExprs.remap(_, joined)),
       schema,
-      runtimeFilters = j.runtimeFilters
+      runtimeFilters = j.runtimeFilters,
+      exclude = j.exclude.map(VExprs.remap(_, joined))
     )
     (op, kept)
 

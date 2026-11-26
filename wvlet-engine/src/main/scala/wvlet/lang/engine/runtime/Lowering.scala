@@ -98,7 +98,8 @@ object Lowering:
       valueSelectivity: Boolean = false,
       columnImpliedRowFilters: Boolean = false,
       deferredNullChecks: Boolean = false,
-      fusedDecimalArith: Boolean = false
+      fusedDecimalArith: Boolean = false,
+      semiAntiOneProbe: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -126,7 +127,8 @@ object Lowering:
       valueSelectivity,
       columnImpliedRowFilters,
       deferredNullChecks,
-      fusedDecimalArith
+      fusedDecimalArith,
+      semiAntiOneProbe
     )
     if inSet then
       l.markInSet(p)
@@ -172,7 +174,8 @@ object Lowering:
       valueSelectivity: Boolean,
       columnImpliedRowFilters: Boolean,
       deferredNullChecks: Boolean,
-      fusedDecimalArith: Boolean
+      fusedDecimalArith: Boolean,
+      semiAntiOneProbe: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -369,6 +372,8 @@ object Lowering:
           SortOp(lower(child), keys.map(_.lower(pos)), limit)
         case Limit(child, limit, offset) =>
           LimitOp(lower(child), limit, offset)
+        case j: Join if semiAntiOneProbe && SemiAntiProbe.of(j).isDefined =>
+          lowerFused(SemiAntiProbe.of(j).get)
         case j @ Join(left, right, kind, lk, rk, residual, buildLeft) =>
           val lpos = positions(left)
           val rpos = positions(right)
@@ -515,6 +520,28 @@ object Lowering:
           UnnestOp(lower(child), lists.map(_.lower(pos)), keepInput, p.schema, outer)
         case CTERef(cte, _) =>
           cte.reader(p.schema, None, inSet)
+
+    /** One RIGHT SEMI join probing T once for an EXISTS and a NOT EXISTS ([[SemiAntiProbe]]) */
+    private def lowerFused(f: SemiAntiProbe.Fused): Operator =
+      val j      = f.semiJoin
+      val inputs = positions(j.inputs)
+      // Before lowering the probe side, whose scan takes the filters
+      val filters =
+        if joinFilters then
+          runtimeFilters(j)
+        else
+          Nil
+      JoinOrderOptimizer.semiJoinOp(
+        lower(f.build),
+        lower(f.probe),
+        f.buildKeys.map(_.lower(positions(f.build))),
+        f.probeKeys.map(_.lower(positions(f.probe))),
+        JoinKind.Semi,
+        f.matches.map(_.lower(inputs)),
+        buildLeft = true,
+        filters,
+        exclude = Some(f.exclude.lower(inputs))
+      )
 
     private def scanFilters(columns: IndexedSeq[Column]): Seq[RuntimeFilter] =
       if pending.isEmpty then
