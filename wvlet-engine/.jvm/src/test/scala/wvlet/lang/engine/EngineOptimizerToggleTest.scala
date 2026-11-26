@@ -235,6 +235,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // PartitionedAggOpTest that routing by the packed key gives the same groups
     Optimization.PackedAggRouting ->
       "Changes how partitioned aggregations route rows to partitions, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the partitioned aggregations, and
+    // PartitionedAggOpTest that sizing by rows gives the same groups
+    Optimization.SizePartitionsByRows ->
+      "Changes how partitioned aggregations size their group tables, not the plan",
     // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
     // evaluation keeps the same rows
     Optimization.DictionaryFilters ->

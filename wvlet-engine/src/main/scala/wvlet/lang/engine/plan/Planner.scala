@@ -191,6 +191,8 @@ class Planner(
       Planner.disableSortedAggSplits(physical)
     if !enabled(Optimization.PackedAggRouting) then
       Planner.disablePackedAggRouting(physical)
+    if !enabled(Optimization.SizePartitionsByRows) then
+      Planner.disableSizePartitionsByRows(physical)
     physical
 
   end optimizePhysical
@@ -4217,6 +4219,18 @@ object Planner:
       case _ =>
     op.children.foreach(disablePackedAggRouting)
     op.sharedInputs.foreach(disablePackedAggRouting)
+
+  /**
+    * Make the partitions of partitioned aggregations size their tables for an even share of the
+    * capped group estimate (`size_partitions_by_rows`)
+    */
+  private[engine] def disableSizePartitionsByRows(op: Operator): Unit =
+    op match
+      case a: PartitionedAggOp =>
+        a.withSizeByRows(false)
+      case _ =>
+    op.children.foreach(disableSizePartitionsByRows)
+    op.sharedInputs.foreach(disableSizePartitionsByRows)
 
   /** Make the hash joins of a physical plan build on the calling thread (`parallel_join_build`) */
   private[engine] def disableParallelJoinBuild(op: Operator): Unit =

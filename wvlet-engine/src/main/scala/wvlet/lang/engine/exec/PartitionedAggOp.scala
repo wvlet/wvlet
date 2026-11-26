@@ -37,6 +37,9 @@ import scala.collection.mutable
   * each aggregated as a partition without hashing or scattering its rows; the output is then in key
   * order.
   *
+  * With `sizeByRows`, a partition of an aggregation whose estimate reached
+  * [[GroupTable.MaxPresizeGroups]] sizes its tables for its row count, up to that cap.
+  *
   * With `packKeys`, each partition whose key columns are integers or dates that fit in one Int64
   * groups by the packed key ([[AggKeyPacking]], from the ranges of the partition's rows) and
   * unpacks the key columns of its groups.
@@ -131,6 +134,20 @@ class PartitionedAggOp(
     packedRouting = enabled
     this
 
+  /**
+    * Whether a partition sizes its group table and aggregate state for its exact row count (at most
+    * [[GroupTable.MaxPresizeGroups]]), when the aggregation's group estimate reached that cap
+    * (`size_partitions_by_rows`). A partition has at most one group per row, and a capped estimate
+    * split over the partitions sized each for a fraction of its groups (4096 of ~50K for TPC-DS q97
+    * and q78 at SF10), so the table rehashed and the state grew several times
+    */
+  var sizeByRows: Boolean = true
+
+  /** Set [[sizeByRows]] */
+  def withSizeByRows(enabled: Boolean): this.type =
+    sizeByRows = enabled
+    this
+
   /** Whether the last aggregation routed its rows by a packed key (for tests) */
   private[engine] var usedPackedRouting: Boolean = false
 
@@ -160,8 +177,15 @@ class PartitionedAggOp(
         routed: Option[AggKeyPacking] = None
     ): Seq[Batch] =
       val rows = batches.map(_.size).sum
+      // A capped estimate gives no upper bound below the rows. The cap bounds the zero-filled
+      // memory of an overestimate per partition, as it does for one table
+      val presize =
+        if sizeByRows && expectedGroups >= GroupTable.MaxPresizeGroups then
+          math.min(rows, GroupTable.MaxPresizeGroups)
+        else
+          math.min(groups, rows)
       def run(in: Schema, bs: Seq[Batch], ks: IndexedSeq[VExpr], out: Schema): Seq[Batch] =
-        val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, math.min(groups, rows))
+        val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, presize)
           // The keys are packed here from the partition's exact ranges, when they can be
           .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
           .withFusedAccumulators(fuseAccumulators)

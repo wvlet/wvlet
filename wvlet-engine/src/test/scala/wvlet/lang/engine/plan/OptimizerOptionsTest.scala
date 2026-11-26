@@ -154,7 +154,8 @@ class OptimizerOptionsTest extends UniTest:
         "smaller_outer_builds",
         "or_equals_selectivity",
         "eager_aggregation_in_join_trees",
-        "parallel_result_stats"
+        "parallel_result_stats",
+        "size_partitions_by_rows"
       )
   }
 
