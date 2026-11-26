@@ -34,8 +34,11 @@ class EngineSetOpJoinsTest extends UniTest:
 
   private val compiler = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
 
-  /** The query matches DuckDB with the rewrite on and off, and returns the plan with it on */
-  private def check(query: String): String =
+  /**
+    * The query matches DuckDB with the rewrite on and off; returns its plan with the rewrite on,
+    * and its plan with `off` disabled
+    */
+  private def checkPlans(query: String, off: Optimization): (String, String) =
     val on = conformance.compareQuery(query)
     on.matched shouldBe true
     on.message.startsWith("skipped") shouldBe false
@@ -47,7 +50,10 @@ class EngineSetOpJoinsTest extends UniTest:
     conformance.compare(query, rel, target = disabled).matched shouldBe true
     val plan = conformance.engine.explain(rel)
     debug(plan)
-    plan
+    (plan, conformance.engine.withOptimizer(options.withDisabled(off)).explain(rel))
+
+  /** The query matches DuckDB with the rewrite on and off, and returns the plan with it on */
+  private def check(query: String): String = checkPlans(query, Optimization.SetOpJoins)._1
 
   // Nation keys with NULLs (keys 0-4) and duplicates (key % 7)
   private val nullableKeys =
@@ -65,6 +71,22 @@ class EngineSetOpJoinsTest extends UniTest:
     plan shouldContain "HashJoin[Anti]"
     plan shouldContain "nulls equal"
     plan shouldNotContain "Except"
+  }
+
+  test("give EXCEPT's anti join the planner's miss filter, and drop it with the toggle off") {
+    val query =
+      s"""from nation
+         |${nullableKeys}
+         |except {
+         |  from nation
+         |  where n_nationkey < 3
+         |  ${nullableKeys}
+         |}
+         |""".stripMargin
+    val (on, off) = checkPlans(query, Optimization.ProbeMissFilter)
+    on shouldContain "HashJoin[Anti](#0,#1 = #0,#1, nulls equal, miss filter)"
+    off shouldContain "HashJoin[Anti]"
+    off shouldNotContain "miss filter"
   }
 
   test("run INTERSECT as a semi join with NULLs equal") {
