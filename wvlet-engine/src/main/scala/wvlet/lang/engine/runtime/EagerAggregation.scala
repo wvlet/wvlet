@@ -118,24 +118,23 @@ object EagerAggregation extends Pass:
           IndexedSeq.empty,
           child.output
         )
-        rewrite(a, ctx.options, newId) match
-          case Some(r) =>
-            ctx.fired(Optimization.EagerDistinct.name)
-            r
-          case None =>
-            eagerDistinct(a, ctx, newId).getOrElse(node)
+        eagerDistinct(a, ctx, newId).getOrElse(node)
       case _ =>
         node
     end match
 
   end walk
 
-  /** [[rewrite]] of a DISTINCT through the projection under it ([[throughProject]]) */
+  /**
+    * [[rewrite]] of a DISTINCT (an aggregation without calls), through the projection under it
+    * ([[throughProject]]) if there is one
+    */
   private def eagerDistinct(
       a: Aggregate,
       ctx: OptimizerContext,
       newId: () => ColumnId
-  ): Option[RuntimePlan] = throughProject(a)
+  ): Option[RuntimePlan] = Option
+    .when(a.calls.isEmpty)(throughProject(a).getOrElse(a))
     .flatMap(rewrite(_, ctx.options, newId))
     .map { r =>
       ctx.fired(Optimization.EagerDistinct.name)
@@ -143,17 +142,18 @@ object EagerAggregation extends Pass:
     }
 
   /**
-    * A DISTINCT (an aggregation without calls) over a deterministic projection of a join, as the
-    * same aggregation over the join with the projection's expressions inlined into its keys
-    * ([[Optimization.EagerDistinct]]). The keys then read the join's columns, so [[rewrite]] can
-    * deduplicate a side of the join by the columns they and the join keys read. The outer distinct
-    * stays over the join, and the deduplicated side still holds every distinct value of the columns
-    * read above it, so the result is the same distinct projected rows (TPC-DS q38's customer names
-    * and dates), not the distinct join keys
+    * A DISTINCT (an aggregation without calls) over a deterministic projection of a join (or of a
+    * filter over one), as the same aggregation over the join with the projection's expressions
+    * inlined into its keys ([[Optimization.EagerDistinct]]). The keys then read the join's columns,
+    * so [[rewrite]] can deduplicate a side of the join by the columns they and the join keys read.
+    * The outer distinct stays over the join, and the deduplicated side still holds every distinct
+    * value of the columns read above it, so the result is the same distinct projected rows (TPC-DS
+    * q38's customer names and dates), not the distinct join keys
     */
   private def throughProject(a: Aggregate): Option[Aggregate] =
     a.child match
-      case Project(j: Join, exprs, columns) if a.calls.isEmpty && exprs.forall(deterministic) =>
+      case Project(j @ (_: Join | Filter(_: Join, _, _)), exprs, columns)
+          if a.calls.isEmpty && exprs.forall(deterministic) =>
         val byId = columns.map(_.id).zip(exprs).toMap
         val keys = a
           .keys
