@@ -71,7 +71,7 @@ private[exec] object SelectedInputs:
         if v != null then
           v
         else
-          f.evalOver(eval(f.x, b), eval(f.y, b), b)
+          f.evalOver(eval(f.x, b), eval(f.y, b))
       case _ =>
         e.eval(b)
 

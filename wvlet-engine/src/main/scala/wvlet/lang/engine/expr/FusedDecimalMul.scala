@@ -68,13 +68,12 @@ case class FusedDecimalMul(x: VExpr, inner: Arith, innerLeft: Boolean, ptype: PT
   private val xScale = FusedDecimalMul.scaleOf(x.ptype)
   private val yScale = FusedDecimalMul.scaleOf(inner.ptype)
 
-  def eval(b: Batch): Vec = evalOver(x.eval(b), y.eval(b), b)
+  def eval(b: Batch): Vec = evalOver(x.eval(b), y.eval(b))
 
   /**
-    * The product over the values xv of x and yv of y, as [[eval]] computes it; b sizes the constant
-    * for the fallback
+    * The product over the values xv of x and yv of y, as [[eval]] computes it
     */
-  private[engine] def evalOver(xv: Vec, yv: Vec, b: Batch): Vec =
+  private[engine] def evalOver(xv: Vec, yv: Vec): Vec =
     val n  = xv.size
     val xs = unscaledOf(xv, xScale)
     val ys = unscaledOf(yv, yScale)
@@ -86,10 +85,10 @@ case class FusedDecimalMul(x: VExpr, inner: Arith, innerLeft: Boolean, ptype: PT
     if o != null then
       LongVec(ptype, o, Kernels.orNulls(xv.nulls, yv.nulls, n))
     else
-      fallback(xv, yv, b)
+      fallback(xv, yv)
 
   /** As [[Arith.eval]] would compute it, over the already evaluated operands */
-  private def fallback(xv: Vec, yv: Vec, b: Batch): Vec =
+  private def fallback(xv: Vec, yv: Vec): Vec =
     val cv = constExpr.eval(Batch.ofRows(xv.size))
     val tv =
       if constLeft then
