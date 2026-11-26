@@ -221,7 +221,7 @@ class ParquetSource(
     * catalog outlives a query), and its files are reopened only when the listing changed
     */
   private[catalog] def folder: Option[ParquetFolder] =
-    if isSingleFile || !folderFiles then
+    if !mayBePlainFolder then
       None
     else
       val now     = System.nanoTime()
@@ -235,12 +235,31 @@ class ParquetSource(
             if checked != null && checked._2 == listing then
               (listing, checked._3)
             else
-              (listing, listing.flatMap(_ => ParquetFolder.open(name, path, footerCache, schema)))
+              (listing, listing.flatMap(ParquetFolder.open(name, _, footerCache, columnTypes)))
           catch
             case _: Exception =>
               (None, None)
         checkedFolder = (now, listing, current)
         current
+
+  // Whether `path` may be a folder of plain files, decided without listing it
+  private lazy val mayBePlainFolder: Boolean =
+    !isSingleFile && folderFiles && ParquetFolder.mayBePlain(path)
+
+  /**
+    * The top-level columns' names with their Parquet physical and logical types (a nested column's
+    * engine type), which a folder's files must share to be read as single files
+    */
+  private[catalog] lazy val columnTypes: IndexedSeq[(String, Any)] =
+    parquetSchema
+      .fields
+      .map {
+        case p: ParquetField.Primitive =>
+          (p.name, (p.physicalType, p.logicalType, p.isRepeated))
+        case f =>
+          (f.name, ParquetSource.ptypeOf(f))
+      }
+      .toIndexedSeq
 
   /** This source without `folderFiles`: a folder is read through uni's dataset reader */
   lazy val withoutFolderFiles: ParquetSource =
@@ -582,6 +601,22 @@ class ParquetSource(
         val f = openFile(footerCache).file
         try sampleBatches(f, column, samples).toVector.iterator
         finally f.close()
+
+  /** The single file's row group count */
+  private[catalog] def rowGroupCount: Int = rowGroupMeta.size
+
+  /** Column `column` of the single file's row groups `groups`, read for sampling */
+  private[catalog] def sampleRowGroups(column: String, groups: Seq[Int]): Iterator[Batch] =
+    val f = openFile(footerCache).file
+    try
+      val (cols, types, options) = readOptions(ScanSpec(Some(Seq(column))))
+      groups
+        .map(g =>
+          ParquetSource.toBatch(f.readRowGroup(g, options), cols, types, dictionaryCodes = true)
+        )
+        .iterator
+    finally
+      f.close()
 
   /**
     * Column `column` of up to `samples` row groups spread over the file, until

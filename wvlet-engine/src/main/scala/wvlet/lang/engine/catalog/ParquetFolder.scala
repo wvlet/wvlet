@@ -44,15 +44,20 @@ private[catalog] final class ParquetFolder(
   /** The sum of the files' row counts */
   lazy val estimatedRows: Option[Long] = all(files.map(_.estimatedRows)).map(_.sum)
 
-  /** The union of the files' ranges; None when a file has no range for the column */
-  def columnRange(column: String): Option[(Long, Long)] = all(files.map(_.columnRange(column)))
-    .filter(_.nonEmpty)
-    .map(rs => (rs.map(_._1).min, rs.map(_._2).max))
+  /**
+    * The union of the files' ranges; None when a file has no range for the column. Computed once
+    * per listing: join ordering asks for it thousands of times
+    */
+  def columnRange(column: String): Option[(Long, Long)] =
+    cached(column, "range") {
+      all(files.map(_.columnRange(column)))
+        .filter(_.nonEmpty)
+        .map(rs => (rs.map(_._1).min, rs.map(_._2).max))
+    }
 
-  /** The row groups of every file, in file order */
-  def partRanges(column: String): Option[IndexedSeq[ColumnPartRange]] = all(
-    files.map(_.partRanges(column))
-  ).map(_.flatten)
+  /** The row groups of every file, in file order, computed once per listing */
+  def partRanges(column: String): Option[IndexedSeq[ColumnPartRange]] =
+    cached(column, "parts")(all(files.map(_.partRanges(column))).map(_.flatten))
 
   // Estimates of this listing, kept as a single file without a trusted version keeps them
   private val stats = scala.collection.mutable.HashMap.empty[(String, String), Option[Any]]
@@ -63,15 +68,35 @@ private[catalog] final class ParquetFolder(
     .asInstanceOf[Option[A]]
 
   /**
-    * Batches of `column` sampled from up to `samples` files spread over the folder, one row group
-    * each (see [[ParquetSource.sampleColumn]]): files are often written in key order, as their row
-    * groups are
+    * Column `column` of up to `samples` row groups spread over every file's row groups, until
+    * [[ParquetSource.ValueSampleRows]] rows, as a single file samples its row groups
+    * ([[ParquetSource.sampleColumn]]): data is often written in key order
     */
   def sampleColumn(column: String, samples: Int): Iterator[Batch] =
-    val n      = files.size
-    val k      = math.min(n, samples)
-    val picked = (0 until k).map(i => (i.toLong * n / k).toInt).distinct
-    picked.iterator.flatMap(i => files(i).sampleColumn(column, samples = 1))
+    val counts = files.map(_.rowGroupCount.toLong)
+    val starts = counts.scanLeft(0L)(_ + _)
+    val total  = starts.last
+    val k      = math.min(total, samples.toLong).toInt
+    // The picked row groups as (file, row group in the file), in file order
+    val picked = (0 until k)
+      .map(i => i.toLong * total / k)
+      .distinct
+      .map { g =>
+        val file = starts.lastIndexWhere(_ <= g, files.size - 1)
+        (file, (g - starts(file)).toInt)
+      }
+    var sampled = 0L
+    picked
+      .groupBy(_._1)
+      .toSeq
+      .sortBy(_._1)
+      .iterator
+      .takeWhile(_ => sampled < ParquetSource.ValueSampleRows)
+      .flatMap((file, groups) => files(file).sampleRowGroups(column, groups.map(_._2)))
+      .map { b =>
+        sampled += b.size
+        b
+      }
 
   /**
     * One part per row group of every file that `spec` doesn't skip. Each file opens when its first
@@ -139,36 +164,35 @@ end ParquetFolder
 private[catalog] object ParquetFolder:
 
   /**
-    * The plain files of the folder or glob `path`, read as sources named `name`; None when it is an
-    * object store prefix, an Iceberg or Delta table, has partition folders or no files, or when a
-    * file's columns differ from `schema` (the dataset's columns) in name or type
+    * Whether `path` may name a folder of plain files: not an object store prefix, an Iceberg table
+    * or a Delta table (checked once per source, before any listing)
+    */
+  def mayBePlain(path: String): Boolean =
+    !path.contains("://") && !ParquetSource.isIcebergPath(path) && !isDelta(path)
+
+  /**
+    * The files of `listing` read as sources named `name`; None when there are none, or when a file
+    * doesn't read as a single file with the folder's `columns` ([[ParquetSource.columnTypes]]:
+    * names, and Parquet physical and logical types, which decide what a row filter can test)
     */
   def open(
       name: String,
-      path: String,
+      listing: IndexedSeq[(String, Long)],
       footerCache: Boolean,
-      schema: Schema
+      columns: IndexedSeq[(String, Any)]
   ): Option[ParquetFolder] =
-    if path.contains("://") || ParquetSource.isIcebergPath(path) || isDelta(path) then
+    if listing.isEmpty then
       None
     else
-      val ds = ParquetSource.openDataset(path)
-      try
-        if ds.partitionColumns.nonEmpty || ds.files.isEmpty || ds.tableProperties.nonEmpty then
-          None
-        else
-          val listing  = ds.files.map(f => (f.path, f.size))
-          val expected = schema.fields.map(f => (f.name, f.ptype))
-          val files    = ds.files.map(f => ParquetSource(name, f.path, footerCache))
-          Option.when(
-            // Each file must read as a single file, with the folder's columns
-            files.forall(f =>
-              f.isSingleFile && f.schema.fields.map(c => (c.name, c.ptype)) == expected
-            )
-          )(ParquetFolder(files, listing))
-      finally ds.close()
+      val files = listing.map((p, _) => ParquetSource(name, p, footerCache))
+      Option.when(files.forall(f => f.isSingleFile && f.columnTypes == columns))(
+        ParquetFolder(files, listing)
+      )
 
-  /** The (path, size) of each file `path` lists now (None for a non-plain folder) */
+  /**
+    * The (path, size) of each file `path` lists now; None for a folder with partition folders or
+    * table properties, which uni's dataset reader reads
+    */
   def listing(path: String): Option[IndexedSeq[(String, Long)]] =
     val ds = ParquetSource.openDataset(path)
     try
