@@ -325,6 +325,9 @@ object TpchGen:
     "yellow"
   )
 
+  /** The color words of part names (TPC-H 4.2.3) */
+  private[catalog] def colorNames: IndexedSeq[String] = colors
+
   private val typeSyllable1 = IndexedSeq("STANDARD", "SMALL", "MEDIUM", "LARGE", "ECONOMY", "PROMO")
   private val typeSyllable2 = IndexedSeq("ANODIZED", "BURNISHED", "PLATED", "POLISHED", "BRUSHED")
   private val typeSyllable3 = IndexedSeq("TIN", "NICKEL", "BRASS", "STEEL", "COPPER")

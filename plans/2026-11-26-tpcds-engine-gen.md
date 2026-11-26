@@ -60,7 +60,7 @@ Same mechanism as TPC-H: `TpcdsGen` + `TpcdsSource` (or a table-parameterized ge
   - Sale dates fall in the specification's window (1998-01-02 to 2003-01-02).
   - Prices derive from list price, discount, and quantity with the specification's formulas, so `ss_net_profit`-style columns are consistent.
   - `inventory` is generated per (week, warehouse) block.
-- **Row counts:** use the specification's scaling table for SF ≥ 1. Below that (0.01, 0.1), follow what DuckDB's `dsdgen` produces. A test checks each table's count against `dsdgen` at SF 0.1 within 10%.
+- **Row counts:** `dsdgen`'s, checked at SF 0.01–10. Below SF 1 it's `floor(count at SF 1 × sf)`, at least 1. From SF 1 to 10 it's linear between `dsdgen`'s SF 1 and 10 counts, rounded down to a per-table unit (1,000 for `customer`/`customer_address`, 2,000 for `item`, 2 for `web_site`/`web_page`); `catalog_page` and `reason` stay fixed. Above SF 10 `dsdgen`'s counts weren't measured (SF 100 is too large to generate locally), so `TpcdsGen.maxScaleFactor` is 10 until they are.
 - **Estimates:** `columnRange` / `partRanges` for date keys and the block-clustered ticket/order numbers; `estimatedDistinct` for keys and the fixed domains.
 - **Connector:** `prepareTPCDS` / `tpcdsScaleFactor` on the `wvlet` connector, replacing today's `NOT_IMPLEMENTED` error. `wvlet ui --tpcds` only if asked for.
 
@@ -75,7 +75,7 @@ Same mechanism as TPC-H: `TpcdsGen` + `TpcdsSource` (or a table-parameterized ge
 ## PR order
 
 1. Fixed dimensions (`date_dim`, `time_dim`, `customer_demographics`, `household_demographics`, `income_band`) equal to `dsdgen` in every column except `d_last_dom`. `TpchSource` and `TpcdsSource` share `GeneratedSource`.
-2. The other dimensions with the value lists, including `reason` and `ship_mode`, whose descriptions and carriers come from `dsdgen`'s distributions.
+2. The other dimensions with the value lists, including `reason` and `ship_mode`: `dsdgen`'s schemas, row counts, null shares, and SCD layout (3 business ids per 6 rows, half the rows current), with the query literals present at SF 1.
 3. Fact tables and returns, block-streamed, with the referential checks.
 4. `prepareTPCDS` on the `wvlet` connector, the shape gate as a runner, and docs (`usage/wvlet-engine.md`, `for-ai-agents.md`, skill, `design/connectors.md`).
 
