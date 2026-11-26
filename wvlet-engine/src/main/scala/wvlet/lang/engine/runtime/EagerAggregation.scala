@@ -246,8 +246,16 @@ object EagerAggregation extends Pass:
                 None
           )
         }
-    val reduces = est.exists(e =>
-      e * MinReduction <= Stats.treeRows(in, options) && outer.forall(_ * MinReduction >= e)
+    lazy val inRows = Stats.treeRows(in, options)
+    // With `clustered_group_estimates`, the partial groups of rows clustered by their keys
+    val partialGroups = est.map { e =>
+      if options.isEnabled(Optimization.ClusteredGroupEstimates) then
+        ClusteredGroups.groups(in, groups.map(c => BExpr.ref(c).expr), e, inRows)
+      else
+        e
+    }
+    val reduces = partialGroups.exists(e =>
+      e * MinReduction <= inRows && outer.forall(_ * MinReduction >= e)
     )
     if groups.isEmpty || !reduces then
       None

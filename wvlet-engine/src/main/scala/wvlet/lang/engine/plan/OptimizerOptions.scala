@@ -659,6 +659,17 @@ enum Optimization(val name: String):
     */
   case LongGroupTables extends Optimization("long_group_tables")
 
+  /**
+    * Group counts of rows that come in clusters sharing their keys, such as the lines of an order
+    * sharing its customer and date, are estimated over the clusters instead of the rows
+    * ([[wvlet.lang.engine.runtime.ClusteredGroups]]), with cluster sizes from the mean run length
+    * of the key columns in sampled Parquet row groups. They feed the join-tree aggregation
+    * estimates and the eager-aggregation guard: TPC-DS q74's web (customer, year) groups were
+    * estimated at 1M where there are 213K, so its partial aggregation below the customer join was
+    * skipped
+    */
+  case ClusteredGroupEstimates extends Optimization("clustered_group_estimates")
+
 end Optimization
 
 object Optimization:

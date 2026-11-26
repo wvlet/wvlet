@@ -90,6 +90,14 @@ trait TableSource:
     */
   def valueCounts(column: String): Option[ValueCounts] = None
 
+  /**
+    * The mean number of consecutive rows sharing a column's value (NULL counting as a value) in a
+    * sample of the rows in storage order, for estimating the groups of filtered rows: the lines of
+    * an order share its customer and date, so a filter keeps or drops them together. None when
+    * unknown
+    */
+  def keyRunLength(column: String): Option[Double] = None
+
   /** EXPLAIN lines of what a scan of this source reads, nested above the scan (at `indent`) */
   def explainDetail(indent: Int): Option[String] = None
 
@@ -351,6 +359,25 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
       cachedPerVersion(column, ParquetSource.ValueCountsStat)(computeValueCounts(column))
 
   /**
+    * Integer, date and string columns of a single file: measured in the row groups that
+    * [[valueCounts]] samples. Cached per file version as [[estimatedDistinct]] is
+    */
+  override def keyRunLength(column: String): Option[Double] =
+    if !isSingleFile ||
+      !schema
+        .fields
+        .exists(f =>
+          f.name == column && (
+            f.ptype == PType.Int32 || f.ptype == PType.Int64 || f.ptype == PType.Date ||
+              f.ptype == PType.Str
+          )
+        )
+    then
+      None
+    else
+      cachedPerVersion(column, ParquetSource.RunLengthStat)(computeRunLength(column))
+
+  /**
     * A statistic `stat` of `column`, computed once per file version and shared by the sources of
     * the file (an LRU per statistic, [[ParquetSource.MaxDistinctEntries]] distinct estimates and
     * [[ParquetSource.MaxValueCountsEntries]] value samples); a file [[ParquetFooterCache]] wouldn't
@@ -404,27 +431,57 @@ class ParquetSource(val name: String, val path: String, val footerCache: Boolean
   private def computeValueCounts(column: String): Option[ValueCounts] =
     try
       val f = openFile(footerCache).file
+      try ValueCounts.count(sampleBatches(f, column), ParquetSource.MaxSampleValues)
+      finally f.close()
+    catch
+      case _: Exception =>
+        None
+
+  private def computeRunLength(column: String): Option[Double] =
+    try
+      val f = openFile(footerCache).file
       try
-        val groups  = f.rowGroups
-        val n       = groups.size
-        val samples = math.min(n, ParquetSource.ValueSampleRowGroups)
-        // Spread over the file: generated and appended data is often ordered by a key
-        val picked = (0 until samples).map(i => (i.toLong * n / samples).toInt).distinct
-        val (cols, types, options) = readOptions(ScanSpec(Some(Seq(column))))
-        var sampled                = 0L
-        val batches                = picked
-          .iterator
-          .takeWhile(_ => sampled < ParquetSource.ValueSampleRows)
-          .map { g =>
-            sampled += groups(g).numRows
-            ParquetSource.toBatch(f.readRowGroup(g, options), cols, types, dictionaryCodes = true)
-          }
-        ValueCounts.count(batches, ParquetSource.MaxSampleValues)
+        var rows = 0L
+        var runs = 0L
+        sampleBatches(f, column).foreach { b =>
+          if b.size > 0 then
+            // A run starts at each row group's first row: the sampled groups aren't adjacent
+            val v = b.column(0)
+            rows += b.size
+            runs += 1
+            var i = 1
+            while i < b.size do
+              if v.isNull(i) != v.isNull(i - 1) || !v.isNull(i) && v.get(i) != v.get(i - 1) then
+                runs += 1
+              i += 1
+        }
+        Option.when(runs > 0)(rows.toDouble / runs)
       finally
         f.close()
     catch
       case _: Exception =>
         None
+
+  /**
+    * Column `column` of up to [[ParquetSource.ValueSampleRowGroups]] row groups spread over the
+    * file, until [[ParquetSource.ValueSampleRows]] rows, string pages as dictionary codes where
+    * they are dictionary-encoded
+    */
+  private def sampleBatches(f: ParquetFile, column: String): Iterator[Batch] =
+    val groups  = f.rowGroups
+    val n       = groups.size
+    val samples = math.min(n, ParquetSource.ValueSampleRowGroups)
+    // Spread over the file: generated and appended data is often ordered by a key
+    val picked                 = (0 until samples).map(i => (i.toLong * n / samples).toInt).distinct
+    val (cols, types, options) = readOptions(ScanSpec(Some(Seq(column))))
+    var sampled                = 0L
+    picked
+      .iterator
+      .takeWhile(_ => sampled < ParquetSource.ValueSampleRows)
+      .map { g =>
+        sampled += groups(g).numRows
+        ParquetSource.toBatch(f.readRowGroup(g, options), cols, types, dictionaryCodes = true)
+      }
 
   private def computeDistinct(column: String): Option[Double] =
     if !isSingleFile then
@@ -539,6 +596,7 @@ object ParquetSource:
 
   private[catalog] val DistinctStat    = "distinct"
   private[catalog] val ValueCountsStat = "values"
+  private[catalog] val RunLengthStat   = "runs"
 
   /** Up to how many row groups a string column's values are counted in, for [[ValueCounts]] */
   val ValueSampleRowGroups: Int = 4

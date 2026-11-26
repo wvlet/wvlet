@@ -199,11 +199,15 @@ object Stats:
     * Estimated groups of an aggregation of p by `keys`: the product of the keys' distinct values,
     * at most the rows of p. None when a key's distinct values are unknown
     */
-  def groups(p: RuntimePlan, keys: Seq[VExpr]): Option[Double] = keys
-    .foldLeft(Option(1.0)) { (acc, k) =>
+  def groups(p: RuntimePlan, keys: Seq[VExpr]): Option[Double] = combinations(p, keys).map(
+    math.min(_, rows(p))
+  )
+
+  /** The product of the distinct values of `keys` over p. None when one is unknown */
+  def combinations(p: RuntimePlan, keys: Seq[VExpr]): Option[Double] =
+    keys.foldLeft(Option(1.0)) { (acc, k) =>
       acc.flatMap(a => distinct(p, k).map(d => a * math.max(1.0, d)))
     }
-    .map(math.min(_, rows(p)))
 
   /** Distinct values of an expression over p: a column, possibly cast */
   def distinct(p: RuntimePlan, e: VExpr): Option[Double] =
@@ -335,7 +339,12 @@ object Stats:
           1.0
         else
           val r = treeRows(child, options, build)
-          groups(child, keys.map(_.expr)).map(math.min(_, r)).getOrElse(r)
+          if options.isEnabled(Optimization.ClusteredGroupEstimates) then
+            combinations(child, keys.map(_.expr))
+              .map(ClusteredGroups.groups(child, keys.map(_.expr), _, r))
+              .getOrElse(r)
+          else
+            groups(child, keys.map(_.expr)).map(math.min(_, r)).getOrElse(r)
       case Join(left, right, JoinKind.Inner, lk, rk, _, _) if lk.nonEmpty =>
         CardinalityEstimator.joinOutputRows(
           treeRows(left, options, build),
