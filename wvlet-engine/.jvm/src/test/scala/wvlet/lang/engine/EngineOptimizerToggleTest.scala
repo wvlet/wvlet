@@ -259,7 +259,11 @@ class EngineOptimizerToggleTest extends UniTest:
     // that region lookups give the same rows as built substrings
     Optimization.SubstringInLists -> "Changes how string IN lists test substrings, not the plan",
     // EngineRuntimeJoinFiltersTest checks that the flag sets per-row filters on probe scans
-    Optimization.RowJoinFilters -> "Changes which rows the probe scans emit, not the plan"
+    Optimization.RowJoinFilters -> "Changes which rows the probe scans emit, not the plan",
+    // RankFilterRowsTest checks the estimates. TPC-DS q44 already builds on its rankings at SF0.1;
+    // the toggle flips its build side at SF10
+    Optimization.RankFilterRows ->
+      "Changes TPC-DS q44's join order at SF10, not at the golden plans' SF0.1"
   )
 
   override def afterAll: Unit =

@@ -157,7 +157,8 @@ class OptimizerOptionsTest extends UniTest:
         "eager_aggregation_in_join_trees",
         "parallel_result_stats",
         "size_partitions_by_rows",
-        "nested_group_estimates"
+        "nested_group_estimates",
+        "rank_filter_rows"
       )
   }
 

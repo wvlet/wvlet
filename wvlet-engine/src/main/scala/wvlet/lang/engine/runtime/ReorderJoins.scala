@@ -185,7 +185,14 @@ object ReorderJoins extends Pass:
           .getOrElse(rows)
         if estimate < rows then
           ctx.fired(Optimization.AggregateInputRows.name)
-        (p, estimate)
+        // A top-N ranking (`rnk < 11`) keeps at most N rows per window partition
+        // (`rank_filter_rows`)
+        val ranked = Option
+          .when(options.isEnabled(Optimization.RankFilterRows))(RankFilterRows.rows(inputs(i)))
+          .flatten
+          .filter(_ < estimate)
+        ranked.foreach(_ => ctx.fired(Optimization.RankFilterRows.name))
+        (p, ranked.getOrElse(estimate))
       }
     val edges =
       condRefs
