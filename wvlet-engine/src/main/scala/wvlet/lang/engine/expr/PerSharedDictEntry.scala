@@ -58,7 +58,7 @@ case class PerSharedDictEntry(inner: VExpr, column: Int, local: VExpr) extends V
     * first dictionary is kept, so batches alternating between builds (a union of joins, partitioned
     * builds) run per batch instead of recomputing the results for each
     */
-  private def resultsFor(dict: Array[String], rows: Int): PerSharedDictEntry.Results =
+  private[engine] def resultsFor(dict: Array[String], rows: Int): PerSharedDictEntry.Results =
     val c = cached
     if c != null && (c.dict eq dict) then
       c

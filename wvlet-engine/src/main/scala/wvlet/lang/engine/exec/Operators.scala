@@ -822,6 +822,8 @@ class HashAggOp(
 
   // Aggregates without FILTER, which FusedAccumulators may fold
   private lazy val unfiltered: Array[Boolean] = aggs.map(_.filter.isEmpty).toArray
+  // FILTERs over one shared dictionary, routed by code in one pass (`routed_agg_filters`)
+  private lazy val router: RoutedAggFilters = RoutedAggFilters.of(aggs)
 
   // Scratch arrays reused across batches: accumulators read group ids only during update
   private var idx: Array[Int] = Array.emptyIntArray
@@ -866,9 +868,10 @@ class HashAggOp(
           numGroups,
           columnMajor = columnMajorSums
         )
-    var a = 0
+    val routed = RoutedAggFilters.update(router, accs, groups, numGroups, b)
+    var a      = 0
     while a < accs.size do
-      if folded == null || !folded(a) then
+      if (folded == null || !folded(a)) && (routed == null || !routed(a)) then
         updateOne(
           aggs(a),
           accs(a),

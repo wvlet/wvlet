@@ -269,6 +269,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // PerSharedDictEntryTest that per-entry results give the same values as per-row evaluation
     Optimization.DictionaryAggFilters ->
       "Changes how aggregate FILTERs evaluate dictionary-coded strings, not the plan",
+    // EngineRoutedAggFiltersTest checks that the flag reaches the aggregates, and
+    // RoutedAggFiltersTest that routing gives the same results as each FILTER's own mask
+    Optimization.RoutedAggFilters ->
+      "Changes how aggregate FILTERs over one dictionary fold their rows, not the plan",
     // EngineSubstringInListsTest checks that the flag reaches the filters, and SubstringInListTest
     // that region lookups give the same rows as built substrings
     Optimization.SubstringInLists -> "Changes how string IN lists test substrings, not the plan",
