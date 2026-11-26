@@ -39,18 +39,37 @@ object ShareSubplans:
   def key(p: RuntimePlan): Option[Any] =
     val ids = mutable.HashMap.empty[Int, Int]
     try
-      Some(Canonicalizer(ids).canon(p))
+      Some(Canonicalizer(ids, loose = false).canon(p))
     catch
       case _: NoKey =>
         None
 
+  /**
+    * A key of the rows of `p` as a set of columns, and the canonical id of each output column in
+    * order: equal for two plans that compute the same rows up to the choice of column ids, column
+    * qualifiers (table aliases), the order of inner-join inputs and conditions, and the order of
+    * the output columns. A column of one plan reads the same values as the column of the other with
+    * the same canonical id. Callers bind over the ids, not over names
+    */
+  def looseKey(p: RuntimePlan): Option[(Any, IndexedSeq[Int])] =
+    val ids = mutable.HashMap.empty[Int, Int]
+    try
+      val k = Canonicalizer(ids, loose = true).canon(p)
+      Some((k, p.output.map(c => ids(c.id.value))))
+    catch
+      case _: NoKey | _: NoSuchElementException =>
+        None
+
   private class NoKey extends RuntimeException(null, null, false, false)
 
-  private class Canonicalizer(ids: mutable.HashMap[Int, Int]):
+  private class Canonicalizer(ids: mutable.HashMap[Int, Int], loose: Boolean):
     private def define(cs: IndexedSeq[Column]): IndexedSeq[Any] = cs.map { c =>
       val id = ids.size + 1
       ids(c.id.value) = id
-      (id, c.name, c.ptype, c.qualifiers)
+      if loose then
+        (id, c.name, c.ptype)
+      else
+        (id, c.name, c.ptype, c.qualifiers)
     }
 
     // With the bits of its floating-point constants, since `==` on boxed values equates 0.0 and
@@ -116,6 +135,14 @@ object ShareSubplans:
           val l = canon(left)
           val r = canon(right)
           ("asof_join", l, r, kind, exprs(lk), exprs(rk), expr(lv), expr(rv), op)
+        case RuntimePlan.InnerJoins(inputs, conds) if loose =>
+          // Inputs in the order of their own keys, each numbered apart, then numbered in that order
+          val sorted = inputs
+            .map(in => (Canonicalizer(mutable.HashMap.empty, loose).canon(in).toString, in))
+            .sortBy(_._1)
+            .map(_._2)
+          val in = sorted.map(canon)
+          ("inner_joins", in, conds.map(c => expr(c.cond)).sortBy(_.toString))
         case RuntimePlan.InnerJoins(inputs, conds) =>
           val in = inputs.map(canon)
           ("inner_joins", in, conds.map(c => expr(c.cond)))
