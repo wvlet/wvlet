@@ -54,7 +54,8 @@ case class SortDir(ascending: Boolean, nullsFirst: Boolean)
   * An aggregate call: function name, bound argument expressions, DISTINCT, and an optional FILTER
   * condition. With an ORDER BY (`array_agg(x ORDER BY y)`), `order` holds one direction per key,
   * and the keys are the last `order.size` expressions of `args`, so plan rewrites remap them with
-  * the values
+  * the values. With `dictionaryFilter` (`dictionary_agg_filters`), the FILTER's parts over one
+  * string column run once per dictionary entry ([[DictionaryPredicates.wrapShared]])
   */
 case class AggCall(
     name: String,
@@ -62,8 +63,16 @@ case class AggCall(
     distinct: Boolean,
     filter: Option[VExpr],
     ptype: PType,
-    order: Seq[SortDir] = Nil
+    order: Seq[SortDir] = Nil,
+    dictionaryFilter: Boolean = false
 ):
+  /** The FILTER condition as evaluated */
+  lazy val evalFilter: Option[VExpr] =
+    if dictionaryFilter then
+      filter.map(DictionaryPredicates.wrapShared)
+    else
+      filter
+
   /** The aggregated value arguments, without the ORDER BY keys */
   def valueArgs: Seq[VExpr] = args.dropRight(order.size)
 

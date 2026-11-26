@@ -84,6 +84,7 @@ class Planner(
     windowTopNStream = enabled(Optimization.WindowTopNStream),
     constCaseSelect = enabled(Optimization.ConstCaseSelect),
     caseAggFilters = enabled(Optimization.CaseAggFilters),
+    dictionaryAggFilters = enabled(Optimization.DictionaryAggFilters),
     substringInLists = enabled(Optimization.SubstringInLists),
     valueSelectivity = enabled(Optimization.StringValueSelectivity),
     columnImpliedRowFilters = enabled(Optimization.ColumnImpliedRowFilters),

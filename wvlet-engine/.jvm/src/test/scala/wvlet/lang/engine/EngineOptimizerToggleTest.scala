@@ -258,6 +258,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // EngineCaseAggFiltersTest checks that the flag reaches the CASE expressions, and CaseWhenTest
     // that picking constants gives the same values as the branch choice
     Optimization.ConstCaseSelect -> "Changes how CASE expressions build their output, not the plan",
+    // EngineDictionaryAggFiltersTest checks that the flag reaches the aggregates, and
+    // PerSharedDictEntryTest that per-entry results give the same values as per-row evaluation
+    Optimization.DictionaryAggFilters ->
+      "Changes how aggregate FILTERs evaluate dictionary-coded strings, not the plan",
     // EngineSubstringInListsTest checks that the flag reaches the filters, and SubstringInListTest
     // that region lookups give the same rows as built substrings
     Optimization.SubstringInLists -> "Changes how string IN lists test substrings, not the plan",

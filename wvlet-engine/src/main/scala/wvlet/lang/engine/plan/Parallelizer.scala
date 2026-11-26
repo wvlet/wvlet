@@ -784,8 +784,8 @@ private[plan] object TwoPhaseAgg:
                 Aggregates.resultType("sum", Seq(d))
               case _ =>
                 PType.Float64
-          val s = add(AggCall("sum", c.args, false, c.filter, sumType))
-          val n = add(AggCall("count", c.args, false, c.filter, PType.Int64))
+          val s = add(c.copy(name = "sum", distinct = false, ptype = sumType, order = Nil))
+          val n = add(c.copy(name = "count", distinct = false, ptype = PType.Int64, order = Nil))
           sources += IndexedSeq(s, n)
         case _ =>
           sources += IndexedSeq(add(c))
