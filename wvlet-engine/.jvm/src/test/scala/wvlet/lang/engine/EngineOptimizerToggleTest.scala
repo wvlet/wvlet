@@ -13,30 +13,75 @@
  */
 package wvlet.lang.engine
 
+import wvlet.lang.compiler.Context
 import wvlet.lang.engine.exec.TaskRunner
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.model.plan.Relation
 import wvlet.uni.test.UniTest
 
 /**
   * Turning off any one planner optimization may change plans but never results: spec/basic and
   * TPC-H, with each optimization disabled in turn, must still return the rows DuckDB returns (as
   * they do with every optimization on, see [[EngineBasicSpecTest]] and [[EngineTPCHTest]]). This
-  * catches a query whose correct result secretly depends on an optimization
+  * catches a query whose correct result secretly depends on an optimization.
+  *
+  * The queries are compiled, and their DuckDB rows computed, once for all optimizations: only the
+  * engine runs again for each one
   */
 class EngineOptimizerToggleTest extends UniTest:
 
-  private def check(c: EngineConformance, skip: Set[String]): Unit =
-    try
-      val failures = c
-        .units
-        .filterNot(u => skip.contains(u.sourceFile.fileName))
-        .flatMap(c.run)
+  /** One spec folder's queries, compiled once. `skip` names the files left out */
+  private class ToggleSuite(open: => EngineConformance, skip: Set[String]):
+    private var opened = false
+    private lazy val c =
+      opened = true
+      open
+
+    private case class Query(name: String, fileName: String, relation: Relation, ctx: Context)
+
+    private lazy val queries: Seq[Query] = c
+      .units
+      .filterNot(u => skip.contains(u.sourceFile.fileName))
+      .flatMap { u =>
+        c.queries(u)((name, q) => Query(name, u.sourceFile.fileName, q, summon[Context]))
+      }
+
+    /**
+      * Fail unless every query returns DuckDB's rows with `options`, skipping the files in
+      * `tooSlow`
+      */
+    def check(options: OptimizerOptions, tooSlow: Set[String]): Unit =
+      val engine   = c.engine.withOptimizer(options)
+      val failures = queries
+        .filterNot(q => tooSlow.contains(q.fileName))
+        .map(q => c.compare(q.name, q.relation, engine)(using q.ctx))
         .filterNot(_.matched)
       if failures.nonEmpty then
         fail(failures.map(r => s"${r.name}: ${r.message}").mkString("\n"))
-    finally
-      c.close()
+
+    def close(): Unit =
+      if opened then
+        c.close()
+
+  end ToggleSuite
+
+  private val basic = ToggleSuite(
+    EngineConformance("spec/basic", Nil, _ => ()),
+    EngineBasicSpecTest.knownGaps
+  )
+
+  private val tpch =
+    val tables = EngineTPCHBench.tables
+    ToggleSuite(
+      EngineConformance(
+        "spec/tpch",
+        tables.map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
+        engine =>
+          tables.foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
+      ),
+      Set.empty
+    )
 
   // The plans with every optimization on, to compare with the plans without one
   private lazy val baselinePlans = EnginePlanGolden.suites.map(_.generate())
@@ -62,141 +107,135 @@ class EngineOptimizerToggleTest extends UniTest:
     Optimization.LeftGroupKeySemiJoins
   )
 
+  /**
+    * Optimizations that change no TPC-H or TPC-DS plan, with the reason. The comments name the
+    * tests that check that they take effect
+    */
+  private val noPlanChange: Map[Optimization, String] = Map(
+    // The subqueries become the same constants either way, one query per group or per subquery
+    Optimization.PrefetchScalarSubqueries ->
+      "Changes how scalar subqueries are evaluated while planning, not the plan",
+    // EnginePresizeAggregatesTest checks that the flag sets the aggregations' group estimates
+    Optimization.PresizeAggregates ->
+      "Changes the initial size of aggregation tables, not the plan",
+    // EngineMaterializedCTEStatsTest checks that the flag changes the plan
+    Optimization.ReplanCTEBodies -> "No TPC-H or TPC-DS shared CTE body reads another shared CTE",
+    // StatsTest checks that both ways count the same distinct values
+    Optimization.PrimitiveResultDistinct ->
+      "Changes how a computed CTE's distinct values are counted, not the counts",
+    // PartitionedAggOpTest checks that both ways give the same partitions
+    Optimization.ParallelAggPartitioning ->
+      "Changes how aggregation input is routed to partitions, not the plan",
+    // EnginePlanAcceleratorTest checks that the flag offers plans to an accelerator
+    Optimization.GpuOffload ->
+      "Changes plans only with a PlanAccelerator, which these engines don't have",
+    // EngineConcurrentSharedCTEsTest checks that the flag starts the results concurrently
+    Optimization.ConcurrentSharedCTEs ->
+      "Changes when shared CTE results are computed, not the plan",
+    // EngineConcurrentJoinBuildsTest checks that the flag runs a pipeline's builds as one step
+    Optimization.ConcurrentJoinBuilds ->
+      "Changes when the hash join builds of a pipeline run, not the plan",
+    // EngineWindowTopNTest checks that the flag reaches the window operators, and WindowOpTest that
+    // both folds give the same values
+    Optimization.RunningWindowKernels ->
+      "Changes how running window aggregates are folded, not the plan",
+    // EngineRuntimeJoinFiltersTest and EngineScanRowFiltersTest check that the flag puts per-row
+    // join filters into the probe scans' row filters, with the same rows
+    Optimization.ScanJoinRowFilters ->
+      "Changes where probe scans test per-row join filters, not the plan",
+    // EngineScanRowFiltersTest checks that the flag orders the probe scans' row filters, with the
+    // same rows
+    Optimization.JoinRowFiltersFirst ->
+      "Changes the order of a probe scan's row filter conjuncts, not the plan",
+    // EngineWindowTopNTest checks that the flag reaches the window operators, and WindowOpTest that
+    // shared partitions give the same values
+    Optimization.WindowSharePartitions ->
+      "Changes how often window partitions are sorted, not the plan",
+    // EngineWindowTopNTest checks that the flag reaches the window operators, and
+    // WindowSortKernelTest that both sorts give the same row order
+    Optimization.WindowSortKernels -> "Changes how window partitions are sorted, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the partial aggregates, and
+    // PartialAggSkipTest that passing rows through gives the same final groups
+    Optimization.AdaptivePartialAggs ->
+      "Changes when partial aggregates stop grouping, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the partitioned aggregations, and
+    // AggKeyPackingTest that packed keys give the same groups
+    Optimization.PackAggKeys -> "Changes how partitioned aggregations compare keys, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flags reach the aggregations, and
+    // PackedGroupTableTest that packed and unscaled keys give the same groups
+    Optimization.StreamPackAggKeys -> "Changes how aggregations compare keys, not the plan",
+    Optimization.LongDecimalKeys   -> "Changes how aggregations compare keys, not the plan",
+    // EngineJoinBuildStringCodesTest checks that the flag reaches the joins, and GroupTableTest the
+    // grouping
+    Optimization.JoinBuildStringCodes ->
+      "Changes how join builds hold strings and aggregations compare them, not the plan",
+    // EngineDictionaryGroupKeysTest checks that the flag reaches the scans, and GroupTableTest that
+    // grouping by dictionary codes gives the same groups
+    Optimization.DictionaryGroupKeys ->
+      "Changes how scans decode strings and aggregations compare them, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
+    // FusedAccumulatorsTest that the fused loop gives the same counts and sums
+    Optimization.FusedAccumulators ->
+      "Changes how hash aggregations fold their aggregates, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the partial aggregates, and
+    // PartialAggSkipTest that one-row partial results give the same groups
+    Optimization.OneRowPartials ->
+      "Changes how partial aggregates build their one-row results, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
+    // SelectedInputsTest that reading deferred columns in place gives the same groups
+    Optimization.AggregateSelectedRows ->
+      "Changes how hash aggregations read deferred input columns, not the plan",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the projections and hash
+    // aggregations, and DenseSelectedRowsTest that computing over the source rows gives the same
+    // results
+    Optimization.DenseSelectedRows ->
+      "Changes how projections and aggregations read a filter's deferred columns",
+    // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
+    // LongGroupTableTest that the table gives the same groups as a GroupTable
+    Optimization.LongGroupTables ->
+      "Changes how hash aggregations look up single Int64 keys, not the plan",
+    // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
+    // evaluation keeps the same rows
+    Optimization.DictionaryFilters ->
+      "Changes how filters evaluate dictionary-coded strings, not the plan",
+    // EngineDictionaryFiltersTest checks that the flag reaches the filters, and SelectionTest that
+    // per-entry selection keeps the same rows
+    Optimization.DictionarySelection ->
+      "Changes how filters select rows of dictionary-coded strings, not the plan",
+    // ParquetFooterCacheTest checks that the flag reuses parsed footers
+    Optimization.ParquetFooterCache -> "Changes how often Parquet footers are parsed, not the plan",
+    // EngineMaskedCaseWhenTest checks that the flag reaches the projections, and CaseWhenTest that
+    // masking gives the same values as the branch choice
+    Optimization.MaskedCaseWhen -> "Changes how CASE expressions build their output, not the plan",
+    // EngineCaseAggFiltersTest checks that the flag reaches the CASE expressions, and CaseWhenTest
+    // that picking constants gives the same values as the branch choice
+    Optimization.ConstCaseSelect -> "Changes how CASE expressions build their output, not the plan",
+    // EngineSubstringInListsTest checks that the flag reaches the filters, and SubstringInListTest
+    // that region lookups give the same rows as built substrings
+    Optimization.SubstringInLists -> "Changes how string IN lists test substrings, not the plan",
+    // EngineRuntimeJoinFiltersTest checks that the flag sets per-row filters on probe scans
+    Optimization.RowJoinFilters -> "Changes which rows the probe scans emit, not the plan"
+  )
+
+  override def afterAll: Unit =
+    basic.close()
+    tpch.close()
+
   for o <- Optimization.values do
     val options = OptimizerOptions().withDisabled(o)
 
     test(s"spec/basic without ${o.name}") {
-      check(EngineConformance("spec/basic", Nil, _ => (), options), EngineBasicSpecTest.knownGaps)
+      basic.check(options, Set.empty)
     }
 
     test(s"spec/tpch without ${o.name}") {
-      val tables = EngineTPCHBench.tables
-      check(
-        EngineConformance(
-          "spec/tpch",
-          tables.map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
-          engine =>
-            tables.foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet")),
-          options
-        ),
-        tpchTooSlow.getOrElse(o, Set.empty)
-      )
+      tpch.check(options, tpchTooSlow.getOrElse(o, Set.empty))
     }
 
     test(s"disabling ${o.name} changes some TPC-H or TPC-DS plan") {
       if TaskRunner.default.parallelism <= 1 && o == Optimization.Parallelize then
         ignore("Plans are not parallelized on one processor")
-      if o == Optimization.PrefetchScalarSubqueries then
-        // The subqueries become the same constants either way, one query per group or per subquery
-        ignore("Changes how scalar subqueries are evaluated while planning, not the plan")
-      if o == Optimization.PresizeAggregates then
-        // EnginePresizeAggregatesTest checks that the flag sets the aggregations' group estimates
-        ignore("Changes the initial size of aggregation tables, not the plan")
-      if o == Optimization.ReplanCTEBodies then
-        // EngineMaterializedCTEStatsTest checks that the flag changes the plan
-        ignore("No TPC-H or TPC-DS shared CTE body reads another shared CTE")
-      if o == Optimization.PrimitiveResultDistinct then
-        // StatsTest checks that both ways count the same distinct values
-        ignore("Changes how a computed CTE's distinct values are counted, not the counts")
-      if o == Optimization.ParallelAggPartitioning then
-        // PartitionedAggOpTest checks that both ways give the same partitions
-        ignore("Changes how aggregation input is routed to partitions, not the plan")
-      if o == Optimization.GpuOffload then
-        // EnginePlanAcceleratorTest checks that the flag offers plans to an accelerator
-        ignore("Changes plans only with a PlanAccelerator, which these engines don't have")
-      if o == Optimization.ConcurrentSharedCTEs then
-        // EngineConcurrentSharedCTEsTest checks that the flag starts the results concurrently
-        ignore("Changes when shared CTE results are computed, not the plan")
-      if o == Optimization.ConcurrentJoinBuilds then
-        // EngineConcurrentJoinBuildsTest checks that the flag runs a pipeline's builds as one step
-        ignore("Changes when the hash join builds of a pipeline run, not the plan")
-      if o == Optimization.RunningWindowKernels then
-        // EngineWindowTopNTest checks that the flag reaches the window operators, and WindowOpTest
-        // that both folds give the same values
-        ignore("Changes how running window aggregates are folded, not the plan")
-      if o == Optimization.ScanJoinRowFilters then
-        // EngineRuntimeJoinFiltersTest and EngineScanRowFiltersTest check that the flag puts
-        // per-row join filters into the probe scans' row filters, with the same rows
-        ignore("Changes where probe scans test per-row join filters, not the plan")
-      if o == Optimization.JoinRowFiltersFirst then
-        // EngineScanRowFiltersTest checks that the flag orders the probe scans' row filters, with
-        // the same rows
-        ignore("Changes the order of a probe scan's row filter conjuncts, not the plan")
-      if o == Optimization.WindowSharePartitions then
-        // EngineWindowTopNTest checks that the flag reaches the window operators, and WindowOpTest
-        // that shared partitions give the same values
-        ignore("Changes how often window partitions are sorted, not the plan")
-      if o == Optimization.WindowSortKernels then
-        // EngineWindowTopNTest checks that the flag reaches the window operators, and
-        // WindowSortKernelTest that both sorts give the same row order
-        ignore("Changes how window partitions are sorted, not the plan")
-      if o == Optimization.AdaptivePartialAggs then
-        // EngineAdaptivePartialAggsTest checks that the flag reaches the partial aggregates, and
-        // PartialAggSkipTest that passing rows through gives the same final groups
-        ignore("Changes when partial aggregates stop grouping, not the plan")
-      if o == Optimization.PackAggKeys then
-        // EngineAdaptivePartialAggsTest checks that the flag reaches the partitioned
-        // aggregations, and AggKeyPackingTest that packed keys give the same groups
-        ignore("Changes how partitioned aggregations compare keys, not the plan")
-      if o == Optimization.StreamPackAggKeys || o == Optimization.LongDecimalKeys then
-        // EngineAdaptivePartialAggsTest checks that the flags reach the aggregations, and
-        // PackedGroupTableTest that packed and unscaled keys give the same groups
-        ignore("Changes how aggregations compare keys, not the plan")
-      if o == Optimization.JoinBuildStringCodes then
-        // EngineJoinBuildStringCodesTest checks that the flag reaches the joins, and GroupTableTest
-        // the grouping
-        ignore("Changes how join builds hold strings and aggregations compare them, not the plan")
-      if o == Optimization.DictionaryGroupKeys then
-        // EngineDictionaryGroupKeysTest checks that the flag reaches the scans, and GroupTableTest
-        // that grouping by dictionary codes gives the same groups
-        ignore("Changes how scans decode strings and aggregations compare them, not the plan")
-      if o == Optimization.FusedAccumulators then
-        // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
-        // FusedAccumulatorsTest that the fused loop gives the same counts and sums
-        ignore("Changes how hash aggregations fold their aggregates, not the plan")
-      if o == Optimization.OneRowPartials then
-        // EngineAdaptivePartialAggsTest checks that the flag reaches the partial aggregates, and
-        // PartialAggSkipTest that one-row partial results give the same groups
-        ignore("Changes how partial aggregates build their one-row results, not the plan")
-      if o == Optimization.AggregateSelectedRows then
-        // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
-        // SelectedInputsTest that reading deferred columns in place gives the same groups
-        ignore("Changes how hash aggregations read deferred input columns, not the plan")
-      if o == Optimization.DenseSelectedRows then
-        // EngineAdaptivePartialAggsTest checks that the flag reaches the projections and hash
-        // aggregations, and DenseSelectedRowsTest that computing over the source rows gives the
-        // same results
-        ignore("Changes how projections and aggregations read a filter's deferred columns")
-      if o == Optimization.LongGroupTables then
-        // EngineAdaptivePartialAggsTest checks that the flag reaches the hash aggregations, and
-        // LongGroupTableTest that the table gives the same groups as a GroupTable
-        ignore("Changes how hash aggregations look up single Int64 keys, not the plan")
-      if o == Optimization.DictionaryFilters then
-        // EngineDictionaryFiltersTest checks that the flag reaches the filters and that per-entry
-        // evaluation keeps the same rows
-        ignore("Changes how filters evaluate dictionary-coded strings, not the plan")
-      if o == Optimization.DictionarySelection then
-        // EngineDictionaryFiltersTest checks that the flag reaches the filters, and SelectionTest
-        // that per-entry selection keeps the same rows
-        ignore("Changes how filters select rows of dictionary-coded strings, not the plan")
-      if o == Optimization.ParquetFooterCache then
-        // ParquetFooterCacheTest checks that the flag reuses parsed footers
-        ignore("Changes how often Parquet footers are parsed, not the plan")
-      if o == Optimization.MaskedCaseWhen then
-        // EngineMaskedCaseWhenTest checks that the flag reaches the projections, and CaseWhenTest
-        // that masking gives the same values as the branch choice
-        ignore("Changes how CASE expressions build their output, not the plan")
-      if o == Optimization.ConstCaseSelect then
-        // EngineCaseAggFiltersTest checks that the flag reaches the CASE expressions, and
-        // CaseWhenTest that picking constants gives the same values as the branch choice
-        ignore("Changes how CASE expressions build their output, not the plan")
-      if o == Optimization.SubstringInLists then
-        // EngineSubstringInListsTest checks that the flag reaches the filters, and
-        // SubstringInListTest that region lookups give the same rows as built substrings
-        ignore("Changes how string IN lists test substrings, not the plan")
-      if o == Optimization.RowJoinFilters then
-        // EngineRuntimeJoinFiltersTest checks that the flag sets per-row filters on probe scans
-        ignore("Changes which rows the probe scans emit, not the plan")
+      noPlanChange.get(o).foreach(ignore(_))
       val changed =
         if o == Optimization.PrefixLikeSelectivity then
           // Sampled string values estimate the prefix LIKEs of Parquet scans first

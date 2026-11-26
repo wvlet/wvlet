@@ -25,7 +25,7 @@ Run one spec file with `./sbt "runnerJVM/testOnly *RunnerSpecBasic -- spec:basic
 - Typing coverage over spec/basic: `./sbt "langJVM/testOnly *TyperCoverageCheck"`. Raise its thresholds when type resolution improves; never lower them. A new spec/basic file can fail it, so type the expression at its source.
 - The npm CLI (`sdks/cli-node`) bundles libduckdb through `@duckdb/node-bindings-*` optional dependencies pinned to the same DuckDB release as `DUCKDB_JDBC_VERSION`. Bump them together with duckdb_jdbc; `pnpm --filter @wvlet/cli test` fails on drift.
 - Agent docs and the bundled skill have their own snippet and freshness tests; see [agent docs](agent-docs.md).
-- Compiler performance: compare before and after with `./sbt "langJVM/testOnly *TyperBench"` (a log-only timing probe).
+- Compiler performance: compare before and after with `WVLET_TYPER_BENCH=1 ./sbt "langJVM/testOnly *TyperBench"` (a log-only timing probe, ignored without the variable).
 
 ## Running tests
 

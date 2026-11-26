@@ -184,7 +184,15 @@ class EngineConformance(
     val mode     = determinism(q)
     val expected =
       try
-        Right(runDuckDB(GenSQL.generateSQLFromRelation(q, addHeader = false).sql))
+        val sql = GenSQL.generateSQLFromRelation(q, addHeader = false).sql
+        duckdbResults.getOrElseUpdate(
+          sql,
+          try
+            Right(runDuckDB(sql))
+          catch
+            case e: Throwable =>
+              Left(e)
+        )
       catch
         case e: Throwable =>
           Left(e)
@@ -269,6 +277,16 @@ class EngineConformance(
     end match
 
   end compare
+
+  /**
+    * DuckDB's rows (or error) per SQL text: the expected rows do not depend on the engine, so
+    * comparing the same query on several engines (e.g., one per optimizer setting) runs it once
+    */
+  private val duckdbResults = scala
+    .collection
+    .mutable
+    .Map
+    .empty[String, Either[Throwable, (Seq[String], Seq[Seq[Any]])]]
 
   private def runDuckDB(sql: String): (Seq[String], Seq[Seq[Any]]) =
     debug(s"DuckDB SQL:\n${sql}")
