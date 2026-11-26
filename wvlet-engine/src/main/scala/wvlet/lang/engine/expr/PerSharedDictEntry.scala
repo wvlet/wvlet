@@ -23,8 +23,9 @@ import wvlet.lang.engine.vector.*
   * that dictionary, and each row takes its code's result. TPC-DS q59's seven `sum(...) filter
   * (where d_day_name = '...')` compare each sale row's day name seven times otherwise.
   *
-  * Without a shared dictionary it runs as a [[PerDictEntry]] does. The signature is `inner`'s: the
-  * values are the same, only the evaluation differs.
+  * Without a shared dictionary, or for batches of a dictionary other than the first one seen, it
+  * runs as a [[PerDictEntry]] does. The signature is `inner`'s: the values are the same, only the
+  * evaluation differs.
   */
 case class PerSharedDictEntry(inner: VExpr, column: Int, local: VExpr) extends VExpr:
   def ptype: PType                  = inner.ptype
@@ -32,7 +33,7 @@ case class PerSharedDictEntry(inner: VExpr, column: Int, local: VExpr) extends V
   override def children: Seq[VExpr] = Seq(inner)
   override def isConstant: Boolean  = false
 
-  // The results of `local` over the last shared dictionary seen. Racing first uses compute equal
+  // The results of `local` over the first shared dictionary seen. Racing first uses compute equal
   // results; the holder's final fields publish them safely
   @volatile
   private var cached: PerSharedDictEntry.Results = null
@@ -42,34 +43,26 @@ case class PerSharedDictEntry(inner: VExpr, column: Int, local: VExpr) extends V
       case s: StrVec if s.dict != null && s.hasCodes =>
         val r = resultsFor(s.dict, b.size)
         if r == null then
-          perBatch(s, b)
+          perBatch.eval(b)
         else
           r.forCodes(s.codes, s.nulls != null, b.size)
-      case s: StrVec =>
-        perBatch(s, b)
       case _ =>
-        inner.eval(b)
+        perBatch.eval(b)
 
-  private def perBatch(s: StrVec, b: Batch): Vec =
-    // A dictionary larger than the batch costs more to index than per-row evaluation saves
-    if s.hasCodes && s.dictSize > 0 && s.dictSize <= b.size then
-      val r = DictionaryPredicates.evalPerEntry(local, s, b.size)
-      if r == null then
-        inner.eval(b)
-      else
-        r
-    else
-      inner.eval(b)
+  // Without a shared dictionary: once per dictionary entry of the batch, or per row
+  private val perBatch = PerDictEntry(inner, column, local)
 
   /**
-    * The results over `dict`, computed when the dictionary has at most
-    * [[PerSharedDictEntry.MaxEntriesPerRow]] entries per row of the batch; null otherwise
+    * The results over `dict`, computed for the first dictionary seen when it has at most
+    * [[PerSharedDictEntry.MaxEntriesPerRow]] entries per row of the batch; null otherwise. Only the
+    * first dictionary is kept, so batches alternating between builds (a union of joins, partitioned
+    * builds) run per batch instead of recomputing the results for each
     */
   private def resultsFor(dict: Array[String], rows: Int): PerSharedDictEntry.Results =
     val c = cached
     if c != null && (c.dict eq dict) then
       c
-    else if dict.length.toLong > PerSharedDictEntry.MaxEntriesPerRow.toLong * rows then
+    else if c != null || dict.length.toLong > PerSharedDictEntry.MaxEntriesPerRow.toLong * rows then
       null
     else
       val r = PerSharedDictEntry.Results.of(local, dict)
