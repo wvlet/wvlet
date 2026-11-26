@@ -101,6 +101,13 @@ enum Optimization(val name: String):
   case GroupKeySemiJoins extends Optimization("group_key_semi_joins")
 
   /**
+    * Compute a min, max, or avg per key that a join reads back over the join's own rows, as a
+    * window partitioned by the key, when those rows are the aggregation's input joined with other
+    * relations on the key alone (TPC-H q17, q2): the input is read once ([[AggregateWindows]])
+    */
+  case AggregateWindows extends Optimization("aggregate_windows")
+
+  /**
     * Plan ROLLUP / CUBE (grouping sets whose key union is one of the sets) by aggregating the input
     * once, by the finest set, into partial results, then each coarser set from the partial results
     * of its smallest finer set, instead of one aggregation over the whole input per set

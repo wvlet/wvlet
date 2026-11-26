@@ -129,6 +129,8 @@ lake exe factor-or-traces   # regenerate the OR factoring conformance fixture
 | `WvletFormal/SemiReduce/Traces.lean`, `SemiReduceTraces.lean` | — | exports the semi-join reduction conformance fixture |
 | `WvletFormal/SelfJoinAggregate/Rule.lean` | `multi`: a key's group holds two different non-NULL values; `having`: `group by k having min(x) <> max(x)` without NULL keys; `Lineage` / `Covers`: the left rows agree with rows of the table / read all of it; the self join `l ⋉ T on l.k = T.k and l.x <> T.x` of `SelfJoinAggregate` | `semiJoin_eq`: when every left row is a row of T, the self join keeps exactly the left rows with a non-NULL x that the semi join on k with `having` keeps, in order, duplicates included; `keys_eq`: when the left side reads all of T, the self join's distinct keys are `having`'s. Gap: that `min(x) <> max(x)` says the same as `multi` is not modeled |
 | `WvletFormal/SelfJoinAggregate/Traces.lean`, `SelfJoinAggregateTraces.lean` | — | exports the self-join aggregation conformance fixture |
+| `WvletFormal/AggregateWindows/Rule.lean` | `part`: the rows of a key; `mult`: the rows of E of a key; `joined`: I joined with E on I's group key alone (O); `total`: a total of a function over values | `part_joined`: O's partition of a non-NULL key, read at x, is I's group of the key with each row repeated once per row of E of the key; `total_scales`: every total (a value's count, a sum, the non-NULL count) over the partition is that multiple of the group's; `avg_eq`: an avg agrees; `mem_iff`: the partition and the group hold the same values, so a min or max agrees; `covered`: every row of O has a non-NULL key held by I and E. Gap: the engine's plan matching (O's and I's leaves and conditions up to column ids, the semi join by a relation covering O's keys) is not modeled |
+| `WvletFormal/AggregateWindows/Traces.lean`, `AggregateWindowsTraces.lean` | — | exports the aggregate windows conformance fixture |
 
 ## Keeping the model and the code in sync
 
@@ -257,6 +259,14 @@ behavior as traces:
   t2.x`, its left side whole or filtered. `SelfJoinAggregateConformanceTest` (engineJVM) runs each
   query with `self_join_aggregate` on and off, compares rows with the model and DuckDB, and checks
   that the rule turned the whole-table self join into an aggregation and left the filtered ones.
+- `lake exe aggregate-windows-traces` writes
+  `wvlet-engine/.jvm/src/test/resources/wvlet/lang/engine/runtime/aggregate-windows-traces.json`:
+  tables `i(g, x, id)` and `e(e, w)` with a NULL key, a NULL value, a repeated key of e, and keys
+  either lacks, with the rows of `select i.id, e.w, (select f(i2.x) from i as i2 where i2.g = i.g)
+  from i, e where i.g = e.e` for min, max, avg, and sum, computed over the join's partition (the
+  window) and over i's group. `AggregateWindowsConformanceTest` (engineJVM) runs each query with
+  `aggregate_windows` on and off, compares rows with the model and DuckDB, and checks that the rule
+  turned min, max, and avg into windows and left the sum, whose two values differ.
 - The `Formal` workflow checks the proofs and fails when a committed fixture is stale.
 
 When you change an activity state transition, a coercion rule in `TypeInference`, an operator

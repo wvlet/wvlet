@@ -195,6 +195,7 @@ object Optimizer:
     ReduceSemiJoins,
     ReorderJoins,
     GroupKeySemiJoins,
+    AggregateWindows,
     EagerAggregation,
     DependentGroupKeys,
     PruneColumns,

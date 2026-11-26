@@ -24,7 +24,12 @@ import wvlet.uni.test.UniTest
   * relation on the join's other side holds (`group_key_semi_joins`), with the rows DuckDB returns
   */
 class EngineGroupKeySemiJoinsTest extends UniTest:
-  private val options     = OptimizerOptions().withValidatePlans(true)
+  // Without `aggregate_windows`, which turns the correlated avg of the first test into a window
+  // over the outer join, so that the semi join stays in its plan
+  private val options = OptimizerOptions()
+    .withValidatePlans(true)
+    .withDisabled(Optimization.AggregateWindows)
+
   private val conformance = EngineConformance.tpch(options)
   private val disabled    = conformance
     .engine
