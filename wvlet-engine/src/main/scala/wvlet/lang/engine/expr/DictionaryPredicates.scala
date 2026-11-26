@@ -88,6 +88,25 @@ object DictionaryPredicates:
               case other =>
                 other
 
+  /**
+    * `cond`, an aggregate FILTER, wrapped as [[wrap]] does with `whole`, its per-entry parts as
+    * [[PerSharedDictEntry]]s, which keep their results across batches sharing a dictionary
+    */
+  def wrapShared(cond: VExpr): VExpr =
+    def shared(e: VExpr): VExpr =
+      e match
+        case p: PerDictEntry =>
+          PerSharedDictEntry(p.inner, p.column, p.local)
+        case AndExpr(l, r) =>
+          AndExpr(shared(l), shared(r))
+        case OrExpr(l, r) =>
+          OrExpr(shared(l), shared(r))
+        case NotExpr(c) =>
+          NotExpr(shared(c))
+        case other =>
+          other
+    shared(wrap(cond, whole = true))
+
   /** The one string column `e` reads, when every node of it is one `wrap` evaluates per entry */
   private[engine] def singleStrColumn(e: VExpr): Option[Int] =
     var col                      = -1

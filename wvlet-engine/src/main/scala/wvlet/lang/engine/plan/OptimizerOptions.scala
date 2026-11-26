@@ -684,6 +684,15 @@ enum Optimization(val name: String):
   case CaseAggFilters extends Optimization("case_agg_filters")
 
   /**
+    * Aggregate FILTER conditions over one string column run once per dictionary entry. When the
+    * column holds a hash-join build's codes (`join_build_string_codes`), the results over that
+    * build's dictionary are kept across batches, and each row takes its code's result (TPC-DS q59
+    * and q43's seven `filter (where d_day_name = '...')` over the date_dim build), instead of
+    * comparing each row's string ([[wvlet.lang.engine.expr.PerSharedDictEntry]])
+    */
+  case DictionaryAggFilters extends Optimization("dictionary_agg_filters")
+
+  /**
     * Partial aggregates that stop grouping ([[AdaptivePartialAggs]]) emit each row's partial
     * results from the aggregates' arguments (a sum's value, a count's 0 or 1) instead of folding
     * every passed-through batch into new accumulators with one group per row (TPC-DS q78, q97)

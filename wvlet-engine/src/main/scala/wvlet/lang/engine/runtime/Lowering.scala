@@ -60,12 +60,14 @@ object Lowering:
     * With `constCaseSelect`, a CASE of one WHEN with constant THEN and ELSE picks one per row
     * ([[MaskCaseWhen]]). With `caseAggFilters`, an aggregate of a CASE of one WHEN without ELSE
     * aggregates its THEN value with the condition as FILTER ([[CaseAggFilters]]). With
-    * `substringInLists`, `substring(s, k, n) IN (strings)` compares string regions with the values
-    * ([[SubstringInLists]]). With `windowTopNStream`, a window under a rank bound keeps each input
-    * chunk's top rows as it reads them ([[wvlet.lang.engine.exec.WindowTopN.keepTop]]). With
-    * `valueSelectivity`, the row-filter gate estimates string conjuncts from the source's sampled
-    * values ([[ScanFilters.valueSelectivity]]). With `columnImpliedRowFilters`, a row filter also
-    * takes the per-column filters implied by a multi-column `or` conjunct
+    * `dictionaryAggFilters`, aggregate FILTERs over one string column run once per dictionary entry
+    * ([[AggCall.dictionaryFilter]]). With `substringInLists`, `substring(s, k, n) IN (strings)`
+    * compares string regions with the values ([[SubstringInLists]]). With `windowTopNStream`, a
+    * window under a rank bound keeps each input chunk's top rows as it reads them
+    * ([[wvlet.lang.engine.exec.WindowTopN.keepTop]]). With `valueSelectivity`, the row-filter gate
+    * estimates string conjuncts from the source's sampled values
+    * ([[ScanFilters.valueSelectivity]]). With `columnImpliedRowFilters`, a row filter also takes
+    * the per-column filters implied by a multi-column `or` conjunct
     * ([[ScanFilters.columnImplied]]). With `deferredNullChecks`, IS NULL of a column not gathered
     * yet reads the column's positions and source nulls ([[DeferredNullChecks]]). With
     * `fusedDecimalArith`, decimal `x * (c ± y)` computes in one loop ([[FuseDecimalArith]])
@@ -93,6 +95,7 @@ object Lowering:
       windowSharePartitions: Boolean = false,
       constCaseSelect: Boolean = false,
       caseAggFilters: Boolean = false,
+      dictionaryAggFilters: Boolean = false,
       substringInLists: Boolean = false,
       windowTopNStream: Boolean = false,
       valueSelectivity: Boolean = false,
@@ -122,6 +125,7 @@ object Lowering:
       windowSharePartitions,
       constCaseSelect,
       caseAggFilters,
+      dictionaryAggFilters,
       substringInLists,
       windowTopNStream,
       valueSelectivity,
@@ -169,6 +173,7 @@ object Lowering:
       windowSharePartitions: Boolean,
       constCaseSelect: Boolean,
       caseAggFilters: Boolean,
+      dictionaryAggFilters: Boolean,
       substringInLists: Boolean,
       windowTopNStream: Boolean,
       valueSelectivity: Boolean,
@@ -221,6 +226,7 @@ object Lowering:
               maskedCaseWhen = maskedCaseWhen,
               constCaseSelect = constCaseSelect,
               caseAggFilters = caseAggFilters,
+              dictionaryAggFilters = dictionaryAggFilters,
               substringInLists = substringInLists,
               valueSelectivity = valueSelectivity,
               columnImpliedRowFilters = columnImpliedRowFilters,
@@ -415,10 +421,12 @@ object Lowering:
             val l = c
               .lower(pos)
               .copy(args = c.args.map(expr(_, pos)), filter = c.filter.map(expr(_, pos)))
-            if caseAggFilters then
-              CaseAggFilters(l)
-            else
-              l
+            val c2 =
+              if caseAggFilters then
+                CaseAggFilters(l)
+              else
+                l
+            c2.copy(dictionaryFilter = dictionaryAggFilters && c2.filter.nonEmpty)
           }
           // Keys, then each call's arguments and filter
           val (input, es) = shared(lower(child), ks ++ cs.flatMap(c => c.args ++ c.filter))

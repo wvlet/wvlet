@@ -908,7 +908,7 @@ class HashAggOp(
         evaluated
       else
         agg.args.map(_.eval(b)).toArray
-    agg.filter match
+    agg.evalFilter match
       case Some(f) =>
         val mask = Kernels.trueMask(f.eval(b))
         var cnt  = 0

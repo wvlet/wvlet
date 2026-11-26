@@ -38,7 +38,7 @@ object OneRowPartials:
       return null
     val n = b.size
     // Rows the FILTER keeps (null: every row)
-    def keep: Array[Boolean] = agg.filter.map(f => Kernels.trueMask(f.eval(b))).orNull
+    def keep: Array[Boolean] = agg.evalFilter.map(f => Kernels.trueMask(f.eval(b))).orNull
     // NULL where the argument is NULL or the FILTER drops the row
     def nullsOf(v: Vec, m: Array[Boolean]): Array[Boolean] =
       if m == null then
