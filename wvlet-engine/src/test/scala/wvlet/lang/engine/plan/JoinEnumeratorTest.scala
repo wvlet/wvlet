@@ -175,6 +175,65 @@ class JoinEnumeratorTest extends UniTest:
     leaves(off._1).sorted shouldBe (0 until 6).toList
   }
 
+  test("should estimate a probe's rows from the distinct keys of its build") {
+    val e = JoinEnumerator(options)
+    // 214 build dates of 1,839 probe dates; the build's rows cap its distinct values
+    e.passRate(IndexedSeq(Some(1839.0)), IndexedSeq(Some(73049.0)), 214) shouldBe 214.0 / 1839
+    // The most selective key, and 1.0 without distinct counts
+    e.passRate(
+      IndexedSeq(Some(100.0), Some(10.0)),
+      IndexedSeq(Some(50.0), Some(10.0)),
+      1e6
+    ) shouldBe 0.5
+    e.passRate(IndexedSeq(None), IndexedSeq(Some(5.0)), 10) shouldBe 1.0
+  }
+
+  test("should filter a fact table by its date before joining it to another fact table") {
+    // TPC-DS q25: catalog_sales(0) ⋈ date d3(1) and store_returns(2) ⋈ date d2(3), with
+    // catalog_sales ⋈ store_returns on item (e5) and customer (e6), no key of either table
+    val rows       = IndexedSeq(1.44e7, 214.0, 2.9e6, 214.0)
+    val distinctOf = Map(
+      "l1" -> 1839.0,
+      "r1" -> 214.0,
+      "l2" -> 2000.0,
+      "r2" -> 214.0,
+      "l5" -> 1.02e5,
+      "r5" -> 1.02e5,
+      "l6" -> 5e5,
+      "r6" -> 5e5
+    )
+    val search =
+      new JoinSearch[Tree, String, List[(String, String)]]:
+        export TreeSearch.{keys, outputRows, join, cross, filter}
+        override def distinct(input: Tree, side: String): Option[Double] = distinctOf.get(side)
+        override def keyCoverage(input: Tree, sides: Seq[String]): KeyCoverage =
+          KeyCoverage.NotUnique
+    val g = JoinGraph(
+      (0 to 3).map(i => Leaf(i): Tree),
+      rows,
+      List(
+        edge(1, Set(0), Set(1)),
+        edge(2, Set(2), Set(3)),
+        edge(5, Set(0), Set(2)),
+        edge(6, Set(0), Set(2))
+      )
+    )
+    def subtrees(t: Tree): List[Tree] =
+      t match
+        case j @ Join(l, r, _, _) =>
+          j :: subtrees(l) ++ subtrees(r)
+        case Filtered(c, _) =>
+          subtrees(c)
+        case leaf =>
+          List(leaf)
+    def datedSales(t: Tree): Boolean = subtrees(t).exists(s => leaves(s).sorted == List(0, 1))
+    datedSales(JoinEnumerator(options).plan(g, search).get._1) shouldBe true
+    // Charging no probe scan, catalog_sales joins store_returns first: the estimate is tiny
+    datedSales(
+      JoinEnumerator(options.withDisabled(Optimization.ProbeScanCost)).plan(g, search).get._1
+    ) shouldBe false
+  }
+
 end JoinEnumeratorTest
 
 object JoinEnumeratorTest:

@@ -711,6 +711,24 @@ enum Optimization(val name: String):
     */
   case ClusteredGroupEstimates extends Optimization("clustered_group_estimates")
 
+  /**
+    * The join search estimates an equi-join on several columns from the unique keys its tables
+    * declare ([[wvlet.lang.engine.catalog.TableSource.uniqueKeys]]): keys covering a declared key
+    * of one side join as a foreign key to that primary key, and keys that are no declared key of
+    * either side as independent columns, without the cap that treats them as one correlated key.
+    * TPC-DS q25's catalog_sales ⋈ store_returns on (item, customer) was estimated at 35K rows for
+    * 13 real ones
+    */
+  case KeyJoinEstimates extends Optimization("key_join_estimates")
+
+  /**
+    * The exact join search charges each join whose probe side is one input for the probe rows the
+    * runtime join filters of its build are expected to keep (the smallest ratio of build to probe
+    * distinct keys), so that it prefers orders that shrink a large fact probe early: TPC-DS q25
+    * joins catalog_sales with its date filter before store_returns, so the scan skips row groups
+    */
+  case ProbeScanCost extends Optimization("probe_scan_cost")
+
 end Optimization
 
 object Optimization:

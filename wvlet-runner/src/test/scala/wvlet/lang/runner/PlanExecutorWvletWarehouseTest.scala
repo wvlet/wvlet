@@ -158,6 +158,8 @@ class PlanExecutorWvletWarehouseTest extends UniTest:
         |order by id
         |test _.rows should be [[1, 'a', true], [2, 'b', true]]""".stripMargin
     )
+    // The primary key reaches join estimates through the table source
+    wvlet.lang.engine.catalog.Warehouse(w).table("decl").uniqueKeys shouldBe Seq(Seq("id"))
     val dup = intercept[WvletLangException] {
       run(w, "append to decl (id, name) {\n  from [[1, 'x']] as t(id, name)\n}")
     }

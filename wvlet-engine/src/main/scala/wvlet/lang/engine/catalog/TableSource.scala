@@ -100,6 +100,13 @@ trait TableSource:
     */
   def keyRunLength(column: String): Option[Double] = None
 
+  /**
+    * Column sets declared unique (primary keys included), by column name: no two rows share the
+    * values of all of a set's columns. Join estimates read them, so a source that declares none of
+    * its keys is estimated as before; a source declaring some is taken to declare all of them
+    */
+  def uniqueKeys: Seq[Seq[String]] = Nil
+
   /** EXPLAIN lines of what a scan of this source reads, nested above the scan (at `indent`) */
   def explainDetail(indent: Int): Option[String] = None
 
@@ -137,7 +144,12 @@ case class ScanSplits(
 case class ColumnPartRange(min: Long, max: Long, rows: Long)
 
 /** An in-memory table */
-class MemTable(val name: String, val schema: Schema, batches: Seq[Batch]) extends TableSource:
+class MemTable(
+    val name: String,
+    val schema: Schema,
+    batches: Seq[Batch],
+    override val uniqueKeys: Seq[Seq[String]] = Nil
+) extends TableSource:
   override def estimatedRows: Option[Long]  = Some(batches.map(_.size.toLong).sum)
   def scan(spec: ScanSpec): Iterator[Batch] =
     spec.columns match
@@ -152,9 +164,15 @@ class MemTable(val name: String, val schema: Schema, batches: Seq[Batch]) extend
   * `footerCache`, planning reads (schema, row count, statistics) of a single file open it through
   * [[ParquetFooterCache]]; scans do when their [[ScanSpec]] says so
   */
-class ParquetSource(val name: String, val path: String, val footerCache: Boolean = false)
-    extends TableSource:
+class ParquetSource(
+    val name: String,
+    val path: String,
+    val footerCache: Boolean = false,
+    declaredKeys: Seq[Seq[String]] = Nil
+) extends TableSource:
   override def key: Any = ("parquet", path)
+
+  override def uniqueKeys: Seq[Seq[String]] = declaredKeys
 
   /** Whether `path` names one Parquet file, rather than a folder or a glob */
   val isSingleFile: Boolean = path.endsWith(".parquet") && !path.exists(c => c == '*' || c == '{')
@@ -916,7 +934,9 @@ class EngineCatalog:
     tables(source.name.toLowerCase) = source
   }
 
-  def registerParquet(name: String, path: String): Unit = register(ParquetSource(name, path))
+  /** Register a Parquet file or folder as table `name`, with the column sets declared unique */
+  def registerParquet(name: String, path: String, uniqueKeys: Seq[Seq[String]] = Nil): Unit =
+    register(ParquetSource(name, path, declaredKeys = uniqueKeys))
 
   def drop(name: String): Unit = tables.synchronized {
     tables.remove(name.toLowerCase)

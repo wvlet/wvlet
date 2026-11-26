@@ -137,6 +137,9 @@ class TpchSource private[catalog] (val table: String, gen: TpchGen) extends Gene
 
   end estimatedDistinct
 
+  /** The primary key of the table in the TPC-H specification */
+  override def uniqueKeys: Seq[Seq[String]] = BenchmarkKeys.tpch(table)
+
   // Tables of the same name at the same scale factor hold the same rows
   override def key: Any = ("tpch", gen.sf, table)
 

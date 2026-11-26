@@ -32,6 +32,8 @@ import scala.collection.mutable.ListBuffer
 class JoinEnumerator(options: OptimizerOptions):
   import JoinEnumerator.*
 
+  private val probeScanCost = options.isEnabled(Optimization.ProbeScanCost)
+
   /**
     * The cheapest join tree and the conditions left to apply over it (those reading no input), or
     * None when the graph is too large, needs a cross join, or exceeds [[PairBudget]]
@@ -48,12 +50,18 @@ class JoinEnumerator(options: OptimizerOptions):
     if n < 2 || n > MaxInputs then
       None
     else
-      val edges = analyze(g, search)
-      val full  = (1 << n) - 1
-      solve(g, edges).map(dp => (build(g, search, edges, dp, full), constants(g), dp.rows(full)))
+      val (edges, groups) = keyGroups(g, search, analyze(g, search))
+      val full            = (1 << n) - 1
+      solve(g, edges, groups).map(dp =>
+        (build(g, search, edges, dp, full), constants(g), dp.rows(full))
+      )
 
   /** The best join of each input set, by bitset, or None if the full set has no plan */
-  private def solve[P, C](g: JoinGraph[P, C], edges: IndexedSeq[Edge]): Option[Table] =
+  private def solve[P, C](
+      g: JoinGraph[P, C],
+      edges: IndexedSeq[Edge],
+      groups: IndexedSeq[KeyGroup]
+  ): Option[Table] =
     val n    = g.inputs.size
     val full = (1 << n) - 1
     val dp   = Table(1 << n)
@@ -71,7 +79,7 @@ class JoinEnumerator(options: OptimizerOptions):
         while sub != 0 && pairs <= PairBudget do
           val s1 = (s & ~sub)
           val s2 = sub
-          if dp.planned(s1) && dp.planned(s2) && emit(dp, edges, s1, s2) then
+          if dp.planned(s1) && dp.planned(s2) && emit(dp, edges, groups, s1, s2) then
             pairs += 1
           sub = (sub - 1) & ext
       s += 1
@@ -81,16 +89,81 @@ class JoinEnumerator(options: OptimizerOptions):
 
   /**
     * Cost the joins of s1 and s2 in both orders, keeping the cheapest plan of their union. Returns
-    * false, costing nothing, when no equality joins them
+    * false, costing nothing, when no equality joins them. The keys of a [[KeyGroup]] divide as
+    * [[CardinalityEstimator.compositeDivisor]] estimates them
     */
-  private def emit(dp: Table, edges: IndexedSeq[Edge], s1: Int, s2: Int): Boolean =
-    val s       = s1 | s2
-    val d1      = IndexedSeq.newBuilder[Option[Double]]
-    val d2      = IndexedSeq.newBuilder[Option[Double]]
-    var keys    = 0
-    var filters = 0
+  private def emit(
+      dp: Table,
+      edges: IndexedSeq[Edge],
+      groups: IndexedSeq[KeyGroup],
+      s1: Int,
+      s2: Int
+  ): Boolean =
+    val s        = s1 | s2
+    val d1       = IndexedSeq.newBuilder[Option[Double]]
+    val d2       = IndexedSeq.newBuilder[Option[Double]]
+    var divisors = List.empty[Double]
+    var keys     = 0
+    var filters  = 0
+    // Groups whose edges are all keys here: every edge of a group joins the same two inputs
+    var grouped = 0L
+    if groups.nonEmpty then
+      edges.foreach { e =>
+        if e.group >= 0 then
+          val placement = e.placement(s1, s2)
+          if placement == Placement.Key || placement == Placement.SwappedKey then
+            grouped |= 1L << e.group
+      }
+    var gi = 0
+    while gi < groups.size do
+      if (grouped & (1L << gi)) != 0 then
+        val kg      = groups(gi)
+        val aLeft   = within(1 << kg.a, s1)
+        val members = kg.members.map(edges)
+        // Distinct counts on the side of each input set, as the plain keys below take them
+        def sideOf(e: Edge, first: Boolean): Option[Double] =
+          if (e.leftInput == kg.a) == (aLeft == first) then
+            e.leftDistinct
+          else
+            e.rightDistinct
+        val g1       = members.map(sideOf(_, true))
+        val g2       = members.map(sideOf(_, false))
+        val (c1, c2) =
+          if aLeft then
+            (kg.aCoverage, kg.bCoverage)
+          else
+            (kg.bCoverage, kg.aCoverage)
+        CardinalityEstimator.compositeDivisor(dp.rows(s1), g1, dp.rows(s2), g2, c1, c2) match
+          case Some(d) =>
+            divisors = d :: divisors
+          case None =>
+            // Unknown keys: plain pairs under the cap
+            grouped &= ~(1L << gi)
+      gi += 1
+    // Every key's distinct counts and input (-1 for several) on each side, for the probe scan cost
+    val all1 = IndexedSeq.newBuilder[Option[Double]]
+    val all2 = IndexedSeq.newBuilder[Option[Double]]
+    val ins1 = IndexedSeq.newBuilder[Int]
+    val ins2 = IndexedSeq.newBuilder[Int]
     edges.foreach { e =>
-      e.placement(s1, s2) match
+      val placement = e.placement(s1, s2)
+      if probeScanCost then
+        placement match
+          case Placement.Key =>
+            all1 += e.leftDistinct
+            all2 += e.rightDistinct
+            ins1 += e.leftInput
+            ins2 += single(e.right)
+          case Placement.SwappedKey =>
+            all1 += e.rightDistinct
+            all2 += e.leftDistinct
+            ins1 += single(e.right)
+            ins2 += e.leftInput
+          case _ =>
+      placement match
+        case Placement.Key | Placement.SwappedKey
+            if e.group >= 0 && (grouped & (1L << e.group)) != 0 =>
+          keys += 1
         case Placement.Key =>
           keys += 1
           d1 += e.leftDistinct
@@ -108,11 +181,16 @@ class JoinEnumerator(options: OptimizerOptions):
         dp.rows(s1),
         d1.result(),
         dp.rows(s2),
-        d2.result()
+        d2.result(),
+        divisors
       )
       if filters > 0 then
         out = math.max(1.0, out * math.pow(CardinalityEstimator.DefaultSelectivity, filters))
       val base                                  = dp.cost(s1) + dp.cost(s2) + out
+      lazy val ad1                              = all1.result()
+      lazy val ad2                              = all2.result()
+      lazy val in1                              = ins1.result()
+      lazy val in2                              = ins2.result()
       def consider(left: Int, right: Int): Unit =
         val buildLeft = JoinOrderOptimizer.swapBuild(options, dp.rows(right), dp.rows(left))
         val build     =
@@ -126,7 +204,29 @@ class JoinEnumerator(options: OptimizerOptions):
             buildRows
           else
             0.0
-        val cost = base + buildRows + pipelineBreak
+        val probe     = s & ~build
+        val probeScan =
+          if probeScanCost && Integer.bitCount(probe) == 1 then
+            val (probeDistinct, buildDistinct) =
+              if probe == s1 then
+                (ad1, ad2)
+              else
+                (ad2, ad1)
+            val buildInputs =
+              if probe == s1 then
+                in2
+              else
+                in1
+            // Inner joins never add key values: a build key has at most the rows of every join
+            // of the build's tree holding its input (TPC-DS q72's item key, not the rows that
+            // joining date_dim by week multiplied)
+            val capped = buildDistinct
+              .indices
+              .map(k => buildDistinct(k).map(d => math.min(d, pathRows(dp, build, buildInputs(k)))))
+            dp.rows(probe) * passRate(probeDistinct, capped, buildRows)
+          else
+            0.0
+        val cost = base + buildRows + pipelineBreak + probeScan
         if !dp.planned(s) || cost < dp.cost(s) then
           dp.planned(s) = true
           dp.cost(s) = cost
@@ -134,12 +234,51 @@ class JoinEnumerator(options: OptimizerOptions):
           dp.left(s) = left
           dp.right(s) = right
           dp.buildLeft(s) = buildLeft
+      end consider
       consider(s1, s2)
       consider(s2, s1)
     end if
     keys > 0
 
   end emit
+
+  /**
+    * The fewest rows of the joins in the best tree of input set s that hold input i, down to i
+    * itself (the rows of s when i is -1, a key over several inputs)
+    */
+  private def pathRows(dp: Table, s: Int, i: Int): Double =
+    var rows = dp.rows(s)
+    if i >= 0 then
+      var t = s
+      while Integer.bitCount(t) > 1 do
+        t =
+          if within(1 << i, dp.left(t)) then
+            dp.left(t)
+          else
+            dp.right(t)
+        rows = math.min(rows, dp.rows(t))
+    rows
+
+  /**
+    * The fraction of a probe input's rows that the runtime join filters of a build of `buildRows`
+    * rows are expected to keep: for each key, the build's distinct values (at most its rows) over
+    * the probe's, and the smallest over the keys. 1.0 when no key has known distinct counts on both
+    * sides
+    */
+  private[plan] def passRate(
+      probeDistinct: IndexedSeq[Option[Double]],
+      buildDistinct: IndexedSeq[Option[Double]],
+      buildRows: Double
+  ): Double = probeDistinct
+    .indices
+    .flatMap { k =>
+      for
+        p <- probeDistinct(k)
+        b <- buildDistinct(k)
+      yield math.min(1.0, math.min(b, buildRows) / math.max(p, 1.0))
+    }
+    .minOption
+    .getOrElse(1.0)
 
   /** The plan of the best join tree of input set s */
   private def build[P, C, K](
@@ -213,9 +352,14 @@ object JoinEnumerator:
       left: Int,
       right: Int,
       leftDistinct: Option[Double],
-      rightDistinct: Option[Double]
+      rightDistinct: Option[Double],
+      leftInput: Int = -1,
+      group: Int = -1
   ):
     private def isEqui: Boolean = left != 0
+
+    /** Whether this is an equality between disjoint input sets */
+    def isEquiPair: Boolean = isEqui
 
     /** Where a join of s1 and s2 applies this condition */
     def placement(s1: Int, s2: Int): Placement =
@@ -247,6 +391,75 @@ object JoinEnumerator:
 
   private def within(a: Int, s: Int): Boolean = (a & ~s) == 0
 
+  /**
+    * Equalities between the same two inputs (`a` and another), when there are several: a key of
+    * several columns, with what the inputs' declared unique keys say about each side
+    */
+  private case class KeyGroup(
+      a: Int,
+      members: IndexedSeq[Int],
+      aCoverage: KeyCoverage,
+      bCoverage: KeyCoverage
+  )
+
+  /** Single input of a side, or -1 */
+  private def single(m: Int): Int =
+    if m != 0 && Integer.bitCount(m) == 1 then
+      Integer.numberOfTrailingZeros(m)
+    else
+      -1
+
+  /**
+    * The [[KeyGroup]]s of the graph whose inputs declare keys, at most 64 (one bit each in `emit`),
+    * with the edges numbered by their group
+    */
+  private def keyGroups[P, C, K](
+      g: JoinGraph[P, C],
+      search: JoinSearch[P, C, K],
+      edges: IndexedSeq[Edge]
+  ): (IndexedSeq[Edge], IndexedSeq[KeyGroup]) =
+    val pairs = edges
+      .indices
+      .filter { i =>
+        val e = edges(i)
+        e.isEquiPair && single(e.left) >= 0 && single(e.right) >= 0
+      }
+      .groupBy { i =>
+        val (a, b) = (single(edges(i).left), single(edges(i).right))
+        (math.min(a, b), math.max(a, b))
+      }
+      .toIndexedSeq
+      .filter(_._2.size > 1)
+      .sortBy(_._1)
+      .take(64)
+    lazy val graphEdges = g.edges.toIndexedSeq
+    val groups          = IndexedSeq.newBuilder[KeyGroup]
+    pairs.foreach { case ((a, b), members) =>
+      val jes                     = members.map(graphEdges)
+      def sidesAt(i: Int): Seq[C] = members
+        .zip(jes)
+        .map { (m, je) =>
+          if edges(m).leftInput == i then
+            je.sides.get.left
+          else
+            je.sides.get.right
+        }
+      val ca = search.keyCoverage(g.inputs(a), sidesAt(a))
+      val cb = search.keyCoverage(g.inputs(b), sidesAt(b))
+      if ca != KeyCoverage.Unknown || cb != KeyCoverage.Unknown then
+        groups += KeyGroup(a, members, ca, cb)
+    }
+    val result   = groups.result()
+    val numbered = edges.toArray
+    result
+      .zipWithIndex
+      .foreach { (kg, gi) =>
+        kg.members.foreach(m => numbered(m) = numbered(m).copy(group = gi))
+      }
+    (numbered.toIndexedSeq, result)
+
+  end keyGroups
+
   private def analyze[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): IndexedSeq[Edge] =
     def distinct(side: C, refs: Set[Int]): Option[Double] =
       if refs.size == 1 then
@@ -261,7 +474,14 @@ object JoinEnumerator:
             val a = mask(sd.leftRefs)
             val b = mask(sd.rightRefs)
             if a != 0 && b != 0 && (a & b) == 0 then
-              Edge(refs, a, b, distinct(sd.left, sd.leftRefs), distinct(sd.right, sd.rightRefs))
+              Edge(
+                refs,
+                a,
+                b,
+                distinct(sd.left, sd.leftRefs),
+                distinct(sd.right, sd.rightRefs),
+                leftInput = single(a)
+              )
             else
               Edge(refs, 0, 0, None, None)
           case None =>

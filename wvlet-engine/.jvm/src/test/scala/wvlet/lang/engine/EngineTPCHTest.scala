@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine
 
+import wvlet.lang.engine.catalog.BenchmarkKeys
 import wvlet.uni.test.UniTest
 
 /** TPC-H queries (spec/tpch) on the engine must return the same rows as DuckDB */
@@ -22,7 +23,10 @@ class EngineTPCHTest extends UniTest:
   private val conformance = EngineConformance(
     "spec/tpch",
     tables.map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
-    engine => tables.foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
+    engine =>
+      tables.foreach(t =>
+        engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet", BenchmarkKeys.tpch(t))
+      )
   )
 
   override def afterAll: Unit = conformance.close()

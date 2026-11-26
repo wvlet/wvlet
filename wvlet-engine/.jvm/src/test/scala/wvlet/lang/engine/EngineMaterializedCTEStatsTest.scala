@@ -114,8 +114,14 @@ class EngineMaterializedCTEStatsTest extends UniTest:
         |where a.c > 0 and b.c > 20""".stripMargin
     // Both reads estimated at 0.3 of the rows: customer joins each in turn. With the counts, the
     // read keeping one row joins the other read first, and customer probes their join
+    // (probe_scan_cost off on both sides, as charging customer's probe also joins the reads first)
     val readsJoined = "HashJoin[Inner](#0 = #0) -> [k:long, c:long, k:long, c:long]"
-    explain(noReaderStats, query) shouldNotContain readsJoined
+    val noProbeCost = options.withDisabled(Optimization.ProbeScanCost)
+    explain(
+      engine.withOptimizer(noProbeCost.withDisabled(Optimization.CTEReaderStats)),
+      query
+    ) shouldNotContain readsJoined
+    explain(engine.withOptimizer(noProbeCost), query) shouldContain readsJoined
     explain(engine, query) shouldContain readsJoined
     val r = rows(engine, query)
     r.nonEmpty shouldBe true

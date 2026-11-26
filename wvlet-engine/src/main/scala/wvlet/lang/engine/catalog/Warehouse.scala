@@ -42,6 +42,18 @@ class ManagedTable(name: String, path: String) extends ParquetSource(name, path)
     try ds.tableProperties
     finally ds.close()
 
+  /** The unique keys `create table` declared, kept in the table's spec property */
+  override lazy val uniqueKeys: Seq[Seq[String]] =
+    try
+      properties
+        .get(wvlet.lang.engine.TableWriter.SpecProperty)
+        .filter(_.nonEmpty)
+        .map(wvlet.lang.engine.TableWriter.specFromJson(_, schema).uniqueKeys)
+        .getOrElse(Nil)
+    catch
+      case NonFatal(_) =>
+        Nil
+
 /** One data file of a managed table, read with the table's columns */
 private[engine] class DataFilePart(
     val name: String,

@@ -22,6 +22,7 @@ import wvlet.lang.engine.plan.JoinEdge
 import wvlet.lang.engine.plan.JoinGraph
 import wvlet.lang.engine.plan.JoinOrderOptimizer
 import wvlet.lang.engine.plan.JoinSearch
+import wvlet.lang.engine.plan.KeyCoverage
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 
@@ -175,7 +176,7 @@ object ReorderJoins extends Pass:
         }
         .toList
     val graph                   = JoinGraph(pushed.map(_._1), pushed.map(_._2), edges)
-    val (tree, remaining, rows) = JoinOrderOptimizer(options).planWithRows(graph, search)
+    val (tree, remaining, rows) = JoinOrderOptimizer(options).planWithRows(graph, Search(options))
     if remaining.isEmpty then
       (tree, rows)
     else
@@ -188,7 +189,7 @@ object ReorderJoins extends Pass:
   private type Keys = (IndexedSeq[BExpr], IndexedSeq[BExpr])
 
   /** Join trees of runtime plans, estimated with [[Stats]] */
-  private object search extends JoinSearch[RuntimePlan, BExpr, Keys]:
+  private class Search(options: OptimizerOptions) extends JoinSearch[RuntimePlan, BExpr, Keys]:
     override def keys(current: RuntimePlan, next: RuntimePlan, pairs: Seq[(BExpr, BExpr)]): Keys =
       (pairs.map(_._1).toIndexedSeq, pairs.map(_._2).toIndexedSeq)
 
@@ -203,12 +204,21 @@ object ReorderJoins extends Pass:
         next: RuntimePlan,
         nextRows: Double,
         keys: Keys
-    ): Double = CardinalityEstimator.joinOutputRows(
+    ): Double = Stats.joinRows(
+      current,
       currentRows,
-      keys._1.map(k => Stats.distinct(current, k.expr)),
+      keys._1.map(_.expr),
+      next,
       nextRows,
-      keys._2.map(k => Stats.distinct(next, k.expr))
+      keys._2.map(_.expr),
+      options
     )
+
+    override def keyCoverage(input: RuntimePlan, sides: Seq[BExpr]): KeyCoverage =
+      if options.isEnabled(Optimization.KeyJoinEstimates) then
+        Stats.keyCoverage(input, sides.map(_.expr))
+      else
+        KeyCoverage.Unknown
 
     override def join(
         current: RuntimePlan,
@@ -229,6 +239,6 @@ object ReorderJoins extends Pass:
 
     override def filter(p: RuntimePlan, conds: List[BExpr]): RuntimePlan = Filter(p, and(conds))
 
-  end search
+  end Search
 
 end ReorderJoins

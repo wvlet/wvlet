@@ -14,6 +14,7 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.Context
+import wvlet.lang.engine.catalog.BenchmarkKeys
 import wvlet.lang.engine.exec.TaskRunner
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
@@ -79,7 +80,9 @@ class EngineOptimizerToggleTest extends UniTest:
         "spec/tpch",
         tables.map(t => s"create view ${t} as select * from 'spec/tpch/data/${t}.parquet'"),
         engine =>
-          tables.foreach(t => engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet"))
+          tables.foreach(t =>
+            engine.catalog.registerParquet(t, s"spec/tpch/data/${t}.parquet", BenchmarkKeys.tpch(t))
+          )
       ),
       Set.empty
     )
@@ -254,7 +257,13 @@ class EngineOptimizerToggleTest extends UniTest:
           val base = OptimizerOptions().withDisabled(Optimization.StringValueSelectivity)
           EnginePlanGolden.suites.exists(s => s.generate(base.withDisabled(o)) != s.generate(base))
         else if withoutCountIn.contains(o) then
-          val base = OptimizerOptions().withDisabled(Optimization.CountInSubqueries)
+          val base0 = OptimizerOptions().withDisabled(Optimization.CountInSubqueries)
+          // TPC-H q20's aggregation is on the right of its join once probe scans are charged
+          val base =
+            if o == Optimization.LeftGroupKeySemiJoins then
+              base0.withDisabled(Optimization.ProbeScanCost)
+            else
+              base0
           EnginePlanGolden.suites.exists(s => s.generate(base.withDisabled(o)) != s.generate(base))
         else
           EnginePlanGolden

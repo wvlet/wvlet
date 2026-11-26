@@ -101,6 +101,12 @@ trait JoinSearch[P, C, K]:
   /** Distinct values of a side of an equality that reads only `input`, if known */
   def distinct(input: P, side: C): Option[Double]
 
+  /**
+    * What the unique keys `input`'s table declares say about the equality sides `sides`, which read
+    * only `input` ([[KeyCoverage.Unknown]] unless the plan form reads declared keys)
+    */
+  def keyCoverage(input: P, sides: Seq[C]): KeyCoverage = KeyCoverage.Unknown
+
   /** Estimated rows of an inner equi-join of `current` and `next` on `keys` */
   def outputRows(current: P, currentRows: Double, next: P, nextRows: Double, keys: K): Double
 

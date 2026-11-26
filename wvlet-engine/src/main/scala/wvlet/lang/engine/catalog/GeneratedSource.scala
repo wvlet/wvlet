@@ -68,13 +68,14 @@ abstract class GeneratedSource extends TableSource:
       )
 
   /** All rows of the table, in memory */
-  def materialize: MemTable = MemTable(name, schema, scan(ScanSpec()).toSeq)
+  def materialize: MemTable = MemTable(name, schema, scan(ScanSpec()).toSeq, uniqueKeys)
 
   /** The table in memory from its already generated blocks, with every column */
   private[catalog] def materialize(blocks: Seq[Batch]): MemTable = MemTable(
     name,
     schema,
-    blocks.flatMap(slices)
+    blocks.flatMap(slices),
+    uniqueKeys
   )
 
 end GeneratedSource
