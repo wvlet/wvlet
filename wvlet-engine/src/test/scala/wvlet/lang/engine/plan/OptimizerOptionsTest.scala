@@ -60,6 +60,7 @@ class OptimizerOptionsTest extends UniTest:
         "aggregate_input_rows",
         "prefetch_scalar_subqueries",
         "having_totals_from_groups",
+        "share_in_subquery_groups",
         "share_ctes",
         "push_down_cte_filters",
         "cte_filters_through_filters",

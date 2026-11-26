@@ -147,6 +147,14 @@ enum Optimization(val name: String):
     */
   case HavingTotalsFromGroups extends Optimization("having_totals_from_groups")
 
+  /**
+    * Compute an aggregation's groups at plan time when its input is filtered by `key in (subquery)`
+    * on a grouping key and the subquery aggregates the same input (by keys insensitive to
+    * inner-join order and table aliases): the subquery merges the groups, which the filter then
+    * applies to, instead of reading the input twice (TPC-DS q70)
+    */
+  case ShareInSubqueryGroups extends Optimization("share_in_subquery_groups")
+
   /** Compute a CTE referenced more than once only once */
   case ShareCTEs extends Optimization("share_ctes")
 

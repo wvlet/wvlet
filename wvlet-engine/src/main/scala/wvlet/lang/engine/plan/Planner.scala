@@ -194,6 +194,9 @@ class Planner(
   private val scalarResults = java.util.IdentityHashMap[Relation, VExpr]()
   // Scalar subqueries prefetchScalarSubqueries has considered, so nested plans don't retry them
   private val prefetchTried = java.util.IdentityHashMap[Relation, Unit]()
+  // Groups computed at plan time that aggregations of an IN subquery over the same input merge
+  // (`share_in_subquery_groups`)
+  private val sharedGroups = mutable.ArrayBuffer.empty[SharedGroups]
 
   /** Window function calls collected while binding a projection */
   private var windowCollector: Option[WindowCollector] = None
@@ -480,11 +483,46 @@ class Planner(
 
   /**
     * A key of the bound runtime plan of `rel` ([[ShareSubplans.key]]), equal for inputs that read
-    * the same rows. Binding evaluates subqueries, which the discarded binding would run once more:
-    * an input with subqueries has no key, nor does a correlated one, which fails on its outer
-    * names. The hidden-name counter is restored, so that names don't shift
+    * the same rows ([[boundInput]])
     */
-  private def inputKey(rel: Relation): Option[Any] =
+  private def inputKey(rel: Relation): Option[Any] = boundInput(rel).flatMap(ShareSubplans.key)
+
+  /**
+    * The loose key of the bound runtime plan of `rel` ([[ShareSubplans.looseKey]]), with the
+    * canonical id of each column of `schema`, the schema `rel` plans to: equal for inputs that read
+    * the same rows, whatever the order of their inner-join inputs or their table aliases. None when
+    * a column doesn't name exactly one column of the bound plan
+    */
+  private def looseInputKey(rel: Relation, schema: Schema): Option[(Any, IndexedSeq[Int])] =
+    boundInput(rel).flatMap { p =>
+      val out = p.output
+      ShareSubplans
+        .looseKey(p)
+        .flatMap { (key, outIds) =>
+          // The planner may order the columns otherwise: each column is the one runtime column of
+          // its name, qualifiers, and type
+          val ids = schema
+            .fields
+            .map { f =>
+              val js = out
+                .indices
+                .filter(j =>
+                  out(j).name == f.name && out(j).ptype == f.ptype &&
+                    out(j).qualifiers == f.qualifiers
+                )
+              Option.when(js.size == 1)(outIds(js.head))
+            }
+          Option.when(out.size == schema.size && ids.forall(_.isDefined))((key, ids.map(_.get)))
+        }
+    }
+
+  /**
+    * The bound runtime plan of `rel`, for its keys. Binding evaluates subqueries, which the
+    * discarded binding would run once more: an input with subqueries has none, nor does a
+    * correlated one, which fails on its outer names. The hidden-name counter is restored, so that
+    * names don't shift
+    */
+  private def boundInput(rel: Relation): Option[RuntimePlan] =
     val seq = hiddenSeq
     try
       var subqueries = false
@@ -492,7 +530,7 @@ class Planner(
         case _: SubQueryExpression | _: Exists | _: InRelation | _: NotInRelation =>
           subqueries = true
       }
-      Option.unless(subqueries)(runtimeBinder.bind(rel)).flatMap(ShareSubplans.key)
+      Option.unless(subqueries)(runtimeBinder.bind(rel))
     catch
       case _: Exception =>
         None
@@ -1894,8 +1932,15 @@ class Planner(
           (Some(g), Some(cond))
         case _ =>
           (None, None)
-    val source                  = groupBy.map(_.child).getOrElse(input)
-    val in                      = plan(source)
+    val source = groupBy.map(_.child).getOrElse(input)
+    // A filter `key in (subquery)` whose subquery aggregates the same input: the input is planned
+    // without it, and the groups are filtered instead (`share_in_subquery_groups`)
+    val inShare =
+      if groupBy.isDefined && enabled(Optimization.ShareInSubqueryGroups) then
+        inSubqueryShare(source)
+      else
+        None
+    val in                      = plan(inShare.map(_.rest).getOrElse(source))
     val inOp                    = builder.op(in)
     val scope                   = BindScope(inOp.schema)
     val binder                  = Binder(this, scope)
@@ -2044,8 +2089,46 @@ class Planner(
           None
     val havingExpr = having.map(h => aggBinder.bind(h))
     val aggOp: P   =
-      val keys  = keyExprs.map(_._2)
-      val calls = aggCtx.calls.toIndexedSeq
+      // The input, keys, and calls of the aggregation: over groups computed at plan time when an
+      // IN subquery shares them, or another aggregation computed them
+      // (`share_in_subquery_groups`)
+      val (aggIn, keys, calls) =
+        val keys       = keyExprs.map(_._2)
+        val calls      = aggCtx.calls.toIndexedSeq
+        val fromGroups =
+          inShare match
+            case Some(s) if correlated.isEmpty && computedGroups.isEmpty =>
+              groupsFilteredByIn(
+                s,
+                in,
+                inOp.schema,
+                baseKeyExprs.map(_._2),
+                keys,
+                calls,
+                aggCtx,
+                builder
+              )
+            case None
+                if sharedGroups.nonEmpty && groupingSets.isEmpty && correlated.isEmpty &&
+                  computedGroups.isEmpty =>
+              groupsFromShared(source, inOp.schema, keys, calls, builder)
+            case _ =>
+              None
+        fromGroups.getOrElse {
+          inShare match
+            case Some(_) =>
+              // The input with its IN filter
+              val full = plan(source)
+              if builder.op(full).schema != inOp.schema then
+                throw StatusCode
+                  .INTERNAL_ERROR
+                  .newException("An IN filter changed the columns of an aggregation's input")
+              (full, keys, calls)
+            case None =>
+              (in, keys, calls)
+        }
+      end val
+      val inSchema = builder.op(aggIn).schema
       groupingSets match
         case None =>
           computedGroups
@@ -2054,11 +2137,19 @@ class Planner(
               case (groups, n) if n == calls.size =>
                 groups
             }
-            .getOrElse(builder.aggregate(in, keys, calls, aggCtx.outputSchema))
+            .getOrElse(builder.aggregate(aggIn, keys, calls, aggCtx.outputSchema))
         case Some(sets)
             if enabled(Optimization.ChainGroupingSets) && sets.distinct.size > 1 &&
               sets.contains(sets.reduce(_ ++ _)) && TwoPhaseAgg.supportsCalls(calls) =>
-          chainGroupingSets(in, keys, calls, sets, baseKeyExprs.size, aggCtx.outputSchema, builder)
+          chainGroupingSets(
+            aggIn,
+            keys,
+            calls,
+            sets,
+            baseKeyExprs.size,
+            aggCtx.outputSchema,
+            builder
+          )
         case Some(sets) =>
           // One aggregation per grouping set; keys outside the set are NULL, and the grouping id
           // has a bit set for each of them. The sets share one evaluation of the input, reduced
@@ -2071,9 +2162,9 @@ class Planner(
             c.filter.foreach(VExprs.collectRefs(_, refs))
           }
           val cols = refs.toIndexedSeq
-          val m    = Array.fill(inOp.schema.size)(-1)
+          val m    = Array.fill(inSchema.size)(-1)
           cols.indices.foreach(i => m(cols(i)) = i)
-          val reader      = builder.sharedInput(in, cols, "GroupingSetInput")
+          val reader      = builder.sharedInput(aggIn, cols, "GroupingSetInput")
           val setKeyExprs = keys.map(VExprs.remap(_, m))
           val setCalls    = calls.map(c =>
             c.copy(args = c.args.map(VExprs.remap(_, m)), filter = c.filter.map(VExprs.remap(_, m)))
@@ -2166,6 +2257,143 @@ class Planner(
     end match
 
   end aggregation
+
+  /**
+    * The parts of an aggregation's input `source` that `share_in_subquery_groups` applies to: a
+    * filter with a conjunct `target in (sub)`, where `sub` is uncorrelated and aggregates the same
+    * rows as the filter without that conjunct (`rest`), by their loose keys
+    * ([[ShareSubplans.looseKey]]). The other conjuncts have no subqueries, so that `rest` has a key
+    */
+  private def inSubqueryShare(source: Relation): Option[Planner.InShare] =
+    source match
+      case Filter(child, cond, span) =>
+        val conds                              = splitConjuncts(cond)
+        val cteNames                           = cteNamesIn(source)
+        def looseKey(r: Relation): Option[Any] = boundInput(r)
+          .flatMap(ShareSubplans.looseKey)
+          .map(_._1)
+        val found = conds
+          .indices
+          .collectFirst {
+            case i if conds(i).isInstanceOf[InRelation] =>
+              (conds(i).asInstanceOf[InRelation], conds.patch(i, Nil, 1))
+          }
+        found.flatMap { (in, others) =>
+          val rest =
+            if others.isEmpty then
+              child
+            else
+              Filter(child, others.reduce((a, b) => And(a, b, NoSpan)), span)
+          lazy val restKey = looseKey(rest)
+          // The inputs of the subquery's aggregations
+          val aggInputs = List.newBuilder[Relation]
+          in.in
+            .traverse { case g: GroupBy =>
+              aggInputs += g.child
+            }
+          Option.when(
+            !hasSubquery(in.a) && !others.exists(hasSubquery) && !readsCTE(source, cteNames) &&
+              restKey.isDefined && aggInputs.result().exists(r => looseKey(r) == restKey) &&
+              isUncorrelated(in.in)
+          )(Planner.InShare(rest, in.a, in.in))
+        }
+      case _ =>
+        None
+
+  /**
+    * The groups of an aggregation whose input has a filter `target in (sub)` ([[inSubqueryShare]]),
+    * where `target` is a grouping key: the groups of the input without the filter (`in`), computed
+    * at plan time, which `sub`'s aggregations of the same input merge ([[groupsFromShared]]), then
+    * filtered by the subquery's values. Returns them with the aggregation's keys (`keys`, whose
+    * first are `baseKeys`, then a grouping id) and calls over them, or None when a call doesn't
+    * merge over groups ([[SharedGroups.mergeable]]) or `target` is no key
+    */
+  private def groupsFilteredByIn[P](
+      s: Planner.InShare,
+      in: P,
+      schema: Schema,
+      baseKeys: IndexedSeq[VExpr],
+      keys: IndexedSeq[VExpr],
+      calls: IndexedSeq[AggCall],
+      aggCtx: AggContext,
+      builder: AggPlanBuilder[P]
+  ): Option[(P, IndexedSeq[VExpr], IndexedSeq[AggCall])] =
+    val n = baseKeys.size
+    val t =
+      try
+        baseKeys.indexOf(Binder(this, BindScope(schema)).bind(s.target))
+      catch
+        case NonFatal(_) =>
+          -1
+    lazy val tType = baseKeys(t).ptype
+    if t < 0 || !calls.forall(SharedGroups.mergeable) || tType == PType.Float64 then
+      None
+    else
+      looseInputKey(s.rest, schema).flatMap { (key, ids) =>
+        val out     = aggCtx.outputSchema
+        val gSchema = Schema(out.fields.take(n) ++ out.fields.drop(keys.size))
+        val rows    = builder.compute(builder.aggregate(in, baseKeys, calls, gSchema))
+        val g       = SharedGroups(
+          key,
+          baseKeys.map(SharedGroups.canon(_, ids)),
+          calls.map(SharedGroups.canon(_, ids)),
+          gSchema,
+          rows
+        )
+        sharedGroups += g
+        val values =
+          try
+            val op = Planner.nested(this).plan(s.sub)
+            Option.when(op.schema.size == 1 && op.schema(0).ptype == tType)(
+              Operator.materialize(op)
+            )
+          finally
+            sharedGroups -= g
+        values.flatMap { b =>
+          val col    = b.columns(0)
+          val set    = (0 until b.size).map(col.get).filter(_ != null).toSet
+          val target = ColRef(t, tType, gSchema(t).name)
+          SharedGroups
+            .merge(g, baseKeys, calls, ids)
+            .map { (ks, cs) =>
+              val kept = builder.filter(
+                builder.values(gSchema, rows),
+                InList(target, set, hasNullValue = false, negate = false)
+              )
+              (kept, ks ++ keys.drop(n), cs)
+            }
+        }
+      }
+    end if
+
+  end groupsFilteredByIn
+
+  /**
+    * An aggregation of `source` (planned to `schema`) by `keys` of `calls` as an aggregation of
+    * groups of the same input computed at plan time ([[groupsFilteredByIn]]), when they have its
+    * keys and calls
+    */
+  private def groupsFromShared[P](
+      source: Relation,
+      schema: Schema,
+      keys: IndexedSeq[VExpr],
+      calls: IndexedSeq[AggCall],
+      builder: AggPlanBuilder[P]
+  ): Option[(P, IndexedSeq[VExpr], IndexedSeq[AggCall])] = looseInputKey(source, schema).flatMap {
+    (key, ids) =>
+      sharedGroups
+        .reverseIterator
+        .filter(_.key == key)
+        .flatMap(g =>
+          SharedGroups
+            .merge(g, keys, calls, ids)
+            .map { (ks, cs) =>
+              debug(s"Merging ${g.rows.size} shared groups by ${ks.size} of their keys")
+              (builder.values(g.schema, g.rows), ks, cs)
+            }
+        )
+        .nextOption()
+  }
 
   /**
     * Compute the groups of an aggregation at plan time when uncorrelated scalar subqueries of its
@@ -3672,6 +3900,12 @@ private[engine] enum SubqueryConjunct:
   def sub: Relation
 
 object Planner:
+
+  /**
+    * An aggregation input `rest` filtered by `target in (sub)`, whose subquery aggregates the rows
+    * of `rest` (`share_in_subquery_groups`)
+    */
+  private[engine] case class InShare(rest: Relation, target: Expression, sub: Relation)
 
   /**
     * The most rows of a shared CTE result computed for planning that its reads take distinct counts
