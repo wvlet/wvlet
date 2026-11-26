@@ -73,7 +73,7 @@ object ScanFilters:
           columnName(c.index).flatMap(compare(_, c.ptype, op, k, numeric))
         case Compare(op, k: Const, c: ColRef) =>
           columnName(c.index).flatMap(compare(_, c.ptype, flip(op), k, numeric))
-        case IsNullExpr(c: ColRef, negate) =>
+        case IsNullExpr(c: ColRef, negate, _) =>
           columnName(c.index).map { name =>
             if negate then
               ParquetFilter.IsNotNull(name)
@@ -356,7 +356,7 @@ object ScanFilters:
         Some(c.ptype)
       case InList(c: ColRef, _, _, _, _) =>
         Some(c.ptype)
-      case IsNullExpr(c: ColRef, _) =>
+      case IsNullExpr(c: ColRef, _, _) =>
         Some(c.ptype)
       case _ =>
         None

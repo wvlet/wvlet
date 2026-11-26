@@ -245,11 +245,19 @@ case class NotExpr(child: VExpr) extends VExpr:
       i += 1
     BoolVec(o, v.nulls)
 
-case class IsNullExpr(child: VExpr, negate: Boolean) extends VExpr:
+/**
+  * `x IS NULL` (or IS NOT NULL with `negate`). With `deferred` (`deferred_null_checks`), a column
+  * reference not gathered yet is answered from its positions and source ([[DeferredNullChecks]])
+  */
+case class IsNullExpr(child: VExpr, negate: Boolean, deferred: Boolean = false) extends VExpr:
   override def children: Seq[VExpr] = Seq(child)
   def ptype: PType                  = PType.Bool
   def sig: String                   = s"is_null(${child.sig},${negate})"
   def eval(b: Batch): Vec           =
+    if deferred then
+      val d = DeferredNullChecks.eval(child, negate, b)
+      if d != null then
+        return d
     val v = child.eval(b)
     val o = new Array[Boolean](b.size)
     var i = 0

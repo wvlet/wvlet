@@ -127,6 +127,9 @@ class EngineOptimizerToggleTest extends UniTest:
     // PartitionedAggOpTest checks that both ways give the same partitions
     Optimization.ParallelAggPartitioning ->
       "Changes how aggregation input is routed to partitions, not the plan",
+    // DeferredNullChecksTest checks that both ways give the same null checks
+    Optimization.DeferredNullChecks ->
+      "Changes how IS NULL reads a column not gathered yet, not the plan",
     // EnginePlanAcceleratorTest checks that the flag offers plans to an accelerator
     Optimization.GpuOffload ->
       "Changes plans only with a PlanAccelerator, which these engines don't have",

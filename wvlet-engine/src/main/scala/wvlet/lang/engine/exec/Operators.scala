@@ -2003,7 +2003,7 @@ class HashJoinOp(
     emittedUnmatched = true
     // RIGHT SEMI emits the matched build rows; the other kinds the unmatched ones
     val wanted = kind == JoinKind.RightSemi
-    val idx    = (0 until build.size).filter(i => buildMatched(i) == wanted).toArray
+    val idx    = HashJoinOp.positionsOf(buildMatched, build.size, wanted)
     if idx.isEmpty then
       return null
     val n = idx.length
@@ -2170,18 +2170,21 @@ end HashJoinOp
 
 object HashJoinOp:
   /** Positions 0 until n where mask is true */
-  private[exec] def trueRows(mask: Array[Boolean], n: Int): Array[Int] =
+  private[exec] def trueRows(mask: Array[Boolean], n: Int): Array[Int] = positionsOf(mask, n, true)
+
+  /** Positions 0 until n where mask is `value` */
+  private[exec] def positionsOf(mask: Array[Boolean], n: Int, value: Boolean): Array[Int] =
     var count = 0
     var i     = 0
     while i < n do
-      if mask(i) then
+      if mask(i) == value then
         count += 1
       i += 1
     val out = new Array[Int](count)
     var k   = 0
     i = 0
     while i < n do
-      if mask(i) then
+      if mask(i) == value then
         out(k) = i
         k += 1
       i += 1
@@ -2195,6 +2198,8 @@ object HashJoinOp:
       out(i) = xs(idx(i))
       i += 1
     out
+
+end HashJoinOp
 
 /** Nested-loop join for non-equi conditions and cross joins (right input materialized) */
 class NestedLoopJoinOp(
@@ -2228,7 +2233,7 @@ class NestedLoopJoinOp(
     if buildMatched == null || emittedUnmatched then
       return null
     emittedUnmatched = true
-    val idx = (0 until build.size).filter(i => !buildMatched(i)).toArray
+    val idx = HashJoinOp.positionsOf(buildMatched, build.size, false)
     if idx.isEmpty then
       return null
     val n       = idx.length
