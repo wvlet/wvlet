@@ -45,7 +45,7 @@ object TpcdsGen:
   /** The generated tables */
   val tableNames: Seq[String] =
     Seq("date_dim", "time_dim", "customer_demographics", "household_demographics", "income_band") ++
-      TpcdsDimensions.tableNames
+      TpcdsDimensions.tableNames ++ TpcdsFacts.tableNames
 
   /** The largest scale factor [[sources]] generates: dsdgen's row counts are known up to it */
   val maxScaleFactor: Double = 10.0
@@ -155,7 +155,7 @@ object TpcdsGen:
         ),
       "income_band" ->
         schema("ib_income_band_sk" -> I64, "ib_lower_bound" -> I64, "ib_upper_bound" -> I32)
-    ) ++ TpcdsDimensions.schemas
+    ) ++ TpcdsDimensions.schemas ++ TpcdsFacts.schemas
 
   private[catalog] val dayNames = IndexedSeq(
     "Sunday",
@@ -216,6 +216,11 @@ private[catalog] class TpcdsGen(val sf: Double):
 
   private val dimensions = TpcdsDimensionGen(sf, numCustomerDemographics)
 
+  /** The fact tables (sales, returns, inventory) */
+  lazy val facts: TpcdsFactGen = TpcdsFactGen(this)
+
+  def isFact(table: String): Boolean = TpcdsFacts.schemas.contains(table)
+
   /** The rows of `table` */
   def rows(table: String): Int =
     table match
@@ -235,7 +240,11 @@ private[catalog] class TpcdsGen(val sf: Double):
         throw StatusCode.TABLE_NOT_FOUND.newException(s"Not a generated TPC-DS table: ${other}")
 
   /** The number of blocks of `table` */
-  def numBlocks(table: String): Int = (rows(table) + blockRows - 1) / blockRows
+  def numBlocks(table: String): Int =
+    if isFact(table) then
+      facts.numBlocks(table)
+    else
+      (rows(table) + blockRows - 1) / blockRows
 
   /** The first row index of block `b` */
   def blockStart(b: Int): Int = b * blockRows
@@ -245,6 +254,8 @@ private[catalog] class TpcdsGen(val sf: Double):
 
   /** Generate block `b` of `table`, with every column */
   def block(table: String, b: Int): Batch =
+    if isFact(table) then
+      return facts.block(table, b)
     val start = blockStart(b)
     val n     = blockSize(table, b)
     table match

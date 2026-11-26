@@ -76,7 +76,7 @@ Same mechanism as TPC-H: `TpcdsGen` + `TpcdsSource` (or a table-parameterized ge
 
 1. Fixed dimensions (`date_dim`, `time_dim`, `customer_demographics`, `household_demographics`, `income_band`) equal to `dsdgen` in every column except `d_last_dom`. `TpchSource` and `TpcdsSource` share `GeneratedSource`.
 2. The other dimensions with the value lists, including `reason` and `ship_mode`: `dsdgen`'s schemas, row counts, null shares, and SCD layout (3 business ids per 6 rows, half the rows current), with the query literals present at SF 1.
-3. Fact tables and returns, block-streamed, with the referential checks.
+3. Fact tables and returns, block-streamed, with the referential checks. Per-order columns follow `dsdgen`: a store ticket keeps its customer, demographics, address, store, date, and time; a catalog order its bill and ship customer with their demographics and addresses, call center, and warehouse; a web order its bill customer, page, and warehouse, while each line ships to its own customer. A preview of the shape gate at SF 0.1 matched 82 of the 85 queries that return rows on `dsdgen` data (q04, q23, and q29 return 1 row there and none here); q37 and q64 return rows only here.
 4. `prepareTPCDS` on the `wvlet` connector, the shape gate as a runner, and docs (`usage/wvlet-engine.md`, `for-ai-agents.md`, skill, `design/connectors.md`).
 
 ## Effort and risk

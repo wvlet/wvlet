@@ -319,6 +319,36 @@ private[catalog] object TpcdsDimensions:
       val v = s.at1 + (s.at10 - s.at1) * (sf - 1) / 9
       math.max(s.at1, (math.floor(v / s.unit + 1e-9) * s.unit).toInt)
 
+  // Slowly changing dimensions: every 6 rows hold a business id with 1 revision, one with 2, and
+  // one with 3, so half the rows are current (rec_end_date NULL), as in dsdgen
+  case class Revision(id: Long, start: Int, end: Int)
+
+  def revision(k: Int, base: (Int, Int, Int)): Revision =
+    val (y, m, d) = base
+    val group     = k / 6
+    val p         = k % 6
+    val s0        = ValueOps.daysFromCivil(y, m, d)
+    val s1        = ValueOps.daysFromCivil(y + 2, m, d) + 1
+    val s2        = ValueOps.daysFromCivil(y + 3, m, d)
+    val s3        = ValueOps.daysFromCivil(y + 4, m, d)
+    val none      = Int.MinValue
+    p match
+      case 0 =>
+        Revision(group * 3L + 1, s0, none)
+      case 1 =>
+        Revision(group * 3L + 2, s0, s2 - 1)
+      case 2 =>
+        Revision(group * 3L + 2, s2, none)
+      case 3 =>
+        Revision(group * 3L + 3, s0, s1 - 1)
+      case 4 =>
+        Revision(group * 3L + 3, s1, s3 - 1)
+      case _ =>
+        Revision(group * 3L + 3, s3, none)
+
+  /** The first rec_start_date of items */
+  val itemBase: (Int, Int, Int) = (1997, 10, 27)
+
   /** The share of NULLs in the non-key columns of each table, as in dsdgen's output */
   val nullShare: Map[String, Double] = Map(
     "item"             -> 0.0025,
@@ -366,6 +396,20 @@ private[catalog] object TpcdsDimensions:
       "Books"       -> classes("Books", Seq("computers", "reference", "self-help"), 16),
       "Electronics" -> classes("Electronics", Seq("personal", "portable", "stereo"), 16)
     )
+
+  /**
+    * Brands the queries look for, by (category, class): the brand numbered k of the class is the
+    * k-th of them
+    */
+  val queryBrands: Map[(String, String), IndexedSeq[String]] = Map(
+    ("Men", "accessories")      -> IndexedSeq("amalgimporto #1"),
+    ("Men", "pants")            -> IndexedSeq("exportiimporto #1"),
+    ("Music", "classical")      -> IndexedSeq("edu packscholar #1"),
+    ("Women", "fragrances")     -> IndexedSeq("importoamalg #1"),
+    ("Books", "reference")      -> IndexedSeq("scholaramalgamalg #14", "scholaramalgamalg #9"),
+    ("Books", "self-help")      -> IndexedSeq("scholaramalgamalg #7"),
+    ("Electronics", "portable") -> IndexedSeq("exportiunivamalg #9")
+  )
 
   val sizes = IndexedSeq("petite", "small", "medium", "large", "extra large", "economy", "N/A")
 
@@ -533,8 +577,17 @@ private[catalog] object TpcdsDimensions:
 
   // Counties the queries name, then generic ones
   val counties: IndexedSeq[String] =
-    IndexedSeq("Williamson County", "Bronx County", "Orange County", "Franklin Parish") ++
-      cities.drop(3).map(c => s"${c} County")
+    IndexedSeq(
+      "Williamson County",
+      "Bronx County",
+      "Orange County",
+      "Franklin Parish",
+      "Rush County",
+      "Toole County",
+      "Jefferson County",
+      "Dona Ana County",
+      "La Porte County"
+    ) ++ cities.drop(3).map(c => s"${c} County")
 
   // The zip codes TPC-DS q15 and q45 look for, among others
   val queryZips = IndexedSeq(
@@ -895,33 +948,6 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
 
   private def pick[A](r: Random, xs: IndexedSeq[A]): A = xs(r.nextInt(xs.size))
 
-  // Slowly changing dimensions: every 6 rows hold a business id with 1 revision, one with 2, and
-  // one with 3, so half the rows are current (rec_end_date NULL), as in dsdgen
-  private case class Revision(id: Long, start: Int, end: Int)
-
-  private def revision(k: Int, base: (Int, Int, Int)): Revision =
-    val (y, m, d) = base
-    val group     = k / 6
-    val p         = k % 6
-    val s0        = epoch(y, m, d)
-    val s1        = epoch(y + 2, m, d) + 1
-    val s2        = epoch(y + 3, m, d)
-    val s3        = epoch(y + 4, m, d)
-    val none      = Int.MinValue
-    p match
-      case 0 =>
-        Revision(group * 3L + 1, s0, none)
-      case 1 =>
-        Revision(group * 3L + 2, s0, s2 - 1)
-      case 2 =>
-        Revision(group * 3L + 2, s2, none)
-      case 3 =>
-        Revision(group * 3L + 3, s0, s1 - 1)
-      case 4 =>
-        Revision(group * 3L + 3, s1, s3 - 1)
-      case _ =>
-        Revision(group * 3L + 3, s3, none)
-
   private def addressColumns(
       c: DimColumns,
       r: Random,
@@ -1229,7 +1255,7 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         )
         c.int(_ => (dateSk(epoch(2002, 1, 1)) + between(r, 0, 365)).toInt)
       case "item" =>
-        val rev      = Array.tabulate(n)(i => revision(start + i, (1997, 10, 27)))
+        val rev      = Array.tabulate(n)(i => revision(start + i, TpcdsDimensions.itemBase))
         val category = Array.fill(n)(r.nextInt(categories.size))
         val cls      = Array.tabulate(n)(i => r.nextInt(categories(category(i))._2.size))
         val brand    = Array.fill(n)(between(r, 1, 10))
@@ -1243,7 +1269,14 @@ private[catalog] class TpcdsDimensionGen(sf: Double, numCustomerDemographics: In
         c.decimal(PType.decimal(7, 2), price(_))
         c.decimal(PType.decimal(7, 2), i => math.max(2L, price(i) * between(r, 20, 88) / 100))
         c.long(i => (category(i) + 1) * 1000000L + (cls(i) + 1) * 1000L + brand(i))
-        c.str(i => s"${syllableName(category(i) + 1)}${syllableName(cls(i) + 1)} #${brand(i)}")
+        c.str { i =>
+          val (cat, classes) = categories(category(i))
+          queryBrands.get((cat, classes(cls(i)))) match
+            case Some(names) if brand(i) <= names.size =>
+              names(brand(i) - 1)
+            case _ =>
+              s"${syllableName(category(i) + 1)}${syllableName(cls(i) + 1)} #${brand(i)}"
+        }
         c.long(cls(_) + 1L)
         c.str(i => categories(category(i))._2(cls(i)))
         c.long(category(_) + 1L)
