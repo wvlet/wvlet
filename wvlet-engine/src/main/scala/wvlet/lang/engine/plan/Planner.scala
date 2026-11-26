@@ -810,19 +810,34 @@ class Planner(
     names.foreach(n => sharedScanReads.get(n).foreach(k => cteRefCounts(n) = cteRefCounts(n) + k))
 
   /** The source of a catalog table (not a CTE) */
-  private[engine] def tableSource(name: String, fullName: String): TableSource = catalog
-    .lookup(name, fullName)
-    .orElse(sources.tableSource(name, fullName))
-    .getOrElse {
-      throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${fullName}")
-    }
+  private[engine] def tableSource(name: String, fullName: String): TableSource = withFolderFiles(
+    catalog
+      .lookup(name, fullName)
+      .orElse(sources.tableSource(name, fullName))
+      .getOrElse {
+        throw StatusCode.TABLE_NOT_FOUND.newException(s"Table not found: ${fullName}")
+      }
+  )
 
   /** The source of a file path */
-  private[engine] def fileSource(path: String): TableSource = sources
-    .fileSource(path)
-    .getOrElse {
-      throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported file format: ${path}")
-    }
+  private[engine] def fileSource(path: String): TableSource = withFolderFiles(
+    sources
+      .fileSource(path)
+      .getOrElse {
+        throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported file format: ${path}")
+      }
+  )
+
+  /**
+    * `s`, reading a Parquet folder through uni's dataset reader unless `folder_file_scans` is on.
+    * Sources are shared by the engines of a catalog, so the toggle applies here, per planner
+    */
+  private def withFolderFiles(s: TableSource): TableSource =
+    s match
+      case p: ParquetSource if !enabled(Optimization.FolderFileScans) =>
+        p.withoutFolderFiles
+      case other =>
+        other
 
   /** The rows of a VALUES list, evaluated, and their schema */
   private[engine] def valuesBatch(

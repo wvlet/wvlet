@@ -355,9 +355,9 @@ class EngineScanRowFiltersTest extends UniTest:
       val rf = RuntimeFilter(0, column, (_, _) => None, rows = true)
       rf.set(LongVec(PType.Int64, keys, null), keys.indices.toArray, keys.length)
       rf
-    // The ids the source reads (whole row groups: a folder has no row filter)
+    // The ids uni's dataset reader reads (whole row groups: it has no row filter)
     def read(path: String, f: RuntimeFilter, pruneByKeys: Boolean): Seq[Long] =
-      val src = ParquetSource("t", path)
+      val src = ParquetSource("t", path, folderFiles = false)
       src.supportsRowFilter shouldBe false
       val spec = ScanOp(src, src.schema, None, None, Seq(f)).withKeySetRowGroups(pruneByKeys).spec
       val out  = Seq.newBuilder[Long]

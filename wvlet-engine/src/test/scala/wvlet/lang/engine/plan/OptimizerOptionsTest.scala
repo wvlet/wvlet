@@ -84,6 +84,7 @@ class OptimizerOptionsTest extends UniTest:
         "join_row_filters_first",
         "sparse_key_pass_rates",
         "key_set_row_groups",
+        "folder_file_scans",
         "unmatched_left_probe",
         "probe_miss_filter",
         "narrow_join_entries",
