@@ -178,8 +178,11 @@
   width: 200%;
   height: 100%;
   fill: none;
-  stroke-width: 1.25px;
   animation: flow 60s linear infinite;
+}
+
+.waves svg .waveBand {
+  stroke: none;
 }
 
 @keyframes flow {
@@ -459,6 +462,30 @@
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+.ownEngine {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-left: 36px;
+  border-left: 1px solid hsl(var(--line));
+}
+
+.ownEngine small {
+  color: hsl(var(--primary));
+  font: 500 12px var(--mono);
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 996px) {
+  .ownEngine {
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 .kicker {

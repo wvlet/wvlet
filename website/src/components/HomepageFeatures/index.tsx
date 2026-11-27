@@ -47,10 +47,11 @@ const FeatureList: FeatureItem[] = [
       ),
   },
     {
-        title: 'GitHub Integration',
+        title: 'Runs Anywhere',
         description: (
-            <> Save your queries in GitHub repositories and call them from other queries to ensure reproducibility with
-            version control.
+            <>
+                Wvlet's built-in columnar query engine runs in-process on the JVM, Node.js, web browsers,
+                and as a native binary, so you can query local data files without setting up a database.
             </>
         )
     },

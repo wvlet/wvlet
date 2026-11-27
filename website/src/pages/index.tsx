@@ -24,7 +24,7 @@ group by o_orderpriority
 order by revenue desc
 limit 5`;
 
-const engines = ['DuckDB', 'Trino', 'Snowflake', 'Hive', 'Wvlet engine'];
+const engines = ['DuckDB', 'Trino', 'Snowflake', 'Hive'];
 
 /** Soft, slowly drifting color blobs behind a section. */
 function Aurora(): React.ReactNode {
@@ -55,7 +55,7 @@ function wavePath(baseline: number, amplitude: number, periods: number, phase: n
 }
 
 /** Thin stream lines drifting left at a constant speed, to suggest data flowing through a query. */
-function Waves({lines = 7}: {lines?: number}): React.ReactNode {
+function Waves({lines = 12}: {lines?: number}): React.ReactNode {
   return (
     <div className={styles.waves} aria-hidden="true">
       <svg viewBox={`0 0 ${WAVE_W * 2} ${WAVE_H}`} preserveAspectRatio="none">
@@ -68,12 +68,23 @@ function Waves({lines = 7}: {lines?: number}): React.ReactNode {
             <stop offset="1" stopColor="hsl(186 90% 45%)" />
           </linearGradient>
         </defs>
+        {/* Translucent filled bands give the ribbon body; the lines on top give it texture. */}
+        {[0, 1].map((i) => (
+          <path
+            key={`band-${i}`}
+            className={styles.waveBand}
+            d={`${wavePath(190 + i * 40, 52 - i * 12, 2, 0.4 + i * 0.9)} L${WAVE_W * 2},${WAVE_H} L0,${WAVE_H} Z`}
+            fill="url(#wv-wave)"
+            fillOpacity={0.1 - i * 0.03}
+          />
+        ))}
         {Array.from({length: lines}, (_, i) => (
           <path
             key={i}
-            d={wavePath(200 + i * 11, 46 - i * 3, 2, i * 0.22)}
+            d={wavePath(170 + i * 9, 56 - i * 3, 2, i * 0.16)}
             stroke="url(#wv-wave)"
-            strokeOpacity={0.7 - i * 0.08}
+            strokeOpacity={0.75 - i * (0.55 / lines)}
+            strokeWidth={i < 3 ? 2.5 : 1.5}
             vectorEffect="non-scaling-stroke"
           />
         ))}
@@ -174,6 +185,10 @@ function EngineStrip(): React.ReactNode {
         {engines.map((e) => (
           <li key={e}>{e}</li>
         ))}
+        <li className={styles.ownEngine}>
+          Wvlet engine
+          <small>JVM · Node.js · Browser · Native</small>
+        </li>
       </ul>
     </section>
   );
@@ -231,7 +246,7 @@ function ClosingCta(): React.ReactNode {
   return (
     <section className={styles.closing}>
       <div className={styles.closingPanel}>
-        <Waves lines={5} />
+        <Waves lines={9} />
         <img
           className={styles.closingLogo}
           src={useBaseUrl('/img/logos/wvlet-icon.svg')}
