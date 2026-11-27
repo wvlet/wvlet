@@ -638,19 +638,42 @@ object GenSQL extends Phase("generate-sql"):
     // unexpanded model bodies are not in the tree yet, while ModelScan.modelArgs are. This
     // resolves model arguments in the caller's context before they are bound in the callee.
     val substituted = substituteContextBindings(relation)
-    // Inline model scans. Each expansion enters a new Context via ctx.newContext(modelSymbol)
+    // Inline model scans. Each expansion enters a new Context via ctx.newContext(modelSymbol).
+    // The expansion is top-down, so an aliased model reference (stg_orders as o) is seen before
+    // its model scan is replaced, and runs once: inlined bodies are already fully expanded
     substituted
-      .transformUp { case m: ModelScan =>
-        lookupType(Name.termName(m.name.name), ctx) match
-          case Some(sym) =>
-            val rel = expandModelScan(m, sym)
-            // Finally resolve types again
-            Typer.resolveRelation(rel)
-          case None =>
-            warn(s"unknown model: ${m.name}")
-            m
+      .transformOnce {
+        case a @ AliasedRelation(m: ModelScan, _, _, _) =>
+          // The user's alias replaces the model name as the qualifier, as for an aliased table.
+          // A new node even when m stays, so that the scan isn't tried again as a bare reference
+          a.copy(child = inlineModel(m).getOrElse(m))
+        case m: ModelScan =>
+          // Name the inlined body after the model, so that its columns can be qualified by the
+          // model name (stg_orders.customer_id) like the columns of a table
+          inlineModel(m)
+            .map(rel =>
+              AliasedRelation(rel, NameExpr.fromString(m.name.name, m.span), None, m.span)
+            )
+            .getOrElse(m)
       }
       .asInstanceOf[Relation]
+
+  end expandRelation
+
+  /** The typed body of the referenced model, or None when the model can't be inlined */
+  private def inlineModel(m: ModelScan)(using ctx: Context): Option[Relation] =
+    lookupType(Name.termName(m.name.name), ctx) match
+      case Some(sym) =>
+        expandModelScan(m, sym) match
+          case same if same eq m =>
+            // Not a model definition: leave the scan as is
+            None
+          case rel =>
+            // Finally resolve types again
+            Some(Typer.resolveRelation(rel))
+      case None =>
+        warn(s"unknown model: ${m.name}")
+        None
 
   /**
     * The expression rewrite behind context binding: identifiers bound to val symbols (vals, model

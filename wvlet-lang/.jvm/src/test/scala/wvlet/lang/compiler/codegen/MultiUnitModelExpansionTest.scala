@@ -38,9 +38,10 @@ class MultiUnitModelExpansionTest extends UniTest:
     val sql   = GenSQL.generateSQL(ref)(using res.context)
     sql shouldContain "person.json"
     sql shouldContain "age_group"
-    // The nested models must be fully expanded away
-    sql shouldNotContain "person_filter"
-    sql shouldNotContain "person_with_age_group"
+    // The nested models are fully expanded; their names remain only as aliases
+    sql shouldContain ") as person_filter"
+    sql shouldNotContain "from person_filter"
+    sql shouldNotContain "from person_with_age_group"
   }
 
 end MultiUnitModelExpansionTest

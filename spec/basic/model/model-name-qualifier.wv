@@ -1,0 +1,18 @@
+-- A model reference can be qualified by the model name, like a table
+model mq_customers = {
+  from [[1, 'alice'], [2, 'bob']] as mq_c(cid, customer_name)
+  select cid as customer_id, customer_name
+}
+
+model mq_orders = {
+  from [[10, 1, 100], [11, 2, 50], [12, 1, 30]] as mq_o(oid, cust, amt)
+  select oid as order_id, cust as customer_id, amt as amount
+}
+
+from mq_orders
+join mq_customers on mq_orders.customer_id = mq_customers.customer_id
+select order_id, mq_orders.customer_id, customer_name, amount
+order by order_id
+
+test _.columns = ['order_id', 'customer_id', 'customer_name', 'amount']
+test _.rows = [[10, 1, 'alice', 100], [11, 2, 'bob', 50], [12, 1, 'alice', 30]]
