@@ -13,7 +13,6 @@
  */
 package wvlet.lang.engine.plan
 
-import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
@@ -806,13 +805,10 @@ class Planner(
     )
 
   // Filters over a table whose scan is shared (`share_subquery_scans`), with the relation each
-  // reads instead: its other conjuncts over the shared CTE
-  private val sharedScans = java.util.IdentityHashMap[Filter, Relation]()
-  // The same filters with their templates expanded, by value: expanding a condition copies the
-  // subqueries in it, so a plan-time subquery is bound as such a copy
-  // (`match_copied_subquery_scans`). Keyed by the filter's span, so that a lookup compares whole
-  // trees only with the filters at the same place in the query
-  private val expandedSharedScans = mutable.HashMap.empty[Span, List[(LogicalPlan, Relation)]]
+  // reads instead: its other conjuncts over the shared CTE. With `match_copied_subquery_scans`,
+  // also the filters with their templates expanded: expanding a condition copies the subqueries
+  // in it, so a plan-time subquery is bound as such a copy
+  private val sharedScans = PlanMemo[Filter, Relation]()
   // Reads of the shared scans' CTEs, which their tree doesn't show
   private val sharedScanReads = mutable.HashMap.empty[String, Int]
 
@@ -820,27 +816,14 @@ class Planner(
   private[engine] def readSharedScan(f: Filter, r: Relation): Unit =
     sharedScans.put(f, r)
     if enabled(Optimization.MatchCopiedSubqueryScans) then
-      val expanded = Binder.expandTemplatesIn(f)
-      expandedSharedScans(f.span) = (expanded, r) :: expandedSharedScans.getOrElse(f.span, Nil)
+      sharedScans.putCopy(Binder.expandTemplatesIn(f), r)
 
   /** Count `n` reads of the CTE `name` of a shared scan */
   private[engine] def addCTEReads(name: String, n: Int): Unit =
     sharedScanReads(name.toLowerCase) = n
 
   /** The relation the filter `f` reads instead, when it reads a shared scan */
-  private[engine] def sharedScanOf(f: Filter): Option[Relation] = Option(sharedScans.get(f)).orElse(
-    if expandedSharedScans.isEmpty then
-      None
-    else
-      expandedSharedScans
-        .get(f.span)
-        .flatMap(
-          _.collectFirst {
-            case (p, r) if p == f =>
-              r
-          }
-        )
-  )
+  private[engine] def sharedScanOf(f: Filter): Option[Relation] = sharedScans.get(f)
 
   /** Count the references to each CTE of `w`, including those in subqueries */
   private def countCTERefs(w: WithQuery): Unit =
