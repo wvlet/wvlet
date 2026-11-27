@@ -153,7 +153,13 @@ class JoinOrderOptimizer(options: OptimizerOptions):
         JoinEnumerator(options).planWithRows(g, search)
       else
         None
-    exact.getOrElse(greedyPlanWithRows(g, search))
+    // The greedy search estimates every key it joins by: only the written equalities
+    exact.getOrElse(
+      greedyPlanWithRows(
+        g.copy(edges = g.edges.filterNot(_.implied).map(_.copy(eqClass = -1))),
+        search
+      )
+    )
 
   /**
     * The cheapest left-deep join tree of multi-start greedy search: every input is tried as the
