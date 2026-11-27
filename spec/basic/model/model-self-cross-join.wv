@@ -1,0 +1,12 @@
+-- A model repeated in a FROM list without aliases: the first reference is named after the model
+model msc_items = {
+  from [[1], [2]] as msc_i(item_id)
+  select item_id
+}
+
+from msc_items, msc_items
+select msc_items.item_id
+order by item_id
+
+test _.columns = ['item_id']
+test _.rows = [[1], [1], [2], [2]]

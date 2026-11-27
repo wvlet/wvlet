@@ -1,0 +1,13 @@
+-- A model joined with itself without aliases: only the first reference is named after the model
+model ms_items = {
+  from [[1, 'a'], [2, 'b']] as ms_i(item_id, item_name)
+  select item_id, item_name
+}
+
+from ms_items
+join ms_items on true
+select ms_items.item_id
+order by item_id
+
+test _.columns = ['item_id']
+test _.rows = [[1], [1], [2], [2]]

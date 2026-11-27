@@ -62,4 +62,39 @@ class ModelNameQualifierTest extends UniTest:
     sql shouldNotContain "as nq_customers"
   }
 
+  test("should name only the first unaliased reference of a self-joined model") {
+    val sql = sqlOf("""from nq_orders
+        |join nq_orders on true
+        |select order_id
+        |""".stripMargin)
+    sql.split(" as nq_orders").length shouldBe 2
+  }
+
+  test("should name only the first reference of a model repeated in a FROM list") {
+    val sql = sqlOf("""from nq_orders, nq_orders, nq_customers
+        |select customer_name
+        |""".stripMargin)
+    sql.split(" as nq_orders").length shouldBe 2
+    sql shouldContain ") as nq_customers"
+  }
+
+  test("should not reuse a user alias as a model name in the same join") {
+    val sql = sqlOf("""from nq_customers as nq_orders
+        |join nq_orders on true
+        |select customer_name
+        |""".stripMargin)
+    sql.split(" as nq_orders").length shouldBe 2
+  }
+
+  test("should name the same model in separate join scopes") {
+    val sql = sqlOf("""from nq_orders
+        |join {
+        |  from nq_orders join nq_customers on true
+        |  select nq_customers.customer_id as cid
+        |} as sub on true
+        |select order_id
+        |""".stripMargin)
+    sql.split(" as nq_orders").length shouldBe 3
+  }
+
 end ModelNameQualifierTest

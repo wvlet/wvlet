@@ -638,6 +638,7 @@ object GenSQL extends Phase("generate-sql"):
     // unexpanded model bodies are not in the tree yet, while ModelScan.modelArgs are. This
     // resolves model arguments in the caller's context before they are bound in the callee.
     val substituted = substituteContextBindings(relation)
+    val repeated    = repeatedModelScans(substituted)
     // Inline model scans. Each expansion enters a new Context via ctx.newContext(modelSymbol).
     // The expansion is top-down, so an aliased model reference (stg_orders as o) is seen before
     // its model scan is replaced, and runs once: inlined bodies are already fully expanded
@@ -647,6 +648,10 @@ object GenSQL extends Phase("generate-sql"):
           // The user's alias replaces the model name as the qualifier, as for an aliased table.
           // A new node even when m stays, so that the scan isn't tried again as a bare reference
           a.copy(child = inlineModel(m).getOrElse(m))
+        case m: ModelScan if repeated.exists(_ eq m) =>
+          // The model name is already taken in this join scope (from m join m): leave the
+          // repeated body unnamed, as SQL rejects a duplicate alias
+          inlineModel(m).getOrElse(m)
         case m: ModelScan =>
           // Name the inlined body after the model, so that its columns can be qualified by the
           // model name (stg_orders.customer_id) like the columns of a table
@@ -659,6 +664,51 @@ object GenSQL extends Phase("generate-sql"):
       .asInstanceOf[Relation]
 
   end expandRelation
+
+  /**
+    * Unaliased model scans that must not be named after their model, because the name is already
+    * used in the same join scope: by an earlier unaliased reference to the same model, or by a user
+    * alias. A join scope is a Join and its nested Join children down to their legs; plans below a
+    * leg, such as subqueries, start their own scopes.
+    */
+  private def repeatedModelScans(plan: LogicalPlan): List[ModelScan] =
+    val repeated = List.newBuilder[ModelScan]
+
+    def legsOf(r: LogicalPlan): List[LogicalPlan] =
+      r match
+        case j: Join =>
+          legsOf(j.left) ++ legsOf(j.right)
+        case other =>
+          List(other)
+
+    def visit(p: LogicalPlan): Unit =
+      p match
+        case j: Join =>
+          val legs = legsOf(j)
+          // Names taken by user aliases, then by the model references named so far
+          var used =
+            legs
+              .collect { case a: AliasedRelation =>
+                a.alias.leafName
+              }
+              .toSet
+          legs.foreach {
+            case m: ModelScan =>
+              val name = m.name.name
+              if used.contains(name) then
+                repeated += m
+              else
+                used += name
+            case _ =>
+          }
+          legs.foreach(visit)
+        case other =>
+          other.children.foreach(visit)
+
+    visit(plan)
+    repeated.result()
+
+  end repeatedModelScans
 
   /** The typed body of the referenced model, or None when the model can't be inlined */
   private def inlineModel(m: ModelScan)(using ctx: Context): Option[Relation] =
