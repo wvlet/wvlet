@@ -51,10 +51,20 @@ WVLET_ENGINE_BENCH_SF=1 WVLET_ENGINE_BENCH_QUERIES=q1,q6 WVLET_ENGINE_BENCH_DUCK
 ```
 
 `WVLET_ENGINE_BENCH_RUNS` sets the number of timed runs. The log ends with a Markdown table and
-the same numbers are written to `target/engine-bench/tpch-sf<sf>.tsv`. Engine time covers
-planning and execution of an already compiled query; DuckDB time covers running the generated
-SQL over JDBC and reading every result row. Row counts are compared too, and a mismatch is
-flagged in the table. The `engine plan (ms)` column is the median time before the first operator
+the same numbers are written to `target/engine-bench/tpch-sf<sf>.tsv`, with the machine, JVM, and
+DuckDB settings of the run in `target/engine-bench/tpch-sf<sf>.env.txt`. Engine time covers
+planning and execution of an already compiled query and reading every value of the result;
+DuckDB time covers running the generated SQL over JDBC and reading every value of every row.
+DuckDB and engine runs alternate, and the `*_first_ms` columns hold each engine's warm-up run.
+Row counts are compared too, and a mismatch is flagged in the table.
+
+DuckDB caches Parquet footers (`parquet_metadata_cache`) and doesn't keep insertion order, as
+the engine doesn't; `WVLET_ENGINE_BENCH_DUCKDB_DEFAULTS=1` keeps DuckDB's defaults instead.
+`WVLET_ENGINE_BENCH_KEYS=pk` or `none` withholds the declared keys from the engine (DuckDB knows
+none over Parquet views), and `WVLET_ENGINE_BENCH_COLD=1` drops the engine's cached footers and
+file statistics before every run (and turns DuckDB's footer cache off), to time queries on files
+neither engine has seen. See [Performance](../engines/wvlet-engine-performance.md) for their
+SF10 effect. The `engine plan (ms)` column is the median time before the first operator
 runs: model expansion, planning, and the subqueries and statistics reads done while planning
 (scalar and IN subqueries, materialized CTE estimates), so a small query's fixed cost shows apart
 from its execution.

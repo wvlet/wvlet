@@ -17,6 +17,7 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.catalog.BenchmarkKeys
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.vector.Batch
 import wvlet.lang.model.plan.*
 import wvlet.uni.log.LogSupport
 import wvlet.uni.test.UniTest
@@ -49,7 +50,18 @@ import java.util.concurrent.TimeoutException
   *   - `WVLET_ENGINE_BENCH_RUNS`: timed executions per query after one warm-up (default 3)
   *   - `WVLET_ENGINE_BENCH_QUERIES`: comma-separated query names to run, e.g. `q1,q6` (default all)
   *   - `WVLET_ENGINE_BENCH_DUCKDB_THREADS`: DuckDB worker threads (default: DuckDB's own default,
-  *     all cores). Set 1 for a single-threaded comparison
+  *     all cores, the engine's default too). Set 1 for a single-threaded comparison
+  *   - `WVLET_ENGINE_BENCH_DUCKDB_DEFAULTS`: set 1 to run DuckDB with all its default settings.
+  *     Otherwise DuckDB caches Parquet footers across queries (`parquet_metadata_cache`), as the
+  *     engine does, and doesn't keep the insertion order of unordered results
+  *     (`preserve_insertion_order = false`), which the engine doesn't either
+  *   - `WVLET_ENGINE_BENCH_KEYS`: the unique keys the engine is told about: `declared` (default:
+  *     the specifications' primary keys, plus TPC-DS `c_customer_id`, see [[BenchmarkKeys]]), `pk`
+  *     (primary keys only), or `none`. DuckDB reads Parquet views and knows no keys
+  *   - `WVLET_ENGINE_BENCH_COLD`: set 1 to time each run without what earlier runs cached about the
+  *     files: before every engine run, the Parquet footers and file statistics (distinct counts,
+  *     value samples) are dropped and the tables registered again, and DuckDB's footer cache is
+  *     off. The OS page cache stays warm for both
   *   - `WVLET_ENGINE_BENCH_TIMEOUT`: seconds to wait for all engine runs of one query, warm-up
   *     included (default 300); the remaining queries are skipped after a timeout
   *   - `WVLET_ENGINE_BENCH_DUCKDB_PROFILE`: set 1 to write DuckDB's JSON profile (per-operator
@@ -107,8 +119,33 @@ object EngineTPCHBench extends LogSupport:
       timeoutSeconds: Int,
       explain: Boolean,
       duckdbProfile: Boolean = false,
-      abOff: Option[OptimizerOptions] = None
+      abOff: Option[OptimizerOptions] = None,
+      duckdbDefaults: Boolean = false,
+      keys: BenchKeys = BenchKeys.Declared,
+      cold: Boolean = false
   )
+
+  /** Which unique keys the engine is told about (`WVLET_ENGINE_BENCH_KEYS`) */
+  enum BenchKeys:
+    case Declared,
+      PrimaryOnly,
+      NoKeys
+
+  object BenchKeys:
+    def parse(s: String): BenchKeys =
+      s.trim.toLowerCase match
+        case "" | "declared" =>
+          Declared
+        case "pk" =>
+          PrimaryOnly
+        case "none" =>
+          NoKeys
+        case other =>
+          throw IllegalArgumentException(
+            s"WVLET_ENGINE_BENCH_KEYS must be declared, pk, or none, but got ${other}"
+          )
+
+  private def flag(name: String): Boolean = sys.env.get(name).exists(v => v == "1" || v == "true")
 
   object BenchOptions:
     def fromEnv(): Option[BenchOptions] = sys
@@ -126,11 +163,15 @@ object EngineTPCHBench extends LogSupport:
             .map(_.split(",").map(_.trim.stripSuffix(".wv")).filter(_.nonEmpty).toSet),
           duckdbThreads = sys.env.get("WVLET_ENGINE_BENCH_DUCKDB_THREADS").map(_.toInt),
           timeoutSeconds = sys.env.get("WVLET_ENGINE_BENCH_TIMEOUT").map(_.toInt).getOrElse(300),
-          explain = sys.env.get("WVLET_ENGINE_BENCH_EXPLAIN").exists(v => v == "1" || v == "true"),
-          duckdbProfile = sys
+          explain = flag("WVLET_ENGINE_BENCH_EXPLAIN"),
+          duckdbProfile = flag("WVLET_ENGINE_BENCH_DUCKDB_PROFILE"),
+          duckdbDefaults = flag("WVLET_ENGINE_BENCH_DUCKDB_DEFAULTS"),
+          keys = sys
             .env
-            .get("WVLET_ENGINE_BENCH_DUCKDB_PROFILE")
-            .exists(v => v == "1" || v == "true"),
+            .get("WVLET_ENGINE_BENCH_KEYS")
+            .map(BenchKeys.parse)
+            .getOrElse(BenchKeys.Declared),
+          cold = flag("WVLET_ENGINE_BENCH_COLD"),
           abOff = sys
             .env
             .get("WVLET_ENGINE_BENCH_AB")
@@ -168,6 +209,11 @@ object EngineTPCHBench extends LogSupport:
     val worker = Executors.newSingleThreadExecutor()
     try
       opts.duckdbThreads.foreach(t => execute(conn, s"set threads = ${t}"))
+      if !opts.duckdbDefaults then
+        // The engine caches footers across queries (parquet_footer_cache) and keeps no
+        // insertion order, so DuckDB is set up the same way
+        execute(conn, s"set parquet_metadata_cache = ${!opts.cold}")
+        execute(conn, "set preserve_insertion_order = false")
       // A `<table>/` folder of Parquet files, when there is one, is read instead of the single
       // file, to time multi-file scans
       def folder(t: String): Option[String] = Option(s"${dataDir}/${t}").filter(d =>
@@ -180,16 +226,36 @@ object EngineTPCHBench extends LogSupport:
           .getOrElse(s"'${dataDir}/${t}.parquet'")
         execute(conn, s"create view ${t} as select * from ${from}")
       }
-      val engine = WvletEngine(baseDir = specPath, accelerator = accelerator)
-      tables.foreach(t =>
-        engine
-          .catalog
-          .registerParquet(
-            t,
-            folder(t).getOrElse(s"${dataDir}/${t}.parquet"),
-            BenchmarkKeys.of(label, t)
-          )
-      )
+      def newEngine(): WvletEngine =
+        val e = WvletEngine(baseDir = specPath, accelerator = accelerator)
+        tables.foreach { t =>
+          val path = folder(t).getOrElse(s"${dataDir}/${t}.parquet")
+          val keys = BenchmarkKeys.of(label, t)
+          opts.keys match
+            case BenchKeys.Declared =>
+              e.catalog.registerParquet(t, path, keys)
+            case BenchKeys.PrimaryOnly =>
+              e.catalog.registerParquet(t, path, keys.take(1))
+            case BenchKeys.NoKeys if folder(t).isEmpty =>
+              // Not even the keys of a sidecar file next to the data
+              e.catalog.register(UnkeyedParquetSource(t, path))
+            case BenchKeys.NoKeys =>
+              throw IllegalArgumentException(
+                s"WVLET_ENGINE_BENCH_KEYS=none reads single files only, but ${t} is a folder"
+              )
+        }
+        e
+      val engine = newEngine()
+      // In cold mode, each run plans over freshly registered tables, with no cached footers or
+      // file statistics left from earlier runs
+      def engineForRun(): WvletEngine =
+        if opts.cold then
+          catalog.ParquetFooterCache.clear()
+          catalog.ParquetSource.clearCachedStatistics()
+          newEngine()
+        else
+          engine
+      logEnvironment(conn, label, opts)
       // The engine with the A/B optimizations disabled, over the same tables
       // offAccelerator, when given, replaces the accelerator there (to A/B accelerator settings)
       val offEngine = opts
@@ -253,14 +319,16 @@ object EngineTPCHBench extends LogSupport:
               val (ms, _) = duckdbOnce()
               val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
               (ms, cpuMs / math.max(ms, 0.001))
-            def engineOnce(): (Double, Long, Double) = plannedRun(engine, q)
+            def engineOnce(e: WvletEngine): (Double, Long, Double) = plannedRun(e, q)
             // Wall time, busy cores (process CPU time / wall time), GC time, allocated MB, and
             // planning time of one engine run
             def engineTimed(): EngineRun =
+              // A cold run's fresh engine is set up before the measurements start
+              val e               = engineForRun()
               val cpu0            = processCpuNanos()
               val gc0             = gcMillis()
               val alloc0          = allocatedBytes()
-              val (ms, _, planMs) = engineOnce()
+              val (ms, _, planMs) = engineOnce(e)
               val cpuMs           = (processCpuNanos() - cpu0) / 1000000.0
               EngineRun(
                 ms,
@@ -272,21 +340,13 @@ object EngineTPCHBench extends LogSupport:
             try
               if opts.explain then
                 Files.writeString(File(outDir, s"${label}-${name}.plan").toPath, engine.explain(q))
-              val (_, duckRows) = duckdbOnce() // warm-up
-              val duck          = (1 to opts.runs).map(_ => duckdbTimed())
-              if opts.duckdbProfile then
-                val out = File(outDir, s"${label}-${name}.duckdb.json").getAbsolutePath
-                execute(conn, "set enable_profiling = 'json'")
-                execute(conn, s"set profiling_output = '${out}'")
-                try countRows(conn, sql)
-                finally execute(conn, "pragma disable_profiling")
-              val task = worker.submit { () =>
-                val (_, rows, _) = engineOnce()
-                (rows, (1 to opts.runs).map(_ => engineTimed()))
-              }
-              val (engineRows, eng) =
+              // Engine runs share one time budget, warm-up included; DuckDB's runs don't count
+              var budgetNanos                = opts.timeoutSeconds * 1000000000L
+              def onWorker[A](body: => A): A =
+                val start = System.nanoTime()
+                val task  = worker.submit(() => body)
                 try
-                  task.get(opts.timeoutSeconds.toLong, TimeUnit.SECONDS)
+                  task.get(math.max(0L, budgetNanos), TimeUnit.NANOSECONDS)
                 catch
                   case e: ExecutionException =>
                     throw e.getCause
@@ -294,6 +354,32 @@ object EngineTPCHBench extends LogSupport:
                     task.cancel(true)
                     timedOut = true
                     throw e
+                finally
+                  budgetNanos -= System.nanoTime() - start
+              // Warm-ups: the engine's first run also computes the file statistics that later
+              // runs (and queries) reuse, so its time is reported as engine_first_ms
+              val (duckFirst, duckRows)        = duckdbOnce()
+              val (engineFirst, engineRows, _) = onWorker(engineOnce(engineForRun()))
+              // DuckDB and engine runs alternate, each going first every other run, so that a
+              // load change on a shared machine hits both alike
+              val duckRuns = Seq.newBuilder[(Double, Double)]
+              val engRuns  = Seq.newBuilder[EngineRun]
+              (1 to opts.runs).foreach { r =>
+                if r % 2 == 1 then
+                  duckRuns += duckdbTimed()
+                  engRuns += onWorker(engineTimed())
+                else
+                  engRuns += onWorker(engineTimed())
+                  duckRuns += duckdbTimed()
+              }
+              val duck = duckRuns.result()
+              val eng  = engRuns.result()
+              if opts.duckdbProfile then
+                val out = File(outDir, s"${label}-${name}.duckdb.json").getAbsolutePath
+                execute(conn, "set enable_profiling = 'json'")
+                execute(conn, s"set profiling_output = '${out}'")
+                try countRows(conn, sql)
+                finally execute(conn, "pragma disable_profiling")
               val r = QueryTiming(
                 name,
                 duck.map(_._1).sorted,
@@ -305,7 +391,9 @@ object EngineTPCHBench extends LogSupport:
                 duck.map(_._2).sorted,
                 eng.map(_.gcMs).sorted,
                 eng.map(_.allocMb).sorted,
-                eng.map(_.planMs).sorted
+                eng.map(_.planMs).sorted,
+                duckFirst,
+                engineFirst
               )
               info(r.logLine)
               r
@@ -484,12 +572,12 @@ object EngineTPCHBench extends LogSupport:
 
     val tsv   = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.tsv")
     val lines =
-      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb\tengine_plan_ms" +:
+      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb\tengine_plan_ms\tduckdb_first_ms\tengine_first_ms" +:
         results.map { r =>
           f"${r.name}\t${r.duckdbMedian}%.1f\t${r.engineMedian}%.1f\t${r.ratio}%.2f\t${r
               .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}\t${r.engineCores}%.2f\t${r
               .duckdbCores}%.2f\t${r.cpuRatio}%.2f\t${r.engineGcMs}%.1f\t${r.engineAllocMb}%.1f\t${r
-              .enginePlanMs}%.1f"
+              .enginePlanMs}%.1f\t${r.duckdbFirstMs}%.1f\t${r.engineFirstMs}%.1f"
         }
     Files.writeString(tsv.toPath, lines.mkString("", "\n", "\n"))
     info(s"Wrote ${tsv.getPath}")
@@ -507,7 +595,9 @@ object EngineTPCHBench extends LogSupport:
       duckdbCoresPerRun: Seq[Double] = Nil,
       engineGcMsPerRun: Seq[Double] = Nil,
       engineAllocMbPerRun: Seq[Double] = Nil,
-      enginePlanMsPerRun: Seq[Double] = Nil
+      enginePlanMsPerRun: Seq[Double] = Nil,
+      duckdbFirstMs: Double = -1,
+      engineFirstMs: Double = -1
   ):
     /**
       * The median planning time of the engine runs: model expansion and building the physical
@@ -577,10 +667,85 @@ object EngineTPCHBench extends LogSupport:
     val op      = engine.physicalPlan(GenSQL.expand(q, ctx))
     val planned = System.nanoTime()
     try
-      val rows = op.drain().map(_.size.toLong).sum
+      val rows = readAll(op.drain())
       ((System.nanoTime() - start) / 1000000.0, rows, (planned - start) / 1000000.0)
     finally
       op.close()
+
+  /**
+    * Read every value of every row as a boxed value, as [[countRows]] makes DuckDB's JDBC driver
+    * do, so that both engines pay for handing out the whole result. Returns the row count
+    */
+  def readAll(batches: Seq[Batch]): Long =
+    var rows = 0L
+    var sink = 0L
+    batches.foreach { b =>
+      var c = 0
+      while c < b.numColumns do
+        val v = b.column(c)
+        var i = 0
+        while i < b.size do
+          val x = v.get(i)
+          if x != null then
+            sink += 1
+          i += 1
+        c += 1
+      rows += b.size
+    }
+    // Keep the reads from being optimized away
+    if sink < 0 then
+      rows - 1
+    else
+      rows
+
+  /**
+    * Logs and writes `target/engine-bench/<label>-sf<sf>.env.txt`: the machine, the JVM, the
+    * engine's parallelism, and DuckDB's version and settings for this run
+    */
+  private def logEnvironment(conn: Connection, label: String, opts: BenchOptions): Unit =
+    val duck = Seq.newBuilder[String]
+    val st   = conn.createStatement()
+    try
+      val rs = st.executeQuery(
+        "select 'version', version() union all select name, value from duckdb_settings() " +
+          "where name in ('threads', 'memory_limit', 'preserve_insertion_order', " +
+          "'parquet_metadata_cache', 'enable_external_file_cache', 'temp_directory')"
+      )
+      while rs.next() do
+        duck += s"${rs.getString(1)}=${rs.getString(2)}"
+    finally
+      st.close()
+    val rt    = Runtime.getRuntime
+    val lines = Seq(
+      s"machine: ${sys.props.getOrElse("os.name", "")} ${sys.props.getOrElse("os.arch", "")}, ${rt
+          .availableProcessors()} processors",
+      s"jvm: ${sys.props.getOrElse("java.vm.name", "")} ${sys
+          .props
+          .getOrElse("java.version", "")}, max heap ${rt.maxMemory() / 1048576} MB",
+      s"engine: parallelism ${exec
+          .TaskRunner
+          .configuredParallelism(rt.availableProcessors())}, keys ${opts.keys}, cold ${opts.cold}",
+      s"duckdb: ${duck.result().mkString(", ")}${
+          if opts.duckdbDefaults then
+            " (defaults)"
+          else
+            ""
+        }"
+    )
+    info(lines.mkString("Benchmark environment\n  ", "\n  ", ""))
+    val out = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.env.txt")
+    out.getParentFile.mkdirs()
+    Files.writeString(out.toPath, lines.mkString("", "\n", "\n"))
+
+  end logEnvironment
+
+  /**
+    * A Parquet table with no unique keys, not even a sidecar file's. Only for single files: the
+    * copies a folder's source makes for other scan paths read its sidecar keys again
+    */
+  private class UnkeyedParquetSource(name: String, path: String)
+      extends catalog.ParquetSource(name, path):
+    override def uniqueKeys: Seq[Seq[String]] = Nil
 
   /** Accumulated collection time of the JVM's garbage collectors */
   def gcMillis(): Long =
