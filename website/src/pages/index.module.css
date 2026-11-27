@@ -189,6 +189,21 @@
   to { transform: translateX(-50%); }
 }
 
+/*
+ * In the hero, the ribbon rises from under the text column and runs behind the code windows,
+ * so it reads as data flowing from the query into the generated SQL.
+ */
+.heroWaves {
+  top: 74%;
+  bottom: auto;
+  left: -12%;
+  right: -12%;
+  height: 360px;
+  transform: translateY(-50%) rotate(-10deg);
+  mask-image: linear-gradient(to right, transparent 4%, #000 30%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent 4%, #000 30%, #000 88%, transparent);
+}
+
 .closingPanel .waves {
   height: 300px;
   opacity: 0.7;
@@ -250,7 +265,7 @@
   max-width: 1320px;
   min-height: calc(100svh - var(--ifm-navbar-height));
   margin: 0 auto;
-  padding: 72px clamp(16px, 5vw, 72px) 160px;
+  padding: 72px clamp(16px, 5vw, 72px) 112px;
 }
 
 .brand {
@@ -366,6 +381,113 @@
   text-transform: uppercase;
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.outputWindow > input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tabs label {
+  padding: 3px 10px;
+  border-radius: 6px;
+  color: hsl(190 15% 62%);
+  font: 500 12px var(--mono);
+  cursor: pointer;
+}
+
+.tabs label:hover {
+  color: hsl(190 20% 85%);
+}
+
+:global(#wv-output-result):checked ~ .windowBar .tabResult,
+:global(#wv-output-sql):checked ~ .windowBar .tabSql {
+  background: hsl(0 0% 100% / 0.08);
+  color: hsl(190 25% 92%);
+}
+
+:global(#wv-output-result):focus-visible ~ .windowBar .tabResult,
+:global(#wv-output-sql):focus-visible ~ .windowBar .tabSql {
+  outline: 2px solid hsl(186 85% 60%);
+  outline-offset: 1px;
+}
+
+.badgeSql,
+.panelSql,
+:global(#wv-output-sql):checked ~ .windowBar .badgeResult,
+:global(#wv-output-sql):checked ~ .output .panelResult {
+  display: none;
+}
+
+:global(#wv-output-sql):checked ~ .windowBar .badgeSql,
+:global(#wv-output-sql):checked ~ .output .panelSql {
+  display: block;
+}
+
+/* Same height for both tabs, so switching does not shift the layout. */
+.output {
+  min-height: 200px;
+  overflow-x: auto;
+}
+
+@media (max-width: 600px) {
+  .outputWindow .windowBadge {
+    display: none !important;
+  }
+  .tabs label {
+    white-space: nowrap;
+  }
+}
+
+.resultTable {
+  display: table;
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font: 13px/1.65 var(--mono);
+}
+
+.resultTable thead,
+.resultTable tbody,
+.resultTable tr {
+  background: transparent !important;
+}
+
+.resultTable th,
+.resultTable td {
+  padding: 7px 16px;
+  border: 0;
+  border-bottom: 1px solid hsl(0 0% 100% / 0.07);
+  background: transparent;
+  color: hsl(190 20% 88%);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.resultTable tr {
+  background: transparent !important;
+  border: 0;
+}
+
+.resultTable th {
+  color: hsl(186 85% 62%);
+  font-weight: 500;
+}
+
+.resultTable th:first-child,
+.resultTable td:first-child {
+  text-align: left;
+}
+
+.resultTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 /* ---------- Window frame ---------- */
 
 .window {
@@ -464,12 +586,23 @@
   letter-spacing: -0.02em;
 }
 
+.engineGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 24px;
+}
+
+.engineGroupSql {
+  padding-left: 36px;
+  border-left: 1px solid hsl(var(--line));
+}
+
 .ownEngine {
   display: inline-flex;
   align-items: baseline;
   gap: 10px;
-  padding-left: 36px;
-  border-left: 1px solid hsl(var(--line));
 }
 
 .ownEngine small {
@@ -483,6 +616,8 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
+  }
+  .engineGroupSql {
     padding-left: 0;
     border-left: 0;
   }
@@ -640,7 +775,8 @@
     min-height: auto;
     gap: 40px;
   }
-  .hero { padding-top: 48px; padding-bottom: 140px; }
+  .hero { padding-top: 48px; padding-bottom: 72px; }
+  .heroWaves { top: auto; bottom: -60px; transform: rotate(-8deg); }
   .flow { padding-top: 80px; }
 }
 

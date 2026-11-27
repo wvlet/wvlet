@@ -10,7 +10,7 @@ import GitHubButton from 'react-github-btn';
 import styles from './index.module.css';
 
 const heroQuery = `from orders
-where o_orderdate >= '2024-01-01'
+where o_orderdate >= '1997-01-01'
 group by o_orderpriority
 agg _.count as orders, o_totalprice.sum as revenue
 order by revenue desc
@@ -19,10 +19,19 @@ limit 5`;
 // Output of `wvlet compile` for heroQuery, kept in sync by hand.
 const heroSql = `select o_orderpriority, count(*) as orders, sum(o_totalprice) as revenue
 from orders
-where o_orderdate >= '2024-01-01'
+where o_orderdate >= '1997-01-01'
 group by o_orderpriority
 order by revenue desc
 limit 5`;
+
+// Result of heroQuery on TPC-H scale factor 0.01 (DuckDB dbgen), kept in sync by hand.
+const heroRows: [string, string, string][] = [
+  ['4-NOT SPECIFIED', '781', '109,207,683.80'],
+  ['1-URGENT', '744', '104,483,591.84'],
+  ['3-MEDIUM', '700', '100,134,880.58'],
+  ['2-HIGH', '715', '99,758,813.31'],
+  ['5-LOW', '693', '93,976,264.81'],
+];
 
 const engines = ['DuckDB', 'Trino', 'Snowflake', 'Hive'];
 
@@ -54,10 +63,21 @@ function wavePath(baseline: number, amplitude: number, periods: number, phase: n
   return pts.join(' ');
 }
 
+/** A closed band between two waves, so filled areas have soft wave edges on both sides. */
+function ribbonPath(top: number, bottom: number, amplitude: number, phase: number): string {
+  const upper = wavePath(top, amplitude, 2, phase);
+  const lower: string[] = [];
+  for (let x = WAVE_W * 2; x >= 0; x -= 16) {
+    const y = bottom + amplitude * 0.8 * Math.sin((x / WAVE_W) * 2 * 2 * Math.PI + phase + 0.5);
+    lower.push(`L${x},${y.toFixed(1)}`);
+  }
+  return `${upper} ${lower.join(' ')} Z`;
+}
+
 /** Thin stream lines drifting left at a constant speed, to suggest data flowing through a query. */
-function Waves({lines = 12}: {lines?: number}): React.ReactNode {
+function Waves({lines = 12, className}: {lines?: number; className?: string}): React.ReactNode {
   return (
-    <div className={styles.waves} aria-hidden="true">
+    <div className={clsx(styles.waves, className)} aria-hidden="true">
       <svg viewBox={`0 0 ${WAVE_W * 2} ${WAVE_H}`} preserveAspectRatio="none">
         <defs>
           <linearGradient id="wv-wave" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={WAVE_W * 2} y2="0">
@@ -73,9 +93,9 @@ function Waves({lines = 12}: {lines?: number}): React.ReactNode {
           <path
             key={`band-${i}`}
             className={styles.waveBand}
-            d={`${wavePath(190 + i * 40, 52 - i * 12, 2, 0.4 + i * 0.9)} L${WAVE_W * 2},${WAVE_H} L0,${WAVE_H} Z`}
+            d={ribbonPath(165 + i * 20, 250 + i * 25, 52 - i * 10, 0.3 + i * 0.8)}
             fill="url(#wv-wave)"
-            fillOpacity={0.1 - i * 0.03}
+            fillOpacity={0.12 - i * 0.04}
           />
         ))}
         {Array.from({length: lines}, (_, i) => (
@@ -109,11 +129,66 @@ function Window({title, badge, children}: {title: string; badge?: string; childr
   );
 }
 
+/**
+ * The query's output: its result on the Wvlet engine by default, or the SQL it compiles to.
+ * Tabs are CSS-only radio inputs, so the page needs no client state.
+ */
+function OutputWindow(): React.ReactNode {
+  return (
+    <div className={clsx(styles.window, styles.outputWindow)}>
+      <input type="radio" name="wv-output" id="wv-output-result" defaultChecked />
+      <input type="radio" name="wv-output" id="wv-output-sql" />
+      <div className={styles.windowBar}>
+        <i />
+        <i />
+        <i />
+        <div className={styles.tabs}>
+          <label htmlFor="wv-output-result" className={styles.tabResult}>
+            Result
+          </label>
+          <label htmlFor="wv-output-sql" className={styles.tabSql}>
+            Compiled SQL
+          </label>
+        </div>
+        <span className={clsx(styles.windowBadge, styles.badgeResult)}>wvlet engine · 5 rows</span>
+        <span className={clsx(styles.windowBadge, styles.badgeSql)}>duckdb · trino · snowflake</span>
+      </div>
+      <div className={styles.output}>
+        <div className={styles.panelResult}>
+          <table className={styles.resultTable}>
+            <thead>
+              <tr>
+                <th>o_orderpriority</th>
+                <th>orders</th>
+                <th>revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {heroRows.map(([p, o, r]) => (
+                <tr key={p}>
+                  <td>{p}</td>
+                  <td>{o}</td>
+                  <td>{r}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className={styles.panelSql}>
+          <CodeBlock language="sql" className={styles.code}>
+            {heroSql}
+          </CodeBlock>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HomepageHero(): React.ReactNode {
   return (
     <header className={styles.hero}>
       <Aurora />
-      <Waves />
+      <Waves className={styles.heroWaves} />
       <div className={styles.heroText}>
         <div className={styles.brand}>
           <img
@@ -134,9 +209,10 @@ function HomepageHero(): React.ReactNode {
           <em className={styles.shimmer}>in the order data flows</em>
         </h1>
         <p className={styles.lede}>
-          Wvlet is a cross-SQL, <Link to="/docs/syntax/">flow-style query language</Link> for
-          functional data modeling and interactive data exploration. Start from a table, pipe it
-          through operators, and compile to SQL for DuckDB, Trino, Snowflake, and Hive.
+          Wvlet is a <Link to="/docs/syntax/">flow-style query language</Link> with its own columnar
+          query engine. Start from a table, pipe it through operators, and run it in-process on the
+          JVM, Node.js, web browsers, or as a native binary. Need a warehouse? The same query
+          compiles to SQL for DuckDB, Trino, Snowflake, and Hive.
         </p>
         <div className={styles.ctas}>
           <Link className={clsx(styles.btn, styles.btnSolid)} to="pathname:///playground/">
@@ -165,13 +241,9 @@ function HomepageHero(): React.ReactNode {
           </CodeBlock>
         </Window>
         <div className={styles.compiles} aria-hidden="true">
-          <span>↓</span> compiles to SQL
+          <span>↓</span> runs on the Wvlet engine
         </div>
-        <Window title="revenue.sql" badge="duckdb · trino · snowflake">
-          <CodeBlock language="sql" className={styles.code}>
-            {heroSql}
-          </CodeBlock>
-        </Window>
+        <OutputWindow />
       </div>
     </header>
   );
@@ -179,17 +251,24 @@ function HomepageHero(): React.ReactNode {
 
 function EngineStrip(): React.ReactNode {
   return (
-    <section className={styles.engines} aria-label="Supported engines">
-      <span className={styles.kicker}>Runs on</span>
-      <ul>
-        {engines.map((e) => (
-          <li key={e}>{e}</li>
-        ))}
-        <li className={styles.ownEngine}>
-          Wvlet engine
-          <small>JVM · Node.js · Browser · Native</small>
-        </li>
-      </ul>
+    <section className={styles.engines} aria-label="Where Wvlet runs">
+      <div className={styles.engineGroup}>
+        <span className={styles.kicker}>Built-in engine</span>
+        <ul>
+          <li className={styles.ownEngine}>
+            Wvlet engine
+            <small>JVM · Node.js · Browser · Native</small>
+          </li>
+        </ul>
+      </div>
+      <div className={clsx(styles.engineGroup, styles.engineGroupSql)}>
+        <span className={styles.kicker}>Compiles to SQL for</span>
+        <ul>
+          {engines.map((e) => (
+            <li key={e}>{e}</li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -292,7 +371,7 @@ export default function Home(): React.ReactNode {
   return (
     <Layout
       title={`Flow-Style Query Language`}
-      description="Wvlet is a new cross-SQL flow-style query language">
+      description="Wvlet is a flow-style query language with its own query engine that also compiles to SQL">
       <Head>
         <html className="wvlet-home" />
       </Head>

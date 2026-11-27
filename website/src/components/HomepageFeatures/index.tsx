@@ -17,6 +17,15 @@ const FeatureList: FeatureItem[] = [
       </>
     ),
   },
+    {
+        title: 'Built-in Query Engine',
+        description: (
+            <>
+                Wvlet's built-in columnar query engine runs in-process on the JVM, Node.js, web browsers,
+                and as a native binary, so you can query local data files without setting up a database.
+            </>
+        )
+    },
   {
     title: 'Functional Data Modeling',
     description: (
@@ -46,15 +55,6 @@ const FeatureList: FeatureItem[] = [
           </>
       ),
   },
-    {
-        title: 'Runs Anywhere',
-        description: (
-            <>
-                Wvlet's built-in columnar query engine runs in-process on the JVM, Node.js, web browsers,
-                and as a native binary, so you can query local data files without setting up a database.
-            </>
-        )
-    },
     {
         title: 'Free and Open Source',
         description: (
