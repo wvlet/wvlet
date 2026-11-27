@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.catalog
 
+import wvlet.lang.api.StatusCode
 import wvlet.lang.engine.vector.*
 import wvlet.uni.cloud.parquet.ParquetDataset
 import wvlet.uni.cloud.parquet.ParquetFile
@@ -79,12 +80,32 @@ private[catalog] final class ParquetFolder(
 
   def close(): Unit = dataset.close()
 
-  /** A partitioned or schema-evolved folder's scans don't take a row filter yet */
+  /** A schema-evolved folder's scans don't take a row filter yet */
   def rowFilters: Boolean = !listing.isPartitioned && !evolved
 
-  /** A plain folder's files, each read as a single file */
+  /**
+    * Whether the scans of a partitioned folder (not schema-evolved) may take a row filter, its
+    * partition-key conjuncts decided by each file's values (`partition_row_filters`)
+    */
+  def partitionRowFilters: Boolean = listing.isPartitioned && !evolved
+
+  /**
+    * A plain folder's files, each read as a single file; a partitioned folder's files when `spec`
+    * has a row filter, read one row group after another as [[scanSplits]] splits them
+    */
   override def scanFiles(spec: ScanSpec): Option[Iterator[Batch]] =
-    Option.when(!listing.isPartitioned && !evolved)(files.iterator.flatMap(_.scan(spec)))
+    if !listing.isPartitioned && !evolved then
+      Some(files.iterator.flatMap(_.scan(spec)))
+    else if partitionRowFilters && spec.rowFilter.isDefined then
+      Some(
+        partitionSplits(spec) match
+          case Some(s) =>
+            ParquetSource.closing(s.parts.iterator.flatMap(_()), s.close)
+          case None =>
+            Iterator.empty
+      )
+    else
+      None
 
   /** The sum of the files' row counts */
   lazy val estimatedRows: Option[Long] = all(files.map(_.estimatedRows)).map(_.sum)
@@ -169,7 +190,7 @@ private[catalog] final class ParquetFolder(
     */
   def scanSplits(spec: ScanSpec): Option[ScanSplits] =
     if listing.isPartitioned || evolved then
-      partitionSplits(spec)
+      partitionSplits(spec).filter(_.parts.size > 1)
     else
       fileSplits(spec)
 
@@ -178,7 +199,9 @@ private[catalog] final class ParquetFolder(
     * filters' partition values (and the files' statistics) don't skip. Each file is read as a
     * single file of the columns it holds, without the filters' conjuncts on partition keys or on
     * columns it lacks; its partition values are added as constant columns, and the columns it lacks
-    * as NULLs
+    * as NULLs. The row filter's conjuncts on partition keys are decided by each file's values
+    * ([[ParquetFolder.decideKeys]]): a file they reject is skipped, and the file reads the rest.
+    * None when no row group is left
     */
   private def partitionSplits(spec: ScanSpec): Option[ScanSplits] =
     val keys    = listing.keys
@@ -190,23 +213,40 @@ private[catalog] final class ParquetFolder(
       else
         listing.files.map(_._1).toSet
     val keySet = keys.toSet
-    // Each file's columns read, and its spec
-    def fileSpec(i: Int): ScanSpec =
+    // Each file's columns read, and its spec with the rest of the row filter `rf`. A row filter's
+    // columns may be outside the scan's: a file reading no output column then reads the columns its
+    // row filter tests, which the output leaves out
+    def fileSpec(i: Int, rf: Option[ParquetFilter]): ScanSpec =
       val skipped = keySet ++ missing(i)
+      val read    = cols.filterNot(skipped)
       spec.copy(
-        columns = Some(cols.filterNot(skipped)),
+        columns = Some(
+          if read.nonEmpty then
+            read
+          else
+            rf.toSeq.flatMap(_.columnNames).distinct
+        ),
         filter = spec.filter.flatMap(ParquetFolder.withoutColumns(_, skipped)),
-        rowFilter = None
+        rowFilter = rf
       )
+    // Files whose partition values reject the row filter are left out
+    def decided(i: Int): Option[Option[ParquetFilter]] =
+      spec.rowFilter match
+        case None =>
+          Some(None)
+        case Some(f) =>
+          require(!evolved, "A schema-evolved folder takes no row filter")
+          ParquetFolder.decideKeys(f, partitionValue(i, _))
     val selected = files
       .indices
       .filter(i => chosen(listing.files(i)._1))
-      .map { i =>
-        val fs = fileSpec(i)
+      .flatMap(i => decided(i).map(i -> _))
+      .map { (i, rf) =>
+        val fs = fileSpec(i, rf)
         (i, fs, files(i).selectedRowGroups(fs))
       }
       .filter(_._3.nonEmpty)
-    if selected.map(_._3.size).sum <= 1 then
+    if selected.isEmpty then
       None
     else
       val types = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
@@ -259,6 +299,11 @@ private[catalog] final class ParquetFolder(
     end if
 
   end partitionSplits
+
+  /** File i's value of `column` when it is a partition key (null for the default partition) */
+  private def partitionValue(i: Int, column: String): Option[Any] =
+    val k = listing.keys.indexOf(column)
+    Option.when(k >= 0)(listing.values(i)(k))
 
   /** One part per row group of every file of a plain folder that `spec` doesn't skip */
   private def fileSplits(spec: ScanSpec): Option[ScanSplits] =
@@ -436,6 +481,116 @@ private[catalog] object ParquetFolder:
             x.orElse(y)
       case other =>
         Option.when(!other.columnNames.exists(columns))(other)
+
+  /**
+    * Row filter `f` for one file of a partitioned folder, with its leaves on partition keys decided
+    * by the file's values (`value(column)`, Some for a partition key, its value null for the
+    * default partition): None when no row of the file passes, Some(None) when every row does, and
+    * otherwise the rest of the filter over the file's columns. A leaf is TRUE only for a non-null
+    * value that it accepts, as the row filter tests a row's values
+    */
+  def decideKeys(f: ParquetFilter, value: String => Option[Any]): Option[Option[ParquetFilter]] =
+    decide(f, value) match
+      case Decided.True =>
+        Some(None)
+      case Decided.False =>
+        None
+      case Decided.Rest(r) =>
+        Some(Some(r))
+
+  private enum Decided:
+    case True
+    case False
+    case Rest(f: ParquetFilter)
+
+  private def decide(f: ParquetFilter, value: String => Option[Any]): Decided =
+    inline def of(b: Boolean): Decided =
+      if b then
+        Decided.True
+      else
+        Decided.False
+    def leaf(column: String)(test: Any => Boolean): Decided =
+      value(column) match
+        case Some(v) =>
+          of(test(v))
+        case None =>
+          Decided.Rest(f)
+    f match
+      case ParquetFilter.And(a, b) =>
+        (decide(a, value), decide(b, value)) match
+          case (Decided.False, _) | (_, Decided.False) =>
+            Decided.False
+          case (Decided.True, y) =>
+            y
+          case (x, Decided.True) =>
+            x
+          case (Decided.Rest(x), Decided.Rest(y)) =>
+            Decided.Rest(x && y)
+      case ParquetFilter.Or(a, b) =>
+        (decide(a, value), decide(b, value)) match
+          case (Decided.True, _) | (_, Decided.True) =>
+            Decided.True
+          case (Decided.False, y) =>
+            y
+          case (x, Decided.False) =>
+            x
+          case (Decided.Rest(x), Decided.Rest(y)) =>
+            Decided.Rest(x || y)
+      case ParquetFilter.IsNull(c) =>
+        leaf(c)(_ == null)
+      case ParquetFilter.IsNotNull(c) =>
+        leaf(c)(_ != null)
+      case ParquetFilter.In(c, set) =>
+        leaf(c)(v => v != null && set.contains(partitionLong(v, f)))
+      case ParquetFilter.Compare(c, op, k) =>
+        leaf(c) { v =>
+          v != null && {
+            val cmp =
+              (v, k) match
+                case (d: java.time.LocalDate, e: java.time.LocalDate) =>
+                  d.compareTo(e)
+                case (s: String, t: String) if op == ParquetFilter.Op.Eq =>
+                  if s == t then
+                    0
+                  else
+                    1
+                case (_, _: Long | _: Int) =>
+                  java.lang.Long.compare(partitionLong(v, f), ValueOps.toLong(k))
+                case _ =>
+                  undecidable(f)
+            op match
+              case ParquetFilter.Op.Eq =>
+                cmp == 0
+              case ParquetFilter.Op.Lt =>
+                cmp < 0
+              case ParquetFilter.Op.LtEq =>
+                cmp <= 0
+              case ParquetFilter.Op.Gt =>
+                cmp > 0
+              case ParquetFilter.Op.GtEq =>
+                cmp >= 0
+          }
+        }
+    end match
+
+  end decide
+
+  /** A non-null integer or date partition value as a Long (a date as its epoch day) */
+  private def partitionLong(v: Any, f: ParquetFilter): Long =
+    v match
+      case i: Int =>
+        i.toLong
+      case l: Long =>
+        l
+      case d: java.time.LocalDate =>
+        d.toEpochDay
+      case _ =>
+        undecidable(f)
+
+  private def undecidable(f: ParquetFilter): Nothing =
+    throw StatusCode
+      .NOT_IMPLEMENTED
+      .newException(s"A row filter on a partition key can't be decided by its values: ${f}")
 
   /** Whether partition value `v` (null for the default partition) is one of type `t` */
   private def hasType(v: Any, t: PType): Boolean =

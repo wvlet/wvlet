@@ -247,6 +247,11 @@ object ReorderJoins extends Pass:
       options
     )
 
+    override def partitionKey(input: RuntimePlan, side: BExpr): Boolean = Stats.partitionKey(
+      input,
+      side.expr
+    )
+
     override def keyCoverage(input: RuntimePlan, sides: Seq[BExpr]): KeyCoverage =
       if options.isEnabled(Optimization.KeyJoinEstimates) then
         Stats.keyCoverage(input, sides.map(_.expr))

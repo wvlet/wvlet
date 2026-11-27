@@ -155,6 +155,29 @@ object Stats:
   )
 
   /**
+    * Whether expression `e` over p is a column of a scan that skips the parts holding no key of a
+    * join filter (`key_set_row_groups`), with at least two parts, each holding one value of it: a
+    * Hive partition key, or a column constant in each row group
+    */
+  def partitionKey(p: RuntimePlan, e: VExpr): Boolean =
+    e match
+      case c: ColRef =>
+        sourceStat(
+          p,
+          ColumnId(c.index),
+          (s, i) =>
+            Option.when(
+              s.source.supportsKeySetRowGroups &&
+                s.source
+                  .partRanges(s.sourceColumnName(i))
+                  .exists(ps => ps.size > 1 && ps.forall(r => r.min == r.max))
+            )(true),
+          (_, _) => None
+        ).getOrElse(false)
+      case _ =>
+        false
+
+  /**
     * A statistic of the source column that column `id` of p reads: `scan` of a scan's column, `cte`
     * of a shared CTE result column, traced through filters, samples, plain projections and hash
     * joins

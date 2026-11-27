@@ -27,13 +27,17 @@ import scala.collection.mutable.ListBuffer
   * from its input), and the plan of the winning tree alone is built. The cost of a tree is the sum
   * over its joins of the output rows (C_out), the build rows, and the build rows again when the
   * build side is itself a join, as that breaks the probe pipeline; so left-deep probe chains win
-  * ties.
+  * ties. With `partition_probe_scan_cost`, a join whose build keys skip parts of a probe scan (each
+  * holding one key value) is credited with the rows the scan no longer reads.
   */
 class JoinEnumerator(options: OptimizerOptions):
   import JoinEnumerator.*
 
   private val probeScanCost     = options.isEnabled(Optimization.ProbeScanCost)
   private val joinProbeScanCost = probeScanCost && options.isEnabled(Optimization.JoinProbeScanCost)
+  private val partitionCost     =
+    options.isEnabled(Optimization.PartitionProbeScanCost) &&
+      options.isEnabled(Optimization.KeySetRowGroups)
 
   /**
     * The cheapest join tree and the conditions left to apply over it (those reading no input), or
@@ -51,7 +55,7 @@ class JoinEnumerator(options: OptimizerOptions):
     if n < 2 || n > MaxInputs then
       None
     else
-      val (edges, groups) = keyGroups(g, search, analyze(g, search))
+      val (edges, groups) = keyGroups(g, search, analyze(g, search, partitionCost))
       val full            = (1 << n) - 1
       solve(g, edges, groups).map(dp =>
         (build(g, search, edges, dp, full), constants(g), dp.rows(full))
@@ -69,6 +73,8 @@ class JoinEnumerator(options: OptimizerOptions):
     for i <- 0 until n do
       dp.rows(1 << i) = g.rows(i)
       dp.planned(1 << i) = true
+    if partitionCost && edges.exists(e => e.leftPartition || e.rightPartition) then
+      dp.readShares(n)
     var pairs = 0
     var s     = 3
     while s <= full && pairs <= PairBudget do
@@ -146,20 +152,28 @@ class JoinEnumerator(options: OptimizerOptions):
     val all2 = IndexedSeq.newBuilder[Option[Double]]
     val ins1 = IndexedSeq.newBuilder[Int]
     val ins2 = IndexedSeq.newBuilder[Int]
+    // Whether each key's side reads a partition key of its input, for the partition credit
+    val part1    = IndexedSeq.newBuilder[Boolean]
+    val part2    = IndexedSeq.newBuilder[Boolean]
+    val partCost = dp.share != null
     edges.foreach { e =>
       val placement = e.placement(s1, s2)
-      if probeScanCost then
+      if probeScanCost || partCost then
         placement match
           case Placement.Key =>
             all1 += e.leftDistinct
             all2 += e.rightDistinct
             ins1 += e.leftInput
             ins2 += single(e.right)
+            part1 += e.leftPartition
+            part2 += e.rightPartition
           case Placement.SwappedKey =>
             all1 += e.rightDistinct
             all2 += e.leftDistinct
             ins1 += single(e.right)
             ins2 += e.leftInput
+            part1 += e.rightPartition
+            part2 += e.leftPartition
           case _ =>
       placement match
         case Placement.Key | Placement.SwappedKey
@@ -187,11 +201,15 @@ class JoinEnumerator(options: OptimizerOptions):
       )
       if filters > 0 then
         out = math.max(1.0, out * math.pow(CardinalityEstimator.DefaultSelectivity, filters))
-      val base                                  = dp.cost(s1) + dp.cost(s2) + out
-      lazy val ad1                              = all1.result()
-      lazy val ad2                              = all2.result()
-      lazy val in1                              = ins1.result()
-      lazy val in2                              = ins2.result()
+      val base     = dp.cost(s1) + dp.cost(s2) + out
+      lazy val ad1 = all1.result()
+      lazy val ad2 = all2.result()
+      lazy val in1 = ins1.result()
+      lazy val in2 = ins2.result()
+      lazy val pt1 = part1.result()
+      lazy val pt2 = part2.result()
+      // The read shares of the inputs of s for the plan being costed
+      lazy val shares                           = Array.ofDim[Double](dp.inputs)
       def consider(left: Int, right: Int): Unit =
         val buildLeft = JoinOrderOptimizer.swapBuild(options, dp.rows(right), dp.rows(left))
         val build     =
@@ -235,10 +253,34 @@ class JoinEnumerator(options: OptimizerOptions):
             0.0
           end if
         end probeScan
-        val cost = base + buildRows + pipelineBreak + probeScan
+        val partitionCredit =
+          if partCost then
+            val (probeDistinct, buildDistinct, probeInputs, buildInputs, probeParts) =
+              if probe == s1 then
+                (ad1, ad2, in1, in2, pt1)
+              else
+                (ad2, ad1, in2, in1, pt2)
+            partitionReads(
+              dp,
+              s1,
+              s2,
+              probe,
+              build,
+              probeDistinct,
+              buildDistinct,
+              probeInputs,
+              buildInputs,
+              probeParts,
+              shares
+            )
+          else
+            0.0
+        val cost = base + buildRows + pipelineBreak + probeScan + partitionCredit
         if !dp.planned(s) || cost < dp.cost(s) then
           dp.planned(s) = true
           dp.cost(s) = cost
+          if partCost then
+            System.arraycopy(shares, 0, dp.share, s * dp.inputs, dp.inputs)
           dp.rows(s) = out
           dp.left(s) = left
           dp.right(s) = right
@@ -250,6 +292,76 @@ class JoinEnumerator(options: OptimizerOptions):
     keys > 0
 
   end emit
+
+  /**
+    * The change in rows read by the probe scans of a join of s1 and s2 building on `build`
+    * (`partition_probe_scan_cost`; at most 0.0), with the read shares of the inputs of the union
+    * written to `shares`: a key whose probe side reads a partition key of one input on the probe
+    * pipeline of `probe` (where the build's join filter reaches the scan) keeps the build keys'
+    * share of its values ([[passRate]] of that key alone) of the input's rows, and an input keeps
+    * the smallest share of its keys
+    */
+  private def partitionReads(
+      dp: Table,
+      s1: Int,
+      s2: Int,
+      probe: Int,
+      build: Int,
+      probeDistinct: IndexedSeq[Option[Double]],
+      buildDistinct: IndexedSeq[Option[Double]],
+      probeInputs: IndexedSeq[Int],
+      buildInputs: IndexedSeq[Int],
+      probeParts: IndexedSeq[Boolean],
+      shares: Array[Double]
+  ): Double =
+    val n = dp.inputs
+    var i = 0
+    while i < n do
+      val from =
+        if within(1 << i, s1) then
+          s1
+        else
+          s2
+      shares(i) =
+        if within(1 << i, s1 | s2) then
+          dp.share(from * n + i)
+        else
+          1.0
+      i += 1
+    var credit = 0.0
+    var k      = 0
+    while k < probeDistinct.size do
+      val in = probeInputs(k)
+      if probeParts(k) && in >= 0 && onProbePipeline(dp, probe, in) then
+        for
+          p <- probeDistinct(k)
+          b <- buildDistinct(k)
+        do
+          val keys  = math.min(b, pathRows(dp, build, buildInputs(k)))
+          val share = math.min(1.0, math.min(keys, dp.rows(build)) / math.max(p, 1.0))
+          if share < shares(in) then
+            credit += dp.rows(1 << in) * (share - shares(in))
+            shares(in) = share
+      k += 1
+    credit
+
+  end partitionReads
+
+  /**
+    * Whether input i is read by the probe pipeline of the best tree of input set s: s itself, or on
+    * the probe side of each join down to it, so that the join filters of builds over s reach it
+    */
+  private def onProbePipeline(dp: Table, s: Int, i: Int): Boolean =
+    var t  = s
+    var ok = within(1 << i, s)
+    while ok && Integer.bitCount(t) > 1 do
+      t =
+        if dp.buildLeft(t) then
+          dp.right(t)
+        else
+          dp.left(t)
+      ok = within(1 << i, t)
+    ok
 
   /**
     * The fewest rows of the joins in the best tree of input set s that hold input i, down to i
@@ -352,6 +464,21 @@ object JoinEnumerator:
     val right: Array[Int]         = Array.ofDim(size)
     val buildLeft: Array[Boolean] = Array.ofDim(size)
 
+    /** Inputs of the graph, with [[share]] */
+    var inputs: Int = 0
+
+    /**
+      * The share of each input's rows that the scans of the best tree of each set read
+      * (`partition_probe_scan_cost`), by set * [[inputs]] + input; null when no key is a partition
+      * key
+      */
+    var share: Array[Double] = null
+
+    /** Allocate [[share]] for n inputs, every input read whole */
+    def readShares(n: Int): Unit =
+      inputs = n
+      share = Array.fill(size * n)(1.0)
+
   /**
     * A condition as input bitsets: an equality between disjoint input sets (left and right) with
     * the distinct counts of its sides, or another condition over `refs`
@@ -363,7 +490,9 @@ object JoinEnumerator:
       leftDistinct: Option[Double],
       rightDistinct: Option[Double],
       leftInput: Int = -1,
-      group: Int = -1
+      group: Int = -1,
+      leftPartition: Boolean = false,
+      rightPartition: Boolean = false
   ):
     private def isEqui: Boolean = left != 0
 
@@ -469,12 +598,22 @@ object JoinEnumerator:
 
   end keyGroups
 
-  private def analyze[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): IndexedSeq[Edge] =
+  /**
+    * The edges of g with their sides' distinct counts and, with `partitions`, whether each side
+    * reads a partition key of its input ([[JoinSearch.partitionKey]])
+    */
+  private def analyze[P, C, K](
+      g: JoinGraph[P, C],
+      search: JoinSearch[P, C, K],
+      partitions: Boolean
+  ): IndexedSeq[Edge] =
     def distinct(side: C, refs: Set[Int]): Option[Double] =
       if refs.size == 1 then
         search.distinct(g.inputs(refs.head), side)
       else
         None
+    def partition(side: C, refs: Set[Int]): Boolean =
+      partitions && refs.size == 1 && search.partitionKey(g.inputs(refs.head), side)
     g.edges
       .map { e =>
         val refs = mask(e.refs)
@@ -489,7 +628,9 @@ object JoinEnumerator:
                 b,
                 distinct(sd.left, sd.leftRefs),
                 distinct(sd.right, sd.rightRefs),
-                leftInput = single(a)
+                leftInput = single(a),
+                leftPartition = partition(sd.left, sd.leftRefs),
+                rightPartition = partition(sd.right, sd.rightRefs)
               )
             else
               Edge(refs, 0, 0, None, None)
@@ -497,5 +638,7 @@ object JoinEnumerator:
             Edge(refs, 0, 0, None, None)
       }
       .toIndexedSeq
+
+  end analyze
 
 end JoinEnumerator

@@ -44,7 +44,7 @@ wvlet run --profile local-engine "from orders join customer on o_custkey = c_cus
 
 Relative paths resolve against the working folder. The compiler sees the schemas of Parquet and Iceberg tables (read from file footers), so their column names are checked as for other engines. JSON and CSV tables are read only when a query scans them.
 
-A folder of Parquet files may hold Hive partitions (`key=value/` sub-folders, as DuckDB's `COPY ... (partition_by ...)` writes them). The partition keys become columns after the files' columns. A key whose values are all integers is a `long` column, and one whose values are all `yyyy-MM-dd` dates is a `date` column, as DuckDB types them; other keys are strings, and `__HIVE_DEFAULT_PARTITION__` is NULL. A filter or a join on a partition key reads only the matching partitions.
+A folder of Parquet files may hold Hive partitions (`key=value/` sub-folders, as DuckDB's `COPY ... (partition_by ...)` writes them). The partition keys become columns after the files' columns. A key whose values are all integers is a `long` column, and one whose values are all `yyyy-MM-dd` dates is a `date` column, as DuckDB types them; other keys are strings, and `__HIVE_DEFAULT_PARTITION__` is NULL. A filter or a join on a partition key reads only the matching partitions. Join order counts the partitions a join on the key skips, so a small filtered dimension joined on a partition key filters the partitioned table early.
 
 A folder's files may hold only some of its columns (columns added later, with the same types): a file without a column reads it as NULL. Local folders and Iceberg tables are read file by file in parallel, and an Iceberg table's manifest statistics skip the data files a filter excludes.
 

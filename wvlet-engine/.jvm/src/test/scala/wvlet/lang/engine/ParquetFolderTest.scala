@@ -211,8 +211,9 @@ class ParquetFolderTest extends UniTest:
     src.schema.fields.last.name shouldBe "p"
     src.schema.fields.last.ptype shouldBe PType.Int64
     src.canSplit shouldBe true
-    // uni's dataset reader tests a partitioned folder's row filter after decoding
-    src.supportsRowFilter shouldBe false
+    // Each file decides the row filter's partition-key conjuncts (`partition_row_filters`)
+    src.supportsRowFilter shouldBe true
+    src.withoutPartitionRowFilters.supportsRowFilter shouldBe false
     src.estimatedRows shouldBe Some(17408L)
     src.columnRange("p") shouldBe Some((0L, 3L))
     src.partRanges("p") shouldBe Some((0 until 4).map(i => ColumnPartRange(i, i, 4096)))
@@ -251,6 +252,30 @@ class ParquetFolderTest extends UniTest:
         .toSet shouldBe Set(1L, 3L)
     finally
       splits.close()
+  }
+
+  test("decide a row filter's partition-key conjuncts by each file's values") {
+    val src = ParquetSource("t", partitioned)
+    val p   = ParquetFilter.col("p")
+    val id  = ParquetFilter.col("id")
+    def read(f: ParquetFilter, cols: Seq[String] = Seq("id", "p")): Seq[(Any, Any)] =
+      src
+        .scan(ScanSpec(Some(cols), rowFilter = Some(f)))
+        .flatMap(b =>
+          (0 until b.size).map(i => (b.column(0).get(i), b.column(cols.size - 1).get(i)))
+        )
+        .toSeq
+    // Files of other partition values are skipped, and the rest reads only the ids below 4200
+    read(p === 1L && id < 4200L).map(_._1) shouldBe (4096L until 4200L)
+    // A disjunction over a partition key and a file column: p = 3, or ids below 10 in any file
+    read(p === 3L || id < 10L).map(_._1).sortBy(_.asInstanceOf[Long]) shouldBe
+      (0L until 10L) ++
+      (12288L until 16384L)
+    // The default partition holds the NULL values; a key set never keeps them
+    read(p.isNull && id < 16400L).map(_._2) shouldBe Seq.fill(16)(null)
+    read(p.isIn(0L, 2L)).size shouldBe 8192
+    // Only partition keys: the files still read the ids their row filters test
+    read(p >= 2L && id < 8200L, Seq("p")).size shouldBe 8
   }
 
   test("type date partitions as dates and keep other strings") {
@@ -300,12 +325,17 @@ class ParquetFolderTest extends UniTest:
       s"from '${partitioned}' where p >= 1 group by p select p, count(*)",
       s"""from '${partitioned}' as a
          |join { from '${folder}' where id % 4096 = 7 select (id / 4096)::bigint as bp } on a.p = bp
-         |select count(*), sum(a.id)""".stripMargin
+         |select count(*), sum(a.id)""".stripMargin,
+      s"from '${partitioned}' where (p = 1 and id < 4200) or mode = 'm2' select count(*), sum(id)",
+      s"from '${partitioned}' where p is null and k = 3 select count(*), sum(id)",
+      s"from '${partitioned}' where p >= 2 and id % 3 = 0 group by p select p, count(*)"
     )
+    val noRowFilters = on.withOptimizer(options.withDisabled(Optimization.PartitionRowFilters))
     (queries ++ partitionQueries).foreach { q =>
       val r = rows(on, q)
       r.nonEmpty shouldBe true
       r shouldBe rows(off, q)
+      r shouldBe rows(noRowFilters, q)
     }
   }
 
