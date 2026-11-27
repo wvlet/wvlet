@@ -130,6 +130,13 @@ enum GpuFeature(val featureName: String):
     */
   case AstFilters extends GpuFeature("ast_filters")
 
+  /**
+    * Run a read of a shared CTE (`CTERef`) as the CTE's body. The CPU computes a CTE once for all
+    * its readers; on the GPU each reader recomputes it from the cached columns instead (the
+    * filtered scans TPC-H q15 and q22 share between a plan-time subquery and the main query)
+    */
+  case InlineCTEs extends GpuFeature("inline_ctes")
+
 end GpuFeature
 
 object GpuFeature:
