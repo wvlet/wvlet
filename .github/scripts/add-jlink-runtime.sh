@@ -9,10 +9,11 @@
 set -euo pipefail
 
 # JDK modules of the lite CLI. java.desktop is required only by the PostgreSQL driver
-# (java.beans); jdk.charsets and jdk.zipfs are loaded as services, which jdeps does not report.
+# (java.beans), and jdk.jfr by Netty's JFR events; jdk.charsets and jdk.zipfs are loaded as
+# services, which jdeps does not report.
 MODULES="java.base,java.desktop,java.logging,java.management,java.naming,java.net.http"
-MODULES="${MODULES},java.security.jgss,java.sql,java.transaction.xa,java.xml,jdk.unsupported"
-MODULES="${MODULES},jdk.charsets,jdk.zipfs"
+MODULES="${MODULES},java.security.jgss,java.sql,java.transaction.xa,java.xml,jdk.jfr"
+MODULES="${MODULES},jdk.unsupported,jdk.charsets,jdk.zipfs"
 
 if [ $# -ne 2 ]; then
   echo "usage: $0 <wvlet-cli-<version>.tar.gz> <output.tar.gz>" >&2
@@ -36,7 +37,8 @@ java_feature=$("${JAVA_HOME}/bin/java" -XshowSettings:properties -version 2>&1 |
   awk -F' = ' '/java.specification.version/ { print $2 }')
 echo "Linking the runtime from ${JAVA_HOME} (Java ${java_feature})"
 
-work=$(mktemp -d)
+# Resolve symlinks (macOS /var -> /private/var) so that the java.home check below matches
+work=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "${work}"' EXIT
 tar -xzf "${input}" -C "${work}"
 pack_name=$(ls "${work}")
@@ -48,16 +50,28 @@ fi
 
 # Fail when a jar needs a JDK module that the runtime leaves out, so that a new dependency breaks
 # this build instead of failing with NoClassDefFoundError on a user's machine
-missing=""
+# jdeps prints "<jar or module> -> <module>" per dependency; a jdeps error fails this assignment
+# (set -e). Modular jars (Arrow) require other jars by module name, so pass them on a module path.
+# Scala jars (*_3-*.jar) stay off it: "_3" makes an invalid automatic module name, and no module
+# requires them.
+modules_dir="${work}/module-path"
+mkdir "${modules_dir}"
 for jar in "${pack}"/lib/*.jar; do
-  for module in $("${JAVA_HOME}/bin/jdeps" --ignore-missing-deps --multi-release "${java_feature}" \
-    -summary -q "${jar}" 2>/dev/null | awk '{ print $3 }' | grep -E '^(java|jdk)\.' | sort -u); do
-    case ",${MODULES}," in
-      *",${module},"*) ;;
-      *) missing="${missing}  $(basename "${jar}") -> ${module}"$'\n' ;;
-    esac
-  done
+  case "$(basename "${jar}")" in
+    *_3-*) ;;
+    *) ln -s "${jar}" "${modules_dir}/" ;;
+  esac
 done
+deps=$("${JAVA_HOME}/bin/jdeps" --ignore-missing-deps --multi-release "${java_feature}" \
+  --module-path "${modules_dir}" -summary -q "${pack}"/lib/*.jar)
+missing=""
+while read -r source _ module; do
+  case "${module}" in java.* | jdk.*) ;; *) continue ;; esac
+  case ",${MODULES}," in
+    *",${module},"*) ;;
+    *) missing="${missing}  ${source} -> ${module}"$'\n' ;;
+  esac
+done <<< "${deps}"
 if [ -n "${missing}" ]; then
   echo "error: JDK modules missing from MODULES in $0:" >&2
   printf '%s' "${missing}" >&2
@@ -67,18 +81,25 @@ fi
 "${JAVA_HOME}/bin/jlink" --add-modules "${MODULES}" --strip-debug --no-man-pages \
   --no-header-files --output "${pack}/runtime"
 
-# Smoke test: with an unusable JAVA_HOME, the launcher must run the bundled runtime
-result=$(cd "${work}" && JAVA_HOME=/nonexistent "${pack}/bin/wvlet" run \
-  -c 'from [[1],[2]] as t(x) select x * 2 as y' 2>&1) || {
+# Smoke test: the launcher must run the bundled runtime even when JAVA_HOME and PATH name
+# another JDK. -XshowSettings:properties prints java.home before the query runs.
+result=$(cd "${work}" && JAVA_HOME=/nonexistent JAVA_OPTS=-XshowSettings:properties \
+  "${pack}/bin/wvlet" run -c 'from [[1],[2]] as t(x) select x * 2 as y' 2>&1) || {
   echo "${result}" >&2
   echo "error: the smoke query failed on the bundled runtime" >&2
   exit 1
 }
+if ! echo "${result}" | grep -q "java.home = ${pack}/runtime\$"; then
+  echo "${result}" | grep 'java.home' >&2 || true
+  echo "error: the launcher did not run the bundled runtime" >&2
+  exit 1
+fi
 if ! echo "${result}" | grep -q '│ *4 │'; then
   echo "${result}" >&2
   echo "error: unexpected smoke query result" >&2
   exit 1
 fi
 
-tar -czf "${output}" -C "${work}" "${pack_name}"
+# COPYFILE_DISABLE keeps macOS tar from adding ._* AppleDouble entries
+COPYFILE_DISABLE=1 tar -czf "${output}" -C "${work}" "${pack_name}"
 echo "Wrote ${output} ($(du -h "${output}" | cut -f1); runtime $(du -sh "${pack}/runtime" | cut -f1))"

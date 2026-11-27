@@ -24,7 +24,7 @@ Every `v*` tag uploads these packages to the GitHub release (`.github/workflows/
 - `wvlet-cli-<version>-<platform>.tar.gz` for `macos-arm64`, `macos-x64`, `linux-x64`, `linux-arm64`: the lite package plus a jlink'd Java 25 runtime in `runtime/` (about 95 MB in all). Homebrew installs these, so its formula needs no `openjdk` dependency, whose GUI libraries made up most of the install and upgrade time.
 - `.github/scripts/add-jlink-runtime.sh` builds a platform package from the portable one. It runs on each target platform's own runner (the `platform_packages` matrix), so every runtime is smoke-tested where it runs. It holds the runtime's JDK module list.
 - The script fails when jdeps finds a jar that needs a JDK module outside that list. The Scala.js job of `test.yml` runs it on every PR, so a new dependency that needs another module fails CI; add the module to the list.
-- `build.sbt` (`useBundledRuntime`) patches the sbt-pack launchers to prefer `$PROG_HOME/runtime` over `JAVA_HOME` and `PATH`. sbt-pack's macOS branch runs the first `java` on `PATH`, so the runtime goes first on `PATH` as well.
+- `build.sbt` (`useBundledRuntime`) patches the sbt-pack launchers to prefer `$PROG_HOME/runtime` over `JAVA_HOME` and `PATH`. The patch sets `JAVACMD` right before the launcher checks it, because sbt-pack's macOS branch sets `JAVACMD` to the first `java` on `PATH` and ignores `JAVA_HOME`. The script's smoke test checks `java.home`, so a launcher that falls back to another JDK fails the build.
 - The homebrew job waits for every platform package before opening the formula PR in wvlet/homebrew-wvlet.
 
 ## Maven artifacts

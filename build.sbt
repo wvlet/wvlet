@@ -446,14 +446,15 @@ def nativeCrossProject(
 val packQuick = taskKey[Unit]("Run pack task quickly for faster development")
 
 // Lets the sbt-pack launchers run the Java runtime that the per-platform CLI packages bundle in
-// runtime/ (.github/scripts/add-jlink-runtime.sh). sbt-pack's macOS branch runs the first java on
-// PATH and ignores JAVA_HOME, so the runtime goes first on PATH too. See design/releasing.md
+// runtime/ (.github/scripts/add-jlink-runtime.sh). It goes right before the launcher checks
+// JAVACMD, after sbt-pack's macOS branch has set JAVACMD to the first java on PATH, so it wins
+// over JAVA_HOME and PATH without changing the PATH that child processes see.
+// See design/releasing.md
 val bundledRuntimeLauncherSnippet =
   """# Prefer the Java runtime bundled in the per-platform packages (runtime/)
     |if [ -x "$PROG_HOME/runtime/bin/java" ] ; then
     |  JAVA_HOME="$PROG_HOME/runtime"
     |  JAVACMD="$JAVA_HOME/bin/java"
-    |  PATH="$JAVA_HOME/bin:$PATH"
     |  export JAVA_HOME
     |fi
     |
@@ -463,10 +464,10 @@ def useBundledRuntime(packDir: File, launchers: Iterable[String]): Unit = launch
   name =>
     val script = packDir / "bin" / name
     val text   = IO.read(script)
-    val marker = "\ncygwin=false\n"
+    val marker = "\nif [ ! -x \"$JAVACMD\" ] ; then\n"
     if !text.contains(bundledRuntimeLauncherSnippet) then
       require(text.contains(marker), s"sbt-pack launcher layout changed: ${script}")
-      IO.write(script, text.replace(marker, s"\n${bundledRuntimeLauncherSnippet}cygwin=false\n"))
+      IO.write(script, text.replace(marker, s"\n${bundledRuntimeLauncherSnippet}${marker.drop(1)}"))
 }
 
 // Pack settings shared by the lite (cli) and full (cliFull) JVM CLI distributions

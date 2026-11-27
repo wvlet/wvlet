@@ -8,9 +8,9 @@
 ## Background
 
 - The formula in wvlet/homebrew-wvlet has `depends_on "openjdk@25"`. Homebrew's openjdk is built from source against brew's GUI libraries (cairo, harfbuzz, fontconfig, glib, libx11/xcb, freetype, giflib…). The CLI needs none of them, but every install and every upgrade of those formulas goes through brew.
-- jdeps over the lite pack's 43 jars needs these modules: `java.base, java.logging, java.management, java.naming, java.net.http, java.security.jgss, java.sql, java.transaction.xa, java.xml, jdk.unsupported`, plus `java.desktop`, which only the PostgreSQL driver needs.
-- A jlink runtime with those modules plus `jdk.charsets` and `jdk.zipfs` (loaded as services) is 86 MB on disk; the whole package is 96 MB gzipped. The lite CLI ran a query on it locally (JDK 25, macOS arm64).
-- sbt-pack's launcher ignores `JAVA_HOME` on macOS and runs the first `java` on `PATH`. So the launcher has to put the bundled runtime first on `PATH`, not only set `JAVA_HOME`.
+- jdeps over the lite pack's 43 jars needs these modules: `java.base, java.logging, java.management, java.naming, java.net.http, java.security.jgss, java.sql, java.transaction.xa, java.xml, jdk.unsupported`, plus `java.desktop`, which only the PostgreSQL driver needs, and `jdk.jfr`, which Netty 4.2 needs for its JFR events.
+- A jlink runtime with those modules plus `jdk.charsets` and `jdk.zipfs` (loaded as services) is 89 MB on disk; the whole package is 96 MB gzipped. The lite CLI ran a query on it locally (JDK 25, macOS arm64).
+- sbt-pack's launcher ignores `JAVA_HOME` on macOS and runs the first `java` on `PATH`. So the launcher has to set `JAVACMD` after that branch, not only `JAVA_HOME`.
 
 ## Design
 
