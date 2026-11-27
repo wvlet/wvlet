@@ -747,9 +747,21 @@ summary.pg-engine-section__title {
         border-top: 1px solid var(--uni-line);
     }
 
-    .pg-top > .uni-pane[data-state='open'] {
+    /*
+     * The pane keeps its content at the saved desktop width (inline style), so the content does
+     * not reflow while the pane folds. In one column, the content follows the screen width instead
+     */
+    .pg-top > .uni-pane[data-state='open'],
+    .pg-top > .uni-pane[data-state='open'] > .uni-pane__content {
         width: auto !important;
+    }
+
+    .pg-top > .uni-pane[data-state='open'] {
         height: 60dvh;
+    }
+
+    .pg-body > .uni-pane > .uni-pane__content {
+        max-width: 85vw;
     }
 
     .pg-vsplit,
