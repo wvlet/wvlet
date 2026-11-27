@@ -66,7 +66,6 @@ jobs:
           --clobber --repo="$GITHUB_REPOSITORY"
   publish:
     name: Publish to repo.wvlet.org
-    if: github.event_name == 'push' || inputs.dry_run || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     # Stages the signed artifacts of projectPublish (the library modules listed in build.sbt) into
     # target/sona-staging, then uploads that tree. A version already in the bucket is never

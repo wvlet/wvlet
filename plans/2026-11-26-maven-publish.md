@@ -30,7 +30,7 @@ Decisions:
 - **Platforms:** JVM only (user's choice). Scala.js and Native variants of the cross modules can be added later; they add CI time and nobody depends on them yet.
 - **Coordinates:** move the groupId to `org.wvlet.lang`, so a later Central copy needs no rename and no user ever sees two groupIds. Package names stay `wvlet.lang.*`.
 - **Versions:** tags as today (`2026.3.0`); `versionScheme := "pvp"` like uni, so `2026.3.x` is treated as one compatible line.
-- **POM:** Apache-2.0 license, homepage `https://wvlet.org/wvlet/`, scm, and developers, as Central requires; sources and javadoc jars, with javadoc kept small like uni.
+- **POM:** Apache-2.0 license, homepage `https://wvlet.org/wvlet/`, scm, and developers, as Central requires; sources and javadoc jars (34 MB staged in total, so no javadoc minimization until Central).
 - **Signing:** add sbt-pgp (2.4.0, as uni, checked on wvlet's sbt 2.1.1) and run `publishSigned` into `target/sona-staging` (`publishTo := localStaging`), the same GPG key as uni. The job checks out with full history and tags so dynver yields the tag version.
 - **Upload:** reuse uni's `maven_repo.py` (copied into `.github/scripts/`) for the no-overwrite check and metadata rebuild; artifacts first, metadata last with `no-cache`. Concurrent uni/airframe releases need no lock, as in uni's ADR.
 - **Maven Central:** later. The shared monthly budget is already the bottleneck for uni; the coordinates are Central-ready, and adding uni's `central_version` dispatch is a follow-up.
