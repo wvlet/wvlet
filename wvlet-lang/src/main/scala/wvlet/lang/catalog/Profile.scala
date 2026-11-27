@@ -120,9 +120,11 @@ case class Profile(name: String, connectors: Seq[ConnectorConfig]):
     _.withProperty(key, value)
   )
 
-  // Replace the default engine in place (matched by reference identity so equal-but-distinct
-  // connector entries are left alone)
-  private def updateDefaultEngine(update: ConnectorConfig => ConnectorConfig): Profile =
+  /**
+    * Replace the default engine in place (matched by reference identity so equal-but-distinct
+    * connector entries are left alone)
+    */
+  def updateDefaultEngine(update: ConnectorConfig => ConnectorConfig): Profile =
     val engine  = defaultEngine
     val updated = update(engine)
     copy(connectors =

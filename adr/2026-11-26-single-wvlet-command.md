@@ -1,6 +1,6 @@
 # ADR: One wvlet command, with wv as an alias of wvlet repl
 
-Date: 2026-11-26 · PR #TBD
+Date: 2026-11-26 · PR #2529
 
 ## Context
 

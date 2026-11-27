@@ -33,6 +33,14 @@ case class WvletCliGlobalOption(
     else
       logLevelName.map(LogLevel(_)).getOrElse(LogLevel.INFO)
 
+  def withDisplayVersion(display: Boolean): WvletCliGlobalOption = copy(displayVersion = display)
+  def withDebugMode(debug: Boolean): WvletCliGlobalOption        = copy(debugMode = debug)
+  def withLogLevelName(level: String): WvletCliGlobalOption      = copy(logLevelName = Some(level))
+  def noLogLevelName(): WvletCliGlobalOption                     = copy(logLevelName = None)
+  def withLogLevelPatterns(patterns: List[String]): WvletCliGlobalOption = copy(logLevelPatterns =
+    patterns
+  )
+
   def versionString = s"wvlet version: ${BuildInfo.version} (Built at: ${BuildInfo.builtAtString})"
 
   Logger("wvlet.lang.runner").setLogLevel(logLevel)
@@ -104,17 +112,9 @@ case class WvletCliCompileOption(
     val base =
       (profile, targetDBType) match
         case (Some(_), Some(target)) =>
-          val p      = Profile.getProfile(profile, default = default)
-          val engine = p.defaultEngine
-          p.withConnectors(
-            p.connectors
-              .map { c =>
-                if c eq engine then
-                  c.withType(target.toLowerCase)
-                else
-                  c
-              }
-          )
+          Profile
+            .getProfile(profile, default = default)
+            .updateDefaultEngine(_.withType(target.toLowerCase))
         case (None, Some(target)) =>
           Profile.defaultProfileFor(DBType.fromString(target))
         case _ =>
@@ -163,27 +163,18 @@ case class WvletCliRunOption(
     if host.isEmpty && port.isEmpty && user.isEmpty && !useHttps then
       profile
     else
-      val engine  = profile.defaultEngine
-      val updated = engine.copy(
-        host = host.orElse(engine.host),
-        port = port.orElse(engine.port),
-        user = user.orElse(engine.user),
-        useHttps =
-          if useHttps then
-            Some(true)
-          else
-            engine.useHttps
-      )
-      profile.withConnectors(
-        profile
-          .connectors
-          .map { c =>
-            if c eq engine then
-              updated
+      profile.updateDefaultEngine { engine =>
+        engine.copy(
+          host = host.orElse(engine.host),
+          port = port.orElse(engine.port),
+          user = user.orElse(engine.user),
+          useHttps =
+            if useHttps then
+              Some(true)
             else
-              c
-          }
-      )
+              engine.useHttps
+        )
+      }
 
 end WvletCliRunOption
 

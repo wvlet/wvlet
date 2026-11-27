@@ -71,7 +71,7 @@ trait WvletCliCommands extends LogSupport:
   def skill(opt: SkillOption): Unit = handleCommand(SkillOption.execute(opt))
 
   @command(description = "Start the interactive REPL (wv is an alias)")
-  def repl(opt: WvletREPLOption): Unit = startREPL(opt)
+  def repl(opt: WvletREPLOption): Unit = handleCommand(startREPL(opt))
 
   @command(description =
     "Run a query on the in-process wvlet engine (default), DuckDB, Trino, or a remote wvlet server"
@@ -93,7 +93,14 @@ trait WvletCliCommands extends LogSupport:
     if output.nonEmpty && !output.endsWith("\n") then
       println()
     // Surface test failures and execution errors as a non-zero exit after showing all results
-    WvletCliCommands.firstError(result).foreach(e => throw e)
+    WvletCliCommands
+      .firstError(result)
+      .foreach {
+        case e: wvlet.lang.api.WvletLangException =>
+          throw e
+        case e =>
+          throw StatusCode.QUERY_EXECUTION_FAILURE.newException(e.getMessage, e)
+      }
   }
 
   /**
