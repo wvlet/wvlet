@@ -694,6 +694,110 @@
   font-weight: 600;
 }
 
+/* ---------- Multiple engines ---------- */
+
+.multiEngine {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 40px clamp(16px, 5vw, 72px) 112px;
+}
+
+.multiEngineHead {
+  max-width: 760px;
+  margin-bottom: 48px;
+}
+
+.multiEngineHead h2 {
+  font-size: clamp(36px, 4.4vw, 60px);
+}
+
+.multiEngineHead h2 + p {
+  margin: 24px 0 0;
+  color: hsl(var(--ink-2));
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+.engineGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 20px;
+}
+
+.engineCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px 24px 24px;
+  border: 1px solid hsl(var(--line));
+  border-radius: var(--radius);
+  background:
+    radial-gradient(120% 80% at 0% 0%, hsl(186 90% 50% / 0.07), transparent 60%),
+    hsl(var(--card));
+  transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+}
+
+.engineCard:hover {
+  transform: translateY(-3px);
+  border-color: hsl(var(--primary) / 0.4);
+  box-shadow: var(--shadow);
+}
+
+.engineCardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 8px;
+}
+
+.engineCardHead h3 {
+  white-space: nowrap;
+}
+
+.engineCard h3 {
+  font-size: 21px;
+  letter-spacing: -0.02em;
+}
+
+.engineCard p {
+  flex: 1;
+  margin: 0;
+  color: hsl(var(--ink-2));
+  line-height: 1.6;
+}
+
+.engineBadge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: hsl(38 90% 50% / 0.14);
+  color: hsl(32 80% 36%);
+  font: 500 11px var(--mono);
+  white-space: nowrap;
+}
+
+:global([data-theme='dark']) .engineBadge {
+  color: hsl(40 90% 66%);
+}
+
+.engineTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.engineTags li {
+  padding: 3px 9px;
+  border: 1px solid hsl(var(--line));
+  border-radius: 999px;
+  color: hsl(var(--primary));
+  font: 500 11.5px var(--mono);
+}
+
 /* ---------- Feature band ---------- */
 
 .band {

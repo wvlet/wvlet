@@ -18,11 +18,11 @@ const FeatureList: FeatureItem[] = [
     ),
   },
     {
-        title: 'Built-in Query Engine',
+        title: 'Ready for AI Agents',
         description: (
             <>
-                Wvlet's built-in columnar query engine runs in-process on the JVM, Node.js, web browsers,
-                and as a native binary, so you can query local data files without setting up a database.
+                Wvlet ships <a href='./docs/for-ai-agents'>docs for AI agents</a> and a bundled agent
+                skill, so coding agents can write, run, and debug Wvlet queries for you.
             </>
         )
     },

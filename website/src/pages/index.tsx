@@ -334,6 +334,93 @@ function FlowSection(): React.ReactNode {
   );
 }
 
+type EngineCard = {
+  name: string;
+  tags: string[];
+  badge?: string;
+  description: React.ReactNode;
+};
+
+const engineCards: EngineCard[] = [
+  {
+    name: 'Columnar CPU engine',
+    tags: ['JVM', 'Native'],
+    description: (
+      <>
+        Vectorized, multi-threaded execution over Parquet, Iceberg, JSON, and CSV, with a
+        cost-based optimizer benchmarked against DuckDB on TPC-H and TPC-DS.
+      </>
+    ),
+  },
+  {
+    name: 'Browser & Node.js',
+    tags: ['Browser', 'Node.js'],
+    description: (
+      <>
+        The same engine compiled to JavaScript. The{' '}
+        <Link to="pathname:///playground/">playground</Link> runs queries in your browser with no
+        server.
+      </>
+    ),
+  },
+  {
+    name: 'GPU acceleration',
+    tags: ['NVIDIA', 'cudf'],
+    badge: 'Experimental',
+    description: (
+      <>
+        Offload joins and aggregations to the GPU while the rest of the plan stays on the CPU. A
+        query falls back to the CPU if the device can't run it.
+      </>
+    ),
+  },
+  {
+    name: 'SQL engines',
+    tags: ['DuckDB', 'Trino', 'Snowflake', 'Hive'],
+    description: (
+      <>
+        When the data lives in a warehouse, compile the same query to that engine's SQL dialect
+        and run it there.
+      </>
+    ),
+  },
+];
+
+/** One query language, several places to execute it. */
+function EnginesSection(): React.ReactNode {
+  return (
+    <section className={styles.multiEngine}>
+      <div className={styles.multiEngineHead}>
+        <p className={styles.kicker}>Flexible execution</p>
+        <h2>
+          One query, <em className={styles.shimmer}>many engines</em>
+        </h2>
+        <p>
+          Wvlet separates the query from where it runs. Write it once, then run it on the built-in
+          engine, push heavy joins and aggregations to a GPU, or hand it to your SQL warehouse,
+          without rewriting it.
+        </p>
+      </div>
+      <div className={styles.engineGrid}>
+        {engineCards.map((e) => (
+          <article key={e.name} className={styles.engineCard}>
+            <div className={styles.engineCardHead}>
+              <h3>{e.name}</h3>
+              {e.badge && <span className={styles.engineBadge}>{e.badge}</span>}
+            </div>
+            <p>{e.description}</p>
+            <ul className={styles.engineTags}>
+              {e.tags.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ClosingCta(): React.ReactNode {
   return (
     <section className={styles.closing}>
@@ -380,6 +467,7 @@ export default function Home(): React.ReactNode {
         <main>
           <EngineStrip />
           <FlowSection />
+          <EnginesSection />
           <div className={styles.band}>
             <HomepageFeatures />
           </div>
