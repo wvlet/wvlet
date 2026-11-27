@@ -1069,6 +1069,14 @@ enum Optimization(val name: String):
     */
   case ParallelStringDecode extends Optimization("parallel_string_decode")
 
+  /**
+    * A large hash join build (`parallel_join_build`) also takes its key ranges, packs its
+    * multi-column keys, hashes and partitions its flat table's rows, and finds the flat table's key
+    * range and fills its empty entries in tasks instead of on the calling thread. TPC-DS q97's FULL
+    * join over 2.9M (customer, item) keys ran these steps on one thread while the others waited
+    */
+  case ParallelJoinKeys extends Optimization("parallel_join_keys")
+
 end Optimization
 
 object Optimization:

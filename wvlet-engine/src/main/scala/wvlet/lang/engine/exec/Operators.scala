@@ -1376,6 +1376,9 @@ final class JoinBuild(
   /** Whether narrow flat entries fit the row number in fewer bits (`narrow_join_entries`) */
   var narrowEntries: Boolean = true
 
+  /** Whether the key steps of a large build run on the runner too (`parallel_join_keys`) */
+  var parallelKeys: Boolean = true
+
   /** Whether the build probes through a direct index instead of hash tables (for tests) */
   def usesDirectIndex: Boolean = directHeads != null
 
@@ -1439,19 +1442,24 @@ final class JoinBuild(
     filters
       .groupBy(_.key)
       .foreach((k, fs) => RuntimeFilter.setAll(fs, rawKeys(k), valid, nv, steps))
+    val keySteps =
+      if parallelKeys then
+        steps
+      else
+        TaskRunner.Sequential
     if packKeys && !nullKeys then
-      packer = KeyPacker.of(rawTypes, rawKeys, valid, nv)
+      packer = KeyPacker.of(rawTypes, rawKeys, valid, nv, keySteps)
     // The key columns the tables hold
     val (keyVecs, types) =
       if packer == null then
         (rawKeys, rawTypes)
       else
-        (Array[Vec](packer.pack(rawKeys, build.size)), IndexedSeq(PType.Int64))
+        (Array[Vec](packer.pack(rawKeys, build.size, keySteps)), IndexedSeq(PType.Int64))
     chain = JoinBuildSteps.filledInts(build.size, -1, steps)
     if directIndex && types.size == 1 && !nullKeys then
       buildDirect(keyVecs(0), types(0), valid, nv, steps)
     if directHeads == null && flatTable && types.size == 1 && !nullKeys then
-      buildFlat(keyVecs(0), types(0), valid, nv)
+      buildFlat(keyVecs(0), types(0), valid, nv, keySteps)
     if directHeads == null && flat == null then
       buildHashed(keyVecs, types, valid, nv)
     if trackMatches then
@@ -1575,7 +1583,7 @@ final class JoinBuild(
   end buildDirect
 
   /** The [[LongJoinTable]] of a single Int32 / Date / Int64 key; leaves `flat` null otherwise */
-  private def buildFlat(key: Vec, t: PType, valid: Array[Int], nv: Int): Unit =
+  private def buildFlat(key: Vec, t: PType, valid: Array[Int], nv: Int, steps: TaskRunner): Unit =
     if !(t == PType.Int32 || t == PType.Date || t == PType.Int64) then
       return
     val store = GroupTable.KeyStore(t)
@@ -1598,6 +1606,8 @@ final class JoinBuild(
     val rowsOf =
       if parts == 1 then
         Array(java.util.Arrays.copyOf(valid, nv))
+      else if !(steps eq TaskRunner.Sequential) then
+        JoinBuildSteps.flatPartitions(longs, valid, nv, parts, steps)
       else
         val h = new Array[Int](nv)
         var j = 0
@@ -1620,7 +1630,8 @@ final class JoinBuild(
       chain,
       runner,
       missFilter,
-      fitRowBits = narrowEntries
+      fitRowBits = narrowEntries,
+      parallelSteps = !(steps eq TaskRunner.Sequential)
     )
     // A null table: a skewed build, which GroupTables take
     if table != null then

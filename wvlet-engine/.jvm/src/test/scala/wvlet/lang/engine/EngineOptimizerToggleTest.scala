@@ -164,6 +164,9 @@ class EngineOptimizerToggleTest extends UniTest:
     // EngineScanRowFiltersTest checks that the flag orders a sparse key's filter after a dense one
     Optimization.SparseKeyPassRates ->
       "Changes the estimated pass rates that order a probe scan's row filters, not the plan",
+    // JoinBuildKeyStepsTest checks that the parallel key steps find the same rows
+    Optimization.ParallelJoinKeys ->
+      "Changes which threads compute a join build's keys and table, not the plan",
     // LongJoinTableTest checks that both entry layouts find the same rows
     Optimization.NarrowJoinEntries ->
       "Changes how a flat join table lays out its entries, not the plan",

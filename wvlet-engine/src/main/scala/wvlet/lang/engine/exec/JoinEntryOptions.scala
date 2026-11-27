@@ -25,3 +25,11 @@ extension (j: HashJoinOp)
   def withNarrowEntries(enabled: Boolean): HashJoinOp =
     j.joinBuild.narrowEntries = enabled
     j
+
+  /**
+    * Whether a large build computes its key ranges, packed keys, partitions, and flat table on the
+    * build runner (`parallel_join_keys`); set before the build is made
+    */
+  def withParallelKeys(enabled: Boolean): HashJoinOp =
+    j.joinBuild.parallelKeys = enabled
+    j

@@ -268,26 +268,40 @@ object LongJoinTable:
       runner: TaskRunner,
       missFilter: Boolean = false,
       minFilterBytes: Long = MinMissFilterBytes,
-      fitRowBits: Boolean = true
+      fitRowBits: Boolean = true,
+      parallelSteps: Boolean = false
   ): (LongJoinTable, Boolean) =
-    val parts   = rowsOf.length
-    var maxRows = 0
-    var rows    = 0L
-    var lo      = Long.MaxValue
-    var hi      = Long.MinValue
-    var p       = 0
-    while p < parts do
-      maxRows = math.max(maxRows, rowsOf(p).length)
-      rows += rowsOf(p).length
-      var j = 0
-      while j < rowsOf(p).length do
-        val k = key(rowsOf(p)(j))
+    val parts = rowsOf.length
+    // With `parallelSteps` (`parallel_join_keys`), each partition's task takes its key range and
+    // fills its own region's empty entries; otherwise the calling thread does both
+    val inParts               = parallelSteps && parts > 1
+    val los                   = Array.fill(parts)(Long.MaxValue)
+    val his                   = Array.fill(parts)(Long.MinValue)
+    def rangeOf(p: Int): Unit =
+      var lo = Long.MaxValue
+      var hi = Long.MinValue
+      val r  = rowsOf(p)
+      var j  = 0
+      while j < r.length do
+        val k = key(r(j))
         if k < lo then
           lo = k
         if k > hi then
           hi = k
         j += 1
-      p += 1
+      los(p) = lo
+      his(p) = hi
+    JoinBuildSteps.runAll(
+      parts,
+      if inParts then
+        runner
+      else
+        TaskRunner.Sequential
+    )(rangeOf)
+    val maxRows = rowsOf.iterator.map(_.length).max
+    val rows    = rowsOf.iterator.map(_.length.toLong).sum
+    val lo      = los.min
+    val hi      = his.max
     // A negative range overflowed a Long: wide entries
     val range =
       if maxRows == 0 then
@@ -311,7 +325,8 @@ object LongJoinTable:
       else
         2
     val entries = new Array[Long](width * slots.toInt)
-    java.util.Arrays.fill(entries, Empty)
+    if !inParts then
+      java.util.Arrays.fill(entries, Empty)
     // About 8 bits (an eighth of a word) per key of the largest partition, rounded up: 1.75x faster
     // probes of 2.9M keys that miss 90% of the time than 16 or 4 bits
     val bloomBits =
@@ -328,6 +343,9 @@ object LongJoinTable:
     val unique = new Array[Boolean](parts)
     // Partitions own disjoint entry regions and Bloom words
     def insertPart(p: Int): Unit =
+      if inParts then
+        val region = width << regionBits
+        java.util.Arrays.fill(entries, p * region, (p + 1) * region, Empty)
       unique(p) = table.insertAll(key, rowsOf(p), chain)
       if bloom != null then
         table.addToFilter(key, rowsOf(p))

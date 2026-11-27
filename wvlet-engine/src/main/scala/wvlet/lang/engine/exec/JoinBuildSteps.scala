@@ -145,6 +145,59 @@ object JoinBuildSteps:
   end keyRange
 
   /**
+    * The valid rows `valid(0 until nv)` of a flat table's keys split into `parts` hash partitions
+    * (by the top bits of [[LongJoinTable.hash]], as [[GroupTable.partitionRows]] then mapped to
+    * build rows), each in input order: chunks of rows hash and count their partitions in tasks,
+    * then copy their rows to their offsets in each partition (`parallel_join_keys`)
+    */
+  private[exec] def flatPartitions(
+      key: Array[Long],
+      valid: Array[Int],
+      nv: Int,
+      parts: Int,
+      runner: TaskRunner
+  ): Array[Array[Int]] =
+    val shift  = 32 - Integer.numberOfTrailingZeros(parts)
+    val ch     = chunks(nv, taskCount(runner))
+    val k      = ch.length - 1
+    val part   = new Array[Int](nv)
+    val counts = Array.ofDim[Int](k, parts)
+    runAll(k, runner) { c =>
+      val cnt = counts(c)
+      var j   = ch(c)
+      while j < ch(c + 1) do
+        val p = LongJoinTable.hash(key(valid(j))) >>> shift
+        part(j) = p
+        cnt(p) += 1
+        j += 1
+    }
+    // counts(c)(p) becomes chunk c's first offset in partition p
+    val sizes = new Array[Int](parts)
+    var c     = 0
+    while c < k do
+      var p = 0
+      while p < parts do
+        val n = counts(c)(p)
+        counts(c)(p) = sizes(p)
+        sizes(p) += n
+        p += 1
+      c += 1
+    val out = new Array[Array[Int]](parts)
+    runAll(parts, runner)(p => out(p) = new Array[Int](sizes(p)))
+    runAll(k, runner) { c =>
+      val pos = counts(c)
+      var j   = ch(c)
+      while j < ch(c + 1) do
+        val p = part(j)
+        out(p)(pos(p)) = valid(j)
+        pos(p) += 1
+        j += 1
+    }
+    out
+
+  end flatPartitions
+
+  /**
     * [[Batch.concat]] with the copies of typed columns split by input batch into tasks on the
     * runner; other columns are concatenated on the calling thread
     */
