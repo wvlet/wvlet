@@ -1,5 +1,5 @@
 -- Data tests on a model
--- dbt's unique and not_null tests become test assertions. They run in test mode (wvlet test or spec files) and are skipped in a normal run.
+-- dbt's unique and not_null tests become test assertions. Each assertion shows ✓ or ✗ in the editor and in the Tests tab below, as `wvlet test` reports them.
 
 model dim_suppliers = {
   from supplier

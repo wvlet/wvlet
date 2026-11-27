@@ -1,0 +1,17 @@
+-- Debug a pipeline
+-- `debug { ... }` runs the operators inside the braces on the rows at that point of the pipeline, then the pipeline goes on as if the block were not there. The Debug tab on the right shows each block's rows, and a test inside a block checks those rows.
+
+from orders
+debug {
+  -- How many orders the pipeline starts from
+  agg _.count as all_orders
+}
+where o_orderdate >= '1998-01-01'.to_date
+debug {
+  -- How many are left after the filter
+  agg _.count as orders_1998
+  test _.size should be 1
+}
+group by o_orderpriority
+agg _.count as orders
+order by o_orderpriority

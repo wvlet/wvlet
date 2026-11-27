@@ -7,6 +7,7 @@ export class MonacoEditor {
     private lang: string;
     private editor: monaco.editor.IStandaloneCodeEditor = null;
     private action: (arg: string) => void;
+    private markers: monaco.editor.IEditorDecorationsCollection = null;
 
     constructor(id: string, lang: string, initialText: string, action: (arg:string) => void) {
         this.id = id;
@@ -95,6 +96,34 @@ export class MonacoEditor {
             this.editor.revealLineInCenter(n);
             this.editor.setSelection(new monaco.Selection(n, 1, n, model.getLineMaxColumn(n)));
             this.editor.focus();
+        }
+    }
+
+    /**
+     * Show a marker in the glyph margin of each given 1-origin line, with its message on hover.
+     * `kind` names the CSS class `wv-line-marker--<kind>` that draws the marker. An empty list
+     * clears the markers; the margin appears with the first marker and then stays, so the text
+     * doesn't shift on every edit.
+     */
+    setLineMarkers(markers: {line: number, kind: string, message: string}[]): void {
+        if (!this.editor) {
+            return;
+        }
+        if (markers.length > 0) {
+            this.editor.updateOptions({glyphMargin: true});
+        }
+        const fence = '```';
+        const decorations = markers.map(m => ({
+            range: new monaco.Range(m.line, 1, m.line, 1),
+            options: {
+                glyphMarginClassName: `wv-line-marker wv-line-marker--${m.kind}`,
+                glyphMarginHoverMessage: {value: `${fence}\n${m.message.replaceAll(fence, "'''")}\n${fence}`},
+            }
+        }));
+        if (this.markers) {
+            this.markers.set(decorations);
+        } else {
+            this.markers = this.editor.createDecorationsCollection(decorations);
         }
     }
 

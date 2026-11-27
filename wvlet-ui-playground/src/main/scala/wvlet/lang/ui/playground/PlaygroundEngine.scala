@@ -92,9 +92,28 @@ case class RunOutput(
     // The 1-origin line of the statement that ran
     statementLine: Option[Int] = None,
     // How the file's tables, seeds, models, and queries read each other
-    lineage: ModelLineage = ModelLineage()
+    lineage: ModelLineage = ModelLineage(),
+    // The results of the file's `test` and `debug` statements, in execution order
+    checks: Seq[Check] = Nil
 ):
   def hasError: Boolean = error.nonEmpty
+
+  /** The `test` results of the run */
+  def tests: Seq[Check.Test] = checks.collect { case t: Check.Test =>
+    t
+  }
+
+  def failedTests: Int = tests.count(_.status == TestStatus.Failed)
+
+  /** Failed tests and debug blocks whose query failed */
+  def failedChecks: Int = checks.count(_.isFailure)
+
+  /** The rows of the run's `debug` blocks */
+  def debugBlocks: Seq[Check.Debug] = checks.collect { case d: Check.Debug =>
+    d
+  }
+
+end RunOutput
 
 /**
   * Compiles and runs queries of the playground on the in-process columnar engine, over TPC-H tables
@@ -200,11 +219,15 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
                 .getOrElse("")}"
       out = out.copy(sql = sql)
       val relations = runnable(unit, selected)
+      val target    = engineFor(disabled)
       relations.lastOption match
         case None =>
-          out.copy(result = Some(ResultTable(Nil, IndexedSeq.empty, 0)), elapsedMillis = elapsed)
+          out.copy(
+            result = Some(ResultTable(Nil, IndexedSeq.empty, 0)),
+            elapsedMillis = elapsed,
+            checks = checksOf(unit, target, rowLimit, Map.empty)
+          )
         case Some(rel) =>
-          val target = engineFor(disabled)
           val stages = target.planStages(rel)
           try
             out = out.copy(
@@ -215,24 +238,35 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
             )
           finally stages.close()
           val execStart = System.nanoTime()
-          val res       = target.execute(rel)
-          out.copy(
-            result = Some(toTable(res, rowLimit)),
-            elapsedMillis = elapsed,
-            executionMillis = (System.nanoTime() - execStart) / 1e6
+          val res       =
+            try
+              Right(target.execute(rel))
+            catch
+              case NonFatal(e) =>
+                Left(e)
+          val execMillis = (System.nanoTime() - execStart) / 1e6
+          val runMillis  = elapsed
+          // Checks run after the timed run, and reuse its result for tests of the same query
+          out = out.copy(checks =
+            checksOf(unit, target, rowLimit, res.toOption.map(rel -> _).toMap)
           )
+          res match
+            case Left(e) =>
+              throw e
+            case Right(r) =>
+              out.copy(
+                result = Some(toTable(r, rowLimit)),
+                elapsedMillis = runMillis,
+                executionMillis = execMillis
+              )
+      end match
     catch
-      case e: WvletLangException =>
-        out.copy(error = Some(e.getMessage), elapsedMillis = elapsed)
-      // A column the engine can't bind is a mistake in the query, not a playground failure
-      case e: wvlet.lang.engine.plan.ColumnNotFound =>
-        out.copy(error = Some(s"[COLUMN_NOT_FOUND] ${e.getMessage}"), elapsedMillis = elapsed)
+      // A compile error, or a column the engine can't bind, is a mistake in the query
+      case e @ (_: WvletLangException | _: wvlet.lang.engine.plan.ColumnNotFound) =>
+        out.copy(error = Some(PlaygroundChecks.errorMessage(e)), elapsedMillis = elapsed)
       case NonFatal(e) =>
         warn(e)
-        out.copy(
-          error = Some(s"${e.getClass.getSimpleName}: ${e.getMessage}"),
-          elapsedMillis = elapsed
-        )
+        out.copy(error = Some(PlaygroundChecks.errorMessage(e)), elapsedMillis = elapsed)
     finally
       // Each run compiles a new unit on a long-lived compiler: release it, or the vals it defined
       // stay in the compiler and hide the next run's (`Table not found: holding` on a re-run)
@@ -358,6 +392,24 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
     out.result()
 
   end runnable
+
+  // Every `test` and `debug` of the file, run like `wvlet test` does. A failure here is shown as
+  // a check, and never fails the run of the selected statement. `known` holds results already run
+  private def checksOf(
+      unit: CompilationUnit,
+      target: WvletEngine,
+      rowLimit: Int,
+      known: Map[Relation, EngineResult]
+  )(using ctx: Context): Seq[Check] =
+    val checks = PlaygroundChecks(
+      unit,
+      compilerFor(DBType.Wvlet).compilerOptions.workEnv,
+      // Plans are case classes: an equal relation is the same query
+      r => known.getOrElse(r, target.execute(r)),
+      res => toTable(res, rowLimit),
+      rowLimit
+    )
+    checks.run()(using ctx.withDebugRun(true))
 
   private def toTable(res: EngineResult, rowLimit: Int): ResultTable =
     val types = res.schema.types

@@ -1,0 +1,16 @@
+-- Comparisons
+-- Besides `should be`, a test can use `should not be`, `<`, `<=`, `>`, and `>=` on the result size or on literal values.
+
+from orders
+where o_orderstatus = 'F'
+test _.size > 0
+test _.size < 1000000
+test _.size should not be 0
+;
+
+-- Group sizes: TPC-H has five regions with five nations each
+from nation
+group by n_regionkey
+agg _.count as nations
+where nations != 5
+test _.size should be 0

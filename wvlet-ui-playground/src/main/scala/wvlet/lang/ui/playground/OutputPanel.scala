@@ -94,6 +94,20 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
                     "Wvlet"
                 }
             )
+          case OutputTab.Debug =>
+            Tab(
+              OutputTab.Debug,
+              OutputTab.Debug.label,
+              state
+                .output
+                .map { out =>
+                  val n = out.debugBlocks.size
+                  if n == 0 then
+                    span()
+                  else
+                    span(cls -> "pg-badge pg-badge--muted", n.toString)
+                }
+            )
           case t =>
             Tab(t, t.label)
         }
@@ -128,7 +142,7 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
               span(cls -> "pg-toolbar", columnsToggle, copyButton(state.output.get.logicalPlan))
             case OutputTab.PhysicalPlan =>
               span(cls -> "pg-toolbar", columnsToggle, copyButton(enginePlanText))
-            case OutputTab.Lineage =>
+            case OutputTab.Lineage | OutputTab.Debug =>
               span()
           }
       ),
@@ -170,6 +184,8 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
               enginePanel
             case OutputTab.Lineage =>
               LineageView(state)
+            case OutputTab.Debug =>
+              DebugPanel(state)
           }
       )
     )

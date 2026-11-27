@@ -62,6 +62,7 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
     state.text,
     language = state.mode.map(_.editorLanguage),
     theme = state.theme,
+    markers = state.output.map(o => ChecksPanel.lineMarkers(o.checks)),
     onAction = {
       case "run-query" =>
         runAtCursor(QuerySelection.Single)
@@ -226,9 +227,35 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
       }
   )
 
+  // The Result and Tests tabs; the second shows how many tests passed and failed
+  private val resultTabs = TabList(
+    state.resultTab,
+    label = "Result",
+    tabs = Seq(
+      Tab(ResultTab.Result, ResultTab.Result.label),
+      Tab(
+        ResultTab.Tests,
+        ResultTab.Tests.label,
+        state
+          .output
+          .map { out =>
+            val tests  = out.tests
+            val failed = out.failedTests
+            val passed = tests.count(_.status == TestStatus.Passed)
+            if tests.isEmpty then
+              span()
+            else if failed > 0 then
+              span(cls -> "pg-badge pg-badge--danger", s"${failed} failed")
+            else
+              span(cls -> "pg-badge pg-badge--success", s"${passed} passed")
+          }
+      )
+    )
+  )
+
   private def resultHeader: RxElement = div(
     cls -> "pg-panel-header pg-result-header",
-    span(cls -> "pg-panel-title", "Result"),
+    resultTabs,
     state
       .output
       .map { out =>
@@ -301,13 +328,23 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
           cls       -> "pg-bottom",
           styleAttr -> state.resultHeight.map(h => s"height: ${h}px"),
           resultHeader,
-          ResultPanel(state)
+          state
+            .resultTab
+            .map {
+              case ResultTab.Result =>
+                ResultPanel(state)
+              case ResultTab.Tests =>
+                TestsPanel(state)
+            }
         )
       )
     ),
     footer(
       cls -> "pg-status",
-      span(cls -> "pg-status__dot", data("error") -> state.output.map(_.hasError.toString)),
+      span(
+        cls           -> "pg-status__dot",
+        data("error") -> state.output.map(o => (o.hasError || o.failedChecks > 0).toString)
+      ),
       state.status.map(s => span(s)),
       span(cls -> "pg-grow"),
       span(

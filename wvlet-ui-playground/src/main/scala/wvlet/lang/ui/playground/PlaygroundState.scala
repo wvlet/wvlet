@@ -34,6 +34,12 @@ enum OutputTab(val label: String) derives StorageCodec:
   case LogicalPlan  extends OutputTab("Plan")
   case PhysicalPlan extends OutputTab("Engine")
   case Lineage      extends OutputTab("Lineage")
+  case Debug        extends OutputTab("Debug")
+
+/** The view of the bottom panel: the rows of the statement, or the file's test results */
+enum ResultTab(val label: String) derives StorageCodec:
+  case Result extends ResultTab("Result")
+  case Tests  extends ResultTab("Tests")
 
 /** The stage of the engine's plan shown in the Engine tab */
 enum EngineStage(val label: String, val description: String) derives StorageCodec:
@@ -83,6 +89,7 @@ class PlaygroundState extends LogSupport:
   val outputWidth: RxVar[Int]       = Storage.local(s"${prefix}outputWidth", outputRange.default)
   val resultHeight: RxVar[Int]      = Storage.local(s"${prefix}resultHeight", 320)
   val outputTab: RxVar[OutputTab]   = Storage.local(s"${prefix}outputTab", OutputTab.Translation)
+  val resultTab: RxVar[ResultTab]   = Storage.local(s"${prefix}resultTab", ResultTab.Result)
   val sidebarTab: RxVar[SidebarTab] = Rx.variable(SidebarTab.Examples)
   val dialect: RxVar[SqlDialect]    = Rx.variable(SqlDialect.DuckDB)
   val engineStage: RxVar[EngineStage] = Storage.local(
@@ -109,6 +116,8 @@ class PlaygroundState extends LogSupport:
   val selectedExample: RxVar[Option[String]] = Rx.variable(None)
 
   private var engineOpt: Option[PlaygroundEngine] = None
+  // Whether the last run that compiled had debug blocks
+  private var hadDebugBlocks = false
 
   /** The engine over tables of the current scale factor, generated on first use */
   def engine: PlaygroundEngine =
@@ -135,12 +144,18 @@ class PlaygroundState extends LogSupport:
     mode            := e.mode
     text            := e.text
     setHash(s"example=${e.path}")
-    run(RunRequest(e.text, e.mode))
+    run(RunRequest(e.text, e.mode), opened = true)
 
-  /** Run a request and publish its output */
-  def run(req: RunRequest): Unit =
+  /**
+    * Run a request and publish its output. The right panel shows the Debug tab when a newly opened
+    * file has `debug` blocks, or when an edit adds the file's first one.
+    *
+    * @param opened
+    *   true when the text was just opened (an example or a shared link), not edited
+    */
+  def run(req: RunRequest, opened: Boolean = false): Unit =
     lastRequest := req
-    val out = engine.run(
+    val ran = engine.run(
       req.text,
       req.mode,
       dialect.get,
@@ -149,13 +164,39 @@ class PlaygroundState extends LogSupport:
       PlaygroundEngine.defaultRowLimit,
       disabledOptimizations.get
     )
+    // While an edit doesn't compile, keep the last checks: the markers and the Tests tab would
+    // otherwise blink out on every half-typed line. Monaco moves the markers with the edited text
+    val out =
+      if !opened && ran.hasError && ran.checks.isEmpty then
+        ran.copy(checks = output.get.checks)
+      else
+        ran
     output := out
+    // A run that failed to compile (e.g., mid-edit) says nothing about the file's debug blocks
+    if opened || !out.hasError then
+      val hasDebug = out.debugBlocks.nonEmpty
+      if hasDebug && (opened || !hadDebugBlocks) then
+        outputOpen := true
+        outputTab  := OutputTab.Debug
+      else if opened && !hasDebug && outputTab.get == OutputTab.Debug then
+        outputTab := OutputTab.Translation
+      hadDebugBlocks = hasDebug
+    val failed =
+      out.failedChecks match
+        case 0 =>
+          ""
+        case 1 =>
+          " · 1 check failed"
+        case n =>
+          s" · ${n} checks failed"
     status := (
       if out.hasError then
         "Error"
       else
-        out.result.map(r => f"${r.totalRows}%,d rows").getOrElse("Done")
+        out.result.map(r => f"${r.totalRows}%,d rows").getOrElse("Done") + failed
     )
+
+  end run
 
   /** Run the last request again, e.g., after the dialect or scale factor changed */
   def rerun(): Unit = run(lastRequest.get.copy(text = text.get, mode = mode.get))
@@ -204,7 +245,7 @@ class PlaygroundState extends LogSupport:
             example := None
             mode    := m
             text    := t
-            run(RunRequest(t, m))
+            run(RunRequest(t, m), opened = true)
           case None =>
             open(Examples.default)
 

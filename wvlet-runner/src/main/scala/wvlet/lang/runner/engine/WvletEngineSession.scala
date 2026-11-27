@@ -322,24 +322,10 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
   def tableNames: Seq[String] = engine.catalog.tableNames
 
   /** Execute a query relation, returning at most `rowLimit` rows */
-  def execute(r: Relation, rowLimit: Int)(using ctx: Context): TableRows =
-    val result = run(r)
-    val schema = DataType.SchemaType(
-      None,
-      Name.NoTypeName,
-      result
-        .schema
-        .fields
-        .map(f => DataType.NamedType(Name.termName(f.name), f.ptype.toDataType))
-        .toList
-    )
-    val names = result.schema.names
-    if names.distinct.size < names.size then
-      val rows = result.toExternalRows(rowLimit)
-      val maps = rows.map(r => ListMap.from(names.indices.map(i => names(i) -> r(i))))
-      TableRows(schema, maps, result.numRows, Some(rows))
-    else
-      TableRows(schema, result.toRowMaps(rowLimit), result.numRows)
+  def execute(r: Relation, rowLimit: Int)(using ctx: Context): TableRows = EngineTableRows.of(
+    run(r),
+    rowLimit
+  )
 
   /**
     * Run a write statement: `save to <table>`, `append to <table>` (plain and keyed), and `delete`

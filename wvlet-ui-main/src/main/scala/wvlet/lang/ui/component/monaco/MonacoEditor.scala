@@ -51,6 +51,14 @@ class MonacoEditor(
   def focus(): Unit                                   = js.native
   def revealLine(line: Int): Unit                     = js.native
 
+  /**
+    * Show a marker in the glyph margin of lines: each element has `line` (1-origin), `kind` (CSS
+    * class `wv-line-marker--<kind>`), and `message` (shown on hover). An empty array clears them.
+    */
+  def setLineMarkers(markers: js.Array[js.Dynamic]): Unit = js.native
+
+end MonacoEditor
+
 // uni's RxElement does not extend LogSupport (airframe's did). EditorBase brings it back as
 // a mixin so subclasses (WvletMonacoEditor, QueryEditor, SQLPreview) keep their warn/info calls
 // without each one having to add the trait individually.

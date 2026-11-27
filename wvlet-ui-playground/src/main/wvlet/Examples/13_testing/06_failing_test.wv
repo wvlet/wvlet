@@ -1,0 +1,5 @@
+-- A failing test
+-- This test fails on purpose: the message shows the actual value and the expected one. Fix the expected value (TPC-H has 25 nations) and the ✗ in the editor turns into a ✓.
+
+from nation
+test _.size should be 24

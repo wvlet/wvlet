@@ -926,7 +926,7 @@ lazy val playground = project
     libraryDependencies += "org.wvlet.uni" %% "uni-ui" % UNI_VERSION
   )
   // Queries run on the in-process columnar engine, in the browser
-  .dependsOn(uiMain, lang.js, engine.js)
+  .dependsOn(uiMain, lang.js, engine.js, runner.js)
 
 // uni's rx-html embeds plain strings and DOM nodes as element children through `given
 // Conversion`s (wvlet.uni.dom.all.stringToDomNode etc.), which Scala 3 gates behind the

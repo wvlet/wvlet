@@ -1,0 +1,19 @@
+-- Test the printed output and JSON
+-- `_.output` is the result as the CLI prints it, and `_.json` is one JSON object per row. Triple-quoted strings keep their line breaks; leading and trailing spaces are trimmed before comparing.
+
+from region
+where r_regionkey < 2
+select r_regionkey, r_name
+order by r_regionkey
+test _.output should be """
+┌─────────────┬─────────┐
+│ r_regionkey │ r_name  │
+│    long     │ string  │
+├─────────────┼─────────┤
+│           0 │ AFRICA  │
+│           1 │ AMERICA │
+├─────────────┴─────────┤
+│ 2 rows                │
+└───────────────────────┘
+"""
+test _.json should contain """{"r_regionkey":1,"r_name":"AMERICA"}"""
