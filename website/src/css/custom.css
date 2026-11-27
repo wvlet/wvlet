@@ -50,3 +50,16 @@ html.plugin-blog.blog-post-page h1 {
   height: auto;
   aspect-ratio: 1.777;
 }
+
+/* Homepage only (src/pages/index.tsx sets the class): translucent navbar over the hero aurora. */
+html.wvlet-home .navbar {
+  background: rgb(249 252 252 / 0.72);
+  backdrop-filter: blur(14px);
+  box-shadow: none;
+  border-bottom: 1px solid rgb(0 0 0 / 0.06);
+}
+
+html.wvlet-home[data-theme='dark'] .navbar {
+  background: rgb(11 17 19 / 0.72);
+  border-bottom-color: rgb(255 255 255 / 0.06);
+}
