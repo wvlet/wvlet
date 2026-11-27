@@ -1037,6 +1037,21 @@ enum Optimization(val name: String):
     */
   case EagerDistinct extends Optimization("eager_distinct")
 
+  /**
+    * A join build's string columns give up their codes (`join_build_string_codes`) once their first
+    * rows look nearly unique, and once one column gives up, the others aren't encoded. TPC-H q2's
+    * supplier build hashed 10K rows of each of its four unique string columns on one thread before
+    * keeping none of their codes
+    */
+  case StringCodeProbe extends Optimization("string_code_probe")
+
+  /**
+    * A Parquet row group decoded in parallel (`parallel_column_decode`) builds the Strings of its
+    * PLAIN string columns by row ranges, as tasks of their own after the columns are decoded. TPC-H
+    * q2's supplier scan built the 100K Strings of `s_comment` on one thread while the others waited
+    */
+  case ParallelStringDecode extends Optimization("parallel_string_decode")
+
 end Optimization
 
 object Optimization:

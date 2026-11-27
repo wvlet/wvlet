@@ -176,6 +176,13 @@ class EngineOptimizerToggleTest extends UniTest:
     // tasks, with the same rows
     Optimization.ParallelColumnDecode ->
       "Changes how a single row group's columns are decoded, not the plan",
+    // EngineParallelColumnDecodeTest checks that the flag builds PLAIN strings by row ranges, with
+    // the same rows
+    Optimization.ParallelStringDecode ->
+      "Changes how a parallel decode builds its strings, not the plan",
+    // GroupTableTest checks that nearly unique columns give up their codes after a few rows
+    Optimization.StringCodeProbe ->
+      "Changes when a join build gives up its string codes, not the plan",
     // EngineWindowTopNTest checks that the flag reaches the window operators, and WindowOpTest that
     // shared partitions give the same values
     Optimization.WindowSharePartitions ->

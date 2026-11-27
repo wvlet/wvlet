@@ -83,7 +83,8 @@ class ScanOp(
       dictionaryCodes,
       dictionaryEntries,
       lazyStrings,
-      Option(decodeRunner).filter(_ => parallelColumnDecode)
+      Option(decodeRunner).filter(_ => parallelColumnDecode),
+      parallelStringDecode
     )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
@@ -190,6 +191,16 @@ class ScanOp(
     this
 
   /**
+    * Whether a parallel decode builds the Strings of PLAIN string columns by row ranges
+    * (`parallel_string_decode`, [[ScanSpec.parallelStrings]])
+    */
+  var parallelStringDecode: Boolean = true
+
+  def withParallelStringDecode(enabled: Boolean): this.type =
+    parallelStringDecode = enabled
+    this
+
+  /**
     * The runner of the pipeline running this scan as a single part ([[MorselOp]]), set before the
     * scan starts; null otherwise
     */
@@ -210,6 +221,7 @@ class ScanOp(
     .withKeySetRowGroups(s.keySetRowGroups)
     .withRowFilterPassRate(s.rowFilterPassRate)
     .withParallelColumnDecode(s.parallelColumnDecode)
+    .withParallelStringDecode(s.parallelStringDecode)
 
   def withSchema(s: Schema): ScanOp = ScanOp(
     source,

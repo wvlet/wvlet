@@ -309,10 +309,34 @@ class GroupTableTest extends UniTest:
     val uniq = StrVec(Array.tabulate(100)(i => s"u${i}"), null)
     val ids  = LongVec(PType.Int64, Array.tabulate(100)(_.toLong), null)
     val ok   = Batch(Array[Vec](ids, rep), 100)
-    val e    = JoinBuild.encodeStrings(ok, Seq(ok))
+    val e    = JoinBuildCodes.encodeStrings(ok, Seq(ok))
     e.column(1).asInstanceOf[StrVec].dictSize shouldBe 4
     val mixed = Batch(Array[Vec](ids, rep, uniq), 100)
-    JoinBuild.encodeStrings(mixed, Seq(mixed)) shouldBeTheSameInstanceAs mixed
+    JoinBuildCodes.encodeStrings(mixed, Seq(mixed)) shouldBeTheSameInstanceAs mixed
+  }
+
+  test("should give up encoding a nearly unique column after its first rows") {
+    val n     = 20000
+    val uniq  = StrVec(Array.tabulate(n)(i => s"u${i}"), null)
+    val probe = StrVec.probeRows(n / 2)
+    probe shouldBe 1132
+    StrVec.encodeParts(
+      uniq,
+      Seq(uniq),
+      n / 2,
+      hashPlain = true,
+      probe = true
+    ) shouldBeTheSameInstanceAs uniq
+    // Values at random from n / 2 repeat enough in the first rows: the column encodes
+    val rnd  = scala.util.Random(7)
+    val half = StrVec(Array.fill(n)(s"h${rnd.nextInt(n / 2)}"), null)
+    val e    = StrVec.encodeParts(half, Seq(half), n / 2, hashPlain = true, probe = true)
+    e.hasCodes shouldBe true
+    e.codes.toSeq shouldBe StrVec.encodeParts(half, Seq(half), n / 2, hashPlain = true).codes.toSeq
+    // A join build stops at its first column that gives up
+    val ids   = LongVec(PType.Int64, Array.tabulate(n)(_.toLong), null)
+    val build = Batch(Array[Vec](ids, uniq, half), n)
+    JoinBuildCodes.encodeStrings(build, Seq(build), probe = true) shouldBeTheSameInstanceAs build
   }
 
   private def plainOf(v: Vec): Vec =

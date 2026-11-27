@@ -106,6 +106,22 @@ class EngineParallelColumnDecodeTest extends UniTest:
     runner.submitted.get() shouldBe 1
   }
 
+  test("build the strings of PLAIN string columns by row ranges, with the same rows") {
+    val src    = ParquetSource("t", single)
+    val runner = CountingRunner()
+    val spec   = ScanSpec(decodeRunner = Some(runner), parallelStrings = true)
+    val ranges = (300000 + ParquetSource.StringRangeRows - 1) / ParquetSource.StringRangeRows
+    val rows   = values(src.scan(spec))
+    // One column task, then one task per range of the unique names (a PLAIN column), the calling
+    // thread taking the first of each
+    runner.submitted.get() shouldBe 1 + ranges - 1
+    rows shouldBe values(src.scan(ScanSpec()))
+    // Strings decoded from a dictionary with their codes keep their codes
+    runner.submitted.set(0)
+    val coded = spec.copy(dictionaryCodes = true, lazyStrings = true)
+    values(src.scan(coded)) shouldBe values(src.scan(ScanSpec(dictionaryCodes = true)))
+  }
+
   test("decode on one thread with a row filter, one column, or few bytes") {
     val runner = CountingRunner()
     val src    = ParquetSource("t", single)

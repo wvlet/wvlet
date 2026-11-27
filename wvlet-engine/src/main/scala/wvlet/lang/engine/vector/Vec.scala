@@ -436,12 +436,36 @@ object StrVec:
     * that the vectors gathered from it share one coding. A part carrying Parquet dictionary codes
     * ([[codes]]) hashes each entry once, not each row; a part without them hashes each row when
     * `hashPlain`. `v` itself when a part has no codes (without `hashPlain`) or the values have more
-    * than `maxDistinct` distinct values
+    * than `maxDistinct` distinct values.
+    *
+    * With `probe` (`string_code_probe`), `v` is given up after the first [[probeRows]] non-null
+    * rows when they repeat fewer than [[ProbeMinRepeats]] values: rows drawn at random from at most
+    * `maxDistinct` values would repeat about 4x as many, so the column is nearly unique and would
+    * fail anyway, after hashing `maxDistinct` rows instead of these few. Values stored in any order
+    * repeat more often than at random, except when every value's first row comes before every
+    * value's second, and then only the codes are lost
     */
-  def encodeParts(v: StrVec, parts: Seq[Vec], maxDistinct: Int, hashPlain: Boolean): StrVec =
+  def encodeParts(
+      v: StrVec,
+      parts: Seq[Vec],
+      maxDistinct: Int,
+      hashPlain: Boolean,
+      probe: Boolean = false
+  ): StrVec =
     val ids   = java.util.HashMap[String, Integer]()
     val dict  = scala.collection.mutable.ArrayBuffer.empty[String]
     val codes = new Array[Int](v.size)
+    // The non-null rows after which the repeats are counted, never with `probe` off
+    val probeAt =
+      if probe then
+        probeRows(maxDistinct)
+      else
+        Int.MaxValue
+    var seen = 0
+    // Whether the values are nearly unique, once probeAt rows are seen
+    inline def unique(): Boolean =
+      seen += 1
+      seen == probeAt && seen - dict.size < ProbeMinRepeats
     // The code of a value, new values taking the next code; -1 past maxDistinct
     def codeOf(s: String): Int =
       val c = ids.get(s)
@@ -481,7 +505,7 @@ object StrVec:
                     val y = codeOf(s)
                     local(x) = y
                     y
-                if c < 0 then
+                if c < 0 || unique() then
                   return v
                 c
             i += 1
@@ -498,7 +522,7 @@ object StrVec:
                 -1
               else
                 val c = codeOf(s)
-                if c < 0 then
+                if c < 0 || unique() then
                   return v
                 c
             i += 1
@@ -512,6 +536,15 @@ object StrVec:
       StrVec(v.values, v.nulls, codes, dict.size, dict.toArray)
 
   end encodeParts
+
+  /** At least how many repeats the first [[probeRows]] rows of a column worth encoding hold */
+  inline val ProbeMinRepeats = 16
+
+  /**
+    * The rows after which [[encodeParts]] counts repeats: k rows drawn at random from d values
+    * repeat about k * k / (2 * d) of them, 64 (4x [[ProbeMinRepeats]]) for d = `maxDistinct`
+    */
+  def probeRows(maxDistinct: Int): Int = math.ceil(math.sqrt(128.0 * maxDistinct)).toInt
 
   /** The per-row strings of an entries-backed vector, published through a final field */
   final private class Built(val values: Array[String])
