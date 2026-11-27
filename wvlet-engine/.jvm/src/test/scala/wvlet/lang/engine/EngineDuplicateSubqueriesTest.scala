@@ -115,4 +115,31 @@ class EngineDuplicateSubqueriesTest extends UniTest:
     readsCTE(explain(conformance.engine, q)) shouldBe false
   }
 
+  test("share copies that hold copies of another shared aggregation") {
+    val a =
+      """{
+              |  from lineitem
+              |  where l_shipmode = 'AIR'
+              |  group by l_suppkey, l_partkey
+              |  select l_suppkey, l_partkey, sum(l_quantity) as qty
+              |}""".stripMargin
+    val b =
+      s"""{
+               |  from ${a} as x
+               |  group by l_suppkey
+               |  select l_suppkey, avg(qty) as ave
+               |}""".stripMargin
+    val q =
+      s"""from ${a} as a0, ${b} as b1, ${b} as b2
+               |where a0.l_suppkey = b1.l_suppkey and b1.l_suppkey = b2.l_suppkey
+               |  and a0.qty > 2 * b2.ave
+               |select a0.l_suppkey, a0.l_partkey, a0.qty, b1.ave
+               |order by a0.l_suppkey, a0.l_partkey
+               |""".stripMargin
+    sharesSubquery(q) shouldBe true
+    // b1 and b2 are one CTE; a0 is the only other copy of `a`, which isn't shared on its own
+    val plan = explain(conformance.engine, q)
+    plan.contains("CTE[__wv_subquery2") shouldBe false
+  }
+
 end EngineDuplicateSubqueriesTest

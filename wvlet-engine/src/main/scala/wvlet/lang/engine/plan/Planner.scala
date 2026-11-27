@@ -561,7 +561,7 @@ class Planner(
     * Whether `rel` reads a table named as one of `cteNames`, or a shared scan's CTE through a
     * filter the tree doesn't show it in ([[sharedScanOf]])
     */
-  private def readsCTE(rel: Relation, cteNames: Set[String]): Boolean =
+  private[engine] def readsCTE(rel: Relation, cteNames: Set[String]): Boolean =
     var found = false
     rel.traverse {
       case f: Filter if sharedScans.containsKey(f) =>

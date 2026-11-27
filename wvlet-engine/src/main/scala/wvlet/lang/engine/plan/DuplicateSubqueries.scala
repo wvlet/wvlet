@@ -71,7 +71,8 @@ private[engine] object DuplicateSubqueries extends LogSupport:
         case w: WithQuery  =>
           w.queryDefs.foreach(walk(_, outer))
           walk(w.queryBody, outer)
-        case a: AliasedRelation if a.columnNames.isEmpty && isCandidate(a.child, cteNames) =>
+        case a: AliasedRelation
+            if a.columnNames.isEmpty && isCandidate(planner, a.child, cteNames) =>
           candidates += Candidate(a, outer)
           walk(a.child, a :: outer)
         case p: LogicalPlan =>
@@ -96,13 +97,26 @@ private[engine] object DuplicateSubqueries extends LogSupport:
     val groups = keyed.map(_._1).distinct.map(byKey).filter(_.size > 1)
     val shared = java.util.IdentityHashMap[AliasedRelation, String]()
     groups
-      .sortBy(g => g.map(_.outer.size).min)
+      .sortBy(g => g.map(_.outer.size).max)
       .foreach { g =>
         val free = g.filter(c => !c.outer.exists(shared.containsKey))
         if free.size > 1 then
           val name = planner.hiddenName("subquery")
           free.foreach(c => shared.put(c.rel, name))
       }
+    // A copy inside a copy shared later is replaced with its outer copy, so a CTE may be left
+    // with one reader: such a CTE is dropped, until every CTE has two readers
+    var dropping = true
+    while dropping do
+      val readers =
+        all
+          .filter(c => shared.containsKey(c.rel) && !c.outer.exists(shared.containsKey))
+          .groupMapReduce(c => shared.get(c.rel))(_ => 1)(_ + _)
+      val single = all.filter(c =>
+        shared.containsKey(c.rel) && readers.getOrElse(shared.get(c.rel), 0) < 2
+      )
+      single.foreach(c => shared.remove(c.rel))
+      dropping = single.nonEmpty
     if shared.isEmpty then
       r
     else
@@ -141,18 +155,26 @@ private[engine] object DuplicateSubqueries extends LogSupport:
     }
     names.result()
 
-  /** Whether `child` aggregates and reads no CTE */
-  private def isCandidate(child: Relation, cteNames: Set[String]): Boolean =
-    var aggregates = false
-    var readsCTE   = false
-    child.traverse {
-      case _: GroupBy | _: Agg =>
-        aggregates = true
-      case t: TableRef if cteNames.contains(t.name.leafName.toLowerCase) =>
-        readsCTE = true
-      case t: TableScan if cteNames.contains(t.name.name.toLowerCase) =>
-        readsCTE = true
-    }
-    aggregates && !readsCTE
+  /** Whether `child` reads no CTE and its rows are an aggregation's (under a selection or sort) */
+  private def isCandidate(planner: Planner, child: Relation, cteNames: Set[String]): Boolean =
+    def aggregates(r: Relation): Boolean =
+      r match
+        case _: GroupBy | _: Agg =>
+          true
+        case q: Query =>
+          aggregates(q.body)
+        case b: BracedRelation =>
+          aggregates(b.child)
+        case p: Project =>
+          aggregates(p.child)
+        case f: Filter =>
+          aggregates(f.child)
+        case s: Sort =>
+          aggregates(s.child)
+        case l: Limit =>
+          aggregates(l.child)
+        case _ =>
+          false
+    aggregates(child) && !planner.readsCTE(child, cteNames)
 
 end DuplicateSubqueries
