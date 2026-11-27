@@ -33,6 +33,7 @@ enum OutputTab(val label: String) derives StorageCodec:
   case Translation  extends OutputTab("SQL")
   case LogicalPlan  extends OutputTab("Plan")
   case PhysicalPlan extends OutputTab("Engine")
+  case Lineage      extends OutputTab("Lineage")
 
 /** The stage of the engine's plan shown in the Engine tab */
 enum EngineStage(val label: String, val description: String) derives StorageCodec:

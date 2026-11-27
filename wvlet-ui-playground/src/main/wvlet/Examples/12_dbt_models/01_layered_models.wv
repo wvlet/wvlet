@@ -1,5 +1,5 @@
 -- Layered models: staging, intermediate, and marts
--- Like a dbt project, each layer is a model that reads the layer below by name. Wvlet works out the dependency graph from these references, so there's no ref() or DAG file.
+-- Like a dbt project, each layer is a model that reads the layer below by name. Wvlet works out the dependency graph from these references, so there's no ref() or DAG file. Open the Lineage tab to see the graph.
 
 -- Staging: clean and rename raw tables, one model per source
 model stg_customers = {

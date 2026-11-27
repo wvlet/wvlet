@@ -30,7 +30,8 @@ import scala.scalajs.js
 
 /**
   * The panel beside the editor: the translation of the query (Wvlet to SQL in a chosen dialect, or
-  * SQL to Wvlet), its logical plan, and the engine's physical plan.
+  * SQL to Wvlet), its logical plan, the engine's physical plan, and the lineage of the file's
+  * models.
   */
 class OutputPanel(state: PlaygroundState) extends RxElement:
 
@@ -127,6 +128,8 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
               span(cls -> "pg-toolbar", columnsToggle, copyButton(state.output.get.logicalPlan))
             case OutputTab.PhysicalPlan =>
               span(cls -> "pg-toolbar", columnsToggle, copyButton(enginePlanText))
+            case OutputTab.Lineage =>
+              span()
           }
       ),
       div(
@@ -165,6 +168,8 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
               )
             case OutputTab.PhysicalPlan =>
               enginePanel
+            case OutputTab.Lineage =>
+              LineageView(state)
           }
       )
     )

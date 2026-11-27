@@ -8,12 +8,13 @@ The [Wvlet Playground](https://wvlet.org/wvlet/playground/) runs Wvlet queries i
 
 ## What it shows
 
-- **Examples by category**: the left panel lists runnable examples of every major operator and function (basics, column operations, aggregation, joins, set operations, subqueries and models, window functions, expressions, functions, TPC-H queries). Search filters them by title, description, or a word in the query. Use it as a syntax and function reference.
+- **Examples by category**: the left panel lists runnable examples of every major operator and function (basics, column operations, aggregation, joins, set operations, subqueries and models, window functions, expressions, functions, TPC-H queries, dbt-style models). Search filters them by title, description, or a word in the query. Use it as a syntax and function reference.
 - **Tables**: the TPC-H tables and their column types; click a table to read it. Choose the scale factor (0.001 to 0.1) in the header.
 - **SQL**: the SQL that Wvlet generates for the query, in the DuckDB, Trino, Snowflake, Hive, or BigQuery dialect.
 - **SQL to Wvlet**: switch the editor to **SQL** to write SQL and see the equivalent Wvlet query. Switching converts the editor text between the two languages when it can.
 - **Plan**: the compiler's logical plan in data-flow order. Click a node's line number to select its source in the editor; **Columns** shows each node's output columns.
 - **Engine**: how the engine plans the query, in three stages: **Bound** (the runtime plan before optimization), **Optimized** (after the logical passes), and **Operators** (the physical operators that run). It lists the optimizer rules that changed the plan, and **Optimizations** turns individual optimizations off, to see how the plan and the run time change.
+- **Lineage**: how the file's source tables and seeds (`val` tables) flow into its models and queries, as a top-down graph. Hover a node to highlight what it reads and what reads it; click it to select its definition. Materialized models have an outlined box, and **wvlet build order** lists the order [`wvlet build`](../syntax/model-pipelines.md) persists them in. Try it with the **dbt-style Models** examples.
 - **Result**: the rows in a table you can sort by clicking a column header, with column types, row counts, and the run time. Doubles are rounded to 6 decimal places.
 
 ## Keys
