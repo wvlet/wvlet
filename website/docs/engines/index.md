@@ -12,7 +12,7 @@ The same Wvlet query runs on Wvlet's own engine or, compiled to SQL, on a databa
 | [Wvlet engine](wvlet-engine.md) | Your data is in local Parquet, Iceberg, JSON, or CSV files, or you want no database to install | Default; `-t wvlet` |
 | Wvlet engine in the browser or Node.js | You want to try Wvlet with no install, or run it from the npm CLI | The [Playground](../usage/playground.md); `wvlet run` from `@wvlet/cli` |
 | [Wvlet engine with GPU](wvlet-engine-gpu.md) (experimental) | You have an NVIDIA GPU and want to try offloading joins and aggregations | sbt only, from the repository |
-| [DuckDB](duckdb.md) | You need `sql"..."` / `execute` statements, `.duckdb` files, DuckDB extensions, or table functions such as `read_csv(...)` | `-t duckdb` or a `"type": "duckdb"` profile |
+| [DuckDB](duckdb.md) | You need `sql"..."` / `execute` statements, `.duckdb` files, DuckDB extensions, or table functions such as `read_csv(...)` | `-t duckdb` or a `"type": "duckdb"` profile (npm CLI, or the JVM full package) |
 | [Trino](trino.md) | Your tables live in a Trino cluster | A Trino profile, `--profile <name>` |
 | [Snowflake](snowflake.md) | Your tables live in Snowflake | A Snowflake profile, `--profile <name>` (JVM full package) |
 

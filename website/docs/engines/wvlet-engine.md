@@ -42,7 +42,7 @@ wvlet run -f report.wv
 
 `wvlet build` and `wvlet flow run <flow>` run model builds and flow stages on the engine by default. Their tables persist in the project's `target/warehouse` unless the profile's `wvlet` connector sets a `warehouse`; see [Engine Support](../syntax/flow.md#engine-support).
 
-Use `-t duckdb` (or a DuckDB profile) for the features listed above as unsupported. With a Trino or Snowflake profile, a query that reads only local files also runs on the engine.
+With a Trino or Snowflake profile, a query that reads only local files also runs on the engine.
 
 Relative file paths resolve against the working folder (`-w`).
 

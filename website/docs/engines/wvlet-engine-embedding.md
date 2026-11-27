@@ -11,4 +11,4 @@ Embedding the engine in your own application is planned and not available yet. T
 
 The engine already runs on the JVM, in the native CLI, in Node.js, and in the browser (the [Playground](../usage/playground.md)). The plan is to let applications open an engine, register files or tables, run Wvlet queries, and read the results in-process, the way apps embed DuckDB or SQLite.
 
-Today, the [Python and TypeScript SDKs](../bindings/index.md) and the native library behind them (`libwvlet`) compile Wvlet queries to SQL; you run that SQL on DuckDB or a warehouse. To run queries on the engine now, use the [CLI](../usage/install.md).
+Today, the [Python and TypeScript SDKs](../bindings/index.md) compile Wvlet queries to SQL; you run that SQL on DuckDB or a warehouse. To run queries on the engine now, use the [CLI](../usage/install.md).
