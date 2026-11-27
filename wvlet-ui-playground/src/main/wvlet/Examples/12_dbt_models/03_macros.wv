@@ -4,8 +4,8 @@
 -- A query fragment, applied with |
 def is_open_order = where o_orderstatus = 'O'
 
--- A fragment that sorts by revenue
-def by_revenue = order by revenue desc
+-- A fragment with a parameter: the top n rows by revenue
+def top(n: int) = order by revenue desc | limit n
 
 -- A scalar function
 def net_price(price: double, discount: double): double = price * (1 - discount)
@@ -22,4 +22,4 @@ model revenue_by(year: int) = {
 }
 
 from revenue_by(1997)
-| by_revenue
+| top(3)

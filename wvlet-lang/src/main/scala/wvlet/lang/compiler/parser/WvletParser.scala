@@ -3102,10 +3102,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   end window
 
-  def limitExpr(input: Relation): Limit = node {
+  def limitExpr(input: Relation): Relation = node {
     val t = consume(WvletToken.LIMIT)
-    val n = consume(WvletToken.INTEGER_LITERAL)
-    Limit(input, LongLiteral(n.str.toLong, n.str, n.span), spanFrom(t))
+    expression() match
+      case n: LongLiteral =>
+        Limit(input, n, spanFrom(t))
+      case e =>
+        // A val, model argument, or def parameter is bound later; GenSQL.expand folds it
+        UnresolvedLimit(input, e, spanFrom(t))
   }
 
   def testExpr(input: Relation): Relation = node {

@@ -1,0 +1,36 @@
+-- limit takes a constant integer expression: a val, a def parameter, or a model argument
+
+-- A val bound to an integer
+val limit_rows = 2
+
+from [[1], [2], [3], [4]] as lim_val(x)
+order by x
+limit limit_rows
+test _.rows should be [[1], [2]]
+;
+
+-- A def parameter
+def lim_top(n: int) = order by x desc | limit n
+
+from [[1], [2], [3], [4]] as lim_def(x)
+| lim_top(3)
+test _.rows should be [[4], [3], [2]]
+;
+
+-- A model argument
+model lim_model(n: int) = {
+  from [[1], [2], [3], [4]] as lim_m(x)
+  order by x
+  limit n
+}
+
+from lim_model(1)
+test _.rows should be [[1]]
+;
+
+-- Arithmetic over constants
+from [[1], [2], [3], [4]] as lim_arith(x)
+order by x
+limit limit_rows * 2 - 1
+test _.rows should be [[1], [2], [3]]
+;

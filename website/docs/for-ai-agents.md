@@ -81,7 +81,7 @@ Keywords are lower-case. Each operator takes the output of the previous line as 
 | `agg` | Add aggregations to the group keys | `agg _.count as n, amount.sum as total` |
 | `where` after `agg` | Filter groups | `where total > 100` |
 | `order by` | Sort rows | `order by total desc` |
-| `limit` | Keep the first n rows | `limit 10` |
+| `limit` | Keep the first n rows; n may be a val, model argument, or `def` parameter | `limit 10`, `limit n` |
 | `count` | Count all rows | `from orders count` |
 | `dedup` | Remove duplicate rows | `select status dedup` |
 | `sample` | Random sample | `sample 1000` |

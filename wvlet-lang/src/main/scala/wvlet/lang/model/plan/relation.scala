@@ -271,6 +271,15 @@ case class Sort(child: Relation, orderBy: List[SortItem], span: Span) extends Fi
 case class Limit(child: Relation, limit: LongLiteral, span: Span) extends FilteringRelation:
   override def toString: String = s"Limit[${limit.value}](${child})"
 
+/**
+  * A `limit` whose row count is an expression other than an integer literal, such as a val, a model
+  * argument, or a `def` parameter. GenSQL.expand folds it into [[Limit]] once those names are
+  * bound, so code generators and the engine only see literal limits.
+  */
+case class UnresolvedLimit(child: Relation, limit: Expression, span: Span)
+    extends FilteringRelation:
+  override def toString: String = s"UnresolvedLimit[${limit}](${child})"
+
 case class Offset(child: Relation, rows: LongLiteral, span: Span) extends FilteringRelation:
   override def toString: String = s"Offset[${rows.value}](${child})"
 

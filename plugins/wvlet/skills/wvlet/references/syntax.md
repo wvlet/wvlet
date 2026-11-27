@@ -47,7 +47,7 @@ test _.rows should be [[1, 10]]
 ```
 
 - `select distinct a, b` keeps unique rows of the selected columns; `dedup` keeps unique rows.
-- `limit n` keeps the first n rows.
+- `limit n` keeps the first n rows. `n` is an integer or a constant expression: a `val`, a model argument, or a `def` parameter (`def top(k: int) = order by v desc | limit k`); a column is an error.
 - `sample 1000`, `sample 10%`, `sample reservoir (1000)`, `sample system (10%)`,
   `sample bernoulli (10%)`.
 
