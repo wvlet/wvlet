@@ -1,24 +1,24 @@
 ---
 sidebar_label: Performance
-description: "How fast the Wvlet engine runs TPC-H and TPC-DS at scale factor 10 compared with DuckDB, with DataFusion and Trino as references: the setup, the totals, and where it is still slower."
+description: "The Wvlet engine on TPC-H and TPC-DS at scale factor 10 against DuckDB, with DataFusion and Trino as references: the results, the setup, and how to reproduce them."
 ---
 
 # Performance
 
-The [Wvlet engine](wvlet-engine.md) is younger than the engines it is compared with here, and it is still slower than DuckDB overall. This page reports where it stands, measured on the TPC-H and TPC-DS benchmark queries.
+The [Wvlet engine](wvlet-engine.md) runs every TPC-H and TPC-DS query at scale factor 10 with results identical to DuckDB's. This page reports its speed on those suites against DuckDB, with DataFusion and Trino as references, and how to reproduce the numbers.
 
 ## Results
 
-TPC-H and TPC-DS at scale factor 10 (about 10 GB of raw data, stored as Parquet files), measured on 2026-11-27 at commit [`4bee5ae1`](https://github.com/wvlet/wvlet/commit/4bee5ae1) on an Apple M5 Pro (18 cores, 48 GB) with JDK 25, a shared machine with a load average of about 5. Each number is the engine's time divided by DuckDB's on the same queries, so lower is better and 1.00x means as fast as DuckDB:
+TPC-H and TPC-DS at scale factor 10 (about 10 GB of raw data as Parquet files), commit [`4bee5ae1`](https://github.com/wvlet/wvlet/commit/4bee5ae1), 2026-11-27. Each number is the engine's time divided by DuckDB's on the same queries: lower is better, and 1.00x is DuckDB's time.
 
 | Suite | Wvlet engine, total | Wvlet engine, geometric mean | Total time, Wvlet / DuckDB |
 | --- | ---: | ---: | ---: |
 | TPC-H (22 queries) | 1.41x | 1.39x | 3.12 s / 2.21 s |
 | TPC-DS (99 queries) | 1.20x | 1.11x | 8.82 s / 7.38 s |
 
-- Every query ran with no errors, and the engine's results match DuckDB's: the TPC-H and TPC-DS conformance tests compare their rows.
+- Every query ran with no errors, and the TPC-H and TPC-DS conformance tests check the engine's rows against DuckDB's.
 - The engine is faster than DuckDB on 31 of the 99 TPC-DS queries (q32 at 0.41x, q15 at 0.56x) and on 3 of the 22 TPC-H queries (q15 and q16 at 0.85x).
-- The slowest are TPC-DS q27 (2.63x) and TPC-H q5 (2.23x); most others are within 2x.
+- The largest ratios are TPC-DS q27 (2.63x) and TPC-H q5 (2.23x); most others are within 2x.
 
 ## Other engines as references
 
@@ -35,9 +35,11 @@ The same queries (as SQL for the other engines), on the same SF10 Parquet data a
 
 ## How it is measured
 
-- Both engines run in one JVM and read the same Parquet files: DuckDB through its JDBC driver (2.0.1) with its default thread count.
-- Each query runs once to warm up, then 3 timed runs; the result is the median.
-- The data is generated with DuckDB's `tpch` and `tpcds` extensions.
-- The benchmark is opt-in and never gates CI. To run it on your machine, see `EngineTPCHBench` and `EngineTPCDSBench` under `wvlet-engine/.jvm/src/test/scala/wvlet/lang/engine/`; for example, `WVLET_ENGINE_BENCH_SF=1 ./sbt "engineJVM/testOnly *EngineTPCHBench"`.
+- **Machine**: Apple M5 Pro (18 cores, 48 GB), JDK 25, a shared machine with a load average of about 5.
+- **DuckDB**: version 2.0.1 through its JDBC driver, in the same JVM, with its default thread count.
+- **Data**: generated with DuckDB's `tpch` and `tpcds` extensions and stored as Parquet; both engines read the same files directly.
+- **Runs**: each query runs once to warm up, then 3 timed runs; the result is the median.
+- **Declared keys**: the benchmark declares the TPC-H and TPC-DS primary keys, and `c_customer_id` as a unique key of the TPC-DS `customer` table, to the Wvlet engine; DuckDB reads the Parquet files without constraints.
+- **Snappy**: at this commit the engine decoded Snappy pages with its pure-Scala decoder; later JVM builds use snappy-java.
 
-Timings depend on the machine and its load, so compare numbers from one machine only.
+The benchmark is opt-in and never gates CI. To run it, see `EngineTPCHBench` and `EngineTPCDSBench` under `wvlet-engine/.jvm/src/test/scala/wvlet/lang/engine/`; for example, `WVLET_ENGINE_BENCH_SF=1 ./sbt "engineJVM/testOnly *EngineTPCHBench"`. Timings depend on the machine and its load, so compare numbers from one machine only.

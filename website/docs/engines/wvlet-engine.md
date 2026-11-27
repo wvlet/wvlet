@@ -7,9 +7,13 @@ description: "Wvlet's own in-process columnar engine runs Wvlet plans directly o
 
 The Wvlet engine is an in-process columnar query engine that executes compiled Wvlet plans directly, with no SQL generation and no external database. It is the default engine of `wvlet run`, the REPL, `wvlet build`, and `wvlet flow run`.
 
+- **Complete on the standard benchmarks**: it runs all 22 TPC-H and 99 TPC-DS queries, and the conformance tests check every result row against DuckDB.
+- **Built for analytical workloads**: vectorized, multi-threaded operators planned by a cost-based optimizer, measured against DuckDB at scale factor 10 on the [Performance](wvlet-engine-performance.md) page.
+- **One engine everywhere**: the same Scala codebase runs on the JVM, as a native binary, in Node.js, and in the browser.
+
 ## Where it runs
 
-The engine is written in Scala and built from one codebase for every platform, with pure-Scala Parquet and Iceberg readers. The one native library is optional: on the JVM, the engine decodes Snappy-compressed Parquet pages with [snappy-java](https://github.com/xerial/snappy-java), and falls back to the pure-Scala decoder when no native build fits the platform (`-Dwvlet.uni.snappy.useSnappyJava=false` forces the fallback). The other platforms always use the pure-Scala decoder:
+The engine reads Parquet and Iceberg with its own Scala readers, so no platform requires a database or a native library. On the JVM it decodes Snappy-compressed Parquet pages with [snappy-java](https://github.com/xerial/snappy-java) when a native build fits the platform, and uses the pure-Scala decoder otherwise (`-Dwvlet.uni.snappy.useSnappyJava=false` forces it); the other platforms use the pure-Scala decoder.
 
 - **JVM**: the `wvlet` command (and its `wv` alias) from Homebrew or a release package ([Installation](../usage/install.md)).
 - **Node.js**: `wvlet run` from the npm package `@wvlet/cli`.
@@ -26,7 +30,7 @@ The engine is written in Scala and built from one codebase for every platform, w
 - `create table`, `drop table`, `truncate`, `create` / `drop schema`, `reshape` (or SQL `alter table`), and `rename table`.
 - Persistent tables as Iceberg tables in a warehouse folder; see [Tables and Files](wvlet-engine-tables.md).
 
-Not supported yet, reported as errors: views, `update`, `execute`, table functions such as `read_csv(...)`, and some engine-specific functions. Map values run but can return results that differ from DuckDB. Use `-t duckdb` (or a DuckDB profile) for these.
+Not supported yet, and reported as errors: views, `update`, `execute`, table functions such as `read_csv(...)`, and some engine-specific functions. Map values run, but some map results can differ from DuckDB's. For these, use `-t duckdb` or a DuckDB profile.
 
 ## Usage
 
@@ -66,6 +70,6 @@ A profile can hold a `wvlet` connector next to other engines; switch to it with 
 ## Next
 
 - [Tables and Files](wvlet-engine-tables.md): register tables, use the built-in TPC-H and TPC-DS catalogs, save results, and persist tables as Iceberg.
-- [Performance](wvlet-engine-performance.md): TPC-H and TPC-DS at scale factor 10 against DuckDB.
+- [Performance](wvlet-engine-performance.md): TPC-H and TPC-DS at scale factor 10, against DuckDB, DataFusion, and Trino.
 - [GPU Executor](wvlet-engine-gpu.md): the experimental cudf offload and its DGX Spark results.
 - [Embedding](wvlet-engine-embedding.md): running the engine inside your application (planned).

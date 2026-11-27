@@ -209,10 +209,10 @@ function HomepageHero(): React.ReactNode {
           <em className={styles.shimmer}>in the order data flows</em>
         </h1>
         <p className={styles.lede}>
-          Wvlet is a <Link to="/docs/syntax/">flow-style query language</Link> with its own columnar
-          query engine. Start from a table, pipe it through operators, and run it in-process on the
-          JVM, Node.js, web browsers, or as a native binary. Need a warehouse? Wvlet also compiles
-          to SQL for DuckDB, Trino, Snowflake, and Hive.
+          Wvlet is a <Link to="/docs/syntax/">flow-style query language</Link> with a columnar
+          query engine built in. It runs every TPC-H and TPC-DS query in-process, with results
+          identical to DuckDB's, on the JVM, as a native binary, in Node.js, or in the browser. The
+          same query also compiles to SQL for DuckDB, Trino, Snowflake, and Hive.
         </p>
         <div className={styles.ctas}>
           <Link className={clsx(styles.btn, styles.btnSolid)} to="pathname:///playground/">
@@ -358,8 +358,9 @@ const engineCards: EngineCard[] = [
     tags: ['JVM', 'Native'],
     description: (
       <>
-        Vectorized, multi-threaded execution over Parquet, Iceberg, JSON, and CSV, with a
-        cost-based optimizer benchmarked against DuckDB on TPC-H and TPC-DS.
+        Vectorized, multi-threaded execution over Parquet, Iceberg, JSON, and CSV, planned by a
+        cost-based optimizer. Runs the full TPC-H and TPC-DS suites at scale factor 10;{' '}
+        <Link to="/docs/engines/wvlet-engine-performance">see the benchmark</Link>.
       </>
     ),
   },
@@ -381,7 +382,7 @@ const engineCards: EngineCard[] = [
     description: (
       <>
         Offload joins and aggregations to the GPU while the rest of the plan stays on the CPU. A
-        query falls back to the CPU if the device can't run it.
+        subtree the device can't run, or that fails on it, runs on the CPU instead.
       </>
     ),
   },
