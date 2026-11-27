@@ -42,7 +42,10 @@ class WvletREPLTest extends UniTest:
 
   private def runReplIn(workFolder: File, inputs: String*): ReplRun =
     val io   = TerminalIO.inMemory(inputs.map(_.getBytes("UTF-8")))
-    val main = WvletREPLMain(WvletGlobalOption(), WvletREPLOption(workFolder = workFolder.getPath))
+    val main = WvletREPLMain(
+      WvletCliGlobalOption(),
+      WvletREPLOption(workFolder = workFolder.getPath)
+    )
     val stdout = captureStdout {
       (main.replDesign(isInteractive = true) + Design.newDesign.bindInstance[TerminalIO](io)).build[
         WvletREPL

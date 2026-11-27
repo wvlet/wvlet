@@ -1,12 +1,12 @@
 ---
-description: "Install the Wvlet command-line tool with npm (no JDK needed), or the full JVM CLI (wv REPL, build, flow, ui) with Homebrew or a release package."
+description: "Install the Wvlet command-line tool with npm (no JDK needed), or the full JVM CLI (REPL, build, flow, ui) with Homebrew or a release package."
 sidebar_label: Installation
 sidebar_position: 1
 ---
 
 # Installation
 
-Wvlet is available as a command-line tool in two distributions:
+Wvlet is available as one command, `wvlet`, in two distributions:
 
 | | npm (`@wvlet/cli`) | JVM CLI (Homebrew or release package) |
 |---|---|---|
@@ -14,7 +14,7 @@ Wvlet is available as a command-line tool in two distributions:
 | `wvlet version`, `compile`, `to_wvlet`, `run` | ✓ | ✓ |
 | DuckDB (`-t duckdb`) | Included | Full package only |
 | Snowflake connector | — | Full package only |
-| `wv` REPL, `wvlet build`, `flow`, `catalog`, `ui` | — | ✓ |
+| [REPL](repl.md) (`wvlet` on a terminal, `wvlet repl`, or `wv`), `wvlet build`, `flow`, `catalog`, `ui` | — (coming) | ✓ |
 | Updates | Update notice + `wvlet upgrade` | `brew upgrade wvlet` |
 
 Start with npm unless you need a JVM-only command.
@@ -57,7 +57,7 @@ which wvlet   # should point to the npm global bin directory
 
 ## JVM CLI
 
-The JVM CLI includes the [wv REPL](repl.md), [Web UI](ui.md), model builds, and flows, in addition to the [wvlet command](cli.md). Each release ships it in two packages with the same `wv` and `wvlet` commands:
+The JVM CLI includes the [REPL](repl.md), [Web UI](ui.md), model builds, and flows, in addition to the commands of the npm `wvlet`. Each release ships it in two packages with the same `wvlet` command and its `wv` alias (`wvlet repl`):
 
 - `wvlet-cli-(version).tar.gz` (about 60 MB, installed by Homebrew): queries run on the in-process [wvlet engine](../engines/wvlet-engine.md), [Trino](../engines/trino.md), and remote wvlet servers.
 - `wvlet-cli-full-(version).tar.gz` (about 230 MB): adds the [DuckDB](../engines/duckdb.md) and [Snowflake](../engines/snowflake.md) connectors, whose JDBC drivers make up most of its size. Use it for `-t duckdb`, `.duckdb` files, DuckDB extensions, `sql"..."` blocks run on DuckDB, or Snowflake profiles.
@@ -70,7 +70,7 @@ Without the full package, selecting DuckDB or Snowflake fails with an error that
 brew install wvlet/wvlet/wvlet
 ```
 
-This installs the `wv` and `wvlet` commands of the `wvlet-cli` package (without DuckDB and Snowflake), along with OpenJDK as a dependency. For DuckDB or Snowflake, use the full release package below. To upgrade, run `brew upgrade wvlet` (run `brew update` first if the latest version is not picked up).
+This installs the `wvlet` command (and the `wv` alias) of the `wvlet-cli` package (without DuckDB and Snowflake), along with OpenJDK as a dependency. For DuckDB or Snowflake, use the full release package below. To upgrade, run `brew upgrade wvlet` (run `brew update` first if the latest version is not picked up).
 
 :::info
 The formula for homebrew can be found at
@@ -81,7 +81,7 @@ https://github.com/wvlet/homebrew-wvlet
 
 Download a binary package, `wvlet-cli-(version).tar.gz` or `wvlet-cli-full-(version).tar.gz` (with DuckDB and Snowflake), from the release page https://github.com/wvlet/wvlet/releases
 
-You can find the `wv` and `wvlet` commands in the bin directory of the package. Add the bin directory to your PATH environment variable.
+You can find the `wvlet` command and the `wv` alias in the bin directory of the package. Add the bin directory to your PATH environment variable.
 
 JDK 17 or later is required. Set the JAVA_HOME environment variable to the JDK path.
 

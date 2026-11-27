@@ -72,7 +72,7 @@ case class WvletCatalogDiffOption(
   * `wvlet catalog` subcommands for importing database table schemas as Wvlet type definitions
   * (#1881), enabling offline query validation
   */
-class WvletCatalogCommand(opts: WvletGlobalOption) extends LogSupport:
+class WvletCatalogCommand(opts: WvletCliGlobalOption) extends LogSupport:
 
   @command(description = "Show the usage of catalog commands", isDefault = true)
   def help: Unit = info(

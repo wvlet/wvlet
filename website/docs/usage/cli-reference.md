@@ -8,9 +8,7 @@ sidebar_label: CLI Reference
 
 This page provides a comprehensive reference for all Wvlet CLI commands.
 
-:::note
-The `wv` command is a shortcut available in the REPL environment. For all other contexts, use the full `wvlet` command.
-:::
+`wvlet` is the single command of every distribution (npm, Homebrew, and the release packages). `wvlet` with no arguments on a terminal opens the [REPL](repl.md); in a pipe or a script it prints the version. `wv` is an alias of `wvlet repl`. Commands marked *JVM CLI* need the [JVM CLI](install.md#jvm-cli) for now.
 
 ## Global Options
 
@@ -25,10 +23,19 @@ wvlet [global options] <command> [command options]
 | `-h, --help` | Display help message |
 | `--version` | Display version |
 | `--debug` | Enable debug logging |
-| `-l <level>` | Set log level (ERROR, WARN, INFO, DEBUG, TRACE) |
+| `-l, --loglevel <level>` | Set log level (error, warn, info, debug, trace) |
 | `-L <pattern>=<level>` | Set log level for specific class patterns |
-| `--profile <name>` | Use a specific connection profile |
-| `-w <path>` | Set working directory |
+
+`compile`, `to_wvlet`, `run`, and `repl` share these options:
+
+| Option | Description |
+|--------|-------------|
+| `-w <path>` | Working folder (default: current folder) |
+| `-f, --file <path>` | Read the query from a file |
+| `-t, --target <type>` | Engine: `wvlet` (default for `run` and `repl`), `duckdb` (default dialect for `compile`), `trino`, `snowflake`, ... |
+| `-p, --profile <name>` | Use a connection profile from `~/.wvlet/profiles.json` |
+| `--catalog <name>`, `--schema <name>` | Override the default engine's catalog and schema |
+| `--strict` | Fail compilation on typing errors (`compile`, `to_wvlet`, `run`) |
 
 ## Commands
 
@@ -66,7 +73,7 @@ wvlet compile -f query.wv --target trino
 
 ### `wvlet catalog import`
 
-Import database table schemas as Wvlet type definitions, and engine functions as Wvlet
+*JVM CLI.* Import database table schemas as Wvlet type definitions, and engine functions as Wvlet
 function definitions, for offline query validation.
 See [Importing Database Catalogs](./catalog-import.md).
 
@@ -123,10 +130,12 @@ wvlet run [options] [query]
 |--------|-------------|
 | `-f, --file <path>` | Run queries from a file |
 | `-t, --target <type>` | Engine to run on: `wvlet` (the in-process [wvlet engine](../engines/wvlet-engine.md), default without `--profile`), duckdb, trino |
-| `--catalog <name>` | Use specific catalog |
-| `--schema <name>` | Use specific schema |
-| `--format <type>` | Output format (table, json, csv, tsv) |
-| `--limit <n>` | Limit result rows |
+| `-p, --profile <name>` | Run with a connection profile |
+| `--catalog <name>`, `--schema <name>` | Override the default engine's catalog and schema |
+| `--format <type>` | Output format: `box` (default) or `csv` (the last result) |
+| `--host`, `--port`, `--user`, `--https` | Connect to a Trino coordinator, or with `-t wvlet` to a remote [wvlet server](remote-server.md). Passwords and tokens come from the profile only |
+
+A failed `test` assertion or statement makes `wvlet run` exit with status 1 after printing all results.
 
 **Examples:**
 
@@ -137,16 +146,23 @@ wvlet run "from users select count(*)"
 # Run from file
 wvlet run -f queries/report.wv
 
-# Run with specific format
-wvlet run -f query.wv --format json
-
-# Run with row limit
-wvlet run "from large_table select *" --limit 1000
+# Print the result as CSV
+wvlet run -f query.wv --format csv
 ```
+
+### `wvlet repl`
+
+*JVM CLI.* Start the interactive [REPL](repl.md). A bare `wvlet` on a terminal does the same.
+
+```bash
+wvlet repl [-p <profile>] [-t <engine>] [-c <command>] [-f <file>]
+```
+
+`-c` runs a command and exits, `-f` runs the commands in a file and exits.
 
 ### `wvlet build`
 
-Build materialized models in dependency order. See [Model Pipelines](../syntax/model-pipelines.md).
+*JVM CLI.* Build materialized models in dependency order. See [Model Pipelines](../syntax/model-pipelines.md).
 
 ```bash
 wvlet build [options]
@@ -174,7 +190,7 @@ wvlet build -s stg_orders+
 
 ### `wvlet ui`
 
-Start the Wvlet Web UI server.
+*JVM CLI.* Start the Wvlet Web UI server.
 
 ```bash
 wvlet ui [options]
@@ -254,19 +270,16 @@ wvlet run -f query.wv --profile production
 | `WVLET_LOG_LEVEL` | Default log level |
 | `WVLET_DB_TYPE` | Default database type |
 
-## Command Shortcuts
+## The `wv` alias
 
-The `wv` command is a shortcut for the Wvlet REPL:
+`wv` is an alias of `wvlet repl`, kept for existing scripts. It takes the same options:
 
 ```bash
-# Start REPL
+# Start the REPL (same as a bare `wvlet` on a terminal)
 wv
 
-# Run REPL command
-wv "from users select count(*)"
-
-# Access other wvlet commands through wv
-wv compile -f query.wv
+# Run one command and exit
+wv -c "from users select count(*)"
 ```
 
 ## Examples

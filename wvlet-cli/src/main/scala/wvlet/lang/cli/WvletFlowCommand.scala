@@ -96,7 +96,7 @@ end WvletFlowOption
 /**
   * `wvlet flow` subcommands for managing and running flows from the CLI
   */
-class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
+class WvletFlowCommand(opts: WvletCliGlobalOption) extends LogSupport:
 
   @command(description = "Run a flow and print its stage results", isDefault = true)
   def help: Unit = info("Usage: wvlet flow <run|list|show> ...")

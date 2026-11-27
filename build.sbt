@@ -499,7 +499,7 @@ lazy val cli = project
     },
     cliPackSettings
   )
-  .dependsOn(server, connectorDuckDB % Test, connectorSnowflake % Test)
+  .dependsOn(server, cliCore.jvm, connectorDuckDB % Test, connectorSnowflake % Test)
 
 // The full JVM CLI (wvlet-cli-full-<version>.tar.gz): the lite CLI plus the optional DuckDB and
 // Snowflake connector modules, which register themselves through META-INF/services

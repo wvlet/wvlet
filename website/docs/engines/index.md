@@ -5,7 +5,7 @@ description: "Wvlet runs queries on its own in-process engine by default, or com
 
 # Choosing an Engine
 
-The same Wvlet query runs on Wvlet's own engine or, compiled to SQL, on a database. `wvlet run` and `wv` use the Wvlet engine unless you pass `-t` or `--profile`.
+The same Wvlet query runs on Wvlet's own engine or, compiled to SQL, on a database. `wvlet run` and the REPL use the Wvlet engine unless you pass `-t` or `--profile`.
 
 | Engine | Pick it when | Select it with |
 | --- | --- | --- |

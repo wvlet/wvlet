@@ -14,6 +14,8 @@ object WvletCliMain:
     try
       launcher.execute(args)
     catch
+      case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>
+      // --version: the version is already printed
       case e: Throwable =>
         Console.err.println(e.getMessage)
         sys.exit(1)
