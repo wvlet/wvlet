@@ -13,12 +13,12 @@
  */
 package wvlet.lang.embedded;
 
-/** The Java usage shown in website/docs/bindings/jvm.md, compiled and run by EmbeddedEngineTest */
-public class EmbeddedEngineJavaUsage {
+/** The Java usage shown in website/docs/bindings/jvm.md, compiled and run by WvletEmbedTest */
+public class WvletEmbedJavaUsage {
   public static long countRegions(String dataDir) {
-    try (EmbeddedEngine engine = EmbeddedEngine.open(dataDir)) {
+    try (WvletEmbed engine = WvletEmbed.open(dataDir)) {
       engine.registerTable("region", "region.parquet");
-      EmbeddedResult result = engine.query("from region agg _.count as n");
+      WvletEmbedResult result = engine.query("from region agg _.count as n");
       for (int i = 0; i < result.columnCount(); i++) {
         System.out.println(result.columnName(i) + ": " + result.columnType(i));
       }

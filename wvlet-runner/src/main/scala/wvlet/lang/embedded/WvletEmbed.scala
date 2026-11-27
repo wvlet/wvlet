@@ -40,7 +40,7 @@ import wvlet.uni.log.LogLevel
   * database, and no SQL generation.
   *
   * {{{
-  * val engine = EmbeddedEngine.open("data")
+  * val engine = WvletEmbed.open("data")
   * engine.registerTable("orders", "orders.parquet")
   * val result = engine.query("from orders group by o_orderstatus agg _.count as n")
   * result.rows.foreach(println)
@@ -55,7 +55,7 @@ import wvlet.uni.log.LogLevel
   *   the folder that relative file paths, in [[registerTable]] and in queries (`from 'x.parquet'`),
   *   resolve against
   */
-class EmbeddedEngine private (val baseDir: String) extends AutoCloseable:
+class WvletEmbed private (val baseDir: String) extends AutoCloseable:
   private val config  = ConnectorConfig(name = "wvlet", `type` = "wvlet", default = true)
   private val profile = Profile("embedded", List(config))
   private val workEnv = WorkEnv(baseDir, logLevel = LogLevel.WARN)
@@ -65,7 +65,7 @@ class EmbeddedEngine private (val baseDir: String) extends AutoCloseable:
   private val compiler =
     val c = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = workEnv, dbType = DBType.Wvlet))
     c.setDefaultCatalog(session.catalog)
-    c.setDefaultSchema(EmbeddedEngine.schemaName)
+    c.setDefaultSchema(WvletEmbed.schemaName)
     c
 
   private val connectorProvider = SqlConnectorProvider(profile)
@@ -120,7 +120,7 @@ class EmbeddedEngine private (val baseDir: String) extends AutoCloseable:
     *   when the query fails to compile, a statement fails, or a `test` assertion fails. The
     *   exception carries a status code and the source location
     */
-  def query(text: String): EmbeddedResult = synchronized {
+  def query(text: String): WvletEmbedResult = synchronized {
     checkOpen()
     val unit          = CompilationUnit.fromWvletString(text)
     val compileResult = compiler.compileSingleUnit(unit)
@@ -132,11 +132,11 @@ class EmbeddedEngine private (val baseDir: String) extends AutoCloseable:
       .withDebugRun(true)
       .newContext(Symbol.NoSymbol)
     val result = executor.execute(ExecutionPlanner.plan(unit, ctx), ctx)
-    EmbeddedEngine.firstError(result).foreach(throw _)
-    EmbeddedEngine
+    WvletEmbed.firstError(result).foreach(throw _)
+    WvletEmbed
       .lastTable(result)
-      .map(EmbeddedResult.fromTableRows)
-      .getOrElse(EmbeddedResult.empty)
+      .map(WvletEmbedResult.fromTableRows)
+      .getOrElse(WvletEmbedResult.empty)
   }
 
   /** Release the engine. Later calls fail */
@@ -147,17 +147,17 @@ class EmbeddedEngine private (val baseDir: String) extends AutoCloseable:
       connectorProvider.close()
   }
 
-end EmbeddedEngine
+end WvletEmbed
 
-object EmbeddedEngine:
+object WvletEmbed:
   /** The schema registered tables belong to */
   val schemaName: String = "main"
 
   /** Open an engine that resolves relative paths against the current folder */
-  def open(): EmbeddedEngine = open(".")
+  def open(): WvletEmbed = open(".")
 
   /** Open an engine that resolves relative paths against `baseDir` */
-  def open(baseDir: String): EmbeddedEngine = EmbeddedEngine(baseDir)
+  def open(baseDir: String): WvletEmbed = WvletEmbed(baseDir)
 
   // Statement results nest in lists and plan results; walk them in statement order
   private def flatten(r: QueryResult): Seq[QueryResult] =
@@ -186,4 +186,4 @@ object EmbeddedEngine:
       }
       .lastOption
 
-end EmbeddedEngine
+end WvletEmbed

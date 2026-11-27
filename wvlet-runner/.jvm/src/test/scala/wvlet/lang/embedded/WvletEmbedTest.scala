@@ -29,8 +29,8 @@ import java.math.MathContext
 import java.sql.DriverManager
 import scala.util.Using
 
-/** [[EmbeddedEngine]]: the public API for running Wvlet queries in-process */
-class EmbeddedEngineTest extends UniTest:
+/** [[WvletEmbed]]: the public API for running Wvlet queries in-process */
+class WvletEmbedTest extends UniTest:
   private val tpchData   = "spec/tpch/data"
   private val tpchTables = Seq(
     "customer",
@@ -43,15 +43,15 @@ class EmbeddedEngineTest extends UniTest:
     "supplier"
   )
 
-  private def withEngine[A](body: EmbeddedEngine => A): A =
-    Using.resource(EmbeddedEngine.open())(body)
+  private def withEngine[A](body: WvletEmbed => A): A = Using.resource(WvletEmbed.open())(body)
 
   test("should run a query over inline rows") {
     withEngine { engine =>
       val r = engine.query("""from [[1, 'a'], [2, 'b'], [3, 'c']] as t(id, name)
                              |where id >= 2
                              |select id, name""".stripMargin)
-      r.columns shouldBe IndexedSeq(EmbeddedColumn("id", "int"), EmbeddedColumn("name", "string"))
+      r.columns shouldBe
+        IndexedSeq(WvletEmbedColumn("id", "int"), WvletEmbedColumn("name", "string"))
       r.rowCount shouldBe 2
       r.rows shouldBe IndexedSeq(IndexedSeq(2L, "b"), IndexedSeq(3L, "c"))
       r.get(1, 1) shouldBe "c"
@@ -89,7 +89,7 @@ class EmbeddedEngineTest extends UniTest:
   }
 
   test("should resolve relative paths against the base folder") {
-    Using.resource(EmbeddedEngine.open(tpchData)) { engine =>
+    Using.resource(WvletEmbed.open(tpchData)) { engine =>
       engine.registerTable("region", "region.parquet")
       engine.query("from region agg _.count as n").rows shouldBe IndexedSeq(IndexedSeq(5L))
       engine.query("from 'nation.parquet' agg _.count as n").rows shouldBe
@@ -127,7 +127,7 @@ class EmbeddedEngineTest extends UniTest:
   }
 
   test("should reject an unsupported file, a registered name, and calls after close") {
-    val engine = EmbeddedEngine.open()
+    val engine = WvletEmbed.open()
     intercept[WvletLangException] {
       engine.registerTable("t", "data.xlsx")
     }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
@@ -142,7 +142,7 @@ class EmbeddedEngineTest extends UniTest:
   }
 
   test("should be callable from Java") {
-    EmbeddedEngineJavaUsage.countRegions(tpchData) shouldBe 5L
+    WvletEmbedJavaUsage.countRegions(tpchData) shouldBe 5L
   }
 
   // Numbers compare at 10 significant digits: avg(double) differs from DuckDB's in the last digits
@@ -201,4 +201,4 @@ class EmbeddedEngineTest extends UniTest:
     }
   }
 
-end EmbeddedEngineTest
+end WvletEmbedTest

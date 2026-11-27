@@ -10,8 +10,8 @@ Date: 2026-11-26 · PR #2512
 
 ## Decision
 
-- Add `wvlet.lang.embedded.EmbeddedEngine` to wvlet-runner's shared code. It owns one `WvletEngineSession`, compiles against that session's catalog, and runs statements through a `PlanExecutor` handed the same session (`initialEngineSessions`).
-- Bindings (libwvlet's C API, the Python and TypeScript SDKs) marshal arguments and `EmbeddedResult.toJson`; they add no query logic of their own.
+- Add `wvlet.lang.embedded.WvletEmbed` to wvlet-runner's shared code. It owns one `WvletEngineSession`, compiles against that session's catalog, and runs statements through a `PlanExecutor` handed the same session (`initialEngineSessions`).
+- Bindings (libwvlet's C API, the Python and TypeScript SDKs) marshal arguments and `WvletEmbedResult.toJson`; they add no query logic of their own.
 - Land the JVM API first; the C entry points follow as marshalling only.
 
 ## Consequences

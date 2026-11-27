@@ -24,15 +24,18 @@ import scala.collection.immutable.ListMap
   * @param typeName
   *   the Wvlet type name, e.g. `long`, `double`, `string`, `decimal(15,2)`, `date`
   */
-case class EmbeddedColumn(name: String, typeName: String)
+case class WvletEmbedColumn(name: String, typeName: String)
 
 /**
-  * Rows of a query run by [[EmbeddedEngine]]. Values are `java.lang.Long` for integers,
+  * Rows of a query run by [[WvletEmbed]]. Values are `java.lang.Long` for integers,
   * `java.lang.Double` for floating-point numbers, `java.lang.Boolean`, and `String` for strings;
   * decimals, dates, and timestamps are strings, so no precision is lost; arrays are `Seq`s and maps
   * `Map`s; NULL is `null`.
   */
-case class EmbeddedResult(columns: IndexedSeq[EmbeddedColumn], rows: IndexedSeq[IndexedSeq[Any]]):
+case class WvletEmbedResult(
+    columns: IndexedSeq[WvletEmbedColumn],
+    rows: IndexedSeq[IndexedSeq[Any]]
+):
   /** The number of rows */
   def rowCount: Int = rows.size
 
@@ -50,9 +53,9 @@ case class EmbeddedResult(columns: IndexedSeq[EmbeddedColumn], rows: IndexedSeq[
 
   /**
     * The result as JSON: `{"columns":[{"name":..,"type":..},...],"rows":[[v1,v2,...],...]}`, with
-    * values as described in [[EmbeddedResult]]. The C and SDK bindings return this document
+    * values as described in [[WvletEmbedResult]]. The C and SDK bindings return this document
     */
-  def toJson: String = EmbeddedResult
+  def toJson: String = WvletEmbedResult
     .jsonCodec
     .toJson(
       ListMap(
@@ -61,15 +64,17 @@ case class EmbeddedResult(columns: IndexedSeq[EmbeddedColumn], rows: IndexedSeq[
       )
     )
 
-object EmbeddedResult:
+end WvletEmbedResult
+
+object WvletEmbedResult:
   private val jsonCodec = summon[Weaver[ListMap[String, Any]]]
 
   /** A result with no columns and no rows */
-  val empty: EmbeddedResult = EmbeddedResult(IndexedSeq.empty, IndexedSeq.empty)
+  val empty: WvletEmbedResult = WvletEmbedResult(IndexedSeq.empty, IndexedSeq.empty)
 
-  private[embedded] def fromTableRows(t: TableRows): EmbeddedResult =
+  private[embedded] def fromTableRows(t: TableRows): WvletEmbedResult =
     val columns =
-      t.schema.fields.map(f => EmbeddedColumn(f.name.name, f.dataType.wvExpr)).toIndexedSeq
+      t.schema.fields.map(f => WvletEmbedColumn(f.name.name, f.dataType.wvExpr)).toIndexedSeq
     // Without repeated column names, each row map holds every column in order
     val rows = t.positionalRows.getOrElse(t.rows.map(_.values.toIndexedSeq)).toIndexedSeq
-    EmbeddedResult(columns, rows)
+    WvletEmbedResult(columns, rows)

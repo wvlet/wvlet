@@ -59,7 +59,7 @@ class PlanExecutor(
 
   // In-process engine sessions, one per wvlet connector config (tables saved in a session stay
   // visible to later statements). `initialEngineSessions` lets a caller that already compiles
-  // against a session's catalog (EmbeddedEngine) run on that same session
+  // against a session's catalog (WvletEmbed) run on that same session
   private val engineSessions = mutable.Map.from(initialEngineSessions)
 
   private def engineSessionOf(config: ConnectorConfig): Option[WvletEngineSession] =

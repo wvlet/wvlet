@@ -28,7 +28,7 @@ Lane: Standard — a new public API. The launch prompt fixed the direction (desi
 
 ### Shared surface
 
-- One cross-platform class in `wvlet-runner`'s shared code, `wvlet.lang.embedded.EmbeddedEngine`, wraps a `WvletEngineSession` and a `PlanExecutor` on it. JS and Native get it for free, and later bindings only marshal arguments and results.
+- One cross-platform class in `wvlet-runner`'s shared code, `wvlet.lang.embedded.WvletEmbed`, wraps a `WvletEngineSession` and a `PlanExecutor` on it. JS and Native get it for free, and later bindings only marshal arguments and results.
 - The facade hands the session's compile-time catalog to its compiler in shared code, so registered Parquet tables are typed when the query compiles on every platform, as the JVM CLI does today.
 - Queries return all rows; no 40-row display limit.
 - One engine is one session: tables saved with `save to` stay visible to later queries. Calls on one engine are serialized; apps open one engine per thread for parallel queries.
@@ -42,7 +42,7 @@ Lane: Standard — a new public API. The launch prompt fixed the direction (desi
 
 ### Order of PRs
 
-1. **JVM / shared API (this PR):** `EmbeddedEngine` with `open`, `registerTable`, `query`, `close`, a result with Java-friendly accessors and `toJson`; a Java usage test; DuckDB conformance over spec/tpch data; a "Java / Scala" bindings page; a design page (`design/embedding.md`) owning the API and result contract, and an ADR for placing the facade in the runner.
+1. **JVM / shared API (this PR):** `WvletEmbed` with `open`, `registerTable`, `query`, `close`, a result with Java-friendly accessors and `toJson`; a Java usage test; DuckDB conformance over spec/tpch data; a "Java / Scala" bindings page; a design page (`design/embedding.md`) owning the API and result contract, and an ADR for placing the facade in the runner.
 2. **libwvlet C API:** `wvlet_engine_open(config_json)` returning a handle, `wvlet_engine_register_table`, `wvlet_engine_query_json`, `wvlet_engine_close`, `wvlet_free_string`, through the lazy-start C shim. Strings cross the boundary as UTF-8: today's `toCString` truncates each UTF-16 char to a byte, so it gets fixed here. Gate: `wvc-lib` `make test` with a non-ASCII string, and the full Native workflow matrix.
 3. **Python SDK:** `wvlet.connect()` returning an engine with `register_table`, `run(query)` → rows, `.to_pandas()`; on the native library, no CLI fallback for running.
 4. **TypeScript SDK:** a `WvletEngine` class in `@wvlet/wvlet` on the Scala.js build, for Node.js (files through uni.io) and browsers (tables registered from in-memory rows). `sdkJs` links only `lang.js` today, so this adds a second linked bundle on `runner.js` (or Scala.js module splitting), exported as a separate entry point so `WvletCompiler` users don't download the engine.

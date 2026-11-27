@@ -21,9 +21,9 @@ libraryDependencies += "wvlet.lang" %% "wvlet-runner" % "<version>"
 ## Scala
 
 ```scala
-import wvlet.lang.embedded.EmbeddedEngine
+import wvlet.lang.embedded.WvletEmbed
 
-val engine = EmbeddedEngine.open("data") // relative paths resolve against data/
+val engine = WvletEmbed.open("data") // relative paths resolve against data/
 try
   engine.registerTable("orders", "orders.parquet")
   val result = engine.query("""
@@ -40,15 +40,15 @@ finally engine.close()
 
 ## Java
 
-`EmbeddedEngine` is `AutoCloseable`, and the result has index-based accessors:
+`WvletEmbed` is `AutoCloseable`, and the result has index-based accessors:
 
 ```java
-import wvlet.lang.embedded.EmbeddedEngine;
-import wvlet.lang.embedded.EmbeddedResult;
+import wvlet.lang.embedded.WvletEmbed;
+import wvlet.lang.embedded.WvletEmbedResult;
 
-try (EmbeddedEngine engine = EmbeddedEngine.open("data")) {
+try (WvletEmbed engine = WvletEmbed.open("data")) {
   engine.registerTable("region", "region.parquet");
-  EmbeddedResult result = engine.query("from region agg _.count as n");
+  WvletEmbedResult result = engine.query("from region agg _.count as n");
   for (int i = 0; i < result.columnCount(); i++) {
     System.out.println(result.columnName(i) + ": " + result.columnType(i));
   }

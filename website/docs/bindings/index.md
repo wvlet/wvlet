@@ -55,9 +55,9 @@ console.log(sql);  // SELECT name, age FROM users WHERE age > 18
 Run queries in-process on the JVM, with no server or database:
 
 ```scala
-import wvlet.lang.embedded.EmbeddedEngine
+import wvlet.lang.embedded.WvletEmbed
 
-val engine = EmbeddedEngine.open()
+val engine = WvletEmbed.open()
 engine.registerTable("orders", "data/orders.parquet")
 val result = engine.query("from orders group by o_orderstatus agg _.count as n")
 println(result.toJson)

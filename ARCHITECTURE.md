@@ -29,7 +29,7 @@ flowchart LR
 | `wvlet-lang` | JVM, JS, Native | Compiler: parsers, typer, rewrites, SQL generation, LSP; native DuckDB loader |
 | `wvlet-engine` | JVM, JS, Native | In-process columnar engine over uni's Parquet/Iceberg readers ([design](design/engine.md)) |
 | `wvlet-connector`, `wvlet-connector-duckdb`, `wvlet-connector-snowflake` | JVM | Connector interface and registry, Trino/Slack, optional JDBC connector modules ([design](design/connectors.md)) |
-| `wvlet-runner` | JVM, JS, Native | Executes compiled plans and `test` assertions; flows and activity items; the in-process `EmbeddedEngine` API ([embedding](design/embedding.md)) |
+| `wvlet-runner` | JVM, JS, Native | Executes compiled plans and `test` assertions; flows and activity items; the in-process `WvletEmbed` API ([embedding](design/embedding.md)) |
 | `wvlet-cli`, `wvlet-cli-core` | JVM (+JS, Native core) | `wvlet` (`WvletMain`) and `wv` REPL (`WvletREPLMain`) commands |
 | `wvc`, `wvc-lib` | Native | Standalone native compiler and the C library for C/C++/Rust bindings |
 | `wvlet-server`, `wvlet-http-server`, `wvlet-client` | JVM (+JS, Native client) | HTTP API server and client |
