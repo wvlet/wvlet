@@ -55,6 +55,9 @@ import wvlet.lang.engine.vector.PType
   * With [[Optimization.EagerOtherSideMinMax]], calls that are mins or maxes of D's columns stay in
   * the outer aggregation over the joined rows (a block repeats D's row, which doesn't change them),
   * and D may be a cross join with a one-row side (a scalar subquery's result) that keeps its rows.
+  *
+  * With [[Optimization.EagerDistinct]], a DISTINCT over a projection of the join is rewritten the
+  * same way, with the projection inlined into its keys ([[throughProject]]).
   */
 object EagerAggregation extends Pass:
   import RuntimePlan.*
@@ -94,17 +97,72 @@ object EagerAggregation extends Pass:
           case Some(r) =>
             ctx.fired(name)
             r
-          case None if ctx.options.isEnabled(Optimization.EagerAggregationInJoinTrees) =>
-            inJoinTree(a, ctx.options, newId) match
+          case None =>
+            val inJoin =
+              if ctx.options.isEnabled(Optimization.EagerAggregationInJoinTrees) then
+                inJoinTree(a, ctx.options, newId)
+              else
+                None
+            inJoin match
               case Some(r) =>
                 ctx.fired(Optimization.EagerAggregationInJoinTrees.name)
                 r
+              case None if ctx.options.isEnabled(Optimization.EagerDistinct) =>
+                eagerDistinct(a, ctx, newId).getOrElse(node)
               case None =>
                 node
-          case None =>
-            node
+      case Distinct(child) if ctx.options.isEnabled(Optimization.EagerDistinct) =>
+        val a: Aggregate = Aggregate(
+          child,
+          child.output.map(BExpr.ref),
+          IndexedSeq.empty,
+          child.output
+        )
+        eagerDistinct(a, ctx, newId).getOrElse(node)
       case _ =>
         node
+    end match
+
+  end walk
+
+  /**
+    * [[rewrite]] of a DISTINCT (an aggregation without calls), through the projection under it
+    * ([[throughProject]]) if there is one
+    */
+  private def eagerDistinct(
+      a: Aggregate,
+      ctx: OptimizerContext,
+      newId: () => ColumnId
+  ): Option[RuntimePlan] = Option
+    .when(a.calls.isEmpty)(throughProject(a).getOrElse(a))
+    .flatMap(rewrite(_, ctx.options, newId))
+    .map { r =>
+      ctx.fired(Optimization.EagerDistinct.name)
+      r
+    }
+
+  /**
+    * A DISTINCT (an aggregation without calls) over a deterministic projection of a join (or of a
+    * filter over one), as the same aggregation over the join with the projection's expressions
+    * inlined into its keys ([[Optimization.EagerDistinct]]). The keys then read the join's columns,
+    * so [[rewrite]] can deduplicate a side of the join by the columns they and the join keys read.
+    * The outer distinct stays over the join, and the deduplicated side still holds every distinct
+    * value of the columns read above it, so the result is the same distinct projected rows (TPC-DS
+    * q38's customer names and dates), not the distinct join keys
+    */
+  private def throughProject(a: Aggregate): Option[Aggregate] =
+    a.child match
+      case Project(j @ (_: Join | Filter(_: Join, _, _)), exprs, columns)
+          if a.calls.isEmpty && exprs.forall(deterministic) =>
+        val byId = columns.map(_.id).zip(exprs).toMap
+        val keys = a
+          .keys
+          .map(k =>
+            BExpr(VExprs.mapRefs(k.expr, c => byId.get(ColumnId(c.index)).fold(c: VExpr)(_.expr)))
+          )
+        Some(Aggregate(j, keys, a.calls, a.columns))
+      case _ =>
+        None
 
   private def lower(c: AggregateCall): String = c.name.toLowerCase
 
