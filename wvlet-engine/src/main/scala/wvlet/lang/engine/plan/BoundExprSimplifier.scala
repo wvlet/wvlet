@@ -29,7 +29,8 @@ import java.math.BigDecimal as JBigDecimal
   *     operand simplify as three-valued logic allows.
   *   - `unwrap_casts` ([[unwrapCompare]], [[unwrapInList]]): a comparison of a lossless cast of an
   *     expression with literals compares the expression itself, with the literals converted to its
-  *     type, when every literal converts exactly.
+  *     type, when every literal converts exactly. With `round_unwrapped_literals`, a cast that only
+  *     adds fraction digits also unwraps, with an inexact literal rounded ([[rounded]]).
   */
 object BoundExprSimplifier:
 
@@ -68,20 +69,78 @@ object BoundExprSimplifier:
   /**
     * `cast(x as T) op k` as `x op k'` when the cast is lossless and order-preserving and the
     * literal k is exactly k' of x's type; the comparison as is otherwise. Either operand may be the
-    * cast
+    * cast. With `round`, a cast that only adds fraction digits also unwraps when k has more
+    * fraction digits than x, with k' rounded towards the side that keeps the comparison's result
+    * ([[rounded]])
     */
-  def unwrapCompare(op: CmpOp, l: VExpr, r: VExpr): VExpr =
+  def unwrapCompare(op: CmpOp, l: VExpr, r: VExpr, round: Boolean = false): VExpr =
     (l, r) match
       case (CastExpr(x, t, false), Const(v, kt)) if v != null && kt == t =>
-        narrowed(x.ptype, t, v)
+        unwrapped(op, x, t, v, round)
           .map(c => Compare(op, x, Const(c, x.ptype)))
           .getOrElse(Compare(op, l, r))
       case (Const(v, kt), CastExpr(x, t, false)) if v != null && kt == t =>
-        narrowed(x.ptype, t, v)
+        // `k op x` is `x op' k` with the operator flipped
+        unwrapped(op.flip, x, t, v, round)
           .map(c => Compare(op, Const(c, x.ptype), x))
           .getOrElse(Compare(op, l, r))
       case _ =>
         Compare(op, l, r)
+
+  private def unwrapped(op: CmpOp, x: VExpr, t: PType, v: Any, round: Boolean): Option[Any] =
+    narrowed(x.ptype, t, v).orElse(
+      if round then
+        rounded(op, x.ptype, t, v)
+      else
+        None
+    )
+
+  /**
+    * The literal `v` of type `to` rounded to a value k' of `from`, so that `x op v` equals `x op
+    * k'` for every x of `from`, when the cast from `from` to `to` only adds fraction digits (an
+    * integer or decimal to a decimal of no smaller scale; the engine's casts keep the value
+    * whatever the precision). x lies on the grid of from's scale, so `x > v` is `x > floor(v)`, `x
+    * <= v` is `x <= floor(v)`, `x >= v` is `x >= ceil(v)`, and `x < v` is `x < ceil(v)`.
+    * (In)equality with a literal off the grid stays cast
+    */
+  private[plan] def rounded(op: CmpOp, from: PType, to: PType, v: Any): Option[Any] =
+    val scale =
+      (from, to) match
+        case (PType.Int32 | PType.Int64, PType.Decimal(_, _)) =>
+          Some(0)
+        case (PType.Decimal(_, s1), PType.Decimal(_, s2)) if s2 >= s1 =>
+          Some(s1)
+        case _ =>
+          None
+    val mode =
+      op match
+        case CmpOp.Gt | CmpOp.Le =>
+          java.math.RoundingMode.FLOOR
+        case CmpOp.Ge | CmpOp.Lt =>
+          java.math.RoundingMode.CEILING
+        case _ =>
+          // Throws for a literal off the grid
+          java.math.RoundingMode.UNNECESSARY
+    for
+      s <- scale
+      k <-
+        try
+          val d = ValueOps.toBigDecimal(v).setScale(s, mode)
+          from match
+            case PType.Int32 =>
+              Some(d.intValueExact())
+            case PType.Int64 =>
+              Some(d.longValueExact())
+            case PType.Decimal(p, _) =>
+              Option.when(d.precision() <= p)(d)
+            case _ =>
+              None
+        catch
+          case _: ArithmeticException =>
+            None
+    yield k
+
+  end rounded
 
   /**
     * `cast(x as T) [not] in (values)` as `x [not] in (values')` for an integral x, when every value

@@ -127,6 +127,7 @@ class OptimizerOptionsTest extends UniTest:
         "fold_constants",
         "fold_bound_constants",
         "unwrap_casts",
+        "round_unwrapped_literals",
         "set_op_joins",
         "or_implied_filters",
         "union_all_pipelines",

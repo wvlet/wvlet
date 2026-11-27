@@ -626,6 +626,17 @@ enum Optimization(val name: String):
   case UnwrapCasts extends Optimization("unwrap_casts")
 
   /**
+    * With `unwrap_casts`, a comparison of a cast that only adds fraction digits to an integer or
+    * decimal `x` with a literal (`cast(x as decimal(38,12)) > 81029137.652468`) compares x with the
+    * literal rounded to x's scale: down for `>` and `<=`, up for `>=` and `<`, since x's values lie
+    * on that grid. Such casts keep every value (the engine never enforces a decimal precision), so
+    * they unwrap even when the target has fewer integer digits. TPC-H q11's HAVING filter cast each
+    * of its plan-time groups through BigDecimal on the calling thread
+    * ([[BoundExprSimplifier.unwrapCompare]])
+    */
+  case RoundUnwrappedLiterals extends Optimization("round_unwrapped_literals")
+
+  /**
     * With `parallelize`, INTERSECT / EXCEPT (without ALL) run as semi / anti hash joins of the left
     * input's distinct rows with the right input on every column, NULLs equal, so that the probe
     * runs as morsels, as DuckDB plans them. Otherwise one set operation buffers the right input and
