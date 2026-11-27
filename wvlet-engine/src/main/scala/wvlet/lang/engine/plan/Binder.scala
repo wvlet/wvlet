@@ -650,6 +650,7 @@ class Binder(
 
   private val foldBoundConstants = planner.enabled(Optimization.FoldBoundConstants)
   private val unwrapCasts        = planner.enabled(Optimization.UnwrapCasts)
+  private val roundLiterals      = planner.enabled(Optimization.RoundUnwrappedLiterals)
 
   /** Bind an expression, folded by [[BoundExprSimplifier]] when `fold_bound_constants` is on */
   def bindExpr(e: Expression): VExpr =
@@ -1047,7 +1048,7 @@ class Binder(
     if t == PType.AnyT then
       Compare(op, l, r)
     else if unwrapCasts then
-      BoundExprSimplifier.unwrapCompare(op, castTo(l, t), castTo(r, t))
+      BoundExprSimplifier.unwrapCompare(op, castTo(l, t), castTo(r, t), roundLiterals)
     else
       Compare(op, castTo(l, t), castTo(r, t))
 

@@ -1,5 +1,5 @@
 -- q11#1
 Values -> [ps_partkey:long, agg:sum((#3*#2)):decimal(38,2)]
-↓ Filter((cast(#1 as decimal(38,12))>lit(95025.425444000000:decimal(38,12)))) -> [ps_partkey:long, agg:sum((#3*#2)):decimal(38,2)]
+↓ Filter((#1>lit(95025.42:decimal(38,2)))) -> [ps_partkey:long, agg:sum((#3*#2)):decimal(38,2)]
 ↓ Project(#0, #1) -> [ps_partkey:long, value:decimal(38,2)]
 ↓ Sort[parallelism=N](#1 desc) -> [ps_partkey:long, value:decimal(38,2)]

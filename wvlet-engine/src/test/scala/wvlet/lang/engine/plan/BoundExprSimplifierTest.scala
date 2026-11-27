@@ -143,4 +143,77 @@ class BoundExprSimplifierTest extends UniTest:
       (0 until 4).map(b.get) shouldBe (0 until 4).map(a.get)
   }
 
+  test("should round an inexact literal of a scale-widening cast when enabled") {
+    val t                                  = PType.Decimal(38, 12)
+    val c                                  = CastExpr(dec72, t)
+    val k                                  = dec("50.005", t)
+    def at(op: CmpOp): Option[JBigDecimal] =
+      unwrapCompare(op, c, k, round = true) match
+        case Compare(`op`, `dec72`, Const(v: JBigDecimal, PType.Decimal(7, 2))) =>
+          Some(v)
+        case _ =>
+          None
+    at(CmpOp.Gt) shouldBe Some(JBigDecimal("50.00"))
+    at(CmpOp.Le) shouldBe Some(JBigDecimal("50.00"))
+    at(CmpOp.Ge) shouldBe Some(JBigDecimal("50.01"))
+    at(CmpOp.Lt) shouldBe Some(JBigDecimal("50.01"))
+    // Off the grid, equality stays cast
+    unwrapCompare(CmpOp.Eq, c, k, round = true) shouldBe Compare(CmpOp.Eq, c, k)
+    // Without rounding, the cast stays
+    unwrapCompare(CmpOp.Gt, c, k) shouldBe Compare(CmpOp.Gt, c, k)
+    // The literal on the left rounds for the flipped operator: 50.005 < x is x > 50.005
+    unwrapCompare(CmpOp.Lt, k, c, round = true) shouldMatch {
+      case Compare(CmpOp.Lt, Const(v: JBigDecimal, _), `dec72`) =>
+        v shouldBe JBigDecimal("50.00")
+    }
+  }
+
+  test("should round literals of an integer column cast to a decimal") {
+    val t = PType.Decimal(38, 2)
+    unwrapCompare(CmpOp.Ge, CastExpr(i32, t), dec("2.50", t), round = true) shouldBe
+      Compare(CmpOp.Ge, i32, int(3))
+    // An exact literal also compares for equality, though the cast loses integer digits
+    unwrapCompare(
+      CmpOp.Eq,
+      CastExpr(i32, PType.Decimal(5, 2)),
+      dec("7.00", PType.Decimal(5, 2)),
+      round = true
+    ) shouldBe Compare(CmpOp.Eq, i32, int(7))
+    // A cast that drops fraction digits stays
+    val c = CastExpr(dec72, PType.Decimal(8, 1))
+    val k = dec("50.1", PType.Decimal(8, 1))
+    unwrapCompare(CmpOp.Gt, c, k, round = true) shouldBe Compare(CmpOp.Gt, c, k)
+    // A literal too large for the column's precision stays cast
+    val wide = CastExpr(dec72, PType.Decimal(38, 4))
+    val big  = dec("123456789.0001", PType.Decimal(38, 4))
+    unwrapCompare(CmpOp.Gt, wide, big, round = true) shouldBe Compare(CmpOp.Gt, wide, big)
+  }
+
+  test("should evaluate the same before and after rounding a literal") {
+    val t   = PType.Decimal(38, 12)
+    val col = LongVec(
+      PType.Decimal(7, 2),
+      Array(4999L, 5000L, 5001L, 5002L, -5001L, 0L),
+      Array(false, false, false, false, false, true)
+    )
+    val batch = Batch(Array(IntVec(PType.Int32, Array(1, 2, 3, 4, 5, 6), null), col), 6)
+    for
+      lit <- Seq("50.005", "50.000000000001", "49.999999999999", "-50.005", "50.01")
+      op  <- CmpOp.values
+      lhs <- Seq(true, false)
+    do
+      val k        = dec(lit, t)
+      val c        = CastExpr(dec72, t)
+      val (a0, b0) =
+        if lhs then
+          (c, k)
+        else
+          (k, c)
+      val cast      = Compare(op, a0, b0)
+      val unwrapped = unwrapCompare(op, a0, b0, round = true)
+      val a         = cast.eval(batch)
+      val b         = unwrapped.eval(batch)
+      (0 until 6).map(b.get) shouldBe (0 until 6).map(a.get)
+  }
+
 end BoundExprSimplifierTest
