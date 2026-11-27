@@ -64,6 +64,16 @@ class LimitExprTest extends UniTest:
     sql shouldContain "limit 9"
   }
 
+  test("should generate a literal limit per for-loop iteration") {
+    val sql = generateSQL("""for lim_i in [1, 2] {
+        |  from [[1], [2]] as t(x)
+        |  limit lim_i
+        |}
+        |""".stripMargin)
+    sql shouldContain "limit 1"
+    sql shouldContain "limit 2"
+  }
+
   test("should keep a literal limit as is") {
     val sql = generateSQL("""from [[1], [2]] as t(x)
         |limit 1
@@ -91,6 +101,21 @@ class LimitExprTest extends UniTest:
         || lim_neg(-1)
         |""".stripMargin)
     e.getMessage shouldContain "-1"
+  }
+
+  test("should report a division with a remainder") {
+    val e = limitError("""val lim_odd = 7
+        |from [[1], [2]] as t(x)
+        |limit lim_odd / 2
+        |""".stripMargin)
+    e.getMessage shouldContain "is not an integer"
+  }
+
+  test("should report an overflowing limit") {
+    val e = limitError("""from [[1], [2]] as t(x)
+        |limit 4611686018427387904 * 4
+        |""".stripMargin)
+    e.getMessage shouldContain "overflows"
   }
 
   test("should print a limit expression back as written") {

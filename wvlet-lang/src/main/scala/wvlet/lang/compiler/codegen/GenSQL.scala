@@ -731,7 +731,7 @@ object GenSQL extends Phase("generate-sql"):
 
   /**
     * Evaluate the row count of a `limit` whose names are already bound: integer literals combined
-    * with + - * / // %. Throws INVALID_ARGUMENT for any other expression or a negative count
+    * with + - * / %. Throws INVALID_ARGUMENT for any other expression or a negative count
     */
   private def constantLimit(l: UnresolvedLimit)(using ctx: Context): LongLiteral =
     def fail(reason: String): Nothing =
@@ -762,20 +762,26 @@ object GenSQL extends Phase("generate-sql"):
         case b: ArithmeticBinaryExpr =>
           val left  = eval(b.left)
           val right = eval(b.right)
-          b.exprType match
-            case BinaryExprType.Add =>
-              left + right
-            case BinaryExprType.Subtract =>
-              left - right
-            case BinaryExprType.Multiply =>
-              left * right
-            case BinaryExprType.Modulus | BinaryExprType.Divide | BinaryExprType.DivideInt
-                if right == 0 =>
-              fail(s"${b.pp} divides by zero")
-            case BinaryExprType.Modulus =>
-              left % right
-            case BinaryExprType.Divide | BinaryExprType.DivideInt =>
-              left / right
+          try
+            b.exprType match
+              case BinaryExprType.Add =>
+                Math.addExact(left, right)
+              case BinaryExprType.Subtract =>
+                Math.subtractExact(left, right)
+              case BinaryExprType.Multiply =>
+                Math.multiplyExact(left, right)
+              case BinaryExprType.Modulus | BinaryExprType.Divide if right == 0 =>
+                fail(s"${b.pp} divides by zero")
+              case BinaryExprType.Modulus =>
+                left % right
+              // Engines disagree on integer division, so only fold a division without remainder
+              case BinaryExprType.Divide if left % right == 0 =>
+                left / right
+              case _ =>
+                fail(s"${b.pp} is not an integer")
+          catch
+            case _: ArithmeticException =>
+              fail(s"${b.pp} overflows a 64-bit integer")
         case i: Identifier =>
           fail(s"'${i.leafName}' is not a val, model argument, or def parameter bound to one")
         case other =>
