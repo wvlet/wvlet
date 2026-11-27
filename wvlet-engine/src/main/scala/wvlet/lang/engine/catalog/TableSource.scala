@@ -209,16 +209,18 @@ class ParquetSource(
   /** Whether `path` names one Parquet file, rather than a folder or a glob */
   val isSingleFile: Boolean = path.endsWith(".parquet") && !path.exists(c => c == '*' || c == '{')
 
-  // When the folder was last listed (System.nanoTime), its listing, and its plain files
+  // When the folder was last listed (System.nanoTime), how long until it is listed again, its
+  // listing, and its files
   @volatile
-  private var checkedFolder: (Long, Option[IndexedSeq[(String, Long)]], Option[ParquetFolder]) =
-    null
+  private var checkedFolder: (Long, Long, Option[FolderListing], Option[ParquetFolder]) = null
 
   /**
-    * The files of a folder of plain Parquet files, read as single-file sources ([[ParquetFolder]],
-    * `folder_file_scans`); None for a single file, or a folder that uni's dataset reader reads. The
-    * folder is listed again at most every [[ParquetSource.VersionRecheckNanos]] (a source in a
-    * catalog outlives a query), and its files are reopened only when the listing changed
+    * The files of a folder of Parquet files (plain, or Hive partitions), read as single-file
+    * sources ([[ParquetFolder]], `folder_file_scans`); None for a single file, or a folder that
+    * uni's dataset reader reads. A source in a catalog outlives a query, so the folder is listed
+    * again after [[ParquetSource.VersionRecheckNanos]], or [[ParquetSource.FolderRecheckFactor]]
+    * times as long as listing it took if longer (TPC-DS store_sales in 1823 date partitions takes
+    * ~125 ms to list), and its files are reopened only when the listing changed
     */
   private[catalog] def folder: Option[ParquetFolder] =
     if !mayBePlainFolder then
@@ -226,20 +228,34 @@ class ParquetSource(
     else
       val now     = System.nanoTime()
       val checked = checkedFolder
-      if checked != null && now - checked._1 < ParquetSource.VersionRecheckNanos then
-        checked._3
+      if checked != null && now - checked._1 < checked._2 then
+        checked._4
       else
+        var took               = 0L
         val (listing, current) =
           try
-            val listing = ParquetFolder.listing(path)
-            if checked != null && checked._2 == listing then
-              (listing, checked._3)
-            else
-              (listing, listing.flatMap(ParquetFolder.open(name, _, footerCache, columnTypes)))
+            val listed = ParquetFolder.listing(path)
+            took = System.nanoTime() - now
+            listed match
+              case Some((l, ds)) if checked != null && checked._3.contains(l) =>
+                ds.close()
+                (Some(l), checked._4)
+              case Some((l, ds)) =>
+                val f = ParquetFolder.open(name, l, ds, footerCache, schema, columnTypes)
+                if f.isEmpty then
+                  ds.close()
+                (Some(l), f)
+              case None =>
+                (None, None)
           catch
             case _: Exception =>
               (None, None)
-        checkedFolder = (now, listing, current)
+        checkedFolder = (
+          System.nanoTime(),
+          math.max(ParquetSource.VersionRecheckNanos, ParquetSource.FolderRecheckFactor * took),
+          listing,
+          current
+        )
         current
 
   // Whether `path` may be a folder of plain files, decided without listing it
@@ -311,7 +327,7 @@ class ParquetSource(
     * Single files, and folders read as their files: uni's dataset reader (an Iceberg table, or a
     * folder with partitions) still filters rows after decoding them
     */
-  override def supportsRowFilter: Boolean = isSingleFile || folder.isDefined
+  override def supportsRowFilter: Boolean = isSingleFile || folder.exists(!_.listing.isPartitioned)
 
   /**
     * A folder or Iceberg table too: uni skips each file's row groups by the row-group filter, and
@@ -643,7 +659,9 @@ class ParquetSource(
     try
       if !isSingleFile then
         // A folder read as its files: their null counts aren't summed, so every row counts
-        estimatedRows.flatMap(rows => distinctOf(column, rows, rows.toDouble))
+        folder
+          .flatMap(_.partitionDistinct(column))
+          .orElse(estimatedRows.flatMap(rows => distinctOf(column, rows, rows.toDouble)))
       else
         val opened = openFile(footerCache)
         val f      = opened.file
@@ -768,7 +786,8 @@ class ParquetSource(
             throw e
       ParquetSource.closing(it, () => f.close())
     else
-      folder match
+      // A partitioned folder's files lack its partition columns: uni's dataset reader adds them
+      folder.filter(!_.listing.isPartitioned) match
         case Some(d) =>
           d.files.iterator.flatMap(_.scan(spec))
         case None =>
@@ -885,6 +904,13 @@ object ParquetSource:
     * registered in a catalog, which outlives a query, sees a rewrite after at most this long
     */
   val VersionRecheckNanos: Long = 1000000000L
+
+  /**
+    * A folder read as its files ([[ParquetFolder]]) is listed again after at least this many times
+    * as long as its last listing took, so that listing a large folder costs at most ~2% of the time
+    * between listings
+    */
+  val FolderRecheckFactor: Long = 50
 
   /** Up to how many (file, column) distinct-count estimates are kept */
   val MaxDistinctEntries: Int = 4096
@@ -1005,6 +1031,63 @@ object ParquetSource:
     * naming the table
     */
   def openDataset(path: String): ParquetDataset =
+    cachedPartitionTypes(path) match
+      case Some(types) =>
+        // Listed once with the types inferred before; a value that no longer parses (or other
+        // keys) infers them again
+        try
+          Parquet.dataset(path, partitionOptions(types))
+        catch
+          case _: ParquetException | _: IllegalArgumentException =>
+            partitionTypeCache.synchronized(partitionTypeCache.remove(path))
+            typedPartitions(path, openUntyped(path))
+      case None =>
+        typedPartitions(path, openUntyped(path))
+
+  /**
+    * Up to how many folders' inferred partition types are kept, so that each opens with one listing
+    */
+  val MaxPartitionTypeEntries: Int = 256
+
+  private val partitionTypeCache =
+    new java.util.LinkedHashMap[String, Seq[(String, ParquetType.Primitive)]](16, 0.75f, true):
+      override def removeEldestEntry(
+          e: java.util.Map.Entry[String, Seq[(String, ParquetType.Primitive)]]
+      ): Boolean = size() > MaxPartitionTypeEntries
+
+  private def cachedPartitionTypes(path: String): Option[Seq[(String, ParquetType.Primitive)]] =
+    partitionTypeCache.synchronized(Option(partitionTypeCache.get(path)))
+
+  private def partitionOptions(types: Seq[(String, ParquetType.Primitive)]): ParquetDatasetOptions =
+    types.foldLeft(ParquetDatasetOptions.default)((o, t) => o.withPartitionType(t._1, t._2))
+
+  /**
+    * `ds`, reopened with the types of its Hive partition keys that uni read as strings, inferred
+    * from their values ([[ParquetFolder.partitionType]]), as DuckDB types them. Only for local
+    * folders of files: a table format records its partition types
+    */
+  private def typedPartitions(path: String, ds: ParquetDataset): ParquetDataset =
+    val types =
+      if ds.partitionColumns.isEmpty || ds.tableProperties.nonEmpty ||
+        !ParquetFolder.mayBePlain(path)
+      then
+        Nil
+      else
+        ds.partitionColumns
+          .filter(_.physicalType == format.PhysicalType.BYTE_ARRAY)
+          .flatMap(c =>
+            ParquetFolder
+              .partitionType(ds.files.map(_.partitions.getOrElse(c.name, null)))
+              .map(c.name -> _)
+          )
+    if types.isEmpty then
+      ds
+    else
+      ds.close()
+      partitionTypeCache.synchronized(partitionTypeCache.put(path, types))
+      Parquet.dataset(path, partitionOptions(types))
+
+  private def openUntyped(path: String): ParquetDataset =
     try
       Parquet.dataset(path)
     catch

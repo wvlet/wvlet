@@ -105,9 +105,9 @@ class EngineScanRowFiltersTest extends UniTest:
     path.toString
 
   /**
-    * A folder of 2 Parquet files and a Hive-partitioned folder (`p=0` to `p=3`, which uni reads as
-    * strings), each holding the 20480 ids of [[joinFile]] in row groups of 2048, clustered by file
-    * and row group
+    * A folder of 2 Parquet files and a Hive-partitioned folder (`p=0` to `p=3`, typed as integers),
+    * each holding the 20480 ids of [[joinFile]] in row groups of 2048, clustered by file and row
+    * group
     */
   private lazy val joinFolders: (String, String) =
     val dir = Paths.get("target/engine-test/scan_join_row_filters_dataset").toAbsolutePath
@@ -374,6 +374,13 @@ class EngineScanRowFiltersTest extends UniTest:
     // These filters have no range filter: without the keys, every row group is read
     groups(read(files, filter("id", keys), pruneByKeys = false)) shouldBe (0L until 10L).toSet
     groups(read(partitioned, filter("id", keys), pruneByKeys = true)) shouldBe Set(0L, 5L)
+    // Partitions 1 and 3 hold the keys of p (typed as integers), whose range [1, 3] holds
+    // partition 2 too
+    val parts = Array(1L, 3L)
+    read(partitioned, filter("p", parts), pruneByKeys = true).map(_ / 5120L).toSet shouldBe
+      Set(1L, 3L)
+    read(partitioned, filter("p", parts), pruneByKeys = false).map(_ / 5120L).toSet shouldBe
+      (0L until 4L).toSet
   }
 
   test("return the same rows joining a folder with key-set row groups on and off") {

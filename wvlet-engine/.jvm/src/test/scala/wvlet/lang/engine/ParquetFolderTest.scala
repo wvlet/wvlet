@@ -14,10 +14,15 @@
 package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
+import wvlet.lang.engine.catalog.ColumnPartRange
 import wvlet.lang.engine.catalog.ParquetSource
 import wvlet.lang.engine.catalog.ScanSpec
+import wvlet.lang.engine.exec.RuntimeFilter
+import wvlet.lang.engine.exec.ScanOp
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.vector.LongVec
+import wvlet.lang.engine.vector.PType
 import wvlet.lang.model.plan.*
 import wvlet.uni.test.UniTest
 
@@ -118,22 +123,93 @@ class ParquetFolderTest extends UniTest:
     src.withoutFolderFiles.estimatedRows shouldBe None
   }
 
-  test("read partitioned folders and folders of differing files through the dataset reader") {
-    val partitioned = root.resolve("partitioned")
-    clean(partitioned)
-    write(partitioned.resolve("p=0").resolve("data.parquet"), 0, 4096)
-    write(partitioned.resolve("p=1").resolve("data.parquet"), 4096, 4096)
+  test("read folders of differing files through the dataset reader") {
     val differing = root.resolve("differing")
     clean(differing)
     write(differing.resolve("a.parquet"), 0, 4096)
     write(differing.resolve("b.parquet"), 4096, 4096, extra = ", range * 2 as more")
-    Seq(partitioned, differing).foreach { dir =>
-      val src = ParquetSource("t", dir.toString)
-      src.canSplit shouldBe false
-      src.supportsRowFilter shouldBe false
-      src.estimatedRows shouldBe None
-      rows(on, s"from '${dir}' select count(*), sum(id)") shouldBe Seq("8192,33550336")
-    }
+    val src = ParquetSource("t", differing.toString)
+    src.canSplit shouldBe false
+    src.supportsRowFilter shouldBe false
+    src.estimatedRows shouldBe None
+    rows(on, s"from '${differing}' select count(*), sum(id)") shouldBe Seq("8192,33550336")
+  }
+
+  /**
+    * Hive partitions p=0 to p=3 (integers), each 4096 ids in 2 row groups, plus 1024 ids in the
+    * default partition (NULL)
+    */
+  private lazy val partitioned: String =
+    val dir = root.resolve("partitioned")
+    clean(dir)
+    (0 until 4).foreach(i => write(dir.resolve(s"p=${i}").resolve("data.parquet"), i * 4096, 4096))
+    write(dir.resolve("p=__HIVE_DEFAULT_PARTITION__").resolve("data.parquet"), 16384, 1024)
+    dir.toString
+
+  test("split a partitioned folder per file, with typed partition values and their statistics") {
+    val src = ParquetSource("t", partitioned)
+    src.schema.fields.last.name shouldBe "p"
+    src.schema.fields.last.ptype shouldBe PType.Int64
+    src.canSplit shouldBe true
+    // uni's dataset reader tests a partitioned folder's row filter after decoding
+    src.supportsRowFilter shouldBe false
+    src.estimatedRows shouldBe Some(17408L)
+    src.columnRange("p") shouldBe Some((0L, 3L))
+    src.partRanges("p") shouldBe Some((0 until 4).map(i => ColumnPartRange(i, i, 4096)))
+    src.estimatedDistinct("p") shouldBe Some(4.0)
+    src.columnRange("id") shouldBe Some((0L, 17407L))
+    val splits = src.scanSplits(ScanSpec(Some(Seq("id", "p")))).getOrElse(fail("no splits"))
+    try
+      // One part per row group, files in path order: the default partition sorts after p=0 to p=3
+      splits.parts.size shouldBe 9
+      splits.rows shouldBe Seq.fill(8)(2048L) :+ 1024L
+      val read = splits
+        .parts
+        .flatMap(_())
+        .flatMap(b => (0 until b.size).map(i => b.column(1).get(i)))
+      read.count(_ == null) shouldBe 1024
+      read.filter(_ != null).groupBy(identity).view.mapValues(_.size).toMap shouldBe
+        (0 until 4).map(i => (i.toLong: Any) -> 4096).toMap
+    finally
+      splits.close()
+  }
+
+  test("skip the partitions holding none of a join filter's keys") {
+    val src  = ParquetSource("t", partitioned)
+    val rf   = RuntimeFilter(0, "p", (_, _) => None, rows = true)
+    val keys = Array(1L, 3L)
+    rf.set(LongVec(PType.Int64, keys, null), keys.indices.toArray, keys.length)
+    val spec   = ScanOp(src, src.schema, None, None, Seq(rf)).spec
+    val splits = src.scanSplits(spec.copy(columns = Some(Seq("p")))).getOrElse(fail("no splits"))
+    try
+      // The 2 row groups of p=1 and of p=3
+      splits.parts.size shouldBe 4
+      splits
+        .parts
+        .flatMap(_())
+        .flatMap(b => (0 until b.size).map(i => b.column(0).get(i)))
+        .toSet shouldBe Set(1L, 3L)
+    finally
+      splits.close()
+  }
+
+  test("type date partitions as dates and keep other strings") {
+    val dir = root.resolve("typed")
+    clean(dir)
+    write(dir.resolve("d=2020-01-01").resolve("m=a").resolve("data.parquet"), 0, 2048)
+    write(dir.resolve("d=2020-01-02").resolve("m=b1").resolve("data.parquet"), 2048, 2048)
+    val src = ParquetSource("t", dir.toString)
+    src.schema.fields.takeRight(2).map(f => (f.name, f.ptype)) shouldBe
+      Seq("d" -> PType.Date, "m" -> PType.Str)
+    src.columnRange("d") shouldBe
+      Some(
+        (
+          java.time.LocalDate.parse("2020-01-01").toEpochDay,
+          java.time.LocalDate.parse("2020-01-02").toEpochDay
+        )
+      )
+    rows(on, s"from '${dir}' where d = '2020-01-02'::date select count(*), max(m)") shouldBe
+      Seq("2048,b1")
   }
 
   test("list a folder again once it changes") {
@@ -157,7 +233,16 @@ class ParquetFolderTest extends UniTest:
          |join { from '${folder}' where id % 997 = 0 select id as bid } on a.id = bid
          |select a.id, a.mode""".stripMargin
     )
-    queries.foreach { q =>
+    val partitionQueries = Seq(
+      s"from '${partitioned}' where p = 2 or p is null select count(*), sum(id)",
+      s"from '${partitioned}' group by p select p, count(*), sum(k)",
+      // Only the partition key: no file column is read
+      s"from '${partitioned}' where p >= 1 group by p select p, count(*)",
+      s"""from '${partitioned}' as a
+         |join { from '${folder}' where id % 4096 = 7 select (id / 4096)::bigint as bp } on a.p = bp
+         |select count(*), sum(a.id)""".stripMargin
+    )
+    (queries ++ partitionQueries).foreach { q =>
       val r = rows(on, q)
       r.nonEmpty shouldBe true
       r shouldBe rows(off, q)
