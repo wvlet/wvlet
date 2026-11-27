@@ -224,7 +224,8 @@ class ParquetSource(
     declaredKeys: Seq[Seq[String]] = Nil,
     val folderFiles: Boolean = true,
     val datasetFiles: Boolean = true,
-    val partitionRowFilters: Boolean = true
+    val partitionRowFilters: Boolean = true,
+    val icebergRowGroups: Boolean = true
 ) extends TableSource:
   override def key: Any = ("parquet", path)
 
@@ -279,7 +280,14 @@ class ParquetSource(
             else
               val f =
                 try
-                  openFiles(l, ds)
+                  openFiles(
+                    l,
+                    ds,
+                    if checked == null then
+                      None
+                    else
+                      checked._4
+                  )
                 catch
                   case e: Throwable =>
                     ds.close()
@@ -312,11 +320,48 @@ class ParquetSource(
 
   /**
     * An Iceberg table's files read through `ds` file by file, or a plain or Hive-partitioned
-    * folder's files as single-file sources
+    * folder's files as single-file sources. An Iceberg table read as plain files reuses
+    * `previous`'s file sources (and their footers) when its listing is unchanged
     */
-  private def openFiles(l: FolderListing, ds: ParquetDataset): Option[FolderFiles] =
+  private def openFiles(
+      l: FolderListing,
+      ds: ParquetDataset,
+      previous: Option[FolderFiles]
+  ): Option[FolderFiles] =
     if ParquetSource.isIcebergPath(path) then
-      Option.when(datasetFiles)(DatasetFiles.open(l, ds, schema)).flatten
+      if !datasetFiles then
+        None
+      else
+        // With iceberg_row_groups, files that read as plain files are a folder's single files;
+        // their partition columns are in the files
+        val plain =
+          if icebergRowGroups && ds.files.nonEmpty && ds.files.forall(ds.readsAsPlainFile) then
+            val listing = FolderListing(l.files)
+            val reuse   =
+              previous match
+                case Some(p: ParquetFolder) if p.listing == listing =>
+                  p.files
+                case _ =>
+                  IndexedSeq.empty
+            // A footer the single-file reader can't open leaves the table to DatasetFiles
+            try
+              ParquetFolder.open(
+                name,
+                listing,
+                ds,
+                footerCache,
+                schema,
+                columnTypes,
+                evolved = true,
+                table = true,
+                reuse
+              )
+            catch
+              case _: Exception =>
+                None
+          else
+            None
+        plain.orElse(DatasetFiles.open(l, ds, schema))
     else if folderFiles && ds.tableProperties.isEmpty then
       // Files lacking some of the folder's columns only with dataset_file_scans
       ParquetFolder.open(name, l, ds, footerCache, schema, columnTypes, evolved = datasetFiles)
@@ -350,7 +395,8 @@ class ParquetSource(
         declaredKeys,
         folderFiles = false,
         datasetFiles,
-        partitionRowFilters
+        partitionRowFilters,
+        icebergRowGroups
       )
 
   /** This source without `datasetFiles`: an Iceberg table is read through uni's dataset reader */
@@ -365,7 +411,8 @@ class ParquetSource(
         declaredKeys,
         folderFiles,
         datasetFiles = false,
-        partitionRowFilters
+        partitionRowFilters,
+        icebergRowGroups
       )
 
   /** This source without `partitionRowFilters`: a partitioned folder takes no row filter */
@@ -380,7 +427,27 @@ class ParquetSource(
         declaredKeys,
         folderFiles,
         datasetFiles,
-        partitionRowFilters = false
+        partitionRowFilters = false,
+        icebergRowGroups
+      )
+
+  /**
+    * This source without `icebergRowGroups`: an Iceberg table is read file by file through uni's
+    * dataset reader even when its files read as plain files
+    */
+  lazy val withoutIcebergRowGroups: ParquetSource =
+    if isSingleFile || !icebergRowGroups then
+      this
+    else
+      ParquetSource(
+        name,
+        path,
+        footerCache,
+        declaredKeys,
+        folderFiles,
+        datasetFiles,
+        partitionRowFilters,
+        icebergRowGroups = false
       )
 
   /** Open the single file, through the footer cache when `cached` */
