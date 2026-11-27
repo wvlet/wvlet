@@ -25,8 +25,18 @@ trait QueryCancelCompat:
   /** Byte offset of the BigInt64 DuckDB connection address */
   val ConnectionOffset = 16
 
+  /**
+    * Browsers expose `SharedArrayBuffer` only on cross-origin-isolated pages, so the playground
+    * gets a plain `ArrayBuffer`. No watcher thread raises the flag there, and `Atomics` load/store
+    * work on non-shared typed arrays too
+    */
   private lazy val buffer: js.Dynamic =
-    js.Dynamic.newInstance(js.Dynamic.global.SharedArrayBuffer)(24)
+    val ctor =
+      if js.typeOf(js.Dynamic.global.SharedArrayBuffer) == "undefined" then
+        js.Dynamic.global.ArrayBuffer
+      else
+        js.Dynamic.global.SharedArrayBuffer
+    js.Dynamic.newInstance(ctor)(24)
 
   private lazy val slots: js.Dynamic = js.Dynamic.newInstance(js.Dynamic.global.Int32Array)(buffer)
   private lazy val connection: js.Dynamic =
