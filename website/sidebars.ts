@@ -50,6 +50,7 @@ const sidebars: SidebarsConfig = {
           link: {type: 'doc', id: 'engines/wvlet-engine'},
           items: [
             'engines/wvlet-engine-tables',
+            'engines/wvlet-engine-performance',
             'engines/wvlet-engine-gpu',
             'engines/wvlet-engine-embedding',
           ],

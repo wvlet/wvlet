@@ -66,5 +66,6 @@ A profile can hold a `wvlet` connector next to other engines; switch to it with 
 ## Next
 
 - [Tables and Files](wvlet-engine-tables.md): register tables, use the built-in TPC-H and TPC-DS catalogs, save results, and persist tables as Iceberg.
+- [Performance](wvlet-engine-performance.md): TPC-H and TPC-DS at scale factor 10 against DuckDB.
 - [GPU Executor](wvlet-engine-gpu.md): the experimental cudf offload and its DGX Spark results.
 - [Embedding](wvlet-engine-embedding.md): running the engine inside your application (planned).
