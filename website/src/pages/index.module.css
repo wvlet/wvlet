@@ -937,10 +937,9 @@
   border: 1px solid hsl(var(--line));
   border-radius: 28px;
   background:
-    radial-gradient(ellipse 70% 60% at 50% 0%, var(--glow-1), transparent 70%),
-    radial-gradient(ellipse 50% 50% at 0% 100%, var(--glow-2), transparent 70%),
-    radial-gradient(ellipse 40% 40% at 100% 100%, var(--glow-3), transparent 70%),
-    hsl(var(--card));
+    radial-gradient(ellipse 90% 70% at 50% 100%, var(--glow-1), transparent 75%),
+    radial-gradient(ellipse 60% 45% at 50% 0%, var(--glow-3), transparent 75%),
+    linear-gradient(to bottom, hsl(var(--card)), hsl(var(--bg-2)));
   text-align: center;
 }
 
@@ -953,8 +952,8 @@
     linear-gradient(to right, var(--grid) 1px, transparent 1px),
     linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
   background-size: 56px 56px;
-  mask-image: radial-gradient(ellipse 60% 70% at 50% 0%, #000 10%, transparent 70%);
-  -webkit-mask-image: radial-gradient(ellipse 60% 70% at 50% 0%, #000 10%, transparent 70%);
+  mask-image: radial-gradient(ellipse 70% 80% at 50% 45%, #000 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 80% at 50% 45%, #000 10%, transparent 70%);
 }
 
 .closing h2 {
@@ -965,7 +964,7 @@
 .closingPanel .ctas { justify-content: center; }
 
 .closingLogo {
-  filter: drop-shadow(0 20px 36px hsl(190 80% 30% / 0.3));
+  filter: drop-shadow(0 12px 20px hsl(190 80% 30% / 0.18));
 }
 
 /* ---------- Responsive & motion ---------- */
