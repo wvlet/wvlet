@@ -1,116 +1,47 @@
 ---
-description: "Install the Wvlet command-line tool with npm (no JDK needed), or the full JVM CLI (flow, ui, JDBC connectors) with Homebrew or a release package."
+description: "Install the Wvlet command-line tool with Homebrew (recommended) or a release package, or from npm."
 sidebar_label: Installation
 sidebar_position: 1
 ---
 
 # Installation
 
-Wvlet is available as one command, `wvlet`, in two distributions:
+Install `wvlet` with Homebrew. It is the full command-line tool: the [REPL](repl.md), `run`, `build`, [flows](../syntax/flow.md), the [Web UI](ui.md), and the JDBC connectors.
 
-| | npm (`@wvlet/cli`) | JVM CLI (Homebrew or release package) |
-|---|---|---|
-| Requires | Node.js 22+ | JDK 17+ (Homebrew installs OpenJDK) |
-| `wvlet version`, `compile`, `to_wvlet`, `run` | ✓ | ✓ |
-| [`wvlet build`](../syntax/model-pipelines.md#building-models) | ✓ (one model at a time) | ✓ (parallel, with run records) |
-| DuckDB (`-t duckdb`) | Included | Full package only |
-| Snowflake connector | — | Full package only |
-| [REPL](repl.md) (`wvlet` on a terminal, or `wvlet repl`) | ✓ | ✓ (also `wv`) |
-| `wvlet flow`, `catalog`, `ui` | — | ✓ |
-| Updates | Update notice + `wvlet upgrade` | `brew upgrade wvlet` |
-
-Which one to install:
-
-- **npm** is the default: the [REPL](repl.md), `run`, `build`, and `compile`, with DuckDB included and no JDK. Start here.
-- **The JVM CLI** adds the [Web UI](ui.md), [flows](../syntax/flow.md) and their scheduler, `catalog import` from a live database, the JDBC connectors such as Snowflake, and parallel model builds with run records. Install it when you need one of these; see [Moving from npm](#moving-from-npm).
-
-## npm (macOS, Linux, Windows)
-
-```bash
-npm install -g @wvlet/cli
-wvlet version
-```
-
-The package bundles DuckDB through DuckDB's official prebuilt `@duckdb/node-bindings-<os>-<arch>` package, so `wvlet run` works with no other installs. Supported platforms are macOS, Linux (glibc and musl), and Windows on x64 and arm64. `pnpm add -g @wvlet/cli` and `bun add -g @wvlet/cli` also work.
-
-### Updating
-
-Once a day, the CLI checks the npm registry in the background. When a new release is out, it prints one line after a command finishes:
-
-```
-wvlet 2026.12.0 is available (current 2026.11.0). Run 'wvlet upgrade' to update.
-```
-
-`wvlet upgrade` reinstalls the latest release with the package manager you installed it with (npm, pnpm, or bun). If it fails, for example due to permissions, it prints the command to run yourself.
-
-The check never delays a command: it reads the cached result in `~/.wvlet/update-check.json` and refreshes it in a background process. It is skipped in CI and when stderr is not a terminal. To turn it off, set `WVLET_NO_UPDATE_CHECK=1`.
-
-### Moving from Homebrew
-
-If you installed Wvlet with Homebrew and only need the npm commands, uninstall the formula first so that only one `wvlet` is on your `PATH`:
-
-```bash
-brew uninstall wvlet
-npm install -g @wvlet/cli
-which wvlet   # should point to the npm global bin directory
-```
-
-### Troubleshooting
-
-- npm may warn that it skipped the install script of `koffi`. The warning is harmless: koffi ships prebuilt binaries that work without the script.
-- `libduckdb is not available`: the DuckDB platform package was not installed, usually because of `--omit=optional` or an unsupported platform. Reinstall without `--omit=optional`, or set `WVLET_LIBDUCKDB` to the absolute path of a `libduckdb` shared library.
-
-## JVM CLI
-
-The JVM CLI includes the [Web UI](ui.md), flows, and the JDBC connectors, and builds models in parallel with run records, in addition to the commands and [REPL](repl.md) of the npm `wvlet`. Each release ships it in two packages with the same `wvlet` command and its `wv` alias (`wvlet repl`):
-
-- `wvlet-cli-(version).tar.gz` (about 60 MB, installed by Homebrew): queries run on the in-process [wvlet engine](../engines/wvlet-engine.md), [Trino](../engines/trino.md), and remote wvlet servers.
-- `wvlet-cli-(version)-(platform).tar.gz` (about 95 MB) for `macos-arm64`, `macos-x64`, `linux-x64`, and `linux-arm64`: the `wvlet-cli` package with a bundled Java runtime in `runtime/`, so no JDK is needed. The `wvlet` and `wv` commands run the bundled runtime even when `JAVA_HOME` points to another JDK.
-- `wvlet-cli-full-(version).tar.gz` (about 230 MB): adds the [DuckDB](../engines/duckdb.md) and [Snowflake](../engines/snowflake.md) connectors, whose JDBC drivers make up most of its size. Use it for `-t duckdb`, `.duckdb` files, DuckDB extensions, `sql"..."` blocks run on DuckDB, or Snowflake profiles.
-
-Without the full package, selecting DuckDB or Snowflake fails with an error that names the full package.
-
-### macOS (Homebrew)
+## Homebrew (recommended)
 
 ```bash
 brew install wvlet/wvlet/wvlet
+wvlet version
 ```
 
-This installs the `wvlet` command (and the `wv` alias) of the `wvlet-cli` package (without DuckDB and Snowflake), along with OpenJDK as a dependency. For DuckDB or Snowflake, use the full release package below. To upgrade, run `brew upgrade wvlet` (run `brew update` first if the latest version is not picked up).
+This installs the `wvlet` command and its `wv` alias (`wvlet repl`). Homebrew sets up the Java runtime it needs, so there is no JDK to install. To upgrade, run `brew upgrade wvlet` (run `brew update` first if the latest version is not picked up). The formula is at https://github.com/wvlet/homebrew-wvlet.
 
-:::info
-The formula for homebrew can be found at
-https://github.com/wvlet/homebrew-wvlet
-:::
+## Release packages
 
-### Linux, Windows, and Other Platforms
+Without Homebrew, for example on Windows, download a package from the [release page](https://github.com/wvlet/wvlet/releases) and add its `bin` folder to your `PATH`:
 
-Download a binary package, `wvlet-cli-(version)-(platform).tar.gz`, `wvlet-cli-(version).tar.gz`, or `wvlet-cli-full-(version).tar.gz` (with DuckDB and Snowflake), from the release page https://github.com/wvlet/wvlet/releases
+- `wvlet-cli-(version)-(platform).tar.gz` for `macos-arm64`, `macos-x64`, `linux-x64`, and `linux-arm64`: bundles a Java runtime, so no JDK is needed.
+- `wvlet-cli-(version).tar.gz`: the same command without a runtime; it needs JDK 17 or later in `JAVA_HOME`.
+- `wvlet-cli-full-(version).tar.gz`: adds the [DuckDB](../engines/duckdb.md) and [Snowflake](../engines/snowflake.md) connectors; it needs JDK 17 or later.
 
-You can find the `wvlet` command and the `wv` alias in the bin directory of the package. Add the bin directory to your PATH environment variable.
+## npm
 
-The platform packages (`wvlet-cli-(version)-(platform).tar.gz`) need no JDK. The other packages require JDK 17 or later: set the JAVA_HOME environment variable to the JDK path.
-
-:::info
-Language SDKs are also available for [Python and TypeScript](../bindings) to compile Wvlet queries programmatically.
-:::
-
-### Moving from npm
-
-Your `.wv` folders, profiles in `~/.wvlet`, tables built into `target/warehouse`, and command lines work the same on the JVM CLI, which adds the `wv` alias of `wvlet repl`. To switch:
+`wvlet` is also on npm, for machines that have Node.js 22+ but no Homebrew:
 
 ```bash
-npm uninstall -g @wvlet/cli
-brew install wvlet/wvlet/wvlet   # or a release package
-which wvlet                      # should point to the JVM CLI
+npm install -g @wvlet/cli
 ```
 
-The npm package bundles DuckDB, but the Homebrew package does not. If you use `-t duckdb`, `.duckdb` files, or Snowflake, install `wvlet-cli-full-(version).tar.gz` instead. Keeping both installs works too, but the first `wvlet` on your `PATH` is the one that runs.
+It runs the same command lines on the in-process [Wvlet engine](../engines/wvlet-engine.md): the [REPL](repl.md), `run`, `compile`, and `build` (one model at a time). `flow`, `catalog`, `ui`, and the JDBC connectors need the Homebrew or release-package `wvlet`. It runs on macOS, Linux, and Windows on x64 and arm64; `pnpm add -g` and `bun add -g` work too.
+
+- **Updates**: once a day it checks for a new release in the background and prints a one-line notice; `wvlet upgrade` reinstalls with the package manager you used. Set `WVLET_NO_UPDATE_CHECK=1` to turn the check off.
+- **With Homebrew too**: the first `wvlet` on your `PATH` is the one that runs; check with `which wvlet`.
+- **Troubleshooting**: a warning that npm skipped `koffi`'s install script is harmless.
 
 ## Quick Start
 
-After installing Wvlet, start learning the query syntax of Wvlet:
-- [Query Syntax](../syntax) to learn the query syntax
+After installing Wvlet, follow the [Quick Start](../syntax/quick-start.md) to run your first queries.
 
 
 ## Language SDKs

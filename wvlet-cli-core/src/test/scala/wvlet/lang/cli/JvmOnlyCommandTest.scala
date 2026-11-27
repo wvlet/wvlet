@@ -18,7 +18,7 @@ class JvmOnlyCommandTest extends UniTest:
         }
         e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
         e.getMessage shouldContain s"wvlet ${cmd} is in the JVM CLI"
-        e.getMessage shouldContain "usage/install#jvm-cli"
+        e.getMessage shouldContain "wvlet.org/wvlet/docs/usage/install#homebrew-recommended"
       }
   }
 

@@ -150,7 +150,7 @@ object WvletCli:
         .INVALID_ARGUMENT
         .newException(
           s"wvlet ${cmd} is in the JVM CLI. Install it with Homebrew or a release package: " +
-            "https://wvlet.org/docs/usage/install#jvm-cli"
+            "https://wvlet.org/wvlet/docs/usage/install#homebrew-recommended"
         )
     }
 

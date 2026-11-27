@@ -3,14 +3,15 @@
 ## Installing
 
 - `wvlet` is the single command of every distribution, with the same options everywhere.
-- `npm install -g @wvlet/cli` (Node.js 22+), the default: `wvlet version`, `compile`, `to_wvlet`,
-  `run`, `repl`, `build`, `skill` with DuckDB included and no JDK. Its `build` runs one model at a
-  time, doesn't enforce `timeout`, and records no runs. `ui`, `flow`, and `catalog` there exit
-  with a message naming the JVM CLI.
-- `brew install wvlet/wvlet/wvlet` or a release package: the JVM CLI for servers and ops, which adds
-  the `wv` alias of `wvlet repl`, `flow`, `catalog`, `ui`, parallel builds with run records, and the JDBC connectors. DuckDB (`-t duckdb`) and Snowflake on the
-  JVM CLI need the full package `wvlet-cli-full-<version>.tar.gz` from the GitHub release; the
-  default package reports this when they are selected.
+- `brew install wvlet/wvlet/wvlet` (recommended; Homebrew sets up the Java runtime) or a release
+  package: `wvlet` and its `wv` alias of `wvlet repl`, with `run`, `build` (parallel, with run
+  records), `flow`, `catalog`, `ui`, and the JDBC connectors. DuckDB (`-t duckdb`) and Snowflake
+  need the full package `wvlet-cli-full-<version>.tar.gz` from the GitHub release; the default
+  package reports this when they are selected.
+- `npm install -g @wvlet/cli` (Node.js 22+): `wvlet version`, `compile`, `to_wvlet`, `run`,
+  `repl`, `build`, `skill`, with no JDK. Its `build` runs one model at a time, doesn't enforce
+  `timeout`, and records no runs. `ui`, `flow`, and `catalog` there exit with a message naming the
+  JVM CLI.
 
 ## Commands
 

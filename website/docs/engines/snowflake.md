@@ -1,6 +1,6 @@
 # Snowflake
 
-Wvlet supports connecting to Snowflake databases via JDBC. On the JVM CLI, the Snowflake connector is in the full package `wvlet-cli-full-(version).tar.gz`; see [Installation](../usage/install.md#jvm-cli).
+Wvlet supports connecting to Snowflake databases via JDBC. On the JVM CLI, the Snowflake connector is in the full package `wvlet-cli-full-(version).tar.gz`; see [Release packages](../usage/install.md#release-packages).
 
 ## Connecting to Snowflake
 
