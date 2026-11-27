@@ -241,9 +241,18 @@ class ParquetSource(
                 ds.close()
                 (Some(l), checked._4)
               case Some((l, ds)) =>
-                val f = ParquetFolder.open(name, l, ds, footerCache, schema, columnTypes)
+                val f =
+                  try
+                    ParquetFolder.open(name, l, ds, footerCache, schema, columnTypes)
+                  catch
+                    case e: Throwable =>
+                      ds.close()
+                      throw e
                 if f.isEmpty then
                   ds.close()
+                // The replaced folder's dataset only picks files: no scan reads through it
+                if checked != null then
+                  checked._4.foreach(_.close())
                 (Some(l), f)
               case None =>
                 (None, None)
@@ -257,6 +266,7 @@ class ParquetSource(
           current
         )
         current
+      end if
 
   // Whether `path` may be a folder of plain files, decided without listing it
   private lazy val mayBePlainFolder: Boolean =
@@ -1033,10 +1043,10 @@ object ParquetSource:
   def openDataset(path: String): ParquetDataset =
     cachedPartitionTypes(path) match
       case Some(types) =>
-        // Listed once with the types inferred before; a value that no longer parses (or other
-        // keys) infers them again
+        // Listed once with the types inferred before. A value that no longer parses, or a key
+        // that is gone, infers them again; a new string key is inferred too
         try
-          Parquet.dataset(path, partitionOptions(types))
+          typedPartitions(path, Parquet.dataset(path, partitionOptions(types)), types)
         catch
           case _: ParquetException | _: IllegalArgumentException =>
             partitionTypeCache.synchronized(partitionTypeCache.remove(path))
@@ -1066,7 +1076,11 @@ object ParquetSource:
     * from their values ([[ParquetFolder.partitionType]]), as DuckDB types them. Only for local
     * folders of files: a table format records its partition types
     */
-  private def typedPartitions(path: String, ds: ParquetDataset): ParquetDataset =
+  private def typedPartitions(
+      path: String,
+      ds: ParquetDataset,
+      known: Seq[(String, ParquetType.Primitive)] = Nil
+  ): ParquetDataset =
     val types =
       if ds.partitionColumns.isEmpty || ds.tableProperties.nonEmpty ||
         !ParquetFolder.mayBePlain(path)
@@ -1084,8 +1098,9 @@ object ParquetSource:
       ds
     else
       ds.close()
-      partitionTypeCache.synchronized(partitionTypeCache.put(path, types))
-      Parquet.dataset(path, partitionOptions(types))
+      val all = known ++ types
+      partitionTypeCache.synchronized(partitionTypeCache.put(path, all))
+      Parquet.dataset(path, partitionOptions(all))
 
   private def openUntyped(path: String): ParquetDataset =
     try

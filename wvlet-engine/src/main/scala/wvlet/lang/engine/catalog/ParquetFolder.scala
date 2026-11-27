@@ -65,6 +65,9 @@ private[catalog] final class ParquetFolder(
     else
       None
 
+  /** Closes the listing's dataset, once the folder is replaced by a newer listing */
+  def close(): Unit = dataset.close()
+
   /** The sum of the files' row counts */
   lazy val estimatedRows: Option[Long] = all(files.map(_.estimatedRows)).map(_.sum)
 
@@ -146,6 +149,8 @@ private[catalog] final class ParquetFolder(
     * ([[ParquetSource.sampleColumn]]): data is often written in key order
     */
   def sampleColumn(column: String, samples: Int): Iterator[Batch] =
+    // The files don't hold the partition keys
+    require(!listing.keys.contains(column), s"${column} is a partition key")
     val counts = files.map(_.rowGroupCount.toLong)
     val starts = counts.scanLeft(0L)(_ + _)
     val total  = starts.last
@@ -204,16 +209,18 @@ private[catalog] final class ParquetFolder(
       None
     else
       val types = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
+      // Each output column's partition key, or else its position in the files' batches
+      val keyOf  = cols.map(keys.indexOf)
+      val fileOf = cols.map(fileCols.indexOf)
       // The output columns of file i's batch b: its columns, and its partition values
       def withKeys(i: Int, b: Batch, rows: Int): Batch = Batch(
         cols
           .indices
           .map { c =>
-            val k = keys.indexOf(cols(c))
-            if k >= 0 then
-              Vec.constant(types(c), ParquetFolder.engineValue(listing.values(i)(k)), rows)
+            if keyOf(c) >= 0 then
+              Vec.constant(types(c), ParquetFolder.engineValue(listing.values(i)(keyOf(c))), rows)
             else
-              b.column(fileCols.indexOf(cols(c)))
+              b.column(fileOf(c))
           }
           .toArray,
         rows
@@ -329,7 +336,11 @@ private[catalog] object ParquetFolder:
     // The dataset's columns are the files' columns, then the partition keys
     val k           = listing.keys.size
     val fileColumns = columns.dropRight(k)
-    if listing.files.isEmpty || columns.takeRight(k).map(_._1) != listing.keys then
+    // The keys' values must still have the source's key types (fixed when its schema was read)
+    val keyTypes = schema.fields.takeRight(k).map(_.ptype)
+    if listing.files.isEmpty || columns.takeRight(k).map(_._1) != listing.keys ||
+      !listing.values.forall(_.zip(keyTypes).forall(hasType))
+    then
       None
     else
       val files = listing.files.map((p, _) => ParquetSource(name, p, footerCache))
@@ -371,6 +382,18 @@ private[catalog] object ParquetFolder:
             x.orElse(y)
       case other =>
         Option.when(!other.columnNames.exists(columns))(other)
+
+  /** Whether partition value `v` (null for the default partition) is one of type `t` */
+  private def hasType(v: Any, t: PType): Boolean =
+    (v, t) match
+      case (null, _) =>
+        true
+      case (_: Long, PType.Int64) | (_: Int, PType.Int32) =>
+        true
+      case (_: java.time.LocalDate, PType.Date) | (_: String, PType.Str) =>
+        true
+      case _ =>
+        false
 
   /** A partition value as an engine value: a date as its epoch day */
   def engineValue(v: Any): Any =
