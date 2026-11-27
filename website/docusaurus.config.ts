@@ -127,6 +127,7 @@ const config: Config = {
     mermaid: true,
   },
   themes: ['@docusaurus/theme-mermaid'],
+  clientModules: ['./src/clientModules/diagramGradients.ts'],
 
   plugins: [
     ['@docusaurus/plugin-client-redirects', {redirects: docRedirects}],

@@ -183,7 +183,8 @@ html.plugin-blog.blog-post-page h1 {
 /*
  * Flowcharts follow the architecture slides: a light teal panel around the Wvlet stages, raised boxes,
  * and bold labels on thick gold arrows. Mermaid scopes its theme rules by the svg id, so these need
- * !important. Box and arrow colors live in each diagram's classDef/linkStyle.
+ * !important. Nodes in the stage, lib, and target classes fill with gradients from
+ * src/clientModules/diagramGradients.ts; mermaid's classDef can't express url(...) fills.
  */
 .docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .cluster rect {
   fill: hsl(var(--wv-primary) / 0.07) !important;
@@ -195,6 +196,33 @@ html.plugin-blog.blog-post-page h1 {
 
 .docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node rect {
   filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.18));
+}
+
+/*
+ * Mermaid writes classDef styles inline, where they beat any stylesheet, so a diagram's classDef sets
+ * only font-weight (mermaid sizes boxes with it) and the colors live here.
+ */
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node.stage rect {
+  fill: url(#wv-grad-stage) #0d93a6 !important;
+  stroke: #08717f !important;
+}
+
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node.lib rect {
+  fill: url(#wv-grad-lib) #1d4f9a !important;
+  stroke: #163d78 !important;
+}
+
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node.target rect {
+  fill: url(#wv-grad-target) #ffffff !important;
+  stroke: #b9cdd1 !important;
+}
+
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node:is(.stage, .lib) .nodeLabel {
+  color: #ffffff !important;
+}
+
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node.target .nodeLabel {
+  color: #18343a !important;
 }
 
 .docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node small {

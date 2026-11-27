@@ -101,9 +101,9 @@ flowchart LR
   compiler ==>|Logical plan| sqlgen
   sqlgen ==>|SQL| sql
 
-  classDef stage fill:#0d93a6,stroke:#08717f,stroke-width:1px,color:#ffffff,font-weight:600
-  classDef lib fill:#1d4f9a,stroke:#163d78,stroke-width:1px,color:#ffffff,font-weight:600
-  classDef target fill:#ffffff,stroke:#b9cdd1,stroke-width:1px,color:#18343a,font-weight:600
+  classDef stage font-weight:600
+  classDef lib font-weight:600
+  classDef target font-weight:600
   class query,compiler,engine,sqlgen stage
   class stdlib lib
   class sql target
