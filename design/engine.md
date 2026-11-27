@@ -69,7 +69,7 @@ This page owns how `wvlet-engine` plans and executes Wvlet relations, and the ga
 - `EngineOptimizerToggleTest` checks results with each optimization off, and that each one changes some TPC-H or TPC-DS plan. It compiles the queries and runs DuckDB once for all toggles, so a new toggle costs only the engine runs. A toggle that changes no plan (a runtime-only change) needs an entry with its reason in `noPlanChange`.
 - A new toggle must be listed in `OptimizerOptionsTest`, or the JS and Native CI jobs fail.
 - Give every executor or planner change an `Optimization` toggle from the start, so it can be benchmarked on one build. A refactor that leaves every golden plan identical needs none; benchmark it against an origin/main worktree ([ADR](../adr/2026-11-27-engine-optimizer-structure.md)).
-- Operator flags set after lowering are mutable fields, and Parallelizer rebuilds operators. A new `HashJoinOp` or `JoinBuild` flag is copied in `withFlagsOf` (`exec/JoinFlags.scala`); `EngineJoinFlagsTest` finds the flags by reflection and fails when a rebuild drops one.
+- Operator flags set after lowering are mutable fields, and Parallelizer rebuilds operators. A new `HashJoinOp` or `JoinBuild` flag is copied in `withFlagsOf` (`exec/JoinFlags.scala`); `EngineJoinFlagsTest` finds the public Boolean flags by reflection and fails when `withFlagsOf` or one of Parallelizer's two join rebuilds drops one; a new rebuild site must call `withFlagsOf` too.
 
 ## Parquet footer cache
 

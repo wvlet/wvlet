@@ -59,7 +59,7 @@ Read the matching page before changing these areas.
 | Area | Read | Key rule |
 | --- | --- | --- |
 | Lean models | [`design/formal-verification.md`](design/formal-verification.md) | Changing `ItemStore`/`TaskQueue`/`BatchExecutor.recoverItems`, `TypeInference`, `TyperRules` operators, `ModelOrder`, `SQLBlock.accepts`, `RewriteExpr`, name lookup, or the engine's pushdown, NOT IN, join-key filters, `FactorOr`, or decorrelation: update the Lean model first, regenerate its fixture, run its conformance test |
-| Engine | [`design/engine.md`](design/engine.md) | Put every change behind an `Optimization` toggle (listed in `OptimizerOptionsTest`); regenerate golden plans after an intended plan change; raise coverage ratchets, never lower them |
+| Engine | [`design/engine.md`](design/engine.md) | Put every change behind an `Optimization` toggle (listed in `OptimizerOptionsTest`), except plan-identical refactors; regenerate golden plans after an intended plan change; raise coverage ratchets, never lower them |
 | Stdlib | [`design/stdlib.md`](design/stdlib.md) | After changing `wvlet-stdlib/module/standard/*.wv` or bumping an engine dependency, regenerate the DuckDB and Trino catalogs, the docs page, and `spec/snowflake-sql`; run `SnowflakeStdLibSpec` locally before changing an `in snowflake` variant |
 | Testing | [`design/testing.md`](design/testing.md) | `TyperCoverageCheck` thresholds only go up; bump the npm CLI's DuckDB bindings with duckdb_jdbc |
 | Platforms | [`design/platforms.md`](design/platforms.md) | Shared tests that need DuckDB skip themselves on Native; run `langNative/testOnly *DuckDB*` locally after changing native bindings |

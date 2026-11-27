@@ -20,9 +20,10 @@ import wvlet.lang.engine.vector.*
 import wvlet.uni.test.UniTest
 
 /**
-  * Every flag of a hash join survives the rebuilds of [[Parallelizer]] ([[withFlagsOf]]). The flags
-  * are found by reflection (each public Boolean `var` of [[HashJoinOp]] and [[JoinBuild]]), so a
-  * new flag that a rebuild doesn't copy fails here without editing this test
+  * Every flag of a hash join survives [[withFlagsOf]] and both of [[Parallelizer]]'s join rebuilds
+  * (a pipeline's join and a join over a non-pipeline input). The flags are found by reflection
+  * (each public Boolean `var` of [[HashJoinOp]] and [[JoinBuild]]), so a new flag that a rebuild
+  * doesn't copy fails here without editing this test
   */
 class EngineJoinFlagsTest extends UniTest:
 
@@ -58,6 +59,35 @@ class EngineJoinFlagsTest extends UniTest:
   private def col(i: Int): VExpr = ColRef(i, PType.Int64, s"c${i}")
 
   private val schema = Schema(IndexedSeq(Field("k", PType.Int64)))
+
+  private def batch(xs: Long*): Batch = Batch(
+    Array(LongVec(PType.Int64, xs.toArray, null)),
+    xs.size
+  )
+
+  /** A table whose batches are its parts, so that a join over its scan runs as morsels */
+  private class Parts(val name: String) extends TableSource:
+    val schema: Schema                                          = EngineJoinFlagsTest.this.schema
+    private val parts                                           = Seq(batch(1L, 2L), batch(3L, 4L))
+    def scan(spec: ScanSpec): Iterator[Batch]                   = parts.iterator
+    override def canSplit: Boolean                              = true
+    override def scanSplits(spec: ScanSpec): Option[ScanSplits] = Some(
+      ScanSplits(parts.toIndexedSeq.map(b => () => Iterator.single(b)), () => ())
+    )
+
+  private def morsels(op: Operator): Seq[MorselOp] =
+    op match
+      case m: MorselOp =>
+        Seq(m)
+      case _ =>
+        op.children.flatMap(morsels)
+
+  private def joins(op: Operator): Seq[HashJoinOp] =
+    op match
+      case j: HashJoinOp =>
+        Seq(j)
+      case _ =>
+        op.children.flatMap(joins)
 
   private def batches(name: String): BatchesOp = BatchesOp(
     schema,
@@ -105,6 +135,16 @@ class EngineJoinFlagsTest extends UniTest:
         checkSame(original, j)
       case other =>
         fail(s"Expected a hash join, got ${other.name}")
+  }
+
+  test("should keep every flag in the join of a Parallelizer pipeline") {
+    val parts    = Parts("l")
+    val original = flipped(ScanOp(parts, parts.schema, None, None))
+    val segments = morsels(Parallelizer(original, FourAtATime)).flatMap(_.segments)
+    segments.size shouldBe 1
+    val copies = joins(segments.head.pipeline(segments.head.scan))
+    copies.size shouldBe 1
+    checkSame(original, copies.head)
   }
 
 end EngineJoinFlagsTest

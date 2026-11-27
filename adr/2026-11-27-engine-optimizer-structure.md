@@ -1,6 +1,6 @@
 # ADR: Restructure the engine optimizer through plan-identical refactors
 
-Date: 2026-11-27 · PR #TBD
+Date: 2026-11-27 · PR #2548
 
 ## Context
 
@@ -17,7 +17,7 @@ Six optimization sessions edit the same files at once: since 2026-11-19, 152 of 
 - Restructure through small refactor PRs that change no plan: the golden plans under `spec/engine-plans/` stay identical, every `Optimization` toggle still works (`EngineOptimizerToggleTest`), and an SF10 check against an `origin/main` worktree in alternating rounds shows no regression.
 - Such a refactor has no `Optimization` toggle. The rule "give every planner change a toggle" exists so that a change can be A/B'd and turned off; a refactor with identical plans has nothing to turn off, and the golden plans prove it.
 - Each PR is a move or a helper with no logic change, so a parallel PR's conflict is a mechanical re-apply. Moves of the hottest files wait until few engine PRs are open.
-- Operators copy their own flags: a rebuild calls `withFlagsOf` (`exec/JoinFlags.scala` for hash joins, like `ScanOp`'s), and `EngineJoinFlagsTest` finds the flags by reflection, so a new flag a rebuild doesn't copy fails the test without editing it.
+- Operators copy their own flags: a rebuild calls `withFlagsOf` (`exec/JoinFlags.scala` for hash joins, like `ScanOp`'s), and `EngineJoinFlagsTest` finds the public Boolean flags by reflection, so a new flag that `withFlagsOf` or Parallelizer's join rebuilds don't copy fails the test without editing it.
 - `Planner` is split into mix-in traits over its state, widening the moved members to `private[plan]`, rather than into helper objects that take the state as parameters: call sites stay unchanged.
 - `Stats` and `CardinalityEstimator` stay separate. Unifying them would change estimates and plans, which needs toggles and A/Bs, not a refactor.
 
