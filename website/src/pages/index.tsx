@@ -391,15 +391,27 @@ function EnginesSection(): React.ReactNode {
   return (
     <section className={styles.multiEngine}>
       <div className={styles.multiEngineHead}>
-        <p className={styles.kicker}>Flexible execution</p>
-        <h2>
-          One query, <em className={styles.shimmer}>many engines</em>
-        </h2>
-        <p>
-          Wvlet separates the query from where it runs. Write it once, then run it on the built-in
-          engine, push heavy joins and aggregations to a GPU, or hand it to your SQL warehouse,
-          without rewriting it.
-        </p>
+        <div>
+          <p className={styles.kicker}>Flexible execution</p>
+          <h2>
+            One size doesn't fit all. <br />
+            <em className={styles.shimmer}>One query can.</em>
+          </h2>
+          <p>
+            No single engine fits every workload: an embedded columnar engine, a GPU, and a cloud
+            warehouse each win somewhere. Rather than locking you into one, Wvlet keeps the query the
+            same and lets you run it on the engine that fits, without rewriting it.
+          </p>
+        </div>
+        <figure className={styles.quote}>
+          <blockquote>
+            “One size fits all”: an idea whose time has come and gone.
+          </blockquote>
+          <figcaption>
+            Michael Stonebraker &amp; Uğur Çetintemel,{' '}
+            <Link to="https://doi.org/10.1109/ICDE.2005.1">ICDE 2005</Link>
+          </figcaption>
+        </figure>
       </div>
       <div className={styles.engineGrid}>
         {engineCards.map((e) => (

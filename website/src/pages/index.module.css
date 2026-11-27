@@ -703,8 +703,43 @@
 }
 
 .multiEngineHead {
-  max-width: 760px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 48px;
   margin-bottom: 48px;
+}
+
+.quote {
+  position: relative;
+  margin: 0;
+  padding: 28px 28px 24px 32px;
+  border-left: 3px solid hsl(var(--shine-2));
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: linear-gradient(90deg, hsl(var(--shine-2) / 0.08), transparent);
+}
+
+.quote blockquote {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  color: hsl(var(--ink));
+  font-size: clamp(20px, 1.8vw, 24px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.quote figcaption {
+  color: hsl(var(--ink-2));
+  font-size: 14px;
+}
+
+@media (max-width: 996px) {
+  .multiEngineHead {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
 }
 
 .multiEngineHead h2 {
@@ -712,6 +747,7 @@
 }
 
 .multiEngineHead h2 + p {
+  max-width: 40em;
   margin: 24px 0 0;
   color: hsl(var(--ink-2));
   font-size: 18px;
