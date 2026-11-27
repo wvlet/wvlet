@@ -1219,6 +1219,17 @@ from nation
 limit 10
 ```
 
+The row count can also be a constant expression: a `val`, a model argument, a `def` parameter, or arithmetic over them. It is folded to an integer literal at compile time, so the generated SQL always has `LIMIT <integer>`:
+
+```wvlet
+def top(n: int) = order by n_nationkey desc | limit n
+
+from nation
+| top(3)
+```
+
+A value that is not a constant non-negative integer, such as a column, is a compile error.
+
 ### order by
 
 Sort the output rows by the given column:

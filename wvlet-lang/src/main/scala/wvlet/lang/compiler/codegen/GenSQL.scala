@@ -661,6 +661,10 @@ object GenSQL extends Phase("generate-sql"):
             )
             .getOrElse(m)
       }
+      // Names in limit expressions are bound now, so fold them into literal limits
+      .transformUp { case l: UnresolvedLimit =>
+        Limit(l.child, constantLimit(l), l.span)
+      }
       .asInstanceOf[Relation]
 
   end expandRelation
@@ -724,6 +728,70 @@ object GenSQL extends Phase("generate-sql"):
       case None =>
         warn(s"unknown model: ${m.name}")
         None
+
+  /**
+    * Evaluate the row count of a `limit` whose names are already bound: integer literals combined
+    * with + - * / %. Throws INVALID_ARGUMENT for any other expression or a negative count
+    */
+  private def constantLimit(l: UnresolvedLimit)(using ctx: Context): LongLiteral =
+    def fail(reason: String): Nothing =
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"limit requires a constant non-negative integer, but ${reason}",
+          ctx.sourceLocationAt(l.span)
+        )
+
+    def eval(e: Expression): Long =
+      e match
+        case n: LongLiteral =>
+          n.value
+        case p: ParenthesizedExpression =>
+          eval(p.child)
+        // A def parameter is substituted with the call's argument as written
+        case a: FunctionArg =>
+          eval(a.value)
+        case t: TypedExpression =>
+          eval(t.child)
+        case u: ArithmeticUnaryExpr =>
+          u.sign match
+            case Sign.Negative =>
+              -eval(u.child)
+            case _ =>
+              eval(u.child)
+        case b: ArithmeticBinaryExpr =>
+          val left  = eval(b.left)
+          val right = eval(b.right)
+          try
+            b.exprType match
+              case BinaryExprType.Add =>
+                Math.addExact(left, right)
+              case BinaryExprType.Subtract =>
+                Math.subtractExact(left, right)
+              case BinaryExprType.Multiply =>
+                Math.multiplyExact(left, right)
+              case BinaryExprType.Modulus | BinaryExprType.Divide if right == 0 =>
+                fail(s"${b.pp} divides by zero")
+              case BinaryExprType.Modulus =>
+                left % right
+              // Engines disagree on integer division, so only fold a division without remainder
+              case BinaryExprType.Divide if left % right == 0 =>
+                left / right
+              case _ =>
+                fail(s"${b.pp} is not an integer")
+          catch
+            case _: ArithmeticException =>
+              fail(s"${b.pp} overflows a 64-bit integer")
+        case i: Identifier =>
+          fail(s"'${i.leafName}' is not a val, model argument, or def parameter bound to one")
+        case other =>
+          fail(s"got ${other.pp}")
+
+    val n = eval(l.limit)
+    if n < 0 then
+      fail(s"got ${n}")
+    LongLiteral(n, n.toString, l.limit.span)
+  end constantLimit
 
   /**
     * The expression rewrite behind context binding: identifiers bound to val symbols (vals, model

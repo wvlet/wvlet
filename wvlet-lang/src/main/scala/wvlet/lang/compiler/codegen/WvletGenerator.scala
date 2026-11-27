@@ -381,6 +381,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         unary(f, "where", f.filterExpr)
       case l: Limit =>
         unary(l, "limit", l.limit)
+      case l: UnresolvedLimit =>
+        unary(l, "limit", l.limit)
       case o: Offset =>
         unary(o, "offset", o.rows)
       case c: Count =>
