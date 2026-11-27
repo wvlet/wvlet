@@ -167,7 +167,10 @@ class Optimizer(
     * for a shared CTE body once its readers' filters are pushed into it; only through
     * [[afterReaderFilters]]
     */
-  private def outerBuilds(p: RuntimePlan): RuntimePlan = validated(p, ReorderJoins.outerBuilds(p, ctx))
+  private def outerBuilds(p: RuntimePlan): RuntimePlan = validated(
+    p,
+    ReorderJoins.outerBuilds(p, ctx)
+  )
 
   /** The plan with the row-group filters of its scans recomputed ([[PushScanFilters]]) */
   def pushScanFilters(p: RuntimePlan): RuntimePlan = validated(p, PushScanFilters.run(p, ctx))
