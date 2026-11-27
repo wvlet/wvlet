@@ -87,16 +87,18 @@ class EmbeddedEngine private (val baseDir: String) extends AutoCloseable:
     * Register a table read from a file or folder: Parquet (a file, a glob like `*.parquet`, or a
     * folder of files, Hive-partitioned or not), an Iceberg table's `metadata.json` or folder, JSON
     * Lines, or CSV / TSV, optionally gzip-compressed. A relative path resolves against `baseDir`.
-    * Registering a name again replaces the table.
+    * Each name can be registered once; open a new engine to read other files under the same name.
     */
   def registerTable(name: String, path: String): Unit = synchronized {
     checkOpen()
-    val resolved =
-      if SourceIO.isAbsolutePath(path) || path.contains("://") then
-        path
-      else
-        s"${baseDir.stripSuffix("/")}/${path}"
-    val source = WvletEngineSession
+    // A JSON or CSV table has no compile-time schema, so replacing a typed table would leave its
+    // stale columns in the compile-time catalog
+    if session.hasTable(name) then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(s"Table ${name} is already registered in this engine")
+    val resolved = session.resolvePath(path)
+    val source   = WvletEngineSession
       .sourceOf(name, resolved, SourceIO.isDirectory(resolved))
       .getOrElse(
         throw StatusCode
@@ -111,8 +113,8 @@ class EmbeddedEngine private (val baseDir: String) extends AutoCloseable:
 
   /**
     * Compile and run Wvlet statements. Statements run in order (`save to`, `create table`, and
-    * `test` included), and the rows of the last query are returned; statements that return no rows
-    * give an empty result.
+    * `test` included), and the rows of the last query are returned; text with no query (e.g. only
+    * `save to`) gives an empty result.
     *
     * @throws WvletLangException
     *   when the query fails to compile, a statement fails, or a `test` assertion fails. The
@@ -137,7 +139,7 @@ class EmbeddedEngine private (val baseDir: String) extends AutoCloseable:
       .getOrElse(EmbeddedResult.empty)
   }
 
-  /** Drop the engine's tables. Later calls fail */
+  /** Release the engine. Later calls fail */
   override def close(): Unit = synchronized {
     if !closed then
       closed = true
@@ -155,7 +157,7 @@ object EmbeddedEngine:
   def open(): EmbeddedEngine = open(".")
 
   /** Open an engine that resolves relative paths against `baseDir` */
-  def open(baseDir: String): EmbeddedEngine = new EmbeddedEngine(baseDir)
+  def open(baseDir: String): EmbeddedEngine = EmbeddedEngine(baseDir)
 
   // Statement results nest in lists and plan results; walk them in statement order
   private def flatten(r: QueryResult): Seq[QueryResult] =

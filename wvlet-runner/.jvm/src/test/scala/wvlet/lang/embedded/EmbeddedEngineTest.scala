@@ -126,10 +126,14 @@ class EmbeddedEngineTest extends UniTest:
     }
   }
 
-  test("should reject an unsupported file and calls after close") {
+  test("should reject an unsupported file, a registered name, and calls after close") {
     val engine = EmbeddedEngine.open()
     intercept[WvletLangException] {
       engine.registerTable("t", "data.xlsx")
+    }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    engine.registerTable("nation", s"${tpchData}/nation.parquet")
+    intercept[WvletLangException] {
+      engine.registerTable("nation", s"${tpchData}/region.parquet")
     }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
     engine.close()
     intercept[WvletLangException] {

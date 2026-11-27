@@ -58,16 +58,16 @@ try (EmbeddedEngine engine = EmbeddedEngine.open("data")) {
 
 ## Tables
 
-- `registerTable(name, path)` registers a file or folder by name: Parquet (a file, a glob such as `sales/*.parquet`, or a folder of files, Hive-partitioned or not), an Iceberg table (its folder or `metadata.json`), JSON Lines, or CSV / TSV, optionally gzip-compressed. Registering a name again replaces the table.
+- `registerTable(name, path)` registers a file or folder by name: Parquet (a file, a glob such as `sales/*.parquet`, or a folder of files, Hive-partitioned or not), an Iceberg table (its folder or `metadata.json`), JSON Lines, or CSV / TSV, optionally gzip-compressed. Each name can be registered once per engine.
 - Parquet tables are typed when a query compiles, so an unknown column fails before anything runs.
 - A query can also read a file without registering it: `from 'data/orders.parquet'`.
 - `save to <table>` and `create table` keep tables in the engine for later queries; `tableNames` lists every table.
 
 ## Queries and results
 
-- `query(text)` runs every statement in order (`save to`, `create table`, and `test` assertions included) and returns the rows of the last query. A run that ends in a statement without rows returns an empty result.
+- `query(text)` runs every statement in order (`save to`, `create table`, and `test` assertions included) and returns the rows of the last query. Text with no query, such as a lone `save to`, returns an empty result.
 - A syntax error, an unknown column, a failed statement, or a failed `test` throws `WvletLangException`, with a status code (`e.statusCode`) and the source location.
 - Each column has a name and a Wvlet type name (`int`, `long`, `double`, `string`, `decimal[15,2]`, `date`, ...).
 - Values are `Long` for integers, `Double`, `Boolean`, and `String`. Decimals, dates, and timestamps are strings, so no precision is lost. Arrays are `Seq`s, maps are `Map`s, and NULL is `null`.
 - `toJson` returns `{"columns":[{"name":...,"type":...}],"rows":[[...],...]}` with the same values.
-- One engine runs one query at a time. Open an engine per thread to run queries in parallel. `close()` drops the engine's tables.
+- One engine runs one query at a time. Open an engine per thread to run queries in parallel. `close()` releases the engine; later calls fail.

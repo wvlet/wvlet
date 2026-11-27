@@ -22,9 +22,9 @@ Lane: Standard — a new public API. The launch prompt fixed the direction (desi
 
 - Open an engine, optionally with a base folder for relative paths.
 - Register tables by name from files or folders: Parquet, JSON, CSV, Iceberg, Hive-partitioned Parquet. Files referenced in a query (`from 'data/x.parquet'`) need no registration.
-- Run a query string. Statements run in order (`save to`, `create table`, `test` included); the result is the last query's rows, or an empty result when no statement returns rows (a run ending in `save to`).
+- Run a query string. Statements run in order (`save to`, `create table`, `test` included); the result is the last query's rows, or an empty result when the text has no query (only `save to`, say).
 - A compile error, a failed statement, or a failed `test` throws (JVM) or comes back as an error object (C, JSON) with the `StatusCode` and source location, the same as `compile_query_json` errors.
-- Read the result: column names and types, rows, or JSON. Close the engine to drop its tables.
+- Read the result: column names and types, rows, or JSON. Close the engine to release it.
 
 ### Shared surface
 

@@ -1,6 +1,6 @@
 # ADR: Put the embedded engine API in wvlet-runner, over the CLI's engine session
 
-Date: 2026-11-26 · PR #TBD
+Date: 2026-11-26 · PR #2512
 
 ## Context
 

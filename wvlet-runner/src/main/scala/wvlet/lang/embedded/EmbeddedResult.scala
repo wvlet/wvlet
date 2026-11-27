@@ -70,7 +70,6 @@ object EmbeddedResult:
   private[embedded] def fromTableRows(t: TableRows): EmbeddedResult =
     val columns =
       t.schema.fields.map(f => EmbeddedColumn(f.name.name, f.dataType.wvExpr)).toIndexedSeq
-    val names = columns.map(_.name)
-    val rows  =
-      t.positionalRows.getOrElse(t.rows.map(r => names.map(n => r.getOrElse(n, null)))).toIndexedSeq
+    // Without repeated column names, each row map holds every column in order
+    val rows = t.positionalRows.getOrElse(t.rows.map(_.values.toIndexedSeq)).toIndexedSeq
     EmbeddedResult(columns, rows)
