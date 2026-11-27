@@ -38,7 +38,7 @@ wv> from tpch.tiny.customer;
 This query returns all the columns in the `customer` table. If the query result doesn't fit to the screen, the Wvlet shell enters [UNIX `less` command](https://en.wikipedia.org/wiki/Less_(Unix)) mode, which allows you to navigate table data using arrow keys, page up/down keys, and the `q` key to exit the mode. See [Interactive Shell](../usage/repl.md) for the list of the available shortcut keys.
 
 :::tip
-The values in the `tpch` tables follow the TPC-H specification but aren't those of the reference `dbgen` generator, so your numbers won't match the official TPC-H answers. To use DuckDB's `dbgen` data instead (DuckDB comes with the npm package and the full JVM package), start the shell with `wv -t duckdb` and run `execute sql"call dbgen(sf=0.01)"`; the tables are then named without the `tpch.tiny.` prefix.
+The values in the `tpch` tables follow the TPC-H specification but aren't those of the reference `dbgen` generator, so your numbers won't match the official TPC-H answers. To use DuckDB's `dbgen` data instead (this needs the full JVM package, which includes DuckDB), start the shell with `wv -t duckdb` and run `execute sql"call dbgen(sf=0.01)"`; the tables are then named without the `tpch.tiny.` prefix.
 :::
 
 To limit the number of rows to display, you can use the `limit` operator:
