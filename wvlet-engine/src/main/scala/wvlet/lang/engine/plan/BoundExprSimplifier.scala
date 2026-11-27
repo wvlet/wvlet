@@ -81,7 +81,7 @@ object BoundExprSimplifier:
           .getOrElse(Compare(op, l, r))
       case (Const(v, kt), CastExpr(x, t, false)) if v != null && kt == t =>
         // `k op x` is `x op' k` with the operator flipped
-        unwrapped(flip(op), x, t, v, round)
+        unwrapped(op.flip, x, t, v, round)
           .map(c => Compare(op, Const(c, x.ptype), x))
           .getOrElse(Compare(op, l, r))
       case _ =>
@@ -94,20 +94,6 @@ object BoundExprSimplifier:
       else
         None
     )
-
-  /** The operator `op'` with `k op x` equal to `x op' k` */
-  private def flip(op: CmpOp): CmpOp =
-    op match
-      case CmpOp.Lt =>
-        CmpOp.Gt
-      case CmpOp.Le =>
-        CmpOp.Ge
-      case CmpOp.Gt =>
-        CmpOp.Lt
-      case CmpOp.Ge =>
-        CmpOp.Le
-      case other =>
-        other
 
   /**
     * The literal `v` of type `to` rounded to a value k' of `from`, so that `x op v` equals `x op
