@@ -179,6 +179,13 @@ class EngineOptimizerToggleTest extends UniTest:
     // read the same rows file by file; the golden plans read single files
     Optimization.DatasetFileScans ->
       "Changes how an Iceberg table or schema-evolved folder is read, not the plan",
+    // ParquetFolderTest checks that a partitioned folder's row filters return the same rows
+    Optimization.PartitionRowFilters ->
+      "Changes which partitioned folders take row filters, which the golden sources aren't",
+    // JoinEnumeratorTest and ParquetFolderTest check that the credit reorders the joins over
+    // partitions holding one key value each, which the generated golden sources have none of
+    Optimization.PartitionProbeScanCost ->
+      "Changes join order only over Parquet parts holding one key value each",
     // EngineParallelColumnDecodeTest checks that the flag decodes a single row group's columns as
     // tasks, with the same rows
     Optimization.ParallelColumnDecode ->

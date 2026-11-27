@@ -107,6 +107,13 @@ trait JoinSearch[P, C, K]:
     */
   def keyCoverage(input: P, sides: Seq[C]): KeyCoverage = KeyCoverage.Unknown
 
+  /**
+    * Whether a scan of `input` skips the parts holding no build key of a join on `side`, which
+    * reads only `input`, each part holding one value of it (`partition_probe_scan_cost`): false
+    * unless the plan form reads part statistics
+    */
+  def partitionKey(input: P, side: C): Boolean = false
+
   /** Estimated rows of an inner equi-join of `current` and `next` on `keys` */
   def outputRows(current: P, currentRows: Double, next: P, nextRows: Double, keys: K): Double
 
@@ -118,6 +125,8 @@ trait JoinSearch[P, C, K]:
 
   /** Rows of `p` for which every condition is true */
   def filter(p: P, conds: List[C]): P
+
+end JoinSearch
 
 /**
   * Orders the inner joins of a [[JoinGraph]] and builds the join tree, choosing the build side of

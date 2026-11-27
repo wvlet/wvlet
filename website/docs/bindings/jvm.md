@@ -1,6 +1,6 @@
 # Java / Scala (embedded engine)
 
-Run Wvlet queries inside a JVM application on Wvlet's own columnar [engine](../usage/wvlet-engine.md), the way you would embed DuckDB or SQLite. The engine runs in-process: no server, no database, and no SQL generation. Register tables from files, run a query, and read the rows.
+Run Wvlet queries inside a JVM application on Wvlet's own columnar [engine](../engines/wvlet-engine.md), the way you would embed DuckDB or SQLite. The engine runs in-process: no server, no database, and no SQL generation. Register tables from files, run a query, and read the rows.
 
 ## Installation
 

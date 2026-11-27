@@ -336,6 +336,15 @@ enum Optimization(val name: String):
   case DatasetFileScans extends Optimization("dataset_file_scans")
 
   /**
+    * With `folder_file_scans`, a folder of Hive partitions read as its files takes a row filter, as
+    * a single file does: each file decides the conjuncts on partition keys by its values, skipping
+    * the file when they reject it, and tests the rest while decoding. Per-row join filters on other
+    * keys (store_sales' tickets in TPC-DS q17, q25) and pushed-down conditions then skip decoding
+    * the rows they drop, rather than decoding every row and filtering after
+    */
+  case PartitionRowFilters extends Optimization("partition_row_filters")
+
+  /**
     * A LEFT hash join under a filter that tests one of its build key columns for NULL emits only
     * its unmatched probe rows, in probe order, with NULL build columns: a matched row's build key
     * equals a non-NULL probe key, so the filter drops every matched pair. The join skips the match
@@ -880,6 +889,18 @@ enum Optimization(val name: String):
     * grouped columns, rather than probing it with the filtered order lines
     */
   case JoinProbeScanCost extends Optimization("join_probe_scan_cost")
+
+  /**
+    * The exact join search credits a probe scan with the parts it skips by a build's join keys,
+    * when every part of the scan (a Hive partition, or a row group) holds one value of its key
+    * column, as the partitions of a date-partitioned table do: the scan reads only the parts
+    * holding build keys (`key_set_row_groups`), the build keys' share of the column's values. A
+    * runtime join filter on another key reads every part and drops rows after decoding them, so
+    * without the credit TPC-DS q25 over store_sales in date partitions built store_sales ⋈
+    * (catalog_sales ⋈ store_returns) and probed it with d1's 30 dates, reading all 1823 partitions
+    * instead of 30. Needs `key_set_row_groups`
+    */
+  case PartitionProbeScanCost extends Optimization("partition_probe_scan_cost")
 
   /**
     * Partitioned aggregations whose input comes in non-decreasing order of an integer grouping key

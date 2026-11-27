@@ -282,6 +282,96 @@ class JoinEnumeratorTest extends UniTest:
     ) shouldBe Some(List(0))
   }
 
+  test("should build a date filter over the probe of a fact table partitioned by date") {
+    // TPC-DS q25 over store_sales in date partitions: store_sales(0) ⋈ store_returns(3) on item,
+    // customer and ticket (e7-e9), store_returns ⋈ catalog_sales(1) on item and customer (e5,
+    // e6), catalog_sales ⋈ d3(2) (e1), store_returns ⋈ d2(4) (e2), store_sales ⋈ d1(5) (e10) on
+    // the partition key, with 30 of its 1823 dates
+    val rows       = IndexedSeq(2.88e7, 1.44e7, 214.0, 2.9e6, 214.0, 30.0)
+    val distinctOf = Map(
+      "l1"  -> 1839.0,
+      "r1"  -> 214.0,
+      "l2"  -> 2000.0,
+      "r2"  -> 214.0,
+      "l5"  -> 1.02e5,
+      "r5"  -> 1.02e5,
+      "l6"  -> 5e5,
+      "r6"  -> 5e5,
+      "l7"  -> 1.02e5,
+      "r7"  -> 1.02e5,
+      "l8"  -> 5e5,
+      "r8"  -> 5e5,
+      "l9"  -> 2.4e6,
+      "r9"  -> 2.4e6,
+      "l10" -> 1823.0,
+      "r10" -> 30.0
+    )
+    val search =
+      new JoinSearch[Tree, String, List[(String, String)]]:
+        export TreeSearch.{keys, outputRows, join, cross, filter}
+        override def distinct(input: Tree, side: String): Option[Double] = distinctOf.get(side)
+        // (item, ticket) is the key of both store tables
+        override def keyCoverage(input: Tree, sides: Seq[String]): KeyCoverage =
+          if sides.contains("l9") then
+            KeyCoverage.Unique(rows(0))
+          else if sides.contains("r9") then
+            KeyCoverage.Unique(rows(3))
+          else
+            KeyCoverage.NotUnique
+        override def partitionKey(input: Tree, side: String): Boolean = side == "l10"
+    val g = JoinGraph(
+      (0 to 5).map(i => Leaf(i): Tree),
+      rows,
+      List(
+        edge(1, Set(1), Set(2)),
+        edge(2, Set(3), Set(4)),
+        edge(5, Set(1), Set(3)),
+        edge(6, Set(1), Set(3)),
+        edge(7, Set(0), Set(3)),
+        edge(8, Set(0), Set(3)),
+        edge(9, Set(0), Set(3)),
+        edge(10, Set(0), Set(5))
+      )
+    )
+    // Whether d1 is the build of a join whose probe pipeline reads store_sales
+    def prunes(t: Tree): Boolean =
+      def pipeline(t: Tree): List[Int] =
+        t match
+          case Join(l, r, _, buildLeft) =>
+            pipeline(
+              if buildLeft then
+                r
+              else
+                l
+            )
+          case Filtered(c, _) =>
+            pipeline(c)
+          case Leaf(i) =>
+            List(i)
+      t match
+        case Join(l, r, _, buildLeft) =>
+          val (probe, build) =
+            if buildLeft then
+              (r, l)
+            else
+              (l, r)
+          (leaves(build) == List(5) && pipeline(probe) == List(0)) || prunes(l) || prunes(r)
+        case Filtered(c, _) =>
+          prunes(c)
+        case _ =>
+          false
+    val plan = JoinEnumerator(options).plan(g, search).get._1
+    validate(plan, g)
+    prunes(plan) shouldBe true
+    // Without the credit, the search builds store_sales ⋈ store_returns and probes it with d1
+    prunes(
+      JoinEnumerator(options.withDisabled(Optimization.PartitionProbeScanCost))
+        .plan(g, search)
+        .get
+        ._1
+    ) shouldBe false
+  }
+
 end JoinEnumeratorTest
 
 object JoinEnumeratorTest:

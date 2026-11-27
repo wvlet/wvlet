@@ -187,7 +187,9 @@ class MemTable(
   * of plain Parquet files is read as its files' single-file sources ([[ParquetFolder]],
   * `folder_file_scans`). With `datasetFiles`, a local Iceberg table is read file by file through
   * uni's dataset reader ([[DatasetFiles]], `dataset_file_scans`), and a folder's files may lack
-  * some of its columns (schema evolution), read as NULLs
+  * some of its columns (schema evolution), read as NULLs. With `partitionRowFilters`, a folder of
+  * Hive partitions read as its files takes a row filter, its partition-key conjuncts decided by
+  * each file's values (`partition_row_filters`)
   */
 class ParquetSource(
     val name: String,
@@ -195,7 +197,8 @@ class ParquetSource(
     val footerCache: Boolean = false,
     declaredKeys: Seq[Seq[String]] = Nil,
     val folderFiles: Boolean = true,
-    val datasetFiles: Boolean = true
+    val datasetFiles: Boolean = true,
+    val partitionRowFilters: Boolean = true
 ) extends TableSource:
   override def key: Any = ("parquet", path)
 
@@ -314,14 +317,45 @@ class ParquetSource(
     if isSingleFile || !folderFiles then
       this
     else
-      ParquetSource(name, path, footerCache, declaredKeys, folderFiles = false, datasetFiles)
+      ParquetSource(
+        name,
+        path,
+        footerCache,
+        declaredKeys,
+        folderFiles = false,
+        datasetFiles,
+        partitionRowFilters
+      )
 
   /** This source without `datasetFiles`: an Iceberg table is read through uni's dataset reader */
   lazy val withoutDatasetFiles: ParquetSource =
     if isSingleFile || !datasetFiles then
       this
     else
-      ParquetSource(name, path, footerCache, declaredKeys, folderFiles, datasetFiles = false)
+      ParquetSource(
+        name,
+        path,
+        footerCache,
+        declaredKeys,
+        folderFiles,
+        datasetFiles = false,
+        partitionRowFilters
+      )
+
+  /** This source without `partitionRowFilters`: a partitioned folder takes no row filter */
+  lazy val withoutPartitionRowFilters: ParquetSource =
+    if isSingleFile || !folderFiles || !partitionRowFilters then
+      this
+    else
+      ParquetSource(
+        name,
+        path,
+        footerCache,
+        declaredKeys,
+        folderFiles,
+        datasetFiles,
+        partitionRowFilters = false
+      )
 
   /** Open the single file, through the footer cache when `cached` */
   private def openFile(cached: Boolean): ParquetFooterCache.Opened =
@@ -363,11 +397,18 @@ class ParquetSource(
     }
 
   /**
-    * Single files, and folders read as their files but partitioned ones (an Iceberg table read file
-    * by file filters each file's rows through uni's dataset reader); otherwise uni's dataset reader
-    * still filters rows after decoding them
+    * Single files, and folders read as their files but schema-evolved ones (partitioned ones with
+    * `partitionRowFilters`; an Iceberg table read file by file filters each file's rows through
+    * uni's dataset reader); otherwise uni's dataset reader still filters rows after decoding them
     */
-  override def supportsRowFilter: Boolean = isSingleFile || folder.exists(_.rowFilters)
+  override def supportsRowFilter: Boolean =
+    isSingleFile ||
+      folder.exists {
+        case f: ParquetFolder =>
+          f.rowFilters || (partitionRowFilters && f.partitionRowFilters)
+        case f =>
+          f.rowFilters
+      }
 
   /**
     * A folder or Iceberg table too: uni skips each file's row groups by the row-group filter, and
