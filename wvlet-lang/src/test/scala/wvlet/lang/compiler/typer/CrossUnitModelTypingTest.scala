@@ -64,8 +64,11 @@ class CrossUnitModelTypingTest extends UniTest:
     // The full query expands through both models into plain SQL
     val sql = GenSQL.generateSQL(queryUnit)(using result.context)
     sql shouldContain "upper"
-    sql shouldNotContain "wrapper_model"
-    sql shouldNotContain "base_model"
+    // Each model name remains only as the alias of its inlined body
+    sql shouldContain ") as wrapper_model"
+    sql shouldContain ") as base_model"
+    sql shouldNotContain "from wrapper_model"
+    sql shouldNotContain "from base_model"
   }
 
 end CrossUnitModelTypingTest
