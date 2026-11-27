@@ -1,0 +1,9 @@
+-- Test the schema
+-- `test` checks the result of the query before it. `_` is that result: `_.columns` lists its column names and `_.size` counts its rows. Open the Tests tab below to see each assertion pass or fail, and click a line number to jump to it.
+
+from nation
+select n_nationkey, n_name, n_regionkey
+test _.size should be 25
+test _.columns should be ['n_nationkey', 'n_name', 'n_regionkey']
+test _.columns should contain 'n_name'
+test _.columns should not contain 'n_comment'

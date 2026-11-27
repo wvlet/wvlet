@@ -367,6 +367,167 @@ body {
     white-space: pre-wrap;
 }
 
+/* Tests & Debug: the file's test results and debug rows, in execution order */
+.pg-badge--success {
+    background: var(--uni-success-soft);
+    color: var(--uni-success);
+}
+
+.pg-badge--danger {
+    background: var(--uni-danger-soft);
+    color: var(--uni-danger);
+}
+
+.pg-result-header .uni-tabs [role="tab"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pg-run-checks {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+.pg-run-check {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--uni-line);
+    border-left: 3px solid transparent;
+}
+
+.pg-run-check--passed {
+    border-left-color: var(--uni-success);
+}
+
+.pg-run-check--failed {
+    border-left-color: var(--uni-danger);
+    background: var(--uni-danger-soft);
+}
+
+.pg-run-check--warning {
+    border-left-color: var(--uni-faint);
+}
+
+.pg-run-check--debug {
+    border-left-color: var(--uni-accent);
+}
+
+.pg-run-check__head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.pg-run-check__icon {
+    flex: none;
+    width: 1.2em;
+    text-align: center;
+    font-weight: 700;
+}
+
+.pg-run-check--passed .pg-run-check__icon {
+    color: var(--uni-success);
+}
+
+.pg-run-check--failed .pg-run-check__icon {
+    color: var(--uni-danger);
+}
+
+.pg-run-check--warning .pg-run-check__icon {
+    color: var(--uni-muted);
+}
+
+.pg-run-check--debug .pg-run-check__icon {
+    color: var(--uni-accent);
+}
+
+.pg-run-check__source {
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.pg-run-check__message {
+    margin: 4px 0 0 calc(1.2em + 8px);
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+    color: var(--uni-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow: auto;
+}
+
+.pg-run-check__message--error {
+    color: var(--uni-danger);
+}
+
+.pg-run-check__title {
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+    color: var(--uni-accent);
+    font-weight: 600;
+}
+
+/* The source of a debug block, as written in the editor */
+.pg-run-check__code {
+    margin: 4px 0 0 calc(1.2em + 8px);
+    padding: 4px 8px;
+    font-family: var(--uni-font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--uni-fg);
+    background: var(--uni-hover);
+    border-radius: var(--uni-radius-sm);
+    white-space: pre;
+    overflow-x: auto;
+    max-height: 160px;
+    overflow-y: auto;
+}
+
+.pg-run-check__rows {
+    display: flex;
+    flex-direction: column;
+    margin-top: 4px;
+    border: 1px solid var(--uni-line);
+    border-radius: var(--uni-radius-sm);
+}
+
+/* Gutter markers of test and debug lines in the editor (Monaco glyph margin) */
+.wv-line-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.wv-line-marker--passed::before {
+    content: "✓";
+    color: var(--uni-success);
+}
+
+.wv-line-marker--failed::before {
+    content: "✗";
+    color: var(--uni-danger);
+}
+
+.wv-line-marker--warning::before {
+    content: "!";
+    color: var(--uni-muted);
+}
+
+.wv-line-marker--debug::before {
+    content: "◆";
+    color: var(--uni-accent);
+}
+
 /* Sidebar */
 .pg-sidebar {
     display: flex;

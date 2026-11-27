@@ -66,7 +66,8 @@ class ResultPanel(state: PlaygroundState) extends RxElement:
         col.sortBy(r => r.values(i).getOrElse(""))
     sorted.withWidth(columnWidth(i, c, rows))
 
-  private def table(r: ResultTable): RxElement =
+  /** A sortable table of rows, with the column types above it */
+  def table(r: ResultTable): RxElement =
     if r.columns.isEmpty then
       div(cls -> "pg-result__empty", "The statement returned no relation.")
     else

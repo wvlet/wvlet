@@ -23,6 +23,13 @@ import wvlet.uni.rx.RxVar
 import wvlet.uni.ui.ColorScheme
 import org.scalajs.dom
 
+import scala.scalajs.js
+
+/**
+  * A marker in the editor's gutter at a 1-origin line: `kind` picks its look, `message` its hover
+  */
+case class LineMarker(line: Int, kind: String, message: String)
+
 /**
   * A Monaco editor that fills its container (Monaco's automatic layout follows the pane sizes).
   *
@@ -32,6 +39,8 @@ import org.scalajs.dom
   *   the language for syntax highlighting (`wvlet` or `sql`)
   * @param onAction
   *   called with the id of a Monaco action bound to a key, e.g. `run-query` for Cmd/Ctrl+Enter
+  * @param markers
+  *   gutter markers to show, e.g. the outcome of each `test` line
   */
 class CodeEditor(
     editorId: String,
@@ -39,7 +48,8 @@ class CodeEditor(
     language: Rx[String],
     theme: Rx[ColorScheme],
     readOnly: Boolean = false,
-    onAction: String => Unit = _ => ()
+    onAction: String => Unit = _ => (),
+    markers: Rx[Seq[LineMarker]] = Rx.const(Nil)
 ) extends RxElement:
   private val editor = new MonacoEditor(editorId, "wvlet", text.get, action = cmd => onAction(cmd))
 
@@ -64,6 +74,13 @@ class CodeEditor(
     subscriptions = Seq(
       language.run(l => editor.setLanguage(l)),
       theme.run(t => editor.setDarkMode(CodeEditor.isDark(t))),
+      markers.run { ms =>
+        editor.setLineMarkers(
+          js.Array(
+            ms.map(m => js.Dynamic.literal(line = m.line, kind = m.kind, message = m.message))*
+          )
+        )
+      },
       text.run { t =>
         if editor.getText() != t then
           editor.setText(t)

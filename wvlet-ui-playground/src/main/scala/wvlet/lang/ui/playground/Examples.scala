@@ -52,7 +52,8 @@ object Examples:
     "functions"      -> "Functions",
     "tpch"           -> "TPC-H Queries",
     "sql"            -> "SQL to Wvlet",
-    "dbt_models"     -> "dbt-style Models"
+    "dbt_models"     -> "dbt-style Models",
+    "testing"        -> "Testing & Debugging"
   )
 
   lazy val all: Seq[Example] = SampleQuery.allFiles.toSeq.map((path, text) => parse(path, text))

@@ -1,0 +1,15 @@
+-- Test rows
+-- `_.rows` is the result as an array of rows, each an array of column values. Compare it as a whole with `should be`, or check single rows with `should contain`.
+
+from region
+select r_regionkey, r_name
+order by r_regionkey
+test _.rows should contain [2, 'ASIA']
+test _.rows should not contain [5, 'ANTARCTICA']
+test _.rows should be [
+  [0, 'AFRICA'],
+  [1, 'AMERICA'],
+  [2, 'ASIA'],
+  [3, 'EUROPE'],
+  [4, 'MIDDLE EAST'],
+]
