@@ -191,7 +191,6 @@
 
 .brandLogo {
   filter: drop-shadow(0 14px 24px hsl(190 80% 30% / 0.3));
-  animation: float 6s ease-in-out infinite;
 }
 
 .brandName {
@@ -491,11 +490,6 @@
 
 .closingLogo {
   filter: drop-shadow(0 20px 36px hsl(190 80% 30% / 0.3));
-  animation: float 6s ease-in-out infinite;
-}
-
-@keyframes float {
-  50% { translate: 0 -10px; }
 }
 
 /* ---------- Responsive & motion ---------- */
@@ -514,9 +508,7 @@
 @media (prefers-reduced-motion: reduce) {
   .aurora span,
   .glow,
-  .shimmer,
-  .brandLogo,
-  .closingLogo {
+  .shimmer {
     animation: none;
   }
 }
