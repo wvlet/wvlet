@@ -1,42 +1,167 @@
 /**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
+ * Site-wide styles. The --wv-* tokens are the Wvlet palette, taken from the icon's teal gradient
+ * (#00d2e9 → #045962) and shared by the top page (src/pages/index.module.css), docs, and blog.
+ * Base tokens are HSL triplets, so they can take an alpha: hsl(var(--wv-primary) / 0.1).
  */
 
-/* You can override the default Infima variables here. */
 :root {
-  --ifm-color-primary: #2e7685;
-  --ifm-color-primary-dark: #296a78;
-  --ifm-color-primary-darker: #276471;
-  --ifm-color-primary-darkest: #20535d;
-  --ifm-color-primary-light: #338292;
-  --ifm-color-primary-lighter: #358899;
-  --ifm-color-primary-lightest: #3c99ad;
+  --wv-bg: 170 14% 98.5%;
+  --wv-bg-2: 168 18% 96%;
+  --wv-card: 0 0% 100%;
+  --wv-ink: 190 30% 9%;
+  --wv-ink-2: 190 8% 38%;
+  --wv-line: 170 10% 88%;
+  --wv-primary: 190 48% 34%;
+  --wv-term-bg: 190 30% 8%;
+
+  /* Code colors, read by the prism theme in docusaurus.config.ts. */
+  --wv-code-bg: hsl(var(--wv-bg-2));
+  --wv-code-fg: hsl(190 30% 13%);
+  --wv-code-comment: hsl(190 8% 42%);
+  --wv-code-punct: hsl(190 10% 38%);
+  --wv-code-keyword: hsl(190 75% 28%);
+  --wv-code-string: hsl(150 50% 28%);
+  --wv-code-number: hsl(25 80% 38%);
+  --wv-code-function: hsl(208 65% 38%);
+  --wv-code-constant: hsl(330 55% 40%);
+  --wv-code-operator: hsl(190 25% 32%);
+  --wv-code-variable: hsl(262 40% 46%);
+
+  --ifm-color-primary: hsl(190 48% 34%);
+  --ifm-color-primary-dark: hsl(190 48% 31%);
+  --ifm-color-primary-darker: hsl(190 48% 29%);
+  --ifm-color-primary-darkest: hsl(190 48% 24%);
+  --ifm-color-primary-light: hsl(190 48% 37%);
+  --ifm-color-primary-lighter: hsl(190 48% 39%);
+  --ifm-color-primary-lightest: hsl(190 48% 44%);
+
   --ifm-font-size-base: 97%;
   --ifm-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   --ifm-code-font-size: 86%;
-  --ifm-code-background: #f6f8fa;
-  --ifm-code-border-radius: 0.2rem;
-  --ifm-pre-line-height: 1.25;
+  --ifm-code-background: hsl(var(--wv-primary) / 0.08);
+  --ifm-code-border-radius: 0.3rem;
+  --ifm-pre-background: var(--wv-code-bg);
+  --ifm-pre-line-height: 1.4;
   /* Use Consolas as the first choice for Windows for pretty-printed tables */
   --ifm-font-family-monospace: Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --docusaurus-highlighted-code-line-bg: hsl(var(--wv-primary) / 0.12);
   --doc-sidebar-width: 250px !important;
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
-[data-theme='dark'] {
-  --ifm-color-primary: #25a7c1;
-  --ifm-color-primary-dark: #2196ae;
-  --ifm-color-primary-darker: #1f8ea4;
-  --ifm-color-primary-darkest: #1a7587;
-  --ifm-color-primary-light: #29b8d4;
-  --ifm-color-primary-lighter: #31bcd8;
-  --ifm-color-primary-lightest: #4ec5dd;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+/* For readability, the dark palette uses lighter teals on teal-tinted near-black. */
+html[data-theme='dark'] {
+  --wv-bg: 190 42% 5%;
+  --wv-bg-2: 190 38% 7.5%;
+  --wv-card: 190 34% 9.5%;
+  --wv-ink: 186 30% 95%;
+  --wv-ink-2: 186 14% 68%;
+  --wv-line: 188 30% 17%;
+  --wv-primary: 186 100% 52%;
+  --wv-term-bg: 190 45% 3.5%;
+
+  /* Docs links and headings use a softer cyan than the top page's accent, to avoid glare on long pages. */
+  --ifm-color-primary: hsl(186 70% 56%);
+  --ifm-color-primary-dark: hsl(186 70% 50%);
+  --ifm-color-primary-darker: hsl(186 70% 46%);
+  --ifm-color-primary-darkest: hsl(186 70% 40%);
+  --ifm-color-primary-light: hsl(186 70% 62%);
+  --ifm-color-primary-lighter: hsl(186 70% 66%);
+  --ifm-color-primary-lightest: hsl(186 70% 74%);
+  --ifm-code-background: hsl(var(--wv-primary) / 0.1);
+  --docusaurus-highlighted-code-line-bg: hsl(var(--wv-primary) / 0.12);
 }
 
+/*
+ * Infima colors mapped to the tokens. Listed for both modes, since Infima's own dark block resets
+ * the background and text colors.
+ */
+:root,
+html[data-theme='dark'] {
+  --ifm-background-color: hsl(var(--wv-bg));
+  --ifm-background-surface-color: hsl(var(--wv-card));
+  --ifm-font-color-base: hsl(var(--wv-ink));
+  --ifm-heading-color: hsl(var(--wv-ink));
+  --ifm-color-content-secondary: hsl(var(--wv-ink-2));
+  --ifm-toc-border-color: hsl(var(--wv-line));
+  --ifm-table-border-color: hsl(var(--wv-line));
+  --ifm-hr-background-color: hsl(var(--wv-line));
+  --ifm-menu-color-background-active: hsl(var(--wv-primary) / 0.08);
+  --ifm-menu-color-background-hover: hsl(var(--wv-primary) / 0.06);
+  --ifm-navbar-shadow: none;
+}
+
+/*
+ * DocSearch v4 ships blue-violet greys; tint the search button and highlights to the palette.
+ * Its stylesheet loads after this one with an html[data-theme=dark] block, hence the :root.
+ */
+html:root,
+html[data-theme='dark']:root {
+  --docsearch-primary-color: var(--ifm-color-primary);
+  --docsearch-highlight-color: var(--ifm-color-primary);
+  --docsearch-soft-primary-color: hsl(var(--wv-primary) / 0.1);
+  --docsearch-hit-highlight-color: hsl(var(--wv-primary) / 0.1);
+  --docsearch-search-button-background: hsl(var(--wv-card));
+  --docsearch-text-color: hsl(var(--wv-ink));
+  --docsearch-secondary-text-color: hsl(var(--wv-ink-2));
+  --docsearch-icon-color: hsl(var(--wv-ink-2));
+  --docsearch-muted-color: hsl(var(--wv-ink-2));
+  --docsearch-subtle-color: hsl(var(--wv-line));
+  --docsearch-key-background: hsl(var(--wv-bg-2));
+  --docsearch-key-color: hsl(var(--wv-ink-2));
+}
+
+/*
+ * Dark code colors: dark pages, and the top page's terminal-style code windows, which stay dark in
+ * light mode too.
+ */
+html[data-theme='dark'],
+html.wvlet-home .theme-code-block {
+  --wv-code-bg: hsl(var(--wv-card));
+  --wv-code-fg: hsl(186 20% 88%);
+  --wv-code-comment: hsl(190 10% 56%);
+  --wv-code-punct: hsl(190 12% 64%);
+  --wv-code-keyword: hsl(186 85% 62%);
+  --wv-code-string: hsl(150 50% 66%);
+  --wv-code-number: hsl(35 85% 66%);
+  --wv-code-function: hsl(205 85% 74%);
+  --wv-code-constant: hsl(330 70% 74%);
+  --wv-code-operator: hsl(186 30% 76%);
+  --wv-code-variable: hsl(265 70% 80%);
+}
+
+/* Inline code: a tinted chip, as on the top page, instead of a grey box with a border. */
+:not(pre) > code {
+  border-color: hsl(var(--wv-primary) / 0.12);
+}
+
+.theme-code-block {
+  border: 1px solid hsl(var(--wv-line));
+  box-shadow: none;
+}
+
+/* Translucent navbar on every page, so content and the top page's hero show through. */
+.navbar {
+  background: hsl(var(--wv-bg) / 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid hsl(var(--wv-ink) / 0.06);
+}
+
+/* backdrop-filter would make the fixed mobile menu size itself to the navbar; drop it while open. */
+.navbar.navbar-sidebar--show {
+  background: hsl(var(--wv-bg));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.navbar-sidebar {
+  background: hsl(var(--wv-bg));
+}
+
+.footer--dark {
+  --ifm-footer-background-color: hsl(190 45% 6%);
+  border-top: 1px solid hsl(188 30% 14%);
+}
 
 html.plugin-blog h2,
 html.plugin-blog.blog-post-page h1 {
@@ -49,17 +174,4 @@ html.plugin-blog.blog-post-page h1 {
   margin: 4px;
   height: auto;
   aspect-ratio: 1.777;
-}
-
-/* Homepage only (src/pages/index.tsx sets the class): translucent navbar over the hero aurora. */
-html.wvlet-home .navbar {
-  background: rgb(246 250 248 / 0.72);
-  backdrop-filter: blur(14px);
-  box-shadow: none;
-  border-bottom: 1px solid rgb(0 0 0 / 0.06);
-}
-
-html.wvlet-home[data-theme='dark'] .navbar {
-  background: rgb(7 15 18 / 0.72);
-  border-bottom-color: rgb(255 255 255 / 0.06);
 }

@@ -1,4 +1,4 @@
-import {themes as prismThemes} from 'prism-react-renderer';
+import type {PrismTheme} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import vscodePackage from '../vscode-wvlet/package.json';
@@ -28,6 +28,27 @@ const jsonLd = {
   keywords: 'query language, SQL, flow-style, DuckDB, Trino, Snowflake, data modeling, AI agents',
   offers: {'@type': 'Offer', price: '0', priceCurrency: 'USD'},
   author: {'@type': 'Organization', name: 'wvlet.org', url: 'https://wvlet.org/'},
+};
+
+
+/**
+ * Code colors come from the --wv-code-* variables in src/css/custom.css, so one theme follows
+ * light and dark mode (no flash on load), and the top page's dark code windows can override them.
+ */
+const v = (name: string) => `var(--wv-code-${name})`;
+const wvletPrismTheme: PrismTheme = {
+  plain: {color: v('fg'), backgroundColor: v('bg')},
+  styles: [
+    {types: ['comment', 'prolog', 'doctype', 'cdata', 'doctag'], style: {color: v('comment'), fontStyle: 'italic'}},
+    {types: ['punctuation', 'interpolation-punctuation', 'template-punctuation'], style: {color: v('punct')}},
+    {types: ['keyword', 'atrule', 'important', 'rule'], style: {color: v('keyword'), fontWeight: '600'}},
+    {types: ['string', 'char', 'template-string', 'attr-value', 'url', 'inserted'], style: {color: v('string')}},
+    {types: ['number', 'boolean'], style: {color: v('number')}},
+    {types: ['function', 'function-definition', 'class-name', 'builtin'], style: {color: v('function')}},
+    {types: ['constant', 'symbol', 'tag', 'property', 'deleted', 'selector', 'attr-name'], style: {color: v('constant')}},
+    {types: ['operator', 'entity'], style: {color: v('operator')}},
+    {types: ['variable', 'annotation', 'regex', 'parameter', 'interpolation'], style: {color: v('variable')}},
+  ],
 };
 
 const config: Config = {
@@ -241,8 +262,8 @@ const config: Config = {
       copyright: `Copyright © ${new Date().getFullYear()} wvlet.org. Built with Docusaurus.`,
     },
     prism: {
-      theme: prismThemes.okaidia,
-      darkTheme: prismThemes.okaidia,
+      theme: wvletPrismTheme,
+      darkTheme: wvletPrismTheme,
       additionalLanguages: ['sql', 'antlr4', 'bash'],
     },
     algolia: {
