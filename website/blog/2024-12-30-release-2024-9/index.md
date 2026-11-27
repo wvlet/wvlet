@@ -40,7 +40,7 @@ The `wv` interactive editor (REPL) supports various shortcut keys, allowing you 
 
 ![wvlet shell](/img/demo.gif)
 
-For using Trino SQL engine, you need to configure `~/.wvlet/profiles.yml` file to [specify the target Trino server address](/docs/usage/trino).
+For using Trino SQL engine, you need to configure `~/.wvlet/profiles.yml` file to [specify the target Trino server address](/docs/engines/trino).
 
 
 ### Wvlet Playground 

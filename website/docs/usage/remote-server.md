@@ -13,7 +13,7 @@ The server compiles and executes queries with its own profile (`~/.wvlet/profile
 
 ## Running queries remotely
 
-Use `-t wvlet` with the server's host (and port, when it is not the default 9090 for HTTP or 443 for HTTPS). Without a host, `-t wvlet` runs the [in-process wvlet engine](wvlet-engine.md) instead:
+Use `-t wvlet` with the server's host (and port, when it is not the default 9090 for HTTP or 443 for HTTPS). Without a host, `-t wvlet` runs the [in-process wvlet engine](../engines/wvlet-engine.md) instead:
 
 ```bash
 # Run a query on a remote wvlet server

@@ -6,7 +6,7 @@ sidebar_label: Web UI (wvlet ui)
 
 You can start a web-based query editor by running `wvlet ui` command. This will start a web server on `http://localhost:9090` where you can write and execute Wvlet queries. 
 
-For starting the Web UI with a sample TPC-H dataset, run `wvlet ui` with `--tpch` option. It sets `prepareTPCH` on the profile's connector: the in-process engine generates the tables in memory (see [TPC-H tables](wvlet-engine.md#tpc-h-tables)), and a DuckDB profile runs DuckDB's `dbgen`:
+For starting the Web UI with a sample TPC-H dataset, run `wvlet ui` with `--tpch` option. It sets `prepareTPCH` on the profile's connector: the in-process engine generates the tables in memory (see [TPC-H tables](../engines/wvlet-engine-tables.md#tpc-h-tables)), and a DuckDB profile runs DuckDB's `dbgen`:
 
 ```bash
 $ wvlet ui --tpch

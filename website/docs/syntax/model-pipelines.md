@@ -91,7 +91,7 @@ cycle.
 
 `wvlet build` uses the same options as [`wvlet flow`](flow.md#wvlet-flow-cli): `-w <folder>`,
 `-t <engine>`, `--profile`, `--catalog`, `--schema`, and `--run-store`. Builds run on the
-in-process [wvlet engine](../usage/wvlet-engine.md) by default. The built tables persist as Iceberg
+in-process [wvlet engine](../engines/wvlet-engine.md) by default. The built tables persist as Iceberg
 tables in the project's `target/warehouse` folder, so later builds of a selection find their
 upstream models. A `wvlet` connector of a profile can set its own `warehouse` folder instead. When
 the work folder has no `.wv` file directly in it, the folder is `~/.cache/wvlet/target/warehouse`,
