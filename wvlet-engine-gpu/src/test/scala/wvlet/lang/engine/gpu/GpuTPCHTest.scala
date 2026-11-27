@@ -17,6 +17,7 @@ import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.engine.catalog.BenchmarkKeys
 import wvlet.lang.engine.EngineConformance
 import wvlet.lang.engine.EngineTPCHBench
 import wvlet.uni.test.UniTest
@@ -36,7 +37,11 @@ class GpuTPCHTest extends UniTest:
   private val conformance = EngineConformance(
     "spec/tpch",
     tables.map(t => s"create view ${t} as select * from '${dataDir}/${t}.parquet'"),
-    engine => tables.foreach(t => engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet")),
+    // With the keys the benchmark declares, which change plan shapes (q10's dependent group keys)
+    engine =>
+      tables.foreach(t =>
+        engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet", BenchmarkKeys.of("tpch", t))
+      ),
     accelerator = Some(accelerator)
   )
 

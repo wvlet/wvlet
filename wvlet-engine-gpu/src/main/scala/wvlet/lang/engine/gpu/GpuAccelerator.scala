@@ -67,12 +67,31 @@ class GpuAccelerator(config: GpuConfig = GpuConfig.fromEnv())
     // them back to the host costs more than the CPU's own scan (TPC-H q13 and q22 read o_comment
     // and c_phone this way), so such subtrees stay on the CPU
     // and planning never touches the device: it is initialized when a GPU operator first runs
-    if GpuRuntime.isAvailable && GpuPlans.reduces(p) && GpuPlans.supports(p)(using config) &&
-      withinLimits(p)
-    then
-      Some(GpuOp(p, () => GpuPlans(cache, config), () => cpu(p), config))
-    else
+    if !GpuRuntime.isAvailable then
       None
+    else
+      val q = GpuPlans.inlineCTEs(p)(using config)
+      if GpuPlans.reduces(q) && supported(q) && withinLimits(q) then
+        val fallback: () => Operator =
+          if q eq p then
+            () => cpu(p)
+          else
+            // Lowered now, while planning: a shared CTE counts its readers before it is finalized
+            // and rejects one that reads it later
+            val op = cpu(p)
+            () => op
+        Some(GpuOp(q, () => GpuPlans(cache, config), fallback, config))
+      else
+        None
+
+  /** Whether all of `p` runs on the GPU; if not, log why at debug */
+  private def supported(p: RuntimePlan): Boolean =
+    GpuPlans.unsupported(p)(using config) match
+      case None =>
+        true
+      case Some(why) =>
+        debug(s"On the CPU: ${GpuOp.describe(p)}, as the GPU doesn't run ${why}")
+        false
 
   /**
     * Whether `p` can run within cudf's limits: with [[GpuFeature.OffloadLimits]], a subtree that
@@ -1210,13 +1229,13 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
                 case e: Throwable =>
                   values.drop(taken).foreach(_.close())
                   throw e
-            // Keys and min/max keep the bounds of their input; sums and counts widen
+            // Keys, min/max, and any_value keep the bounds of their input; sums and counts widen
             val outBounds =
               a.keys.map(k => GpuExprs.bound(k.lower(pos))) ++
                 a.calls
                   .map { c =>
                     c.name.toLowerCase match
-                      case "min" | "max" =>
+                      case "min" | "max" | "any_value" | "arbitrary" =>
                         GpuExprs.bound(c.args.head.lower(pos))
                       case _ =>
                         None
@@ -1898,10 +1917,6 @@ private[gpu] object GpuPlans:
   private def supported(e: BExpr, input: IndexedSeq[Column])(using GpuConfig): Boolean = GpuExprs
     .supports(e.lower(positions(input)))
 
-  private def supportedTypes(p: RuntimePlan): Boolean = p
-    .output
-    .forall(c => GpuTypes.dtypeOf(c.ptype).isDefined)
-
   /** The scans of `p` */
   def scansOf(p: RuntimePlan): Seq[Scan] =
     p match
@@ -2140,45 +2155,117 @@ private[gpu] object GpuPlans:
       case other =>
         other.children.exists(reduces)
 
+  /**
+    * `p` with each read of a shared CTE replaced by the CTE's body, with [[GpuFeature.InlineCTEs]]:
+    * a projection renames the body's output columns to the reader's
+    */
+  def inlineCTEs(p: RuntimePlan)(using cfg: GpuConfig): RuntimePlan =
+    if !cfg.isEnabled(GpuFeature.InlineCTEs) then
+      p
+    else
+      def expand(q: RuntimePlan): RuntimePlan =
+        q match
+          case CTERef(cte, columns) =>
+            // Fresh scans per reader: the GPU binds streamed scans to row ranges by identity
+            val body = freshScans(expand(cte.body))
+            // A reader reads the first columns of the body: the body may carry more (CTEJoinKeys)
+            Project(body, columns.indices.map(i => BExpr.ref(body.output(i))), columns)
+          case other =>
+            other.withChildren(other.children.map(expand))
+      expand(p)
+
+  private def freshScans(p: RuntimePlan): RuntimePlan =
+    p match
+      case s: Scan =>
+        s.copy()
+      case other =>
+        other.withChildren(other.children.map(freshScans))
+
   /** Whether all of `p` runs on the GPU */
-  def supports(p: RuntimePlan)(using cfg: GpuConfig): Boolean =
-    supportedTypes(p) && {
-      p match
-        case Values(columns, _) =>
-          columns.nonEmpty && cfg.isEnabled(GpuFeature.UploadValues)
-        case Scan(src: ParquetSource, columns, _, _) =>
-          src.isSingleFile && columns.nonEmpty
-        case Filter(child, cond, _) =>
-          supports(child) && supported(cond, child.output)
-        case Project(child, exprs, _) =>
-          exprs.nonEmpty && supports(child) && exprs.forall(supported(_, child.output))
-        case a: Aggregate =>
-          a.columns.nonEmpty && supports(a.child) && a.child.output.nonEmpty &&
-          a.keys.forall(supported(_, a.child.output)) &&
-          a.calls.forall(c => aggSupported(c) && c.args.forall(supported(_, a.child.output)))
-        case Sort(child, keys, _) =>
-          supports(child) && keys.forall(k => supported(k.expr, child.output))
-        case Limit(child, _, _) =>
-          supports(child)
-        case j: Join =>
-          val kindOk =
-            j.kind match
-              case JoinKind.Inner | JoinKind.Semi | JoinKind.Anti =>
-                true
-              case JoinKind.Left =>
-                j.residual.isEmpty || cfg.isEnabled(GpuFeature.OuterResidual)
-              case _ =>
-                false
-          kindOk && j.leftKeys.nonEmpty && supports(j.left) && supports(j.right) &&
-          j.leftKeys.forall(supported(_, j.left.output)) &&
-          j.rightKeys.forall(supported(_, j.right.output)) &&
-          j.leftKeys.zip(j.rightKeys).forall((a, b) => joinKeyType(a.ptype, b.ptype).isDefined) &&
-          j.residual.forall(supported(_, j.inputs))
-        case Distinct(child) =>
-          supports(child)
-        case _ =>
-          false
-    }
+  def supports(p: RuntimePlan)(using GpuConfig): Boolean = unsupported(p).isEmpty
+
+  /**
+    * Why `p` can't run on the GPU as a whole: the first node (or expression) under it that the GPU
+    * doesn't run, or None when it supports all of `p`. Logged at debug when a subtree stays on the
+    * CPU, so that new plan shapes from the CPU planner show up in GPU benchmarks
+    */
+  def unsupported(p: RuntimePlan)(using cfg: GpuConfig): Option[String] =
+    def node: String                                       = p.getClass.getSimpleName
+    def check(ok: Boolean, why: => String): Option[String] = Option.when(!ok)(s"${node}: ${why}")
+    def exprs(es: Iterable[BExpr], input: IndexedSeq[Column], what: String): Option[String] = es
+      .find(!supported(_, input))
+      .map(e => s"${node}: unsupported ${what} ${e.expr}")
+    def all(checks: (() => Option[String])*): Option[String] = checks
+      .iterator
+      .map(_())
+      .collectFirst { case Some(why) =>
+        why
+      }
+
+    p.output.find(c => GpuTypes.dtypeOf(c.ptype).isEmpty) match
+      case Some(c) =>
+        Some(s"${node}: unsupported column type ${c.name}:${c.ptype}")
+      case None =>
+        p match
+          case Values(columns, _) =>
+            check(columns.nonEmpty && cfg.isEnabled(GpuFeature.UploadValues), "values")
+          case Scan(src: ParquetSource, columns, _, _) =>
+            check(src.isSingleFile && columns.nonEmpty, s"multi-file or empty scan of ${src}")
+          case s: Scan =>
+            Some(s"${node}: source ${s.source.getClass.getSimpleName}")
+          case Filter(child, cond, _) =>
+            all(() => unsupported(child), () => exprs(Seq(cond), child.output, "filter"))
+          case Project(child, es, _) =>
+            all(
+              () => check(es.nonEmpty, "no columns"),
+              () => unsupported(child),
+              () => exprs(es, child.output, "projection")
+            )
+          case a: Aggregate =>
+            all(
+              () => check(a.columns.nonEmpty && a.child.output.nonEmpty, "no columns"),
+              () => unsupported(a.child),
+              () => exprs(a.keys, a.child.output, "group key"),
+              () =>
+                a.calls
+                  .find(c => !aggSupported(c))
+                  .map(c => s"${node}: unsupported aggregate ${c.name}"),
+              () => exprs(a.calls.flatMap(_.args), a.child.output, "aggregate argument")
+            )
+          case Sort(child, keys, _) =>
+            all(() => unsupported(child), () => exprs(keys.map(_.expr), child.output, "sort key"))
+          case Limit(child, _, _) =>
+            unsupported(child)
+          case j: Join =>
+            val kindOk =
+              j.kind match
+                case JoinKind.Inner | JoinKind.Semi | JoinKind.Anti =>
+                  true
+                case JoinKind.Left =>
+                  j.residual.isEmpty || cfg.isEnabled(GpuFeature.OuterResidual)
+                case _ =>
+                  false
+            all(
+              () => check(kindOk, s"join kind ${j.kind}"),
+              () => check(j.leftKeys.nonEmpty, "nested loop join"),
+              () => unsupported(j.left),
+              () => unsupported(j.right),
+              () => exprs(j.leftKeys, j.left.output, "join key"),
+              () => exprs(j.rightKeys, j.right.output, "join key"),
+              () =>
+                j.leftKeys
+                  .zip(j.rightKeys)
+                  .find((a, b) => joinKeyType(a.ptype, b.ptype).isEmpty)
+                  .map((a, b) => s"${node}: join key types ${a.ptype} = ${b.ptype}"),
+              () => exprs(j.residual, j.inputs, "join residual")
+            )
+          case Distinct(child) =>
+            unsupported(child)
+          case other =>
+            Some(node)
+        end match
+    end match
+  end unsupported
 
   /**
     * Push the single-input predicates that a filter's OR conditions imply below the inner joins
@@ -2264,7 +2351,7 @@ private[gpu] object GpuPlans:
     val n = c.name.toLowerCase
     n == "count" || n == "count_star"
 
-  private def aggSupported(c: AggregateCall): Boolean =
+  private def aggSupported(c: AggregateCall)(using cfg: GpuConfig): Boolean =
     c.filter.isEmpty && {
       c.name.toLowerCase match
         case "count_star" =>
@@ -2273,6 +2360,9 @@ private[gpu] object GpuPlans:
           c.args.size <= 1
         case "sum" | "avg" | "mean" | "min" | "max" =>
           !c.distinct && c.args.size == 1 && aggInputType(c).isDefined
+        case "any_value" | "arbitrary" =>
+          // A dependent group key's value (TPC-H q10 groups by c_custkey alone): any one per group
+          !c.distinct && c.args.size == 1 && cfg.isEnabled(GpuFeature.AnyValue)
         case _ =>
           false
     }
@@ -2319,6 +2409,8 @@ private[gpu] object GpuPlans:
         GroupByAggregation.mean()
       case "min" =>
         GroupByAggregation.min()
+      case "any_value" | "arbitrary" =>
+        GroupByAggregation.nth(0, NullPolicy.EXCLUDE)
       case _ =>
         GroupByAggregation.max()
 
