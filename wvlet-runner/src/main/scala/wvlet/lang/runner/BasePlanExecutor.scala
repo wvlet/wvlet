@@ -13,12 +13,16 @@
  */
 package wvlet.lang.runner
 
+import wvlet.lang.api.LinePosition
 import wvlet.lang.api.StatusCode
+import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.SqlGenerator
 import wvlet.lang.compiler.parser.SqlParser
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.query.QuerySelector
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.Expression
@@ -70,6 +74,29 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
   protected def notSupported(what: String): Exception = StatusCode
     .NOT_IMPLEMENTED
     .newException(s"${what} are not supported by this runner; use the JVM wvlet CLI instead")
+
+  /**
+    * Run the statement of `u` that `querySelection` picks at `linePosition`, e.g., the query
+    * fragment above the cursor for the REPL's describe and subquery-run key chords
+    */
+  def executeSelectedStatement(
+      u: CompilationUnit,
+      querySelection: QuerySelection,
+      linePosition: LinePosition,
+      rootContext: Context
+  ): QueryResult =
+    workEnv.info(s"Executing ${u.sourceFile.fileName} (${linePosition}, ${querySelection})")
+    val targetStatement: LogicalPlan = QuerySelector.selectQuery(u, linePosition, querySelection)
+    trace(s"Selected statement: ${targetStatement}, ${querySelection}")
+    val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
+
+    val executionPlan = ExecutionPlanner.plan(u, targetStatement)(using ctx)
+    val result        = execute(executionPlan, ctx)
+
+    workEnv.info(s"Completed ${u.sourceFile.fileName}")
+    result
+
+  end executeSelectedStatement
 
   def execute(executionPlan: ExecutionPlan, context: Context): QueryResult =
     var lastResult: QueryResult = QueryResult.empty

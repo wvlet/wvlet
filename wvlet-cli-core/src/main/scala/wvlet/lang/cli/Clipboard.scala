@@ -26,4 +26,4 @@ object Clipboard extends LogSupport:
     then
       info(s"Clipped the output to the clipboard")
     else
-      warn("clip command is not supported other than Mac OS")
+      warn("clip needs pbcopy (macOS), which could not be run")

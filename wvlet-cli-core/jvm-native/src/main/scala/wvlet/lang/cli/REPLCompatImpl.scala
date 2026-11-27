@@ -16,12 +16,12 @@ package wvlet.lang.cli
 import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.uni.log.LogSupport
 import wvlet.uni.rx.Rx
+import wvlet.uni.util.ThreadUtil
 
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
-import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -55,11 +55,7 @@ end REPLCompatImpl
   */
 private[cli] class ThreadQueries extends REPLQueries with LogSupport:
   private val executor: ExecutorService = Executors.newCachedThreadPool(
-    new ThreadFactory:
-      override def newThread(r: Runnable): Thread =
-        val t = Thread(r, "wvlet-repl-executor")
-        t.setDaemon(true)
-        t
+    ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor")
   )
 
   override def run[A](terminal: REPLTerminal)(body: => A): Option[A] =

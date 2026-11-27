@@ -114,6 +114,17 @@ end WvletCliCommands
 object WvletCliCommands:
 
   /**
+    * `wvlet` with no arguments on an interactive terminal opens the REPL, like `duckdb` or
+    * `python`. Pipes, CI, and agents get the version instead, so a bare `wvlet` never waits for
+    * input there.
+    */
+  def withDefaultCommand(args: Array[String]): Array[String] =
+    if args.isEmpty && wvlet.uni.cli.TerminalIO.default.isTTY then
+      Array("repl")
+    else
+      args
+
+  /**
     * True for the exceptions that end a command successfully, such as `--version` and `--help`,
     * which the launchers report by throwing
     */
