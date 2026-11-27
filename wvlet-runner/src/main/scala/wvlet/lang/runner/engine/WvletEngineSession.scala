@@ -331,7 +331,13 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
         .map(f => DataType.NamedType(Name.termName(f.name), f.ptype.toDataType))
         .toList
     )
-    TableRows(schema, result.toRowMaps(rowLimit), result.numRows)
+    val names      = result.schema.names
+    val positional =
+      if names.distinct.size < names.size then
+        Some(result.toExternalRows(rowLimit))
+      else
+        None
+    TableRows(schema, result.toRowMaps(rowLimit), result.numRows, positional)
 
   /**
     * Run a write statement: `save to <table>`, `append to <table>` (plain and keyed), and `delete`

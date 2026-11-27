@@ -73,8 +73,16 @@ case class QueryResultList(list: Seq[QueryResult]) extends QueryResult:
 
 case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResult
 
-case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
-    extends QueryResult:
+/**
+  * Rows of a query, keyed by column name. `positionalRows` holds the same rows by column position
+  * when column names repeat (e.g. `select a, b as a`), where the maps keep only one of the values
+  */
+case class TableRows(
+    schema: RelationType,
+    rows: Seq[ListMap[String, Any]],
+    totalRows: Int,
+    positionalRows: Option[Seq[IndexedSeq[Any]]] = None
+) extends QueryResult:
   def isTruncated: Boolean = rows.size < totalRows
   def toJsonLines: String  =
     val codec     = summon[Weaver[ListMap[String, Any]]]

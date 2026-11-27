@@ -48,13 +48,12 @@ case class EngineResult(schema: Schema, batches: Seq[Batch]):
     */
   def toRowMaps(limit: Int = Int.MaxValue): Seq[ListMap[String, Any]] =
     val names = schema.names
+    toExternalRows(limit).map(r => ListMap.from(names.indices.map(i => names(i) -> r(i))))
+
+  /** The same values as [[toRowMaps]], by column position */
+  def toExternalRows(limit: Int = Int.MaxValue): Seq[IndexedSeq[Any]] =
     val types = schema.types
-    rows
-      .take(limit)
-      .map { r =>
-        ListMap.from(names.indices.map(i => names(i) -> ValueOps.toExternal(r(i), types(i))))
-      }
-      .toSeq
+    rows.take(limit).map(r => r.indices.map(i => ValueOps.toExternal(r(i), types(i)))).toSeq
 
 /**
   * The planning stages of one query ([[WvletEngine.planStages]]). `bound` and `optimized` are empty

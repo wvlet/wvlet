@@ -1,7 +1,7 @@
 
 # Language Bindings
 
-Wvlet provides SDKs for various programming languages, allowing you to compile Wvlet queries to SQL directly from your preferred language environment.
+Wvlet provides SDKs for various programming languages. The Python and TypeScript SDKs compile Wvlet queries to SQL from your language; the Java / Scala API runs queries in your application on Wvlet's embedded engine.
 
 ## Available SDKs
 
@@ -28,16 +28,16 @@ print(sql)  # SELECT name, age FROM users WHERE age > 18
 - Integration with pandas, DuckDB, SQLAlchemy
 
 ### [TypeScript/JavaScript SDK](typescript.md)
-[![npm version](https://badge.fury.io/js/wvlet.svg)](https://www.npmjs.com/package/wvlet)
+[![npm version](https://badge.fury.io/js/@wvlet%2Fwvlet.svg)](https://www.npmjs.com/package/@wvlet/wvlet)
 
 The TypeScript SDK enables Wvlet compilation in Node.js and browsers:
 
 ```bash
-npm install wvlet
+npm install @wvlet/wvlet
 ```
 
 ```typescript
-import { WvletCompiler } from 'wvlet';
+import { WvletCompiler } from '@wvlet/wvlet';
 
 const compiler = new WvletCompiler();
 const sql = compiler.compile('from users select name, age where age > 18');
@@ -50,11 +50,29 @@ console.log(sql);  // SELECT name, age FROM users WHERE age > 18
 - Full TypeScript support
 - No native dependencies
 
+### [Java / Scala (embedded engine)](jvm.md)
+
+Run queries in-process on the JVM, with no server or database:
+
+```scala
+import wvlet.lang.embedded.EmbeddedEngine
+
+val engine = EmbeddedEngine.open()
+engine.registerTable("orders", "data/orders.parquet")
+val result = engine.query("from orders group by o_orderstatus agg _.count as n")
+println(result.toJson)
+engine.close()
+```
+
+**Features:**
+- Wvlet's columnar engine in your process: Parquet, Iceberg, JSON, and CSV tables
+- Works from Scala and Java (`AutoCloseable`, index-based result accessors)
+- Rows as JVM values or JSON
+
 ## Planned SDKs
 
 The following language bindings are planned for future releases:
 
-- **Java/Scala** - Native JVM integration
 - **Ruby** - Ruby gem with native extensions
 - **Rust** - Cargo crate with native bindings
 - **Go** - Go module with CGO bindings
