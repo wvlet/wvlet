@@ -16,6 +16,17 @@ Pushing a tag `vX.Y.Z` publishes all artifacts, including the npm packages and t
 - Every build smoke-tests the packaged vsix over LSP stdio (`vscode-wvlet/scripts/lsp-smoke.mjs`) before it can be published. Never bypass this gate.
 - Out-of-band extension releases run the "VS Code" workflow dispatch with `publish=true`; a patch other than 0 publishes as a pre-release.
 
+## JVM CLI packages
+
+Every `v*` tag uploads these packages to the GitHub release (`.github/workflows/release.yml`):
+
+- `wvlet-cli-<version>.tar.gz` (lite) and `wvlet-cli-full-<version>.tar.gz` (with DuckDB and Snowflake): portable, they run on the user's JDK 17+.
+- `wvlet-cli-<version>-<platform>.tar.gz` for `macos-arm64`, `macos-x64`, `linux-x64`, `linux-arm64`: the lite package plus a jlink'd Java 25 runtime in `runtime/` (about 95 MB in all). Homebrew installs these, so its formula needs no `openjdk` dependency, whose GUI libraries made up most of the install and upgrade time.
+- `.github/scripts/add-jlink-runtime.sh` builds a platform package from the portable one. It runs on each target platform's own runner (the `platform_packages` matrix), so every runtime is smoke-tested where it runs. It holds the runtime's JDK module list.
+- The script fails when jdeps finds a jar that needs a JDK module outside that list. The Scala.js job of `test.yml` runs it on every PR, so a new dependency that needs another module fails CI; add the module to the list.
+- `build.sbt` (`useBundledRuntime`) patches the sbt-pack launchers to prefer `$PROG_HOME/runtime` over `JAVA_HOME` and `PATH`. sbt-pack's macOS branch runs the first `java` on `PATH`, so the runtime goes first on `PATH` as well.
+- The homebrew job waits for every platform package before opening the formula PR in wvlet/homebrew-wvlet.
+
 ## Maven artifacts
 
 Every `v*` tag publishes the JVM library modules to the wvlet Maven repository, `https://repo.wvlet.org/maven2` (Cloudflare R2 bucket `wvlet-maven`, shared with uni and airframe; see uni's `adr/2026-11-18-wvlet-maven-repo.md`). The `publish` job in `.github/workflows/release.yml` stages them with `projectPublish/publishSigned` into `target/sona-staging` and uploads that tree with `.github/scripts/maven_repo.py`.

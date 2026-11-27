@@ -62,6 +62,7 @@ which wvlet   # should point to the npm global bin directory
 The JVM CLI includes the [Web UI](ui.md), flows, and the JDBC connectors, and builds models in parallel with run records, in addition to the commands and [REPL](repl.md) of the npm `wvlet`. Each release ships it in two packages with the same `wvlet` command and its `wv` alias (`wvlet repl`):
 
 - `wvlet-cli-(version).tar.gz` (about 60 MB, installed by Homebrew): queries run on the in-process [wvlet engine](../engines/wvlet-engine.md), [Trino](../engines/trino.md), and remote wvlet servers.
+- `wvlet-cli-(version)-(platform).tar.gz` (about 95 MB) for `macos-arm64`, `macos-x64`, `linux-x64`, and `linux-arm64`: the `wvlet-cli` package with a bundled Java runtime in `runtime/`, so no JDK is needed. The `wvlet` and `wv` commands run the bundled runtime even when `JAVA_HOME` points to another JDK.
 - `wvlet-cli-full-(version).tar.gz` (about 230 MB): adds the [DuckDB](../engines/duckdb.md) and [Snowflake](../engines/snowflake.md) connectors, whose JDBC drivers make up most of its size. Use it for `-t duckdb`, `.duckdb` files, DuckDB extensions, `sql"..."` blocks run on DuckDB, or Snowflake profiles.
 
 Without the full package, selecting DuckDB or Snowflake fails with an error that names the full package.
@@ -81,11 +82,11 @@ https://github.com/wvlet/homebrew-wvlet
 
 ### Linux, Windows, and Other Platforms
 
-Download a binary package, `wvlet-cli-(version).tar.gz` or `wvlet-cli-full-(version).tar.gz` (with DuckDB and Snowflake), from the release page https://github.com/wvlet/wvlet/releases
+Download a binary package, `wvlet-cli-(version)-(platform).tar.gz`, `wvlet-cli-(version).tar.gz`, or `wvlet-cli-full-(version).tar.gz` (with DuckDB and Snowflake), from the release page https://github.com/wvlet/wvlet/releases
 
 You can find the `wvlet` command and the `wv` alias in the bin directory of the package. Add the bin directory to your PATH environment variable.
 
-JDK 17 or later is required. Set the JAVA_HOME environment variable to the JDK path.
+The platform packages (`wvlet-cli-(version)-(platform).tar.gz`) need no JDK. The other packages require JDK 17 or later: set the JAVA_HOME environment variable to the JDK path.
 
 :::info
 Language SDKs are also available for [Python and TypeScript](../bindings) to compile Wvlet queries programmatically.

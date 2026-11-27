@@ -445,12 +445,40 @@ def nativeCrossProject(
 
 val packQuick = taskKey[Unit]("Run pack task quickly for faster development")
 
+// Lets the sbt-pack launchers run the Java runtime that the per-platform CLI packages bundle in
+// runtime/ (.github/scripts/add-jlink-runtime.sh). sbt-pack's macOS branch runs the first java on
+// PATH and ignores JAVA_HOME, so the runtime goes first on PATH too. See design/releasing.md
+val bundledRuntimeLauncherSnippet =
+  """# Prefer the Java runtime bundled in the per-platform packages (runtime/)
+    |if [ -x "$PROG_HOME/runtime/bin/java" ] ; then
+    |  JAVA_HOME="$PROG_HOME/runtime"
+    |  JAVACMD="$JAVA_HOME/bin/java"
+    |  PATH="$JAVA_HOME/bin:$PATH"
+    |  export JAVA_HOME
+    |fi
+    |
+    |""".stripMargin
+
+def useBundledRuntime(packDir: File, launchers: Iterable[String]): Unit = launchers.foreach {
+  name =>
+    val script = packDir / "bin" / name
+    val text   = IO.read(script)
+    val marker = "\ncygwin=false\n"
+    if !text.contains(bundledRuntimeLauncherSnippet) then
+      require(text.contains(marker), s"sbt-pack launcher layout changed: ${script}")
+      IO.write(script, text.replace(marker, s"\n${bundledRuntimeLauncherSnippet}cygwin=false\n"))
+}
+
 // Pack settings shared by the lite (cli) and full (cliFull) JVM CLI distributions
 def cliPackSettings: Seq[Setting[?]] = Seq(
   // Non-UI pack for faster development iteration
   packQuick := Def.uncached(pack.value),
   // Both packs share cli's UI asset build, so packing them together runs pnpm/Vite once
-  pack := Def.uncached(pack.dependsOn(LocalProject("cli") / packUiAssets).value),
+  pack := Def.uncached {
+    val dir = pack.dependsOn(LocalProject("cli") / packUiAssets).value
+    useBundledRuntime(dir, packMain.value.keys)
+    dir
+  },
   packMain  :=
     Map(
       // Wvlet REPL launcher
