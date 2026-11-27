@@ -156,10 +156,42 @@ class WvletEngine(
   /** SHOW statements become their SQL queries over information_schema (or a VALUES list) */
   private def lowerShow(r: Relation)(using ctx: Context): Relation = r
     .transformUp { case s: Show =>
-      // e.g., SHOW MODELS lists doc comments joined with ||
-      parseSqlText(Binder.rewriteConcat(GenSQL.generateSQLFromRelation(s, addHeader = false).sql))
+      benchmarkTables(s) match
+        case Some(names) =>
+          // The built-in tpch/tpcds schemas aren't in information_schema: any scale factor works
+          val rows = names.map(n => s"('${n}')").mkString(", ")
+          parseSqlText(s"select name from (values ${rows}) as t(name) order by name")
+        case None =>
+          // e.g., SHOW MODELS lists doc comments joined with ||
+          parseSqlText(
+            Binder.rewriteConcat(GenSQL.generateSQLFromRelation(s, addHeader = false).sql)
+          )
     }
     .asInstanceOf[Relation]
+
+  /**
+    * The table names `show tables` lists when it targets a built-in benchmark schema (`tpch.tiny`),
+    * given in its `in` clause or by the session's catalog and schema
+    */
+  private def benchmarkTables(s: Show)(using ctx: Context): Option[Seq[String]] =
+    import wvlet.lang.model.expr.{DotRef, Identifier}
+    if s.showType != ShowType.tables then
+      None
+    else
+      val opts              = ctx.global.compilerOptions
+      val (catalog, schema) =
+        s.inExpr match
+          case DotRef(q: Identifier, name, _, _) =>
+            (Some(q.leafName), Some(name.leafName))
+          case i: Identifier if i.nonEmpty =>
+            (opts.catalog, Some(i.leafName))
+          case _ =>
+            (opts.catalog, opts.schema)
+      for
+        c     <- catalog
+        sc    <- schema
+        names <- BenchmarkCatalogs.tableNames(c, sc)
+      yield names
 
   /** An engine running only the given planner optimizations, over the same catalog and folder */
   def withOptimizer(o: OptimizerOptions): WvletEngine = WvletEngine(

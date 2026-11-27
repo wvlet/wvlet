@@ -1,0 +1,7 @@
+-- show tables lists the built-in tables of any scale-factor schema
+show tables in tpch.tiny
+test _.size should be 8
+test _.rows should be [['customer'], ['lineitem'], ['nation'], ['orders'], ['part'], ['partsupp'], ['region'], ['supplier']]
+
+show tables in tpcds.sf1
+test _.size should be 24
