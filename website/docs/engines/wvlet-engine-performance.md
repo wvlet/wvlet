@@ -5,7 +5,7 @@ description: "The Wvlet engine on TPC-H and TPC-DS at scale factor 10 against Du
 
 # Performance
 
-The [Wvlet engine](wvlet-engine.md) runs every TPC-H and TPC-DS query at scale factor 10, and its conformance tests check every result row against DuckDB's. This page reports its speed on those suites against DuckDB, with DataFusion and Trino as references, and how to reproduce the numbers.
+The [Wvlet engine](wvlet-engine.md) runs every TPC-H and TPC-DS query at scale factor 10. This page reports its speed on those suites against DuckDB, with DataFusion and Trino as references, and how to reproduce the numbers.
 
 ## Results
 
@@ -16,7 +16,7 @@ TPC-H and TPC-DS at scale factor 10 (about 10 GB of raw data as Parquet files), 
 | TPC-H (22 queries) | 1.41x | 1.39x | 3.12 s / 2.21 s |
 | TPC-DS (99 queries) | 1.20x | 1.11x | 8.82 s / 7.38 s |
 
-- Every query ran with no errors and returned the same number of rows as DuckDB. The TPC-H and TPC-DS conformance tests compare the rows themselves, on smaller data (TPC-H tiny, TPC-DS SF0.1).
+- Every query ran with no errors.
 - The engine is faster than DuckDB on 31 of the 99 TPC-DS queries (q32 at 0.41x, q15 at 0.56x) and on 3 of the 22 TPC-H queries (q15 and q16 at 0.85x).
 - The largest ratios are TPC-DS q27 (2.63x) and TPC-H q5 (2.23x); most others are within 2x.
 
