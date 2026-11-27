@@ -238,15 +238,7 @@ object Parallelizer:
             runtimeFilters = j.runtimeFilters,
             nullsEqual = j.nullsEqual,
             exclude = j.exclude
-          ).withLateGather(j.lateGather)
-            .withDirectIndex(j.directIndex)
-            .withParallelBuild(j.parallelBuild)
-            .withStringCodes(j.stringCodes)
-            .withCodeProbe(j.joinBuild.codeProbe)
-            .withUnmatchedOnly(j.unmatchedOnly)
-            .withMissFilter(j.joinBuild.missFilter)
-            .withNarrowEntries(j.joinBuild.narrowEntries)
-            .withParallelKeys(j.joinBuild.parallelKeys)
+          ).withFlagsOf(j)
           BuildKeyMatch.bind(template, j.prefilters)
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
@@ -716,15 +708,7 @@ object Parallelizer:
               runtimeFilters = j.runtimeFilters,
               nullsEqual = j.nullsEqual,
               exclude = j.exclude
-            ).withLateGather(j.lateGather)
-              .withDirectIndex(j.directIndex)
-              .withParallelBuild(j.parallelBuild)
-              .withStringCodes(j.stringCodes)
-              .withCodeProbe(j.joinBuild.codeProbe)
-              .withUnmatchedOnly(j.unmatchedOnly)
-              .withMissFilter(j.joinBuild.missFilter)
-              .withNarrowEntries(j.joinBuild.narrowEntries)
-              .withParallelKeys(j.joinBuild.parallelKeys)
+            ).withFlagsOf(j)
             BuildKeyMatch.bind(copy, j.prefilters)
           case j: NestedLoopJoinOp =>
             NestedLoopJoinOp(r(j.left), r(j.right), j.cond, j.kind, j.schema)
