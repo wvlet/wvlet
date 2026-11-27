@@ -13,15 +13,24 @@ import scala.scalajs.js
   * DuckDB connection running a query, or 0.
   */
 trait QueryCancelCompat:
-  private val Requested = 0
-  private val Armed     = 1
+  /** Int32 slot of the cancel request */
+  val RequestedSlot = 0
+
+  /** Int32 slot telling whether a cancellable query is running */
+  val ArmedSlot = 1
+
+  /** Int32 slot the watcher sets while it is ready */
+  val ReadySlot = 2
+
+  /** Byte offset of the BigInt64 DuckDB connection address */
+  val ConnectionOffset = 16
 
   private lazy val buffer: js.Dynamic =
     js.Dynamic.newInstance(js.Dynamic.global.SharedArrayBuffer)(24)
 
   private lazy val slots: js.Dynamic = js.Dynamic.newInstance(js.Dynamic.global.Int32Array)(buffer)
   private lazy val connection: js.Dynamic =
-    js.Dynamic.newInstance(js.Dynamic.global.BigInt64Array)(buffer, 16, 1)
+    js.Dynamic.newInstance(js.Dynamic.global.BigInt64Array)(buffer, ConnectionOffset, 1)
 
   private def atomics: js.Dynamic = js.Dynamic.global.Atomics
 
@@ -32,15 +41,15 @@ trait QueryCancelCompat:
   private var duckdbLibraryListeners: List[String => Unit] = Nil
 
   /** Whether the user asked to cancel the running query */
-  def isRequested: Boolean = load(Requested) == 1 && load(Armed) == 1
+  def isRequested: Boolean = load(RequestedSlot) == 1 && load(ArmedSlot) == 1
 
   /** The shared buffer that holds the flag, to hand to the watcher thread */
   def sharedBuffer: js.Any = buffer
 
   /** Start a cancellable query: clear any earlier request and accept new ones */
   def arm(): Unit =
-    atomics.store(slots, Requested, 0)
-    atomics.store(slots, Armed, 1)
+    atomics.store(slots, RequestedSlot, 0)
+    atomics.store(slots, ArmedSlot, 1)
 
   /**
     * End the cancellable query. Returns whether the user asked to cancel it, and clears the request
@@ -48,15 +57,19 @@ trait QueryCancelCompat:
     */
   def disarm(): Boolean =
     val requested = isRequested
-    atomics.store(slots, Armed, 0)
-    atomics.store(slots, Requested, 0)
+    atomics.store(slots, ArmedSlot, 0)
+    atomics.store(slots, RequestedSlot, 0)
     requested
 
   /** Run a DuckDB call, letting the watcher interrupt the connection at `address` meanwhile */
   def withDuckDBConnection[A](address: js.Any)(body: => A): A =
     atomics.store(connection, 0, address)
-    try body
-    finally atomics.store(connection, 0, js.BigInt(0))
+    try
+      // A Ctrl-C between the caller's check and the store above found no connection to interrupt
+      QueryCancel.check()
+      body
+    finally
+      atomics.store(connection, 0, js.BigInt(0))
 
   /**
     * Call `f` with the libduckdb path once DuckDB is loaded, at once if it already is. DuckDB loads

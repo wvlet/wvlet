@@ -41,7 +41,7 @@ private[cli] class CtrlCWatcher private (worker: js.Dynamic) extends LogSupport:
   }
 
   /** Whether the helper process is running and listens for SIGINT */
-  def isReady: Boolean = atomics.load(slots, CtrlCWatcher.ReadySlot).asInstanceOf[Int] == 1
+  def isReady: Boolean = atomics.load(slots, QueryCancel.ReadySlot).asInstanceOf[Int] == 1
 
   /** Accept Ctrl-C for the query that is about to run */
   def arm(): Unit = QueryCancel.arm()
@@ -51,7 +51,6 @@ private[cli] class CtrlCWatcher private (worker: js.Dynamic) extends LogSupport:
 end CtrlCWatcher
 
 private[cli] object CtrlCWatcher extends LogSupport:
-  private[cli] val ReadySlot = 2
 
   /**
     * Start the watcher when stdin is a terminal, where Ctrl-C sends SIGINT to the process group.
@@ -70,7 +69,10 @@ private[cli] object CtrlCWatcher extends LogSupport:
             buffer = QueryCancel.sharedBuffer,
             koffi = koffiPath.orNull,
             execPath = process.execPath,
-            readySlot = ReadySlot
+            requestedSlot = QueryCancel.RequestedSlot,
+            armedSlot = QueryCancel.ArmedSlot,
+            readySlot = QueryCancel.ReadySlot,
+            connectionOffset = QueryCancel.ConnectionOffset
           )
         val worker =
           js.Dynamic
@@ -86,6 +88,9 @@ private[cli] object CtrlCWatcher extends LogSupport:
         case NonFatal(e) =>
           logger.debug(s"Ctrl-C watcher is unavailable: ${e.getMessage}")
           None
+    end if
+
+  end start
 
   /**
     * Where koffi is, for the worker's `duckdb_interrupt` binding. An eval'd worker resolves modules
@@ -111,8 +116,8 @@ private[cli] object CtrlCWatcher extends LogSupport:
 const { workerData, parentPort } = require('node:worker_threads');
 const { spawn } = require('node:child_process');
 const slots = new Int32Array(workerData.buffer, 0, 4);
-const connection = new BigInt64Array(workerData.buffer, 16, 1);
-const READY = workerData.readySlot;
+const connection = new BigInt64Array(workerData.buffer, workerData.connectionOffset, 1);
+const { requestedSlot: REQUESTED, armedSlot: ARMED, readySlot: READY } = workerData;
 let interrupt = null;
 parentPort.on('message', (m) => {
   if (!m.lib || !workerData.koffi) return;
@@ -133,14 +138,14 @@ helper.stdout.on('data', (bytes) => {
   for (const b of bytes) {
     if (b === 0x72) { Atomics.store(slots, READY, 1); continue; }
     // Ctrl-C at the prompt or in the pager: no cancellable query is running
-    if (Atomics.load(slots, 1) !== 1) continue;
-    if (Atomics.load(slots, 0) === 1) {
+    if (Atomics.load(slots, ARMED) !== 1) continue;
+    if (Atomics.load(slots, REQUESTED) === 1) {
       // A second Ctrl-C during the same query: the query has no stop point, so end wvlet
       process.kill(process.pid, 'SIGTERM');
       return;
     }
-    Atomics.store(slots, 0, 1);
-    Atomics.notify(slots, 0);
+    Atomics.store(slots, REQUESTED, 1);
+    Atomics.notify(slots, REQUESTED);
     const c = Atomics.load(connection, 0);
     if (c !== 0n && interrupt) {
       try { interrupt(c); } catch (e) {}

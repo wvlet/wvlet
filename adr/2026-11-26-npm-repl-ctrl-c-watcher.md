@@ -1,6 +1,6 @@
 # ADR: Cancel npm REPL queries with a Ctrl-C watcher and a cooperative flag
 
-Date: 2026-11-26 · PR #TBD
+Date: 2026-11-26 · PR #2540
 
 ## Context
 

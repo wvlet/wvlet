@@ -114,7 +114,6 @@ trait DuckDBCompat:
   end openSession
 
   private def runQuery(api: DuckDBApi, con: js.Any, sql: String): QueryResult =
-    QueryCancel.check()
     val result = js.Object()
     // Ctrl-C in the REPL interrupts this connection from the watcher thread while the call blocks
     val rc =
