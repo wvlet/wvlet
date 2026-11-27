@@ -210,8 +210,8 @@ function HomepageHero(): React.ReactNode {
         </h1>
         <p className={styles.lede}>
           Wvlet is a <Link to="/docs/syntax/">flow-style query language</Link> with a columnar
-          query engine built in. It runs every TPC-H and TPC-DS query in-process, with results
-          identical to DuckDB's, on the JVM, as a native binary, in Node.js, or in the browser. The
+          query engine built in. It runs every TPC-H and TPC-DS query in-process, with rows
+          matching DuckDB's, on the JVM, as a native binary, in Node.js, or in the browser. The
           same query also compiles to SQL for DuckDB, Trino, Snowflake, and Hive.
         </p>
         <div className={styles.ctas}>
