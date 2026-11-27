@@ -33,7 +33,7 @@ The profile file is parsed as JSONC, so `// line comments`, `/* block comments *
 ```
 
 ```bash
-$ wv --profile trino 
+$ wvlet repl -p trino
 wv>
 ```
 
@@ -94,6 +94,6 @@ The `Authorization` header is sent on every request of the query lifecycle (init
 ```
 
 ```bash
-$ wv --profile td
+$ wvlet repl -p td
 wv> 
 ```

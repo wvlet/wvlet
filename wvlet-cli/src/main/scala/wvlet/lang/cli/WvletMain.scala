@@ -4,16 +4,14 @@ import wvlet.uni.cli.launcher.Launcher
 import wvlet.uni.cli.launcher.command
 import wvlet.uni.cli.launcher.option
 import wvlet.uni.design.Design
-import wvlet.lang.BuildInfo
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
 import wvlet.lang.cli.WvletMain.isInSbt
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.server.WvletServer
 import wvlet.lang.server.WvletServerConfig
-import wvlet.lang.skill.SkillOption
-import wvlet.uni.log.LogSupport
 
 object WvletMain:
   private def launcher: Launcher = Launcher
@@ -25,38 +23,50 @@ object WvletMain:
     )
 
   private def wrap(body: => Unit): Unit =
-    def findCause(e: Throwable): Throwable =
-      e match
-        case e: IllegalArgumentException if e.getCause != null =>
-          findCause(e.getCause)
-        case other =>
-          e
-
     try
       body
     catch
-      case e: Throwable =>
-        findCause(e) match
-          case e: WvletLangException if e.statusCode.isSuccess =>
-          // do nothing
-          case other =>
-            throw other
+      case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>
+      // --version or --help: nothing more to report
+      case e: IllegalArgumentException if e.getCause != null =>
+        throw e.getCause
 
-  def main(args: Array[String]): Unit = wrap(launcher.execute(args))
-  def main(argLine: String): Unit     = wrap(launcher.execute(argLine))
+  /**
+    * `wvlet` with no arguments on an interactive terminal opens the REPL, like `duckdb` or
+    * `python`. Pipes, CI, and agents get the version instead, so a bare `wvlet` never waits for
+    * input there.
+    */
+  def main(args: Array[String]): Unit =
+    if args.isEmpty && isInteractiveTerminal then
+      WvletREPLMain.main(args)
+    else
+      wrap(launcher.execute(args))
+
+  def main(argLine: String): Unit = wrap(launcher.execute(argLine))
 
   def isInSbt: Boolean = sys.props.getOrElse("wvlet.sbt.testing", "false").toBoolean
+
+  /**
+    * True when stdin and stdout are a terminal. On JDK 22+, `System.console()` also exists for
+    * redirected streams, so `Console.isTerminal` (JDK 22+) decides there
+    */
+  def isInteractiveTerminal: Boolean = Option(System.console()).exists { console =>
+    try
+      console.getClass.getMethod("isTerminal").invoke(console) == true
+    catch
+      case _: NoSuchMethodException =>
+        // Before JDK 22, a console exists only for a terminal
+        true
+  }
 
 end WvletMain
 
 /**
-  * 'wvlet' command line interface
-  * @param opts
+  * The JVM `wvlet` command: the commands shared with the npm and Native distributions
+  * ([[WvletCliCommands]]), run with the JVM connectors, plus the JVM-only `ui`, `build`, `flow`,
+  * and `catalog` commands and the REPL
   */
-class WvletMain(opts: WvletGlobalOption) extends LogSupport:
-
-  @command(description = "show version", isDefault = true)
-  def version: Unit = info(s"wvlet version ${BuildInfo.version}")
+class WvletMain(opts: WvletCliGlobalOption) extends WvletCliCommands:
 
   @command(description = "Start a local WebUI server")
   def ui(serverConfig: WvletServerConfig): Unit = WvletServer.startServer(
@@ -68,46 +78,41 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
     try
       body
     catch
-      case e: WvletLangException =>
+      case e: WvletLangException if !e.statusCode.isSuccess =>
         error(e.getMessage)
         if !isInSbt then
           System.exit(1)
         throw e
 
-  private def design(compilerOptions: WvletCompilerOption, defaultProfile: Profile): Design =
-    val workEnv = WorkEnv(compilerOptions.workFolder, opts.logLevel)
+  /** Run `f` with a compiler for the options and the effective profile */
+  private def withCompiler[A](compilerOption: WvletCliCompileOption, profile: Profile)(
+      f: WvletCompiler => A
+  ): A =
+    val workEnv = WorkEnv(compilerOption.workFolder, opts.logLevel)
     Design
       .newSilentDesign
       .bindInstance(
-        WvletCompiler(opts, compilerOptions, workEnv, ConnectorProvider(workEnv), defaultProfile)
+        WvletCompiler(opts, compilerOption, workEnv, ConnectorProvider(workEnv), profile)
       )
+      .run[WvletCompiler, A](f)
 
-  /**
-    * Run `f` with a compiler for the options. `defaultProfile` applies when neither -t nor
-    * --profile is given: DuckDB SQL for compile / to_wvlet, the in-process wvlet engine for run
-    */
-  private def withCompiler[A](
-      compilerOption: WvletCompilerOption,
-      defaultProfile: Profile = Profile.defaultDuckDBProfile
-  )(f: WvletCompiler => A): A = design(compilerOption, defaultProfile).run[WvletCompiler, A] {
-    compiler =>
-      f(compiler)
-  }
+  // Compiling to SQL defaults to the DuckDB dialect (catalog `memory`)
+  private def compileProfile(opt: WvletCliCompileOption): Profile = opt.resolveProfile(
+    Profile.defaultDuckDBProfile
+  )
 
-  @command(description = "Compile .wv files")
-  def compile(compilerOption: WvletCompilerOption): Unit = handleError {
-    withCompiler(compilerOption) { compiler =>
-      val sql = compiler.generateSQL
-      println(sql)
-    }
-  }
+  override protected def generateSQL(opt: WvletCliCompileOption): String =
+    withCompiler(opt, compileProfile(opt))(_.generateSQL)
 
-  @command(description = "Run a query")
-  def run(compilerOption: WvletCompilerOption): Unit = handleError {
-    withCompiler(compilerOption, Profile.defaultWvletProfile) { compiler =>
-      compiler.run()
-    }
-  }
+  override protected def generateWvlet(opt: WvletCliCompileOption): String =
+    withCompiler(opt, compileProfile(opt))(_.generateWvlet)
+
+  override protected def runLocally(opt: WvletCliCompileOption, profile: Profile): QueryResult =
+    withCompiler(opt, profile)(_.execute())
+
+  override protected def startREPL(opt: WvletREPLOption): Unit = WvletREPLMain(opts, opt).repl()
+
+  override protected def handleCommand[U](body: => U): U = handleError(body)
 
   @command(description = "Build materialized models in dependency order")
   def build(
@@ -122,19 +127,6 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
       dryRun: Boolean = false
   ): Unit = handleError {
     WvletFlowCommand(opts).build(flowOption, select, dryRun)
-  }
-
-  @command(description =
-    "Print the AI-agent skill for this wvlet version (SKILL.md, or a reference file), or install it with --install <dir>"
-  )
-  def skill(opt: SkillOption): Unit = handleError(SkillOption.execute(opt))
-
-  @command(description = "Convert SQL to Wvlet query")
-  def to_wvlet(compilerOption: WvletCompilerOption): Unit = handleError {
-    withCompiler(compilerOption) { compiler =>
-      val wvlet = compiler.generateWvlet
-      println(wvlet)
-    }
   }
 
 end WvletMain

@@ -1,7 +1,5 @@
 package wvlet.lang.cli
 
-import wvlet.uni.cli.launcher.argument
-import wvlet.uni.cli.launcher.option
 import wvlet.uni.control.Control
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
@@ -21,64 +19,30 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.QueryExecutorConfig
+import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.engine.WvletEngineSession
 import wvlet.uni.log.LogSupport
 
-case class WvletCompilerOption(
-    @option(prefix = "-w", description = "Working folder")
-    workFolder: String = ".",
-    @option(prefix = "-f,--file", description = "Read a query from the given .wv file")
-    file: Option[String] = None,
-    @argument(description = "query")
-    query: Option[String] = None,
-    @option(prefix = "-t,--target", description = "Target database type")
-    targetDBType: Option[String] = None,
-    @option(prefix = "--profile", description = "Profile to use")
-    profile: Option[String] = None,
-    @option(prefix = "--catalog", description = "Context database catalog to use")
-    catalog: Option[String] = None,
-    @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None,
-    @option(prefix = "--strict", description = "Fail compilation on typing errors")
-    strict: Boolean = false
-)
-
+/**
+  * Compiles and runs a query with the JVM connectors (`ConnectorProvider`), which also read table
+  * schemas of the profile's engines. The npm and Native `wvlet` use `WvletCliCompiler` instead.
+  *
+  * @param profile
+  *   the effective profile, usually `compilerOption.resolveProfile(default)`
+  */
 class WvletCompiler(
-    opts: WvletGlobalOption,
-    compilerOption: WvletCompilerOption,
+    opts: WvletCliGlobalOption,
+    compilerOption: WvletCliCompileOption,
     workEnv: WorkEnv,
     dbConnectorProvider: ConnectorProvider,
-    // The profile used when neither -t nor --profile is given. Compiling to SQL defaults to the
-    // DuckDB dialect (catalog `memory`); running a query defaults to the in-process wvlet engine
-    defaultProfile: Profile = Profile.defaultDuckDBProfile
+    profile: Profile
 ) extends LogSupport
     with AutoCloseable:
 
-  private lazy val currentProfile: Profile =
-    // Resolve the profile from DBType or profile name
-    compilerOption.targetDBType match
-      case Some(dbType) =>
-        if compilerOption.profile.isDefined then
-          throw StatusCode
-            .INVALID_ARGUMENT
-            .newException("Specify either -t (--target) or --profile")
-        val resolvedDBType = DBType.fromString(dbType)
-        debug(s"Using syntax for ${resolvedDBType}")
-        Profile.defaultProfileFor(resolvedDBType)
-      case _ =>
-        // Default to a profile with a catalog (DuckDB for compile, the wvlet engine for run). The
-        // generic profile carries no catalog, which silently breaks catalog-dependent lowering
-        // (keyed append needs the target's columns; append auto-creation needs table existence).
-        // A dialect-neutral compile is still available with `-t generic`
-        Profile.getProfile(
-          compilerOption.profile,
-          compilerOption.catalog,
-          compilerOption.schema,
-          default = defaultProfile
-        )
+  private def currentProfile: Profile = profile
 
   // Closing the provider closes every cached connector, including the default engine, the
   // in-process engine for local file reads, and the scratch DuckDB connector for exports
@@ -220,7 +184,11 @@ class WvletCompiler(
     // Convert the logical plan to Wvlet flow-style syntax
     generator.print(logicalPlan)
 
-  def run(): Unit =
+  /** Run the query and print the result as a box table */
+  def run(): Unit = println(execute().toPrettyBox())
+
+  /** Run the query and return its result */
+  def execute(): QueryResult =
     val compiler = createCompiler()
     val workEnv  = compiler.compilerOptions.workEnv
     Control.withResource(ItemStores.forWorkEnv(workEnv)) { itemStore =>
@@ -234,15 +202,16 @@ class WvletCompiler(
       ) { executor =>
         val inputUnit     = getInputUnit(forSQL = false)
         val compileResult = compile(inputUnit)
-        given Context     = compileResult.context
+        // Evaluate `test` and `debug` statements, as the npm and Native `wvlet run` do
+        val runContext = compileResult.context.withDebugRun(true)
+        given Context  = runContext
 
-        val queryResult = executor.executeSelectedStatement(
+        executor.executeSelectedStatement(
           inputUnit,
           QuerySelection.All,
           linePosition = inputUnit.resolvedPlan.sourceLocation.position,
-          compileResult.context
+          runContext
         )
-        println(queryResult.toPrettyBox())
       }
     }
 

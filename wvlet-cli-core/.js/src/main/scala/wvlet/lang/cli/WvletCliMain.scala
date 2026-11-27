@@ -23,6 +23,8 @@ object WvletCliMain:
     try
       launcher.execute(realArgs)
     catch
+      case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>
+      // --version: the version is already printed
       case e: Throwable =>
         Console.err.println(e.getMessage)
         js.Dynamic.global.process.exit(1)

@@ -128,10 +128,10 @@ pipelines are in [references/models.md](references/models.md).
 | Command | Purpose |
 |---------|---------|
 | `wvlet compile -f q.wv [--target trino]` | Print the generated SQL; fastest syntax and type check |
-| `wvlet run -f q.wv` / `wvlet run "<query>"` | Run on DuckDB, or on `--profile <name>` |
+| `wvlet run -f q.wv` / `wvlet run "<query>"` | Run on the wvlet engine, or on `-t duckdb` / `-p <profile>`; `--format csv` |
 | `wvlet to_wvlet "<sql>"` | Convert SQL to Wvlet |
 | `wvlet build [-s m+] [--dry-run]` | Build materialized models in dependency order |
 | `wvlet skill [syntax\|models\|testing\|cli]` | Print this skill as shipped with the installed CLI |
-| `wv` | Interactive REPL; `wv -c "<query>"` runs one query |
+| `wvlet repl` | Interactive REPL (JVM CLI; `wv` is an alias); `wvlet repl -c "<query>"` runs one query |
 
 Engines, profiles, flows, and installation are in [references/cli.md](references/cli.md).

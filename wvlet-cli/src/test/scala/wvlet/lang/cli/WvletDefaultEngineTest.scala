@@ -21,9 +21,10 @@ import wvlet.uni.test.UniTest
 /** Without -t or --profile, queries run on the in-process wvlet engine; -t duckdb opts in */
 class WvletDefaultEngineTest extends UniTest:
 
-  private def replProfile(opt: WvletREPLOption): Profile = WvletREPLMain(WvletGlobalOption(), opt)
-    .replDesign(isInteractive = false)
-    .run[Profile, Profile](identity)
+  private def replProfile(opt: WvletREPLOption): Profile = WvletREPLMain(
+    WvletCliGlobalOption(),
+    opt
+  ).replDesign(isInteractive = false).run[Profile, Profile](identity)
 
   test("run a query on the wvlet engine by default") {
     // The engine runs no SQL statements, so a DuckDB SQL statement fails instead of reaching DuckDB

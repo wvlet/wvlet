@@ -4,9 +4,9 @@ description: "Run Wvlet queries on DuckDB with -t duckdb or a duckdb profile: qu
 
 # DuckDB
 
-`wvlet run` and `wv` run queries on the in-process [wvlet engine](wvlet-engine.md) by default.
+`wvlet run` and the REPL run queries on the in-process [wvlet engine](wvlet-engine.md) by default.
 Select DuckDB's in-memory database (catalog: memory, schema: main) with `-t duckdb`
-(`wv -t duckdb`) or a profile with `"type": "duckdb"`. DuckDB is needed for `sql"..."` and
+(`wvlet repl -t duckdb`) or a profile with `"type": "duckdb"`. DuckDB is needed for `sql"..."` and
 `execute` statements, `.duckdb` database files, DuckDB extensions, and table functions such as
 `read_csv(...)`, and for `view` models of `wvlet build`. `wvlet compile` generates DuckDB SQL by
 default; `wvlet build` and `wvlet flow` run on the wvlet engine unless `-t duckdb` (or a DuckDB
@@ -18,7 +18,7 @@ On the JVM CLI, DuckDB is in the full package `wvlet-cli-full-(version).tar.gz`;
 ## Usage Examples
 
 ```bash
-$ wv -t duckdb
+$ wvlet repl -t duckdb
 wv> from 'https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet'
   | group by c_mktsegment
   | agg _.count

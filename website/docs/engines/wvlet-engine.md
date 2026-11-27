@@ -5,13 +5,13 @@ description: "Wvlet's own in-process columnar engine runs Wvlet plans directly o
 
 # Wvlet Engine
 
-The Wvlet engine is an in-process columnar query engine that executes compiled Wvlet plans directly, with no SQL generation and no external database. It is the default engine of `wvlet run`, `wv`, `wvlet build`, and `wvlet flow run`.
+The Wvlet engine is an in-process columnar query engine that executes compiled Wvlet plans directly, with no SQL generation and no external database. It is the default engine of `wvlet run`, the REPL, `wvlet build`, and `wvlet flow run`.
 
 ## Where it runs
 
 The engine is written in Scala and built from one codebase for every platform, with pure-Scala Parquet and Iceberg readers and no native libraries:
 
-- **JVM**: the `wvlet` and `wv` commands from Homebrew or a release package ([Installation](../usage/install.md)).
+- **JVM**: the `wvlet` command (and its `wv` alias) from Homebrew or a release package ([Installation](../usage/install.md)).
 - **Node.js**: `wvlet run` from the npm package `@wvlet/cli`.
 - **Native binary**: the Scala Native build of the CLI.
 - **Browser**: the [Playground](../usage/playground.md) runs the engine compiled to JavaScript.
@@ -30,7 +30,7 @@ Not supported yet, reported as errors: views, `update`, `execute`, table functio
 
 ## Usage
 
-The engine is the default of `wvlet run` and `wv` when neither `-t` nor `--profile` is given (`-t wvlet` selects it explicitly):
+The engine is the default of `wvlet run` and the REPL when neither `-t` nor `--profile` is given (`-t wvlet` selects it explicitly):
 
 ```bash
 # Query a local file

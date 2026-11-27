@@ -1,6 +1,6 @@
 # Remote Wvlet Server
 
-The `wvlet` CLI can run queries on a central wvlet server instead of a local engine. The server holds the profiles, catalogs, and database credentials; thin clients — including the native `wv` binary and the Node.js CLI (`npx @wvlet/cli`) — send the original Wvlet query text and receive structured results, with no local database engine or credentials required.
+The `wvlet` CLI can run queries on a central wvlet server instead of a local engine. The server holds the profiles, catalogs, and database credentials; thin clients — including the native `wvlet` binary and the Node.js CLI (`npx @wvlet/cli`) — send the original Wvlet query text and receive structured results, with no local database engine or credentials required.
 
 ## Starting a server
 

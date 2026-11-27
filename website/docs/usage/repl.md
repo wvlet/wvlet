@@ -1,27 +1,27 @@
 ---
-description: "Use wv, the interactive Wvlet shell, to explore data and run flow-style queries against DuckDB, Trino, and other engines."
-sidebar_label: Interactive Shell (wv)
+description: "Use the interactive Wvlet shell (wvlet, or its wv alias) to explore data and run flow-style queries against DuckDB, Trino, and other engines."
+sidebar_label: Interactive Shell (REPL)
 sidebar_position: 2
 ---
 
 # Interactive Shell
 
-Wvlet Shell (`wv` command) launches an interactive query editor for the console. In the shell, you can write SQL queries, run them, and see the results interactively.
+Run `wvlet` with no arguments on a terminal (or `wvlet repl`) to launch an interactive query editor for the console. In the shell, you can write SQL queries, run them, and see the results interactively. `wv` is an alias of `wvlet repl`. The shell is part of the [JVM CLI](install.md#jvm-cli) for now; the npm `wvlet` will get it in a later release.
 
 ![wvlet shell](/img/demo.gif)
 
 :::note
-Line editing, history, and completion need Java 22 or later. On older JVMs, or when the input is not a terminal, `wv` reads input line by line without editing.
+Line editing, history, and completion need Java 22 or later. On older JVMs, the shell reads input line by line without editing.
 :::
 
-Queries run on the in-process [wvlet engine](../engines/wvlet-engine.md) by default. Start the shell with `wv -t duckdb` to run on DuckDB instead (needed for `sql"..."` / `execute` statements and `.duckdb` files), or with `wv --profile <name>` to use a [profile](cli-reference.md#profile-configuration).
+Queries run on the in-process [wvlet engine](../engines/wvlet-engine.md) by default. Start the shell with `wvlet repl -t duckdb` to run on DuckDB instead (needed for `sql"..."` / `execute` statements and `.duckdb` files), or with `wvlet repl -p <name>` to use a [profile](cli-reference.md#profile-configuration).
 
 ## Commands
 
 By typing `help` in the shell, you can see the list of available commands:
 
 ```bash
-$ wv 
+$ wvlet
 wv> help
 [commands]
  help       : Show this help message

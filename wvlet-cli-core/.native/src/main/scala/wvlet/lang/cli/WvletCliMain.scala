@@ -4,7 +4,7 @@ import wvlet.uni.cli.launcher.Launcher
 
 /**
   * Native entry for the wvlet CLI. Built into a standalone executable by Scala Native. Same command
-  * surface (`version` / `compile` / `to_wvlet`) as the JVM and Node entries.
+  * surface ([[WvletCliCommands]]) as the JVM and Node entries.
   */
 object WvletCliMain:
   private def launcher: Launcher = Launcher.of[WvletCli]
@@ -13,6 +13,8 @@ object WvletCliMain:
     try
       launcher.execute(args)
     catch
+      case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>
+      // --version: the version is already printed
       case e: Throwable =>
         Console.err.println(e.getMessage)
         sys.exit(1)

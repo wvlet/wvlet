@@ -1,9 +1,7 @@
 package wvlet.lang.cli
 
 import wvlet.uni.cli.launcher.Launcher
-import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.command
-import wvlet.uni.cli.launcher.option
 import wvlet.uni.design.Design
 import wvlet.lang.api.StatusCode.SYNTAX_ERROR
 import wvlet.lang.api.StatusCode
@@ -28,7 +26,7 @@ import wvlet.uni.log.LogSupport
 import java.io.File
 
 /**
-  * REPL command launcher (wv)
+  * The `wv` launcher: an alias of `wvlet repl`, kept for existing scripts and muscle memory
   */
 object WvletREPLMain extends LogSupport:
   def launcher = Launcher.of[WvletREPLMain]
@@ -49,28 +47,8 @@ object WvletREPLMain extends LogSupport:
   def main(args: Array[String]): Unit = wrap(launcher.execute(args))
   def main(argLine: String): Unit     = wrap(launcher.execute(argLine))
 
-case class WvletREPLOption(
-    @option(prefix = "--profile", description = "Profile to use")
-    profile: Option[String] = None,
-    @option(
-      prefix = "-t,--target",
-      description = "Engine to use without a profile (wvlet (default), duckdb, ...)"
-    )
-    targetDBType: Option[String] = None,
-    @option(prefix = "-c", description = "Run a command and exit")
-    commands: List[String] = Nil,
-    @option(prefix = "-f,--file", description = "Run commands in a file and exit")
-    inputFile: Option[String] = None,
-    @option(prefix = "-w", description = "Working folder")
-    workFolder: String = ".",
-    @option(prefix = "--catalog", description = "Context database catalog to use")
-    catalog: Option[String] = None,
-    @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None
-)
-
-@command(usage = "wv [options]", description = "Wvlet REPL")
-class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) extends LogSupport:
+@command(usage = "wv [options]", description = "Wvlet REPL (an alias of wvlet repl)")
+class WvletREPLMain(cliOption: WvletCliGlobalOption, replOpts: WvletREPLOption) extends LogSupport:
 
   @command(description = "Start REPL shell", isDefault = true)
   def repl(): Unit =

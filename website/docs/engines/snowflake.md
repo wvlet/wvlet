@@ -35,7 +35,7 @@ To connect to Snowflake, create a profile in `~/.wvlet/profiles.json`. The file 
 Then connect using the profile:
 
 ```bash
-$ wv --profile snowflake
+$ wvlet repl -p snowflake
 wv>
 ```
 

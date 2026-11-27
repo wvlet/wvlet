@@ -27,7 +27,7 @@ import wvlet.uni.test.UniTest
 /** The CLI without the optional DuckDB and Snowflake connector modules (the lite distribution) */
 class WvletLiteDistributionTest extends UniTest:
 
-  private def withLiteCompiler[U](opt: WvletCompilerOption, defaultProfile: Profile)(
+  private def withLiteCompiler[U](opt: WvletCliCompileOption, defaultProfile: Profile)(
       body: WvletCompiler => U
   ): U =
     val workEnv  = WorkEnv()
@@ -36,12 +36,18 @@ class WvletLiteDistributionTest extends UniTest:
       factories = Seq(TrinoConnectorFactory, SlackConnectorFactory, WvletEngineConnectorFactory)
     )
     Control.withResource(
-      WvletCompiler(WvletGlobalOption(), opt, workEnv, provider, defaultProfile)
+      WvletCompiler(
+        WvletCliGlobalOption(),
+        opt,
+        workEnv,
+        provider,
+        opt.resolveProfile(defaultProfile)
+      )
     )(body)
 
   test("compile to DuckDB SQL without the DuckDB connector") {
     withLiteCompiler(
-      WvletCompilerOption(query = Some("from [[1, 'a']] as t(id, name) select name")),
+      WvletCliCompileOption(query = Some("from [[1, 'a']] as t(id, name) select name")),
       Profile.defaultDuckDBProfile
     ) { compiler =>
       compiler.generateSQL shouldContain "select name"
@@ -50,7 +56,7 @@ class WvletLiteDistributionTest extends UniTest:
 
   test("run a query on the wvlet engine without the DuckDB connector") {
     withLiteCompiler(
-      WvletCompilerOption(query = Some("from [[1, 'a']] as t(id, name) select name")),
+      WvletCliCompileOption(query = Some("from [[1, 'a']] as t(id, name) select name")),
       Profile.defaultWvletProfile
     ) { compiler =>
       compiler.run()
@@ -60,7 +66,7 @@ class WvletLiteDistributionTest extends UniTest:
   test("report how to install DuckDB when running on it without the connector") {
     val e = intercept[WvletLangException] {
       withLiteCompiler(
-        WvletCompilerOption(query = Some("select 1"), targetDBType = Some("duckdb")),
+        WvletCliCompileOption(query = Some("select 1"), targetDBType = Some("duckdb")),
         Profile.defaultWvletProfile
       ) { compiler =>
         compiler.run()
