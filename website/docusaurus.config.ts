@@ -127,6 +127,7 @@ const config: Config = {
     mermaid: true,
   },
   themes: ['@docusaurus/theme-mermaid'],
+  clientModules: ['./src/clientModules/diagramGradients.ts'],
 
   plugins: [
     ['@docusaurus/plugin-client-redirects', {redirects: docRedirects}],
@@ -289,6 +290,13 @@ const config: Config = {
         },
       ],
       copyright: `Copyright © ${new Date().getFullYear()} wvlet.org. Built with Docusaurus.`,
+    },
+    // Mermaid measures labels with this font, so it must match the font the page renders them in.
+    mermaid: {
+      options: {
+        fontFamily:
+          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+      },
     },
     prism: {
       theme: wvletPrismTheme,
