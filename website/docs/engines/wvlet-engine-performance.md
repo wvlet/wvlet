@@ -38,7 +38,7 @@ The same queries (as SQL for the other engines), on the same SF10 Parquet data a
 
 ## How it is measured
 
-- **Machine**: Apple M5 Pro (6 performance and 12 efficiency cores, 48 GB), JDK 25, a shared machine; each round started at a load average of 2.9–5.6.
+- **Machine**: Apple M5 Pro (18 cores: 6 super and 12 performance, 48 GB), JDK 25, a shared machine; each round started at a load average of 2.9–5.6.
 - **DuckDB**: version 2.0.1 through its JDBC driver, in the same JVM. Its default thread count and the engine's default parallelism are the same, all 18 cores. DuckDB caches Parquet footers across queries (`parquet_metadata_cache = true`), as the engine does, and runs with `preserve_insertion_order = false`, a guarantee the engine doesn't make either. With DuckDB's defaults, its totals are about 5–6% higher.
 - **Data**: generated with DuckDB's `tpch` and `tpcds` extensions and stored as Parquet; both engines read the same files directly, with no import into either engine's own format.
 - **Runs**: each query runs once on each engine to warm up, then 3 timed runs that alternate between the engines; the result is the median. The OS file cache is warm for both.
