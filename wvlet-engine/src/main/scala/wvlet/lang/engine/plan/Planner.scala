@@ -129,6 +129,8 @@ class Planner(
       j.withNarrowEntries(false)
     if !enabled(Optimization.ParallelJoinBuild) then
       j.withParallelBuild(false)
+    if !enabled(Optimization.ParallelJoinKeys) then
+      j.withParallelKeys(false)
     if !enabled(Optimization.JoinBuildStringCodes) then
       j.withStringCodes(false)
     if !enabled(Optimization.StringCodeProbe) then

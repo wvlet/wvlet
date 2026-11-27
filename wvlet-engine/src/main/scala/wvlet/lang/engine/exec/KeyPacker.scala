@@ -27,44 +27,83 @@ import wvlet.lang.engine.vector.*
 final class KeyPacker private (mins: Array[Long], maxs: Array[Long], shifts: Array[Int]):
   private val width = mins.length
 
-  /** The packed key of each of the first n rows */
-  def pack(keys: Array[Vec], n: Int): LongVec =
-    val out                   = new Array[Long](n)
-    var nulls: Array[Boolean] = null
-    var k                     = 0
+  /**
+    * The packed key of each of the first n rows, packed in chunks of rows on the runner
+    * (`parallel_join_keys`) unless it is [[TaskRunner.Sequential]]
+    */
+  def pack(keys: Array[Vec], n: Int, runner: TaskRunner = TaskRunner.Sequential): LongVec =
+    val out = new Array[Long](n)
+    if runner eq TaskRunner.Sequential then
+      LongVec(PType.Int64, out, packRows(keys, 0, n, out, null))
+    else
+      // Chunks write their own rows of one shared NULL mask, dropped when no row is NULL
+      val nulls = new Array[Boolean](n)
+      val ch    = JoinBuildSteps.chunks(n, JoinBuildSteps.taskCount(runner))
+      val any   = new Array[Boolean](ch.length - 1)
+      JoinBuildSteps.runAll(ch.length - 1, runner) { c =>
+        any(c) = packRows(keys, ch(c), ch(c + 1), out, nulls) != null
+      }
+      LongVec(
+        PType.Int64,
+        out,
+        if any.contains(true) then
+          nulls
+        else
+          null
+      )
+
+  /**
+    * Packs rows `from until until` into `out` and marks the rows that pack as NULL in a mask over
+    * all of `out`: `shared` when not null, otherwise one allocated at the first such row. Returns
+    * the mask, or null when none of these rows is NULL
+    */
+  private def packRows(
+      keys: Array[Vec],
+      from: Int,
+      until: Int,
+      out: Array[Long],
+      shared: Array[Boolean]
+  ): Array[Boolean] =
+    // `shared` rows are set only for NULL rows, so its presence alone does not mean a NULL row
+    var nulls: Array[Boolean]         = null
+    inline def markNull(i: Int): Unit =
+      if nulls == null then
+        nulls =
+          if shared != null then
+            shared
+          else
+            new Array[Boolean](out.length)
+      nulls(i) = true
+    var k = 0
     while k < width do
       val v     = keys(k)
       val lo    = mins(k)
       val hi    = maxs(k)
       val shift = shifts(k)
       val vn    = v.nulls
-      var i     = 0
+      var i     = from
       v match
         case iv: IntVec =>
           val x = iv.values
-          while i < n do
+          while i < until do
             val a = x(i).toLong
             if (vn != null && vn(i)) || a < lo || a > hi then
-              if nulls == null then
-                nulls = new Array[Boolean](n)
-              nulls(i) = true
+              markNull(i)
             else
               out(i) |= (a - lo) << shift
             i += 1
         case lv: LongVec =>
           val x = lv.values
-          while i < n do
+          while i < until do
             val a = x(i)
             if (vn != null && vn(i)) || a < lo || a > hi then
-              if nulls == null then
-                nulls = new Array[Boolean](n)
-              nulls(i) = true
+              markNull(i)
             else
               out(i) |= (a - lo) << shift
             i += 1
         case other =>
           // Unreached: the planner casts probe keys to the build key types
-          while i < n do
+          while i < until do
             val a =
               other.get(i) match
                 case x: Int =>
@@ -74,18 +113,16 @@ final class KeyPacker private (mins: Array[Long], maxs: Array[Long], shifts: Arr
                 case _ =>
                   hi + 1
             if a < lo || a > hi then
-              if nulls == null then
-                nulls = new Array[Boolean](n)
-              nulls(i) = true
+              markNull(i)
             else
               out(i) |= (a - lo) << shift
             i += 1
       end match
       k += 1
     end while
-    LongVec(PType.Int64, out, nulls)
+    nulls
 
-  end pack
+  end packRows
 
 end KeyPacker
 
@@ -98,12 +135,25 @@ object KeyPacker:
   /**
     * A packer for keys of these types, with ranges taken from the given rows (whose key columns
     * have no NULLs), or null when the keys cannot be packed: a single column (which has its own
-    * fast paths), a non-integer column, no rows, or ranges needing more than [[MaxBits]] bits
+    * fast paths), a non-integer column, no rows, or ranges needing more than [[MaxBits]] bits. The
+    * ranges are taken in chunks of rows on the runner (`parallel_join_keys`) unless it is
+    * [[TaskRunner.Sequential]]
     */
-  def of(types: IndexedSeq[PType], keys: Array[Vec], rows: Array[Int], n: Int): KeyPacker =
+  def of(
+      types: IndexedSeq[PType],
+      keys: Array[Vec],
+      rows: Array[Int],
+      n: Int,
+      runner: TaskRunner = TaskRunner.Sequential
+  ): KeyPacker =
     val width = types.size
     if width < 2 || n == 0 || !types.forall(packable) then
       return null
+    if !(runner eq TaskRunner.Sequential) then
+      val ranges = keys.map(JoinBuildSteps.keyRange(_, rows, n, runner))
+      if ranges.contains(None) then
+        return null
+      return fromRanges(ranges.map(_.get))
     val mins   = new Array[Long](width)
     val maxs   = new Array[Long](width)
     val shifts = new Array[Int](width)
@@ -149,5 +199,21 @@ object KeyPacker:
     KeyPacker(mins, maxs, shifts)
 
   end of
+
+  /** A packer for columns of these [min, max] ranges, or null when they need over [[MaxBits]] */
+  private def fromRanges(ranges: Array[(Long, Long)]): KeyPacker =
+    val shifts = new Array[Int](ranges.length)
+    var bits   = 0
+    var k      = 0
+    while k < ranges.length do
+      val range = ranges(k)._2 - ranges(k)._1
+      if range < 0 then
+        return null
+      shifts(k) = bits
+      bits += 64 - java.lang.Long.numberOfLeadingZeros(range)
+      if bits > MaxBits then
+        return null
+      k += 1
+    KeyPacker(ranges.map(_._1), ranges.map(_._2), shifts)
 
 end KeyPacker

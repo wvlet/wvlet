@@ -176,7 +176,8 @@ class OptimizerOptionsTest extends UniTest:
         "late_columns",
         "eager_distinct",
         "string_code_probe",
-        "parallel_string_decode"
+        "parallel_string_decode",
+        "parallel_join_keys"
       )
   }
 
