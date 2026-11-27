@@ -280,7 +280,14 @@ class ParquetSource(
             else
               val f =
                 try
-                  openFiles(l, ds)
+                  openFiles(
+                    l,
+                    ds,
+                    if checked == null then
+                      None
+                    else
+                      checked._4
+                  )
                 catch
                   case e: Throwable =>
                     ds.close()
@@ -313,9 +320,14 @@ class ParquetSource(
 
   /**
     * An Iceberg table's files read through `ds` file by file, or a plain or Hive-partitioned
-    * folder's files as single-file sources
+    * folder's files as single-file sources. An Iceberg table read as plain files reuses
+    * `previous`'s file sources (and their footers) when its listing is unchanged
     */
-  private def openFiles(l: FolderListing, ds: ParquetDataset): Option[FolderFiles] =
+  private def openFiles(
+      l: FolderListing,
+      ds: ParquetDataset,
+      previous: Option[FolderFiles]
+  ): Option[FolderFiles] =
     if ParquetSource.isIcebergPath(path) then
       if !datasetFiles then
         None
@@ -324,16 +336,29 @@ class ParquetSource(
         // their partition columns are in the files
         val plain =
           if icebergRowGroups && ds.files.nonEmpty && ds.files.forall(ds.readsAsPlainFile) then
-            ParquetFolder.open(
-              name,
-              FolderListing(l.files),
-              ds,
-              footerCache,
-              schema,
-              columnTypes,
-              evolved = true,
-              table = true
-            )
+            val listing = FolderListing(l.files)
+            val reuse   =
+              previous match
+                case Some(p: ParquetFolder) if p.listing == listing =>
+                  p.files
+                case _ =>
+                  IndexedSeq.empty
+            // A footer the single-file reader can't open leaves the table to DatasetFiles
+            try
+              ParquetFolder.open(
+                name,
+                listing,
+                ds,
+                footerCache,
+                schema,
+                columnTypes,
+                evolved = true,
+                table = true,
+                reuse
+              )
+            catch
+              case _: Exception =>
+                None
           else
             None
         plain.orElse(DatasetFiles.open(l, ds, schema))

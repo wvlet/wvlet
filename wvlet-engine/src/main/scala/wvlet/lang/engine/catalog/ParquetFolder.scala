@@ -426,7 +426,8 @@ private[catalog] object ParquetFolder:
       schema: Schema,
       columns: IndexedSeq[(String, Any)],
       evolved: Boolean = false,
-      table: Boolean = false
+      table: Boolean = false,
+      reuse: IndexedSeq[ParquetSource] = IndexedSeq.empty
   ): Option[ParquetFolder] =
     // The dataset's columns are the files' columns, then the partition keys
     val k           = listing.keys.size
@@ -438,7 +439,11 @@ private[catalog] object ParquetFolder:
     then
       None
     else
-      val files = listing.files.map((p, _) => ParquetSource(name, p, footerCache))
+      val files =
+        if reuse.nonEmpty then
+          reuse
+        else
+          listing.files.map((p, _) => ParquetSource(name, p, footerCache))
       if files.forall(f => f.isSingleFile && f.columnTypes == fileColumns) then
         Some(
           ParquetFolder(files, listing, dataset, schema, files.map(_ => Set.empty), false, table)
@@ -461,6 +466,7 @@ private[catalog] object ParquetFolder:
         )
       else
         None
+    end if
 
   end open
 
