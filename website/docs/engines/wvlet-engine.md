@@ -9,7 +9,7 @@ The Wvlet engine is an in-process columnar query engine that executes compiled W
 
 ## Where it runs
 
-The engine is written in Scala and built from one codebase for every platform, with pure-Scala Parquet and Iceberg readers and no native libraries:
+The engine is written in Scala and built from one codebase for every platform, with pure-Scala Parquet and Iceberg readers. The one native library is optional: on the JVM, the engine decodes Snappy-compressed Parquet pages with [snappy-java](https://github.com/xerial/snappy-java), and falls back to the pure-Scala decoder when no native build fits the platform (`-Dwvlet.uni.snappy.useSnappyJava=false` forces the fallback). The other platforms always use the pure-Scala decoder:
 
 - **JVM**: the `wvlet` command (and its `wv` alias) from Homebrew or a release package ([Installation](../usage/install.md)).
 - **Node.js**: `wvlet run` from the npm package `@wvlet/cli`.

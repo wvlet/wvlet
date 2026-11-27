@@ -7,7 +7,7 @@ import scala.scalanative.build.NativeConfig
 import scala.language.implicitConversions
 import WvletBuildKeys.*
 
-val UNI_VERSION = "2026.3.17"
+val UNI_VERSION = "2026.3.18"
 
 val TRINO_VERSION          = "484"
 val AWS_SDK_VERSION        = "2.20.146"
@@ -16,6 +16,7 @@ val DUCKDB_JDBC_VERSION    = "2.0.1.0"
 val SNOWFLAKE_JDBC_VERSION = "4.4.1"
 val CAFFEINE_VERSION       = "3.3.1"
 val CUDF_VERSION           = "26.10.2"
+val SNAPPY_JAVA_VERSION    = "1.1.10.12"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // Uni releases are published to repo.wvlet.org first; Maven Central limits release frequency and size
@@ -538,8 +539,16 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jvmSettings(
     specRunnerSettings,
-    // DuckDB is the conformance oracle of the engine tests
-    libraryDependencies += "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION % Test
+    libraryDependencies ++=
+      Seq(
+        // uni decodes Snappy pages with snappy-java's native library when it is on the classpath
+        // (JVM only; -Dwvlet.uni.snappy.useSnappyJava=false keeps uni's own decoder). The runner,
+        // server, and CLI packs get it through this module. See
+        // adr/2026-11-27-snappy-java-on-the-jvm.md
+        "org.xerial.snappy" % "snappy-java" % SNAPPY_JAVA_VERSION,
+        // DuckDB is the conformance oracle of the engine tests
+        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION % Test
+      )
   )
   .jsSettings(
     libraryDependencies += scalajsJavaSecureRandom,
