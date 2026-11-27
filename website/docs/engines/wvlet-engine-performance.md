@@ -9,16 +9,18 @@ The [Wvlet engine](wvlet-engine.md) runs every TPC-H and TPC-DS query at scale f
 
 ## Results
 
-TPC-H and TPC-DS at scale factor 10 (about 10 GB of raw data as Parquet files), commit [`4bee5ae1`](https://github.com/wvlet/wvlet/commit/4bee5ae1), 2026-11-27. Each number is the engine's time divided by DuckDB's on the same queries: lower is better, and 1.00x is DuckDB's time.
+At scale factor 10, the Wvlet engine is on par with DuckDB: 0.90x of DuckDB's time on TPC-DS and 1.04x on TPC-H, by geometric mean. The numbers are steady-state, with a warm JVM and file cache; see [What the engine knows that DuckDB doesn't](#what-the-engine-knows-that-duckdb-doesnt) for what that includes.
+
+TPC-H and TPC-DS at scale factor 10 (about 10 GB of raw data as Parquet files), commit [`62fdfcd4`](https://github.com/wvlet/wvlet/commit/62fdfcd4), 2026-11-27. Each number is the engine's time divided by DuckDB's on the same queries: lower is better, and 1.00x is DuckDB's time.
 
 | Suite | Wvlet engine, total | Wvlet engine, geometric mean | Total time, Wvlet / DuckDB |
 | --- | ---: | ---: | ---: |
-| TPC-H (22 queries) | 1.41x | 1.39x | 3.12 s / 2.21 s |
-| TPC-DS (99 queries) | 1.20x | 1.11x | 8.82 s / 7.38 s |
+| TPC-H (22 queries) | 1.02x | 1.04x | 2.12 s / 2.07 s |
+| TPC-DS (99 queries) | 0.91x | 0.90x | 6.11 s / 6.73 s |
 
 - Every query ran with no errors.
-- The engine is faster than DuckDB on 31 of the 99 TPC-DS queries (q32 at 0.41x, q15 at 0.56x) and on 3 of the 22 TPC-H queries (q15 and q16 at 0.85x; q16 returns a large result, which costs DuckDB extra time in JDBC, see [How it is measured](#how-it-is-measured)).
-- The largest ratios are TPC-DS q27 (2.63x) and TPC-H q5 (2.23x); most others are within 2x.
+- The engine is faster than DuckDB on 63 of the 99 TPC-DS queries (q44 at 0.45x, q95 at 0.49x) and on 10 of the 22 TPC-H queries (q15 at 0.65x, q17 at 0.73x). TPC-DS q98 and TPC-H q16 return large results, which cost DuckDB extra time in JDBC; see [How it is measured](#how-it-is-measured).
+- The largest ratios are TPC-DS q01 (2.82x) and TPC-H q1 (1.56x), each suite's first query, which still carries JIT warm-up; next are TPC-DS q02 (1.79x) and TPC-H q2 (1.43x).
 
 ## Other engines as references
 
@@ -26,21 +28,23 @@ The same queries (as SQL for the other engines), on the same SF10 Parquet data a
 
 | Engine | TPC-H, total / geometric mean | TPC-DS, total / geometric mean |
 | --- | ---: | ---: |
-| Wvlet engine | 1.41x / 1.39x | 1.20x / 1.11x |
+| Wvlet engine | 1.02x / 1.04x | 0.91x / 0.90x |
 | DataFusion 55.0.0 (Python bindings, 2026-11-25) | 1.90x / 1.67x | 3.59x / 1.73x |
 | Trino 484 (single node, 2026-11-24) | 18.2x / 13.4x | 21.9x / 18.6x (89 queries) |
 
+- DataFusion and Trino were measured against DuckDB's default settings, which are about 5–6% slower than the DuckDB setup in [How it is measured](#how-it-is-measured).
 - DataFusion's TPC-DS total is dominated by one query, q72; its geometric mean is the fairer comparison.
 - Trino ran single-node in its in-process testing harness with default settings and a 16 GB query memory limit, not as a tuned cluster, and rejected 10 TPC-DS queries written in DuckDB's SQL. Trino is built for clusters, so treat it only as a rough reference.
 
 ## How it is measured
 
-- **Machine**: Apple M5 Pro (18 cores, 48 GB), JDK 25, a shared machine with a load average of about 5.
+- **Machine**: Apple M5 Pro (6 performance and 12 efficiency cores, 48 GB), JDK 25, a shared machine; each round started at a load average of 2.9–5.6.
 - **DuckDB**: version 2.0.1 through its JDBC driver, in the same JVM. Its default thread count and the engine's default parallelism are the same, all 18 cores. DuckDB caches Parquet footers across queries (`parquet_metadata_cache = true`), as the engine does, and runs with `preserve_insertion_order = false`, a guarantee the engine doesn't make either. With DuckDB's defaults, its totals are about 5–6% higher.
 - **Data**: generated with DuckDB's `tpch` and `tpcds` extensions and stored as Parquet; both engines read the same files directly, with no import into either engine's own format.
 - **Runs**: each query runs once on each engine to warm up, then 3 timed runs that alternate between the engines; the result is the median. The OS file cache is warm for both.
 - **Results**: both engines return every row, and every value is read from the result: through JDBC for DuckDB, and as the same boxed values for the engine. DuckDB's time includes moving the result through JDBC, about 0.4 ms per query on TPC-DS and 3 ms on TPC-H against DuckDB's own profiled query time. Only the two queries with large results move much: TPC-DS q98 (15,080 rows, 77 ms against 41 ms inside DuckDB) and TPC-H q16 (27,840 rows, 79 ms against 41 ms), so read those two ratios as up to about 1.9x in the engine's favor.
-- **Snappy**: at this commit the engine decoded Snappy pages with its pure-Scala decoder; later JVM builds use snappy-java.
+- **Rounds**: the result combines 3 full-suite rounds. DuckDB's own totals varied by 2.3% across them on TPC-DS and by 8% on TPC-H.
+- **Snappy**: on the JVM, the engine decodes Snappy pages with [snappy-java](https://github.com/xerial/snappy-java); the JavaScript and Native builds use a pure-Scala decoder.
 
 ### What the engine knows that DuckDB doesn't
 
