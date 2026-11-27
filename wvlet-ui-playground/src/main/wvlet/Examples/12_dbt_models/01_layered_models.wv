@@ -1,0 +1,46 @@
+-- Layered models: staging, intermediate, and marts
+-- Like a dbt project, each layer is a model that reads the layer below by name. Wvlet works out the dependency graph from these references, so there's no ref() or DAG file.
+
+-- Staging: clean and rename raw tables, one model per source
+model stg_customers = {
+  from customer
+  select
+    c_custkey as customer_id,
+    c_name as customer_name,
+    c_mktsegment as segment,
+    c_nationkey as nation_id
+}
+
+model stg_orders = {
+  from orders
+  where o_orderstatus = 'F'
+  select
+    o_orderkey as order_id,
+    o_custkey as customer_id,
+    o_orderdate as order_date,
+    o_totalprice as amount
+}
+
+-- Intermediate: join and enrich staging models
+model int_customer_orders = {
+  from stg_orders as o
+  join stg_customers as c on o.customer_id = c.customer_id
+  join nation on c.nation_id = n_nationkey
+  select order_id, o.customer_id, customer_name, segment, n_name as nation, order_date, amount
+}
+
+-- Mart: a business-facing table, one row per customer
+model dim_customers = {
+  from int_customer_orders
+  group by customer_id, customer_name, segment, nation
+  agg
+    _.count as orders,
+    amount.sum as lifetime_value,
+    order_date.min as first_order,
+    order_date.max as last_order
+}
+
+-- Query the mart like a table
+from dim_customers
+order by lifetime_value desc
+limit 10
