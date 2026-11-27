@@ -78,6 +78,17 @@ object BenchmarkCatalogs:
         None
 
   /**
+    * The sorted table names of a built-in benchmark catalog's schema (`tpch`, `tiny`), or None when
+    * the catalog isn't a benchmark or the schema isn't a scale factor. For `show tables`: every
+    * scale factor has the same tables, so no schema list is needed
+    */
+  def tableNames(catalog: String, schema: String): Option[Seq[String]] =
+    if isBenchmark(catalog) && scaleFactorOf(schema).isDefined then
+      Some(tablesOf(catalog.toLowerCase, 0.01).keys.toSeq.sorted)
+    else
+      None
+
+  /**
     * The compile-time definition of a built-in benchmark table, so the typer knows its column
     * types. Any scale-factor schema resolves here; the engine checks the scale factor's range when
     * the query runs

@@ -55,6 +55,16 @@ class BenchmarkCatalogsTest extends UniTest:
     BenchmarkCatalogs.tableDef(TableName(Some("tpch"), Some("main"), "customer")) shouldBe None
   }
 
+  test("list the tables of any scale-factor schema") {
+    BenchmarkCatalogs.tableNames("tpch", "tiny") shouldBe
+      Some(
+        Seq("customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier")
+      )
+    BenchmarkCatalogs.tableNames("TPCDS", "sf5").map(_.size) shouldBe Some(24)
+    BenchmarkCatalogs.tableNames("tpch", "main") shouldBe None
+    BenchmarkCatalogs.tableNames("memory", "tiny") shouldBe None
+  }
+
   test("resolve benchmark tables after registered ones") {
     val c         = EngineCatalog()
     val benchmark = BenchmarkCatalogs.find("tpch.tiny.nation")

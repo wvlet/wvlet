@@ -9,16 +9,37 @@ sidebar_position: 1
 
 Let's start with a simple example. If you haven't installed the `wv` command, [install Wvlet](../usage/install.md) first. `wv` starts an [interactive shell](../usage/repl.md) that runs queries on the in-process [Wvlet engine](../engines/wvlet-engine.md), so there is no database to set up.
 
-Every Wvlet engine session can read a generated [TPC-H benchmark](https://www.tpc.org/tpch/) data set as `tpch.<scale>.<table>`. This tutorial uses the smallest one, `tpch.tiny` (scale factor 0.01), whose eight tables are `customer`, `lineitem`, `nation`, `orders`, `part`, `partsupp`, `region`, and `supplier`. Rows are generated in memory while a query reads them, so nothing is written to disk. See [Built-in tpch and tpcds catalogs](../engines/wvlet-engine-tables.md#built-in-tpch-and-tpcds-catalogs) for larger scale factors and the TPC-DS tables.
+Every Wvlet engine session can read a generated [TPC-H benchmark](https://www.tpc.org/tpch/) data set as `tpch.<scale>.<table>`. This tutorial uses the smallest one, `tpch.tiny` (scale factor 0.01). Rows are generated in memory while a query reads them, so nothing is written to disk. See [Built-in tpch and tpcds catalogs](../engines/wvlet-engine-tables.md#built-in-tpch-and-tpcds-catalogs) for larger scale factors and the TPC-DS tables.
 
 :::tip
 `wv` comes with the JVM CLI (Homebrew or a release package). With the npm package, run each query with `wvlet run` instead, for example `wvlet run "from tpch.tiny.customer limit 3"`.
 :::
 
-The simplest form of queries is `from (table name)`:
+To list its tables, use `show tables in`:
 
 ```wvlet
 $ wv
+wv> show tables in tpch.tiny;
+┌──────────┐
+│   name   │
+│  string  │
+├──────────┤
+│ customer │
+│ lineitem │
+│ nation   │
+│ orders   │
+│ part     │
+│ partsupp │
+│ region   │
+│ supplier │
+├──────────┤
+│ 8 rows   │
+└──────────┘
+```
+
+The simplest form of queries is `from (table name)`:
+
+```wvlet
 wv> from tpch.tiny.customer;
 ┌───────────┬────────────────────┬──────────────────────────────────────────┬────────────>
 │ c_custkey │       c_name       │                c_address                 │ c_nationkey>

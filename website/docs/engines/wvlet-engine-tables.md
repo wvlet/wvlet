@@ -78,6 +78,7 @@ wvlet run "from tpch.sf1.lineitem group by l_returnflag agg _.count"
 wvlet run "from tpcds.tiny.store_sales join tpcds.tiny.item on ss_item_sk = i_item_sk group by i_category agg _.count"
 ```
 
+- `show tables in tpch.tiny` lists the 8 TPC-H tables and `show tables in tpcds.sf1` the 24 TPC-DS tables; every scale factor has the same tables.
 - TPC-H goes up to `sf1000` and TPC-DS up to `sf10`; values differ from `dbgen` / `dsdgen`'s, as described below.
 - Columns keep their TPC prefixes (`l_orderkey`), as in DuckDB's tables; Trino's tpch connector drops them unless `tpch.column-naming=STANDARD`.
 - A table you register under the same qualified name takes precedence. To name the tables without a qualifier, use the profile properties below.
