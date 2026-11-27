@@ -179,3 +179,33 @@ html.plugin-blog.blog-post-page h1 {
   height: auto;
   aspect-ratio: 1.777;
 }
+
+/*
+ * Flowcharts follow the architecture slides: a light teal panel around the Wvlet stages, raised boxes,
+ * and bold labels on thick gold arrows. Mermaid scopes its theme rules by the svg id, so these need
+ * !important. Box and arrow colors live in each diagram's classDef/linkStyle.
+ */
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .cluster rect {
+  fill: hsl(var(--wv-primary) / 0.07) !important;
+  stroke: hsl(var(--wv-primary) / 0.28) !important;
+  stroke-width: 1px !important;
+  rx: 18px;
+  ry: 18px;
+}
+
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node rect {
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.18));
+}
+
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .node small {
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .edgeLabel,
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .edgeLabel p,
+.docusaurus-mermaid-container svg[aria-roledescription^='flowchart'] .labelBkg {
+  background-color: hsl(var(--wv-bg)) !important;
+  color: hsl(var(--wv-ink-2)) !important;
+  border-radius: 4px;
+}

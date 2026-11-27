@@ -86,11 +86,29 @@ The Wvlet compiler parses `.wv` and `.sql` files, resolves names and types again
 
 ```mermaid
 flowchart LR
-  wv[".wv / .sql files"] --> compiler["Compiler<br/>parse, type check"]
-  compiler --> plan["Logical plan"]
-  plan --> engine["Wvlet engine<br/>JVM · Node.js · browser · native"]
-  plan --> sqlgen["SQL generator"]
-  sqlgen --> sql["DuckDB · Trino · Snowflake · Hive"]
+  subgraph wvlet[" "]
+    query("Flow-style query<br/><small>.wv · .sql files</small>")
+    compiler("Compiler<br/><small>parse · type check</small>")
+    stdlib("Standard library")
+    engine("Wvlet engine<br/><small>JVM · Node.js · browser · native</small>")
+    sqlgen("SQL generator")
+  end
+  sql("DuckDB<br/>Trino<br/>Snowflake<br/>Hive")
+
+  query ==>|Query| compiler
+  stdlib -.- compiler
+  compiler ==>|Logical plan| engine
+  compiler ==>|Logical plan| sqlgen
+  sqlgen ==>|SQL| sql
+
+  classDef stage fill:#0d93a6,stroke:#08717f,stroke-width:1px,color:#ffffff,font-weight:600
+  classDef lib fill:#1d4f9a,stroke:#163d78,stroke-width:1px,color:#ffffff,font-weight:600
+  classDef target fill:#ffffff,stroke:#b9cdd1,stroke-width:1px,color:#18343a,font-weight:600
+  class query,compiler,engine,sqlgen stage
+  class stdlib lib
+  class sql target
+  linkStyle default stroke:#e6ad1f,stroke-width:4px
+  linkStyle 1 stroke:#7f9aa0,stroke-width:2px,stroke-dasharray:4 4
 ```
 
 - __Logical Plan__: Represents relational operators (e.g., scan, filter, projection) in a tree structure.
