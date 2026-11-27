@@ -1,0 +1,24 @@
+-- Seeds: small reference tables
+-- A dbt seed is a CSV checked into the project. In Wvlet, a small table can be inline values, or a file read with from 'regions.csv'.
+
+val region_owner(region, owner, office) = [
+  ['AFRICA', 'Alice', 'Nairobi'],
+  ['AMERICA', 'Bob', 'Toronto'],
+  ['ASIA', 'Carol', 'Tokyo'],
+  ['EUROPE', 'Dave', 'Berlin'],
+  ['MIDDLE EAST', 'Erin', 'Dubai'],
+]
+
+model revenue_by_region = {
+  from orders
+  join customer on o_custkey = c_custkey
+  join nation on c_nationkey = n_nationkey
+  join region on n_regionkey = r_regionkey
+  group by r_name
+  agg o_totalprice.sum as revenue
+}
+
+from revenue_by_region
+join region_owner on r_name = region
+select region, owner, office, revenue
+order by revenue desc

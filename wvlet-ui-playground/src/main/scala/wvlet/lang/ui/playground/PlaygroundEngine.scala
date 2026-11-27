@@ -88,7 +88,11 @@ case class RunOutput(
     elapsedMillis: Double = 0,
     // Planning and running on the engine only, without compilation
     executionMillis: Double = 0,
-    statement: String = ""
+    statement: String = "",
+    // The 1-origin line of the statement that ran
+    statementLine: Option[Int] = None,
+    // How the file's tables, seeds, models, and queries read each other
+    lineage: ModelLineage = ModelLineage()
 ):
   def hasError: Boolean = error.nonEmpty
 
@@ -174,6 +178,8 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
       val selected = QuerySelector.selectQuery(unit, position, selection)
       out = out.copy(
         statement = statementText(unit, selected),
+        statementLine = statementLine(unit, selected),
+        lineage = lineageOf(unit),
         logicalPlan = LogicalPlanPrinter.print(selected),
         wvlet =
           if mode == InputMode.SQL then
@@ -292,6 +298,22 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
           text.slice(s.start, s.end).linesIterator.nextOption().getOrElse("").trim
         else
           ""
+
+  private def statementLine(unit: CompilationUnit, plan: LogicalPlan): Option[Int] =
+    plan match
+      case _: PackageDef =>
+        None
+      case p =>
+        ModelLineage.lineOf(unit, p)
+
+  // The lineage is a view of the file: a failure to derive it must not fail the run
+  private def lineageOf(unit: CompilationUnit)(using Context): ModelLineage =
+    try
+      ModelLineage.of(unit, tables.map(_.name).toSet)
+    catch
+      case NonFatal(e) =>
+        warn(e)
+        ModelLineage()
 
   // The queries to run for the selected plan, after defining the vals it reads
   private def runnable(unit: CompilationUnit, selected: LogicalPlan)(using

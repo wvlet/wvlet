@@ -1,0 +1,27 @@
+-- Data tests on a model
+-- dbt's unique and not_null tests become test assertions. They run in test mode (wvlet test or spec files) and are skipped in a normal run.
+
+model dim_suppliers = {
+  from supplier
+  join nation on s_nationkey = n_nationkey
+  select s_suppkey as supplier_id, s_name as supplier_name, n_name as nation
+}
+
+-- not_null: no supplier lacks a nation
+from dim_suppliers
+where nation is null
+test _.size should be 0
+;
+
+-- unique: one row per supplier_id
+from dim_suppliers
+group by supplier_id
+agg _.count as cnt
+where cnt > 1
+test _.size should be 0
+;
+
+-- The model's columns, as a schema contract
+from dim_suppliers
+test _.columns should be ['supplier_id', 'supplier_name', 'nation']
+limit 5

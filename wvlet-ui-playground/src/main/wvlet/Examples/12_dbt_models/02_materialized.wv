@@ -1,0 +1,32 @@
+-- Materializations: view, table, or ephemeral
+-- A with { materialized: ... } config tells wvlet build how to persist a model. Here in the playground, models are inlined, so you can run the query without building anything first.
+
+model stg_lineitem with { materialized: 'view' } = {
+  from lineitem
+  select
+    l_orderkey as order_id,
+    l_shipdate as ship_date,
+    l_returnflag as return_flag,
+    l_extendedprice * (1 - l_discount) as net_revenue
+}
+
+-- Ephemeral is the default: the model is inlined where it is read
+model shipped_lines = {
+  from stg_lineitem
+  where ship_date <= '1998-09-02'::date
+}
+
+model fct_monthly_revenue with { materialized: 'table', schema: 'marts' } = {
+  from shipped_lines
+  group by ship_month = date_trunc('month', ship_date)
+  agg
+    net_revenue.sum as revenue,
+    (if return_flag = 'R' then net_revenue else 0).sum as returned_revenue
+}
+
+-- wvlet build creates the view and the table in dependency order:
+--   wvlet build            -- build every materialized model
+--   wvlet build -s +fct_monthly_revenue   -- the model and its upstream models
+from fct_monthly_revenue
+order by ship_month
+limit 12

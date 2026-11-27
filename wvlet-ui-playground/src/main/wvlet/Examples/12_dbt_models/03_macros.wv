@@ -1,0 +1,25 @@
+-- Reusable logic without Jinja
+-- dbt macros become type-checked building blocks: query fragments with def, scalar functions, and models with parameters.
+
+-- A query fragment, applied with |
+def is_open_order = where o_orderstatus = 'O'
+
+-- A fragment that sorts by revenue
+def by_revenue = order by revenue desc
+
+-- A scalar function
+def net_price(price: double, discount: double): double = price * (1 - discount)
+
+-- A model with parameters, like a macro that returns a relation
+model revenue_by(year: int) = {
+  from lineitem
+  join orders on l_orderkey = o_orderkey
+  where o_orderdate.year = year
+  | is_open_order
+  join customer on o_custkey = c_custkey
+  group by c_mktsegment
+  agg net_price(l_extendedprice, l_discount).sum as revenue
+}
+
+from revenue_by(1997)
+| by_revenue
