@@ -19,7 +19,7 @@ TPC-H and TPC-DS at scale factor 10 (about 10 GB of raw data as Parquet files), 
 | TPC-DS (99 queries) | 0.91x | 0.90x | 6.11 s / 6.73 s |
 
 - Every query ran with no errors.
-- The engine is faster than DuckDB on 63 of the 99 TPC-DS queries (q44 at 0.45x, q95 at 0.49x) and on 10 of the 22 TPC-H queries (q15 at 0.65x, q17 at 0.73x). TPC-DS q98 and TPC-H q16 return large results, which cost DuckDB extra time in JDBC; see [How it is measured](#how-it-is-measured).
+- The engine is faster than DuckDB on 63 of the 99 TPC-DS queries (q44 at 0.45x, q95 at 0.49x) and on 10 of the 22 TPC-H queries (q15 at 0.65x, q17 at 0.73x).
 - The largest ratios are TPC-DS q01 (2.82x) and TPC-H q1 (1.56x), each suite's first query, which still carries JIT warm-up; next are TPC-DS q02 (1.79x) and TPC-H q2 (1.43x).
 
 ## Other engines as references
@@ -38,21 +38,17 @@ The same queries (as SQL for the other engines), on the same SF10 Parquet data a
 
 ## How it is measured
 
-- **Machine**: Apple M5 Pro (18 cores: 6 super and 12 performance, 48 GB), JDK 25, a shared machine; each round started at a load average of 2.9–5.6.
-- **DuckDB**: version 2.0.1 through its JDBC driver, in the same JVM. Its default thread count and the engine's default parallelism are the same, all 18 cores. DuckDB caches Parquet footers across queries (`parquet_metadata_cache = true`), as the engine does, and runs with `preserve_insertion_order = false`, a guarantee the engine doesn't make either. With DuckDB's defaults, its totals are about 5–6% higher.
-- **Data**: generated with DuckDB's `tpch` and `tpcds` extensions and stored as Parquet; both engines read the same files directly, with no import into either engine's own format.
-- **Runs**: each query runs once on each engine to warm up, then 3 timed runs that alternate between the engines; the result is the median. The OS file cache is warm for both.
-- **Results**: both engines return every row, and every value is read from the result: through JDBC for DuckDB, and as the same boxed values for the engine. DuckDB's time includes moving the result through JDBC, about 0.4 ms per query on TPC-DS and 3 ms on TPC-H against DuckDB's own profiled query time. Only the two queries with large results move much: TPC-DS q98 (15,080 rows, 77 ms against 41 ms inside DuckDB) and TPC-H q16 (27,840 rows, 79 ms against 41 ms), so read those two ratios as up to about 1.9x in the engine's favor.
-- **Rounds**: the result combines 3 full-suite rounds. DuckDB's own totals varied by 2.3% across them on TPC-DS and by 8% on TPC-H.
-- **Snappy**: on the JVM, the engine decodes Snappy pages with [snappy-java](https://github.com/xerial/snappy-java); the JavaScript and Native builds use a pure-Scala decoder.
+- **Machine**: Apple M5 Pro (18 cores, 48 GB), JDK 25.
+- **DuckDB**: version 2.0.1 through JDBC in the same JVM, on all 18 cores, with its Parquet footer cache on and `preserve_insertion_order = false` (about 5–6% faster than its defaults).
+- **Data**: Parquet files generated with DuckDB's `tpch` and `tpcds` extensions; both engines read the same files directly.
+- **Runs**: one warm-up run, then the median of 3 timed runs that alternate between the engines, over 3 full-suite rounds with a warm OS file cache.
+- **Results**: both engines return and read every row. TPC-DS q98 and TPC-H q16 return large results, and moving them through JDBC adds up to about 1.9x to DuckDB's time.
 
 ### What the engine knows that DuckDB doesn't
 
-Two things help the engine and have no counterpart in DuckDB over Parquet files. Keep them in mind when reading the ratios:
+- **File statistics**: the engine keeps per-file statistics for join ordering, much like `ANALYZE`, and the timed runs reuse them. A first query on files the engine hasn't seen is about 2–3x slower.
+- **Declared keys**: the benchmark declares the TPC primary keys to the engine; DuckDB reads the files without constraints. Without the keys, the engine is 4–7% slower.
 
-- **File statistics.** The first query that reads a file computes statistics about it for join ordering (distinct counts of string columns, samples of their values) and keeps them while the file is unchanged, much like `ANALYZE` in a database. The timed runs come after the warm-up run, so they reuse those statistics. Recomputing them for every query makes the engine about 3.0x slower on TPC-DS and 1.9x slower on TPC-H at SF10, so a single query on files the engine hasn't seen before is slower than these results show. The benchmark records each engine's first-run time next to the medians.
-- **Declared keys.** The benchmark declares the TPC-H and TPC-DS primary keys, and `c_customer_id` as a unique key of the TPC-DS `customer` table, to the engine. DuckDB reads the Parquet files without constraints. Without the keys, the engine's totals are about 7% higher on TPC-DS (q25 3.1x, q39 2.3x) and 4% higher on TPC-H.
+## Reproduce
 
-To time either effect, run the benchmark with `WVLET_ENGINE_BENCH_COLD=1` (no statistics or footers carried between runs, and no DuckDB footer cache) or `WVLET_ENGINE_BENCH_KEYS=none`.
-
-The benchmark is opt-in and never gates CI. To run it, see `EngineTPCHBench` and `EngineTPCDSBench` under `wvlet-engine/.jvm/src/test/scala/wvlet/lang/engine/`; for example, `WVLET_ENGINE_BENCH_SF=1 ./sbt "engineJVM/testOnly *EngineTPCHBench"`. Timings depend on the machine and its load, so compare numbers from one machine only.
+The benchmark is opt-in and never gates CI: `WVLET_ENGINE_BENCH_SF=1 ./sbt "engineJVM/testOnly *EngineTPCHBench"` (or `*EngineTPCDSBench`). Set `WVLET_ENGINE_BENCH_COLD=1` to drop the statistics between runs, or `WVLET_ENGINE_BENCH_KEYS=none` to drop the declared keys. Compare numbers from one machine only.
