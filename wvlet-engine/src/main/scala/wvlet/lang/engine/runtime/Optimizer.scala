@@ -121,69 +121,68 @@ class Optimizer(
   private val ctx = OptimizerContext(options, replanSemiJoinBuilds, newColumnId)
 
   def run(p: RuntimePlan): RuntimePlan =
-    passes.foldLeft(p) { (plan, pass) =>
-      val next = pass.run(plan, ctx)
-      if options.validatePlans && (next ne plan) then
-        PlanValidator.validate(next)
-      next
-    }
+    passes.foldLeft(p)((plan, pass) => validated(plan, pass.run(plan, ctx)))
 
   /** How many times each rule fired, by rule name */
   def firedRules: Map[String, Int] = ctx.firedRules
 
-  /** The plan pruned to the columns needed to output `needed` ([[PruneColumns.prune]]) */
-  def pruneColumns(p: RuntimePlan, needed: Set[ColumnId]): RuntimePlan =
-    val next = PruneColumns.prune(p, needed, ctx)
+  /** `next`, the rewrite of `p`, checked with [[PlanValidator]] when it changed */
+  private def validated(p: RuntimePlan, next: RuntimePlan): RuntimePlan =
     if options.validatePlans && (next ne p) then
       PlanValidator.validate(next)
     next
+
+  /**
+    * The passes run again over a shared CTE body once its readers' filters are pushed into it,
+    * because their decisions read estimates the filters change: the build sides of its outer joins
+    * ([[outerBuilds]]), then its aggregations computed below joins ([[eagerAggregation]]). The root
+    * run already ran them over the body without the filters. A pass whose decision reads such
+    * estimates is added here
+    */
+  def afterReaderFilters(p: RuntimePlan): RuntimePlan = eagerAggregation(outerBuilds(p))
+
+  /** The plan pruned to the columns needed to output `needed` ([[PruneColumns.prune]]) */
+  def pruneColumns(p: RuntimePlan, needed: Set[ColumnId]): RuntimePlan = validated(
+    p,
+    PruneColumns.prune(p, needed, ctx)
+  )
 
   /**
     * A shared CTE body whose readers read only its distinct rows of the columns `needed`, with its
     * joins reduced ([[ReduceSemiJoins.reduceBody]])
     */
-  def reduceSemiJoins(p: RuntimePlan, needed: Set[ColumnId]): RuntimePlan =
-    val next = ReduceSemiJoins.reduceBody(p, needed, ctx)
-    if options.validatePlans && (next ne p) then
-      PlanValidator.validate(next)
-    next
+  def reduceSemiJoins(p: RuntimePlan, needed: Set[ColumnId]): RuntimePlan = validated(
+    p,
+    ReduceSemiJoins.reduceBody(p, needed, ctx)
+  )
 
   /**
     * The plan with its aggregations computed eagerly below joins ([[EagerAggregation]]), for a
     * shared CTE body once its readers' filters are pushed into it
     */
-  def eagerAggregation(p: RuntimePlan): RuntimePlan =
-    val next = EagerAggregation.run(p, ctx)
-    if options.validatePlans && (next ne p) then
-      PlanValidator.validate(next)
-    next
+  def eagerAggregation(p: RuntimePlan): RuntimePlan = validated(p, EagerAggregation.run(p, ctx))
 
   /**
     * The plan with the build sides of its outer joins chosen again ([[ReorderJoins.outerBuilds]]),
-    * for a shared CTE body once its readers' filters are pushed into it
+    * for a shared CTE body once its readers' filters are pushed into it; only through
+    * [[afterReaderFilters]]
     */
-  def outerBuilds(p: RuntimePlan): RuntimePlan =
-    val next = ReorderJoins.outerBuilds(p, ctx)
-    if options.validatePlans && (next ne p) then
-      PlanValidator.validate(next)
-    next
+  private def outerBuilds(p: RuntimePlan): RuntimePlan = validated(
+    p,
+    ReorderJoins.outerBuilds(p, ctx)
+  )
 
   /** The plan with the row-group filters of its scans recomputed ([[PushScanFilters]]) */
-  def pushScanFilters(p: RuntimePlan): RuntimePlan =
-    val next = PushScanFilters.run(p, ctx)
-    if options.validatePlans && (next ne p) then
-      PlanValidator.validate(next)
-    next
+  def pushScanFilters(p: RuntimePlan): RuntimePlan = validated(p, PushScanFilters.run(p, ctx))
 
   /**
     * The optimized plan with the conditions pushed into it, through its filters too
     * ([[PushDownFilters.filter]])
     */
-  def pushFilters(p: RuntimePlan, conds: Seq[JoinCondition]): RuntimePlan =
-    val next = PushDownFilters.filter(p, conds, ctx, throughFilters = true)
-    if options.validatePlans && (next ne p) then
-      PlanValidator.validate(next)
-    next
+  def pushFilters(p: RuntimePlan, conds: Seq[JoinCondition]): RuntimePlan = validated(
+    p,
+    PushDownFilters.filter(p, conds, ctx, throughFilters = true)
+  )
 
 end Optimizer
 
