@@ -38,6 +38,50 @@ function Aurora(): React.ReactNode {
   );
 }
 
+const WAVE_W = 1440;
+const WAVE_H = 320;
+
+/**
+ * Path of a sine wave spanning two tiles (2 * WAVE_W). Every period divides WAVE_W, so shifting the
+ * path left by exactly one tile loops seamlessly.
+ */
+function wavePath(baseline: number, amplitude: number, periods: number, phase: number): string {
+  const pts: string[] = [];
+  for (let x = 0; x <= WAVE_W * 2; x += 16) {
+    const y = baseline + amplitude * Math.sin((x / WAVE_W) * periods * 2 * Math.PI + phase);
+    pts.push(`${x === 0 ? 'M' : 'L'}${x},${y.toFixed(1)}`);
+  }
+  return pts.join(' ');
+}
+
+/** Thin stream lines drifting left at a constant speed, to suggest data flowing through a query. */
+function Waves({lines = 7}: {lines?: number}): React.ReactNode {
+  return (
+    <div className={styles.waves} aria-hidden="true">
+      <svg viewBox={`0 0 ${WAVE_W * 2} ${WAVE_H}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="wv-wave" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={WAVE_W * 2} y2="0">
+            <stop offset="0" stopColor="hsl(186 90% 45%)" />
+            <stop offset="0.25" stopColor="hsl(160 70% 45%)" />
+            <stop offset="0.5" stopColor="hsl(186 90% 45%)" />
+            <stop offset="0.75" stopColor="hsl(160 70% 45%)" />
+            <stop offset="1" stopColor="hsl(186 90% 45%)" />
+          </linearGradient>
+        </defs>
+        {Array.from({length: lines}, (_, i) => (
+          <path
+            key={i}
+            d={wavePath(200 + i * 11, 46 - i * 3, 2, i * 0.22)}
+            stroke="url(#wv-wave)"
+            strokeOpacity={0.7 - i * 0.08}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 /** A dark editor-style window frame with traffic-light dots and a title. */
 function Window({title, badge, children}: {title: string; badge?: string; children: React.ReactNode}) {
   return (
@@ -58,6 +102,7 @@ function HomepageHero(): React.ReactNode {
   return (
     <header className={styles.hero}>
       <Aurora />
+      <Waves />
       <div className={styles.heroText}>
         <div className={styles.brand}>
           <img
@@ -185,29 +230,31 @@ function FlowSection(): React.ReactNode {
 function ClosingCta(): React.ReactNode {
   return (
     <section className={styles.closing}>
-      <Aurora />
-      <img
-        className={styles.closingLogo}
-        src={useBaseUrl('/img/logos/wvlet-icon.svg')}
-        alt=""
-        width={88}
-        height={88}
-      />
-      <h2>
-        Start writing <em className={styles.shimmer}>flow-style</em> queries
-      </h2>
-      <div className={styles.ctas}>
-        <Link className={clsx(styles.btn, styles.btnSolid, styles.btnLg)} to="/docs/usage/install">
-          Install Wvlet
-        </Link>
-        <Link className={clsx(styles.btn, styles.btnGhost, styles.btnLg)} to="pathname:///playground/">
-          Open the playground
-        </Link>
-        <Link
-          className={clsx(styles.btn, styles.btnGhost, styles.btnLg)}
-          to="https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet">
-          VS Code extension
-        </Link>
+      <div className={styles.closingPanel}>
+        <Waves lines={5} />
+        <img
+          className={styles.closingLogo}
+          src={useBaseUrl('/img/logos/wvlet-icon.svg')}
+          alt=""
+          width={88}
+          height={88}
+        />
+        <h2>
+          Start writing <em className={styles.shimmer}>flow-style</em> queries
+        </h2>
+        <div className={styles.ctas}>
+          <Link className={clsx(styles.btn, styles.btnSolid, styles.btnLg)} to="/docs/usage/install">
+            Install Wvlet
+          </Link>
+          <Link className={clsx(styles.btn, styles.btnGhost, styles.btnLg)} to="pathname:///playground/">
+            Open the playground
+          </Link>
+          <Link
+            className={clsx(styles.btn, styles.btnGhost, styles.btnLg)}
+            to="https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet">
+            VS Code extension
+          </Link>
+        </div>
       </div>
     </section>
   );
@@ -226,7 +273,9 @@ export default function Home(): React.ReactNode {
         <main>
           <EngineStrip />
           <FlowSection />
-          <HomepageFeatures />
+          <div className={styles.band}>
+            <HomepageFeatures />
+          </div>
           <ClosingCta />
         </main>
       </div>

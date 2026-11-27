@@ -4,22 +4,21 @@
  */
 
 .home {
-  --bg: 160 30% 97%;
-  --bg-2: 160 26% 94%;
-  --card: 160 35% 99.5%;
-  --ink: 196 40% 10%;
-  --ink-2: 196 12% 36%;
-  --line: 165 18% 85%;
+  --bg: 170 14% 98.5%;
+  --bg-2: 168 18% 96%;
+  --card: 0 0% 100%;
+  --ink: 190 30% 9%;
+  --ink-2: 190 8% 38%;
+  --line: 170 10% 88%;
   --primary: 190 48% 34%;
-  --aurora-1: 168 75% 84%;
-  --aurora-2: 150 60% 88%;
-  --aurora-3: 180 70% 86%;
-  --aurora-4: 140 50% 90%;
-  --aurora-alpha: 0.55;
+  --glow-1: hsl(186 90% 52% / 0.24);
+  --glow-2: hsl(158 70% 48% / 0.17);
+  --glow-3: hsl(198 90% 60% / 0.13);
+  --grid: hsl(190 30% 20% / 0.055);
   --shine-1: 192 92% 22%;
   --shine-2: 186 100% 42%;
   --shine-3: 198 70% 36%;
-  --term-bg: 175 28% 9%;
+  --term-bg: 190 30% 8%;
   --radius: 18px;
   --shadow: 0 30px 80px -30px hsl(196 60% 15% / 0.35), 0 8px 24px -12px hsl(196 60% 15% / 0.2);
   --sans: var(--ifm-font-family-base);
@@ -32,22 +31,21 @@
 }
 
 :global([data-theme='dark']) .home {
-  --bg: 170 25% 6%;
-  --bg-2: 170 22% 9%;
-  --card: 170 18% 11%;
-  --ink: 190 30% 94%;
-  --ink-2: 192 12% 68%;
-  --line: 170 14% 19%;
+  --bg: 185 18% 5%;
+  --bg-2: 185 16% 7.5%;
+  --card: 185 14% 9%;
+  --ink: 185 20% 94%;
+  --ink-2: 185 8% 66%;
+  --line: 185 10% 16%;
   --primary: 186 85% 60%;
-  --aurora-1: 170 70% 18%;
-  --aurora-2: 150 55% 15%;
-  --aurora-3: 182 60% 17%;
-  --aurora-4: 140 45% 14%;
-  --aurora-alpha: 0.75;
+  --glow-1: hsl(186 95% 45% / 0.2);
+  --glow-2: hsl(158 80% 40% / 0.13);
+  --glow-3: hsl(200 90% 55% / 0.11);
+  --grid: hsl(0 0% 100% / 0.045);
   --shine-1: 186 95% 50%;
   --shine-2: 180 100% 78%;
   --shine-3: 196 85% 58%;
-  --term-bg: 175 28% 4%;
+  --term-bg: 188 25% 3.5%;
   --shadow: 0 30px 80px -30px #000000b3, 0 8px 24px -12px #00000080;
 }
 
@@ -87,40 +85,110 @@
   color: hsl(var(--ink));
 }
 
-/* ---------- Aurora background ---------- */
+/* ---------- Background: focused glows over a faint grid ---------- */
 
 .aurora {
   position: absolute;
-  inset: -10% -20% 0;
+  inset: 0 -10%;
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
 }
 
-.aurora span {
+/* Hairline grid, faded out toward the edges so it reads as texture, not a pattern. */
+.aurora::before {
+  content: '';
   position: absolute;
-  width: 55vmax;
-  height: 55vmax;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: var(--aurora-alpha);
-  animation: drift 22s ease-in-out infinite alternate;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 60% 70% at 60% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 70% at 60% 30%, #000 20%, transparent 75%);
 }
 
-.aurora span:nth-child(1) { background: hsl(var(--aurora-1)); top: 10%; left: 5%; }
-.aurora span:nth-child(2) { background: hsl(var(--aurora-2)); top: 45%; left: -15%; animation-delay: -6s; }
-.aurora span:nth-child(3) { background: hsl(var(--aurora-3)); top: -10%; right: -10%; animation-delay: -12s; }
-.aurora span:nth-child(4) { background: hsl(var(--aurora-4)); top: 50%; right: 0; animation-delay: -18s; }
+.aurora span {
+  position: absolute;
+  border-radius: 50%;
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+/* Main teal glow behind the code windows. */
+.aurora span:nth-child(1) {
+  width: 62vmax;
+  height: 50vmax;
+  top: -14%;
+  right: 2%;
+  background: radial-gradient(closest-side, var(--glow-1), transparent);
+}
+
+/* Green counter-glow low on the left. */
+.aurora span:nth-child(2) {
+  width: 48vmax;
+  height: 40vmax;
+  bottom: -20%;
+  left: 0;
+  background: radial-gradient(closest-side, var(--glow-2), transparent);
+  animation-delay: -10s;
+}
+
+/* Small cool highlight above the headline. */
+.aurora span:nth-child(3) {
+  width: 30vmax;
+  height: 24vmax;
+  top: -12%;
+  left: 18%;
+  background: radial-gradient(closest-side, var(--glow-3), transparent);
+  animation-delay: -20s;
+}
+
+.aurora span:nth-child(4) {
+  display: none;
+}
 
 .aurora::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, transparent 60%, hsl(var(--bg)));
+  background: linear-gradient(to bottom, transparent 70%, hsl(var(--bg)));
 }
 
 @keyframes drift {
-  to { transform: translate(8vmax, -6vmax) scale(1.15); }
+  to { transform: translate(3vmax, -2vmax) scale(1.06); }
+}
+
+/* ---------- Flow waves ---------- */
+
+.waves {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 320px;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to right, transparent, #000 15%, #000 85%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 15%, #000 85%, transparent);
+}
+
+.waves svg {
+  display: block;
+  width: 200%;
+  height: 100%;
+  fill: none;
+  stroke-width: 1.25px;
+  animation: flow 60s linear infinite;
+}
+
+@keyframes flow {
+  to { transform: translateX(-50%); }
+}
+
+.closingPanel .waves {
+  height: 300px;
+  opacity: 0.7;
 }
 
 /* ---------- Buttons ---------- */
@@ -179,7 +247,7 @@
   max-width: 1320px;
   min-height: calc(100svh - var(--ifm-navbar-height));
   margin: 0 auto;
-  padding: 72px clamp(16px, 5vw, 72px) 64px;
+  padding: 72px clamp(16px, 5vw, 72px) 160px;
 }
 
 .brand {
@@ -273,26 +341,12 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 70%;
+  width: 80%;
   aspect-ratio: 1;
   translate: -50% -50%;
   z-index: -1;
   border-radius: 50%;
-  filter: blur(56px);
-  opacity: 0.45;
-  background: conic-gradient(
-    from 0deg,
-    hsl(var(--shine-2)),
-    hsl(var(--aurora-2)),
-    hsl(var(--aurora-1)),
-    hsl(var(--aurora-3)),
-    hsl(var(--shine-2))
-  );
-  animation: spin 14s linear infinite;
-}
-
-@keyframes spin {
-  to { rotate: 360deg; }
+  background: radial-gradient(closest-side, var(--glow-1), transparent);
 }
 
 .compiles {
@@ -469,24 +523,73 @@
   color: hsl(var(--ink-2));
 }
 
+/* ---------- Feature band ---------- */
+
+.band {
+  background: hsl(var(--bg-2));
+  border-top: 1px solid hsl(var(--line));
+  border-bottom: 1px solid hsl(var(--line));
+}
+
 /* ---------- Closing CTA ---------- */
 
 .closing {
+  padding: 96px clamp(16px, 5vw, 72px) 112px;
+}
+
+/* A dark panel in both themes, so the page ends on a confident contrast. */
+.closingPanel {
+  --ink: 185 20% 96%;
+  --ink-2: 185 10% 72%;
+  --bg: 190 30% 8%;
+  --card: 190 25% 14%;
+  --line: 185 20% 30%;
+  --grid: hsl(0 0% 100% / 0.05);
+
   position: relative;
   isolation: isolate;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 28px;
-  padding: 120px 16px 140px;
+  max-width: 1176px;
+  margin: 0 auto;
+  padding: 88px 24px 160px;
+  border: 1px solid hsl(186 40% 30% / 0.5);
+  border-radius: 28px;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 0%, hsl(186 90% 45% / 0.3), transparent 70%),
+    radial-gradient(ellipse 50% 50% at 100% 100%, hsl(158 75% 40% / 0.22), transparent 70%),
+    hsl(190 30% 8%);
+  box-shadow: var(--shadow);
   text-align: center;
 }
 
-.closing h2 {
-  font-size: clamp(38px, 5vw, 68px);
+.closingPanel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 60% 70% at 50% 0%, #000 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 70% at 50% 0%, #000 10%, transparent 70%);
 }
 
-.closing .ctas { justify-content: center; }
+.closing h2 {
+  font-size: clamp(34px, 4.4vw, 60px);
+}
+
+.closingPanel .shimmer {
+  --shine-1: 186 95% 50%;
+  --shine-2: 180 100% 78%;
+  --shine-3: 196 85% 58%;
+}
+
+.closingPanel .ctas { justify-content: center; }
 
 .closingLogo {
   filter: drop-shadow(0 20px 36px hsl(190 80% 30% / 0.3));
@@ -501,13 +604,13 @@
     min-height: auto;
     gap: 40px;
   }
-  .hero { padding-top: 48px; }
+  .hero { padding-top: 48px; padding-bottom: 140px; }
   .flow { padding-top: 80px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .aurora span,
-  .glow,
+  .waves svg,
   .shimmer {
     animation: none;
   }
