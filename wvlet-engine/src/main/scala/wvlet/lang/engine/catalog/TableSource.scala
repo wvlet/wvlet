@@ -36,7 +36,8 @@ import scala.collection.mutable
   * `dictionaryCodes`), such vectors hold only the codes and their entries' strings, building the
   * per-row strings on first use ([[StrVec.ofEntries]]). With `decodeRunner`, a Parquet scan that
   * reads a single row group without a row filter decodes its columns as tasks of that runner
-  * (`parallel_column_decode`)
+  * (`parallel_column_decode`); with `parallelStrings` too, the Strings of its PLAIN string columns
+  * are built by row ranges as tasks of their own (`parallel_string_decode`)
   */
 case class ScanSpec(
     columns: Option[Seq[String]] = None,
@@ -46,7 +47,8 @@ case class ScanSpec(
     dictionaryCodes: Boolean = false,
     dictionaryEntries: Boolean = false,
     lazyStrings: Boolean = false,
-    decodeRunner: Option[TaskRunner] = None
+    decodeRunner: Option[TaskRunner] = None,
+    parallelStrings: Boolean = false
 )
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -817,6 +819,8 @@ class ParquetSource(
       runner: TaskRunner
   ): Batch =
     val vecs = new Array[Vec](cols.size)
+    // PLAIN string columns whose Strings are built afterwards by row ranges
+    val plain = new Array[ColumnVector.BinaryColumn](cols.size)
     TaskRunner.inParallel(runner, tasks.size) { t =>
       val positions          = tasks(t)
       val (names, types, op) = readOptions(spec.copy(columns = Some(positions.map(cols))))
@@ -824,15 +828,24 @@ class ParquetSource(
       positions
         .indices
         .foreach { k =>
-          vecs(positions(k)) = ParquetSource.toVec(
-            b.column(names(k)),
-            types(k),
-            spec.dictionaryCodes,
-            spec.lazyStrings
-          )
+          b.column(names(k)) match
+            case x: ColumnVector.BinaryColumn
+                if spec.parallelStrings && types(k) == PType.Str && x.dictionarySize == 0 &&
+                  x.size >= 2 * ParquetSource.StringRangeRows =>
+              plain(positions(k)) = x
+            case c =>
+              vecs(positions(k)) = ParquetSource.toVec(
+                c,
+                types(k),
+                spec.dictionaryCodes,
+                spec.lazyStrings
+              )
         }
     }
+    ParquetSource.buildStrings(plain, vecs, runner)
     Batch(vecs, f.rowGroups(g).numRows.toInt)
+
+  end readColumnsInParallel
 
 end ParquetSource
 
@@ -844,6 +857,41 @@ object ParquetSource:
     * read item's three small columns (~1.5 MB at SF10) with 8% more CPU as one task per column
     */
   val ParallelDecodeMinBytes: Long = 2L * 1024 * 1024
+
+  /** The rows of a range of a PLAIN string column whose Strings one task builds */
+  val StringRangeRows: Int = 16384
+
+  /**
+    * Set `vecs(i)` to the strings of each non-null `plain(i)`, PLAIN binary columns, built by
+    * ranges of [[StringRangeRows]] rows as tasks of `runner` (`parallel_string_decode`): the UTF-8
+    * decoding of one long string column otherwise runs on one thread after the other columns
+    */
+  def buildStrings(
+      plain: Array[ColumnVector.BinaryColumn],
+      vecs: Array[Vec],
+      runner: TaskRunner
+  ): Unit =
+    val cols = plain.indices.filter(plain(_) != null)
+    if cols.nonEmpty then
+      val out    = cols.map(i => new Array[String](plain(i).size))
+      val ranges =
+        for
+          j    <- cols.indices
+          from <- 0 until plain(cols(j)).size by StringRangeRows
+        yield (j, from)
+      TaskRunner.inParallel(runner, ranges.size) { r =>
+        val (j, from) = ranges(r)
+        val x         = plain(cols(j))
+        val nulls     = x.nullFlags
+        val to        = math.min(x.size, from + StringRangeRows)
+        val strs      = out(j)
+        var i         = from
+        while i < to do
+          if nulls == null || !nulls(i) then
+            strs(i) = x.getString(i)
+          i += 1
+      }
+      cols.indices.foreach(j => vecs(cols(j)) = StrVec(out(j), plain(cols(j)).nullFlags))
 
   /**
     * The positions of `cols` grouped into the tasks decoding row group `meta` in parallel, largest

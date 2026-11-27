@@ -174,7 +174,9 @@ class OptimizerOptionsTest extends UniTest:
         "dimension_group_ids",
         "semi_anti_one_probe",
         "late_columns",
-        "eager_distinct"
+        "eager_distinct",
+        "string_code_probe",
+        "parallel_string_decode"
       )
   }
 

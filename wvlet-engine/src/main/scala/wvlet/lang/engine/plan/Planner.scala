@@ -131,6 +131,8 @@ class Planner(
       j.withParallelBuild(false)
     if !enabled(Optimization.JoinBuildStringCodes) then
       j.withStringCodes(false)
+    if !enabled(Optimization.StringCodeProbe) then
+      j.withCodeProbe(false)
 
   /** The physical passes over a lowered plan: column pruning (with scan filters), parallelism */
   private def optimizePhysical(op: Operator): Operator =
@@ -162,6 +164,8 @@ class Planner(
       Planner.disableKeySetRowGroups(pruned)
     if !enabled(Optimization.ParallelColumnDecode) then
       Planner.disableParallelColumnDecode(pruned)
+    if !enabled(Optimization.ParallelStringDecode) then
+      Planner.disableParallelStringDecode(pruned)
     if !enabled(Optimization.ShortCircuitFilters) || !enabled(Optimization.ReorderConjuncts) ||
       !enabled(Optimization.DictionaryFilters) || !enabled(Optimization.DictionarySelection)
     then
@@ -4198,6 +4202,15 @@ object Planner:
       case _ =>
     op.children.foreach(disableParallelColumnDecode)
     op.sharedInputs.foreach(disableParallelColumnDecode)
+
+  /** Build the Strings of a parallel decode with its column tasks (`parallel_string_decode`) */
+  private[engine] def disableParallelStringDecode(op: Operator): Unit =
+    op match
+      case s: ScanOp =>
+        s.parallelStringDecode = false
+      case _ =>
+    op.children.foreach(disableParallelStringDecode)
+    op.sharedInputs.foreach(disableParallelStringDecode)
 
   /** Set how the filters of a physical plan evaluate AND / OR (`short_circuit_filters`) */
   private[engine] def configureFilters(

@@ -102,13 +102,17 @@ class EngineJoinBuildStringCodesTest extends UniTest:
     r shouldBe rows(off, query)
     r
 
-  /** Whether each hash join of the physical plan encodes its build strings */
-  private def joinCodes(e: WvletEngine, query: String): Seq[Boolean] =
+  /** A flag of each hash join of the physical plan: by default whether it encodes build strings */
+  private def joinCodes(
+      e: WvletEngine,
+      query: String,
+      flag: HashJoinOp => Boolean = _.stringCodes
+  ): Seq[Boolean] =
     def collect(op: Operator): Seq[Boolean] =
       (
         op match
           case j: HashJoinOp =>
-            Seq(j.stringCodes)
+            Seq(flag(j))
           case _ =>
             Nil
       ) ++ op.children.flatMap(collect) ++ op.sharedInputs.flatMap(collect)
@@ -124,6 +128,15 @@ class EngineJoinBuildStringCodesTest extends UniTest:
     joinCodes(on, q) shouldContain true
     joinCodes(on, q).contains(false) shouldBe false
     joinCodes(off, q).contains(true) shouldBe false
+  }
+
+  test("pass string_code_probe to every join, also the parallel copies") {
+    val q       = s"${starJoin}\ngroup by i.cat agg _.count"
+    val noProbe = on.withOptimizer(options.withDisabled(Optimization.StringCodeProbe))
+    def probe(e: WvletEngine): Seq[Boolean] = joinCodes(e, q, _.joinBuild.codeProbe)
+    probe(on).contains(false) shouldBe false
+    probe(noProbe) shouldContain false
+    probe(noProbe).contains(true) shouldBe false
   }
 
   test("encode the repeating dictionary-coded strings of a build") {

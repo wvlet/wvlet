@@ -1361,10 +1361,14 @@ final class JoinBuild(
 
   /**
     * Whether a build of at most [[JoinBuild.MaxCodedRows]] rows encodes its dictionary-encoded
-    * string columns over their distinct values ([[JoinBuild.encodeStrings]]), so that probe outputs
-    * carry codes shared by every batch (`join_build_string_codes`); set before the build is made
+    * string columns over their distinct values ([[JoinBuildCodes.encodeStrings]]), so that probe
+    * outputs carry codes shared by every batch (`join_build_string_codes`); set before the build is
+    * made
     */
   var stringCodes: Boolean = true
+
+  /** Whether string columns give up encoding once they look nearly unique (`string_code_probe`) */
+  var codeProbe: Boolean = true
 
   /** Whether a large flat table keeps a Bloom filter of its keys (`probe_miss_filter`) */
   var missFilter: Boolean = false
@@ -1417,7 +1421,7 @@ final class JoinBuild(
         JoinBuildSteps.concat(right.schema, batches.toIndexedSeq, steps)
     // Joins that output only probe columns never pass the codes on
     if stringCodes && outputsBuild then
-      build = JoinBuild.encodeStrings(build, batches, steps)
+      build = JoinBuildCodes.encodeStrings(build, batches, steps, codeProbe)
     val rawKeys  = rightKeys.map(_.eval(build)).toArray
     val rawTypes = rightKeys.map(_.ptype)
     // Rows with NULL keys never match, unless NULLs are equal (`IS NOT DISTINCT FROM`)
@@ -1835,65 +1839,6 @@ object JoinBuild:
     */
   inline val MaxPlainCodedRows = 1 << 16
 
-  /**
-    * The build (the concatenation of `batches`) with its string columns encoded over their distinct
-    * values ([[StrVec.encodeParts]]), when it has at most [[MaxCodedRows]] rows: probe outputs
-    * gather the codes, which then identify values across batches. Each dictionary entry of a batch
-    * carrying Parquet dictionary codes (`dictionary_group_keys` scans) is hashed once; up to
-    * [[MaxPlainCodedRows]] rows, rows without codes are hashed one by one.
-    *
-    * All or nothing: the build keeps the codes only when every string column encodes (repeating
-    * values: at most half the rows distinct), since an aggregation takes the codes only when all
-    * its string keys carry them, and builds hold only the columns their joins use. Otherwise probe
-    * outputs would gather codes no aggregation reads. A large build with a column that a Parquet
-    * writer left PLAIN (ids, names) is left as it is without encoding any column. Columns already
-    * carrying a `dict` stay as they are
-    */
-  private[exec] def encodeStrings(
-      build: Batch,
-      batches: Seq[Batch],
-      steps: TaskRunner = TaskRunner.Sequential
-  ): Batch =
-    if build.size == 0 || build.size > MaxCodedRows then
-      build
-    else
-      val cols = build.columns
-      val out  = cols.clone()
-      val strs = cols
-        .indices
-        .filter { k =>
-          cols(k) match
-            case v: StrVec =>
-              v.dict == null
-            case _ =>
-              false
-        }
-      val hashPlain = build.size <= MaxPlainCodedRows
-      // A large build with a string column without Parquet codes keeps no codes at all
-      def plain(k: Int): Boolean = batches.exists { b =>
-        b.column(k) match
-          case p: StrVec =>
-            !p.hasCodes
-          case _ =>
-            true
-      }
-      if strs.isEmpty || (!hashPlain && strs.exists(plain)) then
-        return build
-      // One task per string column, on the build runner for large builds
-      JoinBuildSteps.runAll(strs.size, steps) { j =>
-        val k = strs(j)
-        out(k) = StrVec.encodeParts(
-          cols(k).asInstanceOf[StrVec],
-          batches.map(_.column(k)),
-          math.max(1, build.size / 2),
-          hashPlain
-        )
-      }
-      if strs.forall(k => out(k) ne cols(k)) then
-        Batch(out, build.size)
-      else
-        build
-
 end JoinBuild
 
 /** How a right / full join tracks and emits build rows no probe row matched */
@@ -2049,6 +1994,10 @@ class HashJoinOp(
 
   def withStringCodes(enabled: Boolean): this.type =
     joinBuild.stringCodes = enabled
+    this
+
+  def withCodeProbe(enabled: Boolean): this.type =
+    joinBuild.codeProbe = enabled
     this
 
   private def rowsOf(b: Batch, idx: Array[Int], n: Int): Batch =
