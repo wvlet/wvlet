@@ -92,7 +92,8 @@ class Planner(
     columnImpliedRowFilters = enabled(Optimization.ColumnImpliedRowFilters),
     deferredNullChecks = enabled(Optimization.DeferredNullChecks),
     fusedDecimalArith = enabled(Optimization.FusedDecimalArith),
-    semiAntiOneProbe = enabled(Optimization.SemiAntiOneProbe)
+    semiAntiOneProbe = enabled(Optimization.SemiAntiOneProbe),
+    aggregateJoinFilters = enabled(Optimization.AggregateJoinFilters)
   )
 
   /** Whether a join builds on the other input, as this one has much more rows than that */

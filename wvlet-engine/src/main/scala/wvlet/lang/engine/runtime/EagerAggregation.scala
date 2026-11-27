@@ -239,7 +239,12 @@ object EagerAggregation extends Pass:
         val otherMinMax = options.isEnabled(Optimization.EagerOtherSideMinMax)
         // The calls computed over side `in` before the join, or None when a call reads neither
         // `in` only nor, as a min or max that stays above the join, `other` only
-        def pushable(in: RuntimePlan, other: RuntimePlan): Option[Set[Int]] =
+        def pushable(
+            in: RuntimePlan,
+            other: RuntimePlan,
+            inKeys: Seq[BExpr],
+            otherKeys: Seq[BExpr]
+        ): Option[Set[Int]] =
           val ids      = in.output.map(_.id).toSet
           val otherIds = other.output.map(_.id).toSet
           val split    = a
@@ -256,7 +261,7 @@ object EagerAggregation extends Pass:
             }
           Option.when(
             split.forall(_.isDefined) && other.output.exists(c => keyRefs.contains(c.id)) &&
-              retained(other, options)
+              (retained(other, options) || filteredLookup(a, in, other, inKeys, otherKeys, options))
           )(split.flatten.flatten.toSet)
         // With `eager_lookup_projection`: the join looks up at most one row of `other` per row of
         // the pre-aggregation, and every call is computed before the join
@@ -264,14 +269,14 @@ object EagerAggregation extends Pass:
           options.isEnabled(Optimization.EagerLookupProjection) &&
             eagerCalls.size == a.calls.size && DependentGroupKeys.looksUp(other, otherKeys)
         val pushed =
-          pushable(left, right) match
+          pushable(left, right, lk, rk) match
             case Some(eagerCalls) =>
               eager(a, eagerCalls, left, lk ++ conds, lookup(eagerCalls, right, rk), options, newId)
                 .map { (pre, m, outer) =>
                   (j.copy(left = pre, leftKeys = lk.map(remap(_, m))), m, outer)
                 }
             case None =>
-              pushable(right, left).flatMap { eagerCalls =>
+              pushable(right, left, rk, lk).flatMap { eagerCalls =>
                 eager(
                   a,
                   eagerCalls,
@@ -346,8 +351,8 @@ object EagerAggregation extends Pass:
       val partialCols = partials.map { case ((p, out), i) =>
         i -> Column(newId(), out.name, p.ptype)
       }
-      val partialOf = partialCols.toMap
-      val pre       = Aggregate(
+      val partialOf      = partialCols.toMap
+      val pre: Aggregate = Aggregate(
         in,
         groups.map(BExpr.ref),
         partials.map(_._1._1),
@@ -367,10 +372,22 @@ object EagerAggregation extends Pass:
             c
       }
       val keys = a.keys.map(remap(_, m))
+      // A DISTINCT of `in`'s rows below a lookup of a filtered dimension in turn
+      val deduplicated =
+        if partials.isEmpty && options.isEnabled(Optimization.EagerDistinctLookups) then
+          rewrite(pre, options, newId).getOrElse(pre)
+        else
+          pre
       if lookup && DependentGroupKeys.determines(a, in, groups.map(_.id)) then
-        Some((pre, m, j => Project(j, keys ++ partialCols.map(p => BExpr.ref(p._2)), a.columns)))
+        Some(
+          (
+            deduplicated,
+            m,
+            j => Project(j, keys ++ partialCols.map(p => BExpr.ref(p._2)), a.columns)
+          )
+        )
       else
-        Some((pre, m, j => Aggregate(j, keys, merges, a.columns)))
+        Some((deduplicated, m, j => Aggregate(j, keys, merges, a.columns)))
     end if
 
   end eager
@@ -555,6 +572,35 @@ object EagerAggregation extends Pass:
     end if
 
   end inJoinTree
+
+  /**
+    * Whether a DISTINCT (`a`, without calls) over `in` ⋈ `other` may deduplicate `in` although
+    * `other`'s filters drop most of its rows ([[Optimization.EagerDistinctLookups]]): the join
+    * looks up at most one row of `other` by a declared unique key, and every join key of `in` is a
+    * column of a Parquet scan that the join's runtime filters reach through the new aggregation,
+    * which groups by it ([[Optimization.AggregateJoinFilters]]). The scan then still drops the rows
+    * without a match before they are aggregated. TPC-DS q38 and q87 deduplicate a year of sales by
+    * customer and date key, and look up the 480K distinct keys' dates instead of 5.4M rows'
+    */
+  private def filteredLookup(
+      a: Aggregate,
+      in: RuntimePlan,
+      other: RuntimePlan,
+      inKeys: Seq[BExpr],
+      otherKeys: Seq[BExpr],
+      options: OptimizerOptions
+  ): Boolean =
+    a.calls.isEmpty && options.isEnabled(Optimization.EagerDistinctLookups) &&
+      options.isEnabled(Optimization.AggregateJoinFilters) &&
+      options.isEnabled(Optimization.RuntimeJoinFilters) &&
+      DependentGroupKeys.looksUp(other, otherKeys) &&
+      inKeys.forall(k =>
+        k.expr match
+          case c: ColRef =>
+            Lowering.scanColumns(in, c.index, buildSides = false, throughAggs = true).nonEmpty
+          case _ =>
+            false
+      )
 
   /**
     * Whether p is [[retained]], or an inner hash join of retained trees that keeps at least

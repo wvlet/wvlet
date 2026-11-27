@@ -104,7 +104,8 @@ object Lowering:
       columnImpliedRowFilters: Boolean = false,
       deferredNullChecks: Boolean = false,
       fusedDecimalArith: Boolean = false,
-      semiAntiOneProbe: Boolean = false
+      semiAntiOneProbe: Boolean = false,
+      aggregateJoinFilters: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -135,7 +136,8 @@ object Lowering:
       columnImpliedRowFilters,
       deferredNullChecks,
       fusedDecimalArith,
-      semiAntiOneProbe
+      semiAntiOneProbe,
+      aggregateJoinFilters
     )
     if inSet then
       l.markInSet(p)
@@ -184,7 +186,8 @@ object Lowering:
       columnImpliedRowFilters: Boolean,
       deferredNullChecks: Boolean,
       fusedDecimalArith: Boolean,
-      semiAntiOneProbe: Boolean
+      semiAntiOneProbe: Boolean,
+      aggregateJoinFilters: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -584,15 +587,16 @@ object Lowering:
           .flatMap { k =>
             probeKeys(k).expr match
               case c: ColRef if c.ptype == buildKeys(k).ptype && rangeType(c.ptype) =>
-                scanColumns(probe, c.index, buildSideJoinFilters).map { (id, column) =>
-                  val f = RuntimeFilter(
-                    k,
-                    column,
-                    rangeFilter(column, c.ptype),
-                    rows = rowJoinFilters
-                  )
-                  pending(id) = f :: pending.getOrElse(id, Nil)
-                  f
+                scanColumns(probe, c.index, buildSideJoinFilters, aggregateJoinFilters).map {
+                  (id, column) =>
+                    val f = RuntimeFilter(
+                      k,
+                      column,
+                      rangeFilter(column, c.ptype),
+                      rows = rowJoinFilters
+                    )
+                    pending(id) = f :: pending.getOrElse(id, Nil)
+                    f
                 }
               case _ =>
                 Nil
@@ -650,9 +654,24 @@ object Lowering:
     * drop them by their matches (the left input of LEFT, semi, and anti joins building on it, the
     * right input of RIGHT joins building on it): a row of `p` from a build row comes with that
     * row's value too. Inner joins' builds are left out: a morsel pipeline mostly prepares them
-    * before the build above, so the filter came too late and only cost time (TPC-DS q04, q76)
+    * before the build above, so the filter came too late and only cost time (TPC-DS q04, q76). With
+    * `throughAggs` (`aggregate_join_filters`), also the input of a DISTINCT (an aggregation without
+    * calls) that groups by the column: dropping its input rows by a group key drops whole groups,
+    * those with that key. Aggregations with calls are left out, to keep the filters of plans that
+    * don't deduplicate below a join as they were
     */
-  private def scanColumns(p: RuntimePlan, id: Int, buildSides: Boolean): Seq[(Int, String)] =
+  private[engine] def scanColumns(
+      p: RuntimePlan,
+      id: Int,
+      buildSides: Boolean,
+      throughAggs: Boolean
+  ): Seq[(Int, String)] =
+    def below(child: RuntimePlan, childId: Int) = scanColumns(
+      child,
+      childId,
+      buildSides,
+      throughAggs
+    )
     p match
       case s @ Scan(source, columns, _, _) if source.supportsFilter =>
         columns.indexWhere(_.id.value == id) match
@@ -661,7 +680,7 @@ object Lowering:
           case i =>
             Seq(s.sourceColumnName(i)).filter(source.canFilterOn).map(id -> _)
       case Filter(child, _, _) =>
-        scanColumns(child, id, buildSides)
+        below(child, id)
       case Project(child, exprs, columns) =>
         columns.indexWhere(_.id.value == id) match
           case -1 =>
@@ -669,7 +688,7 @@ object Lowering:
           case i =>
             exprs(i).expr match
               case c: ColRef =>
-                scanColumns(child, c.index, buildSides)
+                below(child, c.index)
               case _ =>
                 Nil
       // Each output row is a row of one input. An input column cast to a wider type is skipped
@@ -681,10 +700,20 @@ object Lowering:
             inputs.flatMap { in =>
               val c = in.output(i)
               if c.ptype == columns(i).ptype then
-                scanColumns(in, c.id.value, buildSides)
+                below(in, c.id.value)
               else
                 Nil
             }
+      case Aggregate(child, keys, calls, columns) if throughAggs && calls.isEmpty =>
+        columns.indexWhere(_.id.value == id) match
+          case i if i >= 0 && i < keys.size =>
+            keys(i).expr match
+              case c: ColRef =>
+                below(child, c.index)
+              case _ =>
+                Nil
+          case _ =>
+            Nil
       case Join(left, right, kind, _, _, _, buildLeft) =>
         val fromLeft = left.output.exists(_.id.value == id)
         val input    =
@@ -693,11 +722,14 @@ object Lowering:
           else
             right
         if passesFilter(kind, buildLeft, fromLeft, buildSides) then
-          scanColumns(input, id, buildSides)
+          below(input, id)
         else
           Nil
       case _ =>
         Nil
+    end match
+
+  end scanColumns
 
   /**
     * Whether a runtime filter over a column of the left (`fromLeft`) or right input of a join below

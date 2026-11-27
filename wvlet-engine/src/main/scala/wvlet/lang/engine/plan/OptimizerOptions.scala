@@ -1052,6 +1052,22 @@ enum Optimization(val name: String):
     */
   case ParallelStringDecode extends Optimization("parallel_string_decode")
 
+  /**
+    * Runtime join filters also reach the input of an aggregation below the probe side that groups
+    * by the filtered column: dropping input rows by a group key drops the whole groups of that key,
+    * which the join drops too. Needs `runtime_join_filters`
+    */
+  case AggregateJoinFilters extends Optimization("aggregate_join_filters")
+
+  /**
+    * With [[EagerDistinct]], a DISTINCT over a join that looks up a filtered dimension by its unique
+    * key deduplicates the other input first, when the join's runtime filters reach its scan through
+    * the new aggregation ([[AggregateJoinFilters]]). TPC-DS q38 and q87 deduplicate a year of sales
+    * by customer and date key (481K of 5.4M rows at SF10) before looking up their dates, instead of
+    * probing the date join with every sale row
+    */
+  case EagerDistinctLookups extends Optimization("eager_distinct_lookups")
+
 end Optimization
 
 object Optimization:

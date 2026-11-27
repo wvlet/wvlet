@@ -16,7 +16,10 @@ RIGHT joins. Dropping rows of such an input by a test of its own columns drops e
 join's output rows that come from them (`through_left`, `through_right_inner`,
 `through_right_of_right`), whichever side the nested join builds on. The other inputs pad or drop
 rows by their matches, so the step is unsound there (`through_right_of_left_unsound`,
-`through_left_of_right_unsound`). Filters, plain projections, and UNION ALL inputs are not modeled.
+`through_left_of_right_unsound`). With `aggregate_join_filters` it also passes through a DISTINCT (an
+aggregation without calls) that groups by the filtered column: dropping input rows by a test of
+their group key drops exactly the groups failing it (`through_distinct`). Filters, plain
+projections, and UNION ALL inputs are not modeled.
 -/
 import WvletFormal.JoinKeyFilter.Sound
 
@@ -223,5 +226,26 @@ theorem through_left_of_right_unsound :
       (join (fun _ _ => true) .right [⟨some 1, 0⟩] [⟨some 1, 1⟩]).filter fun o =>
         o.1.any fun _ => false := by
   decide
+
+/-! ### Through a DISTINCT (`aggregate_join_filters`)
+
+A DISTINCT groups its input rows by `g` and outputs one row per distinct group key. A runtime
+filter `q` over a column it groups by is a test of the group key alone. -/
+
+/-- The group keys of the rows passing a test of their group key are the group keys passing it,
+with the same multiplicities: an aggregation over either sees the same groups. -/
+theorem through_distinct_keys {α : Type} (g : Row → α) (q : α → Bool) (xs : List Row) :
+    (xs.filter fun r => q (g r)).map g = (xs.map g).filter q := by
+  rw [List.filter_map]
+  rfl
+
+/-- Dropping a DISTINCT's input rows whose group key fails `q` drops exactly its output rows
+failing `q`: the distinct group keys are the same. -/
+theorem through_distinct {α : Type} [BEq α] [LawfulBEq α] (g : Row → α) (q : α → Bool)
+    (xs : List Row) (v : α) :
+    v ∈ ((xs.filter fun r => q (g r)).map g).eraseDups ↔
+      v ∈ ((xs.map g).eraseDups).filter q := by
+  rw [through_distinct_keys, List.mem_filter, List.mem_eraseDups, List.mem_eraseDups,
+    List.mem_filter]
 
 end Wvlet.JoinKeyFilter

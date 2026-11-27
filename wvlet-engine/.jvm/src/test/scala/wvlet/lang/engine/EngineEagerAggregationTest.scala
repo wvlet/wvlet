@@ -116,6 +116,26 @@ class EngineEagerAggregationTest extends UniTest:
     aggregations(on) shouldBe aggregations(off) + 1
   }
 
+  test("deduplicate a join input before a distinct over a lookup of a filtered dimension") {
+    // The part filter keeps a fifth of the parts, and their join filter reaches the lineitem scan
+    // through the pre-aggregation by (l_partkey, l_returnflag)
+    val noLookups = keyed
+      .engine
+      .withOptimizer(options.withDisabled(Optimization.EagerDistinctLookups))
+    val (on, off) = check(
+      """from lineitem, part
+        |where l_partkey = p_partkey and p_size < 10
+        |select distinct p_name, l_returnflag
+        |order by p_name, l_returnflag
+        |""".stripMargin,
+      noLookups,
+      keyed
+    )
+    aggregationsBy(on, "l_partkey") shouldBe 1
+    aggregationsBy(off, "l_partkey") shouldBe 0
+    on shouldContain "join_filter=l_partkey"
+  }
+
   test("not aggregate into groups much finer than the outer ones") {
     // 1,500 partial groups (customers) for 5 outer groups (market segments)
     val (on, off) = check("""from orders, customer
