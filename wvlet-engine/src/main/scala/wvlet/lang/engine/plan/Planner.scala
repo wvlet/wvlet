@@ -1830,7 +1830,7 @@ class Planner(
           if pushed.isEmpty then
             pruned
           else
-            runtimeOptimizer.eagerAggregation(runtimeOptimizer.outerBuilds(pruned))
+            runtimeOptimizer.afterReaderFilters(pruned)
         ),
         reduced
       )
