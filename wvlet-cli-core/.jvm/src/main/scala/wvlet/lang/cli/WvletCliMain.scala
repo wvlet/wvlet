@@ -12,6 +12,7 @@ object WvletCliMain:
 
   def main(args: Array[String]): Unit =
     try
+      WvletCli.rejectJvmOnlyCommand(args)
       launcher.execute(args)
     catch
       case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>

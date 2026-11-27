@@ -22,6 +22,7 @@ object WvletCliMain:
     val argv     = js.Dynamic.global.process.argv.asInstanceOf[js.Array[String]]
     val realArgs = argv.toArray.drop(2)
     try
+      WvletCli.rejectJvmOnlyCommand(realArgs)
       launcher.execute(WvletCliCommands.withDefaultCommand(realArgs))
     catch
       case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>

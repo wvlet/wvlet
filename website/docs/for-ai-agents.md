@@ -23,7 +23,7 @@ In Claude Code:
 /plugin install wvlet@wvlet
 ```
 
-Every CLI (npm, Homebrew, native) also embeds the skill of its own version, so agents without plugin support, or offline, read the guide that matches the installed compiler:
+Every CLI (npm, Homebrew, and the release packages) also embeds the skill of its own version, so agents without plugin support, or offline, read the guide that matches the installed compiler:
 
 - `wvlet skill` prints `SKILL.md`; `wvlet skill syntax` (or `models`, `testing`, `cli`) prints a reference; `wvlet skill files` lists the files.
 - `wvlet skill install` installs the skill for Claude Code, Codex, and Pi. Choose agents with `--agent claude,codex,pi`, and install for every project with `--global`. Re-run it after upgrading wvlet to update the skill.

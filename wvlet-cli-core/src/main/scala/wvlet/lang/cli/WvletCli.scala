@@ -114,3 +114,43 @@ class WvletCli(opts: WvletCliGlobalOption) extends WvletCliCommands:
     }
 
 end WvletCli
+
+object WvletCli:
+
+  /** Commands that only the JVM CLI (`WvletMain`) has */
+  val jvmOnlyCommands: Set[String] = Set("ui", "flow", "catalog")
+
+  // Global options that take a value, so their value is not taken for the command name
+  private val globalOptionsWithValue = Set("-l", "--loglevel", "-L")
+
+  /**
+    * The command name in the given argv: the first argument after the global options
+    */
+  def commandName(args: Array[String]): Option[String] =
+    val it                  = args.iterator
+    var cmd: Option[String] = None
+    while cmd.isEmpty && it.hasNext do
+      val arg = it.next()
+      if globalOptionsWithValue.contains(arg) then
+        if it.hasNext then
+          it.next()
+      else if !arg.startsWith("-") then
+        cmd = Some(arg)
+    cmd
+
+  /**
+    * Fail with a message naming the JVM CLI when argv selects one of its commands, instead of the
+    * launcher's generic unknown-command error
+    */
+  def rejectJvmOnlyCommand(args: Array[String]): Unit = commandName(args)
+    .filter(jvmOnlyCommands.contains)
+    .foreach { cmd =>
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"wvlet ${cmd} is in the JVM CLI. Install it with Homebrew or a release package: " +
+            "https://wvlet.org/docs/usage/install#jvm-cli"
+        )
+    }
+
+end WvletCli

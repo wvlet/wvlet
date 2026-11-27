@@ -12,14 +12,17 @@ Wvlet is available as one command, `wvlet`, in two distributions:
 |---|---|---|
 | Requires | Node.js 22+ | JDK 17+ (Homebrew installs OpenJDK) |
 | `wvlet version`, `compile`, `to_wvlet`, `run` | ✓ | ✓ |
-| [`wvlet build`](../syntax/model-pipelines.md#building-models) | ✓ (one model at a time) | ✓ |
+| [`wvlet build`](../syntax/model-pipelines.md#building-models) | ✓ (one model at a time) | ✓ (parallel, with run records) |
 | DuckDB (`-t duckdb`) | Included | Full package only |
 | Snowflake connector | — | Full package only |
 | [REPL](repl.md) (`wvlet` on a terminal, or `wvlet repl`) | ✓ | ✓ (also `wv`) |
 | `wvlet flow`, `catalog`, `ui` | — | ✓ |
 | Updates | Update notice + `wvlet upgrade` | `brew upgrade wvlet` |
 
-Start with npm unless you need a JVM-only command.
+Which one to install:
+
+- **npm** is the default: the [REPL](repl.md), `run`, `build`, and `compile`, with DuckDB included and no JDK. Start here.
+- **The JVM CLI** adds the [Web UI](ui.md), [flows](../syntax/flow.md) and their scheduler, `catalog import` from a live database, the JDBC connectors such as Snowflake, and parallel model builds with run records. Install it when you need one of these; see [Moving from npm](#moving-from-npm).
 
 ## npm (macOS, Linux, Windows)
 
@@ -91,6 +94,18 @@ The platform packages (`wvlet-cli-(version)-(platform).tar.gz`) need no JDK. The
 :::info
 Language SDKs are also available for [Python and TypeScript](../bindings) to compile Wvlet queries programmatically.
 :::
+
+### Moving from npm
+
+Your `.wv` folders, profiles in `~/.wvlet`, tables built into `target/warehouse`, and command lines work the same on the JVM CLI, which adds the `wv` alias of `wvlet repl`. To switch:
+
+```bash
+npm uninstall -g @wvlet/cli
+brew install wvlet/wvlet/wvlet   # or a release package
+which wvlet                      # should point to the JVM CLI
+```
+
+The npm package bundles DuckDB, but the Homebrew package does not. If you use `-t duckdb`, `.duckdb` files, or Snowflake, install `wvlet-cli-full-(version).tar.gz` instead. Keeping both installs works too, but the first `wvlet` on your `PATH` is the one that runs.
 
 ## Quick Start
 

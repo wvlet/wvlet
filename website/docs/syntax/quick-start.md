@@ -1,5 +1,5 @@
 ---
-description: "A hands-on Wvlet tutorial: start the wv shell, query the built-in TPC-H tables on the Wvlet engine with no setup, and build flow-style queries step by step."
+description: "A hands-on Wvlet tutorial: start the wvlet shell, query the built-in TPC-H tables on the Wvlet engine with no setup, and build flow-style queries step by step."
 sidebar_position: 1
 ---
 
@@ -7,18 +7,18 @@ sidebar_position: 1
 
 ## A Walk-Through Example
 
-Let's start with a simple example. If you haven't installed the `wv` command, [install Wvlet](../usage/install.md) first. `wv` starts an [interactive shell](../usage/repl.md) that runs queries on the in-process [Wvlet engine](../engines/wvlet-engine.md), so there is no database to set up.
+Let's start with a simple example. If you haven't installed the `wvlet` command, [install Wvlet](../usage/install.md) first. `wvlet` with no arguments starts an [interactive shell](../usage/repl.md) that runs queries on the in-process [Wvlet engine](../engines/wvlet-engine.md), so there is no database to set up.
 
 Every Wvlet engine session can read a generated [TPC-H benchmark](https://www.tpc.org/tpch/) data set as `tpch.<scale>.<table>`. This tutorial uses the smallest one, `tpch.tiny` (scale factor 0.01). Rows are generated in memory while a query reads them, so nothing is written to disk. See [Built-in tpch and tpcds catalogs](../engines/wvlet-engine-tables.md#built-in-tpch-and-tpcds-catalogs) for larger scale factors and the TPC-DS tables.
 
 :::tip
-`wv` comes with the JVM CLI (Homebrew or a release package). With the npm package, run each query with `wvlet run` instead, for example `wvlet run "from tpch.tiny.customer limit 3"`.
+The prompt is `wv>`, after the `wv` alias of `wvlet repl` on the JVM CLI. To run one query without the shell, use `wvlet run`, for example `wvlet run "from tpch.tiny.customer limit 3"`.
 :::
 
 To list its tables, use `show tables in`:
 
 ```wvlet
-$ wv
+$ wvlet
 wv> show tables in tpch.tiny;
 ┌──────────┐
 │   name   │
@@ -59,7 +59,7 @@ wv> from tpch.tiny.customer;
 This query returns all the columns in the `customer` table. If the query result doesn't fit to the screen, the Wvlet shell enters [UNIX `less` command](https://en.wikipedia.org/wiki/Less_(Unix)) mode, which allows you to navigate table data using arrow keys, page up/down keys, and the `q` key to exit the mode. See [Interactive Shell](../usage/repl.md) for the list of the available shortcut keys.
 
 :::tip
-The values in the `tpch` tables follow the TPC-H specification but aren't those of the reference `dbgen` generator, so your numbers won't match the official TPC-H answers. To use DuckDB's `dbgen` data instead (this needs the full JVM package, which includes DuckDB), start the shell with `wv -t duckdb` and run `execute sql"call dbgen(sf=0.01)"`; the tables are then named without the `tpch.tiny.` prefix.
+The values in the `tpch` tables follow the TPC-H specification but aren't those of the reference `dbgen` generator, so your numbers won't match the official TPC-H answers. To use DuckDB's `dbgen` data instead (DuckDB is included in the npm package and the JVM CLI's full package), start the shell with `wvlet repl -t duckdb` and run `execute sql"call dbgen(sf=0.01)"`; the tables are then named without the `tpch.tiny.` prefix.
 :::
 
 To limit the number of rows to display, you can use the `limit` operator:
