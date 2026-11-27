@@ -39,7 +39,9 @@ import scala.collection.mutable
   * order.
   *
   * Falls back to running the pipeline over the whole scan when a single segment's source has a
-  * single part.
+  * single part. With `buildRows` (`slice_single_batch_probes`), a single part held in memory as one
+  * batch runs as tasks over row ranges of it instead when the pipeline's builds have at least
+  * [[MorselOp.SliceBuildRows]] rows, as their probes may emit many rows per input row.
   *
   * Each part's pipeline gets an [[IteratorOp]] that carries the part's row count when the source
   * knows it, so that operators can size their state per part (see [[PartialGroupSizer]]).
@@ -50,7 +52,8 @@ class MorselOp(
     runner: TaskRunner,
     prepare: List[() => Unit],
     release: List[() => Unit],
-    tails: Seq[MorselOp.Tail]
+    tails: Seq[MorselOp.Tail],
+    buildRows: Option[() => Long]
 ) extends Operator:
   import MorselOp.*
 
@@ -63,7 +66,15 @@ class MorselOp(
       prepare: List[() => Unit] = Nil,
       release: List[() => Unit] = Nil,
       tail: Option[MorselOp.Tail] = None
-  ) = this(Seq(MorselOp.Segment(scan, pipeline)), schema, runner, prepare, release, tail.toSeq)
+  ) = this(
+    Seq(MorselOp.Segment(scan, pipeline)),
+    schema,
+    runner,
+    prepare,
+    release,
+    tail.toSeq,
+    None
+  )
 
   require(segments.nonEmpty, "MorselOp needs a segment")
 
@@ -145,7 +156,7 @@ class MorselOp(
     else
       val seg = segments(nextSegment)
       nextSegment += 1
-      seg.scan.source.scanSplits(seg.scan.spec) match
+      seg.scan.source.scanSplits(seg.scan.spec).orElse(slices(seg.scan)) match
         case Some(s) =>
           openParts(seg, s)
         case None =>
@@ -171,6 +182,21 @@ class MorselOp(
         splits = null
         more = openNext()
 
+  /** Whether a run over one in-memory batch may run over row ranges of it (for tests) */
+  def slicesOneBatch: Boolean = buildRows.isDefined
+
+  /** The row ranges that runs over one in-memory batch ran as (for tests); 0 when none did */
+  def slicedParts: Int        = slicedPartCount
+  private var slicedPartCount = 0
+
+  /** Row ranges of a scan of one in-memory batch, when the pipeline's builds are large */
+  private def slices(scan: ScanOp): Option[ScanSplits] =
+    val s = buildRows
+      .filter(_() >= SliceBuildRows)
+      .flatMap(_ => scan.source.sliceSplits(scan.spec, runner.parallelism))
+    s.foreach(x => slicedPartCount += x.parts.size)
+    s
+
   def next(): Batch =
     if !started then
       started = true
@@ -179,7 +205,7 @@ class MorselOp(
       if segments.size == 1 then
         val s = segments.head
         nextSegment = 1
-        s.scan.source.scanSplits(s.scan.spec) match
+        s.scan.source.scanSplits(s.scan.spec).orElse(slices(s.scan)) match
           case Some(sp) =>
             openParts(s, sp)
           case None =>
@@ -243,6 +269,13 @@ class MorselOp(
 end MorselOp
 
 object MorselOp:
+  /**
+    * The build rows from which a pipeline over one in-memory batch runs over row ranges of it
+    * (`slice_single_batch_probes`): its probes may emit up to that many rows, while a task per
+    * range costs about as much as probing a few thousand rows
+    */
+  val SliceBuildRows: Long = 65536
+
   /** A scan and the pipeline that each of its parts runs through */
   case class Segment(scan: ScanOp, pipeline: Operator => Operator)
 

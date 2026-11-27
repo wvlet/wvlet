@@ -54,6 +54,13 @@ class BreakerSource(val op: Operator, val name: String) extends TableSource:
       val sel = selector(spec)
       Some(ScanSplits(bs.map(b => () => Iterator.single(sel(b))), () => (), bs.map(_.size.toLong)))
 
+  override def sliceSplits(spec: ScanSpec, parts: Int): Option[ScanSplits] =
+    batches match
+      case IndexedSeq(b) =>
+        ScanSplits.slices(selector(spec)(b), parts)
+      case _ =>
+        None
+
   override def explainDetail(indent: Int): Option[String] = Some(op.explain(indent))
 
   /** Close the breaker and drop its output */

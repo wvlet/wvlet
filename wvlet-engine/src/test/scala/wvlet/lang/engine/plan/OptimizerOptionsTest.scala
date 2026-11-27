@@ -181,7 +181,8 @@ class OptimizerOptionsTest extends UniTest:
         "eager_distinct",
         "string_code_probe",
         "parallel_string_decode",
-        "parallel_join_keys"
+        "parallel_join_keys",
+        "slice_single_batch_probes"
       )
   }
 

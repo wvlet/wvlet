@@ -1098,6 +1098,14 @@ enum Optimization(val name: String):
     */
   case ParallelJoinKeys extends Optimization("parallel_join_keys")
 
+  /**
+    * A pipeline whose stream is one in-memory batch (an aggregation's output or a CTE result) runs
+    * as tasks over row ranges of the batch when its hash joins probe large builds, instead of on
+    * the calling thread. TPC-DS q65 probed the 2.3M-row (store, item) revenue result with its 102
+    * per-store averages on one thread, emitting every revenue row, while the workers waited
+    */
+  case SliceSingleBatchProbes extends Optimization("slice_single_batch_probes")
+
 end Optimization
 
 object Optimization:

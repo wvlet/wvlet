@@ -142,6 +142,12 @@ trait TableSource:
   def scanSplits(spec: ScanSpec): Option[ScanSplits] = None
 
   /**
+    * The scan of a source held in memory as one batch, cut into at most `parts` row ranges, for
+    * pipelines whose per-row work is large (`slice_single_batch_probes`). None for other sources
+    */
+  def sliceSplits(spec: ScanSpec, parts: Int): Option[ScanSplits] = None
+
+  /**
     * The identity of the data this source reads: sources with equal keys read the same rows, so
     * that plans over them can be shared. The source itself by default; sources created per
     * reference of the same file use their path
@@ -160,6 +166,26 @@ case class ScanSplits(
     close: () => Unit,
     rows: IndexedSeq[Long] = IndexedSeq.empty
 )
+
+object ScanSplits:
+  /**
+    * One batch cut into at most `parts` row ranges of about equal size, as parts; None for a batch
+    * of fewer than two rows
+    */
+  def slices(batch: Batch, parts: Int): Option[ScanSplits] =
+    val n = math.min(parts, batch.size)
+    Option.when(n > 1) {
+      val bounds = IndexedSeq.tabulate(n + 1)(i => (batch.size.toLong * i / n).toInt)
+      ScanSplits(
+        // Positions into the batch, so that no column is copied until a range's pipeline reads it
+        IndexedSeq.tabulate(n) { i =>
+          val (from, size) = (bounds(i), bounds(i + 1) - bounds(i))
+          () => Iterator.single(batch.take(Array.tabulate(size)(from + _), size))
+        },
+        () => (),
+        IndexedSeq.tabulate(n)(i => (bounds(i + 1) - bounds(i)).toLong)
+      )
+    }
 
 /** The [min, max] range of a column's non-null values in a part of a source, holding `rows` rows */
 case class ColumnPartRange(min: Long, max: Long, rows: Long)

@@ -194,6 +194,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // the same rows
     Optimization.ParallelStringDecode ->
       "Changes how a parallel decode builds its strings, not the plan",
+    // MorselOpTest and EngineSliceSingleBatchProbesTest check that a run over one batch slices,
+    // with the same rows
+    Optimization.SliceSingleBatchProbes ->
+      "Changes how a pipeline over one batch is split into tasks, not the plan",
     // GroupTableTest checks that nearly unique columns give up their codes after a few rows
     Optimization.StringCodeProbe ->
       "Changes when a join build gives up its string codes, not the plan",
