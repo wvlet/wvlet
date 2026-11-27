@@ -69,12 +69,27 @@ class WvletCliOptionsTest extends UniTest:
     e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
   }
 
-  test("point to the JVM CLI for the REPL") {
-    val e = intercept[WvletLangException] {
-      runCli("repl")
-    }
-    e.statusCode shouldBe StatusCode.NOT_IMPLEMENTED
-    e.getMessage shouldContain "JVM CLI"
+  test("run REPL commands with -c") {
+    val out = runCli("repl", "-c", "select 1 as answer", "-c", "help")
+    out shouldContain "wv> select 1 as answer"
+    out shouldContain "answer"
+    out shouldContain "[commands]"
+  }
+
+  test("keep saved tables across REPL commands") {
+    val out = runCli(
+      "repl",
+      "-c",
+      "from [[41]] as t(x) save to repl_saved",
+      "-c",
+      "from repl_saved select x + 1 as y"
+    )
+    out shouldContain "42"
+  }
+
+  test("stop REPL commands at exit") {
+    val out = runCli("repl", "-c", "exit", "-c", "select 7 as not_run")
+    out.contains("not_run") shouldBe false
   }
 
   test("treat --version as a successful exit") {

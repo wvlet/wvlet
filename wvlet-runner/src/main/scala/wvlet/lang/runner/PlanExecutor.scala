@@ -17,7 +17,13 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.InMemoryCatalog
 import wvlet.lang.catalog.Profile
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.query.QuerySelector
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
@@ -57,6 +63,28 @@ class PlanExecutor(
 
   private def activeConnector: SqlConnector = connectorProvider.getConnector(activeConfig)
 
+  // The REPL's `rows` command changes it between statements
+  private var currentRowLimit: Int = rowLimit
+
+  /** Set the maximum number of rows a query returns */
+  def setRowLimit(limit: Int): PlanExecutor =
+    currentRowLimit = limit
+    this
+
+  /**
+    * Run the statement of `unit` that `querySelection` picks at `linePosition`, e.g., the query
+    * fragment above the cursor for the REPL's describe and subquery-run key chords
+    */
+  def executeSelectedStatement(
+      unit: CompilationUnit,
+      querySelection: QuerySelection,
+      linePosition: LinePosition,
+      rootContext: Context
+  ): QueryResult =
+    val targetStatement = QuerySelector.selectQuery(unit, linePosition, querySelection)
+    val ctx             = rootContext.withCompilationUnit(unit).newContext(Symbol.NoSymbol)
+    execute(ExecutionPlanner.plan(unit, targetStatement)(using ctx), ctx)
+
   // In-process engine sessions, one per wvlet connector config (tables saved in a session stay
   // visible to later statements). `initialEngineSessions` lets a caller that already compiles
   // against a session's catalog (WvletEmbed) run on that same session
@@ -72,7 +100,7 @@ class PlanExecutor(
   override def close(): Unit = engineSessions.clear()
 
   override protected def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
-    executeQuery(plan, rowLimit)
+    executeQuery(plan, currentRowLimit)
 
   override protected def executeQueryAllRows(plan: LogicalPlan)(using
       context: Context

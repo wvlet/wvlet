@@ -46,20 +46,12 @@ case class WvletScriptRunnerConfig(
     precompileSourcePaths: Boolean = true
 )
 
-case class LastOutput(
-    line: String,
-    output: String,
-    result: QueryResult,
-    error: Option[Throwable] = None
-):
-  def hasError: Boolean = error.isDefined
-
 class WvletScriptRunner(
     workEnv: WorkEnv,
     config: WvletScriptRunnerConfig,
     queryExecutor: QueryExecutor,
     threadManager: ThreadManager
-) extends AutoCloseable
+) extends ScriptRunner
     with LogSupport:
 
   private var units: List[CompilationUnit] = Nil
@@ -67,12 +59,12 @@ class WvletScriptRunner(
   private var resultRowLimits: Int   = config.resultLimit
   private var resultMaxColWidth: Int = config.maxColWidth
 
-  def getResultRowLimit: Int              = resultRowLimits
-  def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
-  def setMaxColWidth(size: Int): Unit     = resultMaxColWidth = size
+  override def getResultRowLimit: Int              = resultRowLimits
+  override def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
+  override def setMaxColWidth(size: Int): Unit     = resultMaxColWidth = size
 
-  def getCurrentCatalog: String = compiler.getDefaultCatalog.catalogName
-  def getCurrentSchema: String  = compiler.getDefaultSchema
+  override def getCurrentCatalog: String = compiler.getDefaultCatalog.catalogName
+  override def getCurrentSchema: String  = compiler.getDefaultSchema
 
   override def close(): Unit = queryExecutor.close()
 
@@ -171,7 +163,7 @@ class WvletScriptRunner(
         debug(e)
   }
 
-  def runStatement(request: QueryRequest)(using
+  override def runStatement(request: QueryRequest)(using
       queryProgressMonitor: QueryProgressMonitor
   ): QueryResult =
     val newUnit = CompilationUnit.fromWvletString(request.query)
@@ -215,7 +207,11 @@ class WvletScriptRunner(
     * @param terminalWidth
     *   the number of terminal columns
     */
-  def displayOutput(query: String, queryResult: QueryResult, terminalWidth: Int): LastOutput =
+  override def displayOutput(
+      query: String,
+      queryResult: QueryResult,
+      terminalWidth: Int
+  ): LastOutput =
     def print: LastOutput =
       val str            = queryResult.toPrettyBox(maxColWidth = resultMaxColWidth)
       val resultMaxWidth = str.split("\n").map(_.size).max
@@ -259,7 +255,7 @@ class WvletScriptRunner(
     * Render the query result as a box cut to `maxWidth` columns without printing it, e.g., to show
     * it above the input being edited
     */
-  def renderOutput(query: String, queryResult: QueryResult, maxWidth: Int): LastOutput =
+  override def renderOutput(query: String, queryResult: QueryResult, maxWidth: Int): LastOutput =
     queryResult.getError match
       case None =>
         val str = queryResult.toPrettyBox(

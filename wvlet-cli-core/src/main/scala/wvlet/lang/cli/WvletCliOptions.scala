@@ -6,6 +6,7 @@ import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.DBType
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.option
+import wvlet.uni.io.IO
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
 import wvlet.uni.log.Logger
@@ -212,5 +213,30 @@ case class WvletREPLOption(
   def noCatalog(): WvletREPLOption                          = copy(catalog = None)
   def withSchema(schema: String): WvletREPLOption           = copy(schema = Some(schema))
   def noSchema(): WvletREPLOption                           = copy(schema = None)
+
+  /**
+    * The profile the REPL runs with: `-t` alone picks the engine's default profile, and without
+    * either `-t` or `-p`, the REPL runs on the in-process wvlet engine
+    */
+  def resolveProfile: Profile =
+    targetDBType match
+      case Some(target) =>
+        if profile.isDefined then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException("Specify either -t (--target) or --profile")
+        Profile.defaultProfileFor(DBType.fromString(target)).withEngineOverrides(catalog, schema)
+      case None =>
+        Profile.getProfile(profile, catalog, schema, Profile.defaultWvletProfile)
+
+  /** Commands given with `-c`, then the content of the `-f` file */
+  def inputScripts: List[String] =
+    val file = inputFile.map { f =>
+      val path = IO.path(workFolder, f)
+      if !IO.exists(path) then
+        throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${path.path}")
+      IO.readString(path)
+    }
+    commands ++ file
 
 end WvletREPLOption

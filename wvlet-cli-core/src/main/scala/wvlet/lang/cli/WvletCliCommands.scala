@@ -18,8 +18,8 @@ import wvlet.uni.log.LogSupport
 /**
   * The `wvlet` commands shared by every distribution: `version`, `compile`, `to_wvlet`, `skill`,
   * `run`, and `repl`. Each distribution implements only the platform hooks: how to compile, how to
-  * run a query locally, and whether it has the REPL. The JVM CLI (`WvletMain`) adds its JVM-only
-  * commands on top.
+  * run a query locally, and which script runner the REPL uses. The JVM CLI (`WvletMain`) adds its
+  * JVM-only commands on top.
   */
 trait WvletCliCommands extends LogSupport:
 
@@ -35,16 +35,8 @@ trait WvletCliCommands extends LogSupport:
     */
   protected def runLocally(opt: WvletCliCompileOption, profile: Profile): QueryResult
 
-  /**
-    * Start the interactive REPL, or run its `-c`/`-f` commands. Distributions without the REPL keep
-    * this default, which names the distribution that has it.
-    */
-  protected def startREPL(opt: WvletREPLOption): Unit =
-    throw StatusCode
-      .NOT_IMPLEMENTED
-      .newException(
-        "The REPL is available in the JVM CLI (Homebrew or the release package) for now: https://wvlet.org/wvlet/docs/usage/install"
-      )
+  /** Start the interactive REPL, or run its `-c`/`-f` commands */
+  protected def startREPL(opt: WvletREPLOption): Unit
 
   /**
     * The profile used when neither `-t` nor `-p` is given: the in-process wvlet engine

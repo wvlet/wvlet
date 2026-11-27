@@ -132,6 +132,6 @@ pipelines are in [references/models.md](references/models.md).
 | `wvlet to_wvlet "<sql>"` | Convert SQL to Wvlet |
 | `wvlet build [-s m+] [--dry-run]` | Build materialized models in dependency order |
 | `wvlet skill [syntax\|models\|testing\|cli]` | Print this skill as shipped with the installed CLI |
-| `wvlet repl` | Interactive REPL (JVM CLI; `wv` is an alias); `wvlet repl -c "<query>"` runs one query |
+| `wvlet repl` | Interactive REPL (`wv` is an alias on the JVM CLI); `wvlet repl -c "<query>"` runs one query |
 
 Engines, profiles, flows, and installation are in [references/cli.md](references/cli.md).

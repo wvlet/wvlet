@@ -4,9 +4,9 @@
 
 - `wvlet` is the single command of every distribution, with the same options everywhere.
 - `npm install -g @wvlet/cli` (Node.js 22+): `wvlet version`, `compile`, `to_wvlet`, `run`,
-  `skill` with DuckDB included and no JDK.
-- `brew install wvlet/wvlet/wvlet` or a release package: the JVM CLI, which adds the REPL
-  (`wvlet repl`, or its `wv` alias), `wvlet build`, `flow`, `catalog`, and `ui`. DuckDB (`-t duckdb`) and Snowflake on the
+  `repl`, `skill` with DuckDB included and no JDK.
+- `brew install wvlet/wvlet/wvlet` or a release package: the JVM CLI, which adds the `wv` alias
+  of `wvlet repl`, `wvlet build`, `flow`, `catalog`, `ui`, and the JDBC connectors. DuckDB (`-t duckdb`) and Snowflake on the
   JVM CLI need the full package `wvlet-cli-full-<version>.tar.gz` from the GitHub release; the
   default package reports this when they are selected.
 
@@ -25,7 +25,7 @@
 | `wvlet flow run <flow>` | Run a `flow` pipeline |
 | `wvlet skill [file]`, `wvlet skill files` | Print this skill (or a reference) as shipped with the installed version |
 | `wvlet skill install [--agent claude,codex,pi] [--global]` | Install or update this skill for coding agents; `list` and `remove --yes` manage it |
-| `wvlet repl`, `wvlet repl -c "<query>"` | REPL (JVM CLI), or run one query and exit; `wv` is an alias |
+| `wvlet repl`, `wvlet repl -c "<query>"` | REPL, or run one query and exit; `wv` is an alias on the JVM CLI |
 
 `compile`, `to_wvlet`, `run`, and `repl` share `-p, --profile <name>`, `-t <engine>`,
 `-w <folder>` (working folder), `--catalog`, and `--schema`; `-l debug` gives debug logs. A bare

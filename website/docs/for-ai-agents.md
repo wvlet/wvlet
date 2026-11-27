@@ -143,9 +143,9 @@ select status, count(*) as n
 
 ## How do I run Wvlet?
 
-`wvlet` is the single command of every distribution, with the same options everywhere. Install it with npm (`npm install -g @wvlet/cli`, Node.js 22+): it provides `wvlet version`, `compile`, `to_wvlet`, `run`, and `skill` (DuckDB included, no JDK needed). The JVM CLI, which adds the REPL (`wvlet repl`), `wvlet build`, `flow`, `catalog`, and `ui`, is installed with Homebrew (`brew install wvlet/wvlet/wvlet`) or a release package; DuckDB (`-t duckdb`) and Snowflake on the JVM CLI need the full package `wvlet-cli-full-<version>.tar.gz`; see [Installation](./usage/install.md). The commands:
+`wvlet` is the single command of every distribution, with the same options everywhere. Install it with npm (`npm install -g @wvlet/cli`, Node.js 22+): it provides `wvlet version`, `compile`, `to_wvlet`, `run`, `repl`, and `skill` (DuckDB included, no JDK needed). The JVM CLI, which adds the `wv` alias, `wvlet build`, `flow`, `catalog`, and `ui`, is installed with Homebrew (`brew install wvlet/wvlet/wvlet`) or a release package; DuckDB (`-t duckdb`) and Snowflake on the JVM CLI need the full package `wvlet-cli-full-<version>.tar.gz`; see [Installation](./usage/install.md). The commands:
 
-- `wvlet repl` (JVM CLI only): an interactive shell (REPL); a bare `wvlet` on a terminal opens it too, and `wv` is an alias. `wvlet repl -c "from 'data.csv' count"` runs one query and exits. Without a terminal, a bare `wvlet` prints the version, so it never waits for input.
+- `wvlet repl`: an interactive shell (REPL); a bare `wvlet` on a terminal opens it too, and `wv` is an alias on the JVM CLI. `wvlet repl -c "from 'data.csv' count"` runs one query and exits. Without a terminal, a bare `wvlet` prints the version, so it never waits for input.
 - `wvlet`: batch commands.
   - `wvlet run "from 'data.parquet' limit 10"` runs a query; `wvlet run -f query.wv` runs a file. `--format csv` prints the last result as CSV, and a failed `test` exits with status 1.
   - `wvlet compile -f query.wv` prints the generated SQL; add `--target trino` (or another engine) to choose the SQL dialect.

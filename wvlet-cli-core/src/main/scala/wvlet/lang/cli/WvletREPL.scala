@@ -18,9 +18,9 @@ import wvlet.uni.cli.LineEditor
 import wvlet.uni.cli.LineResult
 import wvlet.uni.io.IO
 import wvlet.uni.log.AnsiColorPalette
+import wvlet.uni.rx.Rx
 import wvlet.uni.util.Count
 import wvlet.uni.util.ElapsedTime
-import wvlet.uni.util.ThreadUtil
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
@@ -36,32 +36,28 @@ import wvlet.lang.compiler.query.QueryMetric
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.plan.QueryStatement
 import wvlet.lang.runner.LastOutput
-import wvlet.lang.runner.WvletScriptRunner
+import wvlet.lang.runner.ScriptRunner
 import wvlet.uni.log.LogSupport
 
-import java.util.concurrent.Executors
-import java.util.concurrent.CancellationException
-import java.util.concurrent.Future
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import scala.io.AnsiColor
+import scala.util.Failure
+import scala.util.Success
 
 /**
   * Wvlet REPL with pluggable terminal implementation
+  *
+  * The same REPL runs on the JVM, Node.js, and Native; only the script runner and how queries run
+  * (see [[REPLQueries]]) differ.
   *
   * @param runner
   *   Script runner for executing queries
   * @param terminal
   *   Terminal implementation (UniTerminal for interactive, HeadlessTerminal for non-interactive)
   */
-class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
-    extends AutoCloseable
-    with LogSupport:
+class WvletREPL(runner: ScriptRunner, terminal: REPLTerminal) extends AutoCloseable with LogSupport:
   import WvletREPL.*
 
-  private val executorThreadManager = Executors.newCachedThreadPool(
-    ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor")
-  )
+  private val queries: REPLQueries = REPLCompat.newQueries()
 
   private given progressMonitor: QueryProgressMonitor =
     new QueryProgressMonitor:
@@ -110,33 +106,15 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
 
   override def close(): Unit =
     terminal.close()
-    executorThreadManager.shutdown()
+    queries.close()
 
   private var lastOutput: Option[LastOutput] = None
 
   /**
-    * Run the body in a new thread, so that Ctrl-C can cancel the running query. Returns None when
+    * Run a query so that Ctrl-C can cancel it, where the platform allows. Returns None when
     * cancelled.
     */
-  private def withNewThread[Result](body: => Result): Option[Result] =
-    // Register the handler before submitting, so that an early Ctrl-C is not lost
-    val cancelled = AtomicBoolean(false)
-    val task      = AtomicReference[Future[Result]]()
-    val onCtrlC   = terminal.onInterrupt { () =>
-      cancelled.set(true)
-      Option(task.get()).foreach(_.cancel(true))
-    }
-    try
-      task.set(executorThreadManager.submit(() => body))
-      if cancelled.get() then
-        task.get().cancel(true)
-      Some(task.get().get())
-    catch
-      case e: CancellationException =>
-        logger.error("Cancelled the query")
-        None
-    finally
-      onCtrlC.cancel
+  private def withNewThread[Result](body: => Result): Option[Result] = queries.run(terminal)(body)
 
   /**
     * Run a query from a key binding. The input is edited in raw mode, where Ctrl-C is a key, so
@@ -246,9 +224,11 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
   )
 
   /**
-    * Run the given commands, or read and run inputs until the user exits
+    * Run the given commands, or read and run inputs until the user exits. Completes when the REPL
+    * ends: on the JVM and Native, before this returns; on Node.js, later, as inputs are read
+    * asynchronously
     */
-  def start(commands: List[String] = Nil): Unit =
+  def start(commands: List[String] = Nil): Rx[Unit] =
     if commands.nonEmpty then
       // If commands are given, run them in order, stopping at an exit command
       commands
@@ -259,6 +239,7 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
         }
         .takeWhile(identity)
         .foreach(_ => ())
+      Rx.single(())
     else
       terminal.bindKeys(
         Seq(
@@ -272,25 +253,28 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
       readLoop()
 
   /**
-    * Read and evaluate inputs until exit, Ctrl-C, or Ctrl-D on an empty line.
-    *
-    * Each read blocks with `await` instead of chaining reads with `Rx.flatMap`: on the JVM, the
-    * reads complete synchronously, so a flatMap chain grows the stack with every input and
-    * overflows in a long session.
+    * Read and evaluate inputs until exit, Ctrl-C, or Ctrl-D on an empty line. [[REPLCompat.loop]]
+    * keeps the stack flat however long the session is.
     */
-  private def readLoop(): Unit =
-    var toContinue = true
-    while toContinue do
-      try
-        terminal.readLine("wv> ").await match
-          case LineResult.Line(line) =>
-            toContinue = eval(line)
-          case LineResult.Interrupted(_) | LineResult.EndOfInput =>
-            toContinue = false
-      catch
-        case e: Exception =>
-          // e.g., an error in a key binding. Keep the REPL running
-          error(e)
+  private def readLoop(): Rx[Unit] = REPLCompat.loop { () =>
+    try
+      terminal
+        .readLine("wv> ")
+        .transform {
+          case Success(LineResult.Line(line)) =>
+            eval(line)
+          case Success(LineResult.Interrupted(_) | LineResult.EndOfInput) =>
+            false
+          case Failure(e) =>
+            // e.g., an error in a key binding. Keep the REPL running
+            error(e)
+            true
+        }
+    catch
+      case e: Exception =>
+        error(e)
+        Rx.single(true)
+  }
 
   /**
     * Evaluate one input. Returns false when the REPL should exit

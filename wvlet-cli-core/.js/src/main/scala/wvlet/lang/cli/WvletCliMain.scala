@@ -1,5 +1,6 @@
 package wvlet.lang.cli
 
+import wvlet.uni.cli.TerminalIO
 import wvlet.uni.cli.launcher.Launcher
 
 import scala.scalajs.js
@@ -12,6 +13,18 @@ import scala.scalajs.js
   * }}}
   */
 object WvletCliMain:
+
+  /**
+    * `wvlet` with no arguments on an interactive terminal opens the REPL, like `duckdb` or
+    * `python`. Pipes, CI, and agents get the version instead, so a bare `wvlet` never waits for
+    * input there.
+    */
+  def withDefaultCommand(args: Array[String]): Array[String] =
+    if args.isEmpty && TerminalIO.default.isTTY then
+      Array("repl")
+    else
+      args
+
   private def launcher: Launcher = Launcher.of[WvletCli]
 
   def main(args: Array[String]): Unit =
@@ -21,7 +34,7 @@ object WvletCliMain:
     val argv     = js.Dynamic.global.process.argv.asInstanceOf[js.Array[String]]
     val realArgs = argv.toArray.drop(2)
     try
-      launcher.execute(realArgs)
+      launcher.execute(WvletCliMain.withDefaultCommand(realArgs))
     catch
       case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>
       // --version: the version is already printed

@@ -3,7 +3,6 @@ package wvlet.lang.cli
 import wvlet.uni.cli.launcher.Launcher
 import wvlet.uni.cli.launcher.command
 import wvlet.uni.design.Design
-import wvlet.lang.api.StatusCode.SYNTAX_ERROR
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
@@ -11,7 +10,6 @@ import wvlet.lang.cli.terminal.HeadlessTerminal
 import wvlet.lang.cli.terminal.UniTerminal
 import wvlet.uni.cli.TerminalIO
 import wvlet.lang.cli.terminal.REPLTerminal
-import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.QueryExecutorConfig
@@ -20,10 +18,7 @@ import wvlet.lang.runner.WvletScriptRunnerConfig
 import wvlet.lang.runner.activity.ItemStore
 import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.connector.ConnectorProvider
-import wvlet.uni.io.IO
 import wvlet.uni.log.LogSupport
-
-import java.io.File
 
 /**
   * The `wv` launcher: an alias of `wvlet repl`, kept for existing scripts and muscle memory
@@ -52,20 +47,7 @@ class WvletREPLMain(cliOption: WvletCliGlobalOption, replOpts: WvletREPLOption) 
 
   @command(description = "Start REPL shell", isDefault = true)
   def repl(): Unit =
-    val commandInputs = List.newBuilder[String]
-    commandInputs ++= replOpts.commands
-    replOpts
-      .inputFile
-      .foreach { file =>
-        val f = new File(replOpts.workFolder, file)
-        if f.exists() then
-          val contents = IO.readString(IO.path(f.getPath))
-          commandInputs += contents
-        else
-          throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
-      }
-
-    val inputScripts = commandInputs.result()
+    val inputScripts = replOpts.inputScripts
     replDesign(isInteractive = inputScripts.isEmpty).build[WvletREPL] { repl =>
       repl.start(inputScripts)
     }
@@ -77,24 +59,7 @@ class WvletREPLMain(cliOption: WvletCliGlobalOption, replOpts: WvletREPLOption) 
     * with `TerminalIO.inMemory(...)`.
     */
   private[cli] def replDesign(isInteractive: Boolean): Design =
-    val currentProfile: Profile =
-      replOpts.targetDBType match
-        case Some(target) =>
-          if replOpts.profile.isDefined then
-            throw StatusCode
-              .INVALID_ARGUMENT
-              .newException("Specify either -t (--target) or --profile")
-          Profile
-            .defaultProfileFor(DBType.fromString(target))
-            .withEngineOverrides(replOpts.catalog, replOpts.schema)
-        case None =>
-          // Without a profile, the REPL runs on the in-process wvlet engine
-          Profile.getProfile(
-            replOpts.profile,
-            replOpts.catalog,
-            replOpts.schema,
-            Profile.defaultWvletProfile
-          )
+    val currentProfile: Profile = replOpts.resolveProfile
 
     val selectedCatalog = currentProfile.defaultEngine.catalog
     val selectedSchema  = currentProfile.defaultEngine.schema
