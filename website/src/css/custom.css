@@ -60,6 +60,6 @@ html.wvlet-home .navbar {
 }
 
 html.wvlet-home[data-theme='dark'] .navbar {
-  background: rgb(11 19 17 / 0.72);
+  background: rgb(7 15 18 / 0.72);
   border-bottom-color: rgb(255 255 255 / 0.06);
 }

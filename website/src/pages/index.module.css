@@ -15,6 +15,8 @@
   --glow-2: hsl(158 70% 48% / 0.17);
   --glow-3: hsl(198 90% 60% / 0.13);
   --grid: hsl(190 30% 20% / 0.055);
+  --wave-a: hsl(186 90% 45%);
+  --wave-b: hsl(160 70% 45%);
   --shine-1: 192 92% 22%;
   --shine-2: 186 100% 42%;
   --shine-3: 198 70% 36%;
@@ -31,21 +33,24 @@
 }
 
 :global([data-theme='dark']) .home {
-  --bg: 185 18% 5%;
-  --bg-2: 185 16% 7.5%;
-  --card: 185 14% 9%;
-  --ink: 185 20% 94%;
-  --ink-2: 185 8% 66%;
-  --line: 185 10% 16%;
-  --primary: 186 85% 60%;
-  --glow-1: hsl(186 95% 45% / 0.2);
-  --glow-2: hsl(158 80% 40% / 0.13);
-  --glow-3: hsl(200 90% 55% / 0.11);
-  --grid: hsl(0 0% 100% / 0.045);
-  --shine-1: 186 95% 50%;
-  --shine-2: 180 100% 78%;
-  --shine-3: 196 85% 58%;
-  --term-bg: 188 25% 3.5%;
+  /* Tinted toward the icon's teal: #00d2e9 (186 100% 46%) to #045962 (186 92% 20%). */
+  --bg: 190 42% 5%;
+  --bg-2: 190 38% 7.5%;
+  --card: 190 34% 9.5%;
+  --ink: 186 30% 95%;
+  --ink-2: 186 14% 68%;
+  --line: 188 30% 17%;
+  --primary: 186 100% 52%;
+  --glow-1: hsl(186 100% 46% / 0.22);
+  --glow-2: hsl(186 92% 24% / 0.45);
+  --glow-3: hsl(186 100% 62% / 0.1);
+  --grid: hsl(186 100% 70% / 0.05);
+  --wave-a: hsl(186 100% 46%);
+  --wave-b: hsl(186 92% 28%);
+  --shine-1: 186 100% 46%;
+  --shine-2: 186 100% 74%;
+  --shine-3: 186 92% 38%;
+  --term-bg: 190 45% 3.5%;
   --shadow: 0 30px 80px -30px #000000b3, 0 8px 24px -12px #00000080;
 }
 
@@ -917,15 +922,8 @@
   padding: 96px clamp(16px, 5vw, 72px) 112px;
 }
 
-/* A dark panel in both themes, so the page ends on a confident contrast. */
+/* The closing panel uses the hero's palette: glows and a faint grid over the page colors. */
 .closingPanel {
-  --ink: 185 20% 96%;
-  --ink-2: 185 10% 72%;
-  --bg: 190 30% 8%;
-  --card: 190 25% 14%;
-  --line: 185 20% 30%;
-  --grid: hsl(0 0% 100% / 0.05);
-
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -936,13 +934,13 @@
   max-width: 1176px;
   margin: 0 auto;
   padding: 88px 24px 160px;
-  border: 1px solid hsl(186 40% 30% / 0.5);
+  border: 1px solid hsl(var(--line));
   border-radius: 28px;
   background:
-    radial-gradient(ellipse 70% 60% at 50% 0%, hsl(186 90% 45% / 0.3), transparent 70%),
-    radial-gradient(ellipse 50% 50% at 100% 100%, hsl(158 75% 40% / 0.22), transparent 70%),
-    hsl(190 30% 8%);
-  box-shadow: var(--shadow);
+    radial-gradient(ellipse 70% 60% at 50% 0%, var(--glow-1), transparent 70%),
+    radial-gradient(ellipse 50% 50% at 0% 100%, var(--glow-2), transparent 70%),
+    radial-gradient(ellipse 40% 40% at 100% 100%, var(--glow-3), transparent 70%),
+    hsl(var(--card));
   text-align: center;
 }
 
@@ -963,11 +961,6 @@
   font-size: clamp(34px, 4.4vw, 60px);
 }
 
-.closingPanel .shimmer {
-  --shine-1: 186 95% 50%;
-  --shine-2: 180 100% 78%;
-  --shine-3: 196 85% 58%;
-}
 
 .closingPanel .ctas { justify-content: center; }
 

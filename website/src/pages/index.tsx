@@ -81,11 +81,11 @@ function Waves({lines = 12, className}: {lines?: number; className?: string}): R
       <svg viewBox={`0 0 ${WAVE_W * 2} ${WAVE_H}`} preserveAspectRatio="none">
         <defs>
           <linearGradient id="wv-wave" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={WAVE_W * 2} y2="0">
-            <stop offset="0" stopColor="hsl(186 90% 45%)" />
-            <stop offset="0.25" stopColor="hsl(160 70% 45%)" />
-            <stop offset="0.5" stopColor="hsl(186 90% 45%)" />
-            <stop offset="0.75" stopColor="hsl(160 70% 45%)" />
-            <stop offset="1" stopColor="hsl(186 90% 45%)" />
+            <stop offset="0" style={{stopColor: 'var(--wave-a)'}} />
+            <stop offset="0.25" style={{stopColor: 'var(--wave-b)'}} />
+            <stop offset="0.5" style={{stopColor: 'var(--wave-a)'}} />
+            <stop offset="0.75" style={{stopColor: 'var(--wave-b)'}} />
+            <stop offset="1" style={{stopColor: 'var(--wave-a)'}} />
           </linearGradient>
         </defs>
         {/* Translucent filled bands give the ribbon body; the lines on top give it texture. */}
