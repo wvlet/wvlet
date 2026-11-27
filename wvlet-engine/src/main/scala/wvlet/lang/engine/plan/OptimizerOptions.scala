@@ -1106,6 +1106,23 @@ enum Optimization(val name: String):
     */
   case SliceSingleBatchProbes extends Optimization("slice_single_batch_probes")
 
+  /**
+    * Planning remembers what it computes more than once per query (`planning_memo`): whether a
+    * subquery is correlated (it plans the subquery to see whether a column is missing), and the SQL
+    * text [[wvlet.lang.engine.plan.Planner]] matches OR branches' conjuncts by. The binder's
+    * missing-column signal, which these checks and `bindsIn` catch, carries no stack trace. Small
+    * TPC-DS queries with a correlated scalar subquery (q32, q41, q92) planned it two or three
+    * times, and filling in the stack traces of ~75 missed bindings took ~5% of their planning
+    */
+  case PlanningMemo extends Optimization("planning_memo")
+
+  /**
+    * Common subexpression elimination counts subexpressions by a structural hash computed once per
+    * node, bottom-up (`cse_hashed_keys`), instead of hashing each subtree again at every ancestor.
+    * TPC-DS q41's filter, an OR of eight ANDs, spent ~20% of its planning hashing them
+    */
+  case CseHashedKeys extends Optimization("cse_hashed_keys")
+
 end Optimization
 
 object Optimization:

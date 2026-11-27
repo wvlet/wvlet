@@ -66,7 +66,13 @@ case class BindScope(schema: Schema, offset: Int = 0, parent: Option[BindScope] 
     schema.fields.exists(_.qualifiers.exists(_.equalsIgnoreCase(q))) ||
       parent.exists(_.hasQualifier(q))
 
-class ColumnNotFound(msg: String) extends Exception(msg)
+/**
+  * A column that doesn't resolve in the binding scope. Planning also binds expressions to test
+  * where they resolve (`Planner.bindsIn`, `isCorrelated`) and catches this, so without `stackTrace`
+  * it is thrown without filling in one
+  */
+class ColumnNotFound(msg: String, stackTrace: Boolean = true)
+    extends Exception(msg, null, true, stackTrace)
 
 /**
   * Aggregation context: grouping keys (bound over the input) and the aggregate calls collected
@@ -603,7 +609,8 @@ class Binder(
         throw ColumnNotFound(
           s"Column not found: ${qualifier
               .map(q => s"${q}.")
-              .getOrElse("")}${name} (available: ${scope.schema.names.mkString(", ")})"
+              .getOrElse("")}${name} (available: ${scope.schema.names.mkString(", ")})",
+          stackTrace = !planner.enabled(Optimization.PlanningMemo)
         )
 
   private def castTo(e: VExpr, t: PType): VExpr =

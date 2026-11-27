@@ -116,6 +116,12 @@ class EngineOptimizerToggleTest extends UniTest:
     * tests that check that they take effect
     */
   private val noPlanChange: Map[Optimization, String] = Map(
+    // EnginePlanningMemoTest checks that a subquery's correlation is checked once
+    Optimization.PlanningMemo ->
+      "Changes how often planning checks a subquery's correlation, not the plan",
+    // CommonSubexpressionsTest checks that both ways share the same subexpressions
+    Optimization.CseHashedKeys ->
+      "Changes how common subexpressions are counted, not which ones are shared",
     // EngineLateColumnsTest checks the rewrite and its rows; it needs 64x the limit's rows at the
     // sort, which the golden scales don't reach (TPC-H q10 sorts at most 150 customers)
     Optimization.LateColumns ->

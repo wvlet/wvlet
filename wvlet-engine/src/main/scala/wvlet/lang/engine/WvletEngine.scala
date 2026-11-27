@@ -135,23 +135,22 @@ class WvletEngine(
         path
 
   /** Build the physical plan of a relation (model references must already be expanded) */
-  def physicalPlan(r: Relation)(using ctx: Context): Operator = Planner(
+  def physicalPlan(r: Relation)(using ctx: Context): Operator = newPlanner.plan(lowerShow(r))
+
+  /** A planner for one query over this engine's catalog and options */
+  private[engine] def newPlanner(using ctx: Context): Planner = Planner(
     catalog,
     DefaultResolver(),
     optimizer,
     accelerator
-  ).plan(lowerShow(r))
+  )
 
   /**
     * The engine's runtime plan of a relation (model references must already be expanded), for tests
     * and debugging
     */
-  def runtimePlan(r: Relation)(using ctx: Context): wvlet.lang.engine.runtime.RuntimePlan = Planner(
-    catalog,
-    DefaultResolver(),
-    optimizer,
-    accelerator
-  ).runtimePlan(lowerShow(r))
+  def runtimePlan(r: Relation)(using ctx: Context): wvlet.lang.engine.runtime.RuntimePlan =
+    newPlanner.runtimePlan(lowerShow(r))
 
   /** SHOW statements become their SQL queries over information_schema (or a VALUES list) */
   private def lowerShow(r: Relation)(using ctx: Context): Relation = r

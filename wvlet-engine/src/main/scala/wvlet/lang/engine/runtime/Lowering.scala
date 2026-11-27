@@ -104,7 +104,8 @@ object Lowering:
       columnImpliedRowFilters: Boolean = false,
       deferredNullChecks: Boolean = false,
       fusedDecimalArith: Boolean = false,
-      semiAntiOneProbe: Boolean = false
+      semiAntiOneProbe: Boolean = false,
+      cseHashedKeys: Boolean = false
   ): Operator =
     val l = Lower(
       joinFilters,
@@ -135,7 +136,8 @@ object Lowering:
       columnImpliedRowFilters,
       deferredNullChecks,
       fusedDecimalArith,
-      semiAntiOneProbe
+      semiAntiOneProbe,
+      cseHashedKeys
     )
     if inSet then
       l.markInSet(p)
@@ -184,7 +186,8 @@ object Lowering:
       columnImpliedRowFilters: Boolean,
       deferredNullChecks: Boolean,
       fusedDecimalArith: Boolean,
-      semiAntiOneProbe: Boolean
+      semiAntiOneProbe: Boolean,
+      cseHashedKeys: Boolean
   ):
     // Filters for the scans not lowered yet, by the id of the column they filter
     private val pending = mutable.Map.empty[Int, List[RuntimeFilter]]
@@ -221,6 +224,7 @@ object Lowering:
               inSet = inSet,
               footerCache = footerCache,
               commonSubexpressions = commonSubexpressions,
+              cseHashedKeys = cseHashedKeys,
               foldConstants = foldConstants,
               scanRowFilters = scanRowFilters,
               dictionaryCodes = dictionaryCodes,
@@ -277,7 +281,7 @@ object Lowering:
       */
     private def shared(input: Operator, exprs: IndexedSeq[VExpr]): (Operator, IndexedSeq[VExpr]) =
       if commonSubexpressions then
-        CommonSubexpressions.share(input, exprs)
+        CommonSubexpressions.share(input, exprs, cseHashedKeys)
       else
         (input, exprs)
 

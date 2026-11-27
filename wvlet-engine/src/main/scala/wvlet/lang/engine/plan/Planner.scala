@@ -73,6 +73,7 @@ class Planner(
     windowTopN = enabled(Optimization.WindowTopN),
     windowKernels = enabled(Optimization.RunningWindowKernels),
     commonSubexpressions = enabled(Optimization.CommonSubexpressions),
+    cseHashedKeys = enabled(Optimization.CseHashedKeys),
     foldConstants = enabled(Optimization.FoldConstants),
     windowSortKernels = enabled(Optimization.WindowSortKernels),
     scanRowFilters = enabled(Optimization.ScanRowFilters),
@@ -3121,7 +3122,16 @@ class Planner(
     * literals (whitespace kept), and LIKE's ESCAPE. Not [[exprName]], which names `l.b` and `r.b`
     * alike as `b`, nor [[printSql]], which reads `'x  y'` as `'x y'`
     */
-  private def exprKey(e: Expression): String = sqlText(e)
+  private def exprKey(e: Expression): String =
+    if enabled(Optimization.PlanningMemo) then
+      // A subquery's conditions are factored each time it is planned, as copies (`planning_memo`):
+      // equal expressions print the same SQL text
+      exprKeys.getOrElseUpdate(e, sqlText(e))
+    else
+      sqlText(e)
+
+  // The keys exprKey computed so far, by expression
+  private val exprKeys = scala.collection.mutable.HashMap.empty[Expression, String]
 
   /** (a and b) or (a and c) => a and (b or c), so join keys inside OR branches become usable */
   private def factorOr(e: Expression): List[Expression] =
@@ -3205,12 +3215,31 @@ class Planner(
 
   /** Whether a subquery references columns of the enclosing schema */
   private def isCorrelated(sub: Relation, outer: Schema): Boolean =
-    try
-      Planner.nested(this).planRelation(sub)
-      false
-    catch
-      case e: ColumnNotFound =>
-        true
+    def check(): Boolean =
+      correlationChecks += 1
+      try
+        Planner.nested(this).planRelation(sub)
+        false
+      catch
+        case e: ColumnNotFound =>
+          true
+    if enabled(Optimization.PlanningMemo) then
+      // Asked several times per subquery while planning a query (`planning_memo`)
+      val known = correlatedSubqueries.get(sub)
+      if known != null then
+        known
+      else
+        val c = check()
+        correlatedSubqueries.put(sub, c)
+        c
+    else
+      check()
+
+  // Whether each subquery planned so far is correlated, by identity
+  private val correlatedSubqueries = java.util.IdentityHashMap[Relation, java.lang.Boolean]()
+
+  /** How many times this planner planned a subquery to tell whether it is correlated (for tests) */
+  private[engine] var correlationChecks: Int = 0
 
   /**
     * A filter conjunct that is EXISTS, NOT EXISTS, IN, or NOT IN over a subquery (correlated or
