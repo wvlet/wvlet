@@ -320,6 +320,17 @@ function FlowSection(): React.ReactNode {
               </p>
             </div>
           </li>
+          <li>
+            <b>04</b>
+            <div>
+              <h3>Bring your SQL along</h3>
+              <p>
+                Wvlet reads SQL too: <code>.sql</code> files go through the same compiler as{' '}
+                <code>.wv</code> files, and <code>wvlet to_wvlet</code> converts existing SQL into
+                flow-style queries, so you can adopt Wvlet one query at a time.
+              </p>
+            </div>
+          </li>
         </ol>
         <p className={styles.readMore}>
           <Link to="/blog/release-2024-9">
