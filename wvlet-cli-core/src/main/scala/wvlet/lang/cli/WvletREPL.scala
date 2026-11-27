@@ -127,10 +127,11 @@ class WvletREPL(runner: ScriptRunner, terminal: REPLTerminal) extends AutoClosea
 
   private def runStmt(trimmedLine: String): Unit =
     if trimmedLine.nonEmpty then
-      withNewThread {
-        val result = runner.runStatement(
+      queries.runThen(terminal) {
+        runner.runStatement(
           QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
         )
+      } { result =>
         // Display output and save for clip commands
         val output =
           if terminal.isRealTerminal then

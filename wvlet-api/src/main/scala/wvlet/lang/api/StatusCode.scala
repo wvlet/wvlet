@@ -76,6 +76,8 @@ enum StatusCode(statusType: StatusType):
   case COMPILATION_FAILURE          extends StatusCode(StatusType.UserError)
   case UNEXPECTED_STATE             extends StatusCode(StatusType.UserError)
   case QUERY_EXECUTION_FAILURE      extends StatusCode(StatusType.UserError)
+  // The user cancelled the running query, e.g., with Ctrl-C in the REPL
+  case QUERY_CANCELLED extends StatusCode(StatusType.UserError)
 
   case TEST_FAILED extends StatusCode(StatusType.UserError)
 

@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.exec
 
+import wvlet.lang.compiler.QueryCancel
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
 
@@ -96,6 +97,7 @@ class BatchesOp(val schema: Schema, batches: Seq[Batch], label: String = "Batche
   private val it    = batches.iterator.filter(_.size > 0)
   def next(): Batch =
     if it.hasNext then
+      QueryCancel.check() // Ctrl-C in the npm REPL (see ScanOp.next)
       it.next()
     else
       null
@@ -110,6 +112,7 @@ class IteratorOp(val schema: Schema, mk: () => Iterator[Batch], label: String, v
   def next(): Batch         =
     var b: Batch = null
     while b == null && it.hasNext do
+      QueryCancel.check()
       val x = it.next()
       if x.size > 0 then
         b = x

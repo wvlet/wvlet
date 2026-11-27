@@ -14,6 +14,7 @@
 package wvlet.lang.compiler.analyzer.trino
 
 import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.QueryCancel
 import wvlet.lang.compiler.connector.QueryHandle
 import wvlet.lang.compiler.connector.QueryResult
 import wvlet.lang.compiler.connector.QueryResultRow
@@ -174,6 +175,10 @@ class TrinoQueryHandle(
 
   /** GET the next page of the pagination loop and parse its body, surfacing Trino errors. */
   private def fetchNextPage(): JSONObject =
+    if QueryCancel.isRequested then
+      // Ctrl-C in the npm REPL: stop the query on the server too, then end the loop
+      cancel()
+      throw QueryCancel.cancelled()
     val uri  = lastNextUri.get
     val req  = Trino.withTrinoHeaders(Request(method = HttpMethod.GET, uri = uri), config)
     val resp = Trino.sendOrThrow(client, req)

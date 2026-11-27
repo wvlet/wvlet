@@ -14,10 +14,9 @@ Run `wvlet` with no arguments on a terminal (or `wvlet repl`) to launch an inter
 On the JVM CLI, line editing, history, and completion need Java 22 or later. On older JVMs, the shell reads input line by line without editing.
 :::
 
-The npm `wvlet` runs the same shell on the in-process wvlet engine, DuckDB, and Trino. Compared with the JVM CLI:
+The npm `wvlet` runs the same shell on the in-process wvlet engine, DuckDB, and Trino. Snowflake and other JDBC connectors, and flows, need the [JVM CLI](install.md#jvm-cli).
 
-- Ctrl-C during a query exits `wvlet` instead of cancelling only the query.
-- Snowflake and other JDBC connectors, and flows, need the [JVM CLI](install.md#jvm-cli).
+Ctrl-C during a query cancels only that query on every CLI, and tables saved earlier in the session stay available. On the npm `wvlet`, the query stops at its next batch (wvlet engine), at once (DuckDB), or at its next result page (Trino, which is also asked to abort it); if a query doesn't stop, a second Ctrl-C exits `wvlet`.
 
 Queries run on the in-process [wvlet engine](../engines/wvlet-engine.md) by default. Start the shell with `wvlet repl -t duckdb` to run on DuckDB instead (needed for `sql"..."` / `execute` statements and `.duckdb` files), or with `wvlet repl -p <name>` to use a [profile](cli-reference.md#profile-configuration).
 

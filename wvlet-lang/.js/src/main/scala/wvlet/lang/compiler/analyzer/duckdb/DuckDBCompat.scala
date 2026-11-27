@@ -2,6 +2,7 @@ package wvlet.lang.compiler.analyzer.duckdb
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.QueryCancel
 import wvlet.lang.compiler.connector.QueryResult
 import wvlet.lang.compiler.connector.QueryResultRow
 import wvlet.lang.model.DataType
@@ -114,9 +115,16 @@ trait DuckDBCompat:
 
   private def runQuery(api: DuckDBApi, con: js.Any, sql: String): QueryResult =
     val result = js.Object()
-    if asInt(api.duckdb_query.call(null, con, sql, result)) != 0 then
+    // Ctrl-C in the REPL interrupts this connection from the watcher thread while the call blocks
+    val rc =
+      QueryCancel.withDuckDBConnection(KoffiOps.address(con)) {
+        asInt(api.duckdb_query.call(null, con, sql, result))
+      }
+    if rc != 0 then
       val err = api.duckdb_result_error.call(null, result).toString
       api.duckdb_destroy_result.call(null, result)
+      if QueryCancel.isRequested then
+        throw QueryCancel.cancelled()
       throw StatusCode.NOT_IMPLEMENTED.newException(s"duckdb_query failed: ${err}")
     try
       // Pull metadata once — names, declared types, and per-column chunk readers.
