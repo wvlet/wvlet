@@ -274,7 +274,7 @@ final class GroupTable(
     * string keys with dictionary codes look up the codes at the positions, so the keys aren't
     * gathered first (`dense_selected_rows`). Other keys are gathered, then grouped as usual
     */
-  def groupIdsAt(keys: Array[Vec], sel: Array[Int], n: Int): Array[Int] =
+  def groupIdsAt(keys: Array[Vec], sel: Array[Int], n: Int, scratch: Boolean = false): Array[Int] =
     // Groups keyed by stable codes read the codes of gathered keys
     val plain =
       coded == null &&
@@ -285,7 +285,9 @@ final class GroupTable(
             false
         }
     val ids =
-      if plain then
+      if plain && scratch && keys.length <= 2 then
+        DictionaryIdsAt.ids(this, normalize(keys), n, sel)
+      else if plain then
         dictionaryIds(normalize(keys), n, null, sel)
       else
         null
@@ -425,6 +427,44 @@ final class GroupTable(
   // and each row's combination (-1 when a key has no code), reused across batches
   private var codeGroups: Array[Int] = null
   private var rowCodes: Array[Int]   = null
+  // The group ids [[DictionaryIdsAt]] returns, reused across batches
+  private var idScratch: Array[Int] = null
+
+  /**
+    * The number of combinations of the keys' dictionary codes, or -1 unless every key is a string
+    * carrying codes and the combinations number at most half of the n rows
+    */
+  private[exec] def codeCombinations(norm: Array[Vec], n: Int): Int =
+    if width == 0 then
+      return -1
+    var combos = 1L
+    var k      = 0
+    while k < width do
+      norm(k) match
+        case v: StrVec if v.hasCodes && stores(k).isInstanceOf[StrStore] =>
+          combos *= v.dictSize
+        case _ =>
+          return -1
+      if combos * 2 > n then
+        return -1
+      k += 1
+    combos.toInt
+
+  /** For [[DictionaryIdsAt]]: [[codeGroups]] for m combinations, all -1 */
+  private[exec] def codeGroupsFor(m: Int): Array[Int] =
+    if codeGroups == null || codeGroups.length < m then
+      codeGroups = new Array[Int](math.max(m, 64))
+    java.util.Arrays.fill(codeGroups, 0, m, -1)
+    codeGroups
+
+  /** For [[DictionaryIdsAt]]: a group id array of at least n entries, reused across batches */
+  private[exec] def idsFor(n: Int): Array[Int] =
+    if idScratch == null || idScratch.length < n then
+      idScratch = new Array[Int](n)
+    idScratch
+
+  /** For [[DictionaryIdsAt]]: the group of row i of the normalized keys, inserted when new */
+  private[exec] def groupOfRow(norm: Array[Vec], i: Int): Int = findOrInsert(norm, i, null)
 
   /**
     * Group ids through the dictionary codes of the keys ([[StrVec.codes]]): the first row of each
@@ -445,23 +485,11 @@ final class GroupTable(
       h: Array[Int],
       sel: Array[Int] = null
   ): Array[Int] =
-    if width == 0 then
+    val m = codeCombinations(norm, n)
+    if m < 0 then
       return null
-    var combos = 1L
-    var k      = 0
-    while k < width do
-      norm(k) match
-        case v: StrVec if v.hasCodes && stores(k).isInstanceOf[StrStore] =>
-          combos *= v.dictSize
-        case _ =>
-          return null
-      if combos * 2 > n then
-        return null
-      k += 1
-    val m = combos.toInt
-    if codeGroups == null || codeGroups.length < m then
-      codeGroups = new Array[Int](math.max(m, 64))
-    java.util.Arrays.fill(codeGroups, 0, m, -1)
+    codeGroupsFor(m)
+    var k = 0
     if rowCodes == null || rowCodes.length < n then
       rowCodes = new Array[Int](n)
     val c = rowCodes

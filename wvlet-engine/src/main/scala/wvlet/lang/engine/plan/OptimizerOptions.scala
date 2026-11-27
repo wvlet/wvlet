@@ -800,6 +800,16 @@ enum Optimization(val name: String):
   case DenseSelectedRows extends Optimization("dense_selected_rows")
 
   /**
+    * Hash aggregations over dense selected rows ([[DenseSelectedRows]]) compute fused decimal
+    * products into Long arrays reused from batch to batch, and look the group ids of one or two
+    * string keys up from their dictionary codes in one pass into a reused id array
+    * ([[wvlet.lang.engine.expr.LongScratch]], [[wvlet.lang.engine.exec.DictionaryIdsAt]]). TPC-H q1
+    * spent about 2% of its CPU zeroing fresh product arrays and 5% combining the codes of its two
+    * keys column by column
+    */
+  case AggScratchBuffers extends Optimization("agg_scratch_buffers")
+
+  /**
     * Hash aggregations group a single Int64 key, such as the packed key of several integer keys,
     * through a table of 4-byte group-id slots, half a GroupTable slot, comparing keys from the
     * groups' key array ([[wvlet.lang.engine.exec.LongGroupTable]]). The final stages of TPC-DS
