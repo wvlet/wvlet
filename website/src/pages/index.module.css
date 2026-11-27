@@ -550,6 +550,15 @@
   color: hsl(var(--ink-2));
 }
 
+.nowrap {
+  white-space: nowrap;
+}
+
+.readMore {
+  margin: 32px 0 0;
+  font-weight: 600;
+}
+
 /* ---------- Feature band ---------- */
 
 .band {

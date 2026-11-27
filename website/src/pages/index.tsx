@@ -198,42 +198,55 @@ function FlowSection(): React.ReactNode {
   return (
     <section className={styles.flow}>
       <div className={styles.sectionHead}>
-        <p className={styles.kicker}>Why flow-style</p>
+        <p className={styles.kicker}>Why Wvlet</p>
         <h2>
-          SQL's syntax order <br />
-          <em>isn't the order of your data</em>
+          Redesigning <span className={styles.nowrap}>50-year-old</span> SQL <br />
+          <em>for modern data analytics</em>
         </h2>
         <p>
-          A SQL query starts with <code>SELECT</code>, but the engine starts with <code>FROM</code>.
-          Wvlet follows the data: each line takes the table from the line above, so you can stop
-          anywhere, look at the result, and keep going, like a UNIX pipe.
+          SQL was born in the 1970s. Its syntax order doesn't match how data flows through a query,
+          which makes deeply nested queries hard to read and debug, even for experts, and the
+          standard has no way to reuse, test, or debug queries. Wvlet modernizes SQL with
+          software engineering practices built in.
         </p>
         <ol className={styles.steps}>
           <li>
             <b>01</b>
             <div>
-              <h3>Analyze as you write</h3>
+              <h3>Syntax that follows the data</h3>
               <p>
-                Run any prefix of a query in the <Link to="/docs/usage/repl">REPL</Link> or the
-                playground to check intermediate results.
+                Start from <code>from</code>, then pipe the table through <code>where</code>,{' '}
+                <code>group by</code>, and <code>select</code>. Run any prefix of a query in the{' '}
+                <Link to="/docs/usage/repl">REPL</Link> to check intermediate results.
               </p>
             </div>
           </li>
           <li>
             <b>02</b>
             <div>
-              <h3>Debug in the middle</h3>
-              <p>Insert <code>test</code>, <code>debug</code>, or a filter between any two lines without restructuring.</p>
+              <h3>Reusable, composable queries</h3>
+              <p>
+                Define <Link to="/docs/syntax/data-models">data models</Link> and functions once,
+                then build on them across queries and pipelines.
+              </p>
             </div>
           </li>
           <li>
             <b>03</b>
             <div>
-              <h3>Same query, any engine</h3>
-              <p>Switch from a laptop DuckDB to a Trino cluster without rewriting dialect details.</p>
+              <h3>Debugging and testing built in</h3>
+              <p>
+                Insert <code>debug</code> or <code>test</code> between any two lines without
+                restructuring the query.
+              </p>
             </div>
           </li>
         </ol>
+        <p className={styles.readMore}>
+          <Link to="/blog/release-2024-9">
+            Read: Wvlet: Redesigning 50-Year-Old SQL for Modern Data Analytics →
+          </Link>
+        </p>
       </div>
       <Window title="wv — interactive REPL">
         <img className={styles.demo} src={useBaseUrl('/img/demo.gif')} alt="Wvlet REPL demo query" />
