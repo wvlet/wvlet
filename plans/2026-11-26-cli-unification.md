@@ -22,7 +22,7 @@ Phases:
 - **Phase 1 (this PR): one command surface.**
 - **Phase 2:** the REPL in shared code (script runner over the shared `PlanExecutor`, Rx-based cancellation, uni async key actions), so the npm `wvlet` gets the REPL.
 - **Phase 3:** `build` in shared code where its item store allows; JDBC-backed `catalog import`, `ui`, and the flow scheduler stay JVM-only.
-- **Phase 4:** reposition distributions: npm as the full interactive CLI, the JVM tarball as the server/ops package, and possibly a Native binary for Homebrew.
+- **Phase 4:** reposition distributions: npm as the full interactive CLI, the JVM CLI (Homebrew and the release packages) as the server/ops package (plans/2026-11-26-distribution-roles.md).
 
 Phase 1 decisions:
 
