@@ -185,14 +185,17 @@ class MemTable(
   * `footerCache`, planning reads (schema, row count, statistics) of a single file open it through
   * [[ParquetFooterCache]]; scans do when their [[ScanSpec]] says so. With `folderFiles`, a folder
   * of plain Parquet files is read as its files' single-file sources ([[ParquetFolder]],
-  * `folder_file_scans`)
+  * `folder_file_scans`). With `datasetFiles`, a local Iceberg table is read file by file through
+  * uni's dataset reader ([[DatasetFiles]], `dataset_file_scans`), and a folder's files may lack
+  * some of its columns (schema evolution), read as NULLs
   */
 class ParquetSource(
     val name: String,
     val path: String,
     val footerCache: Boolean = false,
     declaredKeys: Seq[Seq[String]] = Nil,
-    val folderFiles: Boolean = true
+    val folderFiles: Boolean = true,
+    val datasetFiles: Boolean = true
 ) extends TableSource:
   override def key: Any = ("parquet", path)
 
@@ -214,18 +217,21 @@ class ParquetSource(
   // When the folder was last listed (System.nanoTime), how long until it is listed again, its
   // listing, and its files
   @volatile
-  private var checkedFolder: (Long, Long, Option[FolderListing], Option[ParquetFolder]) = null
+  private var checkedFolder: (Long, Long, Option[FolderListing], Option[FolderFiles]) = null
 
   /**
     * The files of a folder of Parquet files (plain, or Hive partitions), read as single-file
-    * sources ([[ParquetFolder]], `folder_file_scans`); None for a single file, or a folder that
-    * uni's dataset reader reads. A source in a catalog outlives a query, so the folder is listed
-    * again after [[ParquetSource.VersionRecheckNanos]], or [[ParquetSource.FolderRecheckFactor]]
-    * times as long as listing it took if longer (TPC-DS store_sales in 1823 date partitions takes
-    * ~125 ms to list), and its files are reopened only when the listing changed
+    * sources ([[ParquetFolder]], `folder_file_scans`), or of an Iceberg table, read one by one
+    * through uni's dataset reader ([[DatasetFiles]], `dataset_file_scans`); None for a single file,
+    * or a folder that uni's dataset reader reads. An Iceberg table is reopened whenever it is
+    * listed again, since its deletes may change while its files don't. A source in a catalog
+    * outlives a query, so the folder is listed again after [[ParquetSource.VersionRecheckNanos]],
+    * or [[ParquetSource.FolderRecheckFactor]] times as long as listing it took if longer (TPC-DS
+    * store_sales in 1823 date partitions takes ~125 ms to list), and its files are reopened only
+    * when the listing changed
     */
-  private[catalog] def folder: Option[ParquetFolder] =
-    if !mayBePlainFolder then
+  private[catalog] def folder: Option[FolderFiles] =
+    if !mayReadAsFiles then
       None
     else
       val now     = System.nanoTime()
@@ -236,28 +242,26 @@ class ParquetSource(
         var took               = 0L
         val (listing, current) =
           try
-            val listed = ParquetFolder.listing(path)
+            val (l, ds) = ParquetFolder.listing(path)
             took = System.nanoTime() - now
-            listed match
-              case Some((l, ds)) if checked != null && checked._3.contains(l) =>
+            if checked != null && checked._3.contains(l) && checked._4.forall(_.reusable) then
+              ds.close()
+              (Some(l), checked._4)
+            else
+              val f =
+                try
+                  openFiles(l, ds)
+                catch
+                  case e: Throwable =>
+                    ds.close()
+                    throw e
+              if f.isEmpty then
                 ds.close()
-                (Some(l), checked._4)
-              case Some((l, ds)) =>
-                val f =
-                  try
-                    ParquetFolder.open(name, l, ds, footerCache, schema, columnTypes)
-                  catch
-                    case e: Throwable =>
-                      ds.close()
-                      throw e
-                if f.isEmpty then
-                  ds.close()
-                // The replaced folder's dataset only picks files: no scan reads through it
-                if checked != null then
-                  checked._4.foreach(_.close())
-                (Some(l), f)
-              case None =>
-                (None, None)
+              // A replaced folder's dataset only picks files, and a local dataset's per-file
+              // readers (withFiles) keep their own files open: no scan reads through it
+              if checked != null then
+                checked._4.foreach(_.close())
+              (Some(l), f)
           catch
             case _: Exception =>
               (None, None)
@@ -270,9 +274,25 @@ class ParquetSource(
         current
       end if
 
-  // Whether `path` may be a folder of plain files, decided without listing it
-  private lazy val mayBePlainFolder: Boolean =
-    !isSingleFile && folderFiles && ParquetFolder.mayBePlain(path)
+  // Whether `path` may be a folder or table read file by file, decided without listing it
+  private lazy val mayReadAsFiles: Boolean =
+    !isSingleFile && (
+      folderFiles && ParquetFolder.mayBePlain(path) ||
+        datasetFiles && ParquetFolder.mayReadAsFiles(path)
+    )
+
+  /**
+    * An Iceberg table's files read through `ds` file by file, or a plain or Hive-partitioned
+    * folder's files as single-file sources
+    */
+  private def openFiles(l: FolderListing, ds: ParquetDataset): Option[FolderFiles] =
+    if ParquetSource.isIcebergPath(path) then
+      Option.when(datasetFiles)(DatasetFiles.open(l, ds, schema)).flatten
+    else if folderFiles && ds.tableProperties.isEmpty then
+      // Files lacking some of the folder's columns only with dataset_file_scans
+      ParquetFolder.open(name, l, ds, footerCache, schema, columnTypes, evolved = datasetFiles)
+    else
+      None
 
   /**
     * The top-level columns' names with their Parquet physical and logical types (a nested column's
@@ -294,7 +314,14 @@ class ParquetSource(
     if isSingleFile || !folderFiles then
       this
     else
-      ParquetSource(name, path, footerCache, declaredKeys, folderFiles = false)
+      ParquetSource(name, path, footerCache, declaredKeys, folderFiles = false, datasetFiles)
+
+  /** This source without `datasetFiles`: an Iceberg table is read through uni's dataset reader */
+  lazy val withoutDatasetFiles: ParquetSource =
+    if isSingleFile || !datasetFiles then
+      this
+    else
+      ParquetSource(name, path, footerCache, declaredKeys, folderFiles, datasetFiles = false)
 
   /** Open the single file, through the footer cache when `cached` */
   private def openFile(cached: Boolean): ParquetFooterCache.Opened =
@@ -336,10 +363,11 @@ class ParquetSource(
     }
 
   /**
-    * Single files, and folders read as their files: uni's dataset reader (an Iceberg table, or a
-    * folder with partitions) still filters rows after decoding them
+    * Single files, and folders read as their files but partitioned ones (an Iceberg table read file
+    * by file filters each file's rows through uni's dataset reader); otherwise uni's dataset reader
+    * still filters rows after decoding them
     */
-  override def supportsRowFilter: Boolean = isSingleFile || folder.exists(!_.listing.isPartitioned)
+  override def supportsRowFilter: Boolean = isSingleFile || folder.exists(_.rowFilters)
 
   /**
     * A folder or Iceberg table too: uni skips each file's row groups by the row-group filter, and
@@ -799,9 +827,9 @@ class ParquetSource(
       ParquetSource.closing(it, () => f.close())
     else
       // A partitioned folder's files lack its partition columns: uni's dataset reader adds them
-      folder.filter(!_.listing.isPartitioned) match
-        case Some(d) =>
-          d.files.iterator.flatMap(_.scan(spec))
+      folder.flatMap(_.scanFiles(spec)) match
+        case Some(it) =>
+          it
         case None =>
           val ds = ParquetSource.openDataset(path)
           ParquetSource.closing(ds.readBatches(options).map(batch), () => ds.close())
