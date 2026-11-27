@@ -170,6 +170,12 @@ enum Optimization(val name: String):
   case ShareSubqueryScans extends Optimization("share_subquery_scans")
 
   /**
+    * Compute identical aggregating subqueries of a FROM list once, as a shared CTE that each copy
+    * reads under its own alias (TPC-DS q65, [[DuplicateSubqueries]])
+    */
+  case ShareDuplicateSubqueries extends Optimization("share_duplicate_subqueries")
+
+  /**
     * Replace a table of an aggregation's inner join by the groups of an IN subquery that groups it
     * by the join key, when the aggregation only sums, mins, or maxes its columns: the aggregation
     * totals the subquery's per-key values instead of reading the table again (TPC-H q18)

@@ -325,6 +325,10 @@ class EngineOptimizerToggleTest extends UniTest:
           // Sampled string values estimate the prefix LIKEs of Parquet scans first
           val base = OptimizerOptions().withDisabled(Optimization.StringValueSelectivity)
           EnginePlanGolden.suites.exists(s => s.generate(base.withDisabled(o)) != s.generate(base))
+        else if o == Optimization.NestedGroupEstimates then
+          // TPC-DS q65's nested aggregation reads its shared CTE's exact row count otherwise
+          val base = OptimizerOptions().withDisabled(Optimization.ShareDuplicateSubqueries)
+          EnginePlanGolden.suites.exists(s => s.generate(base.withDisabled(o)) != s.generate(base))
         else if withoutCountIn.contains(o) then
           val base0 = OptimizerOptions().withDisabled(Optimization.CountInSubqueries)
           // TPC-H q20's aggregation is on the right of its join once probe scans are charged

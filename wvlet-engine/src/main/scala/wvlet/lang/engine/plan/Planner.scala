@@ -284,13 +284,20 @@ class Planner(
   def plan(rel: Relation): Operator =
     planDepth += 1
     try
+      val deduped =
+        if planDepth == 1 && enabled(Optimization.ShareDuplicateSubqueries) &&
+          enabled(Optimization.ShareCTEs)
+        then
+          DuplicateSubqueries.rewrite(this, rel)
+        else
+          rel
       val r =
         if planDepth == 1 && enabled(Optimization.ShareSubqueryScans) &&
           enabled(Optimization.ShareCTEs)
         then
-          SharedScans.rewrite(this, rel)
+          SharedScans.rewrite(this, deduped)
         else
-          rel
+          deduped
       if enabled(Optimization.PrefetchScalarSubqueries) then
         prefetchScalarSubqueries(r)
       if planDepth == 1 then
@@ -570,7 +577,9 @@ class Planner(
     * A key of the bound runtime plan of `rel` ([[ShareSubplans.key]]), equal for inputs that read
     * the same rows ([[boundInput]])
     */
-  private def inputKey(rel: Relation): Option[Any] = boundInput(rel).flatMap(ShareSubplans.key)
+  private[engine] def inputKey(rel: Relation): Option[Any] = boundInput(rel).flatMap(
+    ShareSubplans.key
+  )
 
   /**
     * The loose key of the bound runtime plan of `rel` ([[ShareSubplans.looseKey]]), with the
