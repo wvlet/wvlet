@@ -1,14 +1,27 @@
 name: Release
 
+# Every v* tag creates the GitHub release with the CLI archives, opens the Homebrew PR, and
+# publishes the Scala library modules to the wvlet Maven repository (https://repo.wvlet.org/maven2,
+# Cloudflare R2, shared with uni and airframe). See design/releasing.md.
+
 on:
   push:
     tags:
       - v*
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Stage and sign the Maven artifacts and attach them to the run, without uploading to repo.wvlet.org. Turn off only on a v* tag to (re-)publish it.'
+        type: boolean
+        default: true
+
+env:
+  R2_BUCKET: wvlet-maven
+  R2_PREFIX: maven2
 
 jobs:
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || !inputs.dry_run)
     name: Create a new release
     runs-on: ubuntu-latest
     env:
@@ -51,6 +64,72 @@ jobs:
           "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
           "wvlet-cli-full/target/wvlet-cli-full-${VERSION}.tar.gz" \
           --clobber --repo="$GITHUB_REPOSITORY"
+  publish:
+    name: Publish to repo.wvlet.org
+    runs-on: ubuntu-latest
+    # Stages the signed artifacts of projectPublish (the library modules listed in build.sbt) into
+    # target/sona-staging, then uploads that tree. A version already in the bucket is never
+    # overwritten, and artifacts go up before maven-metadata.xml. Independent of the release job,
+    # so a failed publish does not block the CLI release or Homebrew.
+    #
+    # Credentials are scoped to the steps that need them, never exposed to third-party actions.
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - name: Refuse to publish a ref that is not a release tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') && env.DRY_RUN != 'true' }}
+        run: |
+          echo "::error::Only a v* tag can be published; run with dry_run to test a branch"
+          exit 1
+      - uses: actions/checkout@v7
+        with:
+          # Fetch all tags so that sbt-dynver derives the version from the release tag
+          fetch-depth: 0
+      - run: git fetch --tags -f
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '22'
+      - uses: ./.github/actions/sbt-cache
+      - name: Setup GPG
+        env:
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+        run: echo "$PGP_SECRET" | base64 --decode | gpg --import --batch --yes
+      - name: Stage signed artifacts
+        env:
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+        run: ./sbt "show version" projectPublish/publishSigned
+      - name: Check the staged files (dry run)
+        if: env.DRY_RUN == 'true'
+        run: |
+          mkdir -p target/empty-repo
+          python3 .github/scripts/maven_repo.py check target/sona-staging target/empty-repo
+          python3 .github/scripts/maven_repo.py metadata target/sona-staging target/sona-staging target/repo-metadata
+          find target/sona-staging -type f | sort
+          du -sh target/sona-staging
+      - name: Attach the staged files to the run (dry run)
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sona-staging
+          path: |
+            target/sona-staging
+            target/repo-metadata
+      - name: Upload to repo.wvlet.org
+        if: env.DRY_RUN != 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          dest="s3://${R2_BUCKET}/${R2_PREFIX}"
+          python3 .github/scripts/maven_repo.py check target/sona-staging "${dest}"
+          aws s3 cp target/sona-staging/ "${dest}/" --recursive --exclude "*maven-metadata*"
+          # Rebuilt from the version directories now in the bucket, so concurrent releases need no lock
+          python3 .github/scripts/maven_repo.py metadata target/sona-staging "${dest}" target/repo-metadata
+          aws s3 cp target/repo-metadata/ "${dest}/" --recursive --cache-control "no-cache"
+
   homebrew:
     name: Update homebrew-wvlet
     needs: release
