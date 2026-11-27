@@ -184,7 +184,8 @@ class OptimizerOptionsTest extends UniTest:
         "parallel_join_keys",
         "slice_single_batch_probes",
         "planning_memo",
-        "cse_hashed_keys"
+        "cse_hashed_keys",
+        "match_copied_subquery_scans"
       )
   }
 

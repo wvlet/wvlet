@@ -15,9 +15,16 @@ package wvlet.lang.engine
 
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.engine.catalog.MemTable
+import wvlet.lang.engine.catalog.ParquetSource
+import wvlet.lang.engine.catalog.ScanSpec
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
+import wvlet.lang.engine.vector.Batch
+import wvlet.lang.engine.vector.Schema
 import wvlet.uni.test.UniTest
+
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
   * A table that an uncorrelated scalar subquery and the rest of the query filter by the same
@@ -64,22 +71,23 @@ class EngineSharedScansTest extends UniTest:
 
   private val codes = "c_phone.substring(1, 2).in('13', '31', '23', '29', '30', '18', '17')"
 
+  private val q22 =
+    s"""from customer
+       |where ${codes}
+       |  and c_acctbal > {
+       |    from customer
+       |    where c_acctbal > 0.00 and ${codes}
+       |    select c_acctbal.avg
+       |  }
+       |  and not exists { from orders where o_custkey = c_custkey }
+       |select cntrycode = c_phone.substring(1, 2), c_acctbal
+       |group by cntrycode
+       |select cntrycode, numcust = _.count, totacctbal = c_acctbal.sum
+       |order by cntrycode
+       |""".stripMargin
+
   test("share the filtered customer scan of TPC-H q22's avg subquery") {
-    val query =
-      s"""from customer
-         |where ${codes}
-         |  and c_acctbal > {
-         |    from customer
-         |    where c_acctbal > 0.00 and ${codes}
-         |    select c_acctbal.avg
-         |  }
-         |  and not exists { from orders where o_custkey = c_custkey }
-         |select cntrycode = c_phone.substring(1, 2), c_acctbal
-         |group by cntrycode
-         |select cntrycode, numcust = _.count, totacctbal = c_acctbal.sum
-         |order by cntrycode
-         |""".stripMargin
-    sharesScan(query) shouldBe true
+    sharesScan(q22) shouldBe true
   }
 
   test("share the scan with a subquery in an aggregation's condition") {
@@ -135,6 +143,35 @@ class EngineSharedScansTest extends UniTest:
         |count
         |""".stripMargin
     sharesScan(query) shouldBe false
+  }
+
+  /** customer in memory, counting its scans */
+  private class CountingCustomer(batches: Seq[Batch], schema: Schema)
+      extends MemTable("customer", schema, batches):
+    val scans                                          = AtomicInteger(0)
+    override def scan(spec: ScanSpec): Iterator[Batch] =
+      scans.incrementAndGet()
+      super.scan(spec)
+
+  /** The scans of customer by TPC-H q22, run on an engine with these options */
+  private def customerScans(o: OptimizerOptions): Int =
+    val parquet  = ParquetSource("customer", "spec/tpch/data/customer.parquet")
+    val customer = CountingCustomer(parquet.scan(ScanSpec()).toSeq, parquet.schema)
+    val e        = WvletEngine(optimizer = o)
+    e.catalog.register(customer)
+    e.catalog.registerParquet("orders", "spec/tpch/data/orders.parquet")
+    val unit      = CompilationUnit.fromWvletString(q22)
+    val r         = compiler.compileSingleUnit(unit)
+    given Context = r.context
+    val q         = EngineTPCHBench.queryOf(unit).getOrElse(fail(s"No query in ${q22}"))
+    e.execute(GenSQL.expand(q, summon[Context])).rows.size shouldBe 7
+    customer.scans.get()
+
+  test("read the shared scan in q22's subquery, which splitting the condition copies") {
+    // The subquery's templates (avg, substring ... in) are expanded with the main query's
+    // condition, so the planner binds a copy of it (`match_copied_subquery_scans`)
+    customerScans(options) shouldBe 1
+    customerScans(options.withDisabled(Optimization.MatchCopiedSubqueryScans)) shouldBe 2
   }
 
 end EngineSharedScansTest

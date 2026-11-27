@@ -24,6 +24,7 @@ import wvlet.lang.engine.vector.*
 import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
+import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.Relation
 
 import java.math.BigDecimal as JBigDecimal
@@ -214,7 +215,15 @@ object Binder:
     * Replace `sql"..."` templates with the parsed SQL expression, arguments substituted. `x in
     * (${v})` expands list arguments in place and becomes an IN-subquery for a subquery argument
     */
-  def expandTemplates(e: Expression): Expression = e.transformUpExpression {
+  def expandTemplates(e: Expression): Expression = e.transformUpExpression(expandRule)
+
+  /**
+    * A plan with the templates in its expressions expanded, as [[expandTemplates]] expands a
+    * subquery's plan: equal to the copy of `p` in a condition expanded around it
+    */
+  def expandTemplatesIn(p: LogicalPlan): LogicalPlan = p.transformUpExpressions(expandRule)
+
+  private lazy val expandRule: PartialFunction[Expression, Expression] = {
     case s: InterpolatedString if isSqlTemplate(s) =>
       val (parsed, args) = parseTemplate(s.parts)
       val expandedArgs   = args.map((k, v) => k -> expandTemplates(unwrapArg(v)))

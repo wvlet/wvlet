@@ -1123,6 +1123,14 @@ enum Optimization(val name: String):
     */
   case CseHashedKeys extends Optimization("cse_hashed_keys")
 
+  /**
+    * A filter whose scan is shared (`share_subquery_scans`) is found by value with its templates
+    * expanded too, not only as the tree's node. Splitting a condition into conjuncts expands its
+    * templates, which copies the subqueries in it: TPC-H q22's `avg(c_acctbal)` subquery was bound
+    * as such a copy and read `customer` again instead of the shared scan
+    */
+  case MatchCopiedSubqueryScans extends Optimization("match_copied_subquery_scans")
+
 end Optimization
 
 object Optimization:

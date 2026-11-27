@@ -204,6 +204,9 @@ class EngineOptimizerToggleTest extends UniTest:
     // with the same rows
     Optimization.SliceSingleBatchProbes ->
       "Changes how a pipeline over one batch is split into tasks, not the plan",
+    // EngineSharedScansTest checks that TPC-H q22's subquery reads the shared customer scan
+    Optimization.MatchCopiedSubqueryScans ->
+      "Changes which scan a plan-time subquery reads, which the root plan doesn't show",
     // GroupTableTest checks that nearly unique columns give up their codes after a few rows
     Optimization.StringCodeProbe ->
       "Changes when a join build gives up its string codes, not the plan",
