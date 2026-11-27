@@ -30,7 +30,6 @@ const jsonLd = {
   author: {'@type': 'Organization', name: 'wvlet.org', url: 'https://wvlet.org/'},
 };
 
-
 /**
  * Code colors come from the --wv-code-* variables in src/css/custom.css, so one theme follows
  * light and dark mode (no flash on load), and the top page's dark code windows can override them.

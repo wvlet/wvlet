@@ -27,7 +27,7 @@
   --wv-code-operator: hsl(190 25% 32%);
   --wv-code-variable: hsl(262 40% 46%);
 
-  --ifm-color-primary: hsl(190 48% 34%);
+  --ifm-color-primary: hsl(var(--wv-primary));
   --ifm-color-primary-dark: hsl(190 48% 31%);
   --ifm-color-primary-darker: hsl(190 48% 29%);
   --ifm-color-primary-darkest: hsl(190 48% 24%);
@@ -68,7 +68,6 @@ html[data-theme='dark'] {
   --ifm-color-primary-lighter: hsl(186 70% 66%);
   --ifm-color-primary-lightest: hsl(186 70% 74%);
   --ifm-code-background: hsl(var(--wv-primary) / 0.1);
-  --docusaurus-highlighted-code-line-bg: hsl(var(--wv-primary) / 0.12);
 }
 
 /*
@@ -129,7 +128,7 @@ html.wvlet-home .theme-code-block {
   --wv-code-variable: hsl(265 70% 80%);
 }
 
-/* Inline code: a tinted chip, as on the top page, instead of a grey box with a border. */
+/* Inline code: a teal-tinted chip with a matching border, close to the top page's chip. */
 :not(pre) > code {
   border-color: hsl(var(--wv-primary) / 0.12);
 }
@@ -147,11 +146,16 @@ html.wvlet-home .theme-code-block {
   border-bottom: 1px solid hsl(var(--wv-ink) / 0.06);
 }
 
-/* backdrop-filter would make the fixed mobile menu size itself to the navbar; drop it while open. */
-.navbar.navbar-sidebar--show {
-  background: hsl(var(--wv-bg));
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+/*
+ * backdrop-filter makes the navbar the containing block of the fixed mobile menu, clipping it to the
+ * navbar's height; use a solid navbar wherever that menu can open (including its slide-out).
+ */
+@media (max-width: 996px) {
+  .navbar {
+    background: hsl(var(--wv-bg));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .navbar-sidebar {
