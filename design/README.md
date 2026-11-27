@@ -10,6 +10,7 @@ Area contracts and the gates that guard them. Start with [`ARCHITECTURE.md`](../
 | [Testing](testing.md) | Spec-driven tests, typer coverage ratchet, npm DuckDB pins, test-run pitfalls |
 | [Platforms](platforms.md) | JVM / Scala.js / Scala Native code split, native builds, libduckdb loading |
 | [Embedding](embedding.md) | The in-process `WvletEmbed` API and the result contract of the language bindings |
+| [Server](server.md) | Query lifecycle, sessions, and the planned query manager |
 | [Connectors](connectors.md) | Connector modules, registration, test dependencies |
 | [Releasing](releasing.md) | Versioning, the tag-driven release, VS Code extension publishing, Scala and uni bumps |
 | [Agent docs](agent-docs.md) | `for-ai-agents.md` and the bundled skill, with their snippet and freshness tests |
