@@ -67,7 +67,7 @@ const FeatureList: FeatureItem[] = [
 ];
 
 // Hue offsets around the Wvlet teal, one per card's accent band.
-const bandHues = [186, 196, 176, 206, 168, 216];
+const bandHues = [186, 196, 190, 206, 182, 200];
 
 function Feature({title, description, idx}: FeatureItem & {idx: number}) {
   return (
