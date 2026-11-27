@@ -100,6 +100,17 @@ sealed abstract class RelationType(
   def fields: List[NamedType]
   def find(f: Name => Boolean): Option[NamedType] = fields.find(x => f(x.name))
 
+  /**
+    * True when [[fields]] lists only some of the columns, e.g., for a table with no known schema.
+    * Column operators such as exclude or rename then cannot expand to an explicit column list
+    */
+  def hasUnknownColumns: Boolean = false
+
+  /**
+    * The name of the relation whose columns are unknown, used in error messages
+    */
+  def unknownColumnSource: Option[String] = None
+
   override def bind(typeArgMap: Map[TypeName, DataType]): RelationType = this
 
   override def typeDescription: String =
@@ -117,6 +128,17 @@ object RelationType:
     typeCount += 1
     // ULID.newULIDString
     s"_t${typeCount}"
+
+  /**
+    * The type of a column-preserving operator (add, exclude, rename, ...) that outputs `columns`
+    * from `input`. Stays open when the input columns are unknown
+    */
+  def projectColumns(columns: List[DataType.NamedType], input: RelationType): RelationType =
+    val name = Name.typeName(newRelationTypeName)
+    if input.hasUnknownColumns then
+      DataType.OpenProjectedType(name, columns, input)
+    else
+      DataType.ProjectedType(name, columns, input)
 
 case class RelationTypeList(override val typeName: TypeName, inputRelationTypes: List[RelationType])
     extends RelationType(typeName, Nil):
@@ -274,6 +296,9 @@ object DataType extends LogSupport:
     override def isResolved: Boolean     = false
     override def fields: List[NamedType] = List.empty
 
+    override def hasUnknownColumns: Boolean          = true
+    override def unknownColumnSource: Option[String] = Some(fullName)
+
   case class AliasedType(alias: TypeName, baseType: RelationType)
       extends RelationType(baseType.typeName, Nil):
     override def toString = s"${alias}:=${baseType}"
@@ -283,6 +308,9 @@ object DataType extends LogSupport:
     override def isResolved: Boolean     = baseType.isResolved
     override def resolved: RelationType  = baseType
 
+    override def hasUnknownColumns: Boolean          = baseType.hasUnknownColumns
+    override def unknownColumnSource: Option[String] = baseType.unknownColumnSource
+
   case class ProjectedType(
       override val typeName: TypeName,
       projectedColumns: List[NamedType],
@@ -291,6 +319,22 @@ object DataType extends LogSupport:
 
     override def fields: List[NamedType] = projectedColumns
     override def isResolved: Boolean     = projectedColumns.forall(_.isResolved)
+
+  /**
+    * The output of a column-preserving operator over an input with unknown columns: `knownColumns`
+    * plus the input's other, unknown columns
+    */
+  case class OpenProjectedType(
+      override val typeName: TypeName,
+      knownColumns: List[NamedType],
+      baseType: RelationType
+  ) extends RelationType(typeName, Nil):
+    override def fields: List[NamedType]             = knownColumns
+    override def isResolved: Boolean                 = knownColumns.forall(_.isResolved)
+    override def hasUnknownColumns: Boolean          = true
+    override def unknownColumnSource: Option[String] = baseType.unknownColumnSource
+    override def typeDescription: String             =
+      s"${typeName}(${(knownColumns.map(_.typeDescription) :+ "*").mkString(", ")})"
 
   /**
     * Aggregateed record types: (key1, key2, ...) -> [record1*]

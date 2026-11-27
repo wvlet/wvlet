@@ -93,6 +93,8 @@ Keywords are lower-case. Each operator takes the output of the previous line as 
 | `val` | Define a constant or an inline table | `val t(id, name) = [[1, 'a'], [2, 'b']]` |
 | `test` | Assert on the result | `test _.size should be 10` |
 
+`exclude`, `rename`, and `shift` on a table with no known schema (e.g. `wvlet compile` without a catalog) compile to `* exclude (...)` / `* rename (... as ...)` on DuckDB and Snowflake (BigQuery: `* except`, no rename); other SQL targets such as Trino fail at compile time, so give the table a schema or `select` the columns.
+
 Expressions:
 
 - Strings use single or double quotes: `'paid'` and `"paid"` are both string literals. Quote identifiers with back quotes: `` `order id` ``.

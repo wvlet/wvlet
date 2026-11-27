@@ -90,6 +90,8 @@ The usual order is `from` → `where` → `add` → `group by` → `agg` → `wh
 | `save to`, `append to`, `delete`, `update` | `from t save to 'out.parquet'`, `append to log` |
 | `test`, `debug` | `test _.size should be 3` |
 
+`exclude`, `rename`, and `shift` on a table with no known schema (e.g. `wvlet compile` without a catalog) compile to `* exclude (...)` / `* rename (... as ...)` on DuckDB and Snowflake (BigQuery: `* except`, no rename); other SQL targets such as Trino fail at compile time, so give the table a schema or `select` the columns.
+
 Each operator, its options, and expressions are in [references/syntax.md](references/syntax.md).
 
 ## Expressions in brief

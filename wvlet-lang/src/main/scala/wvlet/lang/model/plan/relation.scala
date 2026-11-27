@@ -380,12 +380,10 @@ case class Transform(child: Relation, transformItems: List[Attribute], span: Spa
       if inputRelation.fields.exists(p => p.name.name != x.fullName) then
         newColumns += NamedType(Name.termName(x.nameExpr.leafName), x.dataType)
     }
-    val pt = ProjectedType(
-      Name.typeName(RelationType.newRelationTypeName),
+    RelationType.projectColumns(
       newColumns.result() ++ child.relationType.fields,
       child.relationType
     )
-    pt
 
 /**
   * Application of a partial query to an input relation. This is an intermediate representation that
@@ -435,12 +433,7 @@ case class AddColumnsToRelation(child: Relation, newColumns: List[Attribute], sp
       newColumns.map { x =>
         NamedType(Name.termName(x.nameExpr.leafName), x.dataType)
       }
-    val pt = ProjectedType(
-      Name.typeName(RelationType.newRelationTypeName),
-      cols.result(),
-      child.relationType
-    )
-    pt
+    RelationType.projectColumns(cols.result(), child.relationType)
 
 case class PrependColumnsToRelation(child: Relation, newColumns: List[Attribute], span: Span)
     extends UnaryRelation
@@ -457,12 +450,24 @@ case class PrependColumnsToRelation(child: Relation, newColumns: List[Attribute]
         NamedType(Name.termName(x.nameExpr.leafName), x.dataType)
       }
     cols ++= inputRelationType.fields
-    val pt = ProjectedType(
-      Name.typeName(RelationType.newRelationTypeName),
-      cols.result(),
-      child.relationType
-    )
-    pt
+    RelationType.projectColumns(cols.result(), child.relationType)
+
+/**
+  * `*` with the given star modifiers, used by column operators whose input columns are unknown
+  */
+private def allColumnsWithModifiers(
+    operatorName: String,
+    input: RelationType,
+    excludes: List[NameExpr],
+    renames: List[Alias],
+    span: Span
+): AllColumnsWithModifiers = AllColumnsWithModifiers(
+  operatorName,
+  input.unknownColumnSource.getOrElse("the input"),
+  excludes,
+  renames,
+  span
+)
 
 case class ExcludeColumnsFromRelation(child: Relation, columnNames: List[NameExpr], span: Span)
     extends Selection
@@ -473,18 +478,19 @@ case class ExcludeColumnsFromRelation(child: Relation, columnNames: List[NameExp
     .fields
     .filterNot(f => columnNames.exists(_.leafName == f.name.name))
 
-  override def selectItems: List[Attribute] = outputColumns.map { c =>
-    val name = NameExpr.fromString(c.toSQLAttributeName, span)
-    SingleColumn(NameExpr.EmptyName, name, span)
-  }
+  override def selectItems: List[Attribute] =
+    if inputRelationType.hasUnknownColumns then
+      List(allColumnsWithModifiers("exclude", inputRelationType, columnNames, Nil, span))
+    else
+      outputColumns.map { c =>
+        val name = NameExpr.fromString(c.toSQLAttributeName, span)
+        SingleColumn(NameExpr.EmptyName, name, span)
+      }
 
-  override lazy val relationType: RelationType =
-    val pt = ProjectedType(
-      Name.typeName(RelationType.newRelationTypeName),
-      outputColumns,
-      child.relationType
-    )
-    pt
+  override lazy val relationType: RelationType = RelationType.projectColumns(
+    outputColumns,
+    child.relationType
+  )
 
 case class RenameColumnsFromRelation(child: Relation, columnAliases: List[Alias], span: Span)
     extends Selection
@@ -503,7 +509,13 @@ case class RenameColumnsFromRelation(child: Relation, columnAliases: List[Alias]
       }
     renamedColumns.result()
 
-  override def selectItems: List[Attribute] = inputRelationType
+  override def selectItems: List[Attribute] =
+    if inputRelationType.hasUnknownColumns then
+      List(allColumnsWithModifiers("rename", inputRelationType, Nil, columnAliases, span))
+    else
+      knownSelectItems
+
+  private def knownSelectItems: List[Attribute] = inputRelationType
     .fields
     .map { f =>
       columnMapping.get(f.name) match
@@ -530,12 +542,7 @@ case class RenameColumnsFromRelation(child: Relation, columnAliases: List[Alias]
             case None =>
               f
         }
-    val pt = ProjectedType(
-      Name.typeName(RelationType.newRelationTypeName),
-      newColumns.result(),
-      child.relationType
-    )
-    pt
+    RelationType.projectColumns(newColumns.result(), child.relationType)
 
 end RenameColumnsFromRelation
 
@@ -547,10 +554,20 @@ case class ShiftColumns(
 ) extends Selection:
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
 
-  override def selectItems: List[Attribute] = outputColumns.map { c =>
-    val name = NameExpr.fromString(c.toSQLAttributeName, span)
-    SingleColumn(NameExpr.EmptyName, name, span)
-  }
+  override def selectItems: List[Attribute] =
+    if inputRelationType.hasUnknownColumns then
+      // Name the shifted columns explicitly and keep the other, unknown columns with a star
+      val shifted = shiftItems.map(c => SingleColumn(NameExpr.EmptyName, c, span))
+      val rest    = allColumnsWithModifiers("shift", inputRelationType, shiftItems, Nil, span)
+      if isLeftShift then
+        shifted :+ rest
+      else
+        rest :: shifted
+    else
+      outputColumns.map { c =>
+        val name = NameExpr.fromString(c.toSQLAttributeName, span)
+        SingleColumn(NameExpr.EmptyName, name, span)
+      }
 
   private def outputColumns: List[NamedType] =
     var inputFields: ListMap[String, NamedType] = inputRelationType
@@ -565,6 +582,9 @@ case class ShiftColumns(
         case Some(f) =>
           preferredColumns += f
           inputFields -= si.leafName
+        case None if inputRelationType.hasUnknownColumns =>
+          // One of the unknown input columns
+          preferredColumns += NamedType(Name.termName(si.leafName), DataType.UnknownType)
         case None =>
       // skip
     }
@@ -576,8 +596,7 @@ case class ShiftColumns(
     else
       remainingColumns ++ preferredColumns.result()
 
-  override lazy val relationType: RelationType = ProjectedType(
-    Name.typeName(RelationType.newRelationTypeName),
+  override lazy val relationType: RelationType = RelationType.projectColumns(
     outputColumns,
     child.relationType
   )

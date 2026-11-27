@@ -176,11 +176,15 @@ object SqlGenerator:
   private[codegen] def scopeSafe(e: Expression, items: List[Attribute]): Boolean =
     val shadowed: Set[String] =
       items
-        .flatMap { item =>
-          if passesThrough(item) then
-            None
-          else
-            outputName(item).map(_.toLowerCase)
+        .flatMap {
+          case a: AllColumnsWithModifiers =>
+            // `* rename (a as b)` outputs the new names
+            a.renames.map(_.nameExpr.leafName.toLowerCase)
+          case item =>
+            if passesThrough(item) then
+              None
+            else
+              outputName(item).map(_.toLowerCase)
         }
         .toSet
     shadowed.isEmpty || referencedNames(e).forall(n => !shadowed.contains(n))
@@ -275,6 +279,46 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
   private def notSupported(feature: String): Nothing =
     throw StatusCode.NOT_IMPLEMENTED.newException(s"$feature is not supported for ${dbType}")
+
+  /**
+    * Render `* exclude (...) rename (...)` for a column operator over an input with unknown
+    * columns, or report that the target SQL has no such star modifier
+    */
+  private def allColumnsWithModifiers(a: AllColumnsWithModifiers)(using sc: SyntaxContext): Doc =
+    def unknownColumns(modifier: String): Nothing =
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"${a.operatorName} needs the columns of ${a.sourceName}, which are unknown, " +
+            s"and ${dbType} has no `* ${modifier}` syntax. " +
+            s"Provide the table schema or select the columns explicitly",
+          ctx.sourceLocationAt(a.span)
+        )
+
+    val excludes: Option[Doc] =
+      if a.excludes.isEmpty then
+        None
+      else
+        dbType.starExcludeKeyword match
+          case Some(keyword) =>
+            Some(wl(keyword, paren(cl(a.excludes.map(expr(_))))))
+          case None =>
+            unknownColumns("exclude")
+    val renames: Option[Doc] =
+      if a.renames.isEmpty then
+        None
+      else if dbType.supportStarRename then
+        Some(
+          wl(
+            "rename",
+            paren(cl(a.renames.map(r => wl(expr(r.expr), "as", r.nameExpr.toSQLAttributeName))))
+          )
+        )
+      else
+        unknownColumns("rename")
+    wl(text("*"), excludes, renames)
+
+  end allColumnsWithModifiers
 
   private def syntaxError(message: String): Nothing =
     throw StatusCode.SYNTAX_ERROR.newException(message)
@@ -1930,6 +1974,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             t
           case left =>
             wl(left, "as", s.nameExpr.toSQLAttributeName)
+      case a: AllColumnsWithModifiers =>
+        allColumnsWithModifiers(a)
       case a: Attribute =>
         text(a.fullName)
       case t: TypedExpression =>
