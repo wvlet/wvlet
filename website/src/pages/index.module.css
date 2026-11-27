@@ -704,7 +704,7 @@
 
 .multiEngineHead {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
   align-items: end;
   gap: 48px;
   margin-bottom: 48px;
@@ -743,7 +743,7 @@
 }
 
 .multiEngineHead h2 {
-  font-size: clamp(36px, 4.4vw, 60px);
+  font-size: clamp(34px, 3.8vw, 54px);
 }
 
 .multiEngineHead h2 + p {

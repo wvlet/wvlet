@@ -41,8 +41,8 @@ const FeatureList: FeatureItem[] = [
             <>
                 Wvlet consumes the differences between SQL engines,
                 such as <a href='https://duckdb.org'>DuckDB</a>, <a href='https://trino.io/'>Trino</a>, <a href={'https://apache.hive.org/'}>Hive</a>, etc.
-                You can switch the SQL engines without changing the query,
-                depending on the data size and the expected query performance.
+                You can choose the SQL engine that fits the data size and the expected query
+                performance.
             </>
         ),
   },

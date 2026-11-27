@@ -211,8 +211,8 @@ function HomepageHero(): React.ReactNode {
         <p className={styles.lede}>
           Wvlet is a <Link to="/docs/syntax/">flow-style query language</Link> with its own columnar
           query engine. Start from a table, pipe it through operators, and run it in-process on the
-          JVM, Node.js, web browsers, or as a native binary. Need a warehouse? The same query
-          compiles to SQL for DuckDB, Trino, Snowflake, and Hive.
+          JVM, Node.js, web browsers, or as a native binary. Need a warehouse? Wvlet also compiles
+          to SQL for DuckDB, Trino, Snowflake, and Hive.
         </p>
         <div className={styles.ctas}>
           <Link className={clsx(styles.btn, styles.btnSolid)} to="pathname:///playground/">
@@ -379,28 +379,29 @@ const engineCards: EngineCard[] = [
     tags: ['DuckDB', 'Trino', 'Snowflake', 'Hive'],
     description: (
       <>
-        When the data lives in a warehouse, compile the same query to that engine's SQL dialect
-        and run it there.
+        When the data lives in a warehouse, compile your query to that engine's SQL dialect and
+        run it there.
       </>
     ),
   },
 ];
 
-/** One query language, several places to execute it. */
+/** One query language, a choice of engines to run it on. */
 function EnginesSection(): React.ReactNode {
   return (
     <section className={styles.multiEngine}>
       <div className={styles.multiEngineHead}>
         <div>
-          <p className={styles.kicker}>Flexible execution</p>
+          <p className={styles.kicker}>Choice of engines</p>
           <h2>
             One size doesn't fit all. <br />
-            <em className={styles.shimmer}>One query can.</em>
+            <em className={styles.shimmer}>Choose the engine that fits.</em>
           </h2>
           <p>
-            No single engine fits every workload: an embedded columnar engine, a GPU, and a cloud
-            warehouse each win somewhere. Rather than locking you into one, Wvlet keeps the query the
-            same and lets you run it on the engine that fits, without rewriting it.
+            No single engine fits every workload. An in-process columnar engine suits local files
+            and apps, a GPU suits heavy joins and aggregations, and a warehouse suits data that
+            already lives there. Wvlet gives you all of these choices in one language, so each
+            workload can run where it runs best.
           </p>
         </div>
         <figure className={styles.quote}>
