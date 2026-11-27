@@ -280,7 +280,7 @@ function FlowSection(): React.ReactNode {
         <p className={styles.kicker}>Why Wvlet</p>
         <h2>
           Redesigning <span className={styles.nowrap}>50-year-old</span> SQL <br />
-          <em>for modern data analytics</em>
+          <em className={styles.shimmer}>for modern data analytics</em>
         </h2>
         <p>
           SQL was born in the 1970s. Its syntax order doesn't match how data flows through a query,
@@ -386,6 +386,23 @@ const engineCards: EngineCard[] = [
   },
 ];
 
+const embedSnippet = `import duckdb
+from wvlet import compile
+
+sql = compile("""
+from 'sales.parquet'
+group by region
+agg amount.sum as total
+""", target="duckdb")
+
+duckdb.connect().execute(sql).fetchdf()`;
+
+const bindings = [
+  {name: 'Python', detail: 'pip install wvlet'},
+  {name: 'TypeScript / JavaScript', detail: 'npm install wvlet'},
+  {name: 'C API', detail: 'libwvlet native library'},
+];
+
 /** One query language, a choice of engines to run it on. */
 function EnginesSection(): React.ReactNode {
   return (
@@ -429,6 +446,33 @@ function EnginesSection(): React.ReactNode {
             </ul>
           </article>
         ))}
+      </div>
+      <div className={styles.embed}>
+        <div className={styles.embedText}>
+          <p className={styles.kicker}>Embedded</p>
+          <h3>Call Wvlet from your own code</h3>
+          <p>
+            Wvlet is also a library. Compile queries inside your application with the Python and
+            TypeScript SDKs, or call the C-compatible native library from other languages, then run
+            the SQL on the engine your app already uses.
+          </p>
+          <ul className={styles.bindings}>
+            {bindings.map((b) => (
+              <li key={b.name}>
+                <b>{b.name}</b>
+                <code>{b.detail}</code>
+              </li>
+            ))}
+          </ul>
+          <Link className={styles.readMore} to="/docs/bindings/">
+            Language bindings →
+          </Link>
+        </div>
+        <Window title="app.py" badge="python">
+          <CodeBlock language="python" className={styles.code}>
+            {embedSnippet}
+          </CodeBlock>
+        </Window>
       </div>
     </section>
   );
