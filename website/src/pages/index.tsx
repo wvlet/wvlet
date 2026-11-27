@@ -210,12 +210,6 @@ export default function Home(): React.ReactNode {
       description="Wvlet is a new cross-SQL flow-style query language">
       <Head>
         <html className="wvlet-home" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap"
-        />
       </Head>
       <div className={styles.home}>
         <HomepageHero />

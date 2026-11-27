@@ -4,27 +4,26 @@
  */
 
 .home {
-  --bg: 190 33% 98%;
-  --bg-2: 190 28% 95%;
-  --card: 190 40% 99.5%;
+  --bg: 160 30% 97%;
+  --bg-2: 160 26% 94%;
+  --card: 160 35% 99.5%;
   --ink: 196 40% 10%;
   --ink-2: 196 12% 36%;
-  --line: 192 20% 86%;
+  --line: 165 18% 85%;
   --primary: 190 48% 34%;
-  --aurora-1: 186 90% 86%;
-  --aurora-2: 196 80% 89%;
-  --aurora-3: 176 70% 87%;
-  --aurora-4: 205 60% 91%;
+  --aurora-1: 168 75% 84%;
+  --aurora-2: 150 60% 88%;
+  --aurora-3: 180 70% 86%;
+  --aurora-4: 140 50% 90%;
   --aurora-alpha: 0.55;
   --shine-1: 192 92% 22%;
   --shine-2: 186 100% 42%;
   --shine-3: 198 70% 36%;
-  --term-bg: 196 30% 9%;
+  --term-bg: 175 28% 9%;
   --radius: 18px;
   --shadow: 0 30px 80px -30px hsl(196 60% 15% / 0.35), 0 8px 24px -12px hsl(196 60% 15% / 0.2);
-  --sans: 'Inter Tight', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --serif: 'Instrument Serif', ui-serif, Georgia, serif;
-  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --sans: var(--ifm-font-family-base);
+  --mono: var(--ifm-font-family-monospace);
 
   background: hsl(var(--bg));
   color: hsl(var(--ink));
@@ -33,22 +32,22 @@
 }
 
 :global([data-theme='dark']) .home {
-  --bg: 198 28% 6%;
-  --bg-2: 198 24% 9%;
-  --card: 198 20% 11%;
+  --bg: 170 25% 6%;
+  --bg-2: 170 22% 9%;
+  --card: 170 18% 11%;
   --ink: 190 30% 94%;
   --ink-2: 192 12% 68%;
-  --line: 196 16% 19%;
+  --line: 170 14% 19%;
   --primary: 186 85% 60%;
-  --aurora-1: 186 80% 20%;
-  --aurora-2: 198 70% 17%;
-  --aurora-3: 176 60% 17%;
-  --aurora-4: 210 50% 16%;
+  --aurora-1: 170 70% 18%;
+  --aurora-2: 150 55% 15%;
+  --aurora-3: 182 60% 17%;
+  --aurora-4: 140 45% 14%;
   --aurora-alpha: 0.75;
   --shine-1: 186 95% 50%;
   --shine-2: 180 100% 78%;
   --shine-3: 196 85% 58%;
-  --term-bg: 198 30% 4%;
+  --term-bg: 175 28% 4%;
   --shadow: 0 30px 80px -30px #000000b3, 0 8px 24px -12px #00000080;
 }
 
@@ -64,10 +63,8 @@
 }
 
 .home em {
-  font-family: var(--serif);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  font-style: normal;
+  font-weight: inherit;
 }
 
 .home a {
@@ -211,14 +208,12 @@
 }
 
 .heroTitle {
-  font-size: clamp(42px, 5.2vw, 78px) !important;
+  font-size: clamp(40px, 4.5vw, 66px) !important;
   letter-spacing: -0.04em !important;
 }
 
 .heroTitle em {
   display: inline-block;
-  padding: 0.06em 0.08em 0 0;
-  font-size: 0.95em;
 }
 
 .shimmer {
