@@ -47,7 +47,8 @@ class PlanExecutor(
     connectorProvider: SqlConnectorProvider,
     defaultProfile: Profile,
     workEnv: WorkEnv,
-    rowLimit: Int = 40
+    rowLimit: Int = 40,
+    initialEngineSessions: Map[ConnectorConfig, WvletEngineSession] = Map.empty
 ) extends BasePlanExecutor(workEnv):
 
   // The engine statements execute on: the profile's default engine until `use <connector>`
@@ -57,8 +58,9 @@ class PlanExecutor(
   private def activeConnector: SqlConnector = connectorProvider.getConnector(activeConfig)
 
   // In-process engine sessions, one per wvlet connector config (tables saved in a session stay
-  // visible to later statements)
-  private val engineSessions = mutable.Map.empty[ConnectorConfig, WvletEngineSession]
+  // visible to later statements). `initialEngineSessions` lets a caller that already compiles
+  // against a session's catalog (WvletEmbed) run on that same session
+  private val engineSessions = mutable.Map.from(initialEngineSessions)
 
   private def engineSessionOf(config: ConnectorConfig): Option[WvletEngineSession] =
     if WvletEngineSession.isInProcess(config) then

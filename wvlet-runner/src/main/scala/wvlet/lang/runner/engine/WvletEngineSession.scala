@@ -52,6 +52,7 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.runner.TableRows
 import wvlet.uni.log.LogSupport
 
+import scala.collection.immutable.ListMap
 import scala.util.control.NonFatal
 
 /**
@@ -204,7 +205,8 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
     w.tables.foreach(t => registerUnique(t, Some(s"in the warehouse (${t.path})")))
   }
 
-  private def resolvePath(path: String): String =
+  /** Resolve a relative path against `baseDir` */
+  def resolvePath(path: String): String =
     if SourceIO.isAbsolutePath(path) || path.contains("://") then
       path
     else
@@ -331,7 +333,13 @@ class WvletEngineSession(config: ConnectorConfig, baseDir: String) extends LogSu
         .map(f => DataType.NamedType(Name.termName(f.name), f.ptype.toDataType))
         .toList
     )
-    TableRows(schema, result.toRowMaps(rowLimit), result.numRows)
+    val names = result.schema.names
+    if names.distinct.size < names.size then
+      val rows = result.toExternalRows(rowLimit)
+      val maps = rows.map(r => ListMap.from(names.indices.map(i => names(i) -> r(i))))
+      TableRows(schema, maps, result.numRows, Some(rows))
+    else
+      TableRows(schema, result.toRowMaps(rowLimit), result.numRows)
 
   /**
     * Run a write statement: `save to <table>`, `append to <table>` (plain and keyed), and `delete`
