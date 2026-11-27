@@ -1,5 +1,5 @@
 ---
-description: "A hands-on Wvlet tutorial: install the wv shell, generate TPC-H sample data in DuckDB, and build flow-style queries step by step."
+description: "A hands-on Wvlet tutorial: start the wv shell, query the built-in TPC-H tables on the Wvlet engine with no setup, and build flow-style queries step by step."
 sidebar_position: 1
 ---
 
@@ -7,137 +7,122 @@ sidebar_position: 1
 
 ## A Walk-Through Example
 
-Let's start with a simple example. If you haven't installed `wv` command, [install Wvlet command](../usage/install.md) to your machine. `wv` command starts an [interactive shell](../usage/repl.md), which is backed by DuckDB in-memory database by default.
+Let's start with a simple example. If you haven't installed the `wv` command, [install Wvlet](../usage/install.md) first. `wv` starts an [interactive shell](../usage/repl.md) that runs queries on the in-process [Wvlet engine](../usage/wvlet-engine.md), so there is no database to set up.
 
-For the ease of learning, let's create a sample [TPC-H benchmark](https://www.tpc.org/tpch/) data set:
+Every Wvlet engine session can read a generated [TPC-H benchmark](https://www.tpc.org/tpch/) data set as `tpch.<scale>.<table>`. This tutorial uses the smallest one, `tpch.tiny` (scale factor 0.01), whose eight tables are `customer`, `lineitem`, `nation`, `orders`, `part`, `partsupp`, `region`, and `supplier`. Rows are generated in memory while a query reads them, so nothing is written to disk. See [Built-in tpch and tpcds catalogs](../usage/wvlet-engine.md#built-in-tpch-and-tpcds-catalogs) for larger scale factors and the TPC-DS tables.
+
+:::tip
+`wv` comes with the JVM CLI (Homebrew or a release package). With the npm package, run each query with `wvlet run` instead, for example `wvlet run "from tpch.tiny.customer limit 3"`.
+:::
+
+The simplest form of queries is `from (table name)`:
 
 ```wvlet
 $ wv
-wv> execute sql"call dbgen(sf=0.01)";
-wv> show tables;
-┌────────────┐
-│ table_name │
-│   string   │
-├────────────┤
-│ customer   │
-│ lineitem   │
-│ nation     │
-│ orders     │
-│ part       │
-│ partsupp   │
-│ region     │
-│ supplier   │
-├────────────┤
-│ 8 rows     │
-└────────────┘
-```
-The `execute sql"call dbgen(sf=0.01)"` command calls DuckDB's [TPC-H extension](https://duckdb.org/docs/extensions/tpch.html) and creates an in-memory TPC-H benchmark database, which will be gone when you exit the Wvlet shell. So you can try this command without worrying about the disk space.
-
-The simplest form of queries is `from (table name)`:
-```wvlet
-wv> from customer;
-┌───────────┬────────────────────┬─────────────────────────────────────────┬───────────>
-│ c_custkey │       c_name       │                c_address                │ c_nationke>
-│   long    │       string       │                 string                  │     int   >
-├───────────┼────────────────────┼─────────────────────────────────────────┼───────────>
-│         1 │ Customer#000000001 │ j5JsirBM9PsCy0O1m                       │          1>
-│         2 │ Customer#000000002 │ 487LW1dovn6Q4dMVymKwwLE9OKf3QG          │          1>
-│         3 │ Customer#000000003 │ fkRGN8nY4pkE                            │           >
-│         4 │ Customer#000000004 │ 4u58h fqkyE                             │           >
-│         5 │ Customer#000000005 │ hwBtxkoBF qSW4KrIk5U 2B1AU7H            │           >
-│         6 │ Customer#000000006 │  g1s,pzDenUEBW3O,2 pxu0f9n2g64rJrt5E    │          2>
-│         7 │ Customer#000000007 │ 8OkMVLQ1dK6Mbu6WG9 w4pLGQ n7MQ          │          1>
-│         8 │ Customer#000000008 │ j,pZ,Qp,qtFEo0r0c 92qobZtlhSuOqbE4JGV   │          1>
-│         9 │ Customer#000000009 │ vgIql8H6zoyuLMFNdAMLyE7 H9              │           >
+wv> from tpch.tiny.customer;
+┌───────────┬────────────────────┬──────────────────────────────────────────┬────────────>
+│ c_custkey │       c_name       │                c_address                 │ c_nationkey>
+│   long    │       string       │                  string                  │    long    >
+├───────────┼────────────────────┼──────────────────────────────────────────┼────────────>
+│         1 │ Customer#000000001 │ 6WssTynb387PEmdkrsq3ZfVYAgL2YbZ0         │           6>
+│         2 │ Customer#000000002 │ 0YJH3zUJjjA7Wpe0hb7Z2D                   │          21>
+│         3 │ Customer#000000003 │ JNGJkuS483CGh7QelzEevplGMT0I77u          │           0>
+│         4 │ Customer#000000004 │ U5e440uOu8                               │           4>
+│         5 │ Customer#000000005 │ mUNNyEWYOfBICOv6u9E3xAZxl2CBHc2Vi        │          11>
+│         6 │ Customer#000000006 │ nWt8Mrij5u                               │           7>
+│         7 │ Customer#000000007 │ okyeONh,52YQM1W60wSpFRHbT                │          19>
+│         8 │ Customer#000000008 │ lH11rDSC6kcUVNJdbrTgJmsndkrLvb1Mt        │          12>
+│         9 │ Customer#000000009 │ P0dmfCY5IrWFQwBP9,CPFCLYNApbksZ          │          18>
 ```
 
-This query returns all the columns in the `customer` table.
-If the query result doesn't fit to the screen, Wvlet shell enters [UNIX `less` command](https://en.wikipedia.org/wiki/Less_(Unix)#:~:text=less%20is%20a%20terminal%20pager,backward%20navigation%20through%20the%20file.) mode, which
-allows to navigate table data using arrow keys, page up/down keys, and `q` key to exit the mode. See [Interactive Shell](../usage/repl.md) for the list of the available shortcut keys.
+This query returns all the columns in the `customer` table. If the query result doesn't fit to the screen, the Wvlet shell enters [UNIX `less` command](https://en.wikipedia.org/wiki/Less_(Unix)) mode, which allows you to navigate table data using arrow keys, page up/down keys, and the `q` key to exit the mode. See [Interactive Shell](../usage/repl.md) for the list of the available shortcut keys.
 
-To limit the number of rows to display, you can use `limit` operator:
+:::tip
+The values in the `tpch` tables follow the TPC-H specification but aren't those of the reference `dbgen` generator, so your numbers won't match the official TPC-H answers. To use DuckDB's `dbgen` data instead (DuckDB comes with the npm package and the full JVM package), start the shell with `wv -t duckdb` and run `execute sql"call dbgen(sf=0.01)"`; the tables are then named without the `tpch.tiny.` prefix.
+:::
+
+To limit the number of rows to display, you can use the `limit` operator:
+
 ```wvlet
-wv> from customer
+wv> from tpch.tiny.customer
   │ limit 3;
-┌───────────┬────────────────────┬────────────────────────────────┬─────────────┬──────>
-│ c_custkey │       c_name       │           c_address            │ c_nationkey │     c>
-│   long    │       string       │             string             │     int     │     s>
-├───────────┼────────────────────┼────────────────────────────────┼─────────────┼──────>
-│         1 │ Customer#000000001 │ j5JsirBM9PsCy0O1m              │          15 │ 25-98>
-│         2 │ Customer#000000002 │ 487LW1dovn6Q4dMVymKwwLE9OKf3QG │          13 │ 23-76>
-│         3 │ Customer#000000003 │ fkRGN8nY4pkE                   │           1 │ 11-71>
-├───────────┴────────────────────┴────────────────────────────────┴─────────────┴──────>
-│ 3 rows                                                                               >
-└──────────────────────────────────────────────────────────────────────────────────────>
+┌───────────┬────────────────────┬──────────────────────────────────┬─────────────┬──────>
+│ c_custkey │       c_name       │            c_address             │ c_nationkey │     c>
+│   long    │       string       │              string              │    long     │     s>
+├───────────┼────────────────────┼──────────────────────────────────┼─────────────┼──────>
+│         1 │ Customer#000000001 │ 6WssTynb387PEmdkrsq3ZfVYAgL2YbZ0 │           6 │ 16-54>
+│         2 │ Customer#000000002 │ 0YJH3zUJjjA7Wpe0hb7Z2D           │          21 │ 31-56>
+│         3 │ Customer#000000003 │ JNGJkuS483CGh7QelzEevplGMT0I77u  │           0 │ 10-19>
+├───────────┴────────────────────┴──────────────────────────────────┴─────────────┴──────>
+│ 3 rows                                                                                 >
+└────────────────────────────────────────────────────────────────────────────────────────>
 ```
 
 :::tip
-Separators `|` between expressions are shown only while editing queries. You don't need to type `|` in the Wvlet shell or in query files.
+Separators `│` between lines are shown only while editing queries. You don't need to type `│` in the Wvlet shell or in query files.
 :::
 
-
-To select specific columns, you can use `select` operator:
+To select specific columns, you can use the `select` operator:
 
 ```wvlet
-from customer
-wv> from customer
+wv> from tpch.tiny.customer
   │ select c_name, c_nationkey
   │ limit 5;
 ┌────────────────────┬─────────────┐
 │       c_name       │ c_nationkey │
-│       string       │     int     │
+│       string       │    long     │
 ├────────────────────┼─────────────┤
-│ Customer#000000001 │          15 │
-│ Customer#000000002 │          13 │
-│ Customer#000000003 │           1 │
+│ Customer#000000001 │           6 │
+│ Customer#000000002 │          21 │
+│ Customer#000000003 │           0 │
 │ Customer#000000004 │           4 │
-│ Customer#000000005 │           3 │
+│ Customer#000000005 │          11 │
 ├────────────────────┴─────────────┤
 │ 5 rows                           │
 └──────────────────────────────────┘
 ```
 
-To select specific values from the table, you can use `where` operator:
+To select specific rows from the table, you can use the `where` operator:
 
-```wvlet 
-wv> from customer 
+```wvlet
+wv> from tpch.tiny.customer
   │ where c_nationkey = 1
   │ select c_name, c_address
   │ limit 5;
-┌────────────────────┬─────────────┐
-│       c_name       │ c_nationkey │
-│       string       │     int     │
-├────────────────────┼─────────────┤
-│ Customer#000000003 │           1 │
-│ Customer#000000014 │           1 │
-│ Customer#000000030 │           1 │
-│ Customer#000000059 │           1 │
-│ Customer#000000106 │           1 │
-├────────────────────┴─────────────┤
-│ 5 rows                           │
-└──────────────────────────────────┘
+┌────────────────────┬──────────────────────────────────────────┐
+│       c_name       │                c_address                 │
+│       string       │                  string                  │
+├────────────────────┼──────────────────────────────────────────┤
+│ Customer#000000060 │ x1TuMVRHKcnIwGZWWi                       │
+│ Customer#000000098 │ 4u7vh3lRgQnOLq0fpjkM5r1nMOhC,SUk5su      │
+│ Customer#000000117 │ ubT6riSam5zisD2tL                        │
+│ Customer#000000130 │ 4sXPTI6oPZ                               │
+│ Customer#000000153 │ jxt43opIMcgNXk251dY5enRmvJNlwn9UscB2J2KZ │
+├────────────────────┴──────────────────────────────────────────┤
+│ 5 rows                                                        │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ## Writing Queries
 
 ### One-Liner Queries
 
-In Wvlet, individual query line often matches with a single [relational operator](./), which processes a given input table data and return a new table data. Inserting newlines, however, is not mandatory. You can fit the whole query within a single line, which is convenient for quick data exploration:
+In Wvlet, each query line often matches a single [relational operator](./), which processes a given input table and returns a new table. Newlines, however, are not mandatory. You can fit the whole query within a single line, which is convenient for quick data exploration:
 
 ```wvlet
-wv> from customer where c_mktsegment = 'HOUSEHOLD' limit 5;
-┌───────────┬────────────────────┬────────────────────────────────────────┬────────────>
-│ c_custkey │       c_name       │               c_address                │ c_nationkey>
-│   long    │       string       │                 string                 │     int    >
-├───────────┼────────────────────┼────────────────────────────────────────┼────────────>
-│         5 │ Customer#000000005 │ hwBtxkoBF qSW4KrIk5U 2B1AU7H           │           3>
-│        10 │ Customer#000000010 │ Vf mQ6Ug9Ucf5OKGYq fsaX AtfsO7,rwY     │           5>
-│        12 │ Customer#000000012 │ Sb4gxKs7W1AZa                          │          13>
-│        15 │ Customer#000000015 │ 3y4KK4CcfNwNCTP0u0p1Rk6aeghe3Z30mo0VnD │          23>
-│        19 │ Customer#000000019 │ yO0XPkiuSWk0vN FfcH5 IA3oBYy           │          18>
-├───────────┴────────────────────┴────────────────────────────────────────┴────────────>
-│ 5 rows                                                                               >
-└──────────────────────────────────────────────────────────────────────────────────────>
+wv> from tpch.tiny.customer where c_mktsegment = 'HOUSEHOLD' limit 5;
+┌───────────┬────────────────────┬───────────────────────────────────────┬─────────────┬─>
+│ c_custkey │       c_name       │               c_address               │ c_nationkey │ >
+│   long    │       string       │                string                 │    long     │ >
+├───────────┼────────────────────┼───────────────────────────────────────┼─────────────┼─>
+│         2 │ Customer#000000002 │ 0YJH3zUJjjA7Wpe0hb7Z2D                │          21 │ >
+│         3 │ Customer#000000003 │ JNGJkuS483CGh7QelzEevplGMT0I77u       │           0 │ >
+│         6 │ Customer#000000006 │ nWt8Mrij5u                            │           7 │ >
+│        10 │ Customer#000000010 │ kd0gojXB41qhfehP2cmPN0y5VL1iwLIe4     │           7 │ >
+│        28 │ Customer#000000028 │ JP1U6jgwEnXiMzaT7BKSF97PaQVfymaQOwMN5 │           8 │ >
+├───────────┴────────────────────┴───────────────────────────────────────┴─────────────┴─>
+│ 5 rows                                                                                 >
+└────────────────────────────────────────────────────────────────────────────────────────>
 ```
 
 ### Adding Comments
@@ -145,20 +130,20 @@ wv> from customer where c_mktsegment = 'HOUSEHOLD' limit 5;
 The multi-line syntax is convenient for improving the readability of your queries. As Wvlet adopts a flow-style syntax, you can add comments to each line of the query:
 
 ```wvlet
-wv> from customer
+wv> from tpch.tiny.customer
   │ -- Select customers for each market segment, e.g., HOUSEHOLD, BUILDING, etc.
-  │ group by c_mktsegment,
+  │ group by c_mktsegment
   │ -- Report the number of customers in each market segment
-  │ agg _.count as customer_count
+  │ agg _.count as customer_count;
 ┌──────────────┬────────────────┐
 │ c_mktsegment │ customer_count │
 │    string    │      long      │
 ├──────────────┼────────────────┤
-│ HOUSEHOLD    │            588 │
-│ BUILDING     │            674 │
-│ MACHINERY    │            576 │
-│ FURNITURE    │            558 │
-│ AUTOMOBILE   │            604 │
+│ BUILDING     │            324 │
+│ HOUSEHOLD    │            285 │
+│ FURNITURE    │            307 │
+│ MACHINERY    │            275 │
+│ AUTOMOBILE   │            309 │
 ├──────────────┴────────────────┤
 │ 5 rows                        │
 └───────────────────────────────┘
@@ -170,31 +155,32 @@ Comments in Wvlet start with `--` and continue to the end of the line.
 
 ### Describing Table Schema
 
-To learn about the table schema, the list of columns and types in the table, you can use `describe` operator:
+To learn about the table schema, the list of columns and types in the table, you can use the `describe` operator:
+
 ```wvlet
-wv> from customer
+wv> from tpch.tiny.customer
   │ describe;
-┌──────────────┬─────────────┐
-│ column_name  │ column_type │
-│    string    │   string    │
-├──────────────┼─────────────┤
-│ c_custkey    │ long        │
-│ c_name       │ string      │
-│ c_address    │ string      │
-│ c_nationkey  │ int         │
-│ c_phone      │ string      │
-│ c_acctbal    │ decimal     │
-│ c_mktsegment │ string      │
-│ c_comment    │ string      │
-├──────────────┴─────────────┤
-│ 8 rows                     │
-└────────────────────────────┘
+┌──────────────┬───────────────┐
+│ column_name  │  column_type  │
+│    string    │    string     │
+├──────────────┼───────────────┤
+│ c_custkey    │ long          │
+│ c_name       │ string        │
+│ c_address    │ string        │
+│ c_nationkey  │ long          │
+│ c_phone      │ string        │
+│ c_acctbal    │ decimal(15,2) │
+│ c_mktsegment │ string        │
+│ c_comment    │ string        │
+├──────────────┴───────────────┤
+│ 8 rows                       │
+└──────────────────────────────┘
 ```
 
-`describe` is also a relational operator, which can be filtered by `where` operator:
+`describe` is also a relational operator, which can be filtered by the `where` operator:
 
 ```wvlet
-wv> from customer
+wv> from tpch.tiny.customer
   │ describe
   │ where column_name like '%name%';
 ┌─────────────┬─────────────┐
@@ -210,31 +196,34 @@ wv> from customer
 ### Quick Schema Check
 
 A more convenient way to see the table schema is to use `ctrl-j ctrl-d` shortcut keys in the Wvlet shell:
+
 ```wvlet
-describe (line:1): from customer
-┌──────────────┬─────────────┐
-│ column_name  │ column_type │
-│    string    │   string    │
-├──────────────┼─────────────┤
-│ c_custkey    │ long        │
-│ c_name       │ string      │
-│ c_address    │ string      │
-│ c_nationkey  │ int         │
-│ c_phone      │ string      │
-│ c_acctbal    │ decimal     │
-│ c_mktsegment │ string      │
-│ c_comment    │ string      │
-├──────────────┴─────────────┤
-│ 8 rows                     │
-└────────────────────────────┘
-wv> from customer  -- Press ctrl-j ctrl-d sequence here
+describe (line:1): from tpch.tiny.customer
+┌──────────────┬───────────────┐
+│ column_name  │  column_type  │
+│    string    │    string     │
+├──────────────┼───────────────┤
+│ c_custkey    │ long          │
+│ c_name       │ string        │
+│ c_address    │ string        │
+│ c_nationkey  │ long          │
+│ c_phone      │ string        │
+│ c_acctbal    │ decimal(15,2) │
+│ c_mktsegment │ string        │
+│ c_comment    │ string        │
+├──────────────┴───────────────┤
+│ 8 rows                       │
+└──────────────────────────────┘
+wv> from tpch.tiny.customer  -- Press ctrl-j ctrl-d sequence here
   │ where c_nationkey = 1
   │ select c_name, c_nationkey
   │ limit 5;
 ```
-`ctrl-j ctrl-d` shortcut key internally calls `(A query fragment up to the current line) describe`  to show the schema of the current query fragment.
+
+`ctrl-j ctrl-d` internally runs `(the query fragment up to the current line) describe` to show the schema of the current query fragment.
 
 You can also check the schema in the middle of a query:
+
 ```wvlet
 describe (line:3): select c_name, c_nationkey
 ┌─────────────┬─────────────┐
@@ -242,11 +231,11 @@ describe (line:3): select c_name, c_nationkey
 │   string    │   string    │
 ├─────────────┼─────────────┤
 │ c_name      │ string      │
-│ c_nationkey │ int         │
+│ c_nationkey │ long        │
 ├─────────────┴─────────────┤
 │ 2 rows                    │
 └───────────────────────────┘
-wv> from customer
+wv> from tpch.tiny.customer
   │ where c_nationkey = 1
   │ select c_name, c_nationkey -- Press ctrl-j ctrl-d here
   │ limit 5;
@@ -257,95 +246,99 @@ wv> from customer
 While editing queries, you will often need to look at the actual data. Type `ctrl-j` `ctrl-t` (test run) to see the intermediate query results at the line:
 
 ```wvlet
-wv> from customer -- type ctrl-j ctrl-t here
+wv> from tpch.tiny.customer -- type ctrl-j ctrl-t here
   │ where c_nationkey = 1
   │ select c_name, c_nationkey
   │ limit 5;
-debug (line:1): from customer
-┌───────────┬────────────────────┬─────────────────────────────────────────┬───────────>
-│ c_custkey │       c_name       │                c_address                │ c_nationke>
-│   long    │       string       │                 string                  │     int   >
-├───────────┼────────────────────┼─────────────────────────────────────────┼───────────>
-│         1 │ Customer#000000001 │ j5JsirBM9PsCy0O1m                       │          1>
-│         2 │ Customer#000000002 │ 487LW1dovn6Q4dMVymKwwLE9OKf3QG          │          1>
-│         3 │ Customer#000000003 │ fkRGN8nY4pkE                            │           >
-│         4 │ Customer#000000004 │ 4u58h fqkyE                             │           >
-│         5 │ Customer#000000005 │ hwBtxkoBF qSW4KrIk5U 2B1AU7H            │           >
-│         6 │ Customer#000000006 │  g1s,pzDenUEBW3O,2 pxu0f9n2g64rJrt5E    │          2>
-│         7 │ Customer#000000007 │ 8OkMVLQ1dK6Mbu6WG9 w4pLGQ n7MQ          │          1>
-│         8 │ Customer#000000008 │ j,pZ,Qp,qtFEo0r0c 92qobZtlhSuOqbE4JGV   │          1>
-│         9 │ Customer#000000009 │ vgIql8H6zoyuLMFNdAMLyE7 H9              │           >
-│        10 │ Customer#000000010 │ Vf mQ6Ug9Ucf5OKGYq fsaX AtfsO7,rwY      │           >
+debug (line:1): from tpch.tiny.customer
+┌───────────┬────────────────────┬──────────────────────────────────────────┬────────────>
+│ c_custkey │       c_name       │                c_address                 │ c_nationkey>
+│   long    │       string       │                  string                  │    long    >
+├───────────┼────────────────────┼──────────────────────────────────────────┼────────────>
+│         1 │ Customer#000000001 │ 6WssTynb387PEmdkrsq3ZfVYAgL2YbZ0         │           6>
+│         2 │ Customer#000000002 │ 0YJH3zUJjjA7Wpe0hb7Z2D                   │          21>
+│         3 │ Customer#000000003 │ JNGJkuS483CGh7QelzEevplGMT0I77u          │           0>
+│         4 │ Customer#000000004 │ U5e440uOu8                               │           4>
+│         5 │ Customer#000000005 │ mUNNyEWYOfBICOv6u9E3xAZxl2CBHc2Vi        │          11>
+│         6 │ Customer#000000006 │ nWt8Mrij5u                               │           7>
+│         7 │ Customer#000000007 │ okyeONh,52YQM1W60wSpFRHbT                │          19>
+│         8 │ Customer#000000008 │ lH11rDSC6kcUVNJdbrTgJmsndkrLvb1Mt        │          12>
+│         9 │ Customer#000000009 │ P0dmfCY5IrWFQwBP9,CPFCLYNApbksZ          │          18>
 ```
 
-Test run command is useful to refine your query as you add more relational operators:
+Test run is useful to refine your query as you add more relational operators:
+
 ```wvlet
-wv> from customer
+wv> from tpch.tiny.customer
   │ select c_custkey, c_name, c_nationkey -- type ctrl-j ctrl-t here
 debug (line:2): select c_custkey, c_name, c_nationkey
 ┌───────────┬────────────────────┬─────────────┐
 │ c_custkey │       c_name       │ c_nationkey │
-│   long    │       string       │     int     │
+│   long    │       string       │    long     │
 ├───────────┼────────────────────┼─────────────┤
-│         1 │ Customer#000000001 │          15 │
-│         2 │ Customer#000000002 │          13 │
-│         3 │ Customer#000000003 │           1 │
+│         1 │ Customer#000000001 │           6 │
+│         2 │ Customer#000000002 │          21 │
+│         3 │ Customer#000000003 │           0 │
 │         4 │ Customer#000000004 │           4 │
-│         5 │ Customer#000000005 │           3 │
-│         6 │ Customer#000000006 │          20 │
+│         5 │ Customer#000000005 │          11 │
 ```
 
 ## Reusing Queries
 
-In Wvlet, you can name a query using `select as` operator, and refer to the named query result in the subsequent queries:
+In Wvlet, you can name a query using the `select as` operator, and refer to the named query result in the subsequent queries:
 
 ```wvlet
-wv> from customer
+wv> from tpch.tiny.customer
   │ where c_nationkey = 1
   │ -- Name the query as domestic_customer
   │ select as domestic_customer;
 ```
 
 You can refer to the named query result in the subsequent queries:
+
 ```wvlet
 wv> from domestic_customer
   │ limit 5;
-┌───────────┬────────────────────┬─────────────────────────────────────────┬─────────────┬─>
-│ c_custkey │       c_name       │                c_address                │ c_nationkey │ >
-│   long    │       string       │                 string                  │     int     │ >
-├───────────┼────────────────────┼─────────────────────────────────────────┼─────────────┼─>
-│         3 │ Customer#000000003 │ fkRGN8nY4pkE                            │           1 │ >
-│        14 │ Customer#000000014 │ h3GFMzeFfYiamqr                         │           1 │ >
-│        30 │ Customer#000000030 │ EhnzmgkqQw7UXhF0PVdg gLfSAihaaHaD2fZah2 │           1 │ >
-│        59 │ Customer#000000059 │ tfcob0wJRYdypIJLzBckGW                  │           1 │ >
-│       106 │ Customer#000000106 │ vkocmr6H6dl                             │           1 │ >
-├───────────┴────────────────────┴─────────────────────────────────────────┴─────────────┴─>
-│ 5 rows                                                                                   >
-└──────────────────────────────────────────────────────────────────────────────────────────>
+┌───────────┬────────────────────┬──────────────────────────────────────────┬────────────>
+│ c_custkey │       c_name       │                c_address                 │ c_nationkey>
+│   long    │       string       │                  string                  │    long    >
+├───────────┼────────────────────┼──────────────────────────────────────────┼────────────>
+│        60 │ Customer#000000060 │ x1TuMVRHKcnIwGZWWi                       │           1>
+│        98 │ Customer#000000098 │ 4u7vh3lRgQnOLq0fpjkM5r1nMOhC,SUk5su      │           1>
+│       117 │ Customer#000000117 │ ubT6riSam5zisD2tL                        │           1>
+│       130 │ Customer#000000130 │ 4sXPTI6oPZ                               │           1>
+│       153 │ Customer#000000153 │ jxt43opIMcgNXk251dY5enRmvJNlwn9UscB2J2KZ │           1>
+├───────────┴────────────────────┴──────────────────────────────────────────┴────────────>
+│ 5 rows                                                                                 >
+└────────────────────────────────────────────────────────────────────────────────────────>
 ```
 
-Unlike SQL views, which will be registered to the system catalog, named queries are available only in the current scope (e.g., the current Wvlet shell session).
+Unlike SQL views, which are registered to the system catalog, named queries are available only in the current scope (e.g., the current Wvlet shell session).
 
 ## Saving Queries in .wv Files
 
-If you want to reuse the query in other sessions or share it with others, you can save the query to a file with `.wv` extension:
+If you want to reuse the query in other sessions or share it with others, you can save the query to a file with the `.wv` extension:
 
 ```wvlet title="my_query.wv"
-from customer
+from tpch.tiny.customer
 where c_nationkey = 1
 ```
 
-Queries in `.wv` files can be loaded in `from` operator:
+Queries in `.wv` files can be loaded in the `from` operator:
 
 ```wvlet
 -- Load the query written in my_query.wv file
 from 'my_query.wv'
 ```
 
-In the wvlet shell, .wv files will be loaded from the current directory. If you want to load files from other directories, use `-w (working directory)` option to specify the base directory.
-
+In the Wvlet shell, .wv files are loaded from the current directory. If you want to load files from other directories, use the `-w (working directory)` option to specify the base directory. To run a query file from the command line, use `wvlet run --file my_query.wv`.
 
 :::tip
-For advanced users, you can define reusable data models, which can accept some input parameters. Wvlet will find data models defined in `.wv` files in the working directory. See [Data Models](./data-models.md) for more details.
+You can also define reusable data models and functions that accept parameters. Wvlet finds data models defined in `.wv` files in the working directory. See [Data Models](./data-models.md) for more details.
 :::
 
+## Next Steps
+
+- [Query Syntax](./index.md) lists all relational operators.
+- [Wvlet Engine](../usage/wvlet-engine.md) shows how to query your own Parquet, CSV, JSON, and Iceberg files.
+- [DuckDB](../usage/duckdb.md), [Trino](../usage/trino.md), and [Snowflake](../usage/snowflake.md) show how to run the same queries on a SQL engine.
