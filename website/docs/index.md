@@ -9,7 +9,7 @@ title: Introduction
 
 Wvlet (pronounced as weave-let) is a flow-style query language with its own columnar query engine. Queries start from a table and pipe it through operators in the order data flows. You choose where they run:
 
-- **The Wvlet engine**, in-process on the JVM, Node.js, web browsers, or as a native binary. It is the default of `wvlet run` and the `wvlet` shell (REPL), and reads Parquet, Iceberg, JSON, and CSV files with no database to set up. See [Wvlet Engine](./engines/wvlet-engine.md).
+- **The Wvlet engine**, in-process on the JVM, Node.js, web browsers, or as a native binary. It is the default of `wvlet run` and the `wvlet` shell (REPL), and reads Parquet, Iceberg, JSON, and CSV files with no database to set up. It runs all 22 TPC-H and 99 TPC-DS queries, with rows matching DuckDB's. See [Wvlet Engine](./engines/wvlet-engine.md).
 - **SQL engines**: Wvlet compiles the same query to the SQL dialect of [DuckDB](./engines/duckdb.md), [Trino](./engines/trino.md), [Snowflake](./engines/snowflake.md), or Hive, so it can run where your data already lives.
 
 Wvlet reads SQL too: `.sql` files go through the same compiler as `.wv` files, and `wvlet to_wvlet` converts existing SQL into flow-style queries, so you can adopt Wvlet one query at a time. To embed Wvlet in your own application, see [Language Bindings](./bindings/).
