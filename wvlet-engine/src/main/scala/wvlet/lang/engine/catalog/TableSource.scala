@@ -1198,6 +1198,15 @@ object ParquetSource:
       cache.put((path, column, stat), StatEntry(version, value))
     }
 
+  /**
+    * Forget every cached statistic (distinct-count estimates, value samples, run lengths) and
+    * inferred partition types, so that the next query computes them again: for benchmarks that time
+    * a query without what earlier queries learned about the files
+    */
+  private[engine] def clearCachedStatistics(): Unit =
+    Seq(distinctCache, valueCountsCache).foreach(c => c.synchronized(c.clear()))
+    partitionTypeCache.synchronized(partitionTypeCache.clear())
+
   /** The file version the cached estimate of `column` in `path` was computed from (for tests) */
   def cachedDistinctVersion(path: String, column: String): Option[(Long, Long)] = distinctCache
     .synchronized {
