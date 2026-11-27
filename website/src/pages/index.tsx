@@ -359,7 +359,8 @@ const engineCards: EngineCard[] = [
     description: (
       <>
         Vectorized, multi-threaded execution over Parquet, Iceberg, JSON, and CSV, planned by a
-        cost-based optimizer. Runs the full TPC-H and TPC-DS suites at scale factor 10;{' '}
+        cost-based optimizer. Steady-state speed on par with DuckDB on TPC-H and TPC-DS at scale
+        factor 10;{' '}
         <Link to="/docs/engines/wvlet-engine-performance">see the benchmark</Link>.
       </>
     ),

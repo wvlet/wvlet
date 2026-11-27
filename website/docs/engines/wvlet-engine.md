@@ -8,7 +8,7 @@ description: "Wvlet's own in-process columnar engine runs Wvlet plans directly o
 The Wvlet engine is an in-process columnar query engine that executes compiled Wvlet plans directly, with no SQL generation and no external database. It is the default engine of `wvlet run`, the REPL, `wvlet build`, and `wvlet flow run`.
 
 - **Complete on the standard benchmarks**: it runs all 22 TPC-H and 99 TPC-DS queries.
-- **Built for analytical workloads**: vectorized, multi-threaded operators planned by a cost-based optimizer, measured against DuckDB at scale factor 10 on the [Performance](wvlet-engine-performance.md) page.
+- **On par with DuckDB at scale factor 10**: vectorized, multi-threaded operators planned by a cost-based optimizer run TPC-DS in 0.90x of DuckDB's time and TPC-H in 1.04x (geometric means). These are steady-state numbers, with the engine reusing per-file statistics and declared TPC keys; see [Performance](wvlet-engine-performance.md) for the setup.
 - **One engine everywhere**: the same Scala codebase runs on the JVM, as a native binary, in Node.js, and in the browser.
 
 ## Where it runs
