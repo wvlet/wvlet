@@ -72,7 +72,15 @@ class GpuAccelerator(config: GpuConfig = GpuConfig.fromEnv())
     else
       val q = GpuPlans.inlineCTEs(p)(using config)
       if GpuPlans.reduces(q) && supported(q) && withinLimits(q) then
-        Some(GpuOp(q, () => GpuPlans(cache, config), () => cpu(p), config))
+        val fallback: () => Operator =
+          if q eq p then
+            () => cpu(p)
+          else
+            // Lowered now, while planning: a shared CTE counts its readers before it is finalized
+            // and rejects one that reads it later
+            val op = cpu(p)
+            () => op
+        Some(GpuOp(q, () => GpuPlans(cache, config), fallback, config))
       else
         None
 
@@ -1221,13 +1229,13 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
                 case e: Throwable =>
                   values.drop(taken).foreach(_.close())
                   throw e
-            // Keys and min/max keep the bounds of their input; sums and counts widen
+            // Keys, min/max, and any_value keep the bounds of their input; sums and counts widen
             val outBounds =
               a.keys.map(k => GpuExprs.bound(k.lower(pos))) ++
                 a.calls
                   .map { c =>
                     c.name.toLowerCase match
-                      case "min" | "max" =>
+                      case "min" | "max" | "any_value" | "arbitrary" =>
                         GpuExprs.bound(c.args.head.lower(pos))
                       case _ =>
                         None
@@ -2158,12 +2166,20 @@ private[gpu] object GpuPlans:
       def expand(q: RuntimePlan): RuntimePlan =
         q match
           case CTERef(cte, columns) =>
-            val body = expand(cte.body)
+            // Fresh scans per reader: the GPU binds streamed scans to row ranges by identity
+            val body = freshScans(expand(cte.body))
             // A reader reads the first columns of the body: the body may carry more (CTEJoinKeys)
             Project(body, columns.indices.map(i => BExpr.ref(body.output(i))), columns)
           case other =>
             other.withChildren(other.children.map(expand))
       expand(p)
+
+  private def freshScans(p: RuntimePlan): RuntimePlan =
+    p match
+      case s: Scan =>
+        s.copy()
+      case other =>
+        other.withChildren(other.children.map(freshScans))
 
   /** Whether all of `p` runs on the GPU */
   def supports(p: RuntimePlan)(using GpuConfig): Boolean = unsupported(p).isEmpty
