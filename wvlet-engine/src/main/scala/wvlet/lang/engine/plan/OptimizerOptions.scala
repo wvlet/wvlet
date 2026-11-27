@@ -17,11 +17,96 @@ import wvlet.lang.api.StatusCode
 
 /**
   * An optimization of the engine planner that can be turned off. The names are stable: they are the
-  * values of `wvlet.engine.optimizer.disabled`, and the optimizer passes reuse them
+  * values of `wvlet.engine.optimizer.disabled`, and the optimizer passes reuse them.
+  *
+  * The cases are grouped by the planning phase that reads them, in the order a query is planned. A
+  * new case goes at the end of its phase's group
   */
 enum Optimization(val name: String):
-  /** `(a and b) or (a and c)` => `a and (b or c)` */
-  case FactorOr extends Optimization("factor_or")
+  // --- Plan setup: sources, shared subqueries and scans, and planning memos (before binding) ---
+
+  /** Evaluate uncorrelated scalar subqueries over the same input as one query */
+  case PrefetchScalarSubqueries extends Optimization("prefetch_scalar_subqueries")
+
+  /**
+    * Read a table once, filtered by the conjuncts an uncorrelated scalar subquery and the rest of
+    * the query share, as a CTE of the columns the query names, when the conjuncts keep few rows:
+    * the subquery computes it at plan time, and the other reads scan it (TPC-H q22, TPC-DS q44)
+    */
+  case ShareSubqueryScans extends Optimization("share_subquery_scans")
+
+  /**
+    * Compute identical aggregating subqueries of a FROM list once, as a shared CTE that each copy
+    * reads under its own alias (TPC-DS q65, [[DuplicateSubqueries]])
+    */
+  case ShareDuplicateSubqueries extends Optimization("share_duplicate_subqueries")
+
+  /**
+    * A folder (or glob) of plain Parquet files, without partition folders or Iceberg / Delta
+    * metadata and whose files all have its columns, is read as its files' single-file sources
+    * (`catalog/ParquetFolder.scala`): a scan splits into every file's row groups and tests a row
+    * filter while decoding, and planning gets row counts, ranges and samples from the files'
+    * footers. Otherwise uni's dataset reader reads the folder on one thread without statistics:
+    * TPC-DS q17 over a folder of store_sales files took ~10x its single-file time
+    */
+  case FolderFileScans extends Optimization("folder_file_scans")
+
+  /**
+    * A local Iceberg table is read file by file (`catalog/DatasetFiles.scala`): a scan splits into
+    * the data files that partition values and manifest statistics don't skip, each read through
+    * uni's dataset reader (which applies deletes, field-ID column mapping and defaults) with an
+    * exact row filter, and planning gets row counts, ranges and per-file part ranges from the
+    * manifests. A folder whose files hold only some of its columns (with the same types, in any
+    * order) is read as its files (`ParquetFolder`), missing columns as NULLs. Otherwise uni's
+    * dataset reader reads the whole table on one thread without statistics
+    */
+  case DatasetFileScans extends Optimization("dataset_file_scans")
+
+  /**
+    * With `folder_file_scans`, a folder of Hive partitions read as its files takes a row filter, as
+    * a single file does: each file decides the conjuncts on partition keys by its values, skipping
+    * the file when they reject it, and tests the rest while decoding. Per-row join filters on other
+    * keys (store_sales' tickets in TPC-DS q17, q25) and pushed-down conditions then skip decoding
+    * the rows they drop, rather than decoding every row and filtering after
+    */
+  case PartitionRowFilters extends Optimization("partition_row_filters")
+
+  /**
+    * An Iceberg table whose data files all read as plain Parquet files (uni's
+    * `ParquetDataset.readsAsPlainFile`: no deletes, no renamed or dropped columns, no defaults) is
+    * read as a folder of single files (`ParquetFolder`) instead of file by file through uni's
+    * dataset reader: a scan splits into every file's row groups and tests a row filter while
+    * decoding, and planning reads the files' footers. Needs `dataset_file_scans`
+    */
+  case IcebergRowGroups extends Optimization("iceberg_row_groups")
+
+  /**
+    * Keep the parsed footers of local Parquet files across opens, keyed by path and checked against
+    * the file's size and last-modified time ([[wvlet.lang.engine.catalog.ParquetFooterCache]]), so
+    * that planning and each scan don't parse the same footer again (DuckDB's
+    * `parquet_metadata_cache`)
+    */
+  case ParquetFooterCache extends Optimization("parquet_footer_cache")
+
+  /**
+    * Planning remembers what it computes more than once per query (`planning_memo`): whether a
+    * subquery is correlated (it plans the subquery to see whether a column is missing), and the SQL
+    * text [[wvlet.lang.engine.plan.Planner]] matches OR branches' conjuncts by. The binder's
+    * missing-column signal, which these checks and `bindsIn` catch, carries no stack trace. Small
+    * TPC-DS queries with a correlated scalar subquery (q32, q41, q92) planned it two or three
+    * times, and filling in the stack traces of ~75 missed bindings took ~5% of their planning
+    */
+  case PlanningMemo extends Optimization("planning_memo")
+
+  /**
+    * A filter whose scan is shared (`share_subquery_scans`) is found by value with its templates
+    * expanded too, not only as the tree's node. Splitting a condition into conjuncts expands its
+    * templates, which copies the subqueries in it: TPC-H q22's `avg(c_acctbal)` subquery was bound
+    * as such a copy and read `customer` again instead of the shared scan
+    */
+  case MatchCopiedSubqueryScans extends Optimization("match_copied_subquery_scans")
+
+  // --- Binding: subqueries, aggregations, and constants bound into the runtime plan ------------
 
   /**
     * Bind [NOT] EXISTS / [NOT] IN filter conjuncts over uncorrelated subqueries as semi and anti
@@ -43,6 +128,65 @@ enum Optimization(val name: String):
     * computed rows (estimates pass through aggregations, e.g. TPC-H q18's group by having)
     */
   case CountInSubqueries extends Optimization("count_in_subqueries")
+
+  /**
+    * Plan ROLLUP / CUBE (grouping sets whose key union is one of the sets) by aggregating the input
+    * once, by the finest set, into partial results, then each coarser set from the partial results
+    * of its smallest finer set, instead of one aggregation over the whole input per set
+    */
+  case ChainGroupingSets extends Optimization("chain_grouping_sets")
+
+  /**
+    * Compute an aggregation's groups at plan time when scalar subqueries of its condition aggregate
+    * the same input, and total the subqueries' sums, mins, and maxes over the groups instead of
+    * reading the input again (TPC-H q11)
+    */
+  case HavingTotalsFromGroups extends Optimization("having_totals_from_groups")
+
+  /**
+    * Compute an aggregation's groups at plan time when its input is filtered by `key in (subquery)`
+    * on a grouping key and the subquery aggregates the same input (by keys insensitive to
+    * inner-join order and table aliases): the subquery merges the groups, which the filter then
+    * applies to, instead of reading the input twice (TPC-DS q70)
+    */
+  case ShareInSubqueryGroups extends Optimization("share_in_subquery_groups")
+
+  /**
+    * Replace a table of an aggregation's inner join by the groups of an IN subquery that groups it
+    * by the join key, when the aggregation only sums, mins, or maxes its columns: the aggregation
+    * totals the subquery's per-key values instead of reading the table again (TPC-H q18)
+    */
+  case ReuseInSubqueryAggregates extends Optimization("reuse_in_subquery_aggregates")
+
+  /**
+    * Expressions over literals become literals as they are bound (`1200 + 11`, `cast(1 + 10 as
+    * decimal(21,2))`), so that filter pushdown and scan filters see the folded bounds
+    * ([[BoundExprSimplifier.fold]])
+    */
+  case FoldBoundConstants extends Optimization("fold_bound_constants")
+
+  /**
+    * A comparison of a lossless cast with literals (`cast(x as decimal(12,2)) > 50.00`) compares
+    * the uncast expression with the literals converted to its type, when they convert exactly
+    * ([[BoundExprSimplifier.unwrapCompare]])
+    */
+  case UnwrapCasts extends Optimization("unwrap_casts")
+
+  /**
+    * With `unwrap_casts`, a comparison of a cast that only adds fraction digits to an integer or
+    * decimal `x` with a literal (`cast(x as decimal(38,12)) > 81029137.652468`) compares x with the
+    * literal rounded to x's scale: down for `>` and `<=`, up for `>=` and `<`, since x's values lie
+    * on that grid. Such casts keep every value (the engine never enforces a decimal precision), so
+    * they unwrap even when the target has fewer integer digits. TPC-H q11's HAVING filter cast each
+    * of its plan-time groups through BigDecimal on the calling thread
+    * ([[BoundExprSimplifier.unwrapCompare]])
+    */
+  case RoundUnwrappedLiterals extends Optimization("round_unwrapped_literals")
+
+  // --- Logical passes over the runtime plan (`Optimizer`) --------------------------------------
+
+  /** `(a and b) or (a and c)` => `a and (b or c)` */
+  case FactorOr extends Optimization("factor_or")
 
   /**
     * Push filter conjuncts down the runtime plan: through projections, aggregates (grouping keys
@@ -107,12 +251,108 @@ enum Optimization(val name: String):
     */
   case AggregateWindows extends Optimization("aggregate_windows")
 
+  /** Read and pass only the columns the operators above use */
+  case PruneColumns extends Optimization("prune_columns")
+
   /**
-    * Plan ROLLUP / CUBE (grouping sets whose key union is one of the sets) by aggregating the input
-    * once, by the finest set, into partial results, then each coarser set from the partial results
-    * of its smallest finer set, instead of one aggregation over the whole input per set
+    * With `push_down_filters`, an `or` condition of an inner join tree that reads several inputs
+    * also filters each input by the `or`, over its branches, of the conjuncts that read only that
+    * input, when every branch has one (TPC-H q19's part filter, q7's nation names). The `or` stays,
+    * so the rows are the same ([[PushDownFilters]])
     */
-  case ChainGroupingSets extends Optimization("chain_grouping_sets")
+  case OrImpliedFilters extends Optimization("or_implied_filters")
+
+  /**
+    * With `group_key_semi_joins`, an aggregation on the left (probe) input of an inner join is
+    * reduced too, as the join's inputs swap with the same build side (TPC-H q20 once its lineitem
+    * aggregation is estimated larger than the partsupp side)
+    */
+  case LeftGroupKeySemiJoins extends Optimization("left_group_key_semi_joins")
+
+  /**
+    * Aggregate the side of an inner join that an aggregation's calls read by its join keys and the
+    * group keys it holds before the join, when that is estimated to reduce it at least 4 times and
+    * the other side keeps most of its rows: the join then probes, and gathers the other side's
+    * group keys for, one row per partial group (TPC-DS q04, q11, q74 sum the sales per customer key
+    * and year before joining the seven customer strings they group by)
+    */
+  case EagerAggregation extends Optimization("eager_aggregation")
+
+  /**
+    * With [[EagerAggregation]], also aggregate one side of the join eagerly when the other calls
+    * are mins and maxes of the other side's columns, which the outer aggregation computes over the
+    * joined rows as before (duplicates don't change them), and when the other side is a cross join
+    * with one row: TPC-DS q23's best customers sum 27M store sales per customer key before joining
+    * the customers crossed with the scalar maximum they compare the sums to
+    */
+  case EagerOtherSideMinMax extends Optimization("eager_other_side_min_max")
+
+  /**
+    * An aggregation groups only by the keys that determine its others through declared unique keys
+    * and inner join equalities, carrying the rest as `any_value` of each group
+    * ([[wvlet.lang.engine.runtime.DependentGroupKeys]]): TPC-H q10 groups by `c_custkey` alone
+    * instead of seven customer columns and the nation name
+    */
+  case DependentGroupKeys extends Optimization("dependent_group_keys")
+
+  /**
+    * With [[EagerAggregation]], aggregate an input deeper in the join tree under an aggregation
+    * before the joins above it, when the calls read that input only, every join above looks up one
+    * row by a declared unique key, and the group keys determine the input's: the outer aggregation
+    * becomes a projection ([[wvlet.lang.engine.runtime.EagerAggregation]]). TPC-H q10 sums its
+    * order lines per `o_custkey` before looking up customer and nation, so the customer join builds
+    * 380K rows instead of 1.15M at SF10
+    */
+  case EagerAggregationInJoinTrees extends Optimization("eager_aggregation_in_join_trees")
+
+  /**
+    * With [[EagerAggregation]], when the join under an aggregation looks up at most one row of its
+    * other side by a declared unique key, and the group keys determine the partial groups, the
+    * outer aggregation becomes a projection of the partial results: each outer group is one partial
+    * group joined to one row. TPC-DS q04, q11 and q74 sum their sales per customer key and year,
+    * look up the customer, and no longer group the sums again by `c_customer_id` and year
+    */
+  case EagerLookupProjection extends Optimization("eager_lookup_projection")
+
+  /**
+    * An aggregation grouped by string columns of a dimension that a larger input looks up by its
+    * declared unique key groups by a representative key of those strings instead (`min(key) over
+    * (partition by strings)` over the dimension's rows), and joins the strings back per group
+    * ([[wvlet.lang.engine.runtime.DimensionGroupIds]]): TPC-DS q47 and q89 group store sales by two
+    * item and two store strings
+    */
+  case DimensionGroupIds extends Optimization("dimension_group_ids")
+
+  /**
+    * A sort with a limit reads the string columns of a scan that only pass through to its output
+    * for its N rows alone: the top-N is computed without them, and a second scan of the table,
+    * filtered by the N rows' declared unique key, joins them back
+    * ([[wvlet.lang.engine.runtime.LateColumns]]). TPC-H q10 decoded the name, address, phone and
+    * comment of 381K customers for its top 20
+    */
+  case LateColumns extends Optimization("late_columns")
+
+  /**
+    * With [[EagerAggregation]], a DISTINCT (an aggregation without calls) over a projection of an
+    * inner join is computed over the join with the projection inlined into its keys, so that the
+    * join's input is first deduplicated by the columns the keys and join keys read. TPC-DS q38 and
+    * q87 deduplicate 5.4M store sales rows by customer key and date (481K at SF10) before joining
+    * the customer names, instead of gathering and hashing the names of every sale row
+    */
+  case EagerDistinct extends Optimization("eager_distinct")
+
+  /**
+    * The join search also joins inputs by the equalities that follow from the written ones: column
+    * equalities of inner joins form equivalence classes, and every two columns of a class on
+    * different inputs may be a join key ([[wvlet.lang.engine.plan.JoinEdge.eqClass]]). A join keys
+    * on one column pair per class, and its rows are estimated once per class. TPC-H q5 writes
+    * `c_nationkey = s_nationkey and s_nationkey = n_nationkey`, so customer joined only through
+    * supplier and came last, after the engine built all 2.3M orders of the year; with
+    * `c_nationkey = n_nationkey`, ASIA's 300K customers filter the orders first, as in DuckDB
+    */
+  case ImpliedJoinEqualities extends Optimization("implied_join_equalities")
+
+  // --- Estimates and join order (`Stats`, the join search) -------------------------------------
 
   /**
     * Estimate a prefix pattern `x like 'p%'` as the range `x >= 'p' and x < next(p)` it is, two
@@ -144,43 +384,126 @@ enum Optimization(val name: String):
     */
   case AggregateInputRows extends Optimization("aggregate_input_rows")
 
-  /** Evaluate uncorrelated scalar subqueries over the same input as one query */
-  case PrefetchScalarSubqueries extends Optimization("prefetch_scalar_subqueries")
+  /**
+    * With `swap_build_side`, a semi / anti join of an EXISTS / IN subquery builds on the outer
+    * input (a RIGHT SEMI / RIGHT ANTI join) whenever the subquery input is estimated larger, not
+    * only [[JoinOrderOptimizer.SwapBuildRatio]] times larger: a swapped semi join outputs only the
+    * outer columns, so it needs no reordering projection, and its build keys filter the larger
+    * probe scan (TPC-H q4, q21 build on orders instead of lineitem)
+    */
+  case SemiJoinBuildSide extends Optimization("semi_join_build_side")
 
   /**
-    * Compute an aggregation's groups at plan time when scalar subqueries of its condition aggregate
-    * the same input, and total the subqueries' sums, mins, and maxes over the groups instead of
-    * reading the input again (TPC-H q11)
+    * Estimate a range comparison of an integer or date column with a constant (`<`, `>`, `between`,
+    * date ranges) from the column's [min, max] in the Parquet statistics, with the bounds on one
+    * column combined into one interval ([[wvlet.lang.engine.runtime.RangeSelectivity]]), instead of
+    * the default selectivity per comparison
     */
-  case HavingTotalsFromGroups extends Optimization("having_totals_from_groups")
+  case RangeSelectivity extends Optimization("range_selectivity")
 
   /**
-    * Compute an aggregation's groups at plan time when its input is filtered by `key in (subquery)`
-    * on a grouping key and the subquery aggregates the same input (by keys insensitive to
-    * inner-join order and table aliases): the subquery merges the groups, which the filter then
-    * applies to, instead of reading the input twice (TPC-DS q70)
+    * Choose the build side of the joins planned outside the join search (EXISTS / IN semi and anti
+    * joins, outer joins, and the semi joins of `reduce_semi_joins` and `group_key_semi_joins`) from
+    * join-tree estimates ([[wvlet.lang.engine.runtime.Stats.treeRows]]): filters by their
+    * selectivity and inner joins as the join search estimates them, instead of the probe source's
+    * rows. The semi joins of `reduce_semi_joins` and `group_key_semi_joins` then build on the
+    * smaller side by any margin, as `semi_join_build_side` does for subqueries (TPC-DS q16 builds
+    * its EXISTS join on the filtered outer orders instead of catalog_sales)
     */
-  case ShareInSubqueryGroups extends Optimization("share_in_subquery_groups")
+  case JoinTreeBuildEstimates extends Optimization("join_tree_build_estimates")
 
   /**
-    * Read a table once, filtered by the conjuncts an uncorrelated scalar subquery and the rest of
-    * the query share, as a CTE of the columns the query names, when the conjuncts keep few rows:
-    * the subquery computes it at plan time, and the other reads scan it (TPC-H q22, TPC-DS q44)
+    * Estimate string `=`, IN, LIKE and IS NULL conditions (and AND / OR / NOT of them) over one
+    * column of a Parquet file from the values of a few sampled row groups
+    * ([[wvlet.lang.engine.catalog.ValueCounts]]), cached per file version, for the scan row-filter
+    * gate (`selective_scan_row_filters`) and the join search, instead of 1 / ndv or the default 0.3
+    * (TPC-H q3's `c_mktsegment = 'BUILDING'` keeps 20%)
     */
-  case ShareSubqueryScans extends Optimization("share_subquery_scans")
+  case StringValueSelectivity extends Optimization("string_value_selectivity")
 
   /**
-    * Compute identical aggregating subqueries of a FROM list once, as a shared CTE that each copy
-    * reads under its own alias (TPC-DS q65, [[DuplicateSubqueries]])
+    * Group counts of rows that come in clusters sharing their keys, such as the lines of an order
+    * sharing its customer and date, are estimated over the clusters instead of the rows
+    * ([[wvlet.lang.engine.runtime.ClusteredGroups]]), with cluster sizes from the mean run length
+    * of the key columns in sampled Parquet row groups. They feed the join-tree aggregation
+    * estimates and the eager-aggregation guard: TPC-DS q74's web (customer, year) groups were
+    * estimated at 1M where there are 213K, so its partial aggregation below the customer join was
+    * skipped
     */
-  case ShareDuplicateSubqueries extends Optimization("share_duplicate_subqueries")
+  case ClusteredGroupEstimates extends Optimization("clustered_group_estimates")
 
   /**
-    * Replace a table of an aggregation's inner join by the groups of an IN subquery that groups it
-    * by the join key, when the aggregation only sums, mins, or maxes its columns: the aggregation
-    * totals the subquery's per-key values instead of reading the table again (TPC-H q18)
+    * The join search estimates an equi-join on several columns from the unique keys its tables
+    * declare ([[wvlet.lang.engine.catalog.TableSource.uniqueKeys]]): keys covering a declared key
+    * of one side join as a foreign key to that primary key, and keys that are no declared key of
+    * either side as independent columns, without the cap that treats them as one correlated key.
+    * TPC-DS q25's catalog_sales ⋈ store_returns on (item, customer) was estimated at 35K rows for
+    * 13 real ones
     */
-  case ReuseInSubqueryAggregates extends Optimization("reuse_in_subquery_aggregates")
+  case KeyJoinEstimates extends Optimization("key_join_estimates")
+
+  /**
+    * The exact join search charges each join whose probe side is one input for the probe rows the
+    * runtime join filters of its build are expected to keep (the smallest ratio of build to probe
+    * distinct keys), so that it prefers orders that shrink a large fact probe early: TPC-DS q25
+    * joins catalog_sales with its date filter before store_returns, so the scan skips row groups
+    */
+  case ProbeScanCost extends Optimization("probe_scan_cost")
+
+  /**
+    * With [[ProbeScanCost]], a probe side that is itself a join is charged too, for its output rows
+    * that the build's runtime join filters are expected to keep (its distinct keys capped by the
+    * rows of the joins holding them). Otherwise only single-input probes pay, so the search builds
+    * on a large single input to make it no probe: TPC-H q10 built on customer, all seven of its
+    * grouped columns, rather than probing it with the filtered order lines
+    */
+  case JoinProbeScanCost extends Optimization("join_probe_scan_cost")
+
+  /**
+    * The exact join search credits a probe scan with the parts it skips by a build's join keys,
+    * when every part of the scan (a Hive partition, or a row group) holds one value of its key
+    * column, as the partitions of a date-partitioned table do: the scan reads only the parts
+    * holding build keys (`key_set_row_groups`), the build keys' share of the column's values. A
+    * runtime join filter on another key reads every part and drops rows after decoding them, so
+    * without the credit TPC-DS q25 over store_sales in date partitions built store_sales ⋈
+    * (catalog_sales ⋈ store_returns) and probed it with d1's 30 dates, reading all 1823 partitions
+    * instead of 30. Needs `key_set_row_groups`
+    */
+  case PartitionProbeScanCost extends Optimization("partition_probe_scan_cost")
+
+  /**
+    * An outer join builds on its other input once its build input is estimated
+    * [[JoinOrderOptimizer.SwapOuterBuildRatio]] times larger instead of
+    * [[JoinOrderOptimizer.SwapBuildRatio]], as `parallel_outer_tail` (which it needs) emits a RIGHT
+    * join's unmatched build rows in parallel. The build's keys then filter the larger input's scan
+    * (TPC-DS q75 builds on the filtered sales rows and probes the returns)
+    */
+  case SmallerOuterBuilds extends Optimization("smaller_outer_builds")
+
+  /**
+    * An `or` of comparisons of one expression with literals (`d_year = 2002 or d_year = 2001`)
+    * keeps n / ndv of the rows, as `x in (n literals)` does, instead of the default selectivity.
+    * TPC-DS q75's CTE readers push such an `or` into its body
+    */
+  case OrEqualsSelectivity extends Optimization("or_equals_selectivity")
+
+  /**
+    * The estimated groups of an aggregation read its keys' distinct values through the grouping
+    * keys of an aggregation below it (`Stats.treeRows`), instead of taking the inner aggregation's
+    * rows: TPC-DS q65's average revenue by store, over sums by store and item, is about 100 rows,
+    * not the 5.8M of the sums, so the join builds on it
+    */
+  case NestedGroupEstimates extends Optimization("nested_group_estimates")
+
+  /**
+    * An input of an inner join graph that filters a row_number() or rank() by a constant (`rnk <
+    * 11`) is estimated as at most that many rows per partition of the window, instead of the rows
+    * below the window, so that TPC-DS q44's two top-10 rankings are built on and the item scans
+    * probe them
+    */
+  case RankFilterRows extends Optimization("rank_filter_rows")
+
+  // --- Shared CTEs and results, and replanning -------------------------------------------------
 
   /** Compute a CTE referenced more than once only once */
   case ShareCTEs extends Optimization("share_ctes")
@@ -234,8 +557,46 @@ enum Optimization(val name: String):
     */
   case CTEReaderStats extends Optimization("cte_reader_stats")
 
-  /** Read and pass only the columns the operators above use */
-  case PruneColumns extends Optimization("prune_columns")
+  /**
+    * With `parallelize`, compute the shared CTE results a plan reads at the same time, each drained
+    * on a coordinator thread outside the task pool, instead of one by one on the calling thread
+    */
+  case ConcurrentSharedCTEs extends Optimization("concurrent_shared_ctes")
+
+  /**
+    * Run [[EagerAggregation]] over the body of a shared input the planner builds while binding (the
+    * finest aggregation of chained grouping sets ([[ChainGroupingSets]]), and the inputs of other
+    * grouping sets and unpivots), which the runtime passes don't visit: TPC-DS q22's ROLLUP of 26M
+    * inventory rows by four item strings sums them per item key before joining the 102K items
+    */
+  case EagerGroupingSets extends Optimization("eager_grouping_sets")
+
+  /**
+    * Count the distinct values of an integer column of a shared CTE result computed for planning
+    * ([[CTEReaderStats]]) in a set of longs sized for its rows instead of a growing group table:
+    * the same counts, so the same plans, for less planning time (TPC-DS q01 counts 540K customer
+    * keys when it orders its joins again at SF10)
+    */
+  case PrimitiveResultDistinct extends Optimization("primitive_result_distinct")
+
+  /**
+    * Readers of a shared CTE joined on a string column that copies a declared unique key join on a
+    * long declared key of the same table instead, which the body carries as one more column
+    * ([[wvlet.lang.engine.runtime.CTEJoinKeys]]). TPC-DS q04, q11 and q74 join their `year_total`
+    * readers on `c_customer_sk` instead of `c_customer_id`
+    */
+  case CTEDeterminingJoinKeys extends Optimization("cte_determining_join_keys")
+
+  /**
+    * The statistics of a shared CTE result computed for planning ([[CTEReaderStats]]) are computed
+    * by the engine's tasks instead of on the planning thread, and a string column's distinct values
+    * are counted by their hash codes and lengths in a set of longs instead of a string group table
+    * ([[wvlet.lang.engine.runtime.ParallelResultStats]]). TPC-DS q11 counts its 1M-row `year_total`
+    * result's customer ids and its readers' filtered rows at SF10
+    */
+  case ParallelResultStats extends Optimization("parallel_result_stats")
+
+  // --- Physical: scans and filters -------------------------------------------------------------
 
   /** Skip Parquet row groups by the filters directly over a scan */
   case PushScanFilters extends Optimization("push_scan_filters")
@@ -256,6 +617,127 @@ enum Optimization(val name: String):
     * TPC-DS q09's `ss_quantity between` ranges 20% each)
     */
   case SelectiveScanRowFilters extends Optimization("selective_scan_row_filters")
+
+  /**
+    * With `scan_join_row_filters`, the per-row join filters in a probe scan's row filter are
+    * ordered by expected pass rates that count the probe column's distinct values rather than the
+    * width of its [min, max] range, which overstates a sparse column's values: TPC-H's order keys
+    * use a quarter of their range, so q7's `l_orderkey` Bloom filter looked four times as selective
+    * as it is and ran ahead of the cheaper and equally selective `l_suppkey` bitmap, testing every
+    * lineitem row. Which filters go into the row filter is decided as before
+    */
+  case SparseKeyPassRates extends Optimization("sparse_key_pass_rates")
+
+  /**
+    * Per-row runtime join filters over a bitmap or a few build keys (a Bloom filter over at most
+    * `RowKeyFilter.MaxSortedKeys` rows) also skip a Parquet probe scan's row groups whose [min,
+    * max] holds no build key, not only those outside the keys' range. TPC-DS q17 and q25 probe
+    * store_sales, clustered by ticket number, with the ~15 tickets of a catalog_sales ⋈
+    * store_returns build: the range spans most of the file, but the keys hit a few row groups.
+    * Needs `row_join_filters`
+    */
+  case KeySetRowGroups extends Optimization("key_set_row_groups")
+
+  /**
+    * A pipeline scan of a Parquet file with a single row group to read (no parts to run in
+    * parallel) decodes its columns as tasks of the engine's runner, the calling thread taking one.
+    * TPC-H supplier holds 100K rows in one row group at SF10: q2's supplier join build decoded its
+    * four string columns on one thread for ~20 ms while every other thread waited
+    */
+  case ParallelColumnDecode extends Optimization("parallel_column_decode")
+
+  /**
+    * A filter over AND / OR evaluates each conjunct only on the rows the earlier ones kept (each
+    * disjunct only on the rows not yet accepted), and stops when no row remains (DuckDB's
+    * `ExpressionExecutor::Select`)
+    */
+  case ShortCircuitFilters extends Optimization("short_circuit_filters")
+
+  /**
+    * With `short_circuit_filters`, the conjuncts and disjuncts of a filter run cheapest first by a
+    * static cost (primitive comparisons before string, IN, LIKE, and function calls); parts that
+    * can throw stay in place
+    */
+  case ReorderConjuncts extends Optimization("reorder_conjuncts")
+
+  /**
+    * Parquet scans read the rows of a string column decoded from a dictionary page as their
+    * dictionary entries only, without copying each row's bytes (uni's
+    * `ParquetReadOptions.dictionaryCodesOnly`): every row's String is the entry's one String
+    * anyway, so the per-row copy only fed a buffer nothing reads (TPC-H q1's `l_returnflag` /
+    * `l_linestatus`, DuckDB's dictionary vectors). Columns a scan row filter reads are read as
+    * before
+    */
+  case DictionaryEntryScans extends Optimization("dictionary_entry_scans")
+
+  /**
+    * Parquet string vectors decoded from a dictionary hold only their rows' codes and their batch's
+    * entry strings, building the per-row String array on first use ([[StrVec.ofEntries]]). Grouping
+    * by the codes (`dictionary_group_keys`) and per-entry filters never build it, so a scan skips
+    * one String store per row (TPC-H q1's `l_returnflag` / `l_linestatus`, DuckDB's dictionary
+    * vectors). Needs `dictionary_group_keys`, whose scans keep the codes
+    */
+  case LazyDictionaryStrings extends Optimization("lazy_dictionary_strings")
+
+  /**
+    * Filter conditions over one string column, made of comparisons, IN lists, LIKE, and IS NULL,
+    * run once per distinct dictionary entry of a batch whose column carries the codes that
+    * `dictionary_group_keys` scans keep, and each row takes its entry's result (TPC-H q16's
+    * `p_type not like`, DuckDB's dictionary vectors). Without codes, or with more entries than half
+    * the rows, they run per row ([[wvlet.lang.engine.expr.PerDictEntry]])
+    */
+  case DictionaryFilters extends Optimization("dictionary_filters")
+
+  /**
+    * In filters that short-circuit AND / OR (`short_circuit_filters`), a `dictionary_filters` part
+    * runs once per dictionary entry of the rows still selected and returns their positions, so an
+    * AND of such parts looks at fewer rows part by part instead of building a mask over the whole
+    * batch for each (TPC-DS q41's OR of ANDs over item's strings, DuckDB's selection vectors)
+    */
+  case DictionarySelection extends Optimization("dictionary_selection")
+
+  /**
+    * With `push_scan_filters`, comparisons of decimal columns with constants, and `<`, `<=` and `=`
+    * of floating-point columns, also skip Parquet row groups by their min/max statistics
+    * ([[ScanFilters]]). Floating-point `>` and `>=` stay out: writers leave NaN out of the
+    * statistics while the engine orders NaN above every number
+    */
+  case DecimalFloatScanFilters extends Optimization("decimal_float_scan_filters")
+
+  /**
+    * `substring(s, k, n) IN ('a', ...)` with constant `k >= 1` and `n` looks up each string's
+    * region in a hash table of the values, without building the substrings (TPC-H q22's
+    * `c_phone.substring(1, 2).in(...)`)
+    */
+  case SubstringInLists extends Optimization("substring_in_lists")
+
+  /**
+    * IS NULL of a column that a join or filter output has not gathered yet reads the column's row
+    * positions (-1 for a padded NULL row) and its source's nulls, without gathering the column
+    * (TPC-DS q97's null checks over the FULL join output)
+    */
+  case DeferredNullChecks extends Optimization("deferred_null_checks")
+
+  /**
+    * With `scan_row_filters`, an `or` conjunct of a filter over a scan that reads several columns
+    * also gives the scan's row filter, for each column that every branch tests, the `or` over the
+    * branches of their conjuncts on that column ([[ScanFilters.columnImplied]]), as DuckDB derives
+    * them: uni decodes the other columns only for the rows those keep. The `or` stays in the
+    * engine's filter, so the rows are the same (TPC-H q19's part filter keeps 0.24% of the rows but
+    * reads three columns, so it was estimated to keep 30% and decoded every row). Estimated by
+    * `string_value_selectivity` for the row-filter gate, as string estimates of 0.3 let selective
+    * guesses through (#2429)
+    */
+  case ColumnImpliedRowFilters extends Optimization("column_implied_row_filters")
+
+  /**
+    * A Parquet row group decoded in parallel (`parallel_column_decode`) builds the Strings of its
+    * PLAIN string columns by row ranges, as tasks of their own after the columns are decoded. TPC-H
+    * q2's supplier scan built the 100K Strings of `s_comment` on one thread while the others waited
+    */
+  case ParallelStringDecode extends Optimization("parallel_string_decode")
+
+  // --- Physical: joins -------------------------------------------------------------------------
 
   /**
     * Skip Parquet row groups on the probe side of a hash join by the [min, max] range of its build
@@ -295,65 +777,6 @@ enum Optimization(val name: String):
   case JoinRowFiltersFirst extends Optimization("join_row_filters_first")
 
   /**
-    * With `scan_join_row_filters`, the per-row join filters in a probe scan's row filter are
-    * ordered by expected pass rates that count the probe column's distinct values rather than the
-    * width of its [min, max] range, which overstates a sparse column's values: TPC-H's order keys
-    * use a quarter of their range, so q7's `l_orderkey` Bloom filter looked four times as selective
-    * as it is and ran ahead of the cheaper and equally selective `l_suppkey` bitmap, testing every
-    * lineitem row. Which filters go into the row filter is decided as before
-    */
-  case SparseKeyPassRates extends Optimization("sparse_key_pass_rates")
-
-  /**
-    * Per-row runtime join filters over a bitmap or a few build keys (a Bloom filter over at most
-    * `RowKeyFilter.MaxSortedKeys` rows) also skip a Parquet probe scan's row groups whose [min,
-    * max] holds no build key, not only those outside the keys' range. TPC-DS q17 and q25 probe
-    * store_sales, clustered by ticket number, with the ~15 tickets of a catalog_sales ⋈
-    * store_returns build: the range spans most of the file, but the keys hit a few row groups.
-    * Needs `row_join_filters`
-    */
-  case KeySetRowGroups extends Optimization("key_set_row_groups")
-
-  /**
-    * A folder (or glob) of plain Parquet files, without partition folders or Iceberg / Delta
-    * metadata and whose files all have its columns, is read as its files' single-file sources
-    * (`catalog/ParquetFolder.scala`): a scan splits into every file's row groups and tests a row
-    * filter while decoding, and planning gets row counts, ranges and samples from the files'
-    * footers. Otherwise uni's dataset reader reads the folder on one thread without statistics:
-    * TPC-DS q17 over a folder of store_sales files took ~10x its single-file time
-    */
-  case FolderFileScans extends Optimization("folder_file_scans")
-
-  /**
-    * A local Iceberg table is read file by file (`catalog/DatasetFiles.scala`): a scan splits into
-    * the data files that partition values and manifest statistics don't skip, each read through
-    * uni's dataset reader (which applies deletes, field-ID column mapping and defaults) with an
-    * exact row filter, and planning gets row counts, ranges and per-file part ranges from the
-    * manifests. A folder whose files hold only some of its columns (with the same types, in any
-    * order) is read as its files (`ParquetFolder`), missing columns as NULLs. Otherwise uni's
-    * dataset reader reads the whole table on one thread without statistics
-    */
-  case DatasetFileScans extends Optimization("dataset_file_scans")
-
-  /**
-    * With `folder_file_scans`, a folder of Hive partitions read as its files takes a row filter, as
-    * a single file does: each file decides the conjuncts on partition keys by its values, skipping
-    * the file when they reject it, and tests the rest while decoding. Per-row join filters on other
-    * keys (store_sales' tickets in TPC-DS q17, q25) and pushed-down conditions then skip decoding
-    * the rows they drop, rather than decoding every row and filtering after
-    */
-  case PartitionRowFilters extends Optimization("partition_row_filters")
-
-  /**
-    * An Iceberg table whose data files all read as plain Parquet files (uni's
-    * `ParquetDataset.readsAsPlainFile`: no deletes, no renamed or dropped columns, no defaults) is
-    * read as a folder of single files (`ParquetFolder`) instead of file by file through uni's
-    * dataset reader: a scan splits into every file's row groups and tests a row filter while
-    * decoding, and planning reads the files' footers. Needs `dataset_file_scans`
-    */
-  case IcebergRowGroups extends Optimization("iceberg_row_groups")
-
-  /**
     * A LEFT hash join under a filter that tests one of its build key columns for NULL emits only
     * its unmatched probe rows, in probe order, with NULL build columns: a matched row's build key
     * equals a non-NULL probe key, so the filter drops every matched pair. The join skips the match
@@ -391,76 +814,6 @@ enum Optimization(val name: String):
   case NarrowJoinEntries extends Optimization("narrow_join_entries")
 
   /**
-    * A pipeline scan of a Parquet file with a single row group to read (no parts to run in
-    * parallel) decodes its columns as tasks of the engine's runner, the calling thread taking one.
-    * TPC-H supplier holds 100K rows in one row group at SF10: q2's supplier join build decoded its
-    * four string columns on one thread for ~20 ms while every other thread waited
-    */
-  case ParallelColumnDecode extends Optimization("parallel_column_decode")
-
-  /**
-    * Pre-size the group tables and aggregate state of hash aggregations from estimated group
-    * counts, so they grow less often
-    */
-  case PresizeAggregates extends Optimization("presize_aggregates")
-
-  /**
-    * A filter bounding a row_number() or rank() by a constant (`rk <= 100`) over a window of only
-    * such calls keeps the top rows of each partition with a bounded heap instead of sorting the
-    * whole partition
-    */
-  case WindowTopN extends Optimization("window_top_n")
-
-  /**
-    * With `window_top_n`, the window keeps the top rows of each partition within every chunk of
-    * input batches as it reads them, in parallel tasks, instead of materializing its whole input
-    * first; only the chunks' top rows are concatenated and ranked
-    */
-  case WindowTopNStream extends Optimization("window_top_n_stream")
-
-  /**
-    * Running window counts, sums, mins, and maxes (frames from the partition start) over primitive
-    * columns are folded in primitive values, instead of through an accumulator and a result vector
-    * per row
-    */
-  case RunningWindowKernels extends Optimization("running_window_kernels")
-
-  /**
-    * Window partitions ordered by one integer or date key are sorted as packed (key, position)
-    * longs instead of through a row comparator
-    */
-  case WindowSortKernels extends Optimization("window_sort_kernels")
-
-  /**
-    * Window calls with the same PARTITION BY and ORDER BY are partitioned and sorted once, and
-    * every call reads the same sorted partitions
-    */
-  case WindowSharePartitions extends Optimization("window_share_partitions")
-
-  /** Parallel scan pipelines and two-phase / partitioned aggregation */
-  case Parallelize extends Optimization("parallelize")
-
-  /**
-    * Filters and hash joins defer their output columns (row positions over their input columns)
-    * instead of copying every column: each column is gathered once, by the operator that reads it
-    */
-  case LateGather extends Optimization("late_gather")
-
-  /**
-    * A filter over AND / OR evaluates each conjunct only on the rows the earlier ones kept (each
-    * disjunct only on the rows not yet accepted), and stops when no row remains (DuckDB's
-    * `ExpressionExecutor::Select`)
-    */
-  case ShortCircuitFilters extends Optimization("short_circuit_filters")
-
-  /**
-    * With `short_circuit_filters`, the conjuncts and disjuncts of a filter run cheapest first by a
-    * static cost (primitive comparisons before string, IN, LIKE, and function calls); parts that
-    * can throw stay in place
-    */
-  case ReorderConjuncts extends Optimization("reorder_conjuncts")
-
-  /**
     * A hash join over a single integer key whose build values span a dense range indexes its build
     * rows by `key - min` instead of hashing (DuckDB's perfect hash join)
     */
@@ -480,45 +833,76 @@ enum Optimization(val name: String):
   case ConcurrentJoinBuilds extends Optimization("concurrent_join_builds")
 
   /**
-    * With `parallelize`, compute the shared CTE results a plan reads at the same time, each drained
-    * on a coordinator thread outside the task pool, instead of one by one on the calling thread
+    * Hash-join builds encode their string columns over their distinct values, so the probe outputs
+    * carry codes that identify values across batches ([[wvlet.lang.engine.vector.StrVec.dict]]).
+    * Aggregations whose string keys all carry such codes group rows by the packed codes (with the
+    * other keys) in a table kept across batches, and hash and compare the strings once per group
+    * (TPC-DS q47's item and store names)
     */
-  case ConcurrentSharedCTEs extends Optimization("concurrent_shared_ctes")
+  case JoinBuildStringCodes extends Optimization("join_build_string_codes")
 
   /**
-    * With `parallelize`, read the output of a grouped aggregation as a source split by batch, so
-    * that the filters, projections, join probes, and partial aggregations above it run as morsels
-    * instead of on the calling thread
+    * With `parallelize`, INTERSECT / EXCEPT (without ALL) run as semi / anti hash joins of the left
+    * input's distinct rows with the right input on every column, NULLs equal, so that the probe
+    * runs as morsels, as DuckDB plans them. Otherwise one set operation buffers the right input and
+    * walks the left one on the calling thread
     */
-  case ParallelAboveBreakers extends Optimization("parallel_above_breakers")
+  case SetOpJoins extends Optimization("set_op_joins")
+
+  /**
+    * A right / full join's unmatched build rows, emitted after every probe part, are emitted by
+    * tasks over disjoint ranges of the build rows, each through its own copy of the operators above
+    * the join, instead of in one run on the calling thread. Only when the pipeline has one right /
+    * full join and the build has at least [[wvlet.lang.engine.exec.MorselOp.MinTailSplitRows]] rows
+    */
+  case ParallelOuterTail extends Optimization("parallel_outer_tail")
+
+  /**
+    * A NOT EXISTS and an EXISTS over the same table on the same key, decorrelated into an anti and
+    * a semi join that both build on the outer rows, probe the table once: one RIGHT SEMI join marks
+    * each build row matched by the EXISTS's rows and excluded by the NOT EXISTS's, and emits the
+    * matched rows not excluded ([[wvlet.lang.engine.runtime.SemiAntiProbe]]). TPC-H q21 read
+    * lineitem three times, once per join and once for its outer rows
+    */
+  case SemiAntiOneProbe extends Optimization("semi_anti_one_probe")
+
+  /**
+    * A join build's string columns give up their codes (`join_build_string_codes`) once their first
+    * rows look nearly unique, and once one column gives up, the others aren't encoded. TPC-H q2's
+    * supplier build hashed 10K rows of each of its four unique string columns on one thread before
+    * keeping none of their codes
+    */
+  case StringCodeProbe extends Optimization("string_code_probe")
+
+  /**
+    * A large hash join build (`parallel_join_build`) also takes its key ranges, packs its
+    * multi-column keys, hashes and partitions its flat table's rows, and finds the flat table's key
+    * range and fills its empty entries in tasks instead of on the calling thread. TPC-DS q97's FULL
+    * join over 2.9M (customer, item) keys ran these steps on one thread while the others waited
+    */
+  case ParallelJoinKeys extends Optimization("parallel_join_keys")
+
+  /**
+    * A pipeline whose stream is one in-memory batch (an aggregation's output or a CTE result) runs
+    * as tasks over row ranges of the batch when its hash joins probe large builds, instead of on
+    * the calling thread. TPC-DS q65 probed the 2.3M-row (store, item) revenue result with its 102
+    * per-store averages on one thread, emitting every revenue row, while the workers waited
+    */
+  case SliceSingleBatchProbes extends Optimization("slice_single_batch_probes")
+
+  // --- Physical: aggregation -------------------------------------------------------------------
+
+  /**
+    * Pre-size the group tables and aggregate state of hash aggregations from estimated group
+    * counts, so they grow less often
+    */
+  case PresizeAggregates extends Optimization("presize_aggregates")
 
   /**
     * With `parallelize`, partitioned aggregations route their input rows to key partitions as
     * tasks, each hashing a run of input batches, instead of on the calling thread
     */
   case ParallelAggPartitioning extends Optimization("parallel_agg_partitioning")
-
-  /**
-    * Run the plan subtrees that the engine's [[wvlet.lang.engine.runtime.PlanAccelerator]] (e.g. a
-    * GPU) supports on it. Without an accelerator, nothing changes
-    */
-  case GpuOffload extends Optimization("gpu_offload")
-
-  /**
-    * Keep the parsed footers of local Parquet files across opens, keyed by path and checked against
-    * the file's size and last-modified time ([[wvlet.lang.engine.catalog.ParquetFooterCache]]), so
-    * that planning and each scan don't parse the same footer again (DuckDB's
-    * `parquet_metadata_cache`)
-    */
-  case ParquetFooterCache extends Optimization("parquet_footer_cache")
-
-  /**
-    * A non-trivial subexpression repeated across the expressions of a projection, filter,
-    * aggregation, or window is computed once, in a projection below it
-    * ([[wvlet.lang.engine.runtime.CommonSubexpressions]]), as DuckDB's and DataFusion's common
-    * subexpression elimination do
-    */
-  case CommonSubexpressions extends Optimization("common_subexpressions")
 
   /**
     * Two-phase aggregation computes identical partial aggregates once: `avg(x)` (a sum and a count)
@@ -560,203 +944,11 @@ enum Optimization(val name: String):
   case DictionaryGroupKeys extends Optimization("dictionary_group_keys")
 
   /**
-    * Parquet scans read the rows of a string column decoded from a dictionary page as their
-    * dictionary entries only, without copying each row's bytes (uni's
-    * `ParquetReadOptions.dictionaryCodesOnly`): every row's String is the entry's one String
-    * anyway, so the per-row copy only fed a buffer nothing reads (TPC-H q1's `l_returnflag` /
-    * `l_linestatus`, DuckDB's dictionary vectors). Columns a scan row filter reads are read as
-    * before
-    */
-  case DictionaryEntryScans extends Optimization("dictionary_entry_scans")
-
-  /**
-    * Parquet string vectors decoded from a dictionary hold only their rows' codes and their batch's
-    * entry strings, building the per-row String array on first use ([[StrVec.ofEntries]]). Grouping
-    * by the codes (`dictionary_group_keys`) and per-entry filters never build it, so a scan skips
-    * one String store per row (TPC-H q1's `l_returnflag` / `l_linestatus`, DuckDB's dictionary
-    * vectors). Needs `dictionary_group_keys`, whose scans keep the codes
-    */
-  case LazyDictionaryStrings extends Optimization("lazy_dictionary_strings")
-
-  /**
-    * Filter conditions over one string column, made of comparisons, IN lists, LIKE, and IS NULL,
-    * run once per distinct dictionary entry of a batch whose column carries the codes that
-    * `dictionary_group_keys` scans keep, and each row takes its entry's result (TPC-H q16's
-    * `p_type not like`, DuckDB's dictionary vectors). Without codes, or with more entries than half
-    * the rows, they run per row ([[wvlet.lang.engine.expr.PerDictEntry]])
-    */
-  case DictionaryFilters extends Optimization("dictionary_filters")
-
-  /**
-    * In filters that short-circuit AND / OR (`short_circuit_filters`), a `dictionary_filters` part
-    * runs once per dictionary entry of the rows still selected and returns their positions, so an
-    * AND of such parts looks at fewer rows part by part instead of building a mask over the whole
-    * batch for each (TPC-DS q41's OR of ANDs over item's strings, DuckDB's selection vectors)
-    */
-  case DictionarySelection extends Optimization("dictionary_selection")
-
-  /**
-    * Hash-join builds encode their string columns over their distinct values, so the probe outputs
-    * carry codes that identify values across batches ([[wvlet.lang.engine.vector.StrVec.dict]]).
-    * Aggregations whose string keys all carry such codes group rows by the packed codes (with the
-    * other keys) in a table kept across batches, and hash and compare the strings once per group
-    * (TPC-DS q47's item and store names)
-    */
-  case JoinBuildStringCodes extends Optimization("join_build_string_codes")
-
-  /**
-    * Row-independent subexpressions are evaluated once when lowering, and integral constants added
-    * to or subtracted from decimals become decimals at the result scale
-    * ([[wvlet.lang.engine.runtime.FoldConstants]])
-    */
-  case FoldConstants extends Optimization("fold_constants")
-
-  /**
-    * Expressions over literals become literals as they are bound (`1200 + 11`, `cast(1 + 10 as
-    * decimal(21,2))`), so that filter pushdown and scan filters see the folded bounds
-    * ([[BoundExprSimplifier.fold]])
-    */
-  case FoldBoundConstants extends Optimization("fold_bound_constants")
-
-  /**
-    * A comparison of a lossless cast with literals (`cast(x as decimal(12,2)) > 50.00`) compares
-    * the uncast expression with the literals converted to its type, when they convert exactly
-    * ([[BoundExprSimplifier.unwrapCompare]])
-    */
-  case UnwrapCasts extends Optimization("unwrap_casts")
-
-  /**
-    * With `unwrap_casts`, a comparison of a cast that only adds fraction digits to an integer or
-    * decimal `x` with a literal (`cast(x as decimal(38,12)) > 81029137.652468`) compares x with the
-    * literal rounded to x's scale: down for `>` and `<=`, up for `>=` and `<`, since x's values lie
-    * on that grid. Such casts keep every value (the engine never enforces a decimal precision), so
-    * they unwrap even when the target has fewer integer digits. TPC-H q11's HAVING filter cast each
-    * of its plan-time groups through BigDecimal on the calling thread
-    * ([[BoundExprSimplifier.unwrapCompare]])
-    */
-  case RoundUnwrappedLiterals extends Optimization("round_unwrapped_literals")
-
-  /**
-    * With `parallelize`, INTERSECT / EXCEPT (without ALL) run as semi / anti hash joins of the left
-    * input's distinct rows with the right input on every column, NULLs equal, so that the probe
-    * runs as morsels, as DuckDB plans them. Otherwise one set operation buffers the right input and
-    * walks the left one on the calling thread
-    */
-  case SetOpJoins extends Optimization("set_op_joins")
-
-  /**
-    * With `push_down_filters`, an `or` condition of an inner join tree that reads several inputs
-    * also filters each input by the `or`, over its branches, of the conjuncts that read only that
-    * input, when every branch has one (TPC-H q19's part filter, q7's nation names). The `or` stays,
-    * so the rows are the same ([[PushDownFilters]])
-    */
-  case OrImpliedFilters extends Optimization("or_implied_filters")
-
-  /**
-    * With `parallelize`, a UNION ALL of scan pipelines is one pipeline: the parts of every input,
-    * in input order, run through the operators above the union (hash join probes over one shared
-    * build, partial aggregates) as morsels. Otherwise those operators run on the calling thread
-    * over the union's rows (TPC-DS q02, q05, q76, q77, q80)
-    */
-  case UnionAllPipelines extends Optimization("union_all_pipelines")
-
-  /**
-    * With `swap_build_side`, a semi / anti join of an EXISTS / IN subquery builds on the outer
-    * input (a RIGHT SEMI / RIGHT ANTI join) whenever the subquery input is estimated larger, not
-    * only [[JoinOrderOptimizer.SwapBuildRatio]] times larger: a swapped semi join outputs only the
-    * outer columns, so it needs no reordering projection, and its build keys filter the larger
-    * probe scan (TPC-H q4, q21 build on orders instead of lineitem)
-    */
-  case SemiJoinBuildSide extends Optimization("semi_join_build_side")
-
-  /**
-    * With `push_scan_filters`, comparisons of decimal columns with constants, and `<`, `<=` and `=`
-    * of floating-point columns, also skip Parquet row groups by their min/max statistics
-    * ([[ScanFilters]]). Floating-point `>` and `>=` stay out: writers leave NaN out of the
-    * statistics while the engine orders NaN above every number
-    */
-  case DecimalFloatScanFilters extends Optimization("decimal_float_scan_filters")
-
-  /**
-    * Estimate a range comparison of an integer or date column with a constant (`<`, `>`, `between`,
-    * date ranges) from the column's [min, max] in the Parquet statistics, with the bounds on one
-    * column combined into one interval ([[wvlet.lang.engine.runtime.RangeSelectivity]]), instead of
-    * the default selectivity per comparison
-    */
-  case RangeSelectivity extends Optimization("range_selectivity")
-
-  /**
-    * With `group_key_semi_joins`, an aggregation on the left (probe) input of an inner join is
-    * reduced too, as the join's inputs swap with the same build side (TPC-H q20 once its lineitem
-    * aggregation is estimated larger than the partsupp side)
-    */
-  case LeftGroupKeySemiJoins extends Optimization("left_group_key_semi_joins")
-
-  /**
-    * Aggregate the side of an inner join that an aggregation's calls read by its join keys and the
-    * group keys it holds before the join, when that is estimated to reduce it at least 4 times and
-    * the other side keeps most of its rows: the join then probes, and gathers the other side's
-    * group keys for, one row per partial group (TPC-DS q04, q11, q74 sum the sales per customer key
-    * and year before joining the seven customer strings they group by)
-    */
-  case EagerAggregation extends Optimization("eager_aggregation")
-
-  /**
-    * Run [[EagerAggregation]] over the body of a shared input the planner builds while binding (the
-    * finest aggregation of chained grouping sets ([[ChainGroupingSets]]), and the inputs of other
-    * grouping sets and unpivots), which the runtime passes don't visit: TPC-DS q22's ROLLUP of 26M
-    * inventory rows by four item strings sums them per item key before joining the 102K items
-    */
-  case EagerGroupingSets extends Optimization("eager_grouping_sets")
-
-  /**
-    * With [[EagerAggregation]], also aggregate one side of the join eagerly when the other calls
-    * are mins and maxes of the other side's columns, which the outer aggregation computes over the
-    * joined rows as before (duplicates don't change them), and when the other side is a cross join
-    * with one row: TPC-DS q23's best customers sum 27M store sales per customer key before joining
-    * the customers crossed with the scalar maximum they compare the sums to
-    */
-  case EagerOtherSideMinMax extends Optimization("eager_other_side_min_max")
-
-  /**
-    * Count the distinct values of an integer column of a shared CTE result computed for planning
-    * ([[CTEReaderStats]]) in a set of longs sized for its rows instead of a growing group table:
-    * the same counts, so the same plans, for less planning time (TPC-DS q01 counts 540K customer
-    * keys when it orders its joins again at SF10)
-    */
-  case PrimitiveResultDistinct extends Optimization("primitive_result_distinct")
-
-  /**
     * Hash aggregations fold their counts and decimal sums in one pass over each batch's rows, so
     * that the per-group updates of different aggregates overlap instead of each aggregate waiting
     * on its previous row's store (TPC-H q1 has nine such partial aggregates over four groups)
     */
   case FusedAccumulators extends Optimization("fused_accumulators")
-
-  /**
-    * A CASE of one WHEN without ELSE (or ELSE NULL) is its THEN vector with NULL where the
-    * condition isn't true, sharing the THEN values, instead of a per-row branch choice that copies
-    * them (TPC-DS q02's seven `sum(case when d_day_name = '...' then sales_price end)` inputs)
-    */
-  case MaskedCaseWhen extends Optimization("masked_case_when")
-
-  /**
-    * Choose the build side of the joins planned outside the join search (EXISTS / IN semi and anti
-    * joins, outer joins, and the semi joins of `reduce_semi_joins` and `group_key_semi_joins`) from
-    * join-tree estimates ([[wvlet.lang.engine.runtime.Stats.treeRows]]): filters by their
-    * selectivity and inner joins as the join search estimates them, instead of the probe source's
-    * rows. The semi joins of `reduce_semi_joins` and `group_key_semi_joins` then build on the
-    * smaller side by any margin, as `semi_join_build_side` does for subqueries (TPC-DS q16 builds
-    * its EXISTS join on the filtered outer orders instead of catalog_sales)
-    */
-  case JoinTreeBuildEstimates extends Optimization("join_tree_build_estimates")
-
-  /**
-    * A CASE of one WHEN whose THEN and ELSE are non-NULL constants picks one of the two per row
-    * from the condition, instead of the per-row branch choice (TPC-DS q97's `sum(case when c then 1
-    * else 0 end)`)
-    */
-  case ConstCaseSelect extends Optimization("const_case_select")
 
   /**
     * An aggregate (sum, count, min, max, avg) of a CASE of one WHEN without ELSE aggregates its
@@ -791,41 +983,6 @@ enum Optimization(val name: String):
   case OneRowPartials extends Optimization("one_row_partials")
 
   /**
-    * `substring(s, k, n) IN ('a', ...)` with constant `k >= 1` and `n` looks up each string's
-    * region in a hash table of the values, without building the substrings (TPC-H q22's
-    * `c_phone.substring(1, 2).in(...)`)
-    */
-  case SubstringInLists extends Optimization("substring_in_lists")
-
-  /**
-    * IS NULL of a column that a join or filter output has not gathered yet reads the column's row
-    * positions (-1 for a padded NULL row) and its source's nulls, without gathering the column
-    * (TPC-DS q97's null checks over the FULL join output)
-    */
-  case DeferredNullChecks extends Optimization("deferred_null_checks")
-
-  /**
-    * Estimate string `=`, IN, LIKE and IS NULL conditions (and AND / OR / NOT of them) over one
-    * column of a Parquet file from the values of a few sampled row groups
-    * ([[wvlet.lang.engine.catalog.ValueCounts]]), cached per file version, for the scan row-filter
-    * gate (`selective_scan_row_filters`) and the join search, instead of 1 / ndv or the default 0.3
-    * (TPC-H q3's `c_mktsegment = 'BUILDING'` keeps 20%)
-    */
-  case StringValueSelectivity extends Optimization("string_value_selectivity")
-
-  /**
-    * With `scan_row_filters`, an `or` conjunct of a filter over a scan that reads several columns
-    * also gives the scan's row filter, for each column that every branch tests, the `or` over the
-    * branches of their conjuncts on that column ([[ScanFilters.columnImplied]]), as DuckDB derives
-    * them: uni decodes the other columns only for the rows those keep. The `or` stays in the
-    * engine's filter, so the rows are the same (TPC-H q19's part filter keeps 0.24% of the rows but
-    * reads three columns, so it was estimated to keep 30% and decoded every row). Estimated by
-    * `string_value_selectivity` for the row-filter gate, as string estimates of 0.3 let selective
-    * guesses through (#2429)
-    */
-  case ColumnImpliedRowFilters extends Optimization("column_implied_row_filters")
-
-  /**
     * Hash aggregations read the deferred columns of a filter's or join probe's output at their
     * selected positions instead of gathering them first: aggregates over a column (sum, min, max,
     * count of Int64, Double, and Long-backed decimals), `+` / `-` arguments over such columns (one
@@ -833,17 +990,6 @@ enum Optimization(val name: String):
     * q04/q11 spent about 11% of their CPU gathering sales columns for `sum(a - b)` and its keys
     */
   case AggregateSelectedRows extends Optimization("aggregate_selected_rows")
-
-  /**
-    * Projections and hash aggregations over the deferred columns of a filter that keeps most rows
-    * compute over the filter's input rows instead of gathering the kept ones: column references
-    * pass through deferred, decimal and double `+` / `-` / `*` compute over every source row when
-    * at least half are kept, the fused accumulators read their arguments at the kept positions, and
-    * string group keys look up their dictionary codes there
-    * ([[wvlet.lang.engine.exec.DenseSelectedRows]]). TPC-H q1 spent about 14% of its CPU gathering
-    * the 98% of lineitem rows its date filter keeps
-    */
-  case DenseSelectedRows extends Optimization("dense_selected_rows")
 
   /**
     * Hash aggregations over dense selected rows ([[DenseSelectedRows]]) compute fused decimal
@@ -873,56 +1019,6 @@ enum Optimization(val name: String):
   case SortedGroupRuns extends Optimization("sorted_group_runs")
 
   /**
-    * Group counts of rows that come in clusters sharing their keys, such as the lines of an order
-    * sharing its customer and date, are estimated over the clusters instead of the rows
-    * ([[wvlet.lang.engine.runtime.ClusteredGroups]]), with cluster sizes from the mean run length
-    * of the key columns in sampled Parquet row groups. They feed the join-tree aggregation
-    * estimates and the eager-aggregation guard: TPC-DS q74's web (customer, year) groups were
-    * estimated at 1M where there are 213K, so its partial aggregation below the customer join was
-    * skipped
-    */
-  case ClusteredGroupEstimates extends Optimization("clustered_group_estimates")
-
-  /**
-    * The join search estimates an equi-join on several columns from the unique keys its tables
-    * declare ([[wvlet.lang.engine.catalog.TableSource.uniqueKeys]]): keys covering a declared key
-    * of one side join as a foreign key to that primary key, and keys that are no declared key of
-    * either side as independent columns, without the cap that treats them as one correlated key.
-    * TPC-DS q25's catalog_sales ⋈ store_returns on (item, customer) was estimated at 35K rows for
-    * 13 real ones
-    */
-  case KeyJoinEstimates extends Optimization("key_join_estimates")
-
-  /**
-    * The exact join search charges each join whose probe side is one input for the probe rows the
-    * runtime join filters of its build are expected to keep (the smallest ratio of build to probe
-    * distinct keys), so that it prefers orders that shrink a large fact probe early: TPC-DS q25
-    * joins catalog_sales with its date filter before store_returns, so the scan skips row groups
-    */
-  case ProbeScanCost extends Optimization("probe_scan_cost")
-
-  /**
-    * With [[ProbeScanCost]], a probe side that is itself a join is charged too, for its output rows
-    * that the build's runtime join filters are expected to keep (its distinct keys capped by the
-    * rows of the joins holding them). Otherwise only single-input probes pay, so the search builds
-    * on a large single input to make it no probe: TPC-H q10 built on customer, all seven of its
-    * grouped columns, rather than probing it with the filtered order lines
-    */
-  case JoinProbeScanCost extends Optimization("join_probe_scan_cost")
-
-  /**
-    * The exact join search credits a probe scan with the parts it skips by a build's join keys,
-    * when every part of the scan (a Hive partition, or a row group) holds one value of its key
-    * column, as the partitions of a date-partitioned table do: the scan reads only the parts
-    * holding build keys (`key_set_row_groups`), the build keys' share of the column's values. A
-    * runtime join filter on another key reads every part and drops rows after decoding them, so
-    * without the credit TPC-DS q25 over store_sales in date partitions built store_sales ⋈
-    * (catalog_sales ⋈ store_returns) and probed it with d1's 30 dates, reading all 1823 partitions
-    * instead of 30. Needs `key_set_row_groups`
-    */
-  case PartitionProbeScanCost extends Optimization("partition_probe_scan_cost")
-
-  /**
     * Partitioned aggregations whose input comes in non-decreasing order of an integer grouping key
     * split it at key changes into contiguous runs, aggregated in parallel as the partitions,
     * instead of hashing and scattering every row ([[wvlet.lang.engine.exec.SortedAggSplits]]). The
@@ -941,36 +1037,12 @@ enum Optimization(val name: String):
   case UnionDistinctOnce extends Optimization("union_distinct_once")
 
   /**
-    * An aggregation groups only by the keys that determine its others through declared unique keys
-    * and inner join equalities, carrying the rest as `any_value` of each group
-    * ([[wvlet.lang.engine.runtime.DependentGroupKeys]]): TPC-H q10 groups by `c_custkey` alone
-    * instead of seven customer columns and the nation name
-    */
-  case DependentGroupKeys extends Optimization("dependent_group_keys")
-
-  /**
-    * Readers of a shared CTE joined on a string column that copies a declared unique key join on a
-    * long declared key of the same table instead, which the body carries as one more column
-    * ([[wvlet.lang.engine.runtime.CTEJoinKeys]]). TPC-DS q04, q11 and q74 join their `year_total`
-    * readers on `c_customer_sk` instead of `c_customer_id`
-    */
-  case CTEDeterminingJoinKeys extends Optimization("cte_determining_join_keys")
-
-  /**
     * The fused fold of `fused_accumulators` adds one sum at a time over the batch, into four
     * partial sums per group that consecutive rows rotate over, with one overflow check per group
     * when the values' magnitudes bound the batch's sum, instead of updating every accumulator per
     * row with a per-row overflow check (TPC-H q1's five decimal sums over four groups)
     */
   case ColumnMajorFusedSums extends Optimization("column_major_fused_sums")
-
-  /**
-    * Decimal `x * (c ± y)` for a constant c computes `c ± y` and the product per row in one loop
-    * over unscaled Longs, with an overflow check that divides only for operands outside the Int
-    * range, instead of an intermediate array and a Long division per row (TPC-H q1's
-    * `l_extendedprice * (1 - l_discount) * (1 + l_tax)`, q3/q5/q10's revenue)
-    */
-  case FusedDecimalArith extends Optimization("fused_decimal_arith")
 
   /**
     * Partitioned aggregations whose keys pack into one Int64
@@ -981,57 +1053,129 @@ enum Optimization(val name: String):
     */
   case PackedAggRouting extends Optimization("packed_agg_routing")
 
-  /**
-    * A right / full join's unmatched build rows, emitted after every probe part, are emitted by
-    * tasks over disjoint ranges of the build rows, each through its own copy of the operators above
-    * the join, instead of in one run on the calling thread. Only when the pipeline has one right /
-    * full join and the build has at least [[wvlet.lang.engine.exec.MorselOp.MinTailSplitRows]] rows
-    */
-  case ParallelOuterTail extends Optimization("parallel_outer_tail")
+  // --- Physical: windows -----------------------------------------------------------------------
 
   /**
-    * An outer join builds on its other input once its build input is estimated
-    * [[JoinOrderOptimizer.SwapOuterBuildRatio]] times larger instead of
-    * [[JoinOrderOptimizer.SwapBuildRatio]], as `parallel_outer_tail` (which it needs) emits a RIGHT
-    * join's unmatched build rows in parallel. The build's keys then filter the larger input's scan
-    * (TPC-DS q75 builds on the filtered sales rows and probes the returns)
+    * A filter bounding a row_number() or rank() by a constant (`rk <= 100`) over a window of only
+    * such calls keeps the top rows of each partition with a bounded heap instead of sorting the
+    * whole partition
     */
-  case SmallerOuterBuilds extends Optimization("smaller_outer_builds")
+  case WindowTopN extends Optimization("window_top_n")
 
   /**
-    * An `or` of comparisons of one expression with literals (`d_year = 2002 or d_year = 2001`)
-    * keeps n / ndv of the rows, as `x in (n literals)` does, instead of the default selectivity.
-    * TPC-DS q75's CTE readers push such an `or` into its body
+    * With `window_top_n`, the window keeps the top rows of each partition within every chunk of
+    * input batches as it reads them, in parallel tasks, instead of materializing its whole input
+    * first; only the chunks' top rows are concatenated and ranked
     */
-  case OrEqualsSelectivity extends Optimization("or_equals_selectivity")
+  case WindowTopNStream extends Optimization("window_top_n_stream")
 
   /**
-    * With [[EagerAggregation]], aggregate an input deeper in the join tree under an aggregation
-    * before the joins above it, when the calls read that input only, every join above looks up one
-    * row by a declared unique key, and the group keys determine the input's: the outer aggregation
-    * becomes a projection ([[wvlet.lang.engine.runtime.EagerAggregation]]). TPC-H q10 sums its
-    * order lines per `o_custkey` before looking up customer and nation, so the customer join builds
-    * 380K rows instead of 1.15M at SF10
+    * Running window counts, sums, mins, and maxes (frames from the partition start) over primitive
+    * columns are folded in primitive values, instead of through an accumulator and a result vector
+    * per row
     */
-  case EagerAggregationInJoinTrees extends Optimization("eager_aggregation_in_join_trees")
+  case RunningWindowKernels extends Optimization("running_window_kernels")
 
   /**
-    * With [[EagerAggregation]], when the join under an aggregation looks up at most one row of its
-    * other side by a declared unique key, and the group keys determine the partial groups, the
-    * outer aggregation becomes a projection of the partial results: each outer group is one partial
-    * group joined to one row. TPC-DS q04, q11 and q74 sum their sales per customer key and year,
-    * look up the customer, and no longer group the sums again by `c_customer_id` and year
+    * Window partitions ordered by one integer or date key are sorted as packed (key, position)
+    * longs instead of through a row comparator
     */
-  case EagerLookupProjection extends Optimization("eager_lookup_projection")
+  case WindowSortKernels extends Optimization("window_sort_kernels")
 
   /**
-    * The statistics of a shared CTE result computed for planning ([[CTEReaderStats]]) are computed
-    * by the engine's tasks instead of on the planning thread, and a string column's distinct values
-    * are counted by their hash codes and lengths in a set of longs instead of a string group table
-    * ([[wvlet.lang.engine.runtime.ParallelResultStats]]). TPC-DS q11 counts its 1M-row `year_total`
-    * result's customer ids and its readers' filtered rows at SF10
+    * Window calls with the same PARTITION BY and ORDER BY are partitioned and sorted once, and
+    * every call reads the same sorted partitions
     */
-  case ParallelResultStats extends Optimization("parallel_result_stats")
+  case WindowSharePartitions extends Optimization("window_share_partitions")
+
+  // --- Physical: expressions and deferred columns ----------------------------------------------
+
+  /**
+    * Filters and hash joins defer their output columns (row positions over their input columns)
+    * instead of copying every column: each column is gathered once, by the operator that reads it
+    */
+  case LateGather extends Optimization("late_gather")
+
+  /**
+    * A non-trivial subexpression repeated across the expressions of a projection, filter,
+    * aggregation, or window is computed once, in a projection below it
+    * ([[wvlet.lang.engine.runtime.CommonSubexpressions]]), as DuckDB's and DataFusion's common
+    * subexpression elimination do
+    */
+  case CommonSubexpressions extends Optimization("common_subexpressions")
+
+  /**
+    * Row-independent subexpressions are evaluated once when lowering, and integral constants added
+    * to or subtracted from decimals become decimals at the result scale
+    * ([[wvlet.lang.engine.runtime.FoldConstants]])
+    */
+  case FoldConstants extends Optimization("fold_constants")
+
+  /**
+    * A CASE of one WHEN without ELSE (or ELSE NULL) is its THEN vector with NULL where the
+    * condition isn't true, sharing the THEN values, instead of a per-row branch choice that copies
+    * them (TPC-DS q02's seven `sum(case when d_day_name = '...' then sales_price end)` inputs)
+    */
+  case MaskedCaseWhen extends Optimization("masked_case_when")
+
+  /**
+    * A CASE of one WHEN whose THEN and ELSE are non-NULL constants picks one of the two per row
+    * from the condition, instead of the per-row branch choice (TPC-DS q97's `sum(case when c then 1
+    * else 0 end)`)
+    */
+  case ConstCaseSelect extends Optimization("const_case_select")
+
+  /**
+    * Projections and hash aggregations over the deferred columns of a filter that keeps most rows
+    * compute over the filter's input rows instead of gathering the kept ones: column references
+    * pass through deferred, decimal and double `+` / `-` / `*` compute over every source row when
+    * at least half are kept, the fused accumulators read their arguments at the kept positions, and
+    * string group keys look up their dictionary codes there
+    * ([[wvlet.lang.engine.exec.DenseSelectedRows]]). TPC-H q1 spent about 14% of its CPU gathering
+    * the 98% of lineitem rows its date filter keeps
+    */
+  case DenseSelectedRows extends Optimization("dense_selected_rows")
+
+  /**
+    * Decimal `x * (c ± y)` for a constant c computes `c ± y` and the product per row in one loop
+    * over unscaled Longs, with an overflow check that divides only for operands outside the Int
+    * range, instead of an intermediate array and a Long division per row (TPC-H q1's
+    * `l_extendedprice * (1 - l_discount) * (1 + l_tax)`, q3/q5/q10's revenue)
+    */
+  case FusedDecimalArith extends Optimization("fused_decimal_arith")
+
+  /**
+    * Common subexpression elimination counts subexpressions by a structural hash computed once per
+    * node, bottom-up (`cse_hashed_keys`), instead of hashing each subtree again at every ancestor.
+    * TPC-DS q41's filter, an OR of eight ANDs, spent ~20% of its planning hashing them
+    */
+  case CseHashedKeys extends Optimization("cse_hashed_keys")
+
+  // --- Physical: parallel execution ------------------------------------------------------------
+
+  /** Parallel scan pipelines and two-phase / partitioned aggregation */
+  case Parallelize extends Optimization("parallelize")
+
+  /**
+    * With `parallelize`, read the output of a grouped aggregation as a source split by batch, so
+    * that the filters, projections, join probes, and partial aggregations above it run as morsels
+    * instead of on the calling thread
+    */
+  case ParallelAboveBreakers extends Optimization("parallel_above_breakers")
+
+  /**
+    * Run the plan subtrees that the engine's [[wvlet.lang.engine.runtime.PlanAccelerator]] (e.g. a
+    * GPU) supports on it. Without an accelerator, nothing changes
+    */
+  case GpuOffload extends Optimization("gpu_offload")
+
+  /**
+    * With `parallelize`, a UNION ALL of scan pipelines is one pipeline: the parts of every input,
+    * in input order, run through the operators above the union (hash join probes over one shared
+    * build, partial aggregates) as morsels. Otherwise those operators run on the calling thread
+    * over the union's rows (TPC-DS q02, q05, q76, q77, q80)
+    */
+  case UnionAllPipelines extends Optimization("union_all_pipelines")
 
   /**
     * A partition of a partitioned aggregation whose group estimate reached
@@ -1042,125 +1186,6 @@ enum Optimization(val name: String):
     * stage's CPU
     */
   case SizePartitionsByRows extends Optimization("size_partitions_by_rows")
-
-  /**
-    * The estimated groups of an aggregation read its keys' distinct values through the grouping
-    * keys of an aggregation below it (`Stats.treeRows`), instead of taking the inner aggregation's
-    * rows: TPC-DS q65's average revenue by store, over sums by store and item, is about 100 rows,
-    * not the 5.8M of the sums, so the join builds on it
-    */
-  case NestedGroupEstimates extends Optimization("nested_group_estimates")
-
-  /**
-    * An input of an inner join graph that filters a row_number() or rank() by a constant (`rnk <
-    * 11`) is estimated as at most that many rows per partition of the window, instead of the rows
-    * below the window, so that TPC-DS q44's two top-10 rankings are built on and the item scans
-    * probe them
-    */
-  case RankFilterRows extends Optimization("rank_filter_rows")
-
-  /**
-    * An aggregation grouped by string columns of a dimension that a larger input looks up by its
-    * declared unique key groups by a representative key of those strings instead (`min(key) over
-    * (partition by strings)` over the dimension's rows), and joins the strings back per group
-    * ([[wvlet.lang.engine.runtime.DimensionGroupIds]]): TPC-DS q47 and q89 group store sales by two
-    * item and two store strings
-    */
-  case DimensionGroupIds extends Optimization("dimension_group_ids")
-
-  /**
-    * A NOT EXISTS and an EXISTS over the same table on the same key, decorrelated into an anti and
-    * a semi join that both build on the outer rows, probe the table once: one RIGHT SEMI join marks
-    * each build row matched by the EXISTS's rows and excluded by the NOT EXISTS's, and emits the
-    * matched rows not excluded ([[wvlet.lang.engine.runtime.SemiAntiProbe]]). TPC-H q21 read
-    * lineitem three times, once per join and once for its outer rows
-    */
-  case SemiAntiOneProbe extends Optimization("semi_anti_one_probe")
-
-  /**
-    * A sort with a limit reads the string columns of a scan that only pass through to its output
-    * for its N rows alone: the top-N is computed without them, and a second scan of the table,
-    * filtered by the N rows' declared unique key, joins them back
-    * ([[wvlet.lang.engine.runtime.LateColumns]]). TPC-H q10 decoded the name, address, phone and
-    * comment of 381K customers for its top 20
-    */
-  case LateColumns extends Optimization("late_columns")
-
-  /**
-    * With [[EagerAggregation]], a DISTINCT (an aggregation without calls) over a projection of an
-    * inner join is computed over the join with the projection inlined into its keys, so that the
-    * join's input is first deduplicated by the columns the keys and join keys read. TPC-DS q38 and
-    * q87 deduplicate 5.4M store sales rows by customer key and date (481K at SF10) before joining
-    * the customer names, instead of gathering and hashing the names of every sale row
-    */
-  case EagerDistinct extends Optimization("eager_distinct")
-
-  /**
-    * A join build's string columns give up their codes (`join_build_string_codes`) once their first
-    * rows look nearly unique, and once one column gives up, the others aren't encoded. TPC-H q2's
-    * supplier build hashed 10K rows of each of its four unique string columns on one thread before
-    * keeping none of their codes
-    */
-  case StringCodeProbe extends Optimization("string_code_probe")
-
-  /**
-    * A Parquet row group decoded in parallel (`parallel_column_decode`) builds the Strings of its
-    * PLAIN string columns by row ranges, as tasks of their own after the columns are decoded. TPC-H
-    * q2's supplier scan built the 100K Strings of `s_comment` on one thread while the others waited
-    */
-  case ParallelStringDecode extends Optimization("parallel_string_decode")
-
-  /**
-    * A large hash join build (`parallel_join_build`) also takes its key ranges, packs its
-    * multi-column keys, hashes and partitions its flat table's rows, and finds the flat table's key
-    * range and fills its empty entries in tasks instead of on the calling thread. TPC-DS q97's FULL
-    * join over 2.9M (customer, item) keys ran these steps on one thread while the others waited
-    */
-  case ParallelJoinKeys extends Optimization("parallel_join_keys")
-
-  /**
-    * A pipeline whose stream is one in-memory batch (an aggregation's output or a CTE result) runs
-    * as tasks over row ranges of the batch when its hash joins probe large builds, instead of on
-    * the calling thread. TPC-DS q65 probed the 2.3M-row (store, item) revenue result with its 102
-    * per-store averages on one thread, emitting every revenue row, while the workers waited
-    */
-  case SliceSingleBatchProbes extends Optimization("slice_single_batch_probes")
-
-  /**
-    * Planning remembers what it computes more than once per query (`planning_memo`): whether a
-    * subquery is correlated (it plans the subquery to see whether a column is missing), and the SQL
-    * text [[wvlet.lang.engine.plan.Planner]] matches OR branches' conjuncts by. The binder's
-    * missing-column signal, which these checks and `bindsIn` catch, carries no stack trace. Small
-    * TPC-DS queries with a correlated scalar subquery (q32, q41, q92) planned it two or three
-    * times, and filling in the stack traces of ~75 missed bindings took ~5% of their planning
-    */
-  case PlanningMemo extends Optimization("planning_memo")
-
-  /**
-    * Common subexpression elimination counts subexpressions by a structural hash computed once per
-    * node, bottom-up (`cse_hashed_keys`), instead of hashing each subtree again at every ancestor.
-    * TPC-DS q41's filter, an OR of eight ANDs, spent ~20% of its planning hashing them
-    */
-  case CseHashedKeys extends Optimization("cse_hashed_keys")
-
-  /**
-    * A filter whose scan is shared (`share_subquery_scans`) is found by value with its templates
-    * expanded too, not only as the tree's node. Splitting a condition into conjuncts expands its
-    * templates, which copies the subqueries in it: TPC-H q22's `avg(c_acctbal)` subquery was bound
-    * as such a copy and read `customer` again instead of the shared scan
-    */
-  case MatchCopiedSubqueryScans extends Optimization("match_copied_subquery_scans")
-
-  /**
-    * The join search also joins inputs by the equalities that follow from the written ones: column
-    * equalities of inner joins form equivalence classes, and every two columns of a class on
-    * different inputs may be a join key ([[wvlet.lang.engine.plan.JoinEdge.eqClass]]). A join keys
-    * on one column pair per class, and its rows are estimated once per class. TPC-H q5 writes
-    * `c_nationkey = s_nationkey and s_nationkey = n_nationkey`, so customer joined only through
-    * supplier and came last, after the engine built all 2.3M orders of the year; with
-    * `c_nationkey = n_nationkey`, ASIA's 300K customers filter the orders first, as in DuckDB
-    */
-  case ImpliedJoinEqualities extends Optimization("implied_join_equalities")
 
 end Optimization
 
