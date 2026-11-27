@@ -78,6 +78,9 @@ class ImpliedJoinEqualitiesTest extends UniTest:
       "select d.name, sum(a.x + c.z) as s from a, b, c, d where a.k = b.k and b.k = c.k and b.g = d.g group by d.name",
     "a chain with a filter" ->
       "select a.x, c.z from a, b, c where a.k = b.k and b.k = c.k and b.y > 150",
+    // A clique of ten inputs is more pairs than the exact search costs: it plans the written chain
+    "a chain of ten inputs" ->
+      "select count(*) as n, sum(t1.x + t10.x) as s from a as t1, a as t2, a as t3, a as t4, a as t5, a as t6, a as t7, a as t8, a as t9, a as t10 where t1.k = t2.k and t2.k = t3.k and t3.k = t4.k and t4.k = t5.k and t5.k = t6.k and t6.k = t7.k and t7.k = t8.k and t8.k = t9.k and t9.k = t10.k",
     "a class with two columns of one table" ->
       "select a.x, b.y, c.z from a, b, c where a.k = b.k and b.k = c.k and a.k = b.g and b.g = c.k"
   ).foreach { (label, query) =>

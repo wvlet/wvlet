@@ -148,18 +148,22 @@ class JoinOrderOptimizer(options: OptimizerOptions):
 
   /** [[plan]], with the estimated rows of the tree before the remaining conditions */
   def planWithRows[P, C, K](g: JoinGraph[P, C], search: JoinSearch[P, C, K]): (P, List[C], Double) =
+    // The written equalities alone: implied ones can make a large class a clique of more pairs
+    // than the exact search costs, and the greedy search estimates every key it joins by
+    lazy val written =
+      if g.edges.exists(_.eqClass >= 0) then
+        g.copy(edges = g.edges.filterNot(_.implied).map(_.copy(eqClass = -1)))
+      else
+        g
     val exact =
       if enabled(Optimization.ReorderJoins) && enabled(Optimization.ExactJoinOrder) then
-        JoinEnumerator(options).planWithRows(g, search)
+        val enumerator = JoinEnumerator(options)
+        enumerator
+          .planWithRows(g, search)
+          .orElse(Option.when(written ne g)(enumerator.planWithRows(written, search)).flatten)
       else
         None
-    // The greedy search estimates every key it joins by: only the written equalities
-    exact.getOrElse(
-      greedyPlanWithRows(
-        g.copy(edges = g.edges.filterNot(_.implied).map(_.copy(eqClass = -1))),
-        search
-      )
-    )
+    exact.getOrElse(greedyPlanWithRows(written, search))
 
   /**
     * The cheapest left-deep join tree of multi-start greedy search: every input is tried as the

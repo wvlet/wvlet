@@ -35,10 +35,7 @@ class JoinEnumerator(options: OptimizerOptions):
 
   private val probeScanCost     = options.isEnabled(Optimization.ProbeScanCost)
   private val joinProbeScanCost = probeScanCost && options.isEnabled(Optimization.JoinProbeScanCost)
-  // Whether the graph being planned has equivalence classes of equalities, set by planWithRows
-  private var hasClasses = false
-
-  private val partitionCost =
+  private val partitionCost     =
     options.isEnabled(Optimization.PartitionProbeScanCost) &&
       options.isEnabled(Optimization.KeySetRowGroups)
 
@@ -59,8 +56,7 @@ class JoinEnumerator(options: OptimizerOptions):
       None
     else
       val (edges, groups) = keyGroups(g, search, analyze(g, search, partitionCost))
-      hasClasses = edges.exists(_.eqClass >= 0)
-      val full = (1 << n) - 1
+      val full            = (1 << n) - 1
       solve(g, edges, groups).map(dp =>
         (build(g, search, edges, dp, full), constants(g), dp.rows(full))
       )
@@ -165,7 +161,7 @@ class JoinEnumerator(options: OptimizerOptions):
     // a grouped key are estimated by the group
     var classDistinct: Map[Int, (Option[Double], Option[Double])] = Map.empty
     var groupedClasses                                            = Set.empty[Int]
-    if hasClasses then
+    if grouped != 0L then
       edges.foreach { e =>
         if e.eqClass >= 0 && e.group >= 0 && (grouped & (1L << e.group)) != 0 then
           e.placement(s1, s2) match
@@ -183,14 +179,7 @@ class JoinEnumerator(options: OptimizerOptions):
           else
             Some(math.min(a.get, b.get))
         val (pl, pr) = classDistinct.getOrElse(e.eqClass, (None, None))
-        val seen     = classDistinct.contains(e.eqClass)
-        classDistinct = classDistinct.updated(
-          e.eqClass,
-          if seen then
-            (fewest(pl, l), fewest(pr, r))
-          else
-            (l, r)
-        )
+        classDistinct = classDistinct.updated(e.eqClass, (fewest(pl, l), fewest(pr, r)))
     edges.foreach { e =>
       val placement = e.placement(s1, s2)
       if probeScanCost || partCost then
