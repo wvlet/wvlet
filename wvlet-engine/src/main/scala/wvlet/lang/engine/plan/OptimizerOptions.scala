@@ -348,6 +348,22 @@ enum Optimization(val name: String):
   case LeftMatchPrefilter extends Optimization("left_match_prefilter")
 
   /**
+    * The other LEFT joins with a large flat hash table get the `probe_miss_filter` Bloom filter
+    * when at most half of the rows of their first probe batch (1024 rows or more) match. TPC-DS q75
+    * and q80 LEFT join sales to returns, which most sales rows miss; dimension LEFT joins mostly
+    * match and keep probing the entries alone
+    */
+  case SampledMissFilter extends Optimization("sampled_miss_filter")
+
+  /**
+    * The partial aggregations under a `left_match_prefilter` filter size their group tables by the
+    * share of rows the filter has kept when their first batch arrives, instead of the group
+    * estimate of the unfiltered input (TPC-DS q78: ~4.9M estimated groups, ~6K rows kept). A filter
+    * that turned itself off leaves the estimate
+    */
+  case PrefilterPresize extends Optimization("prefilter_presize")
+
+  /**
     * The one-Long entries of a flat join hash table, `(key - min) << rowBits | row`, give the row
     * only the bits the build rows need instead of 32, so keys spanning up to 64 - rowBits bits
     * still take one Long instead of two. TPC-DS q78's LEFT joins on (year, item, customer) pack

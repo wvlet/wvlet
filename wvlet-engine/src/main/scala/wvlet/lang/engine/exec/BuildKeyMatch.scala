@@ -53,6 +53,25 @@ final class BuildKeyMatch(val sources: IndexedSeq[BuildKeyMatch.Source]) extends
   /** The rows the filter has seen and kept so far (for tests) */
   private[engine] def counts: (Long, Long) = (seen, kept)
 
+  /**
+    * Whether an aggregation right above the filter sizes its group table by the share of rows the
+    * filter kept (`prefilter_presize`)
+    */
+  var sizesAggregation: Boolean = true
+
+  /**
+    * The group count to pre-size for an aggregation that `groups` would size before the filter: in
+    * proportion to the rows kept so far, rounded up, or `groups` while the filter has seen no row
+    * or once it turned off (it then passes every row)
+    */
+  def presize(groups: Int): Int =
+    val total = seen
+    val pass  = kept
+    if off || total <= 0 || groups <= 0 then
+      groups
+    else
+      math.min(groups.toLong, (groups.toLong * pass + total - 1) / total).toInt
+
   def eval(b: Batch): Vec =
     val n = b.size
     if off || sources.exists(s => s.build == null || !s.build.isBuilt) then
@@ -88,6 +107,47 @@ object BuildKeyMatch:
   final class Source(val keys: IndexedSeq[VExpr]):
     @volatile
     var build: JoinBuild = null
+
+  /** The prefilter that sizes an aggregation over `child` (`prefilter_presize`), or null */
+  private def below(child: Operator): BuildKeyMatch =
+    child match
+      case f: FilterOp =>
+        f.cond match
+          case m: BuildKeyMatch if m.sizesAggregation =>
+            m
+          case _ =>
+            null
+      case _ =>
+        null
+
+  /** A batch an aggregation hasn't read yet ([[firstBatch]]) */
+  private val Unread: Batch = Batch.empty(Schema(IndexedSeq.empty))
+
+  /**
+    * An aggregation's first input batch, read before it sizes its group table when the input is a
+    * prefilter that sizes it (`prefilter_presize`), so the filter has a sample; otherwise a
+    * placeholder that [[orNext]] replaces by the first batch
+    */
+  def firstBatch(child: Operator): Batch =
+    if below(child) != null then
+      child.next()
+    else
+      Unread
+
+  /** `b`, or the next batch of `child` when `b` is the placeholder of [[firstBatch]] */
+  def orNext(b: Batch, child: Operator): Batch =
+    if b eq Unread then
+      child.next()
+    else
+      b
+
+  /** The groups to pre-size for an aggregation over `child` that `groups` would size */
+  def presize(child: Operator, groups: Int): Int =
+    val m = below(child)
+    if m == null then
+      groups
+    else
+      m.presize(groups)
 
   /** Make `j`'s build the one its filters read */
   def bind(j: HashJoinOp, sources: Seq[Source]): j.type =

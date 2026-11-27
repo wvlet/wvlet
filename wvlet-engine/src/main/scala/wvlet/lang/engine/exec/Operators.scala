@@ -1037,11 +1037,12 @@ class HashAggOp(
       // Grouping stopped before this part started
       passing = true
       return next()
+    var b       = BuildKeyMatch.firstBatch(child)
     val presize =
       if keys.isEmpty then
         0
       else
-        expectedGroups
+        BuildKeyMatch.presize(child, expectedGroups)
     val table = PackedGroupTable.forKeys(
       keys.map(_.ptype),
       presize,
@@ -1058,7 +1059,7 @@ class HashAggOp(
     var rows              = 0L
     // Whether grouping stopped before the input ended: the rest of it passes through
     var stopped = false
-    var b       = child.next()
+    b = BuildKeyMatch.orNext(b, child)
     while b != null do
       val groups =
         if keys.isEmpty then
@@ -1339,6 +1340,8 @@ final class JoinBuild(
   // A single integer key outside a dense range: one flat table over (key, first row) pairs, null
   // when the build uses a direct index or GroupTables. `directStore` normalizes its probe keys too
   private var flat: LongJoinTable = null
+  // A pending `sampled_miss_filter` decision over `flat`, or null
+  private var sample: MissFilterSample = null
 
   /** Whether no two build rows share a key, so every chain ends at its first row */
   var uniqueKeys: Boolean = false
@@ -1368,6 +1371,9 @@ final class JoinBuild(
 
   /** Whether a large flat table keeps a Bloom filter of its keys (`probe_miss_filter`) */
   var missFilter: Boolean = false
+
+  /** Whether the first probe batch decides `missFilter` instead (`sampled_miss_filter`) */
+  var sampledMissFilter: Boolean = false
 
   /** Whether narrow flat entries fit the row number in fewer bits (`narrow_join_entries`) */
   var narrowEntries: Boolean = true
@@ -1623,6 +1629,7 @@ final class JoinBuild(
       directStore = store
       uniqueKeys = unique
       flat = table
+      sample = MissFilterSample.of(this, table, longs, rowsOf)
 
   end buildFlat
 
@@ -1711,15 +1718,7 @@ final class JoinBuild(
     if directHeads != null then
       directMatches(keys(0), n, out)
     else if flat != null then
-      directStore.normalize(keys(0)) match
-        case v: LongVec =>
-          flat.firstRows(v.values, v.nulls, n, out)
-        case v: IntVec =>
-          flat.firstRows(v.values, v.nulls, n, out)
-        case other =>
-          throw IllegalStateException(
-            s"Unexpected join key vector: ${other.getClass.getSimpleName}"
-          )
+      MissFilterSample.probe(flat, sample, directStore.normalize(keys(0)), n, out)
     else if parts == 1 then
       val ids  = tables(0).lookup(keys, n, nullsMatch = nullKeys)
       val head = heads(0)
@@ -2015,8 +2014,9 @@ class HashJoinOp(
     unmatchedOnly = enabled && kind == JoinKind.Left && residual.isEmpty
     this
 
-  def withMissFilter(enabled: Boolean): this.type =
+  def withMissFilter(enabled: Boolean, sampled: Boolean = false): this.type =
     joinBuild.missFilter = enabled
+    joinBuild.sampledMissFilter = sampled
     this
 
   /** The filters below the probe side that read this build's keys (`left_match_prefilter`) */

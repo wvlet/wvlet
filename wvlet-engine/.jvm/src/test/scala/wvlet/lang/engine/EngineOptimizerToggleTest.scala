@@ -123,6 +123,12 @@ class EngineOptimizerToggleTest extends UniTest:
     // The subqueries become the same constants either way, one query per group or per subquery
     Optimization.PrefetchScalarSubqueries ->
       "Changes how scalar subqueries are evaluated while planning, not the plan",
+    // MissFilterSampleTest checks that a mostly-missing sample gives the same first rows
+    Optimization.SampledMissFilter ->
+      "Changes which LEFT join tables get a Bloom filter while probing, not the plan",
+    // LeftMatchPrefilterTest checks the sizes from the filter's sample
+    Optimization.PrefilterPresize ->
+      "Changes the initial size of filtered aggregation tables, not the plan",
     // EnginePresizeAggregatesTest checks that the flag sets the aggregations' group estimates
     Optimization.PresizeAggregates ->
       "Changes the initial size of aggregation tables, not the plan",

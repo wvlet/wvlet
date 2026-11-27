@@ -43,6 +43,18 @@ object LeftMatchPrefilter:
   /** The plan with the prefilters added */
   def apply(op: Operator): Operator = rewrite(op)
 
+  /** Make the prefilters of a plan leave their aggregations' presizing (no `prefilter_presize`) */
+  def disablePresize(op: Operator): Unit =
+    op match
+      case f: FilterOp =>
+        f.cond match
+          case m: BuildKeyMatch =>
+            m.sizesAggregation = false
+          case _ =>
+      case _ =>
+    op.children.foreach(disablePresize)
+    op.sharedInputs.foreach(disablePresize)
+
   /** Whether a join's probes feed a prefilter, so they mostly miss */
   def feedsPrefilter(j: HashJoinOp): Boolean = j.prefilters.nonEmpty
 

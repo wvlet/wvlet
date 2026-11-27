@@ -226,7 +226,7 @@ object Parallelizer:
             .withParallelBuild(j.parallelBuild)
             .withStringCodes(j.stringCodes)
             .withUnmatchedOnly(j.unmatchedOnly)
-            .withMissFilter(j.joinBuild.missFilter)
+            .withMissFilter(j.joinBuild.missFilter, j.joinBuild.sampledMissFilter)
             .withNarrowEntries(j.joinBuild.narrowEntries)
           BuildKeyMatch.bind(template, j.prefilters)
           val shared = p.copy(
@@ -697,7 +697,7 @@ object Parallelizer:
               .withParallelBuild(j.parallelBuild)
               .withStringCodes(j.stringCodes)
               .withUnmatchedOnly(j.unmatchedOnly)
-              .withMissFilter(j.joinBuild.missFilter)
+              .withMissFilter(j.joinBuild.missFilter, j.joinBuild.sampledMissFilter)
               .withNarrowEntries(j.joinBuild.narrowEntries)
             BuildKeyMatch.bind(copy, j.prefilters)
           case j: NestedLoopJoinOp =>

@@ -167,6 +167,23 @@ class LeftMatchPrefilterTest extends UniTest:
     m.counts shouldBe (600L, 8L)
   }
 
+  test("should size the aggregation by the share of rows the filter kept") {
+    val plain     = rows(plan(eitherMatched))
+    val rewritten = LeftMatchPrefilter(plan(eitherMatched))
+    val Seq(m)    = prefilters(rewritten): @unchecked
+    // No sample yet: the estimate as it is
+    m.presize(1000) shouldBe 1000
+    rows(rewritten) shouldBe plain
+    // 8 of 600 rows kept
+    m.presize(1000) shouldBe 14
+    m.presize(0) shouldBe 0
+    val unsized  = LeftMatchPrefilter(plan(eitherMatched))
+    val Seq(off) = prefilters(unsized): @unchecked
+    LeftMatchPrefilter.disablePresize(unsized)
+    off.sizesAggregation shouldBe false
+    rows(unsized) shouldBe plain
+  }
+
   test("should give the joins whose builds the filter reads a miss filter") {
     val rewritten = LeftMatchPrefilter(plan(eitherMatched))
     val joins     = collection.mutable.ArrayBuffer.empty[HashJoinOp]

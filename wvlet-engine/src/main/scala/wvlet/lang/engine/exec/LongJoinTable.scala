@@ -73,6 +73,21 @@ final class LongJoinTable private (
   /** Whether the table keeps a Bloom filter of its keys (for tests) */
   def hasMissFilter: Boolean = bloom != null
 
+  /** The bytes of the entries */
+  def entryBytes: Long = entries.length * 8L
+
+  /**
+    * This table with a Bloom filter of its keys, as [[LongJoinTable.build]] makes with
+    * `missFilter`, filled on the calling thread from the keys and partition rows it was built from
+    * (`sampled_miss_filter`). The entries are shared, so probes of this table stay valid
+    */
+  def withMissFilter(key: Array[Long], rowsOf: Array[Array[Int]]): LongJoinTable =
+    val bits  = filterBits(rowsOf.iterator.map(_.length).maxOption.getOrElse(0))
+    val words = new Array[Long](rowsOf.length << bits)
+    val t     = LongJoinTable(entries, partBits, regionBits, min, range, rowBits, words, bits)
+    rowsOf.foreach(t.addToFilter(key, _))
+    t
+
   /** The next slot after s, wrapping inside s's region */
   private inline def nextSlot(s: Int): Int = (s & ~regionMask) | ((s + 1) & regionMask)
 
@@ -82,6 +97,16 @@ final class LongJoinTable private (
     */
   def firstRows(x: Array[Long], nulls: Array[Boolean], n: Int, out: Array[Int]): Unit =
     probe(n, nulls, out)(i => x(i))
+
+  /** [[firstRows]] for a normalized Int64 or Int32 key vector */
+  def firstRows(key: Vec, n: Int, out: Array[Int]): Unit =
+    key match
+      case v: LongVec =>
+        firstRows(v.values, v.nulls, n, out)
+      case v: IntVec =>
+        firstRows(v.values, v.nulls, n, out)
+      case other =>
+        throw IllegalStateException(s"Unexpected join key vector: ${other.getClass.getSimpleName}")
 
   /** [[firstRows]] for Int32 probe keys, compared as Int64 */
   def firstRows(x: Array[Int], nulls: Array[Boolean], n: Int, out: Array[Int]): Unit =
@@ -233,6 +258,10 @@ object LongJoinTable:
     */
   inline val MinMissFilterBytes = 16L << 20
 
+  /** The Bloom words per partition, as bits, for a largest partition of `maxRows` keys */
+  private def filterBits(maxRows: Int): Int =
+    64 - java.lang.Long.numberOfLeadingZeros(math.max(1L, (maxRows + 7L) / 8 - 1))
+
   /** Whether keys spanning `range` fit beside `rowBits` row bits in one Long */
   private def fitsNarrow(range: Long, rowBits: Int): Boolean =
     rowBits >= 1 && rowBits <= 32 && range < (1L << (64 - rowBits))
@@ -316,7 +345,7 @@ object LongJoinTable:
     // probes of 2.9M keys that miss 90% of the time than 16 or 4 bits
     val bloomBits =
       if missFilter && width * slots * 8L >= minFilterBytes then
-        64 - java.lang.Long.numberOfLeadingZeros(math.max(1L, (maxRows + 7L) / 8 - 1))
+        filterBits(maxRows)
       else
         0
     val bloom =

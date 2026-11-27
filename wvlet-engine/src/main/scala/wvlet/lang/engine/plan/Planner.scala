@@ -116,13 +116,16 @@ class Planner(
     * The join toggles of [[optimizePhysical]] for one hash join: the planned joins, and the
     * INTERSECT / EXCEPT joins [[Parallelizer]] makes after them (`set_op_joins`), so that turning a
     * toggle off reaches those too. With `probe_miss_filter`, joins whose probes mostly miss (anti
-    * joins and unmatched-only LEFT joins) get a Bloom filter of their build keys
+    * joins and unmatched-only LEFT joins) get a Bloom filter of their build keys; with
+    * `sampled_miss_filter`, other LEFT joins get one when their first probe batch mostly misses
     */
   private def configureJoin(j: HashJoinOp): Unit =
     if !enabled(Optimization.LateGather) then
       j.lateGather = false
     if enabled(Optimization.ProbeMissFilter) && Planner.missFilterFits(j) then
       j.withMissFilter(true)
+    else if enabled(Optimization.SampledMissFilter) && j.kind == JoinKind.Left then
+      j.withMissFilter(false, sampled = true)
     if !enabled(Optimization.JoinDirectIndex) then
       j.withDirectIndex(false)
     if !enabled(Optimization.NarrowJoinEntries) then
@@ -146,6 +149,8 @@ class Planner(
         LeftMatchPrefilter(prunedOnly)
       else
         prunedOnly
+    if !enabled(Optimization.PrefilterPresize) then
+      LeftMatchPrefilter.disablePresize(pruned)
     if !enabled(Optimization.LateGather) then
       Planner.disableLateGather(pruned)
     if !enabled(Optimization.DenseSelectedRows) then
