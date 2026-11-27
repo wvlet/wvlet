@@ -2,6 +2,7 @@ import type {PrismTheme} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import vscodePackage from '../vscode-wvlet/package.json';
+import sidebars from './sidebars';
 
 // The VS Code extension version is bumped in every release commit (see design/releasing.md), so it
 // doubles as the current Wvlet release version for structured data.
@@ -9,6 +10,34 @@ const wvletVersion: string = vscodePackage.version;
 const siteDescription =
   'Wvlet is a flow-style query language that compiles to SQL for DuckDB, Trino, Snowflake, and Hive. ' +
   'Queries read top-to-bottom in data-processing order, so humans and AI agents can add a step without rewriting nested SQL.';
+
+// Doc ids in sidebar order, so llms-full.txt reads in the same order as the docs sidebar.
+// Patterns carry the docs/ prefix: the plugin matches a slash-free pattern such as 'index.md'
+// against every file's base name.
+function sidebarDocIds(items: unknown[]): string[] {
+  return items.flatMap((item) => {
+    if (typeof item === 'string') return [item];
+    const entry = item as {type?: string; id?: string; link?: {type?: string; id?: string}; items?: unknown[]};
+    if (entry.type === 'doc' && entry.id) return [entry.id];
+    if (entry.type === 'category') {
+      const link = entry.link?.type === 'doc' && entry.link.id ? [entry.link.id] : [];
+      return [...link, ...sidebarDocIds(entry.items ?? [])];
+    }
+    return [];
+  });
+}
+const llmsIncludeOrder = [
+  'docs/for-ai-agents.md',
+  ...sidebarDocIds(sidebars.tutorialSidebar as unknown[]).map((id) => `docs/${id}.md`),
+];
+
+// Pages that moved: old URL -> new URL, so external links keep working.
+const docRedirects = [
+  {from: '/docs/usage/wvlet-engine', to: '/docs/engines/wvlet-engine'},
+  {from: '/docs/usage/duckdb', to: '/docs/engines/duckdb'},
+  {from: '/docs/usage/trino', to: '/docs/engines/trino'},
+  {from: '/docs/usage/snowflake', to: '/docs/engines/snowflake'},
+];
 
 // Site-wide structured data for search engines and AI search.
 const jsonLd = {
@@ -100,6 +129,7 @@ const config: Config = {
   themes: ['@docusaurus/theme-mermaid'],
 
   plugins: [
+    ['@docusaurus/plugin-client-redirects', {redirects: docRedirects}],
     [
       'docusaurus-plugin-llms',
       {
@@ -113,7 +143,7 @@ const config: Config = {
         removeDuplicateHeadings: true,
         // Contributor docs stay on the site but are kept out of the agent-facing files.
         ignoreFiles: ['development/**'],
-        includeOrder: ['for-ai-agents.md', 'index.md', 'syntax/**', 'usage/**', 'bindings/**'],
+        includeOrder: llmsIncludeOrder,
         rootContent:
           'Start with the [Wvlet for AI Agents](https://wvlet.org/wvlet/docs/for-ai-agents.md) page: ' +
           'it has a syntax cheat sheet, a SQL-to-Wvlet mapping table, and common mistakes to avoid.',

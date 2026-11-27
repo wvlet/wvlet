@@ -593,7 +593,7 @@ Flows are triggered explicitly with the `run flow` statement or the `wvlet flow`
 
 ### Engine Support
 
-Flows run on the in-process [wvlet engine](../usage/wvlet-engine.md) by default, and on DuckDB
+Flows run on the in-process [wvlet engine](../engines/wvlet-engine.md) by default, and on DuckDB
 and Trino, selected with `--profile` like regular queries or with `-t <engine>` (e.g.
 `wvlet flow run F -t duckdb`) without a profile file. On the engine, stages run as plans, with
 activations, notifications, and tables of other connectors. Stage tables persist as Iceberg tables

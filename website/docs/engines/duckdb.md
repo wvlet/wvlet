@@ -2,7 +2,7 @@
 description: "Run Wvlet queries on DuckDB with -t duckdb or a duckdb profile: query Parquet files directly by path or URL and generate TPC-H sample data."
 ---
 
-# Connector - DuckDB
+# DuckDB
 
 `wvlet run` and `wv` run queries on the in-process [wvlet engine](wvlet-engine.md) by default.
 Select DuckDB's in-memory database (catalog: memory, schema: main) with `-t duckdb`
@@ -12,7 +12,7 @@ Select DuckDB's in-memory database (catalog: memory, schema: main) with `-t duck
 default; `wvlet build` and `wvlet flow` run on the wvlet engine unless `-t duckdb` (or a DuckDB
 profile) is given.
 
-On the JVM CLI, DuckDB is in the full package `wvlet-cli-full-(version).tar.gz`; see [Installation](install.md#jvm-cli). The npm CLI includes DuckDB.
+On the JVM CLI, DuckDB is in the full package `wvlet-cli-full-(version).tar.gz`; see [Installation](../usage/install.md#jvm-cli). The npm CLI includes DuckDB.
 
 
 ## Usage Examples

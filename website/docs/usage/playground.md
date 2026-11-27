@@ -4,7 +4,7 @@ sidebar_label: Playground
 
 # Playground
 
-The [Wvlet Playground](https://wvlet.org/wvlet/playground/) runs Wvlet queries in your browser, with no installation and no server. Queries run on Wvlet's own columnar [engine](./wvlet-engine.md), compiled to JavaScript, over TPC-H tables generated in the page.
+The [Wvlet Playground](https://wvlet.org/wvlet/playground/) runs Wvlet queries in your browser, with no installation and no server. Queries run on Wvlet's own columnar [engine](../engines/wvlet-engine.md), compiled to JavaScript, over TPC-H tables generated in the page.
 
 ## What it shows
 

@@ -59,8 +59,8 @@ which wvlet   # should point to the npm global bin directory
 
 The JVM CLI includes the [wv REPL](repl.md), [Web UI](ui.md), model builds, and flows, in addition to the [wvlet command](cli.md). Each release ships it in two packages with the same `wv` and `wvlet` commands:
 
-- `wvlet-cli-(version).tar.gz` (about 60 MB, installed by Homebrew): queries run on the in-process [wvlet engine](wvlet-engine.md), [Trino](trino.md), and remote wvlet servers.
-- `wvlet-cli-full-(version).tar.gz` (about 230 MB): adds the [DuckDB](duckdb.md) and [Snowflake](snowflake.md) connectors, whose JDBC drivers make up most of its size. Use it for `-t duckdb`, `.duckdb` files, DuckDB extensions, `sql"..."` blocks run on DuckDB, or Snowflake profiles.
+- `wvlet-cli-(version).tar.gz` (about 60 MB, installed by Homebrew): queries run on the in-process [wvlet engine](../engines/wvlet-engine.md), [Trino](../engines/trino.md), and remote wvlet servers.
+- `wvlet-cli-full-(version).tar.gz` (about 230 MB): adds the [DuckDB](../engines/duckdb.md) and [Snowflake](../engines/snowflake.md) connectors, whose JDBC drivers make up most of its size. Use it for `-t duckdb`, `.duckdb` files, DuckDB extensions, `sql"..."` blocks run on DuckDB, or Snowflake profiles.
 
 Without the full package, selecting DuckDB or Snowflake fails with an error that names the full package.
 

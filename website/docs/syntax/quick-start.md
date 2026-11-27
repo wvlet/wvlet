@@ -7,9 +7,9 @@ sidebar_position: 1
 
 ## A Walk-Through Example
 
-Let's start with a simple example. If you haven't installed the `wv` command, [install Wvlet](../usage/install.md) first. `wv` starts an [interactive shell](../usage/repl.md) that runs queries on the in-process [Wvlet engine](../usage/wvlet-engine.md), so there is no database to set up.
+Let's start with a simple example. If you haven't installed the `wv` command, [install Wvlet](../usage/install.md) first. `wv` starts an [interactive shell](../usage/repl.md) that runs queries on the in-process [Wvlet engine](../engines/wvlet-engine.md), so there is no database to set up.
 
-Every Wvlet engine session can read a generated [TPC-H benchmark](https://www.tpc.org/tpch/) data set as `tpch.<scale>.<table>`. This tutorial uses the smallest one, `tpch.tiny` (scale factor 0.01), whose eight tables are `customer`, `lineitem`, `nation`, `orders`, `part`, `partsupp`, `region`, and `supplier`. Rows are generated in memory while a query reads them, so nothing is written to disk. See [Built-in tpch and tpcds catalogs](../usage/wvlet-engine.md#built-in-tpch-and-tpcds-catalogs) for larger scale factors and the TPC-DS tables.
+Every Wvlet engine session can read a generated [TPC-H benchmark](https://www.tpc.org/tpch/) data set as `tpch.<scale>.<table>`. This tutorial uses the smallest one, `tpch.tiny` (scale factor 0.01), whose eight tables are `customer`, `lineitem`, `nation`, `orders`, `part`, `partsupp`, `region`, and `supplier`. Rows are generated in memory while a query reads them, so nothing is written to disk. See [Built-in tpch and tpcds catalogs](../engines/wvlet-engine-tables.md#built-in-tpch-and-tpcds-catalogs) for larger scale factors and the TPC-DS tables.
 
 :::tip
 `wv` comes with the JVM CLI (Homebrew or a release package). With the npm package, run each query with `wvlet run` instead, for example `wvlet run "from tpch.tiny.customer limit 3"`.
@@ -340,5 +340,5 @@ You can also define reusable data models and functions that accept parameters. W
 ## Next Steps
 
 - [Query Syntax](./index.md) lists all relational operators.
-- [Wvlet Engine](../usage/wvlet-engine.md) shows how to query your own Parquet, CSV, JSON, and Iceberg files.
-- [DuckDB](../usage/duckdb.md), [Trino](../usage/trino.md), and [Snowflake](../usage/snowflake.md) show how to run the same queries on a SQL engine.
+- [Wvlet Engine](../engines/wvlet-engine.md) shows how to query your own Parquet, CSV, JSON, and Iceberg files.
+- [DuckDB](../engines/duckdb.md), [Trino](../engines/trino.md), and [Snowflake](../engines/snowflake.md) show how to run the same queries on a SQL engine.
