@@ -24,11 +24,35 @@ ThisBuild / resolvers += "wvlet" at "https://repo.wvlet.org/maven2/"
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / scalaVersion         := SCALA_3
 
+// Versions are YYYY.(milestone).patch, so the first two components form the binary-compatible series
+ThisBuild / versionScheme := Some("pvp")
+// publishSigned stages releases into target/sona-staging; the Release workflow uploads that tree to
+// repo.wvlet.org (see design/releasing.md)
+ThisBuild / publishTo := localStaging.value
+
 val buildSettings = Seq[Setting[?]](
-  organization      := "wvlet.lang",
+  organization      := "org.wvlet.lang",
   description       := "wvlet: A flow-style query language",
   crossPaths        := true,
   publishMavenStyle := true,
+  licenses += ("Apache-2.0", uri("https://www.apache.org/licenses/LICENSE-2.0.html")),
+  homepage := Some(uri("https://wvlet.org/wvlet/")),
+  scmInfo  :=
+    Some(
+      ScmInfo(
+        browseUrl = uri("https://github.com/wvlet/wvlet"),
+        connection = "scm:git:git@github.com:wvlet/wvlet.git"
+      )
+    ),
+  developers :=
+    List(
+      Developer(
+        id = "leo",
+        name = "Taro L. Saito",
+        email = "leo@xerial.org",
+        url = uri("http://xerial.org/leo")
+      )
+    ),
   scalacOptions ++= Seq("-deprecation", "-feature"),
   // Tell the runtime that we are running tests in SBT
   Test / testOptions += Tests.Setup(() => sys.props("wvlet.sbt.testing") = "true"),
@@ -122,6 +146,25 @@ Global / excludeLintKeys += ideSkipProject
 lazy val projectJVM    = project.settings(noPublish).aggregate(jvmProjects *)
 lazy val projectJS     = project.settings(noPublish).aggregate(jsProjects *)
 lazy val projectNative = project.settings(noPublish).aggregate(nativeProjects *)
+
+// The library modules published to repo.wvlet.org on every v* tag (JVM only). The Release workflow
+// runs `projectPublish/publishSigned`, so only the modules listed here are ever published.
+lazy val publishedProjects: Seq[ProjectReference] = Seq(
+  api.jvm,
+  lang.jvm,
+  engine.jvm,
+  client.jvm,
+  runner.jvm,
+  connector,
+  connectorDuckDB,
+  connectorSnowflake
+)
+
+lazy val projectPublish = project.settings(noPublish).aggregate(publishedProjects *)
+
+// Applications and examples that are distributed as packages (or not at all), never as Maven
+// artifacts. Unlike noPublish, this keeps the project importable in IDEs.
+val skipPublish = Seq(publishArtifact := false, publish / skip := true)
 
 lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -301,7 +344,7 @@ val specRunnerSettings = Seq(
 lazy val wvc = project
   .enablePlugins(ScalaNativePlugin)
   .in(file("wvc"))
-  .settings(buildSettings, name := "wvc")
+  .settings(buildSettings, skipPublish, name := "wvc")
   .dependsOn(lang.native, cliCore.native)
 
 lazy val wvcLib = project
@@ -309,6 +352,7 @@ lazy val wvcLib = project
   .enablePlugins(ScalaNativePlugin)
   .settings(
     buildSettings,
+    skipPublish,
     name := "wvc-lib",
     nativeConfig ~= { c =>
       val baseConfig = c
@@ -351,6 +395,7 @@ lazy val wvcLibStatic = project
   .enablePlugins(ScalaNativePlugin)
   .settings(
     buildSettings,
+    skipPublish,
     name   := "wvc-lib",
     target := Def.uncached(target.value / "static"),
     nativeConfig ~= { c =>
@@ -427,6 +472,7 @@ lazy val cli = project
   .enablePlugins(PackPlugin)
   .settings(
     buildSettings,
+    skipPublish,
     name := "wvlet-cli",
     // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
     Test / fork          := true,
@@ -512,6 +558,7 @@ lazy val engineGpu = project
   .in(file("wvlet-engine-gpu"))
   .settings(
     buildSettings,
+    skipPublish,
     name        := "wvlet-engine-gpu",
     description := "Example GPU executor for the wvlet engine (cudf)",
     libraryDependencies ++=
@@ -739,6 +786,7 @@ lazy val httpServer = project
   .in(file("wvlet-http-server"))
   .settings(
     buildSettings,
+    skipPublish,
     name := "wvlet-http-server",
     libraryDependencies ++=
       Seq("org.wvlet.uni" %% "uni" % UNI_VERSION, "org.wvlet.uni" %% "uni-netty" % UNI_VERSION)
@@ -748,6 +796,7 @@ lazy val server = project
   .in(file("wvlet-server"))
   .settings(
     buildSettings,
+    skipPublish,
     name := "wvlet-server",
     // Route SLF4J calls (e.g. from JDBC drivers) into java.util.logging so they share the
     // same handler as wvlet.uni.log.
@@ -762,7 +811,7 @@ lazy val server = project
 lazy val client = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-client"))
-  .settings(buildSettings)
+  .settings(buildSettings, name := "wvlet-client")
   .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
   .nativeSettings(uniNativeCurlLinking)
   .dependsOn(api)
@@ -777,6 +826,7 @@ lazy val ui = project
   .in(file("wvlet-ui"))
   .settings(
     buildSettings,
+    skipPublish,
     rxHtmlSettings,
     name        := "wvlet-ui",
     description := "UI components that can be testable with Node.js",
@@ -800,6 +850,7 @@ lazy val uiMain = project
   .in(file("wvlet-ui-main"))
   .settings(
     buildSettings,
+    skipPublish,
     uiSettings,
     name        := "wvlet-ui-main",
     description := "UI main code for wvlet ui command"
@@ -812,6 +863,7 @@ lazy val playground = project
   .in(file("wvlet-ui-playground"))
   .settings(
     buildSettings,
+    skipPublish,
     uiSettings,
     name           := "wvlet-ui-playground",
     description    := "Online playground for wvlet",

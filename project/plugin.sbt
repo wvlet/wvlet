@@ -31,6 +31,9 @@ addSbtPlugin("org.wvlet.uni" % "sbt-uni-playwright" % UNI_VERSION)
 
 addDependencyTreePlugin
 
+// For signing artifacts published to repo.wvlet.org
+addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.4.0")
+
 // For setting explicit versions for each commit
 addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.2.0")
 
