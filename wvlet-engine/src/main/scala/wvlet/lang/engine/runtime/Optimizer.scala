@@ -164,9 +164,10 @@ class Optimizer(
 
   /**
     * The plan with the build sides of its outer joins chosen again ([[ReorderJoins.outerBuilds]]),
-    * for a shared CTE body once its readers' filters are pushed into it
+    * for a shared CTE body once its readers' filters are pushed into it; only through
+    * [[afterReaderFilters]]
     */
-  def outerBuilds(p: RuntimePlan): RuntimePlan = validated(p, ReorderJoins.outerBuilds(p, ctx))
+  private def outerBuilds(p: RuntimePlan): RuntimePlan = validated(p, ReorderJoins.outerBuilds(p, ctx))
 
   /** The plan with the row-group filters of its scans recomputed ([[PushScanFilters]]) */
   def pushScanFilters(p: RuntimePlan): RuntimePlan = validated(p, PushScanFilters.run(p, ctx))
