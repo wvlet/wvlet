@@ -1,4 +1,3 @@
-import clsx from 'clsx';
 import Heading from '@theme/Heading';
 import styles from './styles.module.css';
 
@@ -18,6 +17,15 @@ const FeatureList: FeatureItem[] = [
       </>
     ),
   },
+    {
+        title: 'Ready for AI Agents',
+        description: (
+            <>
+                Wvlet ships <a href='./docs/for-ai-agents'>docs for AI agents</a> and a bundled agent
+                skill, so coding agents can write, run, and debug Wvlet queries for you.
+            </>
+        )
+    },
   {
     title: 'Functional Data Modeling',
     description: (
@@ -33,8 +41,8 @@ const FeatureList: FeatureItem[] = [
             <>
                 Wvlet consumes the differences between SQL engines,
                 such as <a href='https://duckdb.org'>DuckDB</a>, <a href='https://trino.io/'>Trino</a>, <a href={'https://apache.hive.org/'}>Hive</a>, etc.
-                You can switch the SQL engines without changing the query,
-                depending on the data size and the expected query performance.
+                You can choose the SQL engine that fits the data size and the expected query
+                performance.
             </>
         ),
   },
@@ -48,14 +56,6 @@ const FeatureList: FeatureItem[] = [
       ),
   },
     {
-        title: 'GitHub Integration',
-        description: (
-            <> Save your queries in GitHub repositories and call them from other queries to ensure reproducibility with
-            version control.
-            </>
-        )
-    },
-    {
         title: 'Free and Open Source',
         description: (
             <>
@@ -66,26 +66,32 @@ const FeatureList: FeatureItem[] = [
     },
 ];
 
-function Feature({title, description}: FeatureItem) {
+// Hue offsets around the Wvlet teal, one per card's accent band.
+const bandHues = [186, 196, 190, 206, 182, 200];
+
+function Feature({title, description, idx}: FeatureItem & {idx: number}) {
   return (
-    <div className={clsx('col col--6')}>
-      <div className="text--center padding-horiz--md">
-        <Heading as="h3" className={'text--left'}>{title}</Heading>
-        <p className={'text--left'}>{description}</p>
-      </div>
-    </div>
+    <article className={styles.card} style={{'--c': `${bandHues[idx % bandHues.length]} 80% 42%`} as React.CSSProperties}>
+      <span className={styles.num}>{String(idx + 1).padStart(2, '0')}</span>
+      <Heading as="h3">{title}</Heading>
+      <p>{description}</p>
+    </article>
   );
 }
 
 export default function HomepageFeatures(): React.ReactNode {
   return (
     <section className={styles.features}>
-      <div className="container">
-        <div className="row">
-          {FeatureList.map((props, idx) => (
-            <Feature key={idx} {...props} />
-          ))}
-        </div>
+      <div className={styles.head}>
+        <p className={styles.kicker}>What you get</p>
+        <h2>
+          Queries as <em>reusable building blocks</em>
+        </h2>
+      </div>
+      <div className={styles.grid}>
+        {FeatureList.map((props, idx) => (
+          <Feature key={idx} idx={idx} {...props} />
+        ))}
       </div>
     </section>
   );

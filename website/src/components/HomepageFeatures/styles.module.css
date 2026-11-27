@@ -1,11 +1,70 @@
+/* Feature cards. Color tokens (--ink, --card, ...) are inherited from the homepage's .home root. */
+
 .features {
-  display: flex;
-  align-items: center;
-  padding: 2rem 0;
-  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 80px clamp(16px, 5vw, 72px);
 }
 
-.featureSvg {
-  height: 200px;
-  width: 200px;
+.head {
+  margin-bottom: 48px;
+}
+
+.head h2 {
+  font-size: clamp(36px, 4.4vw, 60px);
+}
+
+.kicker {
+  margin: 0 0 18px;
+  color: hsl(var(--primary));
+  font: 500 13px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 20px;
+}
+
+.card {
+  position: relative;
+  overflow: hidden;
+  padding: 32px 28px 28px;
+  border: 1px solid hsl(var(--line));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  transition: transform 0.25s, box-shadow 0.25s;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, hsl(var(--c)), hsl(var(--c) / 0));
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+}
+
+.num {
+  color: hsl(var(--c));
+  font: 500 13px var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.card h3 {
+  margin: 10px 0 12px;
+  font-size: 23px;
+  letter-spacing: -0.02em;
+}
+
+.card p {
+  margin: 0;
+  color: hsl(var(--ink-2));
+  line-height: 1.6;
 }
