@@ -24,7 +24,6 @@ import wvlet.lang.compiler.CompileResult
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
-import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.parser.ParserPhase
@@ -157,12 +156,8 @@ class WvletFlowCommand(opts: WvletCliGlobalOption) extends LogSupport:
       System.exit(1)
 
   /**
-    * `wvlet build`: build the materialized models of the working folder in dependency order. The
-    * build runs as a flow named `build`, so its runs appear in `wvlet flow session list`
-    */
-  /**
-    * Run a planned `wvlet build` as a flow on the flow executor, recording the run in the store
-    * selected with --run-store (or the WVLET_FLOW_STORE environment)
+    * `wvlet build` on the JVM: run the planned models as a flow named `build` on the flow executor,
+    * so its runs appear in `wvlet flow session list`
     */
   private[cli] def executeBuild(
       opt: WvletBuildOption,
@@ -170,17 +165,12 @@ class WvletFlowCommand(opts: WvletCliGlobalOption) extends LogSupport:
       profile: Profile,
       workEnv: WorkEnv
   ): FlowExecutionResult =
-    val store = opt
-      .runStore
-      .map(FlowRunStore.ofType(_, workEnv))
-      .getOrElse(FlowRunStore.forWorkEnv(workEnv))
-    Control.withResource(store) { store =>
+    Control.withResource(newRunStore(opt.runStore, workEnv)) { store =>
       ModelBuildLauncher.execute(plan, profile, workEnv, store)
     }
 
   /** Create the run store selected with --run-store (or the WVLET_FLOW_STORE environment) */
-  private def newRunStore(flowOption: WvletFlowOption, workEnv: WorkEnv): FlowRunStore = flowOption
-    .runStore
+  private def newRunStore(runStore: Option[String], workEnv: WorkEnv): FlowRunStore = runStore
     .map(FlowRunStore.ofType(_, workEnv))
     .getOrElse(FlowRunStore.forWorkEnv(workEnv))
 
@@ -188,7 +178,7 @@ class WvletFlowCommand(opts: WvletCliGlobalOption) extends LogSupport:
   private def withRunStores[A](flowOption: WvletFlowOption, workEnv: WorkEnv)(
       block: (FlowRunStore, ItemStore) => A
   ): A =
-    Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+    Control.withResource(newRunStore(flowOption.runStore, workEnv)) { store =>
       Control.withResource(ItemStores.forWorkEnv(workEnv)) { itemStore =>
         block(store, itemStore)
       }
@@ -405,7 +395,7 @@ class WvletFlowCommand(opts: WvletCliGlobalOption) extends LogSupport:
       throw StatusCode.INVALID_ARGUMENT.newException(s"Usage: wvlet flow session ${usage}")
     )
 
-    Control.withResource(newRunStore(flowOption, workEnv)) { registry =>
+    Control.withResource(newRunStore(flowOption.runStore, workEnv)) { registry =>
       def recordOf(id: String): FlowRunRecord = registry
         .get(id)
         .getOrElse(throw StatusCode.INVALID_ARGUMENT.newException(s"Flow run '${id}' is not found"))

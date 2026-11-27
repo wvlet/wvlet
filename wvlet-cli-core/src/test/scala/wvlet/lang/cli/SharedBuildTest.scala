@@ -72,6 +72,14 @@ class SharedBuildTest extends UniTest:
       cli.build(WvletBuildOption(workFolder = project(twoTables)).withRunStore("sqlite"))
     }
     e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    // Also with --dry-run, which never reaches the builder
+    val dryRun = intercept[WvletLangException] {
+      cli.build(
+        WvletBuildOption(workFolder = project(twoTables)).withRunStore("sqlite").withDryRun(true)
+      )
+    }
+    dryRun.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
     e.getMessage shouldContain "JVM"
   }
 

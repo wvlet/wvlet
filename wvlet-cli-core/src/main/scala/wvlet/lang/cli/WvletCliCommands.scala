@@ -83,6 +83,7 @@ trait WvletCliCommands extends LogSupport:
 
   @command(description = "Build materialized models in dependency order")
   def build(opt: WvletBuildOption): Unit = handleCommand {
+    checkBuildOptions(opt)
     val workEnv = WorkEnv(opt.workFolder, logLevel = buildLogLevel)
     val profile = opt.resolveProfile
     // Compile for the profile's engine, so the generated DDL (e.g. create or replace) fits it
@@ -109,6 +110,11 @@ trait WvletCliCommands extends LogSupport:
           .QUERY_EXECUTION_FAILURE
           .newException(s"Failed to build models: ${failed.mkString(", ")}")
   }
+
+  /**
+    * Reject build options this distribution doesn't support, before compiling (also for --dry-run)
+    */
+  protected def checkBuildOptions(opt: WvletBuildOption): Unit = ()
 
   /** The log level of build runs (the JVM CLI logs each statement to its log file) */
   protected def buildLogLevel: LogLevel = LogLevel.INFO

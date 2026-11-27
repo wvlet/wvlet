@@ -2,7 +2,6 @@ package wvlet.lang.cli
 
 import wvlet.uni.cli.launcher.Launcher
 import wvlet.uni.cli.launcher.command
-import wvlet.uni.cli.launcher.option
 import wvlet.uni.design.Design
 import wvlet.uni.log.LogLevel
 import wvlet.lang.api.WvletLangException

@@ -53,8 +53,7 @@ class WvletCli(opts: WvletCliGlobalOption) extends WvletCliCommands:
       provider.close()
 
   /**
-    * Builds models one at a time on the caller with the cross-platform [[ModelBuilder]]. Run
-    * records are a JVM CLI feature, so `--run-store` is rejected
+    * Builds models one at a time on the caller with the cross-platform [[ModelBuilder]]
     */
   override protected def executeBuild(
       opt: WvletBuildOption,
@@ -62,13 +61,16 @@ class WvletCli(opts: WvletCliGlobalOption) extends WvletCliCommands:
       profile: Profile,
       workEnv: WorkEnv
   ): FlowExecutionResult =
+    val builder = ModelBuilder(profile, workEnv)
+    try builder.build(plan)
+    finally builder.close()
+
+  // Run records are a JVM CLI feature
+  override protected def checkBuildOptions(opt: WvletBuildOption): Unit =
     if opt.runStore.isDefined then
       throw StatusCode
         .INVALID_ARGUMENT
         .newException("--run-store needs the JVM wvlet CLI, which records build runs")
-    val builder = ModelBuilder(profile, workEnv)
-    try builder.build(plan)
-    finally builder.close()
 
   // Without -l or --debug, keep the per-model progress logs out of the output: off the JVM they
   // print to the console instead of a log file
