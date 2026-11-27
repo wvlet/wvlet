@@ -7,7 +7,7 @@ description: "Wvlet's own in-process columnar engine runs Wvlet plans directly o
 
 The Wvlet engine is an in-process columnar query engine that executes compiled Wvlet plans directly, with no SQL generation and no external database. It is the default engine of `wvlet run`, the REPL, `wvlet build`, and `wvlet flow run`.
 
-- **Complete on the standard benchmarks**: it runs all 22 TPC-H and 99 TPC-DS queries, and the conformance tests check every result row against DuckDB.
+- **Complete on the standard benchmarks**: it runs all 22 TPC-H and 99 TPC-DS queries.
 - **Built for analytical workloads**: vectorized, multi-threaded operators planned by a cost-based optimizer, measured against DuckDB at scale factor 10 on the [Performance](wvlet-engine-performance.md) page.
 - **One engine everywhere**: the same Scala codebase runs on the JVM, as a native binary, in Node.js, and in the browser.
 
@@ -24,7 +24,7 @@ The engine reads Parquet and Iceberg with its own Scala readers, so no platform 
 ## What it supports
 
 - Queries over files and registered tables: filters, projections, joins (including ASOF joins), aggregations, window functions, subqueries, `pivot`, `unnest`, lambdas, and `show` commands.
-- All 22 TPC-H and 99 TPC-DS queries, with rows checked against DuckDB in the engine's conformance tests, and built-in [TPC-H and TPC-DS catalogs](wvlet-engine-tables.md#built-in-tpch-and-tpcds-catalogs) to try them.
+- All 22 TPC-H and 99 TPC-DS queries, and built-in [TPC-H and TPC-DS catalogs](wvlet-engine-tables.md#built-in-tpch-and-tpcds-catalogs) to try them.
 - Reading Parquet, Iceberg, JSON, and CSV data, including Hive-partitioned Parquet folders.
 - `save to`, `append to`, and `delete` on tables, and `save to` / `append to` Parquet, CSV, JSON files and Iceberg tables.
 - `create table`, `drop table`, `truncate`, `create` / `drop schema`, `reshape` (or SQL `alter table`), and `rename table`.
