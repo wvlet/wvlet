@@ -209,10 +209,9 @@ function HomepageHero(): React.ReactNode {
           <em className={styles.shimmer}>in the order data flows</em>
         </h1>
         <p className={styles.lede}>
-          Wvlet is a <Link to="/docs/syntax/">flow-style query language</Link> with a columnar
-          query engine built in. It runs every TPC-H and TPC-DS query in-process, on the JVM, as a
-          native binary, in Node.js, or in the browser. The
-          same query also compiles to SQL for DuckDB, Trino, Snowflake, and Hive.
+          Wvlet is a <Link to="/docs/syntax/">flow-style query language</Link> with its own
+          columnar query engine. Run queries in-process on the JVM, as a native binary, in Node.js,
+          or in the browser, or compile them to SQL for DuckDB, Trino, Snowflake, and Hive.
         </p>
         <div className={styles.ctas}>
           <Link className={clsx(styles.btn, styles.btnSolid)} to="pathname:///playground/">
