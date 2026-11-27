@@ -1,16 +1,17 @@
 /**
- * Homepage styles. Design tokens are HSL triplets scoped to .home so the rest of the docs site
- * keeps Infima's defaults. Hues follow the Wvlet icon's teal gradient (#00d2e9 → #045962).
+ * Homepage styles. The base colors come from the site-wide --wv-* tokens in src/css/custom.css
+ * (HSL triplets following the Wvlet icon's teal gradient, #00d2e9 → #045962); the glows, waves,
+ * and shimmer below are homepage-only.
  */
 
 .home {
-  --bg: 170 14% 98.5%;
-  --bg-2: 168 18% 96%;
-  --card: 0 0% 100%;
-  --ink: 190 30% 9%;
-  --ink-2: 190 8% 38%;
-  --line: 170 10% 88%;
-  --primary: 190 48% 34%;
+  --bg: var(--wv-bg);
+  --bg-2: var(--wv-bg-2);
+  --card: var(--wv-card);
+  --ink: var(--wv-ink);
+  --ink-2: var(--wv-ink-2);
+  --line: var(--wv-line);
+  --primary: var(--wv-primary);
   --glow-1: hsl(186 90% 52% / 0.24);
   --glow-2: hsl(192 75% 45% / 0.14);
   --glow-3: hsl(198 90% 60% / 0.13);
@@ -20,7 +21,7 @@
   --shine-1: 192 92% 22%;
   --shine-2: 186 100% 42%;
   --shine-3: 198 70% 36%;
-  --term-bg: 190 30% 8%;
+  --term-bg: var(--wv-term-bg);
   --radius: 18px;
   --shadow: 0 30px 80px -30px hsl(196 60% 15% / 0.35), 0 8px 24px -12px hsl(196 60% 15% / 0.2);
   --sans: var(--ifm-font-family-base);
@@ -33,14 +34,7 @@
 }
 
 :global([data-theme='dark']) .home {
-  /* Tinted toward the icon's teal: #00d2e9 (186 100% 46%) to #045962 (186 92% 20%). */
-  --bg: 190 42% 5%;
-  --bg-2: 190 38% 7.5%;
-  --card: 190 34% 9.5%;
-  --ink: 186 30% 95%;
-  --ink-2: 186 14% 68%;
-  --line: 188 30% 17%;
-  --primary: 186 100% 52%;
+  /* Base colors switch with the site tokens; these are the dark glows and highlights. */
   --glow-1: hsl(186 100% 46% / 0.22);
   --glow-2: hsl(186 92% 24% / 0.45);
   --glow-3: hsl(186 100% 62% / 0.1);
@@ -50,7 +44,6 @@
   --shine-1: 186 100% 46%;
   --shine-2: 186 100% 74%;
   --shine-3: 186 92% 38%;
-  --term-bg: 190 45% 3.5%;
   --shadow: 0 30px 80px -30px #000000b3, 0 8px 24px -12px #00000080;
 }
 
@@ -537,6 +530,7 @@
 
 .code {
   margin: 0 !important;
+  border: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   --prism-background-color: transparent !important;
