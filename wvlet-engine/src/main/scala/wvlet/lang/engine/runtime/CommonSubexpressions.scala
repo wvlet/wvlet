@@ -52,13 +52,17 @@ object CommonSubexpressions:
     * The input with the shared subexpressions of `exprs` appended as columns, and the expressions
     * over it. The input and `exprs` as they are when nothing repeats
     */
-  def share(input: Operator, exprs: IndexedSeq[VExpr]): (Operator, IndexedSeq[VExpr]) =
+  def share(
+      input: Operator,
+      exprs: IndexedSeq[VExpr],
+      hashedKeys: Boolean = false
+  ): (Operator, IndexedSeq[VExpr]) =
     var roots = exprs
     val defs  = mutable.ArrayBuffer.empty[VExpr]
     var more  = true
     while more && defs.size < MaxShared do
       // The definitions are evaluated for every row, as the projection computes them
-      mostShared(roots, defs.toSeq) match
+      mostShared(roots, defs.toSeq, hashedKeys) match
         case Some(e) =>
           val ref = SharedRef(defs.size, e.ptype)
           roots = roots.map(replace(_, e, ref))
@@ -71,16 +75,34 @@ object CommonSubexpressions:
     else
       project(input, roots, defs.toIndexedSeq)
 
+  /**
+    * A subexpression keyed by a structural hash computed bottom-up from its class and its
+    * children's hashes, so that counting the subexpressions of a deep OR tree doesn't hash every
+    * subtree again at each of its ancestors (`cse_hashed_keys`). Equal expressions have equal
+    * children, so they get the same hash
+    */
+  private final class HashedKey(val expr: VExpr, override val hashCode: Int):
+    override def equals(o: Any): Boolean =
+      o match
+        case k: HashedKey =>
+          (k eq this) || k.hashCode == hashCode && k.expr == expr
+        case _ =>
+          false
+
   /** The largest subexpression worth sharing, if any */
-  private def mostShared(roots: Seq[VExpr], defs: Seq[VExpr]): Option[VExpr] =
-    // Occurrences, and those evaluated for every row, in first-seen order
-    val counts = mutable.LinkedHashMap.empty[VExpr, Array[Int]]
-    val sizes  = mutable.HashMap.empty[VExpr, Int]
+  private def mostShared(roots: Seq[VExpr], defs: Seq[VExpr], hashedKeys: Boolean): Option[VExpr] =
+    // Occurrences, and those evaluated for every row, in first-seen order, with the size: keyed by
+    // the expression, or with hashedKeys by its HashedKey
+    val counts = mutable.LinkedHashMap.empty[Any, Array[Int]]
+    // The structural hash of the expression visit returned last (with hashedKeys)
+    var hash = 0
 
     // The size of e, or -1 when e (or a part of it) can't be shared
     def visit(e: VExpr, conditional: Boolean): Int =
       e match
         case _: ColRef | _: Const | _: SharedRef | _: Materialized =>
+          if hashedKeys then
+            hash = e.hashCode
           1
         case f: RowFn if !PushDownFilters.isDeterministic(f) =>
           // Still look inside: deterministic arguments may repeat elsewhere
@@ -93,6 +115,7 @@ object CommonSubexpressions:
           val conditionals = conditionalChildren(e)
           var size         = 1
           var shareable    = true
+          var h            = e.getClass.hashCode
           kids
             .zip(conditionals)
             .foreach { (c, cc) =>
@@ -101,13 +124,19 @@ object CommonSubexpressions:
                 shareable = false
               else
                 size += s
+                h = 31 * h + hash
             }
           if shareable && !e.isConstant then
-            val c = counts.getOrElseUpdate(e, Array(0, 0))
+            val key =
+              if hashedKeys then
+                HashedKey(e, h)
+              else
+                e
+            val c = counts.getOrElseUpdate(key, Array(0, 0, size))
             c(0) += 1
             if !conditional then
               c(1) += 1
-            sizes(e) = size
+            hash = h
             size
           else
             -1
@@ -115,10 +144,18 @@ object CommonSubexpressions:
     defs.foreach(visit(_, false))
     var best: Option[VExpr] = None
     var bestSize            = 0
-    counts.foreach { (e, c) =>
-      if c(0) >= 2 && c(1) >= 1 && sizes(e) > bestSize then
-        best = Some(e)
-        bestSize = sizes(e)
+    counts.foreach { (key, c) =>
+      if c(0) >= 2 && c(1) >= 1 && c(2) > bestSize then
+        best = Some(
+          key match
+            case k: HashedKey =>
+              k.expr
+            case e: VExpr =>
+              e
+            case other =>
+              throw IllegalStateException(s"Unexpected key: ${other}")
+        )
+        bestSize = c(2)
     }
     best
 

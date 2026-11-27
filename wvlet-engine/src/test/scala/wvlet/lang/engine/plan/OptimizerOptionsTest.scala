@@ -182,7 +182,9 @@ class OptimizerOptionsTest extends UniTest:
         "string_code_probe",
         "parallel_string_decode",
         "parallel_join_keys",
-        "slice_single_batch_probes"
+        "slice_single_batch_probes",
+        "planning_memo",
+        "cse_hashed_keys"
       )
   }
 

@@ -133,6 +133,28 @@ class CommonSubexpressionsTest extends UniTest:
     es shouldBe IndexedSeq(e, e)
   }
 
+  test("should share the same subexpressions of an OR of ANDs with hashed keys") {
+    // An OR of ANDs with repeated conjuncts and a repeated sum, as TPC-DS q41's filter
+    def cmp(op: CmpOp, c: ColRef, v: Long): VExpr = Compare(op, c, Const(v, PType.Int64))
+    val total    = Arith(ArithOp.Add, n, Const(1L, PType.Int64), PType.Int64)
+    val branches = (0 until 8).map { i =>
+      AndExpr(
+        AndExpr(cmp(CmpOp.Gt, n, i % 3), Compare(CmpOp.Lt, total, Const(i.toLong, PType.Int64))),
+        cmp(CmpOp.Ne, n, i % 2)
+      ): VExpr
+    }
+    val cond         = branches.reduce((a, b) => OrExpr(a, b))
+    val exprs        = IndexedSeq(cond, total)
+    val (plain, pes) = CommonSubexpressions.share(input, exprs)
+    val (op, es)     = CommonSubexpressions.share(input, exprs, hashedKeys = true)
+    // The repeated sum is shared
+    (projections(plain) > 0) shouldBe true
+    es shouldBe pes
+    op.schema shouldBe plain.schema
+    projections(op) shouldBe projections(plain)
+    rows(op, es) shouldBe rows(input, exprs)
+  }
+
   test("should leave expressions without repeats as they are") {
     val exprs = IndexedSeq(
       sub(one, disc),
