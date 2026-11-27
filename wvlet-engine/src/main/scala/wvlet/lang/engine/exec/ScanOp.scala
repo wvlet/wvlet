@@ -13,6 +13,7 @@
  */
 package wvlet.lang.engine.exec
 
+import wvlet.lang.compiler.QueryCancel
 import wvlet.lang.engine.catalog.*
 import wvlet.lang.engine.vector.*
 import wvlet.uni.cloud.parquet.ParquetFilter
@@ -485,9 +486,14 @@ class ScanOp(
 
   end narrow
 
+  /**
+    * The next non-empty batch. Each source batch first checks [[QueryCancel]], so Ctrl-C in the npm
+    * REPL, where the query blocks the only thread, stops a scan between batches
+    */
   def next(): Batch =
     var b: Batch = null
     while b == null && it.hasNext do
+      QueryCancel.check()
       val x = narrow(it.next())
       if x.size > 0 then
         b = x

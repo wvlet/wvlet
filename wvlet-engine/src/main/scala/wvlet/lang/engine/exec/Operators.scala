@@ -96,6 +96,7 @@ class BatchesOp(val schema: Schema, batches: Seq[Batch], label: String = "Batche
   private val it    = batches.iterator.filter(_.size > 0)
   def next(): Batch =
     if it.hasNext then
+      wvlet.lang.compiler.QueryCancel.check() // Ctrl-C in the npm REPL (see ScanOp.next)
       it.next()
     else
       null
@@ -110,6 +111,7 @@ class IteratorOp(val schema: Schema, mk: () => Iterator[Batch], label: String, v
   def next(): Batch         =
     var b: Batch = null
     while b == null && it.hasNext do
+      wvlet.lang.compiler.QueryCancel.check()
       val x = it.next()
       if x.size > 0 then
         b = x

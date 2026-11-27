@@ -22,5 +22,5 @@ Date: 2026-11-26 · PR #2531
 ## Consequences
 
 - npm users get the same REPL as the JVM CLI, except: Ctrl-C during a query exits `wvlet`, and Snowflake and other JDBC connectors and flows need the JVM CLI (documented in `usage/repl.md`).
-- Real cancellation on Node needs queries off the event loop (a worker thread holding DuckDB, connectors, and the engine session, or async connectors). That is a follow-up.
+- Real cancellation on Node needed a follow-up. It came without moving queries off the event loop: a Ctrl-C watcher thread raises a shared flag that the query checks ([ADR](2026-11-26-npm-repl-ctrl-c-watcher.md)).
 - `WorkEnv` resolves the home folder with uni's `IO.homeDirectory`, because `sys.props("user.home")` is unset on Node.js and put the REPL history under a `./null/` folder.

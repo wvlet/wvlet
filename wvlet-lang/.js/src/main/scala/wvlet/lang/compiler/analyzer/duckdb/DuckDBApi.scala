@@ -1,5 +1,7 @@
 package wvlet.lang.compiler.analyzer.duckdb
 
+import wvlet.lang.compiler.QueryCancel
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.*
 import scala.util.Try
@@ -125,7 +127,12 @@ private[duckdb] object DuckDBApi:
   private def tryLoad(): Option[DuckDBApi] = candidatePaths
     .iterator
     .flatMap { p =>
-      Try(new DuckDBApi(p)).toOption
+      Try(new DuckDBApi(p))
+        .toOption
+        .map { api =>
+          QueryCancel.setDuckDBLibraryPath(p)
+          api
+        }
     }
     .nextOption()
 
