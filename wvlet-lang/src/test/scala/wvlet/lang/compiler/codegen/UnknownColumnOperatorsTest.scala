@@ -72,6 +72,11 @@ class UnknownColumnOperatorsTest extends UniTest:
       "from ( select *, l_quantity * l_extendedprice as revenue from lineitem ) ) ) limit 5"
   }
 
+  test("keep a filter on a renamed column above the rename") {
+    sql("from lineitem rename l_shipdate as ship_date where ship_date > 1") shouldBe
+      "select * from ( select * rename (l_shipdate as ship_date) from lineitem ) where ship_date > 1"
+  }
+
   test("use explicit columns after a select closes the column list") {
     sql("from lineitem select l_orderkey, l_quantity exclude l_quantity") shouldNotContain
       "* exclude"

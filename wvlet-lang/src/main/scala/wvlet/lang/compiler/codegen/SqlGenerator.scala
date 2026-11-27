@@ -176,11 +176,15 @@ object SqlGenerator:
   private[codegen] def scopeSafe(e: Expression, items: List[Attribute]): Boolean =
     val shadowed: Set[String] =
       items
-        .flatMap { item =>
-          if passesThrough(item) then
-            None
-          else
-            outputName(item).map(_.toLowerCase)
+        .flatMap {
+          case a: AllColumnsWithModifiers =>
+            // `* rename (a as b)` outputs the new names
+            a.renames.map(_.nameExpr.leafName.toLowerCase)
+          case item =>
+            if passesThrough(item) then
+              None
+            else
+              outputName(item).map(_.toLowerCase)
         }
         .toSet
     shadowed.isEmpty || referencedNames(e).forall(n => !shadowed.contains(n))
