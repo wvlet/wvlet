@@ -200,6 +200,35 @@ case class AllColumns(override val nameExpr: NameExpr, columns: Option[List[Attr
 
 end AllColumns
 
+/**
+  * `*` with star modifiers, for a column operator (exclude, rename, shift) whose input columns are
+  * unknown. Renders as `* exclude (a) rename (b as c)` in SQL dialects that support them
+  *
+  * @param operatorName
+  *   the Wvlet operator that needs this, for error messages
+  * @param sourceName
+  *   the relation whose columns are unknown, for error messages
+  */
+case class AllColumnsWithModifiers(
+    operatorName: String,
+    sourceName: String,
+    excludes: List[NameExpr],
+    renames: List[Alias],
+    span: Span
+) extends Attribute:
+  override def nameExpr: NameExpr = NameExpr.EmptyName
+  override def fullName: String   = "*"
+
+  override def children: Seq[Expression] = Seq.empty
+
+  override def inputAttributes: Seq[Attribute]  = Seq.empty
+  override def outputAttributes: Seq[Attribute] = Seq.empty
+
+  override protected def structuralType: DataType = DataType.UnknownType
+
+  override def toString: String =
+    s"AllColumnsWithModifiers(exclude=${excludes.mkString(", ")}, rename=${renames.mkString(", ")})"
+
 case class Alias(nameExpr: NameExpr, expr: Expression, span: Span) extends Attribute:
   override def fullName: String = nameExpr.fullName
 

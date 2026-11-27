@@ -932,6 +932,8 @@ from nation
 shift to right n_comment
 ```
 
+`rename`, `exclude`, and `shift` need the input columns. When the compiler doesn't know them, e.g., `wvlet compile` for a table with no catalog schema, they compile to star modifiers such as `select * exclude (n_comment)` and `select * rename (n_name as nation_name)` on DuckDB and Snowflake (BigQuery has `* except` but no rename). Other SQL engines, such as Trino and Hive, report an error naming the operator and the table; give the table a schema or select the columns explicitly.
+
 
 ### group by
 

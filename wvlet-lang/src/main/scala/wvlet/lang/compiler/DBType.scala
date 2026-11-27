@@ -37,7 +37,11 @@ enum DBType(
     // Column DEFAULT clauses in CREATE TABLE are supported
     val supportColumnDefaultValues: Boolean = true,
     // Column PRIMARY KEY / UNIQUE constraints in CREATE TABLE are supported
-    val supportKeyConstraints: Boolean = true
+    val supportKeyConstraints: Boolean = true,
+    // Keyword of the star modifier that drops columns: `* exclude (a)` or `* except (a)`
+    val starExcludeKeyword: Option[String] = None,
+    // `* rename (a as b)` is supported
+    val supportStarRename: Boolean = false
 ):
 
   /**
@@ -77,7 +81,9 @@ enum DBType(
         supportSaveAsFile = true,
         supportStructExpr = true,
         supportAsOfJoin = true,
-        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue
+        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue,
+        starExcludeKeyword = Some("exclude"),
+        supportStarRename = true
       )
 
   case Trino
@@ -107,7 +113,7 @@ enum DBType(
         supportRLike = true
       )
 
-  case BigQuery   extends DBType
+  case BigQuery   extends DBType(starExcludeKeyword = Some("except"))
   case MySQL      extends DBType
   case PostgreSQL extends DBType
   case SQLite     extends DBType
@@ -119,7 +125,9 @@ enum DBType(
         arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
         mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue,
         requireParenForValues = true,
-        supportRLike = true
+        supportRLike = true,
+        starExcludeKeyword = Some("exclude"),
+        supportStarRename = true
       )
 
   case ClickHouse extends DBType
@@ -133,7 +141,9 @@ enum DBType(
         supportSaveAsFile = true,
         supportStructExpr = true,
         supportAsOfJoin = true,
-        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue
+        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue,
+        starExcludeKeyword = Some("exclude"),
+        supportStarRename = true
       )
 
   // The in-process wvlet columnar engine (wvlet-engine), which executes typed plans directly.
