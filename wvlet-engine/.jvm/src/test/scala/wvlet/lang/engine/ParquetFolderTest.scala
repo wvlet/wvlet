@@ -24,6 +24,7 @@ import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.vector.LongVec
 import wvlet.lang.engine.vector.PType
 import wvlet.lang.model.plan.*
+import wvlet.uni.cloud.parquet.ParquetFilter
 import wvlet.uni.test.UniTest
 
 import java.nio.file.Files
@@ -123,16 +124,75 @@ class ParquetFolderTest extends UniTest:
     src.withoutFolderFiles.estimatedRows shouldBe None
   }
 
-  test("read folders of differing files through the dataset reader") {
+  test(
+    "split a schema-evolved folder into its files' row groups, reading missing columns as NULLs"
+  ) {
     val differing = root.resolve("differing")
     clean(differing)
     write(differing.resolve("a.parquet"), 0, 4096)
     write(differing.resolve("b.parquet"), 4096, 4096, extra = ", range * 2 as more")
     val src = ParquetSource("t", differing.toString)
-    src.canSplit shouldBe false
+    // dataset_file_scans: a.parquet lacks `more`
+    src.canSplit shouldBe true
     src.supportsRowFilter shouldBe false
-    src.estimatedRows shouldBe None
+    src.estimatedRows shouldBe Some(8192L)
+    src.columnRange("id") shouldBe Some((0L, 8191L))
+    // Only b.parquet holds `more`: a.parquet reads it as nulls
+    src.columnRange("more") shouldBe Some((8192L, 16382L))
+    src.partRanges("more").map(_.size) shouldBe Some(2)
+    val spec   = ScanSpec(Some(Seq("id", "more")))
+    val splits = src.scanSplits(spec).getOrElse(fail("no splits"))
+    try
+      splits.parts.size shouldBe 4
+      val more = splits.parts.flatMap(_()).flatMap(b => (0 until b.size).map(b.column(1).get))
+      more.size shouldBe 8192
+      more.count(_ == null) shouldBe 4096
+    finally
+      splits.close()
+    // a.parquet's row groups are kept: a filter on `more` doesn't apply to them
+    val filtered = spec.copy(filter = Some(ParquetFilter.col("more") >= 16000L))
+    src.scanSplits(filtered).map(_.parts.size) shouldBe Some(3)
+    val reader = src.withoutDatasetFiles
+    reader.canSplit shouldBe false
+    reader.supportsRowFilter shouldBe false
+    reader.estimatedRows shouldBe None
+    ids(reader, spec) shouldBe ids(src, spec)
     rows(on, s"from '${differing}' select count(*), sum(id)") shouldBe Seq("8192,33550336")
+    val q = s"from '${differing}' where more < 9000 or id < 10 select count(*), sum(more)"
+    rows(on, q) shouldBe Seq("414,3472380")
+    rows(on.withOptimizer(options.withDisabled(Optimization.DatasetFileScans)), q) shouldBe
+      rows(on, q)
+  }
+
+  test("put a folder's batches together by name when its files order their columns differently") {
+    val dir = root.resolve("reordered")
+    clean(dir)
+    write(dir.resolve("a.parquet"), 0, 4096)
+    Class.forName("org.duckdb.DuckDBDriver")
+    val conn = DriverManager.getConnection("jdbc:duckdb:")
+    try
+      val st = conn.createStatement()
+      try st.execute(
+          s"""copy (
+             |  select 'm' || (range % 5) as mode, (range % 7)::integer as k, range::bigint as id
+             |  from range(4096, 8192)
+             |) to '${dir.resolve("b.parquet")}' (format parquet, row_group_size 2048)"""
+            .stripMargin
+        )
+      finally st.close()
+    finally
+      conn.close()
+    val src = ParquetSource("t", dir.toString)
+    src.schema.names shouldBe Seq("id", "k", "mode")
+    src.canSplit shouldBe true
+    // Every column of b.parquet's rows lands under its own name
+    val all = src.scan(ScanSpec()).toSeq
+    all.map(_.size).sum shouldBe 8192
+    all.forall(b => b.column(0).get(0).isInstanceOf[Long]) shouldBe true
+    val q = s"from '${dir}' where id >= 4090 and id < 4100 select id, k, mode"
+    rows(on, q) shouldBe
+      rows(on.withOptimizer(options.withDisabled(Optimization.DatasetFileScans)), q)
+    rows(on, q).size shouldBe 10
   }
 
   /**

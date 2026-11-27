@@ -852,13 +852,22 @@ class Planner(
   )
 
   /**
-    * `s`, reading a Parquet folder through uni's dataset reader unless `folder_file_scans` is on.
-    * Sources are shared by the engines of a catalog, so the toggle applies here, per planner
+    * `s`, reading a Parquet folder through uni's dataset reader unless `folder_file_scans` is on,
+    * and an Iceberg table or schema-evolved folder unless `dataset_file_scans` is on. Sources are
+    * shared by the engines of a catalog, so the toggles apply here, per planner
     */
   private def withFolderFiles(s: TableSource): TableSource =
     s match
-      case p: ParquetSource if !enabled(Optimization.FolderFileScans) =>
-        p.withoutFolderFiles
+      case p: ParquetSource =>
+        val folders =
+          if enabled(Optimization.FolderFileScans) then
+            p
+          else
+            p.withoutFolderFiles
+        if enabled(Optimization.DatasetFileScans) then
+          folders
+        else
+          folders.withoutDatasetFiles
       case other =>
         other
 

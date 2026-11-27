@@ -39,9 +39,11 @@ private[catalog] case class FolderListing(
   * file and reads with a row filter. A scan of Hive partitions splits into its data files, each
   * read through uni's dataset reader, which adds the partition values as columns and skips the
   * files whose values the filters exclude. Planning gets the files' statistics summed or merged,
-  * and a partition key's from its values. Only for folders whose files all have the folder's
-  * columns (but the partition keys) with the same types, and no Iceberg or Delta metadata: uni's
-  * dataset reader alone handles those (schema evolution, deletes)
+  * and a partition key's from its values. Only for folders whose files have the folder's columns
+  * (but the partition keys) with the same types, and no Iceberg or Delta metadata ([[DatasetFiles]]
+  * reads Iceberg tables). With `dataset_file_scans`, files may lack some of the columns (schema
+  * evolution, as uni's dataset reader matches columns by name): a scan splits into their row groups
+  * as a partitioned one does, reading the missing columns as NULLs, without a row filter
   *
   * @param files
   *   the files' sources, in the dataset's file order (by path)
@@ -52,21 +54,37 @@ private[catalog] case class FolderListing(
   *   values (no file is opened for that)
   * @param schema
   *   the folder's columns: the files' columns, then the partition keys
+  * @param missing
+  *   each file's folder columns that the file lacks (none in a folder without schema evolution)
+  * @param evolved
+  *   whether a file lacks columns or holds them in another order, so that batches are put together
+  *   by column name
   */
 private[catalog] final class ParquetFolder(
     val files: IndexedSeq[ParquetSource],
     val listing: FolderListing,
     dataset: ParquetDataset,
-    schema: Schema
-):
-  private def all[A](xs: IndexedSeq[Option[A]]): Option[IndexedSeq[A]] =
-    if xs.forall(_.isDefined) then
-      Some(xs.map(_.get))
-    else
-      None
+    schema: Schema,
+    missing: IndexedSeq[Set[String]],
+    evolved: Boolean
+) extends FolderFiles:
 
-  /** Closes the listing's dataset, once the folder is replaced by a newer listing */
+  // The files holding column `column`
+  private def holding(column: String): IndexedSeq[ParquetSource] = files
+    .indices
+    .filterNot(i => missing(i)(column))
+    .map(files)
+
+  private def all[A](xs: IndexedSeq[Option[A]]): Option[IndexedSeq[A]] = DatasetFiles.all(xs)
+
   def close(): Unit = dataset.close()
+
+  /** A partitioned or schema-evolved folder's scans don't take a row filter yet */
+  def rowFilters: Boolean = !listing.isPartitioned && !evolved
+
+  /** A plain folder's files, each read as a single file */
+  override def scanFiles(spec: ScanSpec): Option[Iterator[Batch]] =
+    Option.when(!listing.isPartitioned && !evolved)(files.iterator.flatMap(_.scan(spec)))
 
   /** The sum of the files' row counts */
   lazy val estimatedRows: Option[Long] = all(files.map(_.estimatedRows)).map(_.sum)
@@ -77,12 +95,12 @@ private[catalog] final class ParquetFolder(
     */
   def columnRange(column: String): Option[(Long, Long)] =
     cached(column, "range") {
-      partitionLongs(column) match
+      ParquetFolder.partitionLongs(listing, column) match
         case Some(vs) =>
           val known = vs.flatten
           Option.when(known.nonEmpty)((known.min, known.max))
         case None =>
-          all(files.map(_.columnRange(column)))
+          all(holding(column).map(_.columnRange(column)))
             .filter(_.nonEmpty)
             .map(rs => (rs.map(_._1).min, rs.map(_._2).max))
     }
@@ -93,55 +111,14 @@ private[catalog] final class ParquetFolder(
     */
   def partRanges(column: String): Option[IndexedSeq[ColumnPartRange]] =
     cached(column, "parts") {
-      partitionLongs(column) match
+      ParquetFolder.partitionLongs(listing, column) match
         case Some(vs) =>
           all(files.map(_.estimatedRows)).map(rows =>
             vs.indices.flatMap(i => vs(i).map(v => ColumnPartRange(v, v, rows(i))))
           )
         case None =>
-          all(files.map(_.partRanges(column))).map(_.flatten)
+          all(holding(column).map(_.partRanges(column))).map(_.flatten)
     }
-
-  /** The number of distinct non-null values of a partition key; None for other columns */
-  def partitionDistinct(column: String): Option[Double] =
-    val k = listing.keys.indexOf(column)
-    Option.when(k >= 0)(
-      math.max(1.0, listing.values.map(_(k)).filter(_ != null).distinct.size.toDouble)
-    )
-
-  /**
-    * Each file's value of partition key `column` as a Long (an integer, or a date in epoch days;
-    * None for the default partition); None for a column that is no such key, or a string key
-    */
-  private def partitionLongs(column: String): Option[IndexedSeq[Option[Long]]] =
-    val k = listing.keys.indexOf(column)
-    if k < 0 then
-      None
-    else
-      val vs = listing
-        .values
-        .map(_(k))
-        .map {
-          case null =>
-            Some(None)
-          case i: Int =>
-            Some(Some(i.toLong))
-          case l: Long =>
-            Some(Some(l))
-          case d: java.time.LocalDate =>
-            Some(Some(d.toEpochDay))
-          case _ =>
-            None
-        }
-      Option.when(vs.forall(_.isDefined))(vs.map(_.get))
-
-  // Estimates of this listing, kept as a single file without a trusted version keeps them
-  private val stats = scala.collection.mutable.HashMap.empty[(String, String), Option[Any]]
-
-  /** A statistic `stat` of `column`, computed once for this listing of the folder */
-  def cached[A](column: String, stat: String)(compute: => Option[A]): Option[A] = stats
-    .synchronized(stats.getOrElseUpdate((column, stat), compute))
-    .asInstanceOf[Option[A]]
 
   /**
     * Column `column` of up to `samples` row groups spread over every file's row groups, until
@@ -151,7 +128,15 @@ private[catalog] final class ParquetFolder(
   def sampleColumn(column: String, samples: Int): Iterator[Batch] =
     // The files don't hold the partition keys
     require(!listing.keys.contains(column), s"${column} is a partition key")
-    val counts = files.map(_.rowGroupCount.toLong)
+    // Only the files holding the column
+    val counts = files
+      .indices
+      .map(i =>
+        if missing(i)(column) then
+          0L
+        else
+          files(i).rowGroupCount.toLong
+      )
     val starts = counts.scanLeft(0L)(_ + _)
     val total  = starts.last
     val k      = math.min(total, samples.toLong).toInt
@@ -176,77 +161,101 @@ private[catalog] final class ParquetFolder(
         b
       }
 
+  end sampleColumn
+
   /**
     * One part per row group of every file that `spec` doesn't skip. Each file opens when its first
     * part runs and closes after its last, so that a folder of many files doesn't hold them all open
     */
   def scanSplits(spec: ScanSpec): Option[ScanSplits] =
-    if listing.isPartitioned then
+    if listing.isPartitioned || evolved then
       partitionSplits(spec)
     else
       fileSplits(spec)
 
   /**
-    * One part per row group of every data file of a partitioned folder that the filters' partition
-    * values (and the files' statistics) don't skip. Each file is read as a single file, without the
-    * filters' conjuncts on partition keys, and its partition values are added as constant columns
+    * One part per row group of every data file of a partitioned (or schema-evolved) folder that the
+    * filters' partition values (and the files' statistics) don't skip. Each file is read as a
+    * single file of the columns it holds, without the filters' conjuncts on partition keys or on
+    * columns it lacks; its partition values are added as constant columns, and the columns it lacks
+    * as NULLs
     */
   private def partitionSplits(spec: ScanSpec): Option[ScanSplits] =
-    val keys       = listing.keys
-    val cols       = spec.columns.getOrElse(schema.names)
-    val fileCols   = cols.filterNot(keys.contains)
-    val options    = ParquetSource.readOptions(schema, spec)._3
-    val chosen     = dataset.selectFiles(options).map(_.path).toSet
-    val keySet     = keys.toSet
-    val fileFilter = spec.filter.flatMap(ParquetFolder.withoutColumns(_, keySet))
-    val fileSpec   = spec.copy(columns = Some(fileCols), filter = fileFilter, rowFilter = None)
-    val selected   = files
+    val keys    = listing.keys
+    val cols    = spec.columns.getOrElse(schema.names)
+    val options = ParquetSource.readOptions(schema, spec)._3
+    val chosen  =
+      if listing.isPartitioned then
+        dataset.selectFiles(options).map(_.path).toSet
+      else
+        listing.files.map(_._1).toSet
+    val keySet = keys.toSet
+    // Each file's columns read, and its spec
+    def fileSpec(i: Int): ScanSpec =
+      val skipped = keySet ++ missing(i)
+      spec.copy(
+        columns = Some(cols.filterNot(skipped)),
+        filter = spec.filter.flatMap(ParquetFolder.withoutColumns(_, skipped)),
+        rowFilter = None
+      )
+    val selected = files
       .indices
       .filter(i => chosen(listing.files(i)._1))
-      .map(i => (i, files(i).selectedRowGroups(fileSpec)))
-      .filter(_._2.nonEmpty)
-    if selected.map(_._2.size).sum <= 1 then
+      .map { i =>
+        val fs = fileSpec(i)
+        (i, fs, files(i).selectedRowGroups(fs))
+      }
+      .filter(_._3.nonEmpty)
+    if selected.map(_._3.size).sum <= 1 then
       None
     else
       val types = cols.map(c => schema.fields.find(_.name == c).map(_.ptype).getOrElse(PType.AnyT))
-      // Each output column's partition key, or else its position in the files' batches
-      val keyOf  = cols.map(keys.indexOf)
-      val fileOf = cols.map(fileCols.indexOf)
-      // The output columns of file i's batch b: its columns, and its partition values
-      def withKeys(i: Int, b: Batch, rows: Int): Batch = Batch(
+      val keyOf = cols.map(keys.indexOf)
+      // The output columns of file i's batch b (of its columns `read`): its columns, its partition
+      // values, and NULLs for the columns it lacks
+      def withKeys(i: Int, read: Seq[String], b: Batch, rows: Int): Batch = Batch(
         cols
           .indices
           .map { c =>
             if keyOf(c) >= 0 then
               Vec.constant(types(c), ParquetFolder.engineValue(listing.values(i)(keyOf(c))), rows)
             else
-              b.column(fileOf(c))
+              read.indexOf(cols(c)) match
+                case -1 =>
+                  Vec.constant(types(c), null, rows)
+                case k =>
+                  b.column(k)
           }
           .toArray,
         rows
       )
-      if fileCols.isEmpty then
-        // Only partition keys: each row group's row count is all there is to read
-        val parts = selected.flatMap((i, groups) =>
-          groups.map(g => () => Iterator.single(withKeys(i, null, g._2.toInt)))
+      val parts = IndexedSeq.newBuilder[() => Iterator[Batch]]
+      val held  = IndexedSeq.newBuilder[FileHolder]
+      selected.foreach { (i, fs, groups) =>
+        val read = fs.columns.get
+        if read.isEmpty then
+          // Only partition keys and missing columns: each row group's row count is all there is
+          groups.foreach(g => parts += (() => Iterator.single(withKeys(i, read, null, g._2.toInt))))
+        else
+          val h = FileHolder(files(i), fs, groups)
+          held += h
+          h.groups
+            .foreach(g =>
+              parts += (
+                () =>
+                  val b = h.read(g._1)
+                  Iterator.single(withKeys(i, read, b, b.size))
+              )
+            )
+      }
+      val holders = held.result()
+      Some(
+        ScanSplits(
+          parts.result(),
+          () => holders.foreach(_.close()),
+          selected.flatMap(_._3.map(_._2))
         )
-        Some(ScanSplits(parts, () => (), selected.flatMap(_._2.map(_._2))))
-      else
-        val holders = selected.map((i, groups) => (i, FileHolder(files(i), fileSpec, groups)))
-        Some(
-          ScanSplits(
-            holders.flatMap((i, h) =>
-              h.groups
-                .map(g =>
-                  () =>
-                    val b = h.read(g._1)
-                    Iterator.single(withKeys(i, b, b.size))
-                )
-            ),
-            () => holders.foreach(_._2.close()),
-            holders.flatMap(_._2.groups.map(_._2))
-          )
-        )
+      )
     end if
 
   end partitionSplits
@@ -314,6 +323,32 @@ end ParquetFolder
 private[catalog] object ParquetFolder:
 
   /**
+    * Each file's value of partition key `column` as a Long (an integer, or a date in epoch days;
+    * None for the default partition); None for a column that is no such key, or a string key
+    */
+  def partitionLongs(listing: FolderListing, column: String): Option[IndexedSeq[Option[Long]]] =
+    val k = listing.keys.indexOf(column)
+    if k < 0 then
+      None
+    else
+      val vs = listing
+        .values
+        .map(_(k))
+        .map {
+          case null =>
+            Some(None)
+          case i: Int =>
+            Some(Some(i.toLong))
+          case l: Long =>
+            Some(Some(l))
+          case d: java.time.LocalDate =>
+            Some(Some(d.toEpochDay))
+          case _ =>
+            None
+        }
+      Option.when(vs.forall(_.isDefined))(vs.map(_.get))
+
+  /**
     * Whether `path` may name a folder of plain files: not an object store prefix, an Iceberg table
     * or a Delta table (checked once per source, before any listing)
     */
@@ -321,9 +356,16 @@ private[catalog] object ParquetFolder:
     !path.contains("://") && !ParquetSource.isIcebergPath(path) && !isDelta(path)
 
   /**
+    * Whether `path` may name a local folder or Iceberg table to read file by file: not an object
+    * store prefix or a Delta table
+    */
+  def mayReadAsFiles(path: String): Boolean = !path.contains("://") && !isDelta(path)
+
+  /**
     * The files of `listing` read as sources named `name`; None when there are none, or when a file
     * doesn't read as a single file with the folder's `columns` ([[ParquetSource.columnTypes]]:
-    * names, and Parquet physical and logical types, which decide what a row filter can test)
+    * names, and Parquet physical and logical types, which decide what a row filter can test). With
+    * `evolved`, a file may hold only some of the columns
     */
   def open(
       name: String,
@@ -331,7 +373,8 @@ private[catalog] object ParquetFolder:
       dataset: ParquetDataset,
       footerCache: Boolean,
       schema: Schema,
-      columns: IndexedSeq[(String, Any)]
+      columns: IndexedSeq[(String, Any)],
+      evolved: Boolean = false
   ): Option[ParquetFolder] =
     // The dataset's columns are the files' columns, then the partition keys
     val k           = listing.keys.size
@@ -344,29 +387,40 @@ private[catalog] object ParquetFolder:
       None
     else
       val files = listing.files.map((p, _) => ParquetSource(name, p, footerCache))
-      Option.when(files.forall(f => f.isSingleFile && f.columnTypes == fileColumns))(
-        ParquetFolder(files, listing, dataset, schema)
-      )
+      if files.forall(f => f.isSingleFile && f.columnTypes == fileColumns) then
+        Some(ParquetFolder(files, listing, dataset, schema, files.map(_ => Set.empty), false))
+      else if evolved &&
+        files.forall(f => f.isSingleFile && f.columnTypes.forall(fileColumns.contains))
+      then
+        // Each file's columns are some of the folder's, with the same types, in any order
+        val names = fileColumns.map(_._1)
+        Some(
+          ParquetFolder(
+            files,
+            listing,
+            dataset,
+            schema,
+            files.map(f => names.toSet -- f.columnTypes.map(_._1)),
+            evolved = true
+          )
+        )
+      else
+        None
+
+  end open
 
   /**
     * The files `path` lists now, with their partition values, and the dataset listing them (open,
-    * for [[ParquetFolder]] to keep); None for a table with properties, which uni's dataset reader
-    * reads
+    * for [[ParquetFolder]] or [[DatasetFiles]] to keep)
     */
-  def listing(path: String): Option[(FolderListing, ParquetDataset)] =
-    val ds = ParquetSource.openDataset(path)
-    if ds.tableProperties.nonEmpty then
-      ds.close()
-      None
-    else
-      val keys = ds.partitionColumns.map(_.name)
-      Some(
-        FolderListing(
-          ds.files.map(f => (f.path, f.size)),
-          keys,
-          ds.files.map(f => keys.map(k => f.partitions.getOrElse(k, null)))
-        ) -> ds
-      )
+  def listing(path: String): (FolderListing, ParquetDataset) =
+    val ds   = ParquetSource.openDataset(path)
+    val keys = ds.partitionColumns.map(_.name)
+    FolderListing(
+      ds.files.map(f => (f.path, f.size)),
+      keys,
+      ds.files.map(f => keys.map(k => f.partitions.getOrElse(k, null)))
+    ) -> ds
 
   /**
     * The conjuncts of `f` that refer to none of `columns` (None if no conjunct is left): a

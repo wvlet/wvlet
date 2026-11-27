@@ -46,6 +46,8 @@ Relative paths resolve against the working folder. The compiler sees the schemas
 
 A folder of Parquet files may hold Hive partitions (`key=value/` sub-folders, as DuckDB's `COPY ... (partition_by ...)` writes them). The partition keys become columns after the files' columns. A key whose values are all integers is a `long` column, and one whose values are all `yyyy-MM-dd` dates is a `date` column, as DuckDB types them; other keys are strings, and `__HIVE_DEFAULT_PARTITION__` is NULL. A filter or a join on a partition key reads only the matching partitions.
 
+A folder's files may hold only some of its columns (columns added later, with the same types): a file without a column reads it as NULL. Local folders and Iceberg tables are read file by file in parallel, and an Iceberg table's manifest statistics skip the data files a filter excludes.
+
 ### Declaring table keys
 
 Parquet files carry no key information, so the engine can't tell a join on a composite primary key from a join on columns that merely share values. Declare keys in a sidecar JSON file and the join planner uses them to estimate multi-column joins: a join that covers a declared key of one side is estimated as a foreign key to that primary key, and a join on columns that are no key of either table as independent columns.

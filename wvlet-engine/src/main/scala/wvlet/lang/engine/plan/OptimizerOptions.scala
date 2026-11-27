@@ -325,6 +325,17 @@ enum Optimization(val name: String):
   case FolderFileScans extends Optimization("folder_file_scans")
 
   /**
+    * A local Iceberg table is read file by file (`catalog/DatasetFiles.scala`): a scan splits into
+    * the data files that partition values and manifest statistics don't skip, each read through
+    * uni's dataset reader (which applies deletes, field-ID column mapping and defaults) with an
+    * exact row filter, and planning gets row counts, ranges and per-file part ranges from the
+    * manifests. A folder whose files hold only some of its columns (with the same types, in any
+    * order) is read as its files (`ParquetFolder`), missing columns as NULLs. Otherwise uni's
+    * dataset reader reads the whole table on one thread without statistics
+    */
+  case DatasetFileScans extends Optimization("dataset_file_scans")
+
+  /**
     * A LEFT hash join under a filter that tests one of its build key columns for NULL emits only
     * its unmatched probe rows, in probe order, with NULL build columns: a matched row's build key
     * equals a non-NULL probe key, so the filter drops every matched pair. The join skips the match
