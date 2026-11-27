@@ -55,6 +55,7 @@ object Parallelizer:
       unionDistinctOnce: Boolean = true,
       anyValuePartials: Boolean = true,
       parallelOuterTail: Boolean = true,
+      sliceSingleBatches: Boolean = true,
       configureJoin: HashJoinOp => Unit = _ => ()
   ): Operator =
     if runner.parallelism <= 1 then
@@ -79,6 +80,7 @@ object Parallelizer:
         unionDistinctOnce,
         anyValuePartials,
         parallelOuterTail,
+        sliceSingleBatches,
         configureJoin
       )
       rewrite(op, runner)
@@ -108,6 +110,8 @@ object Parallelizer:
       // any_value splits into two phases (`dependent_group_keys`, which emits it)
       anyValuePartials: Boolean,
       parallelOuterTail: Boolean,
+      // A pipeline over one in-memory batch runs over its row ranges when it probes large builds
+      sliceSingleBatches: Boolean,
       // The planner's join toggles for the joins made here (the INTERSECT / EXCEPT joins)
       configureJoin: HashJoinOp => Unit
   )
@@ -133,14 +137,16 @@ object Parallelizer:
     * of a scan, emitting the build rows no part matched (one per union input with such joins).
     * `prepare` runs before parts start (hash join builds), on the calling thread or, with
     * `concurrent_join_builds`, together on coordinator threads, and `close` releases what the
-    * copies share
+    * copies share. `buildRows` count the rows of its join builds (and cross join inputs) once
+    * `prepare` has run
     */
   private case class Pipeline(
       segments: Seq[MorselOp.Segment],
       tails: Seq[MorselOp.Tail],
       prepare: List[() => Unit],
       close: List[() => Unit],
-      hasWork: Boolean = false
+      hasWork: Boolean = false,
+      buildRows: List[() => Long] = Nil
   ):
     /** The scan of the first segment */
     def scan: ScanOp = segments.head.scan
@@ -159,8 +165,19 @@ object Parallelizer:
     )
 
     /** The parts of every segment in order, as one [[MorselOp]] */
-    def morsels(schema: Schema, runner: TaskRunner, prepareSteps: List[() => Unit]): MorselOp =
-      MorselOp(segments, schema, runner, prepareSteps, close, tails)
+    def morsels(schema: Schema, runner: TaskRunner, prepareSteps: List[() => Unit])(using
+        AboveBreakers
+    ): MorselOp = MorselOp(segments, schema, runner, prepareSteps, close, tails, sliceRows)
+
+    /**
+      * The rows of the builds, for a run over one in-memory batch to decide whether to slice it
+      * (`slice_single_batch_probes`)
+      */
+    def sliceRows(using o: AboveBreakers): Option[() => Long] =
+      val rows = buildRows
+      Option.when(o.sliceSingleBatches && rows.nonEmpty)(() => rows.map(_()).sum)
+
+  end Pipeline
 
   private object Pipeline:
     def of(scan: ScanOp, close: List[() => Unit] = Nil): Pipeline = Pipeline(
@@ -233,7 +250,9 @@ object Parallelizer:
           BuildKeyMatch.bind(template, j.prefilters)
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
-            close = p.close :+ (() => template.right.close())
+            close = p.close :+ (() => template.right.close()),
+            buildRows =
+              p.buildRows :+ (() => Option(template.joinBuild.build).fold(0L)(_.size.toLong))
           )
           if isOuterBuild(j.kind) then
             // Parts mark matched build rows; the tail emits the rest once every part is done
@@ -297,7 +316,8 @@ object Parallelizer:
               override def sharedInputs: Seq[Operator] = Seq(right)
           p.copy(
               prepare = p.prepare :+ (() => rows = Operator.materialize(right)),
-              close = p.close :+ (() => right.close())
+              close = p.close :+ (() => right.close()),
+              buildRows = p.buildRows :+ (() => Option(rows).fold(0L)(_.size.toLong))
             )
             .map(x => NestedLoopJoinOp(x, shared, None, JoinKind.Cross, j.schema))
         }
@@ -338,7 +358,8 @@ object Parallelizer:
             ),
             ps.flatMap(_.prepare).toList,
             ps.flatMap(_.close).toList,
-            ps.exists(_.hasWork)
+            ps.exists(_.hasWork),
+            ps.flatMap(_.buildRows).toList
           )
         )
 
@@ -505,7 +526,8 @@ object Parallelizer:
             o.oneRowPartials,
             o.selectedInputs,
             o.longGroupTables,
-            o.sortedGroupRuns
+            o.sortedGroupRuns,
+            p.sliceRows
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -853,7 +875,8 @@ private[plan] object TwoPhaseAgg:
       oneRowPartials: Boolean = true,
       selectedInputs: Boolean = true,
       longGroupTables: Boolean = true,
-      sortedGroupRuns: Boolean = true
+      sortedGroupRuns: Boolean = true,
+      buildRows: Option[() => Long] = None
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -909,7 +932,8 @@ private[plan] object TwoPhaseAgg:
             .withLongGroupTables(longGroupTables)
             .withSortedGroupRuns(sortedGroupRuns)
         )
-      )
+      ),
+      buildRows
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
     // Combine partial results by key

@@ -208,6 +208,7 @@ class Planner(
           unionDistinctOnce = enabled(Optimization.UnionDistinctOnce),
           anyValuePartials = enabled(Optimization.DependentGroupKeys),
           parallelOuterTail = enabled(Optimization.ParallelOuterTail),
+          sliceSingleBatches = enabled(Optimization.SliceSingleBatchProbes),
           configureJoin = configureJoin
         )
       else
@@ -1503,6 +1504,13 @@ class Planner(
           )
         )
 
+    override def sliceSplits(spec: ScanSpec, parts: Int): Option[ScanSplits] =
+      shared.batches.filter(_.size > 0) match
+        case Seq(b) =>
+          ScanSplits.slices(selector(spec)(b), parts)
+        case _ =>
+          None
+
     override def explainDetail(indent: Int): Option[String] = shared.sharedPlan(indent)
 
   end SharedTable
@@ -1981,6 +1989,13 @@ class Planner(
             bs.toIndexedSeq.map(_.size.toLong)
           )
         )
+
+    override def sliceSplits(spec: ScanSpec, parts: Int): Option[ScanSplits] =
+      cte.batches.filter(_.size > 0) match
+        case Seq(b) =>
+          ScanSplits.slices(cte.selector(spec.columns)(b), parts)
+        case _ =>
+          None
 
     override def explainDetail(indent: Int): Option[String] = cte.sharedPlan(indent)
 

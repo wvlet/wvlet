@@ -69,6 +69,53 @@ class MorselOpTest extends UniTest:
     try op.drain().flatMap(b => (0 until b.size).map(i => b.column(0).get(i).asInstanceOf[Long]))
     finally op.close()
 
+  /**
+    * A morsel over one in-memory batch of 1000 values, whose pipeline records the rows of each run
+    * and the threads it runs on, with builds of `buildRows` rows
+    */
+  private def overOneBatch(buildRows: Long): (Seq[Long], Seq[Long], Set[String]) =
+    val batch  = Batch(Array(LongVec(PType.Int64, Array.tabulate(1000)(_.toLong), null)), 1000)
+    val source = BreakerSource(IteratorOp(schema, () => Iterator.single(batch), "one"), "Aggregate")
+    val runs   = java.util.concurrent.ConcurrentLinkedQueue[Long]()
+    val threads = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+    val op      = MorselOp(
+      Seq(
+        MorselOp.Segment(
+          ScanOp(source, schema, None, None),
+          x =>
+            x match
+              case p: IteratorOp =>
+                runs.add(p.rows)
+              case _ =>
+                runs.add(-1L)
+            threads.add(Thread.currentThread().getName)
+            evenFilter(x)
+        )
+      ),
+      schema,
+      runner,
+      Nil,
+      List(() => source.close()),
+      Nil,
+      Some(() => buildRows)
+    )
+    import scala.jdk.CollectionConverters.*
+    (values(op), runs.asScala.toSeq, threads.asScala.toSet)
+
+  test("should run a pipeline over one batch as row ranges when its builds are large") {
+    val (out, runs, threads) = overOneBatch(MorselOp.SliceBuildRows)
+    out shouldBe (0L until 1000L by 2L)
+    runs.sorted shouldBe Seq.fill(4)(250L)
+    threads.contains(Thread.currentThread().getName) shouldBe false
+  }
+
+  test("should run a pipeline over one batch on the calling thread when its builds are small") {
+    val (out, runs, threads) = overOneBatch(MorselOp.SliceBuildRows - 1)
+    out shouldBe (0L until 1000L by 2L)
+    runs shouldBe Seq(-1L)
+    threads shouldBe Set(Thread.currentThread().getName)
+  }
+
   test("should emit parts in order through the pipeline") {
     val src = Splittable(20)
     val op  = MorselOp(ScanOp(src, schema, None, None), evenFilter, schema, runner)
