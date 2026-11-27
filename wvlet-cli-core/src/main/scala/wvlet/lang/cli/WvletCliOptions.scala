@@ -4,6 +4,7 @@ import wvlet.lang.BuildInfo
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.DBType
+import wvlet.lang.runner.ModelBuildPlan
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.option
 import wvlet.uni.io.IO
@@ -240,3 +241,67 @@ case class WvletREPLOption(
     commands ++ file
 
 end WvletREPLOption
+
+/**
+  * Options of `wvlet build`, the same on every distribution. `--run-store` applies to the JVM CLI
+  * only, which records build runs like flow runs
+  */
+case class WvletBuildOption(
+    @option(prefix = "-w", description = "Working folder containing .wv files")
+    workFolder: String = ".",
+    @option(
+      prefix = "-s,--select",
+      description = "Models to build (comma-separated): m, m+ (with downstream), +m (with upstream)"
+    )
+    select: Option[String] = None,
+    @option(prefix = "--dry-run", description = "Print the build order and SQL without running")
+    dryRun: Boolean = false,
+    @option(prefix = "-p,--profile", description = "Profile to use")
+    profile: Option[String] = None,
+    @option(
+      prefix = "-t,--target",
+      description = "Engine to use without a profile (wvlet (default), duckdb, ...)"
+    )
+    targetDBType: Option[String] = None,
+    @option(prefix = "--catalog", description = "Context database catalog to use")
+    catalog: Option[String] = None,
+    @option(prefix = "--schema", description = "Context database schema to use")
+    schema: Option[String] = None,
+    @option(
+      prefix = "--run-store",
+      description =
+        "JVM CLI only: run store type: file (default), sqlite, or postgres (connection via WVLET_FLOW_STORE_PG_* env)"
+    )
+    runStore: Option[String] = None
+):
+  def withWorkFolder(folder: String): WvletBuildOption   = copy(workFolder = folder)
+  def withSelect(select: String): WvletBuildOption       = copy(select = Some(select))
+  def noSelect(): WvletBuildOption                       = copy(select = None)
+  def withDryRun(dryRun: Boolean): WvletBuildOption      = copy(dryRun = dryRun)
+  def withProfile(profile: String): WvletBuildOption     = copy(profile = Some(profile))
+  def noProfile(): WvletBuildOption                      = copy(profile = None)
+  def withTargetDBType(dbType: String): WvletBuildOption = copy(targetDBType = Some(dbType))
+  def noTargetDBType(): WvletBuildOption                 = copy(targetDBType = None)
+  def withCatalog(catalog: String): WvletBuildOption     = copy(catalog = Some(catalog))
+  def noCatalog(): WvletBuildOption                      = copy(catalog = None)
+  def withSchema(schema: String): WvletBuildOption       = copy(schema = Some(schema))
+  def noSchema(): WvletBuildOption                       = copy(schema = None)
+  def withRunStore(storeType: String): WvletBuildOption  = copy(runStore = Some(storeType))
+  def noRunStore(): WvletBuildOption                     = copy(runStore = None)
+
+  /**
+    * The profile of the build: `-p`, `-t`, or the in-process wvlet engine, whose tables persist in
+    * the work folder's `target/warehouse`
+    */
+  def resolveProfile: Profile = ModelBuildPlan.resolveProfile(
+    workFolder,
+    profile,
+    targetDBType,
+    catalog,
+    schema
+  )
+
+  /** The selectors of `-s` (comma-split by the model graph) */
+  def selectors: List[String] = select.toList
+
+end WvletBuildOption

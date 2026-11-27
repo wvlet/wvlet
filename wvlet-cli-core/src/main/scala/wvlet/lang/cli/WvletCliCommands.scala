@@ -6,6 +6,10 @@ import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.analyzer.duckdb.QueryResultPrinter as CsvPrinter
 import wvlet.lang.compiler.connector.QueryResult as XPQueryResult
 import wvlet.lang.compiler.connector.QueryResultRow
+import wvlet.lang.api.v1.flow.StageState
+import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.FlowExecutionResult
+import wvlet.lang.runner.ModelBuildPlan
 import wvlet.lang.runner.PlanResult
 import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.QueryResultList
@@ -13,13 +17,14 @@ import wvlet.lang.runner.TableRows
 import wvlet.lang.runner.connector.WvletServerClient
 import wvlet.lang.skill.SkillOption
 import wvlet.uni.cli.launcher.command
+import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
 
 /**
   * The `wvlet` commands shared by every distribution: `version`, `compile`, `to_wvlet`, `skill`,
-  * `run`, and `repl`. Each distribution implements only the platform hooks: how to compile, how to
-  * run a query locally, and which script runner the REPL uses. The JVM CLI (`WvletMain`) adds its
-  * JVM-only commands on top.
+  * `run`, `repl`, and `build`. Each distribution implements only the platform hooks: how to
+  * compile, how to run a query locally, which script runner the REPL uses, and how to build models.
+  * The JVM CLI (`WvletMain`) adds its JVM-only commands on top.
   */
 trait WvletCliCommands extends LogSupport:
 
@@ -37,6 +42,17 @@ trait WvletCliCommands extends LogSupport:
 
   /** Start the interactive REPL, or run its `-c`/`-f` commands */
   protected def startREPL(opt: WvletREPLOption): Unit
+
+  /**
+    * Build the planned models with the resolved `profile`: on the JVM, as a flow on the flow
+    * executor; on npm and Native, one model at a time with [[wvlet.lang.runner.ModelBuilder]]
+    */
+  protected def executeBuild(
+      opt: WvletBuildOption,
+      plan: ModelBuildPlan,
+      profile: Profile,
+      workEnv: WorkEnv
+  ): FlowExecutionResult
 
   /**
     * The profile used when neither `-t` nor `-p` is given: the in-process wvlet engine
@@ -64,6 +80,44 @@ trait WvletCliCommands extends LogSupport:
 
   @command(description = "Start the interactive REPL (wv is an alias)")
   def repl(opt: WvletREPLOption): Unit = handleCommand(startREPL(opt))
+
+  @command(description = "Build materialized models in dependency order")
+  def build(opt: WvletBuildOption): Unit = handleCommand {
+    checkBuildOptions(opt)
+    val workEnv = WorkEnv(opt.workFolder, logLevel = buildLogLevel)
+    val profile = opt.resolveProfile
+    // Compile for the profile's engine, so the generated DDL (e.g. create or replace) fits it
+    val plan = ModelBuildPlan.plan(
+      opt.workFolder,
+      workEnv,
+      opt.selectors,
+      profile.defaultEngine.dbType
+    )
+    if opt.dryRun then
+      plan
+        .sqlStatements
+        .foreach { (m, statements) =>
+          println(s"-- ${m.name} (${m.spec.materialization.configName} -> ${m.targetName})")
+          statements.foreach(stmt => println(s"${stmt};"))
+          println()
+        }
+    else
+      val result = executeBuild(opt, plan, profile, workEnv)
+      println(result.toPrettyBox())
+      if result.hasError then
+        val failed = result.stageResults.filter(_.state == StageState.Failed).map(_.name)
+        throw StatusCode
+          .QUERY_EXECUTION_FAILURE
+          .newException(s"Failed to build models: ${failed.mkString(", ")}")
+  }
+
+  /**
+    * Reject build options this distribution doesn't support, before compiling (also for --dry-run)
+    */
+  protected def checkBuildOptions(opt: WvletBuildOption): Unit = ()
+
+  /** The log level of build runs (the JVM CLI logs each statement to its log file) */
+  protected def buildLogLevel: LogLevel = LogLevel.INFO
 
   @command(description =
     "Run a query on the in-process wvlet engine (default), DuckDB, Trino, or a remote wvlet server"

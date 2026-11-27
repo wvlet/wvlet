@@ -9,6 +9,7 @@ This page owns how cross-platform modules split shared and platform code, and ho
 - Scala.js code must not use Java-specific libraries.
 - Code shared by the JVM and Native but not Scala.js (threads, blocking waits) goes in a `jvm-native/src/main/scala` folder added to both platforms' sources, as `wvlet-cli-core` does for the REPL's query threads (`REPLCompatImpl`).
 - The REPL is shared code in `wvlet-cli-core`. Node.js runs every query synchronously on the event loop, so its REPL can't cancel a running query: Ctrl-C there exits `wvlet`, and it registers no SIGINT listener while a query runs (a listener would only swallow the signal).
+- `wvlet build` is a shared command too. The JVM runs it as a flow on the JVM-only flow executor (parallel stages, timeouts, run records); npm and Native run the shared `ModelBuilder`, which builds one model at a time on the caller, so Node never needs threads or an interruptible query.
 - Compile a whole platform with `./sbt "projectJVM/Test/compile"`, `projectJS/...`, or `projectNative/...`.
 
 ## Native builds and libduckdb

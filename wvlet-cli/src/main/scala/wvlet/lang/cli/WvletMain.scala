@@ -2,12 +2,14 @@ package wvlet.lang.cli
 
 import wvlet.uni.cli.launcher.Launcher
 import wvlet.uni.cli.launcher.command
-import wvlet.uni.cli.launcher.option
 import wvlet.uni.design.Design
+import wvlet.uni.log.LogLevel
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
 import wvlet.lang.cli.WvletMain.isInSbt
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.FlowExecutionResult
+import wvlet.lang.runner.ModelBuildPlan
 import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.server.WvletServer
@@ -63,8 +65,8 @@ end WvletMain
 
 /**
   * The JVM `wvlet` command: the commands shared with the npm and Native distributions
-  * ([[WvletCliCommands]]), run with the JVM connectors, plus the JVM-only `ui`, `build`, `flow`,
-  * and `catalog` commands and the REPL
+  * ([[WvletCliCommands]]), run with the JVM connectors (`build` runs on the flow executor), plus
+  * the JVM-only `ui`, `flow`, and `catalog` commands
   */
 class WvletMain(opts: WvletCliGlobalOption) extends WvletCliCommands:
 
@@ -114,19 +116,13 @@ class WvletMain(opts: WvletCliGlobalOption) extends WvletCliCommands:
 
   override protected def handleCommand[U](body: => U): U = handleError(body)
 
-  @command(description = "Build materialized models in dependency order")
-  def build(
-      flowOption: WvletFlowOption,
-      @option(
-        prefix = "-s,--select",
-        description =
-          "Models to build (comma-separated): m, m+ (with downstream), +m (with upstream)"
-      )
-      select: Option[String] = None,
-      @option(prefix = "--dry-run", description = "Print the build order and SQL without running")
-      dryRun: Boolean = false
-  ): Unit = handleError {
-    WvletFlowCommand(opts).build(flowOption, select, dryRun)
-  }
+  override protected def executeBuild(
+      opt: WvletBuildOption,
+      plan: ModelBuildPlan,
+      profile: Profile,
+      workEnv: WorkEnv
+  ): FlowExecutionResult = WvletFlowCommand(opts).executeBuild(opt, plan, profile, workEnv)
+
+  override protected def buildLogLevel: LogLevel = opts.logLevel
 
 end WvletMain
