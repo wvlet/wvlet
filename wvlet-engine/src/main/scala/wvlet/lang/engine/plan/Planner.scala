@@ -62,6 +62,13 @@ class Planner(
   private[engine] def enabled(o: Optimization): Boolean = options.isEnabled(o)
 
   /** Lower a runtime plan into operators, with runtime join filters when enabled */
+  /** The largest estimated pass rate of a scan row filter (`wider_row_filter_gate`) */
+  private def rowFilterGate: Double =
+    if enabled(Optimization.WiderRowFilterGate) then
+      ScanFilters.WiderMaxRowFilterSelectivity
+    else
+      ScanFilters.MaxRowFilterSelectivity
+
   private[engine] def lower(p: RuntimePlan, inSet: Boolean = false): Operator = Lowering(
     p,
     joinFilters = enabled(Optimization.RuntimeJoinFilters),
@@ -82,6 +89,7 @@ class Planner(
     dictionaryEntries = enabled(Optimization.DictionaryEntryScans),
     lazyStrings = enabled(Optimization.LazyDictionaryStrings),
     selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters),
+    maxRowFilterSelectivity = rowFilterGate,
     maskedCaseWhen = enabled(Optimization.MaskedCaseWhen),
     windowSharePartitions = enabled(Optimization.WindowSharePartitions),
     windowTopNStream = enabled(Optimization.WindowTopNStream),

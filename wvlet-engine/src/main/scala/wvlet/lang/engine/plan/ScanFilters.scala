@@ -148,6 +148,12 @@ object ScanFilters:
   final val MaxRowFilterSelectivity = 0.15
 
   /**
+    * [[MaxRowFilterSelectivity]] with `wider_row_filter_gate`: one-year date ranges over TPC-H's
+    * dates (15.2%) pass, TPC-DS q09's 20% ranges do not
+    */
+  final val WiderMaxRowFilterSelectivity = 0.18
+
+  /**
     * The estimated fraction of rows passing all `conds` together (conjuncts over the same input
     * positions estimated together by [[selectivity]], independent otherwise). `columnName(i)` is
     * the source column name of input position i. With `values`, string conjuncts are estimated from

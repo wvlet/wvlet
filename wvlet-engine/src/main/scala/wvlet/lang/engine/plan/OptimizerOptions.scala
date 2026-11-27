@@ -1131,6 +1131,15 @@ enum Optimization(val name: String):
     */
   case MatchCopiedSubqueryScans extends Optimization("match_copied_subquery_scans")
 
+  /**
+    * With `selective_scan_row_filters`, the row-filter gate admits filters estimated to keep up to
+    * [[ScanFilters.WiderMaxRowFilterSelectivity]] of a scan's rows instead of
+    * [[ScanFilters.MaxRowFilterSelectivity]]. A one-year date range over TPC-H's 6.6 years of dates
+    * keeps 15.2% (q5's `o_orderdate`, q20's `l_shipdate`), just over the 0.15 gate, so every row
+    * was decoded; TPC-DS q09's 20% ranges stay in the engine
+    */
+  case WiderRowFilterGate extends Optimization("wider_row_filter_gate")
+
 end Optimization
 
 object Optimization:

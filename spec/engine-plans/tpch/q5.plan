@@ -1,8 +1,7 @@
 -- q5#1
 Scan[customer](columns=c_custkey,c_nationkey join_filter=c_custkey,c_nationkey) -> [c_custkey:long, c_nationkey:int]
   Scan[lineitem](columns=l_orderkey,l_suppkey,l_extendedprice,l_discount join_filter=l_orderkey,l_suppkey) -> [l_orderkey:long, l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]
-    Scan[orders](columns=o_orderkey,o_custkey,o_orderdate filter=And(Compare(o_orderdate,GtEq,1994-01-01),Compare(o_orderdate,Lt,1995-01-01))) -> [o_orderkey:long, o_custkey:long, o_orderdate:date]
-    ↓ Filter(((#2>=lit(8766:date)) and (#2<lit(9131:date))), keep=0,1) -> [o_orderkey:long, o_custkey:long]
+    Scan[orders](columns=o_orderkey,o_custkey filter=And(Compare(o_orderdate,GtEq,1994-01-01),Compare(o_orderdate,Lt,1995-01-01)) row_filter=And(Compare(o_orderdate,GtEq,1994-01-01),Compare(o_orderdate,Lt,1995-01-01))) -> [o_orderkey:long, o_custkey:long]
     ↓ Morsel[parallelism=N] -> [o_orderkey:long, o_custkey:long]
   ↙ HashJoin[Inner](#0 = #0) -> [l_orderkey:long, l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2), o_orderkey:long, o_custkey:long]
   ↓ Project(#5, #1, #2, #3) -> [o_custkey:long, l_suppkey:long, l_extendedprice:decimal(15,2), l_discount:decimal(15,2)]

@@ -92,6 +92,7 @@ object Lowering:
       dictionaryEntries: Boolean = false,
       lazyStrings: Boolean = false,
       selectiveRowFilters: Boolean = false,
+      maxRowFilterSelectivity: Double = ScanFilters.MaxRowFilterSelectivity,
       maskedCaseWhen: Boolean = false,
       windowSharePartitions: Boolean = false,
       constCaseSelect: Boolean = false,
@@ -124,6 +125,7 @@ object Lowering:
       dictionaryEntries,
       lazyStrings,
       selectiveRowFilters,
+      maxRowFilterSelectivity,
       maskedCaseWhen,
       windowSharePartitions,
       constCaseSelect,
@@ -174,6 +176,7 @@ object Lowering:
       dictionaryEntries: Boolean,
       lazyStrings: Boolean,
       selectiveRowFilters: Boolean,
+      maxRowFilterSelectivity: Double,
       maskedCaseWhen: Boolean,
       windowSharePartitions: Boolean,
       constCaseSelect: Boolean,
@@ -231,6 +234,7 @@ object Lowering:
               dictionaryEntries = dictionaryEntries,
               lazyStrings = lazyStrings,
               selectiveRowFilters = selectiveRowFilters,
+              maxRowFilterSelectivity = maxRowFilterSelectivity,
               maskedCaseWhen = maskedCaseWhen,
               constCaseSelect = constCaseSelect,
               caseAggFilters = caseAggFilters,
@@ -360,8 +364,7 @@ object Lowering:
                 valueSelectivity
               )
               val selective =
-                !selectiveRowFilters || moved.isEmpty ||
-                  passRate <= ScanFilters.MaxRowFilterSelectivity
+                !selectiveRowFilters || moved.isEmpty || passRate <= maxRowFilterSelectivity
               if !selective then
                 filterOver(scan, expr(cond, positions(s)))
               else
