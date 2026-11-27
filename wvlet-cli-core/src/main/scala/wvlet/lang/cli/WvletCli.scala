@@ -120,7 +120,8 @@ object WvletCli:
   /** Commands that only the JVM CLI (`WvletMain`) has */
   val jvmOnlyCommands: Set[String] = Set("ui", "flow", "catalog")
 
-  // Global options that take a value, so their value is not taken for the command name
+  // The options of WvletCliGlobalOption that take a value, so their value is not taken for the
+  // command name. Update together with WvletCliGlobalOption
   private val globalOptionsWithValue = Set("-l", "--loglevel", "-L")
 
   /**

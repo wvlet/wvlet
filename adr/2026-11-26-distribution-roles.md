@@ -1,6 +1,6 @@
 # ADR: npm is the default wvlet CLI, and the JVM CLI is the server and ops package
 
-Date: 2026-11-26 · PR #TBD
+Date: 2026-11-26 · PR #2543
 
 ## Context
 
@@ -19,5 +19,6 @@ Date: 2026-11-26 · PR #TBD
 
 ## Consequences
 
+- This supersedes adr/2026-11-18's statement that Homebrew and the release tarball are the way to get `wvlet build`: npm has it too, one model at a time. They remain the way to get `flow`, `catalog`, and `ui`.
 - An npm user who moves to the Homebrew package loses the bundled DuckDB; the migration steps point DuckDB and Snowflake users to `wvlet-cli-full`.
 - A new JVM-only command must be added to `WvletCli.jvmOnlyCommands`.
