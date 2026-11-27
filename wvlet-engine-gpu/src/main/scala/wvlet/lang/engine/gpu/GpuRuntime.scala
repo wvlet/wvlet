@@ -137,6 +137,12 @@ enum GpuFeature(val featureName: String):
     */
   case InlineCTEs extends GpuFeature("inline_ctes")
 
+  /**
+    * Run `any_value` in group-bys, which the CPU planner adds for group keys that another key
+    * determines (TPC-H q10's customer columns, grouped by c_custkey)
+    */
+  case AnyValue extends GpuFeature("any_value")
+
 end GpuFeature
 
 object GpuFeature:

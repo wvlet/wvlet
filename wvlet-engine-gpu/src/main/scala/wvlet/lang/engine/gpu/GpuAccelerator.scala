@@ -2335,7 +2335,7 @@ private[gpu] object GpuPlans:
     val n = c.name.toLowerCase
     n == "count" || n == "count_star"
 
-  private def aggSupported(c: AggregateCall): Boolean =
+  private def aggSupported(c: AggregateCall)(using cfg: GpuConfig): Boolean =
     c.filter.isEmpty && {
       c.name.toLowerCase match
         case "count_star" =>
@@ -2344,6 +2344,9 @@ private[gpu] object GpuPlans:
           c.args.size <= 1
         case "sum" | "avg" | "mean" | "min" | "max" =>
           !c.distinct && c.args.size == 1 && aggInputType(c).isDefined
+        case "any_value" | "arbitrary" =>
+          // A dependent group key's value (TPC-H q10 groups by c_custkey alone): any one per group
+          !c.distinct && c.args.size == 1 && cfg.isEnabled(GpuFeature.AnyValue)
         case _ =>
           false
     }
@@ -2390,6 +2393,8 @@ private[gpu] object GpuPlans:
         GroupByAggregation.mean()
       case "min" =>
         GroupByAggregation.min()
+      case "any_value" | "arbitrary" =>
+        GroupByAggregation.nth(0, NullPolicy.EXCLUDE)
       case _ =>
         GroupByAggregation.max()
 

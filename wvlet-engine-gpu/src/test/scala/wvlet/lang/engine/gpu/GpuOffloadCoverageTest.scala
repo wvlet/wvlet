@@ -17,6 +17,7 @@ import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.engine.catalog.BenchmarkKeys
 import wvlet.lang.engine.EngineConformance
 import wvlet.lang.engine.EngineTPCHBench
 import wvlet.lang.engine.exec.Operator
@@ -65,7 +66,11 @@ class GpuOffloadCoverageTest extends UniTest:
   private val conformance = EngineConformance(
     "spec/tpch",
     tables.map(t => s"create view ${t} as select * from '${dataDir}/${t}.parquet'"),
-    engine => tables.foreach(t => engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet")),
+    // With the keys the benchmark declares, which change plan shapes (q10's dependent group keys)
+    engine =>
+      tables.foreach(t =>
+        engine.catalog.registerParquet(t, s"${dataDir}/${t}.parquet", BenchmarkKeys.of("tpch", t))
+      ),
     accelerator = Some(recorder)
   )
 
@@ -111,10 +116,12 @@ class GpuOffloadCoverageTest extends UniTest:
     unexpected shouldBe Nil
   }
 
-  // The GPU executor runs no window functions (q2's and q17's correlated min and avg become windows)
+  // The GPU executor runs no window functions (q2's and q17's correlated min and avg, and a part of
+  // q16 with declared keys, become windows)
   // and no cross joins (q2's join with its plan-time minimum)
   private val knownBlockers = Map(
     "q2"  -> Set("Join: join kind Cross", "Window"),
+    "q16" -> Set("Window"),
     "q17" -> Set("Window")
   )
 
