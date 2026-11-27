@@ -37,6 +37,7 @@ class IcebergFilesTest extends UniTest:
   private val options = OptimizerOptions().withValidatePlans(true)
   private val on      = WvletEngine(optimizer = options)
   private val off     = on.withOptimizer(options.withDisabled(Optimization.DatasetFileScans))
+  private val perFile = on.withOptimizer(options.withDisabled(Optimization.IcebergRowGroups))
 
   private val root = Paths.get("target/engine-test/iceberg_files").toAbsolutePath
 
@@ -113,7 +114,7 @@ class IcebergFilesTest extends UniTest:
     finally splits.close()
 
   test("split an Iceberg table into its data files, with the manifests' statistics") {
-    val src = ParquetSource("t", table)
+    val src = ParquetSource("t", table).withoutIcebergRowGroups
     src.canSplit shouldBe true
     src.supportsRowFilter shouldBe true
     src.estimatedRows shouldBe Some(16384L)
@@ -133,7 +134,7 @@ class IcebergFilesTest extends UniTest:
   }
 
   test("skip the data files the manifests' statistics exclude, and filter rows exactly") {
-    val src = ParquetSource("t", table)
+    val src = ParquetSource("t", table).withoutIcebergRowGroups
     val ge  = ScanSpec(Some(Seq("id")), filter = Some(ParquetFilter.col("id") >= 8192L))
     splitIds(src, ge).map(_.min).sorted shouldBe Seq(8192L, 12288L)
     val exact = ScanSpec(
@@ -142,6 +143,48 @@ class IcebergFilesTest extends UniTest:
     )
     splitIds(src, exact).flatten.sorted shouldBe (4090L until 4100L)
     ids(src, exact).sorted shouldBe (4090L until 4100L)
+  }
+
+  test("split an Iceberg table of plain files into their row groups") {
+    val src = ParquetSource("t", table)
+    src.canSplit shouldBe true
+    src.supportsRowFilter shouldBe true
+    src.estimatedRows shouldBe Some(16384L)
+    src.columnRange("id") shouldBe Some((0L, 16383L))
+    val spec = ScanSpec(Some(Seq("id")))
+    // One part per row group, with row counts from the files' footers (the dataset reader's parts
+    // have none)
+    val splits = src.scanSplits(spec).getOrElse(fail("no splits"))
+    try splits.rows shouldBe Seq.fill(4)(4096L)
+    finally splits.close()
+    splitIds(src, spec).flatten.sorted shouldBe (0L until 16384L)
+    val exact = spec.copy(rowFilter =
+      Some(ParquetFilter.col("id") >= 4090L && ParquetFilter.col("id") < 4100L)
+    )
+    ids(src, exact).sorted shouldBe (4090L until 4100L)
+  }
+
+  test("read a table with deleted rows file by file through the dataset reader") {
+    val dir = root.resolve("deleted")
+    clean(dir)
+    (0 until 2).foreach { i =>
+      val file = root.resolve("input").resolve(s"del-${i}.parquet")
+      write(file, i * 4096, 4096)
+      val src     = ParquetSource("input", file.toString)
+      val batches = src.scan(ScanSpec()).toSeq
+      if i == 0 then
+        IcebergWriter.create(dir.toString, src.schema, batches, Map.empty)
+      else
+        IcebergWriter.append(dir.toString, src.schema, batches)
+    }
+    wvlet.uni.cloud.iceberg.Iceberg.deleteRows(dir.toString, ParquetFilter.col("id") < 10L)
+    val src = ParquetSource("t", dir.toString)
+    // One part per data file: a plain read would return the deleted rows
+    splitIds(src, ScanSpec(Some(Seq("id")))).size shouldBe 2
+    ids(src, ScanSpec(Some(Seq("id")))).size shouldBe 8182
+    val q = s"from '${dir}' select count(*), min(id)"
+    rows(on, q) shouldBe Seq("8182,10")
+    rows(off, q) shouldBe rows(on, q)
   }
 
   test("return the same rows with dataset_file_scans on and off") {
@@ -156,6 +199,7 @@ class IcebergFilesTest extends UniTest:
       val r = rows(on, q)
       r.nonEmpty shouldBe true
       r shouldBe rows(off, q)
+      r shouldBe rows(perFile, q)
     }
   }
 

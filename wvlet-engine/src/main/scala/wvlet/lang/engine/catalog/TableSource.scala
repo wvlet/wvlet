@@ -224,7 +224,8 @@ class ParquetSource(
     declaredKeys: Seq[Seq[String]] = Nil,
     val folderFiles: Boolean = true,
     val datasetFiles: Boolean = true,
-    val partitionRowFilters: Boolean = true
+    val partitionRowFilters: Boolean = true,
+    val icebergRowGroups: Boolean = true
 ) extends TableSource:
   override def key: Any = ("parquet", path)
 
@@ -316,7 +317,26 @@ class ParquetSource(
     */
   private def openFiles(l: FolderListing, ds: ParquetDataset): Option[FolderFiles] =
     if ParquetSource.isIcebergPath(path) then
-      Option.when(datasetFiles)(DatasetFiles.open(l, ds, schema)).flatten
+      if !datasetFiles then
+        None
+      else
+        // With iceberg_row_groups, files that read as plain files are a folder's single files;
+        // their partition columns are in the files
+        val plain =
+          if icebergRowGroups && ds.files.nonEmpty && ds.files.forall(ds.readsAsPlainFile) then
+            ParquetFolder.open(
+              name,
+              FolderListing(l.files),
+              ds,
+              footerCache,
+              schema,
+              columnTypes,
+              evolved = true,
+              table = true
+            )
+          else
+            None
+        plain.orElse(DatasetFiles.open(l, ds, schema))
     else if folderFiles && ds.tableProperties.isEmpty then
       // Files lacking some of the folder's columns only with dataset_file_scans
       ParquetFolder.open(name, l, ds, footerCache, schema, columnTypes, evolved = datasetFiles)
@@ -350,7 +370,8 @@ class ParquetSource(
         declaredKeys,
         folderFiles = false,
         datasetFiles,
-        partitionRowFilters
+        partitionRowFilters,
+        icebergRowGroups
       )
 
   /** This source without `datasetFiles`: an Iceberg table is read through uni's dataset reader */
@@ -365,7 +386,8 @@ class ParquetSource(
         declaredKeys,
         folderFiles,
         datasetFiles = false,
-        partitionRowFilters
+        partitionRowFilters,
+        icebergRowGroups
       )
 
   /** This source without `partitionRowFilters`: a partitioned folder takes no row filter */
@@ -380,7 +402,27 @@ class ParquetSource(
         declaredKeys,
         folderFiles,
         datasetFiles,
-        partitionRowFilters = false
+        partitionRowFilters = false,
+        icebergRowGroups
+      )
+
+  /**
+    * This source without `icebergRowGroups`: an Iceberg table is read file by file through uni's
+    * dataset reader even when its files read as plain files
+    */
+  lazy val withoutIcebergRowGroups: ParquetSource =
+    if isSingleFile || !icebergRowGroups then
+      this
+    else
+      ParquetSource(
+        name,
+        path,
+        footerCache,
+        declaredKeys,
+        folderFiles,
+        datasetFiles,
+        partitionRowFilters,
+        icebergRowGroups = false
       )
 
   /** Open the single file, through the footer cache when `cached` */

@@ -88,6 +88,7 @@ class OptimizerOptionsTest extends UniTest:
         "folder_file_scans",
         "dataset_file_scans",
         "partition_row_filters",
+        "iceberg_row_groups",
         "unmatched_left_probe",
         "probe_miss_filter",
         "left_match_prefilter",

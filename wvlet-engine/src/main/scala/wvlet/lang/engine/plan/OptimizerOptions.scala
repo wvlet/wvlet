@@ -345,6 +345,15 @@ enum Optimization(val name: String):
   case PartitionRowFilters extends Optimization("partition_row_filters")
 
   /**
+    * An Iceberg table whose data files all read as plain Parquet files (uni's
+    * `ParquetDataset.readsAsPlainFile`: no deletes, no renamed or dropped columns, no defaults) is
+    * read as a folder of single files (`ParquetFolder`) instead of file by file through uni's
+    * dataset reader: a scan splits into every file's row groups and tests a row filter while
+    * decoding, and planning reads the files' footers. Needs `dataset_file_scans`
+    */
+  case IcebergRowGroups extends Optimization("iceberg_row_groups")
+
+  /**
     * A LEFT hash join under a filter that tests one of its build key columns for NULL emits only
     * its unmatched probe rows, in probe order, with NULL build columns: a matched row's build key
     * equals a non-NULL probe key, so the filter drops every matched pair. The join skips the match

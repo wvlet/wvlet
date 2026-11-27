@@ -192,6 +192,8 @@ class EngineOptimizerToggleTest extends UniTest:
     // partitions holding one key value each, which the generated golden sources have none of
     Optimization.PartitionProbeScanCost ->
       "Changes join order only over Parquet parts holding one key value each",
+    // IcebergFilesTest checks that an Iceberg table of plain files splits into row groups
+    Optimization.IcebergRowGroups -> "Changes how an Iceberg table's files are read, not the plan",
     // EngineParallelColumnDecodeTest checks that the flag decodes a single row group's columns as
     // tasks, with the same rows
     Optimization.ParallelColumnDecode ->

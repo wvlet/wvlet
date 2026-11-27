@@ -60,6 +60,9 @@ private[catalog] case class FolderListing(
   * @param evolved
   *   whether a file lacks columns or holds them in another order, so that batches are put together
   *   by column name
+  * @param table
+  *   whether the files are an Iceberg table's that read as plain files (`iceberg_row_groups`),
+  *   listed again on every recheck since its deletes may change while its files don't
   */
 private[catalog] final class ParquetFolder(
     val files: IndexedSeq[ParquetSource],
@@ -67,8 +70,11 @@ private[catalog] final class ParquetFolder(
     dataset: ParquetDataset,
     schema: Schema,
     missing: IndexedSeq[Set[String]],
-    evolved: Boolean
+    evolved: Boolean,
+    table: Boolean = false
 ) extends FolderFiles:
+  // An Iceberg table's deletes may change while its files don't
+  override def reusable: Boolean = !table
 
   // The files holding column `column`
   private def holding(column: String): IndexedSeq[ParquetSource] = files
@@ -419,7 +425,8 @@ private[catalog] object ParquetFolder:
       footerCache: Boolean,
       schema: Schema,
       columns: IndexedSeq[(String, Any)],
-      evolved: Boolean = false
+      evolved: Boolean = false,
+      table: Boolean = false
   ): Option[ParquetFolder] =
     // The dataset's columns are the files' columns, then the partition keys
     val k           = listing.keys.size
@@ -433,7 +440,9 @@ private[catalog] object ParquetFolder:
     else
       val files = listing.files.map((p, _) => ParquetSource(name, p, footerCache))
       if files.forall(f => f.isSingleFile && f.columnTypes == fileColumns) then
-        Some(ParquetFolder(files, listing, dataset, schema, files.map(_ => Set.empty), false))
+        Some(
+          ParquetFolder(files, listing, dataset, schema, files.map(_ => Set.empty), false, table)
+        )
       else if evolved &&
         files.forall(f => f.isSingleFile && f.columnTypes.forall(fileColumns.contains))
       then
@@ -446,7 +455,8 @@ private[catalog] object ParquetFolder:
             dataset,
             schema,
             files.map(f => names.toSet -- f.columnTypes.map(_._1)),
-            evolved = true
+            evolved = true,
+            table
           )
         )
       else
