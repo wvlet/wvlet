@@ -15,9 +15,18 @@ package wvlet.lang.engine.plan
 
 /**
   * A condition over several inputs of a join graph, or over none (a constant), with the inputs it
-  * reads. An equality has its two sides with the inputs each side reads
+  * reads. An equality has its two sides with the inputs each side reads. Equalities of one
+  * equivalence class of columns (`implied_join_equalities`) share an `eqClass` (-1 for none): a
+  * join needs only one key of a class, as the inputs on each side already hold equal values of its
+  * columns. An `implied` equality follows from the others of its class and was not written
   */
-case class JoinEdge[C](cond: C, refs: Set[Int], sides: Option[JoinEdge.Sides[C]]):
+case class JoinEdge[C](
+    cond: C,
+    refs: Set[Int],
+    sides: Option[JoinEdge.Sides[C]],
+    eqClass: Int = -1,
+    implied: Boolean = false
+):
 
   /**
     * Whether this is an equality between the joined inputs and input i: one side reads only joined

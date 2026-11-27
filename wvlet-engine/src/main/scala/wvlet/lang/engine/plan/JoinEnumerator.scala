@@ -156,6 +156,30 @@ class JoinEnumerator(options: OptimizerOptions):
     val part1    = IndexedSeq.newBuilder[Boolean]
     val part2    = IndexedSeq.newBuilder[Boolean]
     val partCost = dp.share != null
+    // The keys of an equivalence class (`implied_join_equalities`) are estimated as one key, each
+    // side by the fewest distinct values of its columns, as they hold equal values; classes with
+    // a grouped key are estimated by the group
+    var classDistinct: Map[Int, (Option[Double], Option[Double])] = Map.empty
+    var groupedClasses                                            = Set.empty[Int]
+    if grouped != 0L then
+      edges.foreach { e =>
+        if e.eqClass >= 0 && e.group >= 0 && (grouped & (1L << e.group)) != 0 then
+          e.placement(s1, s2) match
+            case Placement.Key | Placement.SwappedKey =>
+              groupedClasses += e.eqClass
+            case _ =>
+      }
+    def classKey(e: Edge, l: Option[Double], r: Option[Double]): Unit =
+      if !groupedClasses.contains(e.eqClass) then
+        def fewest(a: Option[Double], b: Option[Double]): Option[Double] =
+          if a.isEmpty then
+            b
+          else if b.isEmpty then
+            a
+          else
+            Some(math.min(a.get, b.get))
+        val (pl, pr) = classDistinct.getOrElse(e.eqClass, (None, None))
+        classDistinct = classDistinct.updated(e.eqClass, (fewest(pl, l), fewest(pr, r)))
     edges.foreach { e =>
       val placement = e.placement(s1, s2)
       if probeScanCost || partCost then
@@ -179,6 +203,12 @@ class JoinEnumerator(options: OptimizerOptions):
         case Placement.Key | Placement.SwappedKey
             if e.group >= 0 && (grouped & (1L << e.group)) != 0 =>
           keys += 1
+        case Placement.Key if e.eqClass >= 0 =>
+          keys += 1
+          classKey(e, e.leftDistinct, e.rightDistinct)
+        case Placement.SwappedKey if e.eqClass >= 0 =>
+          keys += 1
+          classKey(e, e.rightDistinct, e.leftDistinct)
         case Placement.Key =>
           keys += 1
           d1 += e.leftDistinct
@@ -191,6 +221,13 @@ class JoinEnumerator(options: OptimizerOptions):
           filters += 1
         case Placement.Below =>
     }
+    classDistinct
+      .toSeq
+      .sortBy(_._1)
+      .foreach { case (_, (l, r)) =>
+        d1 += l
+        d2 += r
+      }
     if keys > 0 then
       var out = CardinalityEstimator.joinOutputRows(
         dp.rows(s1),
@@ -418,11 +455,15 @@ class JoinEnumerator(options: OptimizerOptions):
       val right   = build(g, search, edges, dp, r)
       val pairs   = ListBuffer.empty[(C, C)]
       val filters = ListBuffer.empty[C]
+      // One key per equivalence class: the others hold by the equalities below this join
+      val classes = scala.collection.mutable.Set.empty[Int]
       // The placements the join was costed with
       g.edges
         .zip(edges)
         .foreach { (je, e) =>
           e.placement(l, r) match
+            case Placement.Key | Placement.SwappedKey
+                if e.eqClass >= 0 && !classes.add(e.eqClass) =>
             case Placement.Key =>
               pairs += ((je.sides.get.left, je.sides.get.right))
             case Placement.SwappedKey =>
@@ -492,7 +533,9 @@ object JoinEnumerator:
       leftInput: Int = -1,
       group: Int = -1,
       leftPartition: Boolean = false,
-      rightPartition: Boolean = false
+      rightPartition: Boolean = false,
+      eqClass: Int = -1,
+      implied: Boolean = false
   ):
     private def isEqui: Boolean = left != 0
 
@@ -560,7 +603,7 @@ object JoinEnumerator:
       .indices
       .filter { i =>
         val e = edges(i)
-        e.isEquiPair && single(e.left) >= 0 && single(e.right) >= 0
+        e.isEquiPair && !e.implied && single(e.left) >= 0 && single(e.right) >= 0
       }
       .groupBy { i =>
         val (a, b) = (single(edges(i).left), single(edges(i).right))
@@ -630,7 +673,9 @@ object JoinEnumerator:
                 distinct(sd.right, sd.rightRefs),
                 leftInput = single(a),
                 leftPartition = partition(sd.left, sd.leftRefs),
-                rightPartition = partition(sd.right, sd.rightRefs)
+                rightPartition = partition(sd.right, sd.rightRefs),
+                eqClass = e.eqClass,
+                implied = e.implied
               )
             else
               Edge(refs, 0, 0, None, None)

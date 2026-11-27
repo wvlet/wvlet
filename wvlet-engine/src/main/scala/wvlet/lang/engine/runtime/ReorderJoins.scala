@@ -16,6 +16,7 @@ package wvlet.lang.engine.runtime
 import wvlet.lang.engine.exec.JoinKind
 import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.CmpOp
+import wvlet.lang.engine.expr.ColRef
 import wvlet.lang.engine.expr.Compare
 import wvlet.lang.engine.plan.CardinalityEstimator
 import wvlet.lang.engine.plan.JoinEdge
@@ -25,6 +26,8 @@ import wvlet.lang.engine.plan.JoinSearch
 import wvlet.lang.engine.plan.KeyCoverage
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
+
+import scala.collection.mutable
 
 /**
   * Orders inner joins: replaces each [[RuntimePlan.InnerJoins]], from the bottom up, with a tree of
@@ -208,7 +211,14 @@ object ReorderJoins extends Pass:
             JoinEdge(c.cond, r, sides)
         }
         .toList
-    val graph                   = JoinGraph(pushed.map(_._1), pushed.map(_._2), edges)
+    val graph = JoinGraph(
+      pushed.map(_._1),
+      pushed.map(_._2),
+      if options.isEnabled(Optimization.ImpliedJoinEqualities) then
+        withImpliedEqualities(edges, owner, ctx)
+      else
+        edges
+    )
     val (tree, remaining, rows) = JoinOrderOptimizer(options).planWithRows(graph, Search(options))
     if remaining.isEmpty then
       (tree, rows)
@@ -216,6 +226,94 @@ object ReorderJoins extends Pass:
       (Filter(tree, and(remaining)), rows)
 
   end orderTree
+
+  /**
+    * `edges` with the equalities that follow from their column equalities
+    * (`implied_join_equalities`): the columns that `=` edges between two inputs connect form
+    * equivalence classes, and every two columns of a class on different inputs not yet equal by an
+    * edge get one, marked `implied`. The edges of a class share its `eqClass`. Only classes of
+    * three or more columns of one type, each from a different input, as the equality of two columns
+    * of one input would be a filter the graph has no place for
+    */
+  private[runtime] def withImpliedEqualities(
+      edges: List[JoinEdge[BExpr]],
+      owner: Map[ColumnId, Int],
+      ctx: OptimizerContext
+  ): List[JoinEdge[BExpr]] =
+    def input(c: ColRef): Int               = owner.getOrElse(ColumnId(c.index), -1)
+    def colRef(side: BExpr): Option[ColRef] =
+      side.expr match
+        case c: ColRef if input(c) >= 0 =>
+          Some(c)
+        case _ =>
+          None
+    val pairs = edges.map(e =>
+      e.sides
+        .flatMap(sd => colRef(sd.left).zip(colRef(sd.right)))
+        .filter((a, b) => a.ptype == b.ptype && input(a) != input(b))
+    )
+    // Union-find over the column ids of the equalities
+    val column            = mutable.Map.empty[Int, ColRef]
+    val parent            = mutable.Map.empty[Int, Int]
+    def find(c: Int): Int =
+      val p = parent.getOrElseUpdate(c, c)
+      if p == c then
+        c
+      else
+        val root = find(p)
+        parent(c) = root
+        root
+    pairs
+      .flatten
+      .foreach { (a, b) =>
+        column(a.index) = a
+        column(b.index) = b
+        parent(find(a.index)) = find(b.index)
+      }
+    val classes = parent
+      .keys
+      .toSeq
+      .groupBy(find)
+      .values
+      .map(_.sorted.map(column))
+      .filter(m => m.size >= 3 && m.map(input).distinct.size == m.size)
+      .toSeq
+      .sortBy(_.head.index)
+    if classes.isEmpty then
+      edges
+    else
+      ctx.fired(Optimization.ImpliedJoinEqualities.name)
+      val classOf = classes.zipWithIndex.flatMap((m, k) => m.map(_.index -> k)).toMap
+      val written = edges
+        .zip(pairs)
+        .map {
+          case (e, Some((a, _))) if classOf.contains(a.index) =>
+            e.copy(eqClass = classOf(a.index))
+          case (e, _) =>
+            e
+        }
+      val present =
+        pairs.flatten.flatMap((a, b) => Seq((a.index, b.index), (b.index, a.index))).toSet
+      val implied =
+        for
+          (members, k) <- classes.zipWithIndex
+          i            <- members.indices
+          j            <- i + 1 until members.size
+          (a, b) = (members(i), members(j))
+          if !present.contains((a.index, b.index))
+        yield
+          val (ia, ib) = (input(a), input(b))
+          JoinEdge(
+            BExpr(Compare(CmpOp.Eq, a, b)),
+            Set(ia, ib),
+            Some(JoinEdge.Sides(BExpr(a), Set(ia), BExpr(b), Set(ib))),
+            eqClass = k,
+            implied = true
+          )
+      written ++ implied
+    end if
+
+  end withImpliedEqualities
 
   private def and(conds: Seq[BExpr]): BExpr = BExpr(conds.map(_.expr).reduce(AndExpr(_, _)))
 

@@ -1151,6 +1151,17 @@ enum Optimization(val name: String):
     */
   case MatchCopiedSubqueryScans extends Optimization("match_copied_subquery_scans")
 
+  /**
+    * The join search also joins inputs by the equalities that follow from the written ones: column
+    * equalities of inner joins form equivalence classes, and every two columns of a class on
+    * different inputs may be a join key ([[wvlet.lang.engine.plan.JoinEdge.eqClass]]). A join keys
+    * on one column pair per class, and its rows are estimated once per class. TPC-H q5 writes
+    * `c_nationkey = s_nationkey and s_nationkey = n_nationkey`, so customer joined only through
+    * supplier and came last, after the engine built all 2.3M orders of the year; with
+    * `c_nationkey = n_nationkey`, ASIA's 300K customers filter the orders first, as in DuckDB
+    */
+  case ImpliedJoinEqualities extends Optimization("implied_join_equalities")
+
 end Optimization
 
 object Optimization:
