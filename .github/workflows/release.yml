@@ -64,6 +64,44 @@ jobs:
           "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
           "wvlet-cli-full/target/wvlet-cli-full-${VERSION}.tar.gz" \
           --clobber --repo="$GITHUB_REPOSITORY"
+  platform_packages:
+    # wvlet-cli-(version)-(os)-(arch).tar.gz: the lite CLI plus a jlink'd Java runtime, so that
+    # Homebrew needs no openjdk formula. Each runtime is linked and smoke-tested on its own
+    # platform. See design/releasing.md.
+    name: Package wvlet-cli for ${{ matrix.platform }}
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            runner: macos-15
+          - platform: macos-x64
+            runner: macos-15-intel
+          - platform: linux-x64
+            runner: ubuntu-24.04
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+      - name: Build and upload wvlet-cli-(version)-${{ matrix.platform }}.tar.gz
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          mkdir -p target/release
+          gh release download "$GITHUB_REF_NAME" --repo="$GITHUB_REPOSITORY" \
+            --pattern "wvlet-cli-${VERSION}.tar.gz" --dir target/release
+          .github/scripts/add-jlink-runtime.sh "target/release/wvlet-cli-${VERSION}.tar.gz" \
+            "target/release/wvlet-cli-${VERSION}-${{ matrix.platform }}.tar.gz"
+          gh release upload "$GITHUB_REF_NAME" \
+            "target/release/wvlet-cli-${VERSION}-${{ matrix.platform }}.tar.gz" \
+            --clobber --repo="$GITHUB_REPOSITORY"
   publish:
     name: Publish to repo.wvlet.org
     runs-on: ubuntu-latest
@@ -132,7 +170,8 @@ jobs:
 
   homebrew:
     name: Update homebrew-wvlet
-    needs: release
+    # The formula downloads the per-platform packages, so wait for all of them
+    needs: [release, platform_packages]
     runs-on: ubuntu-latest
     steps:
       - name: Generate token
