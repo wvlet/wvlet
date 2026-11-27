@@ -162,7 +162,7 @@ wvlet repl [-p <profile>] [-t <engine>] [-c <command>] [-f <file>]
 
 ### `wvlet build`
 
-*JVM CLI.* Build materialized models in dependency order. See [Model Pipelines](../syntax/model-pipelines.md).
+Build materialized models in dependency order. The npm and Native `wvlet` build one model at a time; see [Model Pipelines](../syntax/model-pipelines.md) for what only the JVM CLI does.
 
 ```bash
 wvlet build [options]
@@ -175,8 +175,10 @@ wvlet build [options]
 | `-w <folder>` | Project folder with .wv files (default: current folder) |
 | `-s, --select <selectors>` | Models to build, comma-separated: `m`, `m+` (with downstream), `+m` (with upstream) |
 | `--dry-run` | Print the build order and SQL without running anything |
-| `--profile <name>` | Profile to use |
+| `-p, --profile <name>` | Profile to use |
+| `-t, --target <engine>` | Engine to use without a profile: `wvlet` (default), `duckdb`, ... |
 | `--catalog <name>`, `--schema <name>` | Context catalog and schema |
+| `--run-store <type>` | *JVM CLI.* Store of run records: `file` (default), `sqlite`, or `postgres` |
 
 **Examples:**
 

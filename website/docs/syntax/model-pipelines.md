@@ -89,8 +89,7 @@ directly or through ephemeral models. `wvlet build` reports such a cycle as a pa
 `Cyclic model dependency: a -> b -> a`) and builds nothing, even when the selection avoids the
 cycle.
 
-`wvlet build` uses the same options as [`wvlet flow`](flow.md#wvlet-flow-cli): `-w <folder>`,
-`-t <engine>`, `--profile`, `--catalog`, `--schema`, and `--run-store`. Builds run on the
+`wvlet build` takes `-w <folder>`, `-t <engine>`, `-p, --profile`, `--catalog`, `--schema`, and, on the JVM CLI, `--run-store`, as [`wvlet flow`](flow.md#wvlet-flow-cli) does. Builds run on the
 in-process [wvlet engine](../engines/wvlet-engine.md) by default. The built tables persist as Iceberg
 tables in the project's `target/warehouse` folder, so later builds of a selection find their
 upstream models. A `wvlet` connector of a profile can set its own `warehouse` folder instead. When
@@ -100,7 +99,7 @@ of its own. `target/` is disposable:
 `append to` models whose history can't be rebuilt need an explicit `warehouse`. The engine can't
 build `view` models yet; build them on DuckDB with `wvlet build -t duckdb` or a DuckDB profile.
 
-A build runs on the flow executor as a flow named `build`, with one stage per model:
+On the JVM CLI, a build runs on the flow executor as a flow named `build`, with one stage per model:
 
 - Models that don't depend on each other build in parallel.
 - A failed model is retried as its config says. Models downstream of a failure are skipped, and the
@@ -109,6 +108,16 @@ A build runs on the flow executor as a flow named `build`, with one stage per mo
   builds.
 - If a selection reads a materialized model that has never been built, the build stops before
   running anything and names the models to build first.
+
+The npm and Native `wvlet` build the same models into the same `target/warehouse`, and print the same result, with these differences:
+
+- Models build one at a time, in build order.
+- `retries`, `retry_delay`, `backoff`, and `max_retry_delay` apply, but `timeout` is not enforced (a warning says so), so a slow attempt isn't stopped or retried.
+- Runs aren't recorded, and `--run-store` is an error.
+- A model can't read a model built on another `engine:`; the JVM CLI copies such tables between engines.
+- Engines are the wvlet engine, DuckDB, and Trino; Snowflake and other JDBC connectors need the JVM CLI.
+
+The built tables are read by later builds. To query them with `wvlet run` or the REPL, use a profile whose `wvlet` connector sets `warehouse` to the build's folder; `-t duckdb` builds into an in-memory database that is gone when the command ends, so persist DuckDB builds with a profile that sets a database `path`.
 
 To recover from a failure, fix the model and run `wvlet build` again, or rerun only the failed part
 with a selector such as `wvlet build -s failed_model+`.

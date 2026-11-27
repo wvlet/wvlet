@@ -58,7 +58,7 @@ Name lookup, coercion, operator typing, SELECT folding, and rewrites have Lean m
 
 ## Runner
 
-`wvlet-runner` drives a compiled plan: it evaluates each statement through a connector (generated SQL) or a `WvletEngineSession` (the default when no target is given), prints results, and checks `test` assertions. It also runs `wvlet build` models as flows and the activity item state machine (`ItemStore`, `TaskQueue`, `BatchExecutor`).
+`wvlet-runner` drives a compiled plan: it evaluates each statement through a connector (generated SQL) or a `WvletEngineSession` (the default when no target is given), prints results, and checks `test` assertions. It also builds `wvlet build` models: as flows on the JVM, and one at a time with the shared `ModelBuilder` on npm and Native. It runs the activity item state machine (`ItemStore`, `TaskQueue`, `BatchExecutor`).
 
 ## Reading map
 

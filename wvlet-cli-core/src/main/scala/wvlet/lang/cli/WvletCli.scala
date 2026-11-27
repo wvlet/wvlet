@@ -1,10 +1,14 @@
 package wvlet.lang.cli
 
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.cli.terminal.HeadlessTerminal
 import wvlet.lang.cli.terminal.UniTerminal
+import wvlet.lang.runner.FlowExecutionResult
+import wvlet.lang.runner.ModelBuildPlan
+import wvlet.lang.runner.ModelBuilder
 import wvlet.lang.runner.PlanExecutor
 import wvlet.lang.runner.PlanScriptRunner
 import wvlet.lang.runner.QueryResult
@@ -18,7 +22,7 @@ import wvlet.uni.cli.TerminalIO
   *
   * Each platform (JVM, Node.js, Native) wires its own `main` that reads argv and dispatches through
   * `Launcher.of[WvletCli]`. The JVM CLI's `WvletMain` implements the same commands with the JVM
-  * connectors, runs the REPL on them, and adds `ui`, `build`, `flow`, and `catalog`.
+  * connectors, runs the REPL and builds on them, and adds `ui`, `flow`, and `catalog`.
   */
 class WvletCli(opts: WvletCliGlobalOption) extends WvletCliCommands:
 
@@ -47,6 +51,32 @@ class WvletCli(opts: WvletCliGlobalOption) extends WvletCliCommands:
       executor.execute(plan, ctx)
     finally
       provider.close()
+
+  /**
+    * Builds models one at a time on the caller with the cross-platform [[ModelBuilder]]. Run
+    * records are a JVM CLI feature, so `--run-store` is rejected
+    */
+  override protected def executeBuild(
+      opt: WvletBuildOption,
+      plan: ModelBuildPlan,
+      profile: Profile,
+      workEnv: WorkEnv
+  ): FlowExecutionResult =
+    if opt.runStore.isDefined then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException("--run-store needs the JVM wvlet CLI, which records build runs")
+    val builder = ModelBuilder(profile, workEnv)
+    try builder.build(plan)
+    finally builder.close()
+
+  // Without -l or --debug, keep the per-model progress logs out of the output: off the JVM they
+  // print to the console instead of a log file
+  override protected def buildLogLevel: wvlet.uni.log.LogLevel =
+    if opts.debugMode || opts.logLevelName.isDefined then
+      opts.logLevel
+    else
+      wvlet.uni.log.LogLevel.WARN
 
   /**
     * The REPL over the cross-platform [[PlanScriptRunner]]. On Node.js this returns while the REPL

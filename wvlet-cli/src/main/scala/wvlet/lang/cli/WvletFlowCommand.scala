@@ -43,6 +43,8 @@ import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.FlowScheduleConfig
 import wvlet.lang.runner.FlowScheduler
 import wvlet.lang.runner.ModelBuildLauncher
+import wvlet.lang.runner.ModelBuildPlan
+import wvlet.lang.runner.FlowExecutionResult
 import wvlet.lang.runner.activity.ItemStore
 import wvlet.lang.runner.activity.ItemStores
 import wvlet.lang.runner.ScheduledFlow
@@ -76,20 +78,13 @@ case class WvletFlowOption(
     * (e.g. `-t duckdb`), and otherwise the in-process wvlet engine. In-process `wvlet` connectors
     * without a `warehouse` persist their tables in the work folder's `target/warehouse`
     */
-  def resolveProfile: Profile =
-    val resolved =
-      targetDBType match
-        case Some(target) =>
-          if profile.isDefined then
-            throw StatusCode
-              .INVALID_ARGUMENT
-              .newException("Specify either -t (--target) or --profile")
-          Profile.defaultProfileFor(DBType.fromString(target)).withEngineOverrides(catalog, schema)
-        case None =>
-          Profile.getProfile(profile, catalog, schema, default = Profile.defaultWvletProfile)
-    resolved.withDefaultWarehouse(
-      java.nio.file.Path.of(WorkEnv(workFolder).warehouseFolder).toAbsolutePath.normalize.toString
-    )
+  def resolveProfile: Profile = ModelBuildPlan.resolveProfile(
+    workFolder,
+    profile,
+    targetDBType,
+    catalog,
+    schema
+  )
 
 end WvletFlowOption
 
@@ -165,39 +160,23 @@ class WvletFlowCommand(opts: WvletCliGlobalOption) extends LogSupport:
     * `wvlet build`: build the materialized models of the working folder in dependency order. The
     * build runs as a flow named `build`, so its runs appear in `wvlet flow session list`
     */
-  private[cli] def build(
-      flowOption: WvletFlowOption,
-      select: Option[String],
-      dryRun: Boolean
-  ): Unit =
-    val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
-    val profile = flowOption.resolveProfile
-    // Selectors are comma-split by ModelGraph.select
-    val plan = ModelBuildLauncher.plan(
-      flowOption.workFolder,
-      workEnv,
-      select.toList,
-      profile.defaultEngine.dbType
-    )
-    if dryRun then
-      plan
-        .sqlStatements
-        .foreach { (m, statements) =>
-          println(s"-- ${m.name} (${m.spec.materialization.configName} -> ${m.targetName})")
-          statements.foreach(stmt => println(s"${stmt};"))
-          println()
-        }
-    else
-      var failed = false
-      Control.withResource(newRunStore(flowOption, workEnv)) { store =>
-        val result = ModelBuildLauncher.execute(plan, profile, workEnv, store)
-        println(result.toPrettyBox())
-        failed = result.hasError
-      }
-      if failed && !WvletMain.isInSbt then
-        System.exit(1)
-
-  end build
+  /**
+    * Run a planned `wvlet build` as a flow on the flow executor, recording the run in the store
+    * selected with --run-store (or the WVLET_FLOW_STORE environment)
+    */
+  private[cli] def executeBuild(
+      opt: WvletBuildOption,
+      plan: ModelBuildPlan,
+      profile: Profile,
+      workEnv: WorkEnv
+  ): FlowExecutionResult =
+    val store = opt
+      .runStore
+      .map(FlowRunStore.ofType(_, workEnv))
+      .getOrElse(FlowRunStore.forWorkEnv(workEnv))
+    Control.withResource(store) { store =>
+      ModelBuildLauncher.execute(plan, profile, workEnv, store)
+    }
 
   /** Create the run store selected with --run-store (or the WVLET_FLOW_STORE environment) */
   private def newRunStore(flowOption: WvletFlowOption, workEnv: WorkEnv): FlowRunStore = flowOption
