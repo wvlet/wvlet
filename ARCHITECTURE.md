@@ -30,7 +30,7 @@ flowchart LR
 | `wvlet-engine` | JVM, JS, Native | In-process columnar engine over uni's Parquet/Iceberg readers ([design](design/engine.md)) |
 | `wvlet-connector`, `wvlet-connector-duckdb`, `wvlet-connector-snowflake` | JVM | Connector interface and registry, Trino/Slack, optional JDBC connector modules ([design](design/connectors.md)) |
 | `wvlet-runner` | JVM, JS, Native | Executes compiled plans and `test` assertions; flows and activity items; the in-process `WvletEmbed` API ([embedding](design/embedding.md)) |
-| `wvlet-cli`, `wvlet-cli-core` | JVM (+JS, Native core) | The `wvlet` command: shared commands and options in `wvlet-cli-core` (`WvletCliCommands`), JVM-only commands and the REPL in `WvletMain`; `wv` (`WvletREPLMain`) is an alias of `wvlet repl` |
+| `wvlet-cli`, `wvlet-cli-core` | JVM (+JS, Native core) | The `wvlet` command: shared commands, options, and the REPL (`WvletREPL`) in `wvlet-cli-core`, JVM-only commands in `WvletMain`; the JVM REPL runs on `WvletScriptRunner` and npm/Native on `PlanScriptRunner`; `wv` (`WvletREPLMain`) is an alias of `wvlet repl` |
 | `wvc`, `wvc-lib` | Native | Standalone native compiler and the C library for C/C++/Rust bindings |
 | `wvlet-server`, `wvlet-http-server`, `wvlet-client` | JVM (+JS, Native client) | HTTP API server and client |
 | `wvlet-ui`, `wvlet-ui-main`, `wvlet-ui-playground` | JS | Scala.js + React web UI and the playground |

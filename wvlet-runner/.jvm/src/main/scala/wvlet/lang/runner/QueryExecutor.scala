@@ -13,9 +13,7 @@
  */
 package wvlet.lang.runner
 
-import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.connector.codec.JDBCCodec
-import wvlet.lang.api.LinePosition
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.ConnectorConfig
@@ -27,7 +25,6 @@ import wvlet.lang.compiler.codegen.SqlGenerator
 import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.query.QueryProgressMonitor
-import wvlet.lang.compiler.query.QuerySelector
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
@@ -279,25 +276,6 @@ class QueryExecutor(
         executeSingle(unit, result.context)
       case None =>
         throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${file}")
-
-  def executeSelectedStatement(
-      u: CompilationUnit,
-      querySelection: QuerySelection,
-      linePosition: LinePosition,
-      rootContext: Context
-  ): QueryResult =
-    workEnv.info(s"Executing ${u.sourceFile.fileName} (${linePosition}, ${querySelection})")
-    val targetStatement: LogicalPlan = QuerySelector.selectQuery(u, linePosition, querySelection)
-    trace(s"Selected statement: ${targetStatement}, ${querySelection}")
-    val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
-
-    val executionPlan = ExecutionPlanner.plan(u, targetStatement)(using ctx)
-    val result        = execute(executionPlan, ctx)
-
-    workEnv.info(s"Completed ${u.sourceFile.fileName}")
-    result
-
-  end executeSelectedStatement
 
   def executeSingle(u: CompilationUnit, rootContext: Context): QueryResult =
     workEnv.info(s"Executing ${u.sourceFile.fileName}")

@@ -13,24 +13,17 @@
  */
 package wvlet.lang.cli
 
-import wvlet.lang.compiler.OS
-import wvlet.lang.runner.ProcessUtil
 import wvlet.uni.log.LogSupport
 
-import java.io.BufferedWriter
-import java.io.OutputStreamWriter
-
+/**
+  * Copies text to the system clipboard with `pbcopy` (macOS)
+  */
 object Clipboard extends LogSupport:
 
   def saveToClipboard(str: String): Unit =
-    // Save query and result to clipboard (only for Mac OS, now)
-    if OS.isMacOS then
-      val proc = ProcessUtil.launchInteractiveProcess("pbcopy")
-      val out  = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()))
-      out.write(str)
-      out.flush()
-      out.close()
-      proc.waitFor()
+    // `sh` feeds the text file to pbcopy's stdin; $1 keeps the path out of the shell syntax
+    if TextCommand.run(str, "sh", "-c", "command -v pbcopy >/dev/null && pbcopy < \"$1\"", "sh")
+    then
       info(s"Clipped the output to the clipboard")
     else
-      warn("clip command is not supported other than Mac OS")
+      warn("clip needs pbcopy (macOS), which could not be run")

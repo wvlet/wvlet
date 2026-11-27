@@ -7,11 +7,12 @@ import wvlet.uni.cli.launcher.Launcher
   * surface ([[WvletCliCommands]]) as the JVM and Node entries.
   */
 object WvletCliMain:
+
   private def launcher: Launcher = Launcher.of[WvletCli]
 
   def main(args: Array[String]): Unit =
     try
-      launcher.execute(args)
+      launcher.execute(WvletCliCommands.withDefaultCommand(args))
     catch
       case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>
       // --version: the version is already printed

@@ -6,13 +6,18 @@ sidebar_position: 2
 
 # Interactive Shell
 
-Run `wvlet` with no arguments on a terminal (or `wvlet repl`) to launch an interactive query editor for the console. In the shell, you can write SQL queries, run them, and see the results interactively. `wv` is an alias of `wvlet repl`. The shell is part of the [JVM CLI](install.md#jvm-cli) for now; the npm `wvlet` will get it in a later release.
+Run `wvlet` with no arguments on a terminal (or `wvlet repl`) to launch an interactive query editor for the console. In the shell, you can write SQL queries, run them, and see the results interactively. The shell comes with every [distribution](install.md): npm and the JVM CLI, where `wv` is an alias of `wvlet repl`.
 
 ![wvlet shell](/img/demo.gif)
 
 :::note
-Line editing, history, and completion need Java 22 or later. On older JVMs, the shell reads input line by line without editing.
+On the JVM CLI, line editing, history, and completion need Java 22 or later. On older JVMs, the shell reads input line by line without editing.
 :::
+
+The npm `wvlet` runs the same shell on the in-process wvlet engine, DuckDB, and Trino. Compared with the JVM CLI:
+
+- Ctrl-C during a query exits `wvlet` instead of cancelling only the query.
+- Snowflake and other JDBC connectors, and flows, need the [JVM CLI](install.md#jvm-cli).
 
 Queries run on the in-process [wvlet engine](../engines/wvlet-engine.md) by default. Start the shell with `wvlet repl -t duckdb` to run on DuckDB instead (needed for `sql"..."` / `execute` statements and `.duckdb` files), or with `wvlet repl -p <name>` to use a [profile](cli-reference.md#profile-configuration).
 

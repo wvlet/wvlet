@@ -12,6 +12,7 @@ import scala.scalajs.js
   * }}}
   */
 object WvletCliMain:
+
   private def launcher: Launcher = Launcher.of[WvletCli]
 
   def main(args: Array[String]): Unit =
@@ -21,7 +22,7 @@ object WvletCliMain:
     val argv     = js.Dynamic.global.process.argv.asInstanceOf[js.Array[String]]
     val realArgs = argv.toArray.drop(2)
     try
-      launcher.execute(realArgs)
+      launcher.execute(WvletCliCommands.withDefaultCommand(realArgs))
     catch
       case e: Throwable if WvletCliCommands.isSuccessfulExit(e) =>
       // --version: the version is already printed

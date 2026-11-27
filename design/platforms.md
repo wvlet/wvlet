@@ -7,6 +7,8 @@ This page owns how cross-platform modules split shared and platform code, and ho
 - Cross-platform modules are sbt `crossProject`s. Shared code lives in `src/main/scala`; platform code in `.jvm/`, `.js/`, and `.native/src/main/scala`. Use `%%%` for cross-platform dependencies.
 - Platform differences go behind an `XXXCompat` trait: a shared `trait FileIOCompat`, a `trait FileIOCompatImpl extends FileIOCompat` per platform, and a shared `object Compat extends FileIOCompatImpl`. `IOCompat` is the model: Scala.js has no file I/O, and needs none.
 - Scala.js code must not use Java-specific libraries.
+- Code shared by the JVM and Native but not Scala.js (threads, blocking waits) goes in a `jvm-native/src/main/scala` folder added to both platforms' sources, as `wvlet-cli-core` does for the REPL's query threads (`REPLCompatImpl`).
+- The REPL is shared code in `wvlet-cli-core`. Node.js runs every query synchronously on the event loop, so its REPL can't cancel a running query: Ctrl-C there exits `wvlet`, and it registers no SIGINT listener while a query runs (a listener would only swallow the signal).
 - Compile a whole platform with `./sbt "projectJVM/Test/compile"`, `projectJS/...`, or `projectNative/...`.
 
 ## Native builds and libduckdb

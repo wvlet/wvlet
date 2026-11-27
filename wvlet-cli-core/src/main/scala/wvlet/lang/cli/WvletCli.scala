@@ -3,9 +3,13 @@ package wvlet.lang.cli
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.cli.terminal.HeadlessTerminal
+import wvlet.lang.cli.terminal.UniTerminal
 import wvlet.lang.runner.PlanExecutor
+import wvlet.lang.runner.PlanScriptRunner
 import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.connector.SqlConnectorProvider
+import wvlet.uni.cli.TerminalIO
 
 /**
   * The `wvlet` command of the npm and Native distributions: the shared [[WvletCliCommands]],
@@ -14,7 +18,7 @@ import wvlet.lang.runner.connector.SqlConnectorProvider
   *
   * Each platform (JVM, Node.js, Native) wires its own `main` that reads argv and dispatches through
   * `Launcher.of[WvletCli]`. The JVM CLI's `WvletMain` implements the same commands with the JVM
-  * connectors and adds the REPL, `ui`, `build`, `flow`, and `catalog`.
+  * connectors, runs the REPL on them, and adds `ui`, `build`, `flow`, and `catalog`.
   */
 class WvletCli(opts: WvletCliGlobalOption) extends WvletCliCommands:
 
@@ -43,5 +47,38 @@ class WvletCli(opts: WvletCliGlobalOption) extends WvletCliCommands:
       executor.execute(plan, ctx)
     finally
       provider.close()
+
+  /**
+    * The REPL over the cross-platform [[PlanScriptRunner]]. On Node.js this returns while the REPL
+    * keeps reading inputs, and the REPL closes its resources when it ends
+    */
+  override protected def startREPL(opt: WvletREPLOption): Unit =
+    val scripts       = opt.inputScripts
+    val isInteractive = scripts.isEmpty
+    // Without -l or --debug, keep the per-statement "Executing ..." logs out of the REPL: off the
+    // JVM they print to the console instead of the log file
+    val logLevel =
+      if opts.debugMode || opts.logLevelName.isDefined then
+        opts.logLevel
+      else
+        wvlet.uni.log.LogLevel.WARN
+    val workEnv = WorkEnv(opt.workFolder, logLevel = logLevel)
+    val runner  = PlanScriptRunner(
+      workEnv,
+      opt.resolveProfile,
+      interactive = isInteractive,
+      // The prompt hides the temp file's name: "(END)" at the end, ":" otherwise
+      pager = text => TextCommand.run(text, "less", "-FXRSn", "-Ps?e(END):\\:.")
+    )
+    val terminal =
+      if isInteractive then
+        UniTerminal(workEnv, TerminalIO.default)
+      else
+        HeadlessTerminal()
+    val repl = WvletREPL(runner, terminal)
+    REPLCompat.runToEnd(repl.start(scripts)) {
+      try repl.close()
+      finally runner.close()
+    }
 
 end WvletCli

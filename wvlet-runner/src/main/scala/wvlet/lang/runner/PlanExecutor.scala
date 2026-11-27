@@ -57,6 +57,14 @@ class PlanExecutor(
 
   private def activeConnector: SqlConnector = connectorProvider.getConnector(activeConfig)
 
+  // The REPL's `rows` command changes it between statements
+  private var currentRowLimit: Int = rowLimit
+
+  /** Set the maximum number of rows a query returns */
+  def setRowLimit(limit: Int): PlanExecutor =
+    currentRowLimit = limit
+    this
+
   // In-process engine sessions, one per wvlet connector config (tables saved in a session stay
   // visible to later statements). `initialEngineSessions` lets a caller that already compiles
   // against a session's catalog (WvletEmbed) run on that same session
@@ -72,7 +80,7 @@ class PlanExecutor(
   override def close(): Unit = engineSessions.clear()
 
   override protected def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
-    executeQuery(plan, rowLimit)
+    executeQuery(plan, currentRowLimit)
 
   override protected def executeQueryAllRows(plan: LogicalPlan)(using
       context: Context

@@ -750,10 +750,17 @@ lazy val sdkJs = project
 // (SqlConnector-based execution) — the JVM-only runtime (wvlet-server, flows, JDBC connectors)
 // stays out of the JS/Native bundles. The full-featured `wvlet` JVM command (run / ui / REPL)
 // is still produced by wvlet-cli, which can layer on top of this.
+lazy val cliCoreJvmNativeSources =
+  Compile / unmanagedSourceDirectories +=
+    (ThisBuild / baseDirectory).value / "wvlet-cli-core" / "jvm-native" / "src" / "main" / "scala"
+
 lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-cli-core"))
   .settings(buildSettings, noPublish, name := "wvlet-cli-core")
+  // REPL hooks shared by the JVM and Native, which both have threads
+  .jvmSettings(cliCoreJvmNativeSources)
+  .nativeSettings(cliCoreJvmNativeSources)
   .jsSettings(
     libraryDependencies += scalajsJavaSecureRandom,
     scalaJSUseMainModuleInitializer := true,

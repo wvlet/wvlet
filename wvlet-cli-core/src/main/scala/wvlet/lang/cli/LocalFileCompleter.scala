@@ -4,13 +4,15 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.uni.cli.Candidate
 import wvlet.uni.cli.Completer
 import wvlet.uni.cli.Completion
+import wvlet.uni.io.IO
 
-import java.io.File
+import scala.util.control.NonFatal
 
 /**
   * A simple completer that offers local filesystem paths when the cursor is inside a single-quoted
   * or double-quoted string literal, e.g., from 'pa<TAB>' or from "pa<TAB>". Paths are resolved
-  * relative to WorkEnv.path and only local (non-remote) suggestions are provided.
+  * relative to WorkEnv.path and only local (non-remote) suggestions are provided. Works on the JVM,
+  * Node.js, and Native.
   */
 case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
 
@@ -46,16 +48,22 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
       val afterQuote   = quoteStart + 1
       val prefixInWord = input.substring(afterQuote, cursor)
 
-      // Resolve base directory and the leaf prefix
-      val (baseDir, leafPrefix) =
+      // Resolve the typed directory (relative to the work folder) and the leaf prefix
+      val (dir, leafPrefix) =
         val lastSep = prefixInWord.lastIndexOf('/')
         if lastSep >= 0 then
-          val dir = prefixInWord.substring(0, lastSep + 1)
-          (new File(workEnv.path, dir), prefixInWord.substring(lastSep + 1))
+          (prefixInWord.substring(0, lastSep + 1), prefixInWord.substring(lastSep + 1))
         else
-          (new File(workEnv.path), prefixInWord)
+          ("", prefixInWord)
+      val baseDir =
+        if dir.startsWith("/") then
+          IO.path(dir)
+        else if dir.isEmpty then
+          IO.path(workEnv.path)
+        else
+          IO.path(workEnv.path, dir)
 
-      if !baseDir.exists() || !baseDir.isDirectory then
+      if !IO.isDirectory(baseDir) then
         noCompletion
       else
         def escapeQuotes(s: String, quoteChar: Char): String =
@@ -67,65 +75,37 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
             case _ =>
               s
 
-        val showHidden           = leafPrefix.startsWith(".")
-        val entries: Array[File] = Option(baseDir.listFiles())
-          .getOrElse(Array.empty[File])
-          .filter(f => showHidden || !f.getName.startsWith("."))
-          .filter(f => f.getName.toLowerCase.startsWith(leafPrefix.toLowerCase))
-          .sortBy(_.getName.toLowerCase)
-          .take(200)
+        val showHidden = leafPrefix.startsWith(".")
+        val entries    =
+          (
+            try
+              IO.list(baseDir)
+            catch
+              case NonFatal(_) =>
+                Seq.empty
+          ).map(_.fileName)
+            .filter(name => showHidden || !name.startsWith("."))
+            .filter(name => name.toLowerCase.startsWith(leafPrefix.toLowerCase))
+            .sortBy(_.toLowerCase)
+            .take(200)
 
-        // Precompute canonical bases once (avoid repeating in loop)
-        val (workBase, baseCanonical) =
-          val wb =
-            try
-              new File(workEnv.path).getCanonicalFile
-            catch
-              case _: Throwable =>
-                new File(workEnv.path).getAbsoluteFile
-          val bc =
-            try
-              baseDir.getCanonicalFile
-            catch
-              case _: Throwable =>
-                baseDir.getAbsoluteFile
-          (wb, bc)
-
-        // Build candidates for each entry
-        val candidates = entries.map { f =>
-          val relPath =
-            try
-              val full =
-                try
-                  f.getCanonicalFile
-                catch
-                  case _: Throwable =>
-                    f.getAbsoluteFile
-              if baseCanonical == workBase then
-                // Base is the work directory; keep just the name
-                f.getName
-              else
-                workBase.toPath.relativize(full.toPath).toString.replace('\\', '/')
-            catch
-              case _: Throwable =>
-                Option(f.getParentFile) match
-                  case None =>
-                    f.getPath.replace('\\', '/')
-                  case Some(_) =>
-                    f.getName
+        // Build candidates for each entry, keeping the directory as typed
+        val candidates = entries.map { name =>
+          val isDir   = IO.isDirectory(baseDir / name)
+          val relPath = s"${dir}${name}"
           val display =
-            if f.isDirectory then
-              s"${f.getName}/"
+            if isDir then
+              s"${name}/"
             else
-              f.getName
+              name
           val valuePath =
             escapeQuotes(relPath, quoteChar) + (
-              if f.isDirectory && !relPath.endsWith("/") then
+              if isDir then
                 "/"
               else
                 ""
             )
-          if f.isDirectory || closingQuote >= 0 then
+          if isDir || closingQuote >= 0 then
             // Keep typing into a directory, or before the closing quote that is already there
             Candidate(valuePath, display, complete = false)
           else

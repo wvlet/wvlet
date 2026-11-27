@@ -1,5 +1,6 @@
 package wvlet.lang.compiler
 
+import wvlet.uni.io.IO
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.Logger
 
@@ -22,7 +23,7 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
     if hasWvletFiles then
       s"${path}/target"
     else
-      s"${sys.props("user.home")}/.cache/wvlet/target"
+      s"${WorkEnv.homeDirectory}/.cache/wvlet/target"
 
   /**
     * The default folder of persistent tables of `wvlet build` and `wvlet flow` on the wvlet engine.
@@ -39,7 +40,7 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
       s"${targetFolder}/.cache/wvlet"
     else
       // Use the global folder at the user home for an arbitrary directory
-      s"${sys.props("user.home")}/.cache/wvlet"
+      s"${WorkEnv.homeDirectory}/.cache/wvlet"
 
   def saveToCache(path: String, content: String): Unit = SourceIO.writeString(
     s"${cacheFolder}/${path}",
@@ -101,3 +102,10 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
       errorLogger.error(msg)
 
 end WorkEnv
+
+object WorkEnv:
+  /**
+    * The user's home folder on every platform. `sys.props("user.home")` is unset on Node.js, where
+    * it would put caches and the REPL history under a `null` folder
+    */
+  def homeDirectory: String = IO.homeDirectory.path

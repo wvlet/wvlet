@@ -10,17 +10,16 @@ import wvlet.uni.cli.LineReaderConfig
 import wvlet.uni.cli.LineResult
 import wvlet.uni.cli.TerminalIO
 import wvlet.uni.rx.Cancelable
+import wvlet.uni.io.IO
 import wvlet.uni.rx.Rx
-
-import java.io.File
 
 /**
   * Interactive REPL terminal built on uni's cross-platform [[LineReader]]: emacs-style editing,
   * history saved to `.wv_history`, Ctrl-R search, local file completion, syntax highlighting, and
   * multi-line statements.
   *
-  * On the JVM, line editing needs Java 22 or later. Older JVMs, and stdin/stdout that are not a
-  * terminal, read input line by line.
+  * Runs on the JVM, Node.js, and Native. On the JVM, line editing needs Java 22 or later. Older
+  * JVMs, and stdin/stdout that are not a terminal, read input line by line.
   *
   * @param workEnv
   *   Working environment for locating the history file
@@ -37,7 +36,7 @@ class UniTerminal(workEnv: WorkEnv, io: TerminalIO) extends REPLTerminal:
 
   private def config: LineReaderConfig =
     val base = LineReaderConfig()
-      .withHistoryFile(File(workEnv.cacheFolder, HistoryFileName).getPath)
+      .withHistoryFile(IO.path(workEnv.cacheFolder, HistoryFileName).path)
       .withCompleter(LocalFileCompleter(workEnv))
       .withHighlighter(WvletREPL.highlight)
       .withInputComplete(WvletREPL.isInputComplete)

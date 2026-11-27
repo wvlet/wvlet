@@ -21,7 +21,7 @@ wvlet run "from 'data.parquet' limit 10"
 wvlet run -f query.wv --format csv
 ```
 
-The `wv` REPL and the JVM-only commands (`wvlet build`, `flow`, `catalog`, `ui`) are not in this package; install the JVM CLI for them (see [Installation](https://wvlet.org/docs/usage/install)).
+Run `wvlet` on a terminal (or `wvlet repl`) to open the interactive shell. The JVM-only commands (`wvlet build`, `flow`, `catalog`, `ui`) and JDBC connectors such as Snowflake are not in this package; install the JVM CLI for them (see [Installation](https://wvlet.org/docs/usage/install)).
 
 ## Updating
 

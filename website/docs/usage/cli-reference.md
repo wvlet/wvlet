@@ -152,7 +152,7 @@ wvlet run -f query.wv --format csv
 
 ### `wvlet repl`
 
-*JVM CLI.* Start the interactive [REPL](repl.md). A bare `wvlet` on a terminal does the same.
+Start the interactive [REPL](repl.md). A bare `wvlet` on a terminal does the same.
 
 ```bash
 wvlet repl [-p <profile>] [-t <engine>] [-c <command>] [-f <file>]

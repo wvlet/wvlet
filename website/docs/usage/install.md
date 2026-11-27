@@ -1,5 +1,5 @@
 ---
-description: "Install the Wvlet command-line tool with npm (no JDK needed), or the full JVM CLI (REPL, build, flow, ui) with Homebrew or a release package."
+description: "Install the Wvlet command-line tool with npm (no JDK needed), or the full JVM CLI (build, flow, ui, JDBC connectors) with Homebrew or a release package."
 sidebar_label: Installation
 sidebar_position: 1
 ---
@@ -14,7 +14,8 @@ Wvlet is available as one command, `wvlet`, in two distributions:
 | `wvlet version`, `compile`, `to_wvlet`, `run` | ✓ | ✓ |
 | DuckDB (`-t duckdb`) | Included | Full package only |
 | Snowflake connector | — | Full package only |
-| [REPL](repl.md) (`wvlet` on a terminal, `wvlet repl`, or `wv`), `wvlet build`, `flow`, `catalog`, `ui` | — (coming) | ✓ |
+| [REPL](repl.md) (`wvlet` on a terminal, or `wvlet repl`) | ✓ | ✓ (also `wv`) |
+| `wvlet build`, `flow`, `catalog`, `ui` | — | ✓ |
 | Updates | Update notice + `wvlet upgrade` | `brew upgrade wvlet` |
 
 Start with npm unless you need a JVM-only command.
@@ -57,7 +58,7 @@ which wvlet   # should point to the npm global bin directory
 
 ## JVM CLI
 
-The JVM CLI includes the [REPL](repl.md), [Web UI](ui.md), model builds, and flows, in addition to the commands of the npm `wvlet`. Each release ships it in two packages with the same `wvlet` command and its `wv` alias (`wvlet repl`):
+The JVM CLI includes the [Web UI](ui.md), model builds, flows, and the JDBC connectors, in addition to the commands and [REPL](repl.md) of the npm `wvlet`. Each release ships it in two packages with the same `wvlet` command and its `wv` alias (`wvlet repl`):
 
 - `wvlet-cli-(version).tar.gz` (about 60 MB, installed by Homebrew): queries run on the in-process [wvlet engine](../engines/wvlet-engine.md), [Trino](../engines/trino.md), and remote wvlet servers.
 - `wvlet-cli-full-(version).tar.gz` (about 230 MB): adds the [DuckDB](../engines/duckdb.md) and [Snowflake](../engines/snowflake.md) connectors, whose JDBC drivers make up most of its size. Use it for `-t duckdb`, `.duckdb` files, DuckDB extensions, `sql"..."` blocks run on DuckDB, or Snowflake profiles.
