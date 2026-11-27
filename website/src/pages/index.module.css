@@ -182,6 +182,25 @@
   padding: 72px clamp(16px, 5vw, 72px) 64px;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.brandLogo {
+  filter: drop-shadow(0 14px 24px hsl(190 80% 30% / 0.3));
+  animation: float 6s ease-in-out infinite;
+}
+
+.brandName {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: hsl(var(--ink));
+}
+
 .eyebrow {
   display: inline-flex;
   align-items: center;
@@ -208,7 +227,7 @@
 }
 
 .heroTitle {
-  font-size: clamp(40px, 4.5vw, 66px) !important;
+  font-size: clamp(38px, 4vw, 58px) !important;
   letter-spacing: -0.04em !important;
 }
 
@@ -496,6 +515,7 @@
   .aurora span,
   .glow,
   .shimmer,
+  .brandLogo,
   .closingLogo {
     animation: none;
   }

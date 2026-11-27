@@ -59,6 +59,16 @@ function HomepageHero(): React.ReactNode {
     <header className={styles.hero}>
       <Aurora />
       <div className={styles.heroText}>
+        <div className={styles.brand}>
+          <img
+            className={styles.brandLogo}
+            src={useBaseUrl('/img/logos/wvlet-icon.svg')}
+            alt=""
+            width={72}
+            height={72}
+          />
+          <span className={styles.brandName}>Wvlet</span>
+        </div>
         <p className={styles.eyebrow}>
           <span className={styles.dot} />
           Open source · Apache 2.0 · <Link to="/docs/for-ai-agents">Built for AI agents too</Link>
