@@ -13,7 +13,7 @@ This page owns how cross-platform modules split shared and platform code, and ho
   - On the JVM and Native, `QueryCancel.isRequested` is a constant `false`; their REPL cancels through the query thread.
   - Without a terminal, or when the helper can't start, the REPL registers no SIGINT listener during a query, so Ctrl-C exits `wvlet` instead of being swallowed until the query ends.
 - `wvlet build` is a shared command too. The JVM runs it as a flow on the JVM-only flow executor (parallel stages, timeouts, run records); npm and Native run the shared `ModelBuilder`, which builds one model at a time on the caller, so Node never needs threads or an interruptible query.
-- The npm and Native `wvlet` reject the JVM CLI's own commands (`ui`, `flow`, `catalog`) with a message naming the JVM CLI. A new command added only to `WvletMain` goes in `WvletCli.jvmOnlyCommands` too, or npm users get the launcher's generic unknown-command error. See [the ADR](../adr/2026-11-26-distribution-roles.md).
+- The npm and Native `wvlet` reject the JVM CLI's own commands (`ui`, `flow`, `catalog`) with a message naming the JVM CLI. A new command added only to `WvletMain` goes in `WvletCli.jvmOnlyCommands` too, or npm users get the launcher's generic unknown-command error. See [the ADR](../adr/2026-11-26-distribution-roles.md); Homebrew is the recommended install ([ADR](../adr/2026-11-27-homebrew-recommended-install.md)).
 - Compile a whole platform with `./sbt "projectJVM/Test/compile"`, `projectJS/...`, or `projectNative/...`.
 
 ## Native builds and libduckdb

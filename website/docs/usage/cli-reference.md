@@ -8,7 +8,7 @@ sidebar_label: CLI Reference
 
 This page provides a comprehensive reference for all Wvlet CLI commands.
 
-`wvlet` is the single command of every distribution (npm, Homebrew, and the release packages). `wvlet` with no arguments on a terminal opens the [REPL](repl.md); in a pipe or a script it prints the version. `wv` is an alias of `wvlet repl`. Commands marked *JVM CLI* need the [JVM CLI](install.md#jvm-cli) for now.
+`wvlet` is the single command of every distribution (npm, Homebrew, and the release packages). `wvlet` with no arguments on a terminal opens the [REPL](repl.md); in a pipe or a script it prints the version. `wv` is an alias of `wvlet repl`. Commands marked *JVM CLI* need the [Homebrew or release-package `wvlet`](install.md#homebrew-recommended); the npm `wvlet` doesn't have them yet.
 
 ## Global Options
 

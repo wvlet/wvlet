@@ -143,7 +143,7 @@ select status, count(*) as n
 
 ## How do I run Wvlet?
 
-`wvlet` is the single command of every distribution, with the same options everywhere. Install it with npm (`npm install -g @wvlet/cli`, Node.js 22+): it provides `wvlet version`, `compile`, `to_wvlet`, `run`, `repl`, `build`, and `skill` (DuckDB included, no JDK needed). The JVM CLI, which adds the `wv` alias, `flow`, `catalog`, `ui`, and parallel builds with run records, is installed with Homebrew (`brew install wvlet/wvlet/wvlet`) or a release package; DuckDB (`-t duckdb`) and Snowflake on the JVM CLI need the full package `wvlet-cli-full-<version>.tar.gz`; see [Installation](./usage/install.md). The commands:
+`wvlet` is the single command of every distribution, with the same options everywhere. Install it with Homebrew (`brew install wvlet/wvlet/wvlet`), which sets up its Java runtime and adds the `wv` alias, `flow`, `catalog`, `ui`, parallel builds with run records, and the JDBC connectors; without Homebrew, use a release package. npm (`npm install -g @wvlet/cli`, Node.js 22+) also provides `wvlet version`, `compile`, `to_wvlet`, `run`, `repl`, `build`, and `skill`. DuckDB (`-t duckdb`) and Snowflake on the JVM CLI need the full package `wvlet-cli-full-<version>.tar.gz`; see [Installation](./usage/install.md). The commands:
 
 - `wvlet repl`: an interactive shell (REPL); a bare `wvlet` on a terminal opens it too, and `wv` is an alias on the JVM CLI. `wvlet repl -c "from 'data.csv' count"` runs one query and exits. Without a terminal, a bare `wvlet` prints the version, so it never waits for input.
 - `wvlet`: batch commands.
