@@ -21,6 +21,11 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.engine.WvletEngine
 import wvlet.lang.engine.catalog.MemTable
 import wvlet.lang.engine.catalog.ValueCounts
+import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.runtime.Column
+import wvlet.lang.engine.runtime.ColumnId
+import wvlet.lang.engine.runtime.RuntimePlan
+import wvlet.lang.engine.runtime.Stats
 import wvlet.lang.engine.vector.*
 import wvlet.lang.model.plan.ExecuteQuery
 import wvlet.lang.model.plan.ExecuteTasks
@@ -138,6 +143,36 @@ class SampledStringDistinctTest extends UniTest:
     )
     // Unknown distinct counts take the smaller side as unique: 1.92M rows instead of ~1e11
     off.contains("r_d1") shouldBe false
+  }
+
+  test("not use a sampled count against a side with no count") {
+    // A fact table clustered by a string key: its sample sees 250 values, saturated; the
+    // dimension's key has a value per row, so its sample isn't
+    val fact = Big(
+      "fact",
+      Schema(IndexedSeq(Field("f_k", PType.Str))),
+      72000000,
+      Map("f_k" -> 250),
+      Nil
+    )
+    val dim = new Big("dim", Schema(IndexedSeq(Field("d_k", PType.Str))), 2000000, Map.empty, Nil)
+    val fk  = Column(ColumnId(0), "f_k", PType.Str)
+    val dk  = Column(ColumnId(1), "d_k", PType.Str)
+    val f   = RuntimePlan.Scan(fact, IndexedSeq(fk))
+    val d   = RuntimePlan.Scan(dim, IndexedSeq(dk))
+    def rows(opts: OptimizerOptions): Double = Stats.joinRows(
+      f,
+      72000000,
+      IndexedSeq(ColRef(0, PType.Str, "f_k")),
+      d,
+      2000000,
+      IndexedSeq(ColRef(1, PType.Str, "d_k")),
+      opts
+    )
+    // The smaller side is taken as unique, as without the toggle: one row per fact row
+    rows(OptimizerOptions()) shouldBe 72000000.0
+    rows(OptimizerOptions()) shouldBe
+      rows(OptimizerOptions().withDisabled(Optimization.SampledStringDistinct))
   }
 
 end SampledStringDistinctTest

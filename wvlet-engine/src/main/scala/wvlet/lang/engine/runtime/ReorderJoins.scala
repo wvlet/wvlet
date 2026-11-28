@@ -326,9 +326,16 @@ object ReorderJoins extends Pass:
 
     private val sampledStrings = options.isEnabled(Optimization.SampledStringDistinct)
 
-    override def distinct(input: RuntimePlan, side: BExpr): Option[Double] = Stats
-      .distinct(input, side.expr)
-      .orElse(Option.when(sampledStrings)(Stats.sampledDistinct(input, side.expr)).flatten)
+    override def distinct(input: RuntimePlan, side: BExpr): Option[Double] = Stats.distinct(
+      input,
+      side.expr
+    )
+
+    override def sampledDistinct(input: RuntimePlan, side: BExpr): Option[Double] =
+      if sampledStrings then
+        Stats.sampledDistinct(input, side.expr)
+      else
+        None
 
     override def outputRows(
         current: RuntimePlan,
