@@ -72,13 +72,11 @@ class MemoryAccountingTest extends UniTest:
     withQuery(query)(engine.execute(_))
 
   /**
-    * The most bytes the operators of a query held at once while it ran, without its result batches:
-    * planned and drained under a context of the test's own. Holders that finished return their
-    * bytes before the query ends, so nothing is left reserved after the drain unless `kept` (shared
-    * CTE results stay until the query ends)
+    * The operators of a query planned and drained under a context of the test's own, which is
+    * returned: its peak is the most bytes they held at once, without the result batches
     */
-  private def reservedBy(query: String, kept: Boolean = false): Long =
-    val engine = engineOf(MemoryPool())
+  private def drainedIn(query: String, opts: OptimizerOptions): MemoryContext =
+    val engine = engineOf(MemoryPool(), opts)
     val memory = MemoryPool().newQuery()
     withQuery(query) { r =>
       MemoryContext.withCurrent(memory) {
@@ -87,8 +85,15 @@ class MemoryAccountingTest extends UniTest:
         finally op.close()
       }
     }
-    if !kept then
-      memory.reservedBytes shouldBe 0L
+    memory
+
+  /**
+    * The most bytes the operators of a query held at once while it ran. Holders that finished
+    * return their bytes before the query ends, so nothing is left reserved after the drain
+    */
+  private def reservedBy(query: String): Long =
+    val memory = drainedIn(query, OptimizerOptions())
+    memory.reservedBytes shouldBe 0L
     memory.peakBytes
 
   private val joinQuery =
@@ -360,14 +365,59 @@ class MemoryAccountingTest extends UniTest:
     ) shouldMatch {
       case n: Long if n > 0 =>
     }
-    reservedBy(
-      """with c as { from orders where o_orderkey < 100 select o_orderkey }
+    reservedBy("""with c as { from orders where o_orderkey < 100 select o_orderkey }
         |from c
-        |concat { from c }""".stripMargin,
-      kept = true
-    ) shouldMatch {
+        |concat { from c }""".stripMargin) shouldMatch {
       case n: Long if n > 0 =>
     }
+  }
+
+  private val sharedCTE =
+    """with c as { from orders where o_orderkey < 20000 select o_orderkey, o_custkey }
+      |from c
+      |join c as d on c.o_custkey = d.o_custkey
+      |select c.o_orderkey""".stripMargin
+
+  test("should return a shared CTE result's memory once its last reader finishes") {
+    val on = drainedIn(sharedCTE, OptimizerOptions())
+    on.peakBytes shouldMatch {
+      case n: Long if n > 0 =>
+    }
+    on.reservedBytes shouldBe 0L
+    // Off, the result is held until the query ends
+    val off = drainedIn(sharedCTE, OptimizerOptions().withDisabled(Optimization.ReleaseCTEResults))
+    off.reservedBytes shouldMatch {
+      case n: Long if n > 0 =>
+    }
+    // The rows are the same either way
+    val rows = Seq(
+      OptimizerOptions(),
+      OptimizerOptions().withDisabled(Optimization.ReleaseCTEResults)
+    ).map(o => run(engineOf(MemoryPool(), o), sharedCTE).numRows)
+    rows.distinct.size shouldBe 1
+  }
+
+  test("should release a CTE read by the body of a CTE computed while planning") {
+    // Joins read b, so planning computes it (and its read of a) before the query runs
+    val q =
+      """with a as { from orders where o_orderkey < 20000 select o_orderkey, o_custkey }
+        |with b as { from a where o_custkey < 500 select o_custkey }
+        |from b
+        |join customer on b.o_custkey = c_custkey
+        |select k = c_custkey
+        |concat { from b join customer on b.o_custkey = c_custkey select k = c_nationkey }
+        |concat { from a select k = o_custkey }""".stripMargin
+    drainedIn(q, OptimizerOptions()).reservedBytes shouldBe 0L
+  }
+
+  test("should read a shared CTE result in full after a reader stopped early") {
+    val q =
+      """with c as { from orders where o_orderkey < 20000 select o_orderkey }
+        |from c
+        |limit 1
+        |concat { from c }""".stripMargin
+    val all = run(engineOf(MemoryPool()), "from orders where o_orderkey < 20000 select o_orderkey")
+    run(engineOf(MemoryPool()), q).numRows shouldBe all.numRows + 1
   }
 
   test("should count the groups of a partitioned aggregation's partitions") {

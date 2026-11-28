@@ -337,7 +337,10 @@ class EngineOptimizerToggleTest extends UniTest:
       "Changes which query's coordinator task runs next, not the plan",
     // AggSpillTest checks that the flag keeps a spilling aggregation's input in memory
     Optimization.SpillAggregation ->
-      "Changes whether aggregations past the spill threshold spill their input, not the plan"
+      "Changes whether aggregations past the spill threshold spill their input, not the plan",
+    // MemoryAccountingTest checks that shared results return their memory after their last reader
+    Optimization.ReleaseCTEResults ->
+      "Changes when shared CTE results drop their rows, not the plan"
   )
 
   override def afterAll: Unit =
