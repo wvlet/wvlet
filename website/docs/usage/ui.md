@@ -41,6 +41,7 @@ usage: ui
  --max-queued-queries:[MAXQUEUEDQUERIES]  Queries waiting to run; submissions past it are rejected. default:1000
  --max-query-memory:[MAXQUERYMEMORY]  Memory one wvlet-engine query may hold (e.g. 2GB) before it fails. default: no limit
  --memory-pool-size:[MEMORYPOOLSIZE]  Memory wvlet-engine queries may hold together (e.g. 8GB) before queued queries wait. default: 70% of the heap
+ --low-memory-killer-delay:[LOWMEMORYKILLERDELAY]  How long wvlet-engine queries may stay over the memory pool size before the largest one fails (e.g. 10s, or off). default: 5s
 ```
 
 ## Shortcut Keys

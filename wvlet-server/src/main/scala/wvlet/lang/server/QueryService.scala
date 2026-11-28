@@ -27,6 +27,8 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import scala.collection.mutable
 import scala.util.control.NonFatal
 
@@ -48,6 +50,9 @@ case class QueryServiceStats(running: Int, queued: Int, finished: Int)
   *   - While the in-process engine's queries hold more than `memoryPool`'s capacity, queued queries
   *     wait for running ones to finish; with none running, the next one starts anyway, since only
   *     running queries release memory.
+  *   - With the pool's low-memory killer on, a timer checks the pool every
+  *     [[QueryService.KillerCheckMillis]] ms, so a query holding memory without reserving more is
+  *     still killed once the pool stays over its capacity.
   */
 class QueryService(
     sessions: ScriptRunnerSessions,
@@ -78,6 +83,34 @@ class QueryService(
     ThreadUtil.newDaemonThreadFactory("wvlet-query-service")
   )
 
+  // Checks the pool's low-memory killer: reservations check it too, but a query that holds its
+  // memory without reserving more never does
+  private val killerTimer: Option[ScheduledExecutorService] = memoryPool
+    .killDelay
+    .map { _ =>
+      val t = Executors.newSingleThreadScheduledExecutor(
+        ThreadUtil.newDaemonThreadFactory("wvlet-low-memory-killer")
+      )
+      val check: Runnable =
+        () =>
+          try
+            memoryPool
+              .killLargestIfStillOver()
+              .foreach(c =>
+                warn(s"Low-memory killer: failing the query holding ${c.reservedBytes} bytes")
+              )
+          catch
+            case NonFatal(e) =>
+              warn(s"Low-memory killer check failed: ${e.getMessage}", e)
+      t.scheduleWithFixedDelay(
+        check,
+        QueryService.KillerCheckMillis,
+        QueryService.KillerCheckMillis,
+        TimeUnit.MILLISECONDS
+      )
+      t
+    }
+
   // Readable without the lock; status transitions go through `transition`
   private val queryMap = ConcurrentHashMap[String, QueryInfo]()
 
@@ -94,6 +127,7 @@ class QueryService(
   private var admitting = 0
 
   override def close(): Unit =
+    killerTimer.foreach(_.shutdownNow())
     workers.shutdownNow()
     // Let interrupted workers report their completion before the listener closes
     workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -400,3 +434,7 @@ class QueryService(
     )
 
 end QueryService
+
+object QueryService:
+  /** How often the low-memory killer's timer checks the pool */
+  val KillerCheckMillis: Long = 500L

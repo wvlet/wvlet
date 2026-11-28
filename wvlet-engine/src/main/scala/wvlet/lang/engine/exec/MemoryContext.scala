@@ -18,18 +18,35 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.engine.vector.*
 
 import java.util.concurrent.atomic.AtomicLong
+import scala.collection.mutable
+import scala.concurrent.duration.FiniteDuration
 
 /**
   * The memory budget shared by the queries of one process (e.g. a server): the bytes every open
   * [[MemoryContext]] reserved, against a soft `capacityBytes`. Reservations past the capacity still
   * succeed; [[isOverCapacity]] tells an admission check to hold new queries until running ones
-  * release memory. `queryLimitBytes` is the limit of each query of an engine that sets none
+  * release memory. `queryLimitBytes` is the limit of each query of an engine that sets none.
+  *
+  * With a `killDelay`, a pool that stays over its capacity that long while more than one query is
+  * open kills the query holding the most bytes ([[killLargestIfStillOver]], Trino's low-memory
+  * killer): it fails with RESOURCE_EXHAUSTED at its next reservation, morsel part, or result batch
   */
 final class MemoryPool(
     val capacityBytes: Long = Long.MaxValue,
-    val queryLimitBytes: Long = Long.MaxValue
+    val queryLimitBytes: Long = Long.MaxValue,
+    val killDelay: Option[FiniteDuration] = None
 ):
   private val reserved = AtomicLong(0L)
+  // System.nanoTime() since reservations went over the capacity; NotOver while under it
+  private val overSince = AtomicLong(MemoryPool.NotOver)
+  // The open tracking contexts; guarded by `this`
+  private val open = mutable.LinkedHashSet.empty[MemoryContext]
+  // The killed query until it closes, and the open count, read without the lock on reservations
+  @volatile
+  private var victim: MemoryContext = null
+
+  @volatile
+  private var openCount = 0
 
   /** Bytes the open queries hold */
   def reservedBytes: Long = reserved.get()
@@ -37,10 +54,77 @@ final class MemoryPool(
   /** Whether the open queries hold more than the capacity */
   def isOverCapacity: Boolean = reserved.get() > capacityBytes
 
-  /** A context for one query, failing it past `limitBytes` */
-  def newQuery(limitBytes: Long = queryLimitBytes): MemoryContext = MemoryContext(this, limitBytes)
+  /** Queries with an open context */
+  def openQueries: Int = openCount
 
-  private[exec] def add(bytes: Long): Unit = reserved.addAndGet(bytes)
+  /** A context for one query, failing it past `limitBytes` */
+  def newQuery(limitBytes: Long = queryLimitBytes): MemoryContext =
+    val c = MemoryContext(this, limitBytes)
+    synchronized {
+      open += c
+      openCount = open.size
+    }
+    c
+
+  private[exec] def closed(c: MemoryContext): Unit = synchronized {
+    open -= c
+    openCount = open.size
+    if victim eq c then
+      victim = null
+      // The delay starts again once the killed query has released its memory
+      if isOverCapacity then
+        overSince.set(System.nanoTime())
+  }
+
+  /** Add (or with a negative value, return) bytes; returns whether the pool is over capacity */
+  private[exec] def add(bytes: Long): Boolean =
+    val over = reserved.addAndGet(bytes) > capacityBytes
+    if over then
+      if overSince.get() == MemoryPool.NotOver then
+        overSince.compareAndSet(MemoryPool.NotOver, System.nanoTime())
+    else if overSince.get() != MemoryPool.NotOver then
+      overSince.set(MemoryPool.NotOver)
+    over
+
+  /**
+    * Kill the open query holding the most bytes when the pool has been over its capacity for at
+    * least `killDelay` and more than one query is open: a single query frees nothing for others,
+    * and its own limit bounds it. One query at a time: none while a killed one is still open, and
+    * the delay starts again when it closes. Returns the killed context, if any. Called on
+    * reservations past the capacity and by a server's timer, since a query that holds without
+    * growing never reserves
+    */
+  def killLargestIfStillOver(): Option[MemoryContext] =
+    killDelay match
+      case Some(delay) if victim == null && openCount > 1 && isOverCapacity =>
+        val now = System.nanoTime()
+        // A release racing a reservation across the capacity can clear the stamp while the pool
+        // is over: start the delay here, so a pool that holds without reserving is still checked
+        if overSince.get() == MemoryPool.NotOver then
+          overSince.compareAndSet(MemoryPool.NotOver, now)
+        val since = overSince.get()
+        if since == MemoryPool.NotOver || now - since < delay.toNanos then
+          None
+        else
+          synchronized {
+            if open.size <= 1 || victim != null || !isOverCapacity then
+              None
+            else
+              val v = open.maxBy(_.reservedBytes)
+              victim = v
+              v.kill(
+                s"Query was killed to free memory: it held ${MemoryContext.mb(
+                    v.reservedBytes
+                  )} of the ${MemoryContext.mb(reservedBytes)} that ${open
+                    .size} queries held, over the memory pool's capacity of ${MemoryContext.mb(
+                    capacityBytes
+                  )} for ${delay
+                    .toMillis} ms. Retry when fewer queries run, or raise the memory pool size"
+              )
+              Some(v)
+          }
+      case _ =>
+        None
 
   override def toString: String =
     s"MemoryPool(reserved=${MemoryContext.mb(reservedBytes)}, capacity=${
@@ -48,9 +132,13 @@ final class MemoryPool(
           "unbounded"
         else
           MemoryContext.mb(capacityBytes)
-      })"
+      }${killDelay.map(d => s", kill after ${d.toMillis} ms").getOrElse("")})"
+
+end MemoryPool
 
 object MemoryPool:
+  private val NotOver = Long.MinValue
+
   @volatile
   private var processPool = MemoryPool()
 
@@ -75,6 +163,9 @@ object MemoryPool:
   */
 final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long):
   private val reserved = AtomicLong(0L)
+  // Set by the pool's low-memory killer: the query fails at its next check
+  @volatile
+  private var killedMessage: String = null
 
   /** Whether reservations are counted (false for [[MemoryContext.NoOp]]) */
   def isTracking: Boolean = pool != null
@@ -88,17 +179,39 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
     * [[close]]
     */
   def reserve(bytes: Long): Unit =
-    if pool != null && bytes > 0 then
-      val total = reserved.addAndGet(bytes)
-      pool.add(bytes)
-      if total > limitBytes then
-        throw StatusCode
-          .RESOURCE_EXHAUSTED
-          .newException(
-            s"Query exceeded its memory limit of ${MemoryContext.mb(
-                limitBytes
-              )} (reserved ${MemoryContext.mb(total)})"
-          )
+    if pool != null then
+      checkKilled()
+      if bytes > 0 then
+        add(bytes)
+
+  private def add(bytes: Long): Unit =
+    val total = reserved.addAndGet(bytes)
+    if pool.add(bytes) then
+      pool.killLargestIfStillOver()
+      checkKilled()
+    if total > limitBytes then
+      throw StatusCode
+        .RESOURCE_EXHAUSTED
+        .newException(
+          s"Query exceeded its memory limit of ${MemoryContext.mb(
+              limitBytes
+            )} (reserved ${MemoryContext.mb(total)})"
+        )
+
+  /** Whether the pool's low-memory killer chose this query */
+  def isKilled: Boolean = killedMessage != null
+
+  private[exec] def kill(message: String): Unit = killedMessage = message
+
+  /**
+    * Fail the query with RESOURCE_EXHAUSTED if the low-memory killer chose it: called where the
+    * engine regains control (reservations, morsel parts, result batches), since operators don't
+    * check interrupts
+    */
+  def checkKilled(): Unit =
+    val m = killedMessage
+    if m != null then
+      throw StatusCode.RESOURCE_EXHAUSTED.newException(m)
 
   /** Reserve the estimated size of a batch ([[MemoryContext.estimatedBytes]]) */
   def reserve(b: Batch): Unit =
@@ -138,6 +251,7 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
     if pool != null then
       val r = reserved.getAndSet(0L)
       pool.add(-r)
+      pool.closed(this)
 
   override def toString: String =
     if pool == null then

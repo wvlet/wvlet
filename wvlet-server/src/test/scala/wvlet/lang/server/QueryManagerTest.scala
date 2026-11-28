@@ -146,6 +146,44 @@ class QueryManagerTest extends UniTest:
     }
   }
 
+  test("kill the largest query when the pool stays over its capacity without new reservations") {
+    val pool = QueryManagerConfig()
+      .withMemoryPoolSize(100)
+      .withLowMemoryKillerDelay(300.millis)
+      .newMemoryPool()
+    // Over the capacity, but not yet for the delay: only the service's timer can kill
+    val big   = pool.newQuery()
+    val small = pool.newQuery()
+    small.reserve(10)
+    big.reserve(150)
+    big.isKilled shouldBe false
+    withService(QueryManagerConfig(), pool) { (_, _) =>
+      eventually(big.isKilled)
+      small.isKilled shouldBe false
+    }
+    big.close()
+    small.close()
+  }
+
+  test("parse low-memory killer delays") {
+    QueryManagerConfig.parseKillerDelay("5s") shouldBe Some(5.seconds)
+    QueryManagerConfig.parseKillerDelay("500ms") shouldBe Some(500.millis)
+    QueryManagerConfig.parseKillerDelay("OFF") shouldBe None
+    Seq("soon", "-1s", "Inf").foreach { bad =>
+      intercept[WvletLangException] {
+        QueryManagerConfig.parseKillerDelay(bad)
+      }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    }
+    QueryManagerConfig().newMemoryPool().killDelay shouldBe Some(5.seconds)
+    QueryManagerConfig().noLowMemoryKiller().newMemoryPool().killDelay shouldBe None
+    intercept[WvletLangException] {
+      QueryManagerConfig.parseKillerDelay("1000000d")
+    }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    intercept[IllegalArgumentException] {
+      QueryManagerConfig().withLowMemoryKillerDelay(-1.second)
+    }
+  }
+
   test("parse memory sizes of the server options") {
     QueryManagerConfig.parseBytes("512MB") shouldBe 512L * 1024 * 1024
     QueryManagerConfig.parseBytes("4gb") shouldBe 4L * 1024 * 1024 * 1024

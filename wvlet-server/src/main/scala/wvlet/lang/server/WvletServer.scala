@@ -83,7 +83,13 @@ case class WvletServerConfig(
       description =
         "Memory wvlet-engine queries may hold together (e.g. 8GB) before queued queries wait. default: 70% of the heap"
     )
-    memoryPoolSize: Option[String] = None
+    memoryPoolSize: Option[String] = None,
+    @option(
+      prefix = "--low-memory-killer-delay",
+      description =
+        "How long wvlet-engine queries may stay over the memory pool size before the largest one fails (e.g. 10s, or off). default: 5s"
+    )
+    lowMemoryKillerDelay: Option[String] = None
 ):
   lazy val workEnv: WorkEnv = WorkEnv(path = workDir)
 
@@ -94,6 +100,12 @@ case class WvletServerConfig(
     maxQueuedQueries.foreach(n => c = c.withMaxQueuedQueries(n))
     maxQueryMemory.foreach(s => c = c.withMaxQueryMemory(QueryManagerConfig.parseBytes(s)))
     memoryPoolSize.foreach(s => c = c.withMemoryPoolSize(QueryManagerConfig.parseBytes(s)))
+    lowMemoryKillerDelay.foreach { s =>
+      c = QueryManagerConfig
+        .parseKillerDelay(s)
+        .map(c.withLowMemoryKillerDelay)
+        .getOrElse(c.noLowMemoryKiller())
+    }
     c
 
   /** The folder of the daily query event logs (`query-events-yyyy-MM-dd.jsonl`) */

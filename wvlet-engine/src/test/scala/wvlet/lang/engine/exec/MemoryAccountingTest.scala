@@ -35,6 +35,8 @@ import wvlet.lang.model.plan.ExecutionPlan
 import wvlet.lang.model.plan.Relation
 import wvlet.uni.test.UniTest
 
+import scala.concurrent.duration.*
+
 /** Per-query memory reservations from a shared pool (`memory_accounting`), on JVM and Scala.js */
 class MemoryAccountingTest extends UniTest:
   private val tables = TpchGen.tables(0.01)
@@ -142,6 +144,71 @@ class MemoryAccountingTest extends UniTest:
     b.close()
     pool.reservedBytes shouldBe 80L
     a.close()
+    pool.reservedBytes shouldBe 0L
+  }
+
+  test("should kill the largest query once the pool stays over its capacity") {
+    val pool = MemoryPool(capacityBytes = 100, killDelay = Some(Duration.Zero))
+    val a    = pool.newQuery()
+    val b    = pool.newQuery()
+    a.reserve(80)
+    // Over the capacity: the largest query is killed, not the one reserving
+    b.reserve(30)
+    a.isKilled shouldBe true
+    b.isKilled shouldBe false
+    val e = intercept[WvletLangException] {
+      a.checkKilled()
+    }
+    e.statusCode shouldBe StatusCode.RESOURCE_EXHAUSTED
+    e.getMessage shouldContain "killed to free memory"
+    // One victim at a time: none while the killed query is still open
+    b.reserve(100)
+    b.isKilled shouldBe false
+    a.close()
+    pool.openQueries shouldBe 1
+    // A single query over the capacity frees nothing for others
+    b.reserve(100)
+    b.isKilled shouldBe false
+    b.close()
+    pool.reservedBytes shouldBe 0L
+    pool.openQueries shouldBe 0
+  }
+
+  test("should not kill before the delay or without a delay") {
+    Seq(Some(1.hour), None).foreach { delay =>
+      val pool = MemoryPool(capacityBytes = 100, killDelay = delay)
+      val a    = pool.newQuery()
+      val b    = pool.newQuery()
+      a.reserve(80)
+      b.reserve(30)
+      pool.killLargestIfStillOver() shouldBe None
+      a.isKilled shouldBe false
+      a.close()
+      b.close()
+    }
+  }
+
+  test("should fail a running query the low-memory killer chose") {
+    val pool  = MemoryPool(capacityBytes = 1, killDelay = Some(Duration.Zero))
+    val other = pool.newQuery()
+    other.reserve(1)
+    val e = intercept[WvletLangException] {
+      run(engineOf(pool), joinQuery)
+    }
+    e.statusCode shouldBe StatusCode.RESOURCE_EXHAUSTED
+    e.getMessage shouldContain "killed to free memory"
+    other.isKilled shouldBe false
+    pool.reservedBytes shouldBe 1L
+    other.close()
+  }
+
+  test("should let a query finish when the killer chose another one") {
+    val pool  = MemoryPool(capacityBytes = 1, killDelay = Some(Duration.Zero))
+    val other = pool.newQuery()
+    other.reserve(1L << 40)
+    run(engineOf(pool), joinQuery).numRows.toLong shouldBe lineitemRows
+    other.isKilled shouldBe true
+    other.close()
     pool.reservedBytes shouldBe 0L
   }
 
