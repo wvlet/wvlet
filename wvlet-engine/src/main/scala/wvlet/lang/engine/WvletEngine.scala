@@ -235,7 +235,7 @@ class WvletEngine(
   def noQueryMemoryLimit(): WvletEngine = copy(queryMemoryLimit = None)
 
   /** The memory context of a new query: counting nothing with `memory_accounting` off */
-  private def newQueryMemory(): MemoryContext =
+  private[engine] def newQueryMemory(): MemoryContext =
     if optimizer.isEnabled(Optimization.MemoryAccounting) then
       memoryPool.newQuery(queryMemoryLimit.getOrElse(memoryPool.queryLimitBytes))
     else
@@ -247,14 +247,19 @@ class WvletEngine(
     // drained: the caller owns the result batches from then on
     val memory = newQueryMemory()
     try
-      MemoryContext.withCurrent(memory) {
-        val expanded = GenSQL.expand(r, ctx)
-        val op       = physicalPlan(expanded)
-        debug(s"[physical plan]\n${op.explain()}")
-        try EngineResult(op.schema, memory.drain(op))
-        finally op.close()
-      }
-    finally memory.close()
+      try
+        MemoryContext.withCurrent(memory) {
+          val expanded = GenSQL.expand(r, ctx)
+          val op       = physicalPlan(expanded)
+          debug(s"[physical plan]\n${op.explain()}")
+          try EngineResult(op.schema, memory.drain(op))
+          finally op.close()
+        }
+      finally memory.close()
+    catch
+      case e: OutOfMemoryError =>
+        // The query's operators and rows are unreachable by now, so the heap is free again
+        throw MemoryContext.outOfHeap(memory, e)
   }
 
   /**

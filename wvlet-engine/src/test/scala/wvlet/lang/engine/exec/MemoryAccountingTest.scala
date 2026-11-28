@@ -24,6 +24,8 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.EngineResult
 import wvlet.lang.engine.WvletEngine
+import wvlet.lang.engine.catalog.ScanSpec
+import wvlet.lang.engine.catalog.TableSource
 import wvlet.lang.engine.catalog.TpchGen
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.plan.Optimization
@@ -209,6 +211,40 @@ class MemoryAccountingTest extends UniTest:
     run(engineOf(pool), joinQuery).numRows.toLong shouldBe lineitemRows
     other.isKilled shouldBe true
     other.close()
+    pool.reservedBytes shouldBe 0L
+  }
+
+  test("should keep a query's peak reservation after it closes") {
+    val pool = MemoryPool()
+    val c    = pool.newQuery()
+    c.reserve(60)
+    c.reserve(30)
+    c.close()
+    c.reserve(10)
+    c.peakBytes shouldBe 90L
+    MemoryContext.NoOp.peakBytes shouldBe 0L
+  }
+
+  test("should turn an OutOfMemoryError into RESOURCE_EXHAUSTED and release the query's memory") {
+    // A table whose scan runs the heap out, after the join build below reserved memory
+    object OutOfHeap extends TableSource:
+      def name: String                          = "out_of_heap"
+      def schema: Schema                        = Schema(IndexedSeq(Field("k", PType.Int64)))
+      def scan(spec: ScanSpec): Iterator[Batch] = Iterator.continually(
+        throw OutOfMemoryError("Java heap space")
+      )
+    val pool   = MemoryPool()
+    val engine = engineOf(pool)
+    engine.catalog.register(OutOfHeap)
+    val e = intercept[WvletLangException] {
+      run(engine, "from out_of_heap join orders on k = o_orderkey select k, o_orderdate")
+    }
+    e.statusCode shouldBe StatusCode.RESOURCE_EXHAUSTED
+    e.getMessage shouldContain "ran out of heap memory"
+    e.getMessage shouldContain "Java heap space"
+    e.getMessage shouldContain "-Xmx"
+    e.getCause shouldMatch { case _: OutOfMemoryError =>
+    }
     pool.reservedBytes shouldBe 0L
   }
 
