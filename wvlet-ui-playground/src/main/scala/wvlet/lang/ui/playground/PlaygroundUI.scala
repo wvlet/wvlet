@@ -15,6 +15,7 @@ package wvlet.lang.ui.playground
 
 import org.scalajs.dom
 import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.compiler.lsp.StdLibIndex
 import wvlet.lang.ui.component.monaco.MonacoEditor
 import wvlet.uni.dom.RxElement
 import wvlet.uni.dom.all.{*, given}
@@ -78,7 +79,9 @@ object PlaygroundUI extends LogSupport:
             .engine
             .complete(text, offset)
             .map(i => js.Dynamic.literal(label = i.label, kind = i.kind, detail = i.detail))*
-        )
+        ),
+      // Member functions of the standard library, colored as calls after a dot
+      js.Array(StdLibIndex.allFunctions.filter(_.ownerType.nonEmpty).map(_.name).distinct.sorted*)
     )
 
 end PlaygroundUI

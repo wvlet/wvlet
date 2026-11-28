@@ -14,7 +14,6 @@
 package wvlet.lang.ui.playground
 
 import wvlet.lang.compiler.lsp.StdLibEntry
-import wvlet.lang.compiler.lsp.StdLibReference
 
 /** The kind of a notebook cell: a query, or text in markdown */
 enum CellKind:
@@ -182,8 +181,8 @@ object NotebookText:
   end formatQuery
 
   /**
-    * The notebook of a stdlib function: its signature and description, then one cell per example,
-    * with links to the bundled examples that call it and to the other functions of its category
+    * The notebook of a stdlib function: its signature and description, with links to the bundled
+    * examples that call it, then one cell per example
     */
   def ofFunction(e: StdLibEntry): Seq[CellSource] =
     val md = Seq.newBuilder[String]
@@ -205,15 +204,6 @@ object NotebookText:
           .map(x => s"[${Examples.categoryLabel(x.category)} › ${x.title}](#example=${x.path})")
           .mkString(", ")
       md += ""
-    val others = StdLibReference
-      .sections
-      .find(_.category == e.category)
-      .toSeq
-      .flatMap(_.entries)
-      .filterNot(_ == e)
-    if others.nonEmpty then
-      md += s"More in ${e.category.title}: " +
-        others.map(o => s"[${o.label}](#function=${o.key})").mkString(" · ")
     val text     = CellSource(CellKind.Markdown, trimLines(md.result()))
     val examples =
       if e.examples.isEmpty then

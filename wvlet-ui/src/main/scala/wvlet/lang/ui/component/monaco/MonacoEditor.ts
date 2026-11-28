@@ -1,5 +1,6 @@
 import * as monaco from 'monaco-editor';
 import {KeyCode, KeyMod} from "monaco-editor";
+import {setFunctionNames} from './WvletLanguage';
 
 export class MonacoEditor {
     private id: string;
@@ -23,15 +24,20 @@ export class MonacoEditor {
      * global per language, so every Wvlet editor on the page gets them. `hover` returns markdown
      * and a 1-origin range, or null; `complete` returns LSP-style items (`kind` is an LSP
      * CompletionItemKind number). Both take the editor text and a 0-origin UTF-16 offset.
+     * `functionNames` are highlighted as functions after a dot.
      */
     static registerLanguageServices(
         hover: (text: string, offset: number) => {content: string, startLine: number, startColumn: number, endLine: number, endColumn: number} | null,
-        complete: (text: string, offset: number) => {label: string, kind: number, detail: string}[]
+        complete: (text: string, offset: number) => {label: string, kind: number, detail: string}[],
+        functionNames: string[] = []
     ): void {
         if (MonacoEditor.languageServicesRegistered) {
             return;
         }
         MonacoEditor.languageServicesRegistered = true;
+        if (functionNames.length > 0) {
+            setFunctionNames(functionNames);
+        }
         // LSP CompletionItemKind -> Monaco's enum, for the kinds Wvlet completions use
         const K = monaco.languages.CompletionItemKind;
         const kinds: {[lsp: number]: monaco.languages.CompletionItemKind} = {
@@ -88,6 +94,8 @@ export class MonacoEditor {
             {token: 'string.sql', foreground: 'f4c099'},
             {token: 'comment', foreground: '7282a4'},
             {token: 'operator', foreground: 'bd93f9'},
+            {token: 'function', foreground: 'dcdcaa'},
+            {token: 'number', foreground: 'b5cea8'},
             {token: 'invalid', foreground: 'ff0000'},
         ];
         const lightRules = [
@@ -102,6 +110,8 @@ export class MonacoEditor {
             {token: 'string.sql', foreground: 'b35900'},
             {token: 'comment', foreground: '6a737d'},
             {token: 'operator', foreground: '7c3aed'},
+            {token: 'function', foreground: '795e26'},
+            {token: 'number', foreground: '098658'},
             {token: 'invalid', foreground: 'd00000'},
         ];
         for (const name of ['vs-wvlet', 'vs-sql']) {

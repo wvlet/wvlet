@@ -1478,8 +1478,7 @@ summary.pg-engine-section__title {
 
 /* Function names and signatures */
 .pg-fn-name {
-    color: var(--wv-fn, #58a6ff);
-    font-weight: 600;
+    color: var(--wv-fn);
 }
 
 .pg-fn-args,
@@ -1488,7 +1487,7 @@ summary.pg-engine-section__title {
 }
 
 .pg-tok-fn {
-    color: var(--wv-fn, #58a6ff);
+    color: var(--wv-fn);
 }
 
 .pg-tok-type {
@@ -1503,28 +1502,29 @@ summary.pg-engine-section__title {
     color: var(--wv-number, #7fd1b9);
 }
 
+/* The editor's token colors (MonacoEditor.ts themes), so docs and editor highlight alike */
 :root[data-theme="light"],
 :root:not([data-theme]) {
-    --wv-fn: #0b6bcb;
+    --wv-fn: #795e26;
     --wv-type: #8a3ffc;
     --wv-string: #b35900;
-    --wv-number: #0a7d5a;
+    --wv-number: #098658;
 }
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-        --wv-fn: #58a6ff;
-        --wv-type: #c792ea;
-        --wv-string: #e5a46a;
-        --wv-number: #7fd1b9;
+        --wv-fn: #dcdcaa;
+        --wv-type: #cc99cc;
+        --wv-string: #f4c099;
+        --wv-number: #b5cea8;
     }
 }
 
 :root[data-theme="dark"] {
-    --wv-fn: #58a6ff;
-    --wv-type: #c792ea;
-    --wv-string: #e5a46a;
-    --wv-number: #7fd1b9;
+    --wv-fn: #dcdcaa;
+    --wv-type: #cc99cc;
+    --wv-string: #f4c099;
+    --wv-number: #b5cea8;
 }
 
 .pg-search-box {

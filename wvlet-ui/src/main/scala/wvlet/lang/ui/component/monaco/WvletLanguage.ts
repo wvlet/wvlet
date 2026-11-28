@@ -28,6 +28,9 @@ export const conf: languages.LanguageConfiguration = {
 }
 
 export const language = <languages.IMonarchLanguage> {
+    // Function names highlighted after a dot; set from the standard library by setFunctionNames
+    functions: [],
+
     defaultToken: '',
     tokenPostfix: '.wv',
 
@@ -196,7 +199,23 @@ export const language = <languages.IMonarchLanguage> {
 
     tokenizer: {
         root: [
-            [/[a-z_][a-z_0-9\\.]*/, {
+            // A known function after a dot (`name.upper`) is a function call; other dotted names
+            // (`t.n_name`) stay identifiers
+            [/(\.)([a-z_][a-z_0-9]*)/, {
+               cases : {
+                   '$2@functions': ['delimiter', 'function'],
+                   '@default': ['delimiter', 'identifier']
+               }
+            }],
+            // A name before `(` is a call, unless it is a keyword (`in (...)`, `exists (...)`)
+            [/[a-z_][a-z_0-9]*(?=\s*\()/, {
+               cases : {
+                   '@keywords': 'keyword',
+                   '@typeKeywords': 'type.keyword',
+                   '@default': 'function'
+               }
+            }],
+            [/[a-z_][a-z_0-9]*/, {
                cases : {
                    '@keywords': 'keyword',
                    '@typeKeywords': 'type.keyword',
@@ -261,3 +280,12 @@ languages.registerTokensProviderFactory(
 languages.setLanguageConfiguration('wvlet', conf);
 
 
+
+/**
+ * Highlight these names as functions after a dot (`name.upper`), e.g. the standard library's
+ * member functions. Re-registers the tokenizer, so open editors re-color.
+ */
+export function setFunctionNames(names: string[]): void {
+    (language as any).functions = names;
+    languages.setMonarchTokensProvider('wvlet', language);
+}
