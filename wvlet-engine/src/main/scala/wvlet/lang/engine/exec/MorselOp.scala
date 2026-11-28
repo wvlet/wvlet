@@ -138,7 +138,9 @@ class MorselOp(
     val src  = s.parts(k)
     val sc   = seg.scan
     val part = IteratorOp(sc.schema, () => src().map(sc.narrow), sc.name, rows)
-    val op   = seg.pipeline(part)
+    // A part's partial tables are dropped once drained, bounded by the part: counting them until
+    // the query ends would overcount, also when parts run on the calling thread
+    val op = MemoryContext.withCurrent(MemoryContext.NoOp)(seg.pipeline(part))
     try op.drain()
     finally op.close()
 

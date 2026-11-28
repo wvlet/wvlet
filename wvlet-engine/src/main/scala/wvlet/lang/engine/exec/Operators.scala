@@ -84,12 +84,7 @@ object Operator:
       ", eager"
 
   /** Pull every row of the operator into one batch */
-  def materialize(op: Operator): Batch =
-    val batches = op.drain()
-    if batches.isEmpty then
-      Batch.empty(op.schema)
-    else
-      Batch.concat(op.schema, batches)
+  def materialize(op: Operator): Batch = MemoryContext.NoOp.materialize(op)
 
 /** Batches computed up front (VALUES, materialized subqueries, in-memory tables) */
 class BatchesOp(val schema: Schema, batches: Seq[Batch], label: String = "Batches")

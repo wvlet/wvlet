@@ -361,11 +361,15 @@ class HashAggOp(
       sortedRuns = sortedGroupRuns
     )
     val accs = aggs.map(_.newAccumulator())
-    // The group table's key and the aggregates' state of each group
-    val groupMemory = memory.growing(
-      keys.map(k => MemoryContext.valueBytes(k.ptype)).sum + HashAggOp.GroupTableBytes +
-        aggs.map(a => MemoryContext.valueBytes(a.ptype)).sum
-    )
+    // The group table's key and the aggregates' state of each group; one group without keys
+    val groupMemory =
+      if keys.isEmpty then
+        MemoryContext.NoOp.growing(0L)
+      else
+        memory.growing(
+          keys.map(k => MemoryContext.valueBytes(k.ptype)).sum + HashAggOp.GroupTableBytes +
+            aggs.map(a => MemoryContext.valueBytes(a.ptype)).sum
+        )
     groupMemory.ensure(presize)
     if presize > 0 then
       accs.foreach(_.ensureGroups(presize))
