@@ -181,7 +181,10 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
       when(t.status != TestStatus.Passed, pre(cls -> "pg-run-check__message", t.message))
     )
 
-  /** The result panel under the editor: the same header, table, and badges as a full result */
+  /**
+    * The result card under the editor, in Treasure Work's style: a header with the statement, a
+    * summary line, a compact grid of the first rows, and a footer that shows the rest
+    */
   private def output(out: RunOutput): RxElement =
     val tests = c
       .checksOf(out)
@@ -189,35 +192,61 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
         t
       }
     val failed = tests.count(_.status == TestStatus.Failed)
+    val result = out.result.filter(r => !out.hasError && r.columns.nonEmpty)
     val header = div(
-      cls -> "pg-panel-header pg-cell__result-header",
-      span(cls -> "pg-cell__result-title", "Result"),
+      cls -> "pg-cell__result-header",
+      button(
+        cls       -> "pg-cell__fold",
+        titleAttr -> "Show or hide the result",
+        onclick   -> { () =>
+          c.resultOpen.update(!_)
+        },
+        c.resultOpen
+          .map(open =>
+            if open then
+              "▾"
+            else
+              "▸"
+          )
+      ),
+      span(cls -> "pg-cell__result-icon", "▦"),
+      span(
+        cls -> "pg-cell__result-title",
+        if out.statement.nonEmpty then
+          out.statement.linesIterator.map(_.trim).mkString(" ")
+        else
+          "Result"
+      ),
+      result.map { r =>
+        button(
+          cls       -> "pg-cell-btn",
+          titleAttr -> "Copy the rows as tab-separated text",
+          onclick   -> { () =>
+            js.Dynamic.global.navigator.clipboard.writeText(ResultPanel.toTsv(r))
+          },
+          "Copy"
+        )
+      }
+    )
+    val summary = div(
+      cls -> "pg-cell__summary",
+      span(
+        (
+          result.map(r =>
+            if r.isTruncated then
+              f"${r.rows.size}%,d of ${r.totalRows}%,d rows"
+            else
+              ChecksPanel.rowCount(r.totalRows)
+          ) ++ Option.when(out.hasError)("Error") ++
+            Option.when(out.elapsedMillis > 0)(f"${out.elapsedMillis}%.1f ms")
+        ).mkString(" · ")
+      ),
       when(
         tests.nonEmpty,
         if failed > 0 then
-          span(cls -> "pg-badge pg-badge--danger", s"${failed} failed")
+          span(cls -> "pg-badge pg-badge--danger", s"${failed} of ${tests.size} tests failed")
         else
-          span(cls -> "pg-badge pg-badge--success", s"${tests.size} passed")
-      ),
-      span(
-        cls -> "pg-result-meta",
-        when(out.statement.nonEmpty, span(cls -> "pg-result-stmt", out.statement)),
-        out.result match
-          case Some(r) if !out.hasError =>
-            span(
-              cls -> "pg-badge",
-              if r.isTruncated then
-                f"${r.rows.size}%,d of ${r.totalRows}%,d rows"
-              else
-                ChecksPanel.rowCount(r.totalRows)
-            )
-          case _ =>
-            span()
-        ,
-        when(
-          out.elapsedMillis > 0,
-          span(cls -> "pg-badge pg-badge--muted", f"${out.elapsedMillis}%.1f ms")
-        )
+          span(cls -> "pg-badge pg-badge--success", s"${tests.size} tests passed")
       )
     )
     val body =
@@ -225,30 +254,63 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
         case Some(err) =>
           div(cls -> "pg-result__error", role -> "alert", pre(err))
         case None =>
-          out.result match
-            case Some(r) if r.columns.nonEmpty =>
-              if !c.resultResized then
-                c.resultHeight := Cell.fitHeight(r.rows.size)
+          result match
+            case Some(r) =>
+              val n = r.rows.size
               div(
-                div(
-                  cls       -> "pg-cell__table",
-                  styleAttr -> c.resultHeight.map(h => s"height: ${h}px"),
-                  results.table(r)
-                ),
-                VerticalSplitter(
-                  c.resultHeight,
-                  Cell.resultRange,
-                  "Resize the result",
-                  onResize = () => c.resultResized = true
+                c.showAllRows
+                  .map { all =>
+                    val shown =
+                      if all then
+                        math.min(n, Cell.expandedRows)
+                      else
+                        math.min(n, Cell.previewRows)
+                    // As wide as its columns: lines stop at the last one, and a wider table
+                    // scrolls sideways in the card
+                    div(
+                      cls       -> "pg-cell__table",
+                      styleAttr ->
+                        s"height: ${Cell.tableHeight(shown)}px; width: min(100%, ${results
+                            .tableWidth(r, rowNumbers = false) + 1}px)",
+                      results.table(r, rowNumbers = false)
+                    )
+                  },
+                when(
+                  n > Cell.previewRows,
+                  button(
+                    cls     -> "pg-cell__more",
+                    onclick -> { () =>
+                      c.showAllRows.update(!_)
+                    },
+                    c.showAllRows
+                      .map(all =>
+                        if all then
+                          "Show fewer rows"
+                        else
+                          f"+${n - Cell.previewRows}%,d more rows"
+                      )
+                  )
                 )
               )
-            case _ =>
+            case None =>
               div(cls -> "pg-result__empty", "Done: the cell defines no query result.")
+    // The card shrinks to a narrow result's width, but keeps room for its header
+    val width = result.map(r => results.tableWidth(r, rowNumbers = false) + 2)
     div(
-      cls -> "pg-cell__result",
+      cls       -> "pg-cell__result",
+      styleAttr -> width.map(w => s"width: min(100%, max(380px, ${w}px))").getOrElse(""),
       header,
-      body,
-      when(tests.nonEmpty, div(cls -> "pg-cell__tests", tests.map(testEntry)))
+      c.resultOpen
+        .map { open =>
+          if open then
+            div(
+              summary,
+              body,
+              when(tests.nonEmpty, div(cls -> "pg-cell__tests", tests.map(testEntry)))
+            )
+          else
+            span()
+        }
     )
 
   end output
