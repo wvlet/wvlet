@@ -84,12 +84,7 @@ object Operator:
       ", eager"
 
   /** Pull every row of the operator into one batch */
-  def materialize(op: Operator): Batch =
-    val batches = op.drain()
-    if batches.isEmpty then
-      Batch.empty(op.schema)
-    else
-      Batch.concat(op.schema, batches)
+  def materialize(op: Operator): Batch = MemoryContext.NoOp.materialize(op)
 
 /** Batches computed up front (VALUES, materialized subqueries, in-memory tables) */
 class BatchesOp(val schema: Schema, batches: Seq[Batch], label: String = "Batches")
@@ -341,8 +336,9 @@ class SortOp(
     else
       null
 
+  private val memory = MemoryContext.current // captured where the sort is planned
   private def sortAll(): Iterator[Batch] =
-    val all = Operator.materialize(child)
+    val all = memory.materialize(child)
     if all.size == 0 then
       return Iterator.empty
     val keyVecs = keys.map(k => k.expr.eval(all)).toArray

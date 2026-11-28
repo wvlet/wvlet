@@ -137,13 +137,16 @@ class WindowOp(
     else
       null
 
+  // The query's memory budget, captured where the window is planned
+  private val memory = MemoryContext.current
+
   private def compute(): Iterator[Batch] =
     val all =
       topN match
         case Some(t) if streamTopN =>
           topInput(t)
         case _ =>
-          Operator.materialize(child)
+          memory.materialize(child)
     val n = all.size
     if n == 0 then
       return Iterator.empty
@@ -247,7 +250,9 @@ class WindowOp(
       b = child.next()
     if rows > 0 then
       submit()
+    // Only the kept rows stay: the chunks are dropped once ranked
     val kept = tasks.result().flatMap(_.get()).filter(_.size > 0)
+    kept.foreach(memory.reserve)
     if kept.isEmpty then
       Batch.empty(child.schema)
     else if kept.size == 1 then

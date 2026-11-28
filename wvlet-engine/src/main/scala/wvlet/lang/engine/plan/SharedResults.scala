@@ -46,7 +46,7 @@ trait SharedResults:
   private[plan] class SharedResult(val op: Operator) extends SharedBatches:
     private val result = ComputeOnce { () =>
       debug(s"Materializing a shared result:\n${op.explain()}")
-      op.drain()
+      memory.drain(op)
     }
 
     /** The batches, computed on this thread unless another thread has started them */
