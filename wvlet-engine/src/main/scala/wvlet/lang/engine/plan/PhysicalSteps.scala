@@ -54,6 +54,7 @@ trait PhysicalSteps:
     dictionaryCodes = enabled(Optimization.DictionaryGroupKeys),
     dictionaryEntries = enabled(Optimization.DictionaryEntryScans),
     lazyStrings = enabled(Optimization.LazyDictionaryStrings),
+    plainStringBytes = enabled(Optimization.PlainStringBytes),
     selectiveRowFilters = enabled(Optimization.SelectiveScanRowFilters),
     maskedCaseWhen = enabled(Optimization.MaskedCaseWhen),
     windowSharePartitions = enabled(Optimization.WindowSharePartitions),

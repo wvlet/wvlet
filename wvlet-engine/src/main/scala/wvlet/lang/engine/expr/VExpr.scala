@@ -829,15 +829,29 @@ case class LikeExpr(
     s"like(${child.sig},${VExpr.valueSig(pattern)},${negate},${caseInsensitive}${esc})"
 
   private val matcher: String => Boolean = LikeMatcher.compile(pattern, caseInsensitive, escape)
-  def eval(b: Batch): Vec                =
-    val v = Kernels.asStrVec(child.eval(b))
-    val o = new Array[Boolean](b.size)
-    var i = 0
-    while i < b.size do
-      if !v.isNull(i) then
-        o(i) = matcher(v.values(i)) != negate
-      i += 1
+  // The byte matcher for vectors held as bytes (`plain_string_bytes`), null for String-only patterns
+  private val bytesMatcher: LikeBytes = LikeBytes.compile(pattern, caseInsensitive, escape)
+  def eval(b: Batch): Vec             =
+    val v  = Kernels.asStrVec(child.eval(b))
+    val o  = new Array[Boolean](b.size)
+    var i  = 0
+    val hb = v.bytesView
+    if bytesMatcher != null && hb != null then
+      val bytes = hb.data
+      val offs  = hb.offsets
+      while i < b.size do
+        if !v.isNull(i) then
+          val r = hb.rowOf(i)
+          o(i) = bytesMatcher.matches(bytes, offs(r), offs(r + 1)) != negate
+        i += 1
+    else
+      while i < b.size do
+        if !v.isNull(i) then
+          o(i) = matcher(v.values(i)) != negate
+        i += 1
     BoolVec(o, v.nulls)
+
+end LikeExpr
 
 object LikeMatcher:
   def compile(pattern: String, caseInsensitive: Boolean, escape: Option[Char]): String => Boolean =

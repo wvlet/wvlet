@@ -124,6 +124,7 @@ class OptimizerOptionsTest extends UniTest:
         "reorder_conjuncts",
         "dictionary_entry_scans",
         "lazy_dictionary_strings",
+        "plain_string_bytes",
         "dictionary_filters",
         "dictionary_selection",
         "decimal_float_scan_filters",

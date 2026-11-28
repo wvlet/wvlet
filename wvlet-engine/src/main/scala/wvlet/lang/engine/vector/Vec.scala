@@ -323,6 +323,14 @@ final class DoubleVec(val values: Array[Double], val nulls: Array[Boolean]) exte
   * holds only the codes and the strings of its batch's dictionary entries: row i is
   * `entries(codes(i))`, or NULL for code -1. [[str]] reads one row without building the per-row
   * array, which [[values]] builds on first use, so grouping by the codes never builds it.
+  *
+  * A vector built with `bytes` ([[StrVec.ofBytes]], `plain_string_bytes`) holds its rows as UTF-8
+  * bytes ([[StrVec.Bytes]]). Kernels that read them ([[bytesView]]) never build a String;
+  * [[values]] decodes them on first use and then drops the bytes, so the vector holds Strings only
+  * from then on. A gather before that keeps the source's bytes and composes the row index instead
+  * of copying, so a join fanning a dimension's rows out to many output rows doesn't copy their
+  * bytes per output row. A view builds its Strings from its source's, so each source row is decoded
+  * once and equal rows share one String.
   */
 final class StrVec(
     initValues: Array[String],
@@ -333,8 +341,18 @@ final class StrVec(
     codeSource: Array[Int] = null,
     codeIndex: Array[Int] = null,
     entries: Array[String] = null,
-    rows: Int = -1
+    rows: Int = -1,
+    initBytes: StrVec.Bytes = null
 ) extends Vec:
+  // The rows' bytes until the Strings are built, then null: a vector that built its Strings
+  // doesn't keep its source page's bytes (or a view its source's Strings) alive. Written after
+  // `built`, so a reader that sees null here also sees `built`
+  @volatile
+  private var heldBytes: StrVec.Bytes = initBytes
+
+  // Whether the rows came as bytes (a field of its own, so `initBytes` is not kept)
+  private val fromBytes: Boolean = initBytes != null
+
   // The codes, gathered from `codeSource` at `codeIndex` on first use: most gathered vectors (join
   // outputs, filtered scans) never read them. Racing first uses compute equal arrays
   @volatile
@@ -356,7 +374,16 @@ final class StrVec(
   def hasCodes: Boolean = gatheredCodes != null || codeSource != null
 
   /** Whether the rows are held as codes into `entries`, without a per-row array yet */
-  def holdsEntries: Boolean = initValues == null
+  def holdsEntries: Boolean = initValues == null && entries != null
+
+  /** Whether the rows are still held as UTF-8 bytes ([[bytesView]]) */
+  def holdsBytes: Boolean = heldBytes != null
+
+  /**
+    * The rows' UTF-8 bytes, or null once the Strings are built (or without bytes). Kernels read
+    * this once per batch: the vector may drop it while they run
+    */
+  def bytesView: StrVec.Bytes = heldBytes
 
   /** The batch's dictionary entries of a vector that [[holdsEntries]] (null otherwise) */
   private[engine] def entryStrings: Array[String] = entries
@@ -366,10 +393,27 @@ final class StrVec(
     if initValues != null then
       initValues
     else
-      var b = built
+      // Read the bytes before `built`: once they are dropped, `built` is visible
+      val hb = heldBytes
+      var b  = built
       if b == null then
-        b = StrVec.Built(StrVec.decodeEntries(entries, codes, size))
+        b =
+          if hb == null then
+            StrVec.Built(StrVec.decodeEntries(entries, codes, size))
+          else if hb.source != null then
+            // Share the source's Strings: each source row is decoded once for all its views, as
+            // a scan without plain_string_bytes would, and equal rows stay one String instance
+            StrVec.Built(StrVec.gatherStrings(hb.source.values, hb.index, size))
+          else
+            // Views of this vector on other threads may ask at once: decode once
+            this.synchronized {
+              if built == null then
+                built = StrVec.Built(StrVec.decodeBytes(hb.data, hb.offsets, nulls, size))
+              built
+            }
         built = b
+        if hb != null then
+          heldBytes = null
       b.values
 
   /** Row i's string (null for a NULL row), without building [[values]] */
@@ -378,6 +422,10 @@ final class StrVec(
       initValues(i)
     else if built != null then
       built.values(i)
+    else if heldBytes != null then
+      // Build the Strings once rather than decoding row i on each read: readers of single rows
+      // (IN lists, CASE) often read every row, and a later reader would decode them again
+      values(i)
     else
       val c = codes(i)
       if c >= 0 then
@@ -401,6 +449,28 @@ final class StrVec(
   def gather(idx: Array[Int], n: Int): Vec =
     val outNulls = Vec.nullsWithPadding(nulls, idx, n)
     val c        = gatheredCodes
+    if fromBytes then
+      val hb = heldBytes
+      val b  = built
+      if hb == null || b != null then
+        return StrVec(StrVec.gatherStrings(values, idx, n), outNulls)
+      // A view of the same source rows, without copying their bytes
+      val at =
+        if hb.index == null then
+          java.util.Arrays.copyOf(idx, n)
+        else
+          StrVec.gatherCodes(hb.index, idx, n)
+      val src =
+        if hb.source != null then
+          hb.source
+        else
+          this
+      return StrVec(
+        null,
+        outNulls,
+        rows = n,
+        initBytes = StrVec.Bytes(hb.data, hb.offsets, at, src)
+      )
     if initValues == null then
       // Gather the codes only, keeping the entries
       val src =
@@ -558,6 +628,59 @@ object StrVec:
     */
   def ofEntries(entries: Array[String], codes: Array[Int], nulls: Array[Boolean], n: Int): StrVec =
     StrVec(null, nulls, codes, entries.length, entries = entries, rows = n)
+
+  /**
+    * `n` rows held as UTF-8 bytes: row i is `bytes` from `offsets(i)` to `offsets(i + 1)`, or NULL
+    * where `nulls(i)`. The arrays are shared, not copied
+    */
+  def ofBytes(bytes: Array[Byte], offsets: Array[Int], nulls: Array[Boolean], n: Int): StrVec =
+    StrVec(null, nulls, rows = n, initBytes = Bytes(bytes, offsets, null, null))
+
+  /**
+    * The UTF-8 bytes of a vector's rows: row i is source row r = `index(i)` (i without an index, -1
+    * for padding), whose bytes run from `offsets(r)` to `offsets(r + 1)`. `source` is the vector
+    * that owns `data` for a view (a gathered vector), or null for that vector itself
+    */
+  final class Bytes(
+      val data: Array[Byte],
+      val offsets: Array[Int],
+      val index: Array[Int],
+      val source: StrVec
+  ):
+    /** The source row of row i, or -1 for padding */
+    inline def rowOf(i: Int): Int =
+      if index == null then
+        i
+      else
+        index(i)
+
+  private def decodeRow(bytes: Array[Byte], offsets: Array[Int], i: Int): String =
+    val from = offsets(i)
+    String(bytes, from, offsets(i + 1) - from, java.nio.charset.StandardCharsets.UTF_8)
+
+  private def decodeBytes(
+      bytes: Array[Byte],
+      offsets: Array[Int],
+      nulls: Array[Boolean],
+      n: Int
+  ): Array[String] =
+    val out = new Array[String](n)
+    var i   = 0
+    while i < n do
+      if nulls == null || !nulls(i) then
+        out(i) = decodeRow(bytes, offsets, i)
+      i += 1
+    out
+
+  private def gatherStrings(values: Array[String], idx: Array[Int], n: Int): Array[String] =
+    val out = new Array[String](n)
+    var i   = 0
+    while i < n do
+      val k = idx(i)
+      if k >= 0 then
+        out(i) = values(k)
+      i += 1
+    out
 
   private def decodeEntries(entries: Array[String], codes: Array[Int], n: Int): Array[String] =
     val out = new Array[String](n)

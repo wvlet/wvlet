@@ -680,6 +680,15 @@ enum Optimization(val name: String):
   case LazyDictionaryStrings extends Optimization("lazy_dictionary_strings")
 
   /**
+    * Parquet string columns without a dictionary (PLAIN pages) are held as their UTF-8 bytes and
+    * offsets ([[StrVec.ofBytes]]), sharing uni's arrays, instead of one String per row. LIKE reads
+    * the bytes, so a column used only by a filter never builds Strings (TPC-H q13's `o_comment`);
+    * other readers build them once per source vector, and gathers share the bytes through a row
+    * index
+    */
+  case PlainStringBytes extends Optimization("plain_string_bytes")
+
+  /**
     * Filter conditions over one string column, made of comparisons, IN lists, LIKE, and IS NULL,
     * run once per distinct dictionary entry of a batch whose column carries the codes that
     * `dictionary_group_keys` scans keep, and each row takes its entry's result (TPC-H q16's
