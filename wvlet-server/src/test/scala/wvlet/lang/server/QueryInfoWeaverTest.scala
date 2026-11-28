@@ -4,7 +4,6 @@ import wvlet.uni.test.UniTest
 import wvlet.uni.weaver.Weaver
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.{QueryResult as ApiQueryResult, Column, QueryInfo, QueryStatus}
-import wvlet.uni.util.ULID
 import java.time.Instant
 
 /**
@@ -28,7 +27,7 @@ class QueryInfoWeaverTest extends UniTest:
 
   test("weave QueryInfo with a structured result") {
     val q = QueryInfo(
-      queryId = ULID.newULID,
+      queryId = QueryIdGenerator().next(),
       pageToken = "2",
       status = QueryStatus.FINISHED,
       statusCode = StatusCode.OK,

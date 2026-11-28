@@ -60,9 +60,28 @@ case class WvletServerConfig(
       description =
         "Require this bearer token on RPC requests. Prefer the WVLET_SERVER_TOKEN environment variable to keep the secret out of the process list"
     )
-    authToken: Option[String] = None
+    authToken: Option[String] = None,
+    @option(
+      prefix = "--max-running-queries",
+      description = "Queries running at once; others wait in the queue. default: half the CPUs"
+    )
+    maxRunningQueries: Option[Int] = None,
+    @option(
+      prefix = "--max-queued-queries",
+      description = "Queries waiting to run; submissions past it are rejected. default:1000"
+    )
+    maxQueuedQueries: Option[Int] = None
 ):
   lazy val workEnv: WorkEnv = WorkEnv(path = workDir)
+
+  /** Admission limits of the query queue, from the options and the defaults */
+  def queryManagerConfig: QueryManagerConfig =
+    val c = QueryManagerConfig()
+    val r = maxRunningQueries.map(c.withMaxRunningQueries).getOrElse(c)
+    maxQueuedQueries.map(r.withMaxQueuedQueries).getOrElse(r)
+
+  /** The folder of the daily query event logs (`query-events-yyyy-MM-dd.jsonl`) */
+  def queryEventLogFolder: String = s"${workEnv.targetFolder}/logs"
 
   /** The effective bearer token: the explicit option, else the WVLET_SERVER_TOKEN env variable */
   def resolvedAuthToken: Option[String] = authToken.orElse(sys.env.get("WVLET_SERVER_TOKEN"))
@@ -186,6 +205,7 @@ object WvletServer extends LogSupport:
     .build[NettyHttpServer] { server =>
       info(s"- log file path: ${config.workEnv.logFile}")
       info(s"- error file path: ${config.workEnv.errorFile}")
+      info(s"- query event log folder: ${config.queryEventLogFolder}")
       info(s"Wvlet UI server started at http://localhost:${server.localPort}")
       info(s"Press ctrl+c to stop the server")
 
@@ -276,6 +296,16 @@ object WvletServer extends LogSupport:
             taskQueue,
             ScriptRunnerSessions.DefaultIdleTimeout
           )
+      }
+      // Explicit provider: the config, listener, and id generator have no DI bindings. Events go
+      // to JSON lines next to the server log
+      .bindProvider { (sessions: ScriptRunnerSessions) =>
+        QueryService(
+          sessions,
+          resolvedConf.queryManagerConfig,
+          JsonLinesQueryEventLogger(resolvedConf.queryEventLogFolder),
+          QueryIdGenerator()
+        )
       }
       .bindImpl[FrontendApi, FrontendApiImpl]
       .bindImpl[FileApi, FileApiImpl]

@@ -34,4 +34,12 @@ class WvletServerTest extends WvletDITest:
       None
   }
 
+  test("set the query queue limits from the server options") {
+    val c =
+      WvletServerConfig(maxRunningQueries = Some(3), maxQueuedQueries = Some(10)).queryManagerConfig
+    c.maxRunningQueries shouldBe 3
+    c.maxQueuedQueries shouldBe 10
+    WvletServerConfig().queryManagerConfig shouldBe QueryManagerConfig()
+  }
+
 end WvletServerTest

@@ -57,6 +57,20 @@ A profile entry can hold the connection settings so you only pass `-p`:
 wvlet run --profile remote "from lineitem select count(*)"
 ```
 
+## Query queue and logs
+
+The server runs a bounded number of queries at once and queues the rest; a client's statements run one at a time, in order.
+
+- `--max-running-queries N` sets how many queries run at once (default: half the CPUs). Others wait as `QUEUED`.
+- `--max-queued-queries N` sets how many queries can wait (default: 1000). Past it, a submission fails with `RESOURCE_EXHAUSTED`; retry after running queries finish.
+- Each query gets an id like `20261127_155437_00042_x7k2p`: the UTC creation time, a per-server sequence number, and a server instance id, so ids sort by time and neighboring queries differ in the sequence.
+- Finished queries stay readable by id for an hour (at most 1000 are kept).
+- Query events (`CREATED`, `STARTED`, `COMPLETED`, with status, times, row counts, and errors) are appended as JSON lines to `query-events-yyyy-MM-dd.jsonl` in the `logs` folder next to the server log; the server prints the folder at startup.
+
+```bash
+wvlet ui --port 9090 --max-running-queries 4 --max-queued-queries 100
+```
+
 ## Authentication
 
 To require a bearer token for all query (RPC) requests, start the server with a token. Prefer the environment variable so the secret stays out of the process list:

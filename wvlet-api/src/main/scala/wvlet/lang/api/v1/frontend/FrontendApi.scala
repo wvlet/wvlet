@@ -52,10 +52,19 @@ trait FrontendApi:
 object FrontendApi extends RxRouterProvider:
   override def router = RxRouter.of[FrontendApi]
 
-  case class ServerStatus(version: String = BuildInfo.version, upTime: ElapsedTime)
+  /**
+    * Server status. `runningQueries` and `queuedQueries` count the queries admitted to run and the
+    * queries waiting for a slot
+    */
+  case class ServerStatus(
+      version: String = BuildInfo.version,
+      upTime: ElapsedTime,
+      runningQueries: Int = 0,
+      queuedQueries: Int = 0
+  )
 
-  case class QueryInfoRequest(queryId: ULID, pageToken: String)
+  case class QueryInfoRequest(queryId: String, pageToken: String)
 
-  case class QueryCancelRequest(queryId: ULID)
+  case class QueryCancelRequest(queryId: String)
 
-  case class QueryResponse(queryId: ULID, requestId: ULID)
+  case class QueryResponse(queryId: String, requestId: ULID)

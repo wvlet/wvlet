@@ -36,6 +36,9 @@ usage: ui
  --schema:[SCHEMA]    Context database schema to use
  --quit-immediately   Quit the server immediately after starting. Only for boot testing
  --tpch               Load small demo TPC-H tables (scale factor 0.01, or tpchScaleFactor)
+ --auth-token:[AUTHTOKEN]  Require this bearer token on RPC requests
+ --max-running-queries:[MAXRUNNINGQUERIES]  Queries running at once; others wait in the queue. default: half the CPUs
+ --max-queued-queries:[MAXQUEUEDQUERIES]  Queries waiting to run; submissions past it are rejected. default:1000
 ```
 
 ## Shortcut Keys

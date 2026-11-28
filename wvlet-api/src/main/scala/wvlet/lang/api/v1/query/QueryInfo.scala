@@ -1,13 +1,19 @@
 package wvlet.lang.api.v1.query
 
-import wvlet.uni.util.ULID
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.StatusCode
 
 import java.time.Instant
 
+/**
+  * The state of a submitted query.
+  *
+  * @param queryId
+  *   Server-issued id `yyyyMMdd_HHmmss_<seq>_<server>` (UTC creation time, per-server sequence,
+  *   server instance id), e.g. `20261127_155437_00042_x7k2p`
+  */
 case class QueryInfo(
-    queryId: ULID,
+    queryId: String,
     // For pagination
     pageToken: String,
     status: QueryStatus,
