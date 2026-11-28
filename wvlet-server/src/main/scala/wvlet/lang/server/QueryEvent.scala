@@ -74,6 +74,7 @@ class JsonLinesQueryEventLogger(folder: String) extends QueryEventListener with 
   private val dayFmt  = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneOffset.UTC)
   private var day     = ""
   private var current = Option.empty[BufferedWriter]
+  private var closed  = false
 
   /** The file today's events go to */
   def fileOf(at: Instant): File = File(folder, s"query-events-${dayFmt.format(at)}.jsonl")
@@ -85,10 +86,12 @@ class JsonLinesQueryEventLogger(folder: String) extends QueryEventListener with 
     )
     val line = weaver.toJson(event)
     synchronized {
-      val w = writerFor(Instant.now())
-      w.write(line)
-      w.newLine()
-      w.flush()
+      // Events of queries still finishing at shutdown are dropped, not written to a reopened file
+      if !closed then
+        val w = writerFor(Instant.now())
+        w.write(line)
+        w.newLine()
+        w.flush()
     }
 
   private def writerFor(now: Instant): BufferedWriter =
@@ -115,6 +118,7 @@ class JsonLinesQueryEventLogger(folder: String) extends QueryEventListener with 
         warn(s"Failed to close the query event log: ${e.getMessage}")
 
   override def close(): Unit = synchronized {
+    closed = true
     current.foreach(closeQuietly)
     current = None
   }

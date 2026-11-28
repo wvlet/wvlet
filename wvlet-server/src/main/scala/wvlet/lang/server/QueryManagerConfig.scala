@@ -21,7 +21,7 @@ case class QueryManagerConfig(
     maxFinishedQueries: Int = 1000
 ):
   require(maxRunningQueries >= 1, s"maxRunningQueries must be >= 1: ${maxRunningQueries}")
-  require(maxQueuedQueries >= 0, s"maxQueuedQueries must be >= 0: ${maxQueuedQueries}")
+  require(maxQueuedQueries >= 1, s"maxQueuedQueries must be >= 1: ${maxQueuedQueries}")
   require(maxFinishedQueries >= 0, s"maxFinishedQueries must be >= 0: ${maxFinishedQueries}")
 
   def withMaxRunningQueries(n: Int): QueryManagerConfig = copy(maxRunningQueries = n)

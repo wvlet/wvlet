@@ -53,7 +53,7 @@ class QueryService(
 ) extends LogSupport
     with AutoCloseable:
 
-  /** The default limits, with events logged to the debug log only */
+  /** The default limits, with events dropped */
   def this(sessions: ScriptRunnerSessions) = this(
     sessions,
     QueryManagerConfig(),
@@ -77,16 +77,21 @@ class QueryService(
   private val queryMap = ConcurrentHashMap[String, QueryInfo]()
 
   // Guarded by `lock`
-  private val lock         = Object()
-  private val queued       = java.util.LinkedHashMap[String, Submitted]()
-  private val running      = mutable.HashMap.empty[String, java.util.concurrent.Future[?]]
+  private val lock   = Object()
+  private val queued = java.util.LinkedHashMap[String, Submitted]()
+  // Dispatched query -> its worker thread, once the worker picks the query up
+  private val running      = mutable.HashMap.empty[String, Option[Thread]]
   private val busySessions = mutable.HashSet.empty[String]
   private val finished     = mutable.Queue.empty[(String, Instant)]
   private val requestIndex = mutable.HashMap.empty[ULID, String]
   private val requestOf    = mutable.HashMap.empty[String, ULID]
+  // Admitted, but not yet in `queued` while their CREATED event goes out
+  private var admitting = 0
 
   override def close(): Unit =
     workers.shutdownNow()
+    // Let interrupted workers report their completion before the listener closes
+    workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)
     listener.close()
 
   /** Current running, queued, and kept finished query counts */
@@ -109,37 +114,38 @@ class QueryService(
           debug(s"Request ${request.requestId} was already submitted as query ${existing}")
           Left(existing)
         case None =>
-          if queued.size >= config.maxQueuedQueries then
+          val waiting = queued.size + admitting
+          if waiting >= config.maxQueuedQueries then
             throw StatusCode
               .RESOURCE_EXHAUSTED
               .newException(
-                s"Too many queued queries (${queued.size}). Retry after running queries finish"
+                s"Too many queued queries (${waiting}). Retry after running queries finish"
               )
           val queryId = idGenerator.next()
-          queryMap.put(
-            queryId,
-            QueryInfo(
-              queryId = queryId,
-              pageToken = "0",
-              status = QUEUED,
-              statusCode = StatusCode.OK,
-              createdAt = now
-            )
+          val info    = QueryInfo(
+            queryId = queryId,
+            pageToken = "0",
+            status = QUEUED,
+            statusCode = StatusCode.OK,
+            createdAt = now
           )
+          queryMap.put(queryId, info)
           requestIndex += request.requestId -> queryId
           requestOf += queryId              -> request.requestId
-          Right(Submitted(queryId, request, sessionKeyOf(request), now))
+          admitting += 1
+          Right((Submitted(queryId, request, sessionKeyOf(request), now), info))
     }
 
     admitted match
       case Left(existing) =>
         QueryResponse(queryId = existing, requestId = request.requestId)
-      case Right(s) =>
+      case Right((s, info)) =>
         // CREATED goes out before the query can be dispatched, so listeners see events in order.
         // A cancel landing in between marks it CANCELED; the worker then skips it and reports
         // its completion
-        emit(event(QueryEventType.CREATED, s, queryMap.get(s.queryId), query = Some(request.query)))
+        emit(event(QueryEventType.CREATED, s, info, query = Some(request.query)))
         lock.synchronized {
+          admitting -= 1
           queued.put(s.queryId, s)
           dispatch()
         }
@@ -174,7 +180,9 @@ class QueryService(
         emit(event(QueryEventType.COMPLETED, s, canceled))
         lock.synchronized(markFinished(queryId, now))
       case None =>
-        lock.synchronized(running.get(queryId)).foreach(_.cancel(true))
+        // Interrupt the worker only once it runs the query: a dispatched query not yet picked up
+        // sees CANCELED when it starts, and its worker still releases the slot
+        lock.synchronized(running.get(queryId).flatten.foreach(_.interrupt()))
     canceled
 
   private def infoOf(queryId: String): QueryInfo = Option(queryMap.get(queryId)).getOrElse {
@@ -215,12 +223,14 @@ class QueryService(
         case Some(s) =>
           queued.remove(s.queryId)
           busySessions += s.sessionKey
+          running += s.queryId -> None
           val task: Runnable = () => runAndRelease(s)
-          running += s.queryId -> workers.submit(task)
+          workers.execute(task)
         case None =>
           more = false
 
   private def runAndRelease(s: Submitted): Unit =
+    lock.synchronized(running(s.queryId) = Some(Thread.currentThread()))
     try
       runQuery(s)
     catch
@@ -232,6 +242,8 @@ class QueryService(
       emit(event(QueryEventType.COMPLETED, s, queryMap.get(s.queryId)))
       lock.synchronized {
         running -= s.queryId
+        // An interrupt from a cancel that landed after the statement returned must not leak
+        Thread.interrupted()
         busySessions -= s.sessionKey
         markFinished(s.queryId, now)
         dispatch()
@@ -312,7 +324,10 @@ class QueryService(
       _.copy(
         pageToken = "2",
         status = QueryStatus.FAILED,
-        statusCode = errorReport.headOption.map(_.statusCode).getOrElse(StatusCode.OK),
+        statusCode = errorReport
+          .headOption
+          .map(_.statusCode)
+          .getOrElse(StatusCode.NON_RETRYABLE_INTERNAL_ERROR),
         completedAt = Some(Instant.now()),
         errors = errorReport
       )
