@@ -3196,7 +3196,16 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
                 true
               case _ =>
                 false
-          val n = consume(WvletToken.INTEGER_LITERAL).str.replace("_", "").toLong
+          val lit = consume(WvletToken.INTEGER_LITERAL)
+          val n   = lit
+            .str
+            .replace("_", "")
+            .toLongOption
+            .getOrElse {
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Invalid seed: ${lit.str}", lit.sourceLocation)
+            }
           if negative then
             -n
           else

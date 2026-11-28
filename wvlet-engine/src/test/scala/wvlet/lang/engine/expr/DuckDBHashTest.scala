@@ -22,6 +22,8 @@ class DuckDBHashTest extends UniTest:
   test("should hash integers and strings as DuckDB does") {
     unsigned(DuckDBHash.hash(42)) shouldBe "7199933130570745587"
     unsigned(DuckDBHash.hash(1L)) shouldBe "4717996019076358352"
+    unsigned(DuckDBHash.hash(1.toShort)) shouldBe "4717996019076358352"
+    unsigned(DuckDBHash.hash(1.toByte)) shouldBe "4717996019076358352"
     unsigned(DuckDBHash.hash("ab")) shouldBe "12355297858342501949"
   }
 

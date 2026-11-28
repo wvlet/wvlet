@@ -55,6 +55,10 @@ object DuckDBHash:
         murmurHash64(i.toLong)
       case l: Long =>
         murmurHash64(l)
+      case x: Short =>
+        murmurHash64(x.toLong)
+      case x: Byte =>
+        murmurHash64(x.toLong)
       case b: Boolean =>
         murmurHash64(
           if b then

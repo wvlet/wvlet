@@ -95,6 +95,12 @@ class RendezvousSampleTest extends UniTest:
     }.statusCode shouldBe StatusCode.SYNTAX_ERROR
   }
 
+  test("should reject a seed that is not a long") {
+    intercept[WvletLangException] {
+      print("from t\nsample rendezvous(10%, seed = 99999999999999999999) by user_id")
+    }.statusCode shouldBe StatusCode.SYNTAX_ERROR
+  }
+
   test("should compute thresholds of the top hash bits") {
     RendezvousSampling.threshold(0) shouldBe 0L
     RendezvousSampling.threshold(-1) shouldBe 0L
