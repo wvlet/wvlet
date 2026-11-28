@@ -23,9 +23,12 @@ import java.util.concurrent.atomic.AtomicLong
   * The memory budget shared by the queries of one process (e.g. a server): the bytes every open
   * [[MemoryContext]] reserved, against a soft `capacityBytes`. Reservations past the capacity still
   * succeed; [[isOverCapacity]] tells an admission check to hold new queries until running ones
-  * release memory
+  * release memory. `queryLimitBytes` is the limit of each query of an engine that sets none
   */
-final class MemoryPool(val capacityBytes: Long = Long.MaxValue):
+final class MemoryPool(
+    val capacityBytes: Long = Long.MaxValue,
+    val queryLimitBytes: Long = Long.MaxValue
+):
   private val reserved = AtomicLong(0L)
 
   /** Bytes the open queries hold */
@@ -35,7 +38,7 @@ final class MemoryPool(val capacityBytes: Long = Long.MaxValue):
   def isOverCapacity: Boolean = reserved.get() > capacityBytes
 
   /** A context for one query, failing it past `limitBytes` */
-  def newQuery(limitBytes: Long = Long.MaxValue): MemoryContext = MemoryContext(this, limitBytes)
+  def newQuery(limitBytes: Long = queryLimitBytes): MemoryContext = MemoryContext(this, limitBytes)
 
   private[exec] def add(bytes: Long): Unit = reserved.addAndGet(bytes)
 
@@ -46,6 +49,19 @@ final class MemoryPool(val capacityBytes: Long = Long.MaxValue):
         else
           MemoryContext.mb(capacityBytes)
       })"
+
+object MemoryPool:
+  @volatile
+  private var processPool = MemoryPool()
+
+  /**
+    * The pool of the engines of this process, unless an engine is given another: unbounded until a
+    * server sets one with [[setProcessPool]], since every engine of a process shares its heap
+    */
+  def process: MemoryPool = processPool
+
+  /** Make `pool` the [[process]] pool of engines created from now on */
+  def setProcessPool(pool: MemoryPool): Unit = processPool = pool
 
 /**
   * The bytes one query holds in its large in-memory structures (join build tables, buffered

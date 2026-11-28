@@ -6,6 +6,7 @@ import wvlet.lang.api.v1.task.TaskApi
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.engine.exec.MemoryPool
 import wvlet.lang.runner.activity.{ItemStores, TaskQueue}
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.engine.WvletEngineSession
@@ -70,15 +71,30 @@ case class WvletServerConfig(
       prefix = "--max-queued-queries",
       description = "Queries waiting to run; submissions past it are rejected. default:1000"
     )
-    maxQueuedQueries: Option[Int] = None
+    maxQueuedQueries: Option[Int] = None,
+    @option(
+      prefix = "--max-query-memory",
+      description =
+        "Memory one wvlet-engine query may hold (e.g. 2GB) before it fails. default: no limit"
+    )
+    maxQueryMemory: Option[String] = None,
+    @option(
+      prefix = "--memory-pool-size",
+      description =
+        "Memory wvlet-engine queries may hold together (e.g. 8GB) before queued queries wait. default: 70% of the heap"
+    )
+    memoryPoolSize: Option[String] = None
 ):
   lazy val workEnv: WorkEnv = WorkEnv(path = workDir)
 
-  /** Admission limits of the query queue, from the options and the defaults */
+  /** Admission and memory limits of the query queue, from the options and the defaults */
   def queryManagerConfig: QueryManagerConfig =
-    val c = QueryManagerConfig()
-    val r = maxRunningQueries.map(c.withMaxRunningQueries).getOrElse(c)
-    maxQueuedQueries.map(r.withMaxQueuedQueries).getOrElse(r)
+    var c = QueryManagerConfig()
+    maxRunningQueries.foreach(n => c = c.withMaxRunningQueries(n))
+    maxQueuedQueries.foreach(n => c = c.withMaxQueuedQueries(n))
+    maxQueryMemory.foreach(s => c = c.withMaxQueryMemory(QueryManagerConfig.parseBytes(s)))
+    memoryPoolSize.foreach(s => c = c.withMemoryPoolSize(QueryManagerConfig.parseBytes(s)))
+    c
 
   /** The folder of the daily query event logs (`query-events-yyyy-MM-dd.jsonl`) */
   def queryEventLogFolder: String = s"${workEnv.targetFolder}/logs"
@@ -259,6 +275,10 @@ object WvletServer extends LogSupport:
     // WvletServerConfig observe the same port the Netty server is listening on.
     val port         = unusedPortFrom(config.port)
     val resolvedConf = config.copy(port = port)
+    // Every in-process engine the sessions create from now on shares the server's pool
+    val memoryPool = resolvedConf.queryManagerConfig.newMemoryPool()
+    MemoryPool.setProcessPool(memoryPool)
+    info(s"Engine memory: ${memoryPool}")
     Design
       .newSilentDesign
       .bindInstance[WvletServerConfig](resolvedConf)
@@ -304,7 +324,8 @@ object WvletServer extends LogSupport:
           sessions,
           resolvedConf.queryManagerConfig,
           JsonLinesQueryEventLogger(resolvedConf.queryEventLogFolder),
-          QueryIdGenerator()
+          QueryIdGenerator(),
+          memoryPool
         )
       }
       .bindImpl[FrontendApi, FrontendApiImpl]

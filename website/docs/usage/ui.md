@@ -39,6 +39,8 @@ usage: ui
  --auth-token:[AUTHTOKEN]  Require this bearer token on RPC requests
  --max-running-queries:[MAXRUNNINGQUERIES]  Queries running at once; others wait in the queue. default: half the CPUs
  --max-queued-queries:[MAXQUEUEDQUERIES]  Queries waiting to run; submissions past it are rejected. default:1000
+ --max-query-memory:[MAXQUERYMEMORY]  Memory one wvlet-engine query may hold (e.g. 2GB) before it fails. default: no limit
+ --memory-pool-size:[MEMORYPOOLSIZE]  Memory wvlet-engine queries may hold together (e.g. 8GB) before queued queries wait. default: 70% of the heap
 ```
 
 ## Shortcut Keys

@@ -9,6 +9,7 @@ import wvlet.lang.api.v1.query.QueryStatus
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.engine.exec.MemoryPool
 import wvlet.lang.runner.ThreadManager
 import wvlet.lang.runner.WvletScriptRunnerConfig
 import wvlet.lang.runner.activity.InMemoryItemStore
@@ -82,11 +83,11 @@ class QueryManagerTest extends UniTest:
     def eventsOf(queryId: String): List[QueryEventType] =
       events.asScala.filter(_.queryId == queryId).map(_.eventType).toList
 
-  private def withService[A](config: QueryManagerConfig)(
+  private def withService[A](config: QueryManagerConfig, pool: MemoryPool = MemoryPool())(
       body: (QueryService, GateListener) => A
   ): A =
     val listener = GateListener()
-    val service  = QueryService(sessions, config, listener, QueryIdGenerator())
+    val service  = QueryService(sessions, config, listener, QueryIdGenerator(), pool)
     try
       body(service, listener)
     finally
@@ -119,6 +120,43 @@ class QueryManagerTest extends UniTest:
       listener.release(second.queryId)
       awaitFinished(service, second.queryId).status shouldBe QueryStatus.FINISHED
     }
+  }
+
+  test("hold queued queries while the engine memory pool is over its capacity") {
+    val pool = MemoryPool(capacityBytes = 100)
+    withService(QueryManagerConfig().withMaxRunningQueries(2), pool) { (service, listener) =>
+      // Memory a running query holds
+      val held = pool.newQuery()
+      held.reserve(200)
+      // With nothing running, a query starts anyway: only running queries release memory
+      val first = service.enqueue(QueryRequest(query = "select 1", sessionId = Some("s1")))
+      eventually(listener.started(first.queryId))
+      // A free slot, but the pool is over its capacity
+      val second = service.enqueue(QueryRequest(query = "select 2", sessionId = Some("s2")))
+      Thread.sleep(200)
+      statusOf(service, second.queryId) shouldBe QueryStatus.QUEUED
+      service.stats shouldBe QueryServiceStats(running = 1, queued = 1, finished = 0)
+
+      // The memory is released, and the first query's completion dispatches the second
+      held.close()
+      listener.release(first.queryId)
+      eventually(listener.started(second.queryId))
+      listener.release(second.queryId)
+      awaitFinished(service, second.queryId).status shouldBe QueryStatus.FINISHED
+    }
+  }
+
+  test("parse memory sizes of the server options") {
+    QueryManagerConfig.parseBytes("512MB") shouldBe 512L * 1024 * 1024
+    QueryManagerConfig.parseBytes("4gb") shouldBe 4L * 1024 * 1024 * 1024
+    QueryManagerConfig.parseBytes("1.5G") shouldBe 3L * 512 * 1024 * 1024
+    QueryManagerConfig.parseBytes("2048") shouldBe 2048L
+    intercept[WvletLangException] {
+      QueryManagerConfig.parseBytes("lots")
+    }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    val pool = QueryManagerConfig().withMemoryPoolSize(1024).withMaxQueryMemory(64).newMemoryPool()
+    pool.capacityBytes shouldBe 1024L
+    pool.newQuery().limitBytes shouldBe 64L
   }
 
   test("reject submissions past the queue limit") {

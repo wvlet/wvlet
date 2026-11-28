@@ -74,16 +74,16 @@ case class EnginePlanStages(
   * those named in the `wvlet.engine.optimizer.disabled` system property). With an `accelerator`,
   * the plan subtrees it supports run on it (e.g. a GPU), and the rest on the CPU.
   *
-  * Each query reserves the bytes of its large structures from `memoryPool` (shared by the engines
-  * of a server) and fails with RESOURCE_EXHAUSTED past `queryMemoryLimit` bytes
-  * (`memory_accounting`).
+  * Each query reserves the bytes of its large structures from `memoryPool` (by default the
+  * process's, shared by the engines of a server) and fails with RESOURCE_EXHAUSTED past
+  * `queryMemoryLimit` bytes, or the pool's per-query limit (`memory_accounting`).
   */
 class WvletEngine(
     val catalog: EngineCatalog = EngineCatalog(),
     baseDir: String = ".",
     val optimizer: OptimizerOptions = OptimizerOptions.fromSystem(),
     val accelerator: Option[PlanAccelerator] = None,
-    val memoryPool: MemoryPool = MemoryPool(),
+    val memoryPool: MemoryPool = MemoryPool.process,
     val queryMemoryLimit: Option[Long] = None
 ) extends LogSupport:
 
@@ -237,7 +237,7 @@ class WvletEngine(
   /** The memory context of a new query: counting nothing with `memory_accounting` off */
   private def newQueryMemory(): MemoryContext =
     if optimizer.isEnabled(Optimization.MemoryAccounting) then
-      memoryPool.newQuery(queryMemoryLimit.getOrElse(Long.MaxValue))
+      memoryPool.newQuery(queryMemoryLimit.getOrElse(memoryPool.queryLimitBytes))
     else
       MemoryContext.NoOp
 

@@ -13,6 +13,7 @@ import wvlet.lang.api.v1.query.QueryResult as ApiQueryResult
 import wvlet.lang.api.v1.query.QueryStatus
 import wvlet.lang.api.v1.query.QueryStatus.QUEUED
 import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.engine.exec.MemoryPool
 import wvlet.lang.runner.PlanResult
 import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.QueryResultList
@@ -44,12 +45,16 @@ case class QueryServiceStats(running: Int, queued: Int, finished: Int)
   *   - Finished queries stay readable by id for `finishedQueryRetention`, and at most
   *     `maxFinishedQueries` of them are kept.
   *   - Resubmitting a request id returns the query it started, while that query is kept.
+  *   - While the in-process engine's queries hold more than `memoryPool`'s capacity, queued queries
+  *     wait for running ones to finish; with none running, the next one starts anyway, since only
+  *     running queries release memory.
   */
 class QueryService(
     sessions: ScriptRunnerSessions,
     config: QueryManagerConfig,
     listener: QueryEventListener,
-    idGenerator: QueryIdGenerator
+    idGenerator: QueryIdGenerator,
+    memoryPool: MemoryPool = MemoryPool.process
 ) extends LogSupport
     with AutoCloseable:
 
@@ -209,10 +214,12 @@ class QueryService(
     val base = request.sessionId.getOrElse(ScriptRunnerSessions.DefaultSessionKey)
     request.profile.map(p => s"${base}@${p}").getOrElse(base)
 
-  /** Start queued queries while slots are free; the caller holds `lock` */
+  /** Start queued queries while slots and memory are free; the caller holds `lock` */
   private def dispatch(): Unit =
     var more = !workers.isShutdown
-    while more && running.size < config.maxRunningQueries do
+    while more && running.size < config.maxRunningQueries &&
+      (running.isEmpty || !memoryPool.isOverCapacity)
+    do
       val it   = queued.values().iterator()
       var next = Option.empty[Submitted]
       while next.isEmpty && it.hasNext do
