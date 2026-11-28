@@ -264,8 +264,7 @@ object Parallelizer:
             close = p.close :+ (() => template.right.close()),
             // The build is read by this pipeline's parts and tail only
             done = p.done :+ (() => template.joinBuild.free()),
-            buildRows =
-              p.buildRows :+ (() => template.joinBuild.rows)
+            buildRows = p.buildRows :+ (() => template.joinBuild.rows)
           )
           // The spill tail: this join's copy that joins its spilled partitions, over the spill
           // tails below it, so the rows of their spilled partitions probe this join too

@@ -1,6 +1,6 @@
 # ADR: Hash joins spill only the build partitions that don't fit (hybrid grace hash join)
 
-Date: 2026-11-27 · PR #TBD
+Date: 2026-11-27 · PR #2597
 
 ## Context
 
@@ -20,6 +20,7 @@ Date: 2026-11-27 · PR #TBD
 ## Consequences
 
 - When nothing spills, nothing changes but the reservation of spillable builds (closer to their live heap).
-- The spill tail runs on the calling thread: the joins of written partitions, and the operators above them in the pipeline, are serial. Parallel spill tails (one task per partition, as `parallel_outer_tail` splits by ranges) are a follow-up.
+- When one build of a pipeline spilled and the pipeline has no right/full join, the spill tail runs as one task per written partition, at most the runner's parallelism at once, each through its own copy of the operators above (partial aggregations included). Otherwise (two spilled builds in one pipeline, outer joins, union inputs) it is one run on the calling thread. Splitting by partition one spilled join after another would cover two spilled builds.
+- Measured on a DGX Spark: TPC-H q9 at SF100 now completes on 12 GB and 8 GB heaps (it ran out of memory on 12 GB), rows matching DuckDB, 15.4 s and 17.3 s vs DuckDB's 2.9 s, spilling 19.6 GB and 22.8 GB; serial tails took 34.7 s. q18 and q10 complete at 8 GB. With nothing spilled, SF10 `spill_join` on/off is 1.000 (TPC-H) and 0.986 (TPC-DS) wall. Forced 256 MB spills at SF10 cost 1.45x wall on both suites with serial tails (CPU 1.01–1.04x); q04 was 13.8x.
 - Writing evicted build partitions and encoding probe blocks happen on the threads that produce them; files are not compressed.
 - Output order changes when a join spills (it is unspecified).
