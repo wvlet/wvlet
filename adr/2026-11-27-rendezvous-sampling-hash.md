@@ -1,6 +1,6 @@
 # ADR: Rendezvous sampling hashes keys with DuckDB's hash()
 
-Date: 2026-11-27 · PR #TBD
+Date: 2026-11-27 · PR #2593
 
 ## Context
 
