@@ -45,6 +45,11 @@ import scala.collection.mutable
   *
   * Each part's pipeline gets an [[IteratorOp]] that carries the part's row count when the source
   * knows it, so that operators can size their state per part (see [[PartialGroupSizer]]).
+  *
+  * With `spillTails` (`spill_join`), when some hash join build of the pipeline spilled (`spilled`,
+  * checked after `prepare`), those runs replace `tails`: one streamed run per tail on the calling
+  * thread, whose joins join their spilled partitions once their input ends, and whose right / full
+  * joins emit every unmatched build row.
   */
 class MorselOp(
     val segments: Seq[MorselOp.Segment],
@@ -54,7 +59,9 @@ class MorselOp(
     release: List[() => Unit],
     tails: Seq[MorselOp.Tail],
     buildRows: Option[() => Long],
-    done: List[() => Unit]
+    done: List[() => Unit],
+    spillTails: Seq[MorselOp.Tail],
+    spilled: List[() => Boolean]
 ) extends Operator:
   import MorselOp.*
 
@@ -75,6 +82,8 @@ class MorselOp(
     release,
     tail.toSeq,
     None,
+    Nil,
+    Nil,
     Nil
   )
 
@@ -104,6 +113,8 @@ class MorselOp(
   private var streaming: Operator      = null
   private val window                   = math.max(2, runner.parallelism * 2)
   private var tailDone                 = false
+  // Whether a build of the pipeline spilled, so `spillTails` replace `tails`
+  private var spilling = false
 
   /** The number of steps run before the parts start (for tests) */
   def prepareSteps: Int = prepare.size
@@ -125,6 +136,17 @@ class MorselOp(
     * thread
     */
   private def startTails(): Unit =
+    if spilling then
+      // Streamed: the joins of spilled partitions emit about as many rows as the parts
+      spillTails.foreach { t =>
+        val sc = t.scan.getOrElse(scan)
+        inFlight.enqueue(
+          Item.Stream(() =>
+            t.run(0, Int.MaxValue)(IteratorOp(sc.schema, () => Iterator.empty, sc.name))
+          )
+        )
+      }
+      return
     val runs = tails.flatMap(t => MorselOp.tailRanges(t, runner.parallelism).map((t, _)))
     if runs.size <= 1 then
       current = runs.flatMap((t, r) => runTail(t, r._1, r._2)).iterator
@@ -211,6 +233,7 @@ class MorselOp(
       started = true
       // e.g. hash join builds, which parts share and must not wait for inside pool threads
       prepare.foreach(_())
+      spilling = spillTails.nonEmpty && spilled.exists(_())
       if segments.size == 1 then
         val s = segments.head
         nextSegment = 1
@@ -221,7 +244,11 @@ class MorselOp(
             // The run's scan may still decode its columns in parallel
             s.scan.withDecodeRunner(runner)
             // A single run is both the only part and the tail
-            sequential = tails.headOption.map(_.run(0, Int.MaxValue)).getOrElse(s.pipeline)(s.scan)
+            sequential =
+              if spilling then
+                spillTails.head.run(0, Int.MaxValue)(s.scan)
+              else
+                tails.headOption.map(_.run(0, Int.MaxValue)).getOrElse(s.pipeline)(s.scan)
     if sequential != null then
       val b = sequential.next()
       if b == null then
@@ -236,7 +263,7 @@ class MorselOp(
         streaming = null
       fill()
       if inFlight.isEmpty then
-        if tails.isEmpty || tailDone then
+        if (tails.isEmpty && !spilling) || tailDone then
           finish()
           return null
         tailDone = true
@@ -252,6 +279,8 @@ class MorselOp(
               opened -= last
           case Item.OnCaller(seg) =>
             streaming = seg.pipeline(seg.scan)
+          case Item.Stream(run) =>
+            streaming = run()
     current.next()
 
   end next
@@ -357,5 +386,8 @@ object MorselOp:
     /** A part; `last`, when it is its segment's last part, the segment's splits */
     case Task(handle: TaskRunner.Handle[Seq[Batch]], last: ScanSplits)
     case OnCaller(segment: Segment)
+
+    /** A spill tail run, streamed on the calling thread */
+    case Stream(run: () => Operator)
 
 end MorselOp

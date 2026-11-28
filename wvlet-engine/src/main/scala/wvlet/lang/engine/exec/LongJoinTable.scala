@@ -73,6 +73,15 @@ final class LongJoinTable private (
   /** Whether the table keeps a Bloom filter of its keys (for tests) */
   def hasMissFilter: Boolean = bloom != null
 
+  /** The bytes of the entries and the Bloom filter */
+  def sizeBytes: Long =
+    8L * entries.length + (
+      if bloom != null then
+        8L * bloom.length
+      else
+        0L
+    )
+
   /** The next slot after s, wrapping inside s's region */
   private inline def nextSlot(s: Int): Int = (s & ~regionMask) | ((s + 1) & regionMask)
 

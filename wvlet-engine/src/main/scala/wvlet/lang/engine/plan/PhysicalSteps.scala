@@ -112,6 +112,8 @@ trait PhysicalSteps:
       j.withStringCodes(false)
     if !enabled(Optimization.StringCodeProbe) then
       j.withCodeProbe(false)
+    if enabled(Optimization.SpillJoin) then
+      j.withSpill(true)
 
   /** The physical passes over a lowered plan: column pruning (with scan filters), parallelism */
   private[plan] def optimizePhysical(op: Operator): Operator =

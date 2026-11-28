@@ -147,7 +147,13 @@ object Parallelizer:
       close: List[() => Unit],
       hasWork: Boolean = false,
       buildRows: List[() => Long] = Nil,
-      done: List[() => Unit] = Nil
+      done: List[() => Unit] = Nil,
+      // The runs after every part when a join build spilled (`spill_join`): each over an empty
+      // input of its scan (the first segment's when None), with every join a copy that joins its
+      // spilled partitions and every right / full join emitting all its unmatched rows
+      spillTails: Seq[MorselOp.Tail] = Seq(MorselOp.Tail.whole(x => x)),
+      // Whether each spillable build of the pipeline spilled, known once built
+      spilled: List[() => Boolean] = Nil
   ):
     /** The scan of the first segment */
     def scan: ScanOp = segments.head.scan
@@ -162,13 +168,25 @@ object Parallelizer:
     def map(f: Operator => Operator, work: Boolean = true): Pipeline = copy(
       segments = segments.map(s => s.copy(pipeline = x => f(s.pipeline(x)))),
       tails = tails.map(_.map(f)),
+      spillTails = spillTails.map(_.map(f)),
       hasWork = hasWork || work
     )
 
     /** The parts of every segment in order, as one [[MorselOp]] */
     def morsels(schema: Schema, runner: TaskRunner, prepareSteps: List[() => Unit])(using
         AboveBreakers
-    ): MorselOp = MorselOp(segments, schema, runner, prepareSteps, close, tails, sliceRows, done)
+    ): MorselOp = MorselOp(
+      segments,
+      schema,
+      runner,
+      prepareSteps,
+      close,
+      tails,
+      sliceRows,
+      done,
+      spillTails,
+      spilled
+    )
 
     /**
       * The rows of the builds, for a run over one in-memory batch to decide whether to slice it
@@ -249,6 +267,38 @@ object Parallelizer:
             buildRows =
               p.buildRows :+ (() => Option(template.joinBuild.build).fold(0L)(_.size.toLong))
           )
+          // The spill tail: this join's copy that joins its spilled partitions, over the spill
+          // tails below it, so the rows of their spilled partitions probe this join too
+          def finishing(x: Operator): HashJoinOp =
+            if isOuterBuild(j.kind) then
+              template.withLeft(x, OuterMode.Tail).withSpillFinish()
+            else
+              template.withLeft(x).withSpillFinish()
+          val spillTail =
+            p.spillTails match
+              case Seq(inner) =>
+                MorselOp
+                  .Tail
+                  .whole(x => finishing(inner.run(0, Int.MaxValue)(x)))
+                  .copy(scan = inner.scan)
+              case inner =>
+                MorselOp
+                  .Tail
+                  .whole(_ =>
+                    finishing(
+                      UnionAllOp(
+                        inner.map(t =>
+                          t.run(0, Int.MaxValue)(emptyInput(t.scan.getOrElse(p.scan)))
+                        ),
+                        j.left.schema
+                      )
+                    )
+                  )
+          val spilled =
+            if template.spills then
+              p.spilled :+ (() => template.joinBuild.isSpilled)
+            else
+              p.spilled
           if isOuterBuild(j.kind) then
             // Parts mark matched build rows; the tail emits the rest once every part is done
             val tail =
@@ -290,10 +340,14 @@ object Parallelizer:
               tails = Seq(tail),
               // A join is work: without it, `rewrite` would keep only the projections over an
               // aggregation below and drop the join
-              hasWork = true
+              hasWork = true,
+              spillTails = Seq(spillTail),
+              spilled = spilled
             )
           else
-            shared.map(x => template.withLeft(x))
+            shared
+              .map(x => template.withLeft(x))
+              .copy(spillTails = Seq(spillTail), spilled = spilled)
           end if
         }
       case j: NestedLoopJoinOp if j.kind == JoinKind.Cross && j.cond.isEmpty =>
@@ -369,9 +423,17 @@ object Parallelizer:
             ps.flatMap(_.close).toList,
             ps.exists(_.hasWork),
             ps.flatMap(_.buildRows).toList,
-            ps.flatMap(_.done).toList
+            ps.flatMap(_.done).toList,
+            ps.flatMap(p =>
+              p.spillTails
+                .map(t =>
+                  t.copy(scan = t.scan.orElse(Some(p.scan))).map(asUnionColumns(_, u.schema))
+                )
+            ),
+            ps.flatMap(_.spilled).toList
           )
         )
+      end if
 
   /** An input of no rows with the columns of scan */
   private def emptyInput(scan: ScanOp): Operator = IteratorOp(
@@ -538,7 +600,9 @@ object Parallelizer:
             o.longGroupTables,
             o.sortedGroupRuns,
             p.sliceRows,
-            p.done
+            p.done,
+            p.spillTails,
+            p.spilled
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -880,7 +944,9 @@ private[plan] object TwoPhaseAgg:
       longGroupTables: Boolean = true,
       sortedGroupRuns: Boolean = true,
       buildRows: Option[() => Long] = None,
-      done: List[() => Unit] = Nil
+      done: List[() => Unit] = Nil,
+      spillTails: Seq[MorselOp.Tail] = Nil,
+      spilled: List[() => Boolean] = Nil
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -897,6 +963,16 @@ private[plan] object TwoPhaseAgg:
         PartialAggSkip()
       else
         null
+    // The partial aggregation over a tail's rows
+    def tailPartial(x: Operator): Operator = HashAggOp(x, a.keys, partialAggs, partialSchema)
+      .withKeyOptions(streamPackAggKeys, longDecimalKeys)
+      .withFusedAccumulators(fusedAccumulators)
+      .withColumnMajorSums(a.columnMajorSums)
+      .withSelectedInputs(selectedInputs)
+      .withDenseSelected(a.denseSelected)
+      .withScratchBuffers(a.scratch != null)
+      .withLongGroupTables(longGroupTables)
+      .withSortedGroupRuns(sortedGroupRuns)
     val partial = MorselOp(
       segments.map(s =>
         s.copy(pipeline =
@@ -924,21 +1000,11 @@ private[plan] object TwoPhaseAgg:
       runner,
       prepare,
       release,
-      tails.map(t =>
-        t.map((x: Operator) =>
-          HashAggOp(x, a.keys, partialAggs, partialSchema)
-            .withKeyOptions(streamPackAggKeys, longDecimalKeys)
-            .withFusedAccumulators(fusedAccumulators)
-            .withColumnMajorSums(a.columnMajorSums)
-            .withSelectedInputs(selectedInputs)
-            .withDenseSelected(a.denseSelected)
-            .withScratchBuffers(a.scratch != null)
-            .withLongGroupTables(longGroupTables)
-            .withSortedGroupRuns(sortedGroupRuns)
-        )
-      ),
+      tails.map(_.map(tailPartial)),
       buildRows,
-      done
+      done,
+      spillTails.map(_.map(tailPartial)),
+      spilled
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
     // Combine partial results by key

@@ -98,10 +98,14 @@ class MorselOpTest extends UniTest:
       List(() => source.close()),
       Nil,
       Some(() => buildRows),
+      Nil,
+      Nil,
       Nil
     )
     import scala.jdk.CollectionConverters.*
     (values(op), runs.asScala.toSeq, threads.asScala.toSet)
+
+  end overOneBatch
 
   test("should run a pipeline over one batch as row ranges when its builds are large") {
     val (out, runs, threads) = overOneBatch(MorselOp.SliceBuildRows)

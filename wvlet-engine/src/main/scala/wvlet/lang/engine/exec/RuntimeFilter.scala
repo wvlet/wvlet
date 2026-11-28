@@ -57,7 +57,7 @@ final class RuntimeFilter(
   )
 
   /** Set the range filter and, with `rows`, the per-row filter `perRow` */
-  private def set(bounds: (Long, Long), perRow: => Option[RowKeyFilter]): Unit =
+  private[exec] def set(bounds: (Long, Long), perRow: => Option[RowKeyFilter]): Unit =
     setRange(bounds)
     if rows then
       perRow.foreach(this.perRow = _)
