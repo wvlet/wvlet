@@ -1,27 +1,25 @@
 ---
-sidebar_label: Web UI (wvlet ui)
+sidebar_label: Web UI (wvlet server)
 ---
 
-# Web UI (wvlet ui)
+# Web UI (wvlet server)
 
-You can start a web-based query editor by running `wvlet ui` command. This will start a web server on `http://localhost:9090` where you can write and execute Wvlet queries. 
+`wvlet server` starts the wvlet server, which runs queries for [remote clients](remote-server.md) and serves a web UI on `http://localhost:9090` for writing and running Wvlet queries. Add `--open` to open it in a browser (macOS). The server's [monitoring API](remote-server.md#monitoring-api) lists running, queued, and recent queries with their plans and memory, and reports the server's load.
 
-For starting the Web UI with a sample TPC-H dataset, run `wvlet ui` with `--tpch` option. It sets `prepareTPCH` on the profile's connector: the in-process engine generates the tables in memory (see [TPC-H tables](../engines/wvlet-engine-tables.md#tpc-h-tables)), and a DuckDB profile runs DuckDB's `dbgen`:
+To start it with a sample TPC-H dataset, add `--tpch`. It sets `prepareTPCH` on the profile's connector: the in-process engine generates the tables in memory (see [TPC-H tables](../engines/wvlet-engine-tables.md#tpc-h-tables)), and a DuckDB profile runs DuckDB's `dbgen`:
 
 ```bash
-$ wvlet ui --tpch
+$ wvlet server --tpch --open
 ```
-
-This command will open a web browser for editing Wvlet queries. 
 
 ![Web UI](./wvlet-ui-screenshot.png)
 
-## Usage 
+## Usage
 
 ```bash
-$ wvlet ui --help
-usage: ui
-  Start a local WebUI server
+$ wvlet server --help
+usage: server
+  Start the wvlet server and its web UI
 
 [global options]
  -h, --help             Display help message
@@ -34,6 +32,7 @@ usage: ui
  --profile:[PROFILE]  Profile to use
  --catalog:[CATALOG]  Context database catalog to use
  --schema:[SCHEMA]    Context database schema to use
+ --open               Open the web UI in a browser (macOS)
  --quit-immediately   Quit the server immediately after starting. Only for boot testing
  --tpch               Load small demo TPC-H tables (scale factor 0.01, or tpchScaleFactor)
  --auth-token:[AUTHTOKEN]  Require this bearer token on RPC requests
@@ -43,6 +42,8 @@ usage: ui
  --memory-pool-size:[MEMORYPOOLSIZE]  Memory wvlet-engine queries may hold together (e.g. 8GB) before queued queries wait. default: 70% of the heap
  --low-memory-killer-delay:[LOWMEMORYKILLERDELAY]  How long wvlet-engine queries may stay over the memory pool size before the largest one fails (e.g. 10s, or off). default: 5s
 ```
+
+`wvlet ui` was removed; use `wvlet server --open`.
 
 ## Shortcut Keys
 

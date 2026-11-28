@@ -6,7 +6,7 @@ The `wvlet` CLI can run queries on a central wvlet server instead of a local eng
 
 ```bash
 # Start a wvlet server on the default port 9090
-wvlet ui --port 9090 --profile your-profile
+wvlet server --port 9090 --profile your-profile
 ```
 
 The server compiles and executes queries with its own profile (`~/.wvlet/profiles.json` on the server host), so clients never need direct access to the underlying database.
@@ -71,15 +71,25 @@ The server runs a bounded number of queries at once and queues the rest; a clien
 - Query events (`CREATED`, `STARTED`, `COMPLETED`, with status, times, row counts, and errors) are appended as JSON lines to `query-events-yyyy-MM-dd.jsonl` in the `logs` folder next to the server log; the server prints the folder at startup.
 
 ```bash
-wvlet ui --port 9090 --max-running-queries 4 --max-queued-queries 100 --max-query-memory 2GB
+wvlet server --port 9090 --max-running-queries 4 --max-queued-queries 100 --max-query-memory 2GB
 ```
+
+## Monitoring API
+
+The server's `FrontendApi` (uni RPC: `POST /wvlet.lang.api.v1.frontend.FrontendApi/<method>` with a JSON `{"request": {...}}` body) reports what it runs; the [web UI](./ui.md) polls it about once a second:
+
+- `listQueries` lists running, queued, and kept finished queries, newest first. Filter by `statuses`, `sessionId`, `profile`, `createdAfter` / `createdBefore`, and `text` (case-insensitive); page with `limit` (default 100, at most 1000) and the response's `nextPageToken`. Each entry has the status, session, profile, the first 200 characters of the query, times, queued and run milliseconds (up to now while waiting or running), result rows, the first error, and memory.
+- `getQueryDetail` returns one query's full text, the SQL it sent to DuckDB or Trino, the in-process engine's physical plan of each statement, its errors, and memory: bytes held now and the peak of one statement. `memory.tracked` is false for queries on other engines, which the server does not count. Result rows stay in `getQueryInfo`.
+- `getClusterInfo` reports running, queued, and kept finished query counts against `--max-running-queries` / `--max-queued-queries`, the engine memory pool (held bytes, capacity, per-query limit, open queries, queries the low-memory killer failed), the load of query workers and engine task threads, the JVM heap, and the uptime.
+
+Every token holder can list every session's queries, including their text.
 
 ## Authentication
 
 To require a bearer token for all query (RPC) requests, start the server with a token. Prefer the environment variable so the secret stays out of the process list:
 
 ```bash
-WVLET_SERVER_TOKEN=your-secret-token wvlet ui --port 9090
+WVLET_SERVER_TOKEN=your-secret-token wvlet server --port 9090
 ```
 
 (`--auth-token your-secret-token` also works.)

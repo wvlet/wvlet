@@ -6,13 +6,16 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryInfoRequest
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryResponse
 import wvlet.lang.api.v1.query.Column
+import wvlet.lang.api.v1.query.QueryDetail
 import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.api.v1.query.QueryInfo
+import wvlet.lang.api.v1.query.QueryList
+import wvlet.lang.api.v1.query.QueryListRequest
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QueryResult as ApiQueryResult
 import wvlet.lang.api.v1.query.QueryStatus
 import wvlet.lang.api.v1.query.QueryStatus.QUEUED
-import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.api.v1.query.QuerySummary
 import wvlet.lang.engine.exec.MemoryPool
 import wvlet.lang.runner.PlanResult
 import wvlet.lang.runner.QueryResult
@@ -56,10 +59,10 @@ case class QueryServiceStats(running: Int, queued: Int, finished: Int)
   */
 class QueryService(
     sessions: ScriptRunnerSessions,
-    config: QueryManagerConfig,
+    val config: QueryManagerConfig,
     listener: QueryEventListener,
     idGenerator: QueryIdGenerator,
-    memoryPool: MemoryPool = MemoryPool.process
+    val memoryPool: MemoryPool = MemoryPool.process
 ) extends LogSupport
     with AutoCloseable:
 
@@ -71,11 +74,18 @@ class QueryService(
     QueryIdGenerator()
   )
 
+  /** Id of the server instance issuing this service's query ids */
+  def serverId: String = idGenerator.serverId
+
+  // `seq` orders queries by admission (ids can tie within a second); `recorder` collects the SQL,
+  // engine plans, and memory the query's statements report
   private case class Submitted(
       queryId: String,
+      seq: Long,
       request: QueryRequest,
       sessionKey: String,
-      createdAt: Instant
+      createdAt: Instant,
+      recorder: QueryRecorder
   )
 
   private val workers: ExecutorService = Executors.newFixedThreadPool(
@@ -113,6 +123,10 @@ class QueryService(
 
   // Readable without the lock; status transitions go through `transition`
   private val queryMap = ConcurrentHashMap[String, QueryInfo]()
+  // The request of each query in `queryMap`, readable without the lock
+  private val submittedMap = ConcurrentHashMap[String, Submitted]()
+  // Guarded by `lock`
+  private var nextSeq = 0L
 
   // Guarded by `lock`
   private val lock   = Object()
@@ -168,11 +182,14 @@ class QueryService(
             statusCode = StatusCode.OK,
             createdAt = now
           )
+          val s = Submitted(queryId, nextSeq, request, sessionKeyOf(request), now, QueryRecorder())
+          nextSeq += 1
+          submittedMap.put(queryId, s)
           queryMap.put(queryId, info)
           requestIndex += request.requestId -> queryId
           requestOf += queryId              -> request.requestId
           admitting += 1
-          Right((Submitted(queryId, request, sessionKeyOf(request), now), info))
+          Right((s, info))
     }
 
     admitted match
@@ -223,6 +240,92 @@ class QueryService(
         // sees CANCELED when it starts, and its worker still releases the slot
         lock.synchronized(running.get(queryId).flatten.foreach(_.interrupt()))
     canceled
+
+  /**
+    * The kept queries matching `request`'s filters, newest first, one page at a time. The page
+    * token is the admission number of the page's last query, so pages stay stable while new queries
+    * arrive
+    */
+  def list(request: QueryListRequest): QueryList =
+    val limit = request.limit.max(1).min(QueryListRequest.MaxLimit)
+    val after = request
+      .pageToken
+      .map { t =>
+        t.toLongOption
+          .getOrElse {
+            throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid page token: ${t}")
+          }
+      }
+    val text    = request.text.map(_.toLowerCase).filter(_.nonEmpty)
+    val now     = Instant.now()
+    val matched = mutable.ArrayBuffer.empty[(Submitted, QueryInfo)]
+    submittedMap.forEach { (id, s) =>
+      val info = queryMap.get(id)
+      if info != null && matches(request, text, s, info) then
+        matched += s -> info
+    }
+    val sorted = matched.sortBy(-_._1.seq)
+    val page   = sorted.iterator.filter((s, _) => after.forall(s.seq < _)).take(limit).toSeq
+    val more   = page.nonEmpty && sorted.last._1.seq < page.last._1.seq
+    QueryList(
+      queries = page.map((s, info) => summaryOf(s, info, now)),
+      totalMatched = sorted.size,
+      nextPageToken = Option.when(more)(page.last._1.seq.toString)
+    )
+
+  end list
+
+  private def matches(
+      r: QueryListRequest,
+      text: Option[String],
+      s: Submitted,
+      info: QueryInfo
+  ): Boolean =
+    (r.statuses.isEmpty || r.statuses.contains(info.status)) &&
+      r.sessionId.forall(id => s.request.sessionId.contains(id)) &&
+      r.profile.forall(p => s.request.profile.contains(p)) &&
+      r.createdAfter.forall(t => !s.createdAt.isBefore(t)) &&
+      r.createdBefore.forall(t => s.createdAt.isBefore(t)) &&
+      text.forall(t => s.request.query.toLowerCase.contains(t))
+
+  /**
+    * The query's text, SQL, engine plans, errors, and memory
+    *
+    * @throws WvletLangException
+    *   INVALID_ARGUMENT for an unknown or evicted query
+    */
+  def detail(queryId: String): QueryDetail =
+    val info = infoOf(queryId)
+    val s    = Option(submittedMap.get(queryId)).getOrElse {
+      throw StatusCode.INVALID_ARGUMENT.newException(s"Query not found: ${queryId}")
+    }
+    QueryDetail(
+      summary = summaryOf(s, info, Instant.now()),
+      requestId = s.request.requestId.toString,
+      query = s.request.query,
+      sql = s.recorder.sql,
+      enginePlans = s.recorder.enginePlans,
+      errors = info.errors
+    )
+
+  private def summaryOf(s: Submitted, info: QueryInfo, now: Instant): QuerySummary =
+    def millis(from: Instant, to: Instant): Long = Duration.between(from, to).toMillis
+    val leftQueueAt                              = info.startedAt.orElse(info.completedAt)
+    QuerySummary(
+      queryId = s.queryId,
+      status = info.status,
+      sessionId = s.request.sessionId,
+      profile = s.request.profile,
+      queryHead = s.request.query.take(QuerySummary.HeadLength),
+      createdAt = s.createdAt,
+      startedAt = info.startedAt,
+      completedAt = info.completedAt,
+      queuedMillis = millis(s.createdAt, leftQueueAt.getOrElse(now)),
+      runMillis = info.startedAt.map(st => millis(st, info.completedAt.getOrElse(now))),
+      resultRows = info.result.map(_.totalRows),
+      errorMessage = info.errors.headOption.map(_.message),
+      memory = s.recorder.memory
+    )
 
   private def infoOf(queryId: String): QueryInfo = Option(queryMap.get(queryId)).getOrElse {
     throw StatusCode.INVALID_ARGUMENT.newException(s"Query not found: ${queryId}")
@@ -303,11 +406,10 @@ class QueryService(
     do
       val (queryId, _) = finished.dequeue()
       queryMap.remove(queryId)
+      submittedMap.remove(queryId)
       requestOf.remove(queryId).foreach(requestIndex.remove)
 
-  private def runQuery(s: Submitted)(using
-      queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
-  ): Unit =
+  private def runQuery(s: Submitted): Unit =
     val queryId = s.queryId
     val request = s.request
     // A query cancelled after dispatch but before this point must not start
@@ -325,7 +427,8 @@ class QueryService(
     // to the same runner
     val runner      = sessions.runnerFor(request.sessionId, request.profile)
     val queryResult = runner.synchronized {
-      runner.runStatement(request)
+      // The recorder collects the SQL, engine plans, and memory of the query's statements
+      runner.runStatement(request)(using s.recorder)
     }
     if queryResult.isSuccess then
       val preview = queryResult.toPrettyBox()

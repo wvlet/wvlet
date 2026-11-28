@@ -46,6 +46,8 @@ case class WvletServerConfig(
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
     schema: Option[String] = None,
+    @option(prefix = "--open", description = "Open the web UI in a browser (macOS)")
+    openBrowser: Boolean = false,
     @option(
       prefix = "--quit-immediately",
       description = "Quit the server immediately after starting. Only for boot testing"
@@ -228,18 +230,19 @@ object WvletServer extends LogSupport:
             Rx.single(resp)
         }
 
-  def startServer(config: WvletServerConfig, openBrowser: Boolean = false): Unit = design(config)
+  def startServer(config: WvletServerConfig): Unit = design(config)
     .withProductionMode
     .build[NettyHttpServer] { server =>
       info(s"- log file path: ${config.workEnv.logFile}")
       info(s"- error file path: ${config.workEnv.errorFile}")
       info(s"- query event log folder: ${config.queryEventLogFolder}")
-      info(s"Wvlet UI server started at http://localhost:${server.localPort}")
+      info(s"Wvlet server started. Web UI: http://localhost:${server.localPort}")
       info(s"Press ctrl+c to stop the server")
 
-      if !config.quitImmediately then
+      if config.quitImmediately then
         warn(s"--quit-immediately is set. The server will quit immediately after starting.")
-        if OS.isMacOS && openBrowser then
+      else
+        if OS.isMacOS && config.openBrowser then
           IO.run(s"open http://localhost:${server.localPort}")
         server.awaitTermination()
     }

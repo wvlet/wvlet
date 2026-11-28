@@ -5,12 +5,12 @@
 - `wvlet` is the single command of every distribution, with the same options everywhere.
 - `brew install wvlet/wvlet/wvlet` (recommended; Homebrew sets up the Java runtime) or a release
   package: `wvlet` and its `wv` alias of `wvlet repl`, with `run`, `build` (parallel, with run
-  records), `flow`, `catalog`, `ui`, and the JDBC connectors. DuckDB (`-t duckdb`) and Snowflake
+  records), `flow`, `catalog`, `server`, and the JDBC connectors. DuckDB (`-t duckdb`) and Snowflake
   need the full package `wvlet-cli-full-<version>.tar.gz` from the GitHub release; the default
   package reports this when they are selected.
 - `npm install -g @wvlet/cli` (Node.js 22+): `wvlet version`, `compile`, `to_wvlet`, `run`,
   `repl`, `build`, `skill`, with no JDK. Its `build` runs one model at a time, doesn't enforce
-  `timeout`, and records no runs. `ui`, `flow`, and `catalog` there exit with a message naming the
+  `timeout`, and records no runs. `server`, `flow`, and `catalog` there exit with a message naming the
   JVM CLI.
 
 ## Commands
@@ -29,7 +29,7 @@
 | `wvlet skill [file]`, `wvlet skill files` | Print this skill (or a reference) as shipped with the installed version |
 | `wvlet skill install [--agent claude,codex,pi] [--global]` | Install or update this skill for coding agents; `list` and `remove --yes` manage it |
 | `wvlet repl`, `wvlet repl -c "<query>"` | REPL, or run one query and exit; `wv` is an alias on the JVM CLI |
-| `wvlet ui [--max-running-queries n] [--max-queued-queries n] [--max-query-memory 2GB] [--memory-pool-size 8GB] [--low-memory-killer-delay 5s]` | Start the server and Web UI (JVM CLI); past the queue limit, submissions fail with `RESOURCE_EXHAUSTED`; a wvlet-engine query over `--max-query-memory` fails with `RESOURCE_EXHAUSTED`, and queued queries wait while engine queries hold more than `--memory-pool-size` (default 70% of the heap); staying over it for `--low-memory-killer-delay` (default `5s`, or `off`) fails the largest of several running engine queries |
+| `wvlet server [--open] [--max-running-queries n] [--max-queued-queries n] [--max-query-memory 2GB] [--memory-pool-size 8GB] [--low-memory-killer-delay 5s]` | Start the server and its web UI (JVM CLI; `--open` opens a browser; `wvlet ui` was removed); `FrontendApi` `listQueries` / `getQueryDetail` / `getClusterInfo` report queries, plans, memory, and load; past the queue limit, submissions fail with `RESOURCE_EXHAUSTED`; a wvlet-engine query over `--max-query-memory` fails with `RESOURCE_EXHAUSTED`, and queued queries wait while engine queries hold more than `--memory-pool-size` (default 70% of the heap); staying over it for `--low-memory-killer-delay` (default `5s`, or `off`) fails the largest of several running engine queries |
 
 `compile`, `to_wvlet`, `run`, and `repl` share `-p, --profile <name>`, `-t <engine>`,
 `-w <folder>` (working folder), `--catalog`, and `--schema`; `-l debug` gives debug logs. A bare
@@ -42,7 +42,7 @@
   connector with `"prepareTPCH": true` (and `"tpchScaleFactor"`, default 0.01) generates the
   TPC-H tables in memory, and `"prepareTPCDS": true` (`"tpcdsScaleFactor"`, up to 10) the
   TPC-DS tables; values differ from `dbgen` / `dsdgen`'s, so don't compare answers with
-  official ones. `wvlet ui --tpch` does the same for TPC-H. With no setting, `from tpch.sf1.lineitem`
+  official ones. `wvlet server --tpch` does the same for TPC-H. With no setting, `from tpch.sf1.lineitem`
   or `tpcds.tiny.store_sales` reads them too (schema `tiny` is scale factor 0.01, `sf<n>` is n).
 - To give the wvlet engine the keys of Parquet files (for join order), write a sidecar
   `<name>.keys.json` next to `<name>.parquet`, or `_keys.json` in a folder, e.g.

@@ -252,6 +252,7 @@ class WvletEngine(
           val expanded = GenSQL.expand(r, ctx)
           val op       = physicalPlan(expanded)
           debug(s"[physical plan]\n${op.explain()}")
+          ctx.queryProgressMonitor.engineQueryStarted(op.explain(), memory)
           try EngineResult(op.schema, memory.drain(op))
           finally op.close()
         }

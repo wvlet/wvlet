@@ -20,7 +20,15 @@ import wvlet.lang.api.v1.frontend.FrontendApi.{
   QueryResponse,
   ServerStatus
 }
-import wvlet.lang.api.v1.query.{QueryInfo, QueryRequest}
+import wvlet.lang.api.v1.frontend.ClusterInfo
+import wvlet.lang.api.v1.query.{
+  QueryDetail,
+  QueryDetailRequest,
+  QueryInfo,
+  QueryList,
+  QueryListRequest,
+  QueryRequest
+}
 import wvlet.uni.http.*
 import wvlet.uni.http.rpc.RPCClient
 import wvlet.uni.rx.Rx
@@ -30,7 +38,7 @@ import wvlet.uni.surface.Surface
   * Hand-written RPC client for [[FrontendApi]]. Mirrors the shape of
   * `wvlet.uni.http.codegen.client.RPCClientGenerator` output so it can be regenerated later by
   * uni's codegen without affecting consumers. Replaces the previous airframe-codegen'd FrontendRPC.
-  * Covers status/submitQuery/getQueryInfo/cancelQuery.
+  * Covers status/submitQuery/getQueryInfo/cancelQuery/listQueries/getQueryDetail/getClusterInfo.
   */
 object FrontendApiClient:
   private val rpc = RPCClient.build(Surface.of[FrontendApi], Surface.methodsOf[FrontendApi])
@@ -55,6 +63,20 @@ object FrontendApiClient:
       Seq(request)
     )
 
+    def listQueries(request: QueryListRequest): QueryList = rpc.callSync(
+      client,
+      "listQueries",
+      Seq(request)
+    )
+
+    def getQueryDetail(request: QueryDetailRequest): QueryDetail = rpc.callSync(
+      client,
+      "getQueryDetail",
+      Seq(request)
+    )
+
+    def getClusterInfo: ClusterInfo = rpc.callSync(client, "getClusterInfo", Seq.empty)
+
   end SyncClient
 
   class AsyncClient(client: HttpAsyncClient):
@@ -76,6 +98,20 @@ object FrontendApiClient:
       "cancelQuery",
       Seq(request)
     )
+
+    def listQueries(request: QueryListRequest): Rx[QueryList] = rpc.callAsync(
+      client,
+      "listQueries",
+      Seq(request)
+    )
+
+    def getQueryDetail(request: QueryDetailRequest): Rx[QueryDetail] = rpc.callAsync(
+      client,
+      "getQueryDetail",
+      Seq(request)
+    )
+
+    def getClusterInfo: Rx[ClusterInfo] = rpc.callAsync(client, "getClusterInfo", Seq.empty)
 
   end AsyncClient
 

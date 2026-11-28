@@ -15,6 +15,7 @@ package wvlet.lang.engine.exec
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.compiler.query.QueryMemoryUsage
 import wvlet.lang.engine.vector.*
 
 import java.util.concurrent.atomic.AtomicLong
@@ -48,6 +49,8 @@ final class MemoryPool(
   @volatile
   private var openCount = 0
 
+  private val kills = AtomicLong(0L)
+
   /** Bytes the open queries hold */
   def reservedBytes: Long = reserved.get()
 
@@ -56,6 +59,9 @@ final class MemoryPool(
 
   /** Queries with an open context */
   def openQueries: Int = openCount
+
+  /** Queries the low-memory killer has killed */
+  def killedQueries: Long = kills.get()
 
   /** A context for one query, failing it past `limitBytes` */
   def newQuery(limitBytes: Long = queryLimitBytes): MemoryContext =
@@ -112,6 +118,7 @@ final class MemoryPool(
             else
               val v = open.maxBy(_.reservedBytes)
               victim = v
+              kills.incrementAndGet()
               v.kill(
                 s"Query was killed to free memory: it held ${MemoryContext.mb(
                     v.reservedBytes
@@ -169,7 +176,7 @@ final class MemoryContext private[exec] (
     pool: MemoryPool,
     val limitBytes: Long,
     private val parent: MemoryContext = null
-):
+) extends QueryMemoryUsage:
   private val reserved = AtomicLong(0L)
   // The query's context: limits, kills, and closing are the root's
   private val root: MemoryContext =
@@ -212,6 +219,9 @@ final class MemoryContext private[exec] (
     * The most bytes the query held at once, counting releases before it ended; kept after [[close]]
     */
   def peakBytes: Long = root.peak.get()
+
+  /** Whether this context counts memory: false for [[MemoryContext.NoOp]] */
+  def isTracked: Boolean = pool != null
 
   private def add(bytes: Long): Unit =
     val total = reserved.addAndGet(bytes)

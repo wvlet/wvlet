@@ -160,6 +160,7 @@ class QueryManagerTest extends UniTest:
     withService(QueryManagerConfig(), pool) { (_, _) =>
       eventually(big.isKilled)
       small.isKilled shouldBe false
+      pool.killedQueries shouldBe 1L
     }
     big.close()
     small.close()

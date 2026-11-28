@@ -903,7 +903,7 @@ lazy val uiMain = project
     skipPublish,
     uiSettings,
     name        := "wvlet-ui-main",
-    description := "UI main code for wvlet ui command"
+    description := "UI main code for the wvlet server web UI"
   )
   .dependsOn(ui, lang.js)
 

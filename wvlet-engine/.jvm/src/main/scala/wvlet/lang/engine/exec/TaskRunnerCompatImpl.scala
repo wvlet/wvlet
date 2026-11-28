@@ -75,9 +75,16 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
     if shutDown then
       throw RejectedExecutionException("The task runner is shut down")
 
-  private lazy val pool: ExecutorService =
+  private lazy val pool: ThreadPoolExecutor =
     poolStarted = true
-    Executors.newFixedThreadPool(parallelism, daemons("wvlet-engine"))
+    ThreadPoolExecutor(
+      parallelism,
+      parallelism,
+      0L,
+      TimeUnit.MILLISECONDS,
+      LinkedBlockingQueue[Runnable](),
+      daemons("wvlet-engine")
+    )
 
   private lazy val fair: FairPool =
     fairStarted = true
@@ -130,6 +137,18 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
             throw e.getCause
       def cancel(): Unit = f.cancel(false)
 
+  /** Threads, busy threads, and waiting tasks of the task pools started so far */
+  override def load: TaskRunner.Load =
+    var l = TaskRunner.Load(threads = 0, busy = 0, waitingTasks = 0)
+    if poolStarted then
+      l = l + TaskRunner.Load(parallelism, pool.getActiveCount, pool.getQueue.size)
+    if fairStarted then
+      l = l + fair.load
+    if l.threads == 0 then
+      TaskRunner.Load(threads = parallelism, busy = 0, waitingTasks = 0)
+    else
+      l
+
   def shutdown(): Unit =
     shutDown = true
     if poolStarted then
@@ -154,6 +173,9 @@ private final class FairPool(n: Int, threads: ThreadFactory, coordinators: Boole
   private val queue = FairTaskQueue[FutureTask[?]](coordinators = coordinators) // Guarded by itself
   @volatile
   private var shutDown = false
+
+  // Workers blocked waiting for a task; counted only on that slow path, so busy workers pay nothing
+  private val idle = AtomicInteger(0)
 
   private val workers = Seq.fill(n)(threads.newThread(() => work()))
   workers.foreach(_.start())
@@ -184,9 +206,21 @@ private final class FairPool(n: Int, threads: ThreadFactory, coordinators: Boole
     queue.poll(now)
   }
 
+  /** Busy workers and tasks no worker has taken yet */
+  def load: TaskRunner.Load = TaskRunner.Load(
+    threads = n,
+    busy = math.max(0, n - idle.get()),
+    waitingTasks = permits.availablePermits()
+  )
+
+  private def awaitTask(): Unit =
+    idle.incrementAndGet()
+    try permits.acquire()
+    finally idle.decrementAndGet()
+
   private def work(): Unit =
     try
-      permits.acquire()
+      awaitTask()
       var p = next(null, 0L)
       while true do
         // FutureTask keeps the task's exception for Handle.get
@@ -200,7 +234,7 @@ private final class FairPool(n: Int, threads: ThreadFactory, coordinators: Boole
           p = next(p, nanos)
         else
           queue.synchronized(queue.finished(p, nanos))
-          permits.acquire()
+          awaitTask()
           p = next(null, 0L)
     catch
       case _: InterruptedException =>

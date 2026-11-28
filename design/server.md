@@ -13,6 +13,14 @@
 - Every query reports CREATED and COMPLETED [`QueryEvent`](../wvlet-server/src/main/scala/wvlet/lang/server/QueryEvent.scala)s, plus STARTED unless cancelled while queued. The server logs them as JSON lines per UTC day under `<target>/logs`. Listener failures never fail a query.
 - Finished queries (and their result rows) are dropped after `finishedQueryRetention` or beyond `maxFinishedQueries`; eviction runs on submission and completion.
 
+## Monitoring
+
+- `wvlet server` starts the server (`WvletMain.server`); `wvlet ui` was removed. The web UI is served from `${prog.home}/web` and polls the monitoring calls ([plan](../plans/2026-11-27-server-ui.md)).
+- `FrontendApi.listQueries` / `getQueryDetail` read the kept queries only (same retention as `getQueryInfo`); there is no history from the event logs. The page token is the admission number of the page's last query, not an id: ids can tie within a second.
+- Per-query SQL, engine plans, and memory come from the `QueryRecorder` the service passes to `runStatement` as its `QueryProgressMonitor`: connectors call `newQuery(sql)`, and `WvletEngine.execute` calls `engineQueryStarted(plan, memoryContext)` on the query's worker thread. It keeps at most 100 statements of each kind.
+- `getClusterInfo` reads the memory pool (including `MemoryPool.killedQueries`) and `TaskRunner.load` (busy threads and waiting tasks of the started engine pools; snapshots, not synchronized). Neither changes plans, so neither has an `Optimization` toggle.
+- Any token holder sees every session's queries; per-user access control is a follow-up.
+
 ## Limits
 
 - CPU: in-process engine queries share one task pool, which picks tasks across queries by a multilevel feedback queue on their run time ([engine](engine.md#fair-task-scheduling)), so a short query isn't queued behind a long one's morsels. Coordinator tasks are picked across queries the same way, by their own run time, and a query computing shared CTE results runs those no coordinator has started itself. Tasks are not preempted, and queries routed to DuckDB or Trino are outside it.
@@ -23,4 +31,4 @@
 
 ## Tests
 
-- [`QueryManagerTest`](../wvlet-server/src/test/scala/wvlet/lang/server/QueryManagerTest.scala) holds queries in their slot with a listener that blocks STARTED events, so admission tests don't depend on query run times. With [`QueryServiceTest`](../wvlet-server/src/test/scala/wvlet/lang/server/QueryServiceTest.scala) and the RPC round trip: `./sbt "server/testOnly *QueryManagerTest *QueryServiceTest *QueryIdRpcRoundTripTest"`.
+- [`QueryManagerTest`](../wvlet-server/src/test/scala/wvlet/lang/server/QueryManagerTest.scala) holds queries in their slot with a listener that blocks STARTED events, so admission tests don't depend on query run times. With [`QueryServiceTest`](../wvlet-server/src/test/scala/wvlet/lang/server/QueryServiceTest.scala) and the RPC round trip: [`QueryMonitorTest`](../wvlet-server/src/test/scala/wvlet/lang/server/QueryMonitorTest.scala) covers listing, detail, engine plan and memory capture, and cluster info: `./sbt "server/testOnly *QueryManagerTest *QueryServiceTest *QueryMonitorTest *QueryIdRpcRoundTripTest"`.
