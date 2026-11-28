@@ -142,6 +142,36 @@ object TaskRunner extends TaskRunnerCompatImpl:
         }
 
   /**
+    * f(0), ..., f(n - 1), each run as a task of `runner` while the calling thread waits, as
+    * `submit` then `get` on each would. After a task fails, the tasks not started yet never start,
+    * and this returns once the started ones finish, raising the first failure in order: so no task
+    * of a failed query runs on, and allocates, after its caller has given up on it
+    */
+  def runAll[A](runner: TaskRunner, n: Int)(f: Int => A): IndexedSeq[A] =
+    val failed = java.util.concurrent.atomic.AtomicBoolean(false)
+    val tasks  =
+      IndexedSeq.tabulate(n) { i =>
+        ComputeOnce { () =>
+          try
+            f(i)
+          catch
+            case e: Throwable =>
+              failed.set(true)
+              throw e
+        }
+      }
+    val handles = tasks.map(t => runner.submit(() => t.runUnless(() => failed.get())))
+    // runUnless keeps the task's failure in its ComputeOnce, so get() only waits
+    handles.foreach(_.get())
+    if failed.get() then
+      // The first task that ran and failed; the others never started or finished
+      tasks.foreach(t =>
+        if t.isStarted then
+          t.get()
+      )
+    tasks.map(_.get())
+
+  /**
     * The parallelism to use: the WVLET_ENGINE_PARALLELISM environment variable or the
     * wvlet.engine.parallelism system property when set, otherwise the number of processors
     */

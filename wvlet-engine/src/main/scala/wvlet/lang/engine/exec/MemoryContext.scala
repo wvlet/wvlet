@@ -318,6 +318,16 @@ final class MemoryContext private[exec] (
   private[exec] def kill(message: String): Unit = killedMessage = message
 
   /**
+    * Mark the query failed (e.g. one of its tasks ran out of heap), so that its other tasks fail at
+    * their next check ([[checkKilled]]) instead of running on while the failed query closes. No-op
+    * on [[MemoryContext.NoOp]], which every untracked query shares. Allocates nothing, as it runs
+    * right after an OutOfMemoryError
+    */
+  def abandon(): Unit =
+    if pool != null && root.killedMessage == null then
+      root.killedMessage = MemoryContext.AbandonedMessage
+
+  /**
     * Fail the query with RESOURCE_EXHAUSTED if the low-memory killer chose it: called where the
     * engine regains control (reservations, morsel parts, result batches), since operators don't
     * check interrupts
@@ -473,6 +483,9 @@ object MemoryContext:
           "also fail such queries earlier with --max-query-memory",
         e
       )
+
+  /** The failure that the other tasks of a failed query raise ([[MemoryContext.abandon]]) */
+  private[exec] val AbandonedMessage = "The query failed, so its remaining tasks were stopped"
 
   // Bytes a growing structure reserves ahead of its size, at least
   private val MinAheadBytes = 64L << 10

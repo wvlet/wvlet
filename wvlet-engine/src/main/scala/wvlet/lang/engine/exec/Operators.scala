@@ -353,13 +353,15 @@ class SortOp(
       val out    = all.gather(sorted, n)
       Iterator.range(0, n, Batch.DefaultSize).map(from => out.slice(from, from + Batch.DefaultSize))
     else
-      val chunks = math.min(runner.parallelism, all.size)
-      val runs   = (0 until chunks).map { c =>
-        val lo = (all.size.toLong * c / chunks).toInt
-        val hi = (all.size.toLong * (c + 1) / chunks).toInt
-        runner.submit(() => SortOp.sortRange(cmp, lo, hi, n))
-      }
-      val sortedRuns = runs.map(_.get()).toArray
+      val chunks     = math.min(runner.parallelism, all.size)
+      val sortedRuns =
+        TaskRunner
+          .runAll(runner, chunks) { c =>
+            val lo = (all.size.toLong * c / chunks).toInt
+            val hi = (all.size.toLong * (c + 1) / chunks).toInt
+            SortOp.sortRange(cmp, lo, hi, n)
+          }
+          .toArray
       // Split the merge into independent output ranges (one task each) that merge and gather
       val ranges = SortOp.mergeRangeCount(n, chunks, minParallelRows)
       val cuts   = SortOp.splitRanks(sortedRuns, cmp, n, ranges)

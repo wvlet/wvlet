@@ -579,7 +579,7 @@ final class JoinBuild(
     if parts == 1 then
       buildPart(0)
     else
-      (0 until parts).map(p => runner.submit(() => buildPart(p))).foreach(_.get())
+      TaskRunner.runAll(runner, parts)(buildPart)
     uniqueKeys = !uniqueParts.contains(false)
 
   end buildHashed

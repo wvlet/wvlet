@@ -512,10 +512,8 @@ class WindowOp(
         GroupTable.partitionCount(runner.parallelism),
         runner
       )
-      parts
-        .filter(_.nonEmpty)
-        .map(rows => runner.submit(() => evalPart(rows, hashes)))
-        .foreach(_.get())
+      val nonEmpty = parts.filter(_.nonEmpty)
+      TaskRunner.runAll(runner, nonEmpty.size)(i => evalPart(nonEmpty(i), hashes))
 
   end evaluateGroup
 

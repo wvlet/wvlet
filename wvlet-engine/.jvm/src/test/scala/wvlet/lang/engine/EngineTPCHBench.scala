@@ -726,31 +726,23 @@ object EngineTPCHBench extends LogSupport:
   )
 
   /**
-    * Plans and runs a query on an engine as [[WvletEngine.execute]] does, returning the wall time,
-    * the result rows, and the milliseconds spent planning (before any operator ran)
+    * Plans and runs a query on an engine through [[WvletEngine.runQuery]], as
+    * [[WvletEngine.execute]] does (so an OutOfMemoryError fails it with RESOURCE_EXHAUSTED and
+    * stops its tasks), returning the wall time, the result rows, and the milliseconds spent
+    * planning (before any operator ran)
     */
-  def plannedRun(engine: WvletEngine, q: Relation)(using ctx: Context): PlannedRun = engine
-    .asQuery {
-      // Reserve memory as WvletEngine.execute does, to report the query's peak
-      val memory = engine.newQueryMemory()
-      try
-        MemoryContext.withCurrent(memory) {
-          val start   = System.nanoTime()
-          val op      = engine.physicalPlan(GenSQL.expand(q, ctx))
-          val planned = System.nanoTime()
-          try
-            val rows = readAll(memory.drain(op))
-            PlannedRun(
-              (System.nanoTime() - start) / 1000000.0,
-              rows,
-              (planned - start) / 1000000.0,
-              memory.peakBytes / 1048576.0,
-              memory.spilledBytes / 1048576.0
-            )
-          finally
-            op.close()
-        }
-      finally memory.close()
+  def plannedRun(engine: WvletEngine, q: Relation)(using ctx: Context): PlannedRun =
+    val start = System.nanoTime()
+    engine.runQuery(q) { (op, memory) =>
+      val planned = System.nanoTime()
+      val rows    = readAll(memory.drain(op))
+      PlannedRun(
+        (System.nanoTime() - start) / 1000000.0,
+        rows,
+        (planned - start) / 1000000.0,
+        memory.peakBytes / 1048576.0,
+        memory.spilledBytes / 1048576.0
+      )
     }
 
   /**
