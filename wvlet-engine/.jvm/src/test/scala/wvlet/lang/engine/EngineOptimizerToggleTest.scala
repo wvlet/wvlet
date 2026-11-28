@@ -360,7 +360,9 @@ class EngineOptimizerToggleTest extends UniTest:
       "Changes when shared CTE results drop their rows, not the plan",
     // CTESpillTest checks spilled results against in-memory runs
     Optimization.SpillCTEResults ->
-      "Changes whether shared CTE results past the spill threshold go to a file, not the plan"
+      "Changes whether shared CTE results past the spill threshold go to a file, not the plan",
+    // ScanDecodeBudgetTest checks that the flag lets every part run at once
+    Optimization.BoundScanDecode -> "Changes how many scan parts decode at once, not the plan"
   )
 
   override def afterAll: Unit =

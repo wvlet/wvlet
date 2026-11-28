@@ -276,15 +276,20 @@ private[catalog] final class ParquetFolder(
         rows
       )
       val parts = IndexedSeq.newBuilder[() => Iterator[Batch]]
+      val bytes = IndexedSeq.newBuilder[Long]
       val held  = IndexedSeq.newBuilder[FileHolder]
       selected.foreach { (i, fs, groups) =>
         val read = fs.columns.get
         if read.isEmpty then
           // Only partition keys and missing columns: each row group's row count is all there is
-          groups.foreach(g => parts += (() => Iterator.single(withKeys(i, read, null, g._2.toInt))))
+          groups.foreach { g =>
+            parts += (() => Iterator.single(withKeys(i, read, null, g._2.toInt)))
+            bytes += 0L
+          }
         else
           val h = FileHolder(files(i), fs, groups)
           held += h
+          bytes ++= h.groups.map(_._3)
           h.groups
             .foreach(g =>
               parts += (
@@ -299,7 +304,8 @@ private[catalog] final class ParquetFolder(
         ScanSplits(
           parts.result(),
           () => holders.foreach(_.close()),
-          selected.flatMap(_._3.map(_._2))
+          selected.flatMap(_._3.map(_._2)),
+          bytes.result()
         )
       )
     end if
@@ -323,7 +329,8 @@ private[catalog] final class ParquetFolder(
         ScanSplits(
           holders.flatMap(h => h.groups.map(g => () => Iterator.single(h.read(g._1)))),
           () => holders.foreach(_.close()),
-          holders.flatMap(_.groups.map(_._2))
+          holders.flatMap(_.groups.map(_._2)),
+          holders.flatMap(_.groups.map(_._3))
         )
       )
 
@@ -331,7 +338,7 @@ private[catalog] final class ParquetFolder(
   private final class FileHolder(
       source: ParquetSource,
       spec: ScanSpec,
-      val groups: IndexedSeq[(Int, Long)]
+      val groups: IndexedSeq[(Int, Long, Long)]
   ):
     private var file: ParquetFile = null
     private var remaining         = groups.size

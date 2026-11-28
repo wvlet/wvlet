@@ -68,8 +68,12 @@ class EngineTPCHParallelTest extends UniTest:
       .get("lineitem")
       .scanSplits(wvlet.lang.engine.catalog.ScanSpec()) match
       case Some(s) =>
-        try (s.parts.size > 10) shouldBe true
-        finally s.close()
+        try
+          (s.parts.size > 10) shouldBe true
+          s.bytes.size shouldBe s.parts.size
+          s.bytes.forall(_ > 0) shouldBe true
+        finally
+          s.close()
       case None =>
         fail("lineitem should have several row groups")
   }

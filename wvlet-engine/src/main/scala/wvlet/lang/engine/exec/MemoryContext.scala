@@ -297,6 +297,28 @@ final class MemoryContext private[exec] (
     */
   def peakBytes: Long = root.peak.get()
 
+  // The estimated bytes of the query's scan parts in flight, and their peak (the root's)
+  private val scanInFlight = AtomicLong(0L)
+  private val scanPeak     = AtomicLong(0L)
+
+  /**
+    * Count `delta` bytes of scan parts in flight ([[ScanDecodeBudget]]): a gauge apart from the
+    * reservations, checked against neither the limit nor the spill threshold
+    */
+  def addScanBytes(delta: Long): Unit =
+    if pool != null && delta != 0 then
+      val r   = root
+      val now = r.scanInFlight.addAndGet(delta)
+      var p   = r.scanPeak.get()
+      while now > p && !r.scanPeak.compareAndSet(p, now) do
+        p = r.scanPeak.get()
+
+  /** The estimated bytes of the query's scan parts in flight */
+  def scanBytes: Long = root.scanInFlight.get()
+
+  /** The most estimated bytes of scan parts the query had in flight at once */
+  def peakScanBytes: Long = root.scanPeak.get()
+
   private def add(bytes: Long): Unit =
     val total = reserved.addAndGet(bytes)
     var p     = peak.get()

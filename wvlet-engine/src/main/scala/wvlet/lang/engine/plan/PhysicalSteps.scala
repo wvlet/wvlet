@@ -224,6 +224,8 @@ trait PhysicalSteps:
         sort = !enabled(Optimization.SpillSort),
         window = !enabled(Optimization.SpillWindow)
       )
+    if !enabled(Optimization.BoundScanDecode) then
+      Planner.disableScanDecodeBudget(physical)
     physical
 
   end optimizePhysical
@@ -546,5 +548,14 @@ trait PhysicalWalkers:
       case _ =>
     op.children.foreach(disableSpillSortWindow(_, sort, window))
     op.sharedInputs.foreach(disableSpillSortWindow(_, sort, window))
+
+  /** Let morsel pipelines submit parts up to their window, whatever their decode bytes */
+  private[engine] def disableScanDecodeBudget(op: Operator): Unit =
+    op match
+      case m: MorselOp =>
+        m.withDecodeBudget(null)
+      case _ =>
+    op.children.foreach(disableScanDecodeBudget)
+    op.sharedInputs.foreach(disableScanDecodeBudget)
 
 end PhysicalWalkers
