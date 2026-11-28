@@ -38,8 +38,10 @@ class HashAggOp(
     onGroups: Int => Unit = null,
     val skip: PartialAggSkip = null
 ) extends Operator:
-  private var done                     = false
-  private var passing                  = false
+  private var done    = false
+  private var passing = false
+  // The query's memory budget, captured where the aggregation is planned
+  private val memory                   = MemoryContext.current
   override def children: Seq[Operator] = Seq(child)
   override protected def details       =
     s"(keys=[${keys.map(_.sig).mkString(", ")}], aggs=[${aggs.map(_.sig).mkString(", ")}])"
@@ -359,6 +361,12 @@ class HashAggOp(
       sortedRuns = sortedGroupRuns
     )
     val accs = aggs.map(_.newAccumulator())
+    // The group table's key and the aggregates' state of each group
+    val groupMemory = memory.growing(
+      keys.map(k => MemoryContext.valueBytes(k.ptype)).sum + HashAggOp.GroupTableBytes +
+        aggs.map(a => MemoryContext.valueBytes(a.ptype)).sum
+    )
+    groupMemory.ensure(presize)
     if presize > 0 then
       accs.foreach(_.ensureGroups(presize))
     var zeros: Array[Int] = Array.emptyIntArray
@@ -385,6 +393,7 @@ class HashAggOp(
           1
         else
           table.numGroups
+      groupMemory.ensure(numGroups)
       update(accs, groups, numGroups, b)
       rows += b.size
       stopped = adaptive && skip.shouldStop(rows, table.numGroups)
@@ -418,3 +427,7 @@ class HashAggOp(
   end next
 
 end HashAggOp
+
+object HashAggOp:
+  /** Bytes per group a memory reservation counts for the group table's slot and id (~12) */
+  private[exec] val GroupTableBytes = 12L

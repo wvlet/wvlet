@@ -154,6 +154,9 @@ class PartitionedAggOp(
   /** Whether the last aggregation split its input at sorted key changes (for tests) */
   private[engine] var usedSortedSplits: Boolean = false
 
+  // The query's memory budget, captured where the aggregation is planned
+  private val memory = MemoryContext.current
+
   def next(): Batch =
     if result == null then
       result = aggregate()
@@ -185,7 +188,9 @@ class PartitionedAggOp(
         else
           math.min(groups, rows)
       def run(in: Schema, bs: Seq[Batch], ks: IndexedSeq[VExpr], out: Schema): Seq[Batch] =
-        val op = HashAggOp(BatchesOp(in, bs), ks, aggs, out, presize)
+        // Built on a task's thread: the partition's groups count in this aggregation's query
+        val op = MemoryContext
+          .withCurrent(memory)(HashAggOp(BatchesOp(in, bs), ks, aggs, out, presize))
           // The keys are packed here from the partition's exact ranges, when they can be
           .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
           .withFusedAccumulators(fuseAccumulators)
@@ -333,6 +338,8 @@ class PartitionedAggOp(
     val b = IndexedSeq.newBuilder[Batch]
     var x = child.next()
     while x != null do
+      // Deferred columns count without being gathered here
+      memory.reserve(x)
       b += x
       x = child.next()
     b.result()

@@ -103,6 +103,20 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
         x = op.next()
       b.result()
 
+  /** The rows of `op` in one batch, as [[Operator.materialize]], reserving each batch */
+  def materialize(op: Operator): Batch =
+    val batches = drain(op)
+    if batches.isEmpty then
+      Batch.empty(op.schema)
+    else
+      Batch.concat(op.schema, batches)
+
+  /**
+    * A reservation for a structure that grows by units of `unitBytes` (e.g. groups of a hash
+    * aggregation), reserving a quarter of its size (at least 64 KB) ahead
+    */
+  def growing(unitBytes: Long): MemoryContext.Growing = MemoryContext.Growing(this, unitBytes)
+
   /** Return every reservation to the pool. Idempotent */
   def close(): Unit =
     if pool != null then
@@ -148,6 +162,27 @@ object MemoryContext:
         w.statusCode == StatusCode.RESOURCE_EXHAUSTED
       case _ =>
         false
+
+  // Bytes a growing structure reserves ahead of its size, at least
+  private val MinAheadBytes = 64L << 10
+
+  /**
+    * The reservation of one growing structure, used by one thread: [[ensure]] costs a comparison
+    * until the structure outgrows what it reserved
+    */
+  final class Growing private[MemoryContext] (memory: MemoryContext, unitBytes: Long):
+    private val minAheadUnits = math.max(1L, MinAheadBytes / math.max(1L, unitBytes))
+    private var reservedUnits = 0L
+
+    /** Reserve for `units` units, before they are allocated */
+    def ensure(units: Long): Unit =
+      if units > reservedUnits && memory.isTracking then
+        val next = units + math.max(units / 4, minAheadUnits)
+        memory.reserve((next - reservedUnits) * unitBytes)
+        reservedUnits = next
+
+  /** Estimated bytes of one value of type `t` in a vector or a group's key or state */
+  private[exec] def valueBytes(t: PType): Long = width(t)
 
   private[exec] def mb(bytes: Long): String = f"${bytes.toDouble / (1024 * 1024)}%.1f MB"
 

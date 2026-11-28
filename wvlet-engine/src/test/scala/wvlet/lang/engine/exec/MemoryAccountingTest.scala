@@ -18,11 +18,14 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.EngineResult
 import wvlet.lang.engine.WvletEngine
 import wvlet.lang.engine.catalog.TpchGen
+import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.vector.*
@@ -45,11 +48,12 @@ class MemoryAccountingTest extends UniTest:
     CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv("."), dbType = DBType.Wvlet)
   )
 
-  private def run(engine: WvletEngine, query: String): EngineResult =
+  /** Compile a query and pass its relation to `f` */
+  private def withQuery[A](query: String)(f: Context ?=> Relation => A): A =
     val unit = CompilationUnit.fromWvletString(query)
     val r    = compiler.compileSingleUnit(unit)
     r.reportAllErrors
-    given ctx: wvlet.lang.compiler.Context       = r.context
+    given ctx: Context                           = r.context
     def find(e: ExecutionPlan): Option[Relation] =
       e match
         case ExecuteQuery(q: Relation) =>
@@ -58,7 +62,26 @@ class MemoryAccountingTest extends UniTest:
           ts.iterator.flatMap(find).nextOption()
         case _ =>
           None
-    engine.execute(find(unit.executionPlan).get)
+    f(find(unit.executionPlan).get)
+
+  private def run(engine: WvletEngine, query: String): EngineResult =
+    withQuery(query)(engine.execute(_))
+
+  /**
+    * The bytes the operators of a query reserve while it runs, without its result batches: planned
+    * and drained under a context of the test's own
+    */
+  private def reservedBy(query: String): Long =
+    val engine = engineOf(MemoryPool())
+    val memory = MemoryPool().newQuery()
+    withQuery(query) { r =>
+      MemoryContext.withCurrent(memory) {
+        val op = engine.physicalPlan(GenSQL.expand(r, summon[Context]))
+        try op.drain()
+        finally op.close()
+      }
+    }
+    memory.reservedBytes
 
   private val joinQuery =
     """from lineitem
@@ -139,6 +162,60 @@ class MemoryAccountingTest extends UniTest:
       18L
     // Two 8-byte references plus two strings of 40 bytes of overhead and 5 characters on average
     MemoryContext.estimatedBytes(StrVec(Array("abcd", "efghij"), null)) shouldBe 2L * (8 + 45)
+  }
+
+  test("should reserve nothing for a query without large holders") {
+    reservedBy("from orders select o_orderkey") shouldBe 0L
+  }
+
+  test("should reserve bytes for join builds, aggregations, sorts, windows, and shared CTEs") {
+    reservedBy(joinQuery) shouldMatch {
+      case n: Long if n > 0 =>
+    }
+    reservedBy("from orders group by o_custkey select o_custkey, n = _.count") shouldMatch {
+      case n: Long if n > 0 =>
+    }
+    reservedBy("from orders select o_orderkey order by o_orderdate") shouldMatch {
+      case n: Long if n > 0 =>
+    }
+    reservedBy(
+      "from orders select o_orderkey, rank() over (partition by o_custkey order by o_orderdate) as r"
+    ) shouldMatch {
+      case n: Long if n > 0 =>
+    }
+    reservedBy("""with c as { from orders where o_orderkey < 100 select o_orderkey }
+        |from c
+        |concat { from c }""".stripMargin) shouldMatch {
+      case n: Long if n > 0 =>
+    }
+  }
+
+  test("should count the groups of a partitioned aggregation's partitions") {
+    // Runs tasks on the calling thread, but partitions as a parallel runner does
+    object PartitioningRunner extends TaskRunner:
+      def parallelism: Int                               = 4
+      def submit[A](task: () => A): TaskRunner.Handle[A] = TaskRunner.Sequential.submit(task)
+    val n      = 10000
+    val keys   = LongVec(PType.Int64, Array.tabulate(n)(_.toLong), null)
+    val schema = Schema(IndexedSeq(Field("k", PType.Int64)))
+    val input  = Batch(Array[Vec](keys), n)
+    val memory = MemoryPool().newQuery()
+    val op     =
+      MemoryContext.withCurrent(memory) {
+        PartitionedAggOp(
+          BatchesOp(schema, Seq(input)),
+          IndexedSeq(ColRef(0, PType.Int64, "k")),
+          IndexedSeq(AggCall("count_star", Nil, false, None, PType.Int64)),
+          Schema(IndexedSeq(Field("k", PType.Int64), Field("n", PType.Int64))),
+          PartitioningRunner,
+          minParallelRows = 1
+        )
+      }
+    op.drain().map(_.size).sum shouldBe n
+    // The input, and at least 28 bytes per group (key, slot, and count) in the partitions
+    memory.reservedBytes shouldMatch {
+      case b: Long if b >= MemoryContext.estimatedBytes(input) + 28L * n =>
+    }
   }
 
 end MemoryAccountingTest

@@ -341,8 +341,9 @@ class SortOp(
     else
       null
 
+  private val memory = MemoryContext.current // captured where the sort is planned
   private def sortAll(): Iterator[Batch] =
-    val all = Operator.materialize(child)
+    val all = memory.materialize(child)
     if all.size == 0 then
       return Iterator.empty
     val keyVecs = keys.map(k => k.expr.eval(all)).toArray
