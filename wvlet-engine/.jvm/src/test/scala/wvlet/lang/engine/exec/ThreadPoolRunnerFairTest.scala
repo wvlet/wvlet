@@ -47,7 +47,7 @@ class ThreadPoolRunnerFairTest extends UniTest:
   test("should rethrow a task's exception") {
     val runner = ThreadPoolRunner(2)
     try
-      val h = TaskGroup.asQuery(runner.submit(() => throw IllegalStateException("boom")))
+      val h = TaskGroup.asQuery()(runner.submit(() => throw IllegalStateException("boom")))
       intercept[IllegalStateException](h.get()).getMessage shouldBe "boom"
     finally
       runner.shutdown()
@@ -61,8 +61,8 @@ class ThreadPoolRunnerFairTest extends UniTest:
         () =>
           Thread.sleep(2)
           done.add(label)
-      val longs  = TaskGroup.asQuery((1 to 200).map(_ => runner.submit(busy("long"))))
-      val shorts = TaskGroup.asQuery((1 to 10).map(_ => runner.submit(busy("short"))))
+      val longs  = TaskGroup.asQuery()((1 to 200).map(_ => runner.submit(busy("long"))))
+      val shorts = TaskGroup.asQuery()((1 to 10).map(_ => runner.submit(busy("short"))))
       shorts.foreach(_.get())
       val longsBefore = AtomicInteger(0)
       val it          = done.iterator()
@@ -75,6 +75,33 @@ class ThreadPoolRunnerFairTest extends UniTest:
       // FIFO would run all 200 long tasks first; the groups take turns instead
       longsBefore.get() < 50 shouldBe true
       longs.foreach(_.get())
+    finally
+      runner.shutdown()
+  }
+
+  test("should run fair coordinator tasks in their group, counting coordinator time") {
+    val runner = ThreadPoolRunner(2)
+    try
+      val g                       = TaskGroup.newGroup(fairCoordinators = true)
+      val (inCoordinator, inTask) =
+        TaskGroup.withGroup(g) {
+          runner
+            .coordinate { () =>
+              Thread.sleep(2)
+              (TaskGroup.current, runner.submit(() => TaskGroup.current).get())
+            }
+            .get()
+        }
+      inCoordinator shouldBeTheSameInstanceAs g
+      inTask shouldBeTheSameInstanceAs g
+      // A worker accounts a task after completing its future: wait for it
+      val deadline = System.nanoTime() + 10000000000L
+      while (g.finishedCoordinators < 1 || g.finishedTasks < 1) && System.nanoTime() < deadline do
+        Thread.sleep(1)
+      g.finishedCoordinators shouldBe 1L
+      g.coordinatorNanos >= 2000000L shouldBe true
+      // Only the pool task counts as run time
+      g.finishedTasks shouldBe 1L
     finally
       runner.shutdown()
   }

@@ -23,10 +23,14 @@ import java.util.concurrent.atomic.AtomicLong
   */
 final class TaskGroup private (
     /** A process-wide sequence number, for logs */
-    val id: Long
+    val id: Long,
+    /** Whether the group's coordinator tasks are picked fairly too (`fair_coordinators`) */
+    val fairCoordinators: Boolean
 ):
-  private val nanos = AtomicLong(0)
-  private val tasks = AtomicLong(0)
+  private val nanos            = AtomicLong(0)
+  private val tasks            = AtomicLong(0)
+  private val coordinatorTime  = AtomicLong(0)
+  private val coordinatorCount = AtomicLong(0)
 
   /** The run time of this group's finished pool tasks */
   def runNanos: Long = nanos.get()
@@ -38,14 +42,32 @@ final class TaskGroup private (
     nanos.addAndGet(n)
     tasks.incrementAndGet()
 
+  /**
+    * The wall time of this group's finished coordinator tasks (with `fair_coordinators`), kept
+    * apart from [[runNanos]]: coordinators mostly wait for pool tasks
+    */
+  def coordinatorNanos: Long = coordinatorTime.get()
+
+  /** The number of this group's finished coordinator tasks */
+  def finishedCoordinators: Long = coordinatorCount.get()
+
+  private[exec] def addCoordinatorNanos(n: Long): Unit =
+    coordinatorTime.addAndGet(n)
+    coordinatorCount.incrementAndGet()
+
   override def toString: String = s"TaskGroup(${id})"
+
+end TaskGroup
 
 object TaskGroup:
   private val ids          = AtomicLong(0)
   private val currentGroup = ThreadLocal[TaskGroup]()
 
   /** A new group, e.g. for one query */
-  def newGroup(): TaskGroup = TaskGroup(ids.incrementAndGet())
+  def newGroup(fairCoordinators: Boolean = false): TaskGroup = TaskGroup(
+    ids.incrementAndGet(),
+    fairCoordinators
+  )
 
   /** The group of tasks this thread submits, or null outside of any group */
   def current: TaskGroup = currentGroup.get()
@@ -66,10 +88,10 @@ object TaskGroup:
     * Run `body` in a new group unless this thread is already in one (a nested query, e.g. a
     * [[wvlet.lang.engine.TableWriter]] statement's inner reads, stays in its caller's group)
     */
-  def asQuery[A](body: => A): A =
+  def asQuery[A](fairCoordinators: Boolean = false)(body: => A): A =
     if currentGroup.get() != null then
       body
     else
-      withGroup(newGroup())(body)
+      withGroup(newGroup(fairCoordinators))(body)
 
 end TaskGroup

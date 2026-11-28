@@ -260,11 +260,12 @@ class WvletEngine(
   /**
     * Run `body` (planning and running one query) as one query of the engine's task pool: with
     * `fair_task_scheduling`, its pool tasks form a [[TaskGroup]] scheduled fairly against other
-    * queries' tasks. A query run inside another one's `body` stays in its group
+    * queries' tasks (and its coordinator tasks too, with `fair_coordinators`). A query run inside
+    * another one's `body` stays in its group
     */
   def asQuery[A](body: => A): A =
     if optimizer.isEnabled(Optimization.FairTaskScheduling) then
-      TaskGroup.asQuery(body)
+      TaskGroup.asQuery(fairCoordinators = optimizer.isEnabled(Optimization.FairCoordinators))(body)
     else
       body
 

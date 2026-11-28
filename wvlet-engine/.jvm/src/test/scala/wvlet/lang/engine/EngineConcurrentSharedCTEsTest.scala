@@ -16,6 +16,7 @@ package wvlet.lang.engine
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.exec.StartSharedOp
+import wvlet.lang.engine.exec.TaskGroup
 import wvlet.lang.engine.exec.TaskRunner
 import wvlet.lang.engine.plan.Optimization
 import wvlet.lang.engine.plan.OptimizerOptions
@@ -70,6 +71,19 @@ class EngineConcurrentSharedCTEsTest extends UniTest:
       |  order by n desc, x.o_custkey
       |  limit 20""".stripMargin
 
+  // Two independent CTEs, each read twice under joins, so planning computes both at once
+  private val joinedQuery =
+    """with a as (
+      |  select l_orderkey, sum(l_quantity) as q from lineitem group by l_orderkey
+      |),
+      |b as (
+      |  select o_orderkey, o_custkey from orders where o_orderdate < date '1995-01-01'
+      |)
+      |select count(*) as n, sum(x.q) as q from a x
+      |  join b u on x.l_orderkey = u.o_orderkey
+      |  join a y on y.l_orderkey = u.o_orderkey
+      |  join b v on v.o_orderkey = x.l_orderkey""".stripMargin
+
   // Shared CTEs that no join reads, so they are computed when the plan runs
   private val unionQuery =
     """with a as (
@@ -84,7 +98,7 @@ class EngineConcurrentSharedCTEsTest extends UniTest:
       |union all select 'b_max', count(*), max(n) from b where n > 10""".stripMargin
 
   test("should return the same rows in the same order as computing shared CTEs one by one") {
-    for q <- Seq(query, unionQuery) do
+    for q <- Seq(query, joinedQuery, unionQuery) do
       val r = rows(engine, q)
       r.nonEmpty shouldBe true
       r shouldBe rows(disabled, q)
@@ -109,6 +123,52 @@ class EngineConcurrentSharedCTEsTest extends UniTest:
         }
       finally off.close()
     }
+  }
+
+  test("should compute shared CTE results while other queries hold every coordinator") {
+    if TaskRunner.default.parallelism <= 1 then
+      ignore("Shared results are computed one by one on one processor")
+    val expected = rows(disabled, joinedQuery)
+    // Another query's coordinator tasks take every fair coordinator thread until released
+    val n        = math.max(1, TaskRunner.default.parallelism / 2)
+    val started  = java.util.concurrent.CountDownLatch(n)
+    val release  = java.util.concurrent.CountDownLatch(1)
+    val blockers =
+      TaskGroup.withGroup(TaskGroup.newGroup(fairCoordinators = true)) {
+        (1 to n).map { _ =>
+          TaskRunner
+            .default
+            .coordinate { () =>
+              started.countDown()
+              release.await()
+            }
+        }
+      }
+    try
+      started.await()
+      // The query's coordinators wait behind the blockers; its own thread computes the results
+      val result = java.util.concurrent.atomic.AtomicReference[Either[Throwable, Seq[String]]]()
+      val t      = Thread { () =>
+        result.set(
+          try
+            Right(rows(engine, joinedQuery))
+          catch
+            case e: Throwable =>
+              Left(e)
+        )
+      }
+      t.start()
+      t.join(60000)
+      if t.isAlive then
+        fail("The query is still waiting for a coordinator after 60 s")
+      result.get() match
+        case Right(r) =>
+          r shouldBe expected
+        case Left(e) =>
+          throw e
+    finally
+      release.countDown()
+      blockers.foreach(_.get())
   }
 
 end EngineConcurrentSharedCTEsTest

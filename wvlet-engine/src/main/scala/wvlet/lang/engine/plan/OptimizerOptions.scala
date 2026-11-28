@@ -1205,6 +1205,14 @@ enum Optimization(val name: String):
     */
   case FairTaskScheduling extends Optimization("fair_task_scheduling")
 
+  /**
+    * With `fair_task_scheduling`, a query's coordinator tasks run on a second pool that picks them
+    * fairly across queries by their own run time, instead of one FIFO queue. With or without it, a
+    * query computing its shared CTE results at plan time computes those no coordinator has started
+    * on its own thread instead of waiting for a coordinator. Changes no plan
+    */
+  case FairCoordinators extends Optimization("fair_coordinators")
+
 end Optimization
 
 object Optimization:

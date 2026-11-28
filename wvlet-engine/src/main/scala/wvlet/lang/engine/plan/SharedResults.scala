@@ -542,14 +542,22 @@ trait SharedResults:
 
   /**
     * Compute `results` and the shared results they read, those not computed yet at the same time on
-    * coordinator threads, and wait until all are done (their failures are raised when read)
+    * coordinator threads, and wait until all are done (their failures are raised when read). With
+    * `fair_coordinators`, this thread computes, in order, those no coordinator has started, so
+    * coordinators busy with other queries' work can't stall it
     */
   private[plan] def computeSharedResults(results: Seq[SharedResult]): Unit =
     if concurrentSharedResults then
       val pending = sharedResultsOf(Nil, results).filterNot(_.isComputed)
       if pending.size > 1 then
         val handles = pending.map(r => TaskRunner.default.coordinate(() => r.compute(() => false)))
-        handles.foreach(_.get())
+        if enabled(Optimization.FairCoordinators) then
+          pending.foreach(_.compute(() => false))
+          pending.foreach(_.awaitIfStarted())
+          // Queued coordinator entries of results computed here would only find them started
+          handles.foreach(_.cancel())
+        else
+          handles.foreach(_.get())
 
   /**
     * The plan `root`, which starts computing the shared results it reads on coordinator threads

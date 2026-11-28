@@ -111,4 +111,14 @@ class FairTaskQueueTest extends UniTest:
     q.levelOf(long.runNanos) shouldBe 1
   }
 
+  test("should count coordinator time apart from pool-task time") {
+    val q = FairTaskQueue[Int](coordinators = true)
+    val g = group()
+    q.add(g, 1, 0L)
+    q.finished(q.poll(0L), 5000L)
+    g.coordinatorNanos shouldBe 5000L
+    g.finishedCoordinators shouldBe 1L
+    g.runNanos shouldBe 0L
+  }
+
 end FairTaskQueueTest

@@ -33,11 +33,15 @@ import scala.collection.mutable
   *     order.
   *
   * Not thread-safe: the pool guards it with its lock. Tasks are not preempted, so the shares hold
-  * over many tasks, not within one
+  * over many tasks, not within one.
+  *
+  * With `coordinators`, run time is that of the groups' coordinator tasks
+  * ([[TaskGroup.coordinatorNanos]]), kept apart from their pool tasks' run time
   */
 final class FairTaskQueue[T](
     levelThresholdNanos: IndexedSeq[Long] = FairTaskQueue.LevelThresholdNanos,
-    levelShareRatio: Int = 2
+    levelShareRatio: Int = 2,
+    coordinators: Boolean = false
 ):
   import FairTaskQueue.Picked
 
@@ -51,7 +55,13 @@ final class FairTaskQueue[T](
     var runningStarts = 0L // The sum of the running tasks' start times
 
     /** The run time of the finished tasks and of the running ones until `now` */
-    def runNanos(now: Long): Long = group.runNanos + running * now - runningStarts
+    def runNanos(now: Long): Long = finishedNanos(group) + running * now - runningStarts
+
+  private def finishedNanos(g: TaskGroup): Long =
+    if coordinators then
+      g.coordinatorNanos
+    else
+      g.runNanos
 
   private val numLevels = levelThresholdNanos.size
   private val groups    = mutable.HashMap.empty[TaskGroup, GroupTasks]
@@ -111,7 +121,10 @@ final class FairTaskQueue[T](
 
   /** Account the run time of a task [[poll]] returned */
   def finished(p: Picked[T], nanos: Long): Unit =
-    p.group.addRunNanos(nanos)
+    if coordinators then
+      p.group.addCoordinatorNanos(nanos)
+    else
+      p.group.addRunNanos(nanos)
     levelTime(p.level) += nanos * weights(p.level)
     groups
       .get(p.group)

@@ -190,7 +190,8 @@ class OptimizerOptionsTest extends UniTest:
         "union_all_pipelines",
         "size_partitions_by_rows",
         "memory_accounting",
-        "fair_task_scheduling"
+        "fair_task_scheduling",
+        "fair_coordinators"
       )
   }
 

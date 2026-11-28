@@ -332,7 +332,9 @@ class EngineOptimizerToggleTest extends UniTest:
     Optimization.RankFilterRows ->
       "Changes TPC-DS q44's join order at SF10, not at the golden plans' SF0.1",
     // FairTaskQueueTest and ThreadPoolRunnerFairTest check the scheduling
-    Optimization.FairTaskScheduling -> "Changes which query's pool task runs next, not the plan"
+    Optimization.FairTaskScheduling -> "Changes which query's pool task runs next, not the plan",
+    Optimization.FairCoordinators   ->
+      "Changes which query's coordinator task runs next, not the plan"
   )
 
   override def afterAll: Unit =
