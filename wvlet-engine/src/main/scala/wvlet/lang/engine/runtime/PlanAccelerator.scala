@@ -34,3 +34,11 @@ trait PlanAccelerator:
     * instead when the device fails at run time (e.g. out of memory)
     */
   def accelerate(p: RuntimePlan, cpu: RuntimePlan => Operator): Option[Operator]
+
+  /**
+    * Whether the subtrees this accelerator runs compute the shared CTEs they read from the CTE
+    * bodies, instead of reading the CPU's shared results. The planner then skips computing shared
+    * CTEs at plan time to re-plan their joins with exact row counts (`replan_materialized_ctes`):
+    * the accelerated readers would compute them again
+    */
+  def recomputesSharedCTEs: Boolean = false

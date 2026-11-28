@@ -31,9 +31,10 @@ import wvlet.uni.test.UniTest
   * through the CPU lowering it is given, so the results stay the CPU engine's.
   */
 class EnginePlanAcceleratorTest extends UniTest:
-  private class Stub extends PlanAccelerator:
+  private class Stub(recomputes: Boolean = false) extends PlanAccelerator:
     var offered                                                                    = 0
     def name                                                                       = "stub"
+    override def recomputesSharedCTEs: Boolean                                     = recomputes
     def accelerate(p: RuntimePlan, cpu: RuntimePlan => Operator): Option[Operator] =
       offered += 1
       p match
@@ -53,7 +54,10 @@ class EnginePlanAcceleratorTest extends UniTest:
   )
 
   private def withQ6(f: Context ?=> wvlet.lang.model.plan.Relation => Unit): Unit =
-    val unit      = compiler.localCompilationUnits.find(_.sourceFile.fileName == "q6.wv").get
+    withQuery("q6")(f)
+
+  private def withQuery(name: String)(f: Context ?=> wvlet.lang.model.plan.Relation => Unit): Unit =
+    val unit      = compiler.localCompilationUnits.find(_.sourceFile.fileName == s"${name}.wv").get
     val ctx       = compiler.compileSingleUnit(unit).context
     given Context = ctx
     f(EngineTPCHBench.queryOf(unit).get)
@@ -86,6 +90,19 @@ class EnginePlanAcceleratorTest extends UniTest:
         .withOptimizer(plan.OptimizerOptions().withDisabled(Optimization.GpuOffload))
       off.explain(q).contains("Stub") shouldBe false
       stub.offered shouldBe 0
+    }
+  }
+
+  test("skip the plan-time CTE replan for an accelerator that recomputes shared CTEs") {
+    // q15's two revenue subqueries share a filtered lineitem scan that joins read: by default the
+    // planner computes it at plan time and lowers the re-planned query again
+    withQuery("q15") { q =>
+      val replanning  = Stub()
+      val recomputing = Stub(recomputes = true)
+      val expected    = engine().withAccelerator(replanning).execute(q).rows.toList
+      val offeredBy   = replanning.offered
+      engine().withAccelerator(recomputing).execute(q).rows.toList shouldBe expected
+      (recomputing.offered < offeredBy) shouldBe true
     }
   }
 

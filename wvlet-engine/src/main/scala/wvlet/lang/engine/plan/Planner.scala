@@ -150,7 +150,7 @@ class Planner(
       val op = optimizePhysical(lower(optimized))
       finalizeCTEs(op)
       val root =
-        if enabled(Optimization.ReplanMaterializedCTEs) then
+        if enabled(Optimization.ReplanMaterializedCTEs) && !acceleratorRecomputesCTEs then
           if enabled(Optimization.ReplanCTEBodies) then
             replanCTEBodies()
           replanJoinedCTEs(bound, optimized).getOrElse(op)
@@ -160,6 +160,14 @@ class Planner(
       startingSharedResults(root)
     finally
       runtimeBinder.clearBoundInputs()
+
+  /**
+    * Whether the accelerator that lowering offers subtrees to computes the shared CTEs it reads
+    * itself, so that computing them at plan time for re-planning is wasted work (TPC-H q15 and q22
+    * on the GPU)
+    */
+  private def acceleratorRecomputesCTEs: Boolean =
+    enabled(Optimization.GpuOffload) && accelerator.exists(_.recomputesSharedCTEs)
 
   /**
     * Compute the shared CTEs that joins of `bound` read (inner join graphs, and outer, semi, and
