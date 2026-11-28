@@ -663,14 +663,16 @@ object EngineTPCHBench extends LogSupport:
     * the result rows, and the milliseconds spent planning (before any operator ran)
     */
   def plannedRun(engine: WvletEngine, q: Relation)(using ctx: Context): (Double, Long, Double) =
-    val start   = System.nanoTime()
-    val op      = engine.physicalPlan(GenSQL.expand(q, ctx))
-    val planned = System.nanoTime()
-    try
-      val rows = readAll(op.drain())
-      ((System.nanoTime() - start) / 1000000.0, rows, (planned - start) / 1000000.0)
-    finally
-      op.close()
+    engine.asQuery {
+      val start   = System.nanoTime()
+      val op      = engine.physicalPlan(GenSQL.expand(q, ctx))
+      val planned = System.nanoTime()
+      try
+        val rows = readAll(op.drain())
+        ((System.nanoTime() - start) / 1000000.0, rows, (planned - start) / 1000000.0)
+      finally
+        op.close()
+    }
 
   /**
     * Read every value of every row as a boxed value, as [[countRows]] makes DuckDB's JDBC driver
