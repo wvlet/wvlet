@@ -205,6 +205,8 @@ wvlet ui [options]
 | `-p, --port <port>` | Server port (default: 8080) |
 | `--host <host>` | Server host (default: localhost) |
 | `--no-browser` | Don't open browser automatically |
+| `--max-running-queries <n>` | Queries running at once; others wait in the queue (default: half the CPUs) |
+| `--max-queued-queries <n>` | Queries waiting to run; submissions past it fail with `RESOURCE_EXHAUSTED` (default: 1000). See [Remote Wvlet Server](./remote-server.md#query-queue-and-logs) |
 
 **Examples:**
 

@@ -29,6 +29,7 @@
 | `wvlet skill [file]`, `wvlet skill files` | Print this skill (or a reference) as shipped with the installed version |
 | `wvlet skill install [--agent claude,codex,pi] [--global]` | Install or update this skill for coding agents; `list` and `remove --yes` manage it |
 | `wvlet repl`, `wvlet repl -c "<query>"` | REPL, or run one query and exit; `wv` is an alias on the JVM CLI |
+| `wvlet ui [--max-running-queries n] [--max-queued-queries n]` | Start the server and Web UI (JVM CLI); past the queue limit, submissions fail with `RESOURCE_EXHAUSTED` |
 
 `compile`, `to_wvlet`, `run`, and `repl` share `-p, --profile <name>`, `-t <engine>`,
 `-w <folder>` (working folder), `--catalog`, and `--schema`; `-l debug` gives debug logs. A bare

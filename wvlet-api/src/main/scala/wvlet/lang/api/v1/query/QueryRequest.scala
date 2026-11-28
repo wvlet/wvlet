@@ -17,6 +17,8 @@ case class QueryRequest(
     // Identifies the client session so `use` statements (active engine, catalog, schema) affect
     // only this session on the server; requests without a session id share a default session
     sessionId: Option[String] = None,
+    // Client-chosen id: resubmitting a request with the same id returns the query it already
+    // started instead of running it again (safe retries)
     requestId: ULID = ULID.newULID
 ):
   def queryLine: String =

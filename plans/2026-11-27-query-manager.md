@@ -30,20 +30,20 @@ DuckDB's 2026 [Quack](https://duckdb.org/2026/05/12/quack-remote-protocol) clien
 
 ### Phase 1: query manager (wvlet-server)
 
-- `QueryManagerConfig(maxRunningQueries, maxQueuedQueries, finishedQueryRetention, maxFinishedQueries)` with `withXXX` methods; defaults: running = available processors / 2 (at least 1), queued = 1000, retention = 1 hour.
+- `QueryManagerConfig(maxRunningQueries, maxQueuedQueries, finishedQueryRetention, maxFinishedQueries)` with `withXXX` methods; defaults: running = available processors / 2 (at least 1), queued = 1000, retention = 1 hour, 1000 finished queries. `wvlet ui --max-running-queries n --max-queued-queries n` sets the first two.
 - Admission: a fixed worker pool of `maxRunningQueries` threads fed by a bounded queue. `enqueue` past `maxQueuedQueries` throws `StatusCode.RESOURCE_EXHAUSTED`, so clients retry. Queries stay QUEUED until a worker takes them; a query cancelled while queued never starts (as today).
 - Per-session ordering stays: a worker taking a query whose session is busy must not block the pool. Keep a per-session FIFO and dispatch only the head of each idle session, instead of `runner.synchronized` inside the worker.
-- Events: `QueryEventListener` with `queryCreated(QueryCreatedEvent)`, `queryStarted`, `queryCompleted(QueryCompletedEvent)`. A completed event carries query id, session id, profile, status, status code, error message, created/started/completed times, queued and run wall time, and result rows. Listener failures are logged and never fail a query.
-- Default listener: a JSON-lines file under the server's work folder (e.g. `.wvlet/logs/query-events.jsonl`), rotated daily; plus a debug log line per event.
+- Events: `QueryEventListener.onEvent(QueryEvent)`, one event type with `eventType` CREATED / STARTED / COMPLETED, so a log line has one shape. A completed event carries query id, session id, profile, status, status code, error message, created/started/completed times, queued and run wall time, and result rows. Listener failures are logged and never fail a query.
+- Default listener: JSON lines in `<target>/logs/query-events-yyyy-MM-dd.jsonl` (next to `wvlet-out.log`), one file per UTC day; plus a debug log line per event.
 - Retention: evict finished queries older than the retention or beyond `maxFinishedQueries` (oldest first) on each enqueue; drop result rows of evicted queries. `fetchNext` of an evicted id returns INVALID_ARGUMENT as for an unknown id.
 - Ids: replace ULIDs with Trino-style `yyyyMMdd_HHmmss_<seq>_<server>`, e.g. `20261127_155437_00042_x7k2p`. Two ULIDs (or UUIDv7s) issued close together share their leading characters and differ only in the trailing random part, so people cannot tell queries apart at a glance.
   - Time: the query's creation time in UTC, to the second, so ids sort by time and show when the query ran.
   - Sequence: a 5-digit counter per server process (wrapping at 99999) that changes at a fixed position between neighboring queries.
   - Server: 5 random lowercase base-32 characters chosen at server start, so ids from multiple servers, or from one server across restarts, never collide without a persisted counter.
-  - A `QueryId` value type in `wvlet-api` with `parse` and `toString`; `QueryInfo.queryId`, `QueryResponse`, `QueryInfoRequest`, and `QueryCancelRequest` carry it as a string on the wire. Update the UI, `WvletServerClient`, and replace `UlidRpcRoundTripTest` with a `QueryId` round-trip test.
+  - `QueryInfo.queryId`, `QueryResponse`, `QueryInfoRequest`, and `QueryCancelRequest` carry it as `String`. A `QueryId` value class was dropped: uni's router encodes return values with runtime weavers that ignore custom givens, so it would go over the wire as an object. `QueryIdGenerator.isQueryId` checks the shape; `QueryIdRpcRoundTripTest` replaces `UlidRpcRoundTripTest`.
   - Clients may pass their own id through `QueryRequest.requestId` for idempotent retries: a repeated request id returns the existing query instead of starting a new one.
 - Applies to every engine the runner targets (Wvlet engine, DuckDB, Trino): admission does not depend on the engine.
-- Expose current counts (running, queued, finished in memory) through a small status API for the UI and tests.
+- `FrontendApi.status` reports `runningQueries` and `queuedQueries`.
 
 ### Phase 2: engine memory accounting (wvlet-engine)
 

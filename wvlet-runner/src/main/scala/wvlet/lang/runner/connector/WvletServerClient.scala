@@ -79,7 +79,7 @@ class WvletServerClient(
   def runQuery(wvletQuery: String): QueryResult = toQueryResult(awaitCompletion(submit(wvletQuery)))
 
   /** Submit a wvlet query and return its server-side query id without waiting. */
-  def submit(wvletQuery: String): ULID =
+  def submit(wvletQuery: String): String =
     rpc
       .FrontendApi
       .submitQuery(
@@ -94,7 +94,7 @@ class WvletServerClient(
       .queryId
 
   /** Poll the server until the query reaches a terminal state. */
-  def awaitCompletion(queryId: ULID): QueryInfo =
+  def awaitCompletion(queryId: String): QueryInfo =
     var info = rpc.FrontendApi.getQueryInfo(QueryInfoRequest(queryId, pageToken = "0"))
     while !info.status.isFinished do
       Sleep.sleepMillis(pollIntervalMillis)
@@ -102,7 +102,7 @@ class WvletServerClient(
     info
 
   /** Best-effort server-side cancellation. */
-  def cancel(queryId: ULID): QueryInfo = rpc.FrontendApi.cancelQuery(QueryCancelRequest(queryId))
+  def cancel(queryId: String): QueryInfo = rpc.FrontendApi.cancelQuery(QueryCancelRequest(queryId))
 
   private def toQueryResult(info: QueryInfo): QueryResult =
     info.status match

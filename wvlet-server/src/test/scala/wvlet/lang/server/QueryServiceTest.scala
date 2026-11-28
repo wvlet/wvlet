@@ -74,7 +74,7 @@ class QueryServiceTest extends UniTest:
     threadManager.close()
     provider.close()
 
-  private def awaitCompletion(queryId: ULID, timeoutMillis: Long = 30000): QueryInfo =
+  private def awaitCompletion(queryId: String, timeoutMillis: Long = 30000): QueryInfo =
     val deadline = System.currentTimeMillis() + timeoutMillis
     var info     = service.fetchNext(QueryInfoRequest(queryId, pageToken = "0"))
     while !info.status.isFinished && System.currentTimeMillis() < deadline do
@@ -117,7 +117,7 @@ class QueryServiceTest extends UniTest:
 
   test("reject cancellation of an unknown query") {
     intercept[WvletLangException] {
-      service.cancel(ULID.newULID)
+      service.cancel("20261127_000000_00000_aaaaa")
     }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
   }
 

@@ -4,14 +4,19 @@
 
 ## Query lifecycle
 
-- [`QueryService`](../wvlet-server/src/main/scala/wvlet/lang/server/QueryService.scala) issues a ULID per query (the plan replaces it with Trino-style ids) and tracks QUEUED → RUNNING → FINISHED / FAILED / CANCELED ([`QueryStatus`](../wvlet-api/src/main/scala/wvlet/lang/api/v1/query/QueryStatus.scala)). Clients poll `fetchNext` by id.
-- Cancel is best effort: the status becomes CANCELED at once and later completion is discarded; a query cancelled while queued never starts.
-- [`ScriptRunnerSessions`](../wvlet-server/src/main/scala/wvlet/lang/server/ScriptRunnerSessions.scala) gives each client session its own runner, so `use` changes only that session. Statements of one session are serialized because the compiler is not thread-safe; sessions run in parallel. Idle sessions are evicted after an hour.
+- [`QueryService`](../wvlet-server/src/main/scala/wvlet/lang/server/QueryService.scala) admits queries QUEUED → RUNNING → FINISHED / FAILED / CANCELED ([`QueryStatus`](../wvlet-api/src/main/scala/wvlet/lang/api/v1/query/QueryStatus.scala)). Clients poll `fetchNext` by id.
+- Admission ([`QueryManagerConfig`](../wvlet-server/src/main/scala/wvlet/lang/server/QueryManagerConfig.scala), `--max-running-queries` / `--max-queued-queries`): a fixed worker pool runs at most `maxRunningQueries`; past `maxQueuedQueries`, `enqueue` throws RESOURCE_EXHAUSTED. The limits apply to every engine, not only the in-process one.
+- Per-session order: statements of one session run one at a time, in order, because a session's compiler is not thread-safe. The dispatcher starts the oldest queued query whose session is idle, so a busy session never holds a worker. [`ScriptRunnerSessions`](../wvlet-server/src/main/scala/wvlet/lang/server/ScriptRunnerSessions.scala) gives each session its own runner, so `use` changes only that session; idle sessions are evicted after an hour.
+- Cancel is best effort: the status becomes CANCELED at once and later completion is discarded. A queued query leaves the queue and never starts; a running one keeps its slot until its statement returns.
+- Query ids ([`QueryIdGenerator`](../wvlet-server/src/main/scala/wvlet/lang/server/QueryIdGenerator.scala)) are `yyyyMMdd_HHmmss_<seq>_<server>` strings, see the [ADR](../adr/2026-11-27-trino-style-query-ids.md). They are `String` on the wire: uni's router encodes return values with runtime weavers that ignore a custom `given Weaver`, so a value class would not round-trip as a plain string.
+- A resubmitted `QueryRequest.requestId` returns the query it started while that query is kept.
+- Every query reports CREATED and COMPLETED [`QueryEvent`](../wvlet-server/src/main/scala/wvlet/lang/server/QueryEvent.scala)s, plus STARTED unless cancelled while queued. The server logs them as JSON lines per UTC day under `<target>/logs`. Listener failures never fail a query.
+- Finished queries (and their result rows) are dropped after `finishedQueryRetention` or beyond `maxFinishedQueries`; eviction runs on submission and completion.
 
 ## Limits
 
-- The server does not yet bound concurrent or queued queries, keep finished queries for a bounded time, or log query events. The engine shares one FIFO task pool across queries and has no memory budget. The [query manager plan](../plans/2026-11-27-query-manager.md) covers admission, events, retention, memory accounting, and fair CPU sharing.
+- The engine shares one FIFO task pool across queries and has no memory budget. The [query manager plan](../plans/2026-11-27-query-manager.md) covers memory accounting and fair CPU sharing (phases 2 and 3).
 
 ## Tests
 
-- [`QueryServiceTest`](../wvlet-server/src/test/scala/wvlet/lang/server/QueryServiceTest.scala) and [`ScriptRunnerSessionsTest`](../wvlet-server/src/test/scala/wvlet/lang/server/ScriptRunnerSessionsTest.scala): `./sbt "server/testOnly *QueryServiceTest *ScriptRunnerSessionsTest"`.
+- [`QueryManagerTest`](../wvlet-server/src/test/scala/wvlet/lang/server/QueryManagerTest.scala) holds queries in their slot with a listener that blocks STARTED events, so admission tests don't depend on query run times. With [`QueryServiceTest`](../wvlet-server/src/test/scala/wvlet/lang/server/QueryServiceTest.scala) and the RPC round trip: `./sbt "server/testOnly *QueryManagerTest *QueryServiceTest *QueryIdRpcRoundTripTest"`.

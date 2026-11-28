@@ -14,7 +14,13 @@ class FrontendApiImpl(queryService: QueryService, workEnv: WorkEnv)
     with LogSupport:
   private val startTimeNs = System.nanoTime()
 
-  override def status: ServerStatus = ServerStatus(upTime = ElapsedTime.nanosSince(startTimeNs))
+  override def status: ServerStatus =
+    val stats = queryService.stats
+    ServerStatus(
+      upTime = ElapsedTime.nanosSince(startTimeNs),
+      runningQueries = stats.running,
+      queuedQueries = stats.queued
+    )
 
   override def submitQuery(request: QueryRequest): QueryResponse =
     debug(s"Received:\n${request}")
