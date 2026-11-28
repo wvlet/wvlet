@@ -57,6 +57,15 @@ class EditorState(val state: ConsoleState):
   val sessionId: String                                 = EditorState.tabSessionId()
   private var poll: Option[js.timers.SetIntervalHandle] = None
 
+  /** The editor panel's height in CSS pixels, changed by dragging its top edge */
+  val height: RxVar[Int] = Rx.variable(EditorState.DefaultHeight)
+
+  // The text last loaded or run, so replacing it never drops unsaved edits silently
+  private var saved: String = EditorState.Welcome
+
+  /** Whether the editor holds edits that were neither loaded nor run */
+  def hasEdits: Boolean = text.get.trim.nonEmpty && text.get.trim != saved.trim
+
   /** Load the text of query `id` and open the editor */
   def openQuery(id: String): Unit = state
     .conn
@@ -64,8 +73,12 @@ class EditorState(val state: ConsoleState):
     .FrontendApi
     .getQueryDetail(QueryDetailRequest(id))
     .map { d =>
-      text := d.query
-      open := true
+      if !hasEdits ||
+        dom.window.confirm(s"Replace the editor text with ${id}? Your edits will be lost.")
+      then
+        saved = d.query
+        text := d.query
+        open := true
     }
     .recover { case e: Throwable =>
       state.notice := Some(s"Could not open ${id}: ${state.conn.errorMessage(e)}")
@@ -84,6 +97,7 @@ class EditorState(val state: ConsoleState):
   ): Unit =
     if query.trim.nonEmpty then
       stopPolling()
+      saved = text.get
       run := Some(EditorRun(label))
       state
         .conn
@@ -138,11 +152,13 @@ end EditorState
 object EditorState:
   val PollMillis: Int = 500
 
-  val Welcome: String =
-    """-- Write a query and press ⌘↵ (Ctrl+Enter) to run it, or ⇧⌘↵ for the statement at the cursor.
-      |-- Runs appear in the query list above.
-      |show tables
-      |""".stripMargin
+  /** The first text of the editor; the toolbar explains the keys */
+  val Welcome: String = "show tables\n"
+
+  val DefaultHeight: Int = 300
+
+  /** The height range of the editor panel; the list above keeps the rest */
+  val MinHeight: Int = 160
 
   /** A session id for this browser tab, kept across reloads of the tab */
   def tabSessionId(): String =
@@ -249,14 +265,16 @@ class EditorPanel(editor: EditorState) extends RxElement:
                       case Some(v) =>
                         span(titleAttr -> v, v)
               )
-              if EditorPanel.isNumeric(c.typeName) then
-                col
-                  .sortBy(row =>
-                    row.values.lift(i).flatten.flatMap(s => Try(BigDecimal(s)).toOption)
-                  )
-                  .alignEnd
-              else
-                col.sortBy(row => row.values.lift(i).flatten.getOrElse(""))
+              val sorted =
+                if EditorPanel.isNumeric(c.typeName) then
+                  col
+                    .sortBy(row =>
+                      row.values.lift(i).flatten.flatMap(s => Try(BigDecimal(s)).toOption)
+                    )
+                    .alignEnd
+                else
+                  col.sortBy(row => row.values.lift(i).flatten.getOrElse(""))
+              sorted.withWidth(EditorPanel.columnWidth(c.name, rows.map(_.values.lift(i).flatten)))
             }
       DataTable[EditorResultRow, Int](Rx.const(rows), key = _.index, columns = cols)
         .withLabel("Query result")
@@ -335,10 +353,57 @@ class EditorPanel(editor: EditorState) extends RxElement:
         )
     }
 
+  /** The top edge of the panel: drag it, or focus it and press Up / Down, to resize */
+  private def grip: RxElement =
+    def clamp(h: Int): Int =
+      val max = (dom.window.innerHeight * 0.75).toInt
+      h.max(EditorState.MinHeight).min(max.max(EditorState.MinHeight))
+    div(
+      cls                 -> "wv-editor-panel__grip",
+      role                -> "separator",
+      aria("orientation") -> "horizontal",
+      ariaLabel           -> "Resize the editor",
+      tabindex            -> "0",
+      ondblclick          -> { (_: dom.MouseEvent) =>
+        editor.height := EditorState.DefaultHeight
+      },
+      onkeydown -> { (e: dom.KeyboardEvent) =>
+        e.key match
+          case "ArrowUp" =>
+            e.preventDefault()
+            editor.height := clamp(editor.height.get + 32)
+          case "ArrowDown" =>
+            e.preventDefault()
+            editor.height := clamp(editor.height.get - 32)
+          case _ =>
+      },
+      onpointerdown -> { (e: dom.PointerEvent) =>
+        e.preventDefault()
+        val el     = e.currentTarget.asInstanceOf[dom.html.Element]
+        val startY = e.clientY
+        val startH = editor.height.get
+        el.setPointerCapture(e.pointerId)
+        lazy val move: js.Function1[dom.PointerEvent, Unit] =
+          (m: dom.PointerEvent) => editor.height := clamp(startH + (startY - m.clientY).toInt)
+        lazy val up: js.Function1[dom.PointerEvent, Unit] =
+          (_: dom.PointerEvent) =>
+            el.removeEventListener("pointermove", move)
+            el.removeEventListener("pointerup", up)
+            el.removeEventListener("pointercancel", up)
+        el.addEventListener("pointermove", move)
+        el.addEventListener("pointerup", up)
+        el.addEventListener("pointercancel", up)
+      }
+    )
+
+  end grip
+
   override def render: RxElement = div(
     cls       -> "wv-editor-panel",
     role      -> "region",
     ariaLabel -> "Query editor",
+    styleAttr -> editor.height.map(h => s"flex-basis: ${h}px"),
+    grip,
     div(
       cls -> "wv-editor-panel__bar",
       span(cls -> "wv-editor-panel__title", "Editor"),
@@ -401,7 +466,22 @@ object EditorPanel:
     "hugeint"
   )
 
+  /**
+    * A fixed width per result column from its longest header or value (first 200 rows), so columns
+    * never overlap; long values end with an ellipsis and show in full on hover
+    */
+  def columnWidth(name: String, values: Seq[Option[String]]): String =
+    val chars =
+      values
+        .iterator
+        .take(200)
+        .map(_.map(_.length).getOrElse(4))
+        .foldLeft(name.length + 2)(math.max)
+    s"${math.min(320, math.max(56, chars * 8 + 24))}px"
+
   /** Whether a column type sorts as a number */
   def isNumeric(typeName: String): Boolean =
     val t = typeName.toLowerCase.takeWhile(c => c.isLetter)
     numericTypes.contains(t)
+
+end EditorPanel

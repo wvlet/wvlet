@@ -106,6 +106,23 @@ class ConsoleLayoutTest extends UniTest:
     lane.rows shouldBe 2
   }
 
+  test("should keep the timeline to the last few minutes") {
+    val w  = ConsoleLayout.TimelineWindowMillis
+    val qs = Seq(
+      q("old", 0, 0, Some(100)),
+      q("cut", w, 0, Some(w)),
+      q("new", 2 * w, 0, Some(100), status = QueryStatus.RUNNING)
+    )
+    val layout = ConsoleLayout.timeline(qs, t0.plusMillis(2 * w + 100))
+    layout.hidden shouldBe 1
+    layout.spanMillis shouldBe w
+    val bars = layout.lanes.flatMap(_.bars).map(b => b.query.queryId -> b).toMap
+    bars.keySet shouldBe Set("cut", "new")
+    // "cut" began before the window: it starts at the left edge with the rest of its run
+    bars("cut").startPct shouldBe 0.0
+    bars("cut").runPct shouldBe ((w - 100) * 100.0 / w)
+  }
+
   test("should end the timeline at now while a query runs") {
     val qs     = Seq(q("a", 0, 0, Some(100), status = QueryStatus.RUNNING))
     val layout = ConsoleLayout.timeline(qs, t0.plusMillis(400))

@@ -2,6 +2,12 @@
  * Wvlet server UI layout. Colors and fonts come from uni-ui's --uni-* tokens, so the light and
  * dark themes (data-theme on <html>) apply to the whole page.
  */
+:root {
+    --wv-warn: #d97706;
+    --wv-warn-soft: rgba(217, 119, 6, 0.15);
+    --wv-run: var(--uni-accent);
+}
+
 html, body, #main {
     height: 100%;
     margin: 0;
@@ -184,7 +190,7 @@ h2 {
 }
 
 .wv-meter--warn .wv-meter__fill {
-    background: #d97706;
+    background: var(--wv-warn);
 }
 
 .wv-meter--danger .wv-meter__fill {
@@ -262,8 +268,8 @@ td.wv-query-head {
 }
 
 .wv-status--queued, .wv-status--starting {
-    background: rgba(217, 119, 6, 0.15);
-    color: #d97706;
+    background: var(--wv-warn-soft);
+    color: var(--wv-warn);
 }
 
 .wv-status--finished {
@@ -363,7 +369,7 @@ td.wv-query-head {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    color: #d97706;
+    color: var(--wv-warn);
 }
 
 /* Token prompt */
@@ -422,11 +428,6 @@ td.wv-query-head {
 }
 
 /* Workload console: one screen of health, queries, inspector, and editor */
-:root {
-    --wv-warn: #d97706;
-    --wv-warn-soft: rgba(217, 119, 6, 0.15);
-    --wv-run: var(--uni-accent);
-}
 
 .wv-console {
     display: grid;
@@ -588,15 +589,32 @@ button.wv-tile:hover {
 
 .wv-toolbar {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 8px;
     padding: 8px 16px;
     border-bottom: 1px solid var(--uni-line);
 }
 
+.wv-toolbar__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wv-chips__more {
+    font-size: var(--uni-font-size-sm);
+    color: var(--uni-muted);
+    cursor: default;
+}
+
+.wv-search {
+    flex: 0 1 320px;
+    min-width: 160px;
+}
+
 .wv-search input {
-    width: 240px;
+    width: 100%;
+    box-sizing: border-box;
     height: 28px;
     padding: 0 10px;
     border: 1px solid var(--uni-line);
@@ -729,7 +747,7 @@ button.wv-live {
 .wv-row {
     position: relative;
     display: grid;
-    grid-template-columns: 20px 12px minmax(0, 1fr) 160px 130px;
+    grid-template-columns: 20px 12px minmax(0, 1fr) 160px 130px 150px;
     align-items: center;
     gap: 10px;
     padding: 7px 16px;
@@ -818,8 +836,13 @@ button.wv-live {
     background: var(--uni-success);
 }
 
-.wv-bar__run--failed, .wv-bar__run--canceled {
+.wv-bar__run--failed {
     background: var(--uni-danger);
+}
+
+.wv-bar__run--canceled {
+    background: repeating-linear-gradient(
+        135deg, var(--uni-danger) 0 3px, var(--uni-danger-soft) 3px 6px);
 }
 
 .wv-bar__mem {
@@ -827,21 +850,62 @@ button.wv-live {
 }
 
 .wv-row__actions {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    display: none;
+    display: flex;
+    justify-content: flex-end;
     gap: 2px;
-    padding: 2px;
-    border: 1px solid var(--uni-line);
-    border-radius: var(--uni-radius);
-    background: var(--uni-panel);
-    box-shadow: var(--uni-overlay-shadow);
+    visibility: hidden;
 }
 
-.wv-row:hover .wv-row__actions, .wv-row:focus-within .wv-row__actions {
+.wv-row:hover .wv-row__actions, .wv-row:focus-within .wv-row__actions,
+.wv-row--selected .wv-row__actions {
+    visibility: visible;
+}
+
+.wv-row__actions .wv-icon-button {
+    font-size: var(--uni-font-size-sm);
+    color: var(--uni-muted);
+}
+
+.wv-row__actions .wv-icon-button:hover {
+    color: var(--uni-fg);
+}
+
+.wv-row__actions .wv-icon-button--danger {
+    color: var(--uni-danger);
+}
+
+.wv-row--header, .wv-row--header:hover {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    background: var(--uni-canvas);
+    font-size: 11px;
+    color: var(--uni-muted);
+    cursor: default;
+}
+
+.wv-row__legend {
     display: flex;
+    gap: 10px;
+}
+
+.wv-legend::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 4px;
+    border-radius: 2px;
+}
+
+.wv-legend--queued::before {
+    background: var(--wv-warn);
+}
+
+.wv-legend--run::before {
+    background: var(--wv-run);
 }
 
 .wv-icon-button {
@@ -1090,30 +1154,24 @@ button.wv-live {
 }
 
 /* Editor */
-.wv-editor-toggle {
-    align-self: flex-start;
-    margin: 8px 16px;
-    padding: 4px 12px;
-    border: 1px dashed var(--uni-line);
-    border-radius: var(--uni-radius);
-    background: transparent;
-    color: var(--uni-muted);
-    font: inherit;
-    cursor: pointer;
-}
-
-.wv-editor-toggle:hover {
-    color: var(--uni-fg);
-    border-color: var(--uni-accent);
-}
-
 .wv-editor-panel {
     display: flex;
     flex-direction: column;
-    flex: 0 0 42vh;
-    min-height: 220px;
+    flex: 0 0 300px;
+    min-height: 160px;
     border-top: 1px solid var(--uni-line);
     background: var(--uni-panel);
+}
+
+.wv-editor-panel__grip {
+    height: 6px;
+    margin-top: -3px;
+    cursor: row-resize;
+}
+
+.wv-editor-panel__grip:hover, .wv-editor-panel__grip:focus-visible {
+    background: var(--uni-accent);
+    outline: none;
 }
 
 .wv-editor-panel__bar {
@@ -1161,6 +1219,12 @@ button.wv-live {
     font-style: italic;
 }
 
+.wv-result__table td, .wv-result__table th {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
 @media (max-width: 1100px) {
     .wv-health {
         grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1171,7 +1235,7 @@ button.wv-live {
     }
 
     .wv-row {
-        grid-template-columns: 20px 12px minmax(0, 1fr) 120px;
+        grid-template-columns: 20px 12px minmax(0, 1fr) 120px 150px;
     }
 
     .wv-row__mem {

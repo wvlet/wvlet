@@ -50,7 +50,14 @@ class ServerUI(conn: ServerConnection) extends RxElement:
       href    -> target.hash,
       onclick -> { (e: dom.MouseEvent) =>
         e.preventDefault()
-        Page.go(target)
+        // Coming back to the console keeps the query it had open
+        Page.go(
+          target match
+            case Page.Console(_) =>
+              Page.Console(state.selected.get)
+            case other =>
+              other
+        )
       },
       name
     )

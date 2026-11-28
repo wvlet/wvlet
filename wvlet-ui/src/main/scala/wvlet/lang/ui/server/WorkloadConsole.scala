@@ -143,22 +143,14 @@ class WorkloadConsole(state: ConsoleState, editor: EditorState) extends RxElemen
       cls -> "wv-console__work",
       div(
         cls -> "wv-console__left",
-        QueryPane(state, openInEditor),
+        QueryPane(state, openInEditor, () => editor.open := true),
         editor
           .open
           .map { open =>
             if open then
               EditorPanel(editor)
             else
-              button(
-                tpe       -> "button",
-                cls       -> "wv-editor-toggle",
-                titleAttr -> "Show the editor ( e )",
-                onclick   -> { (_: dom.MouseEvent) =>
-                  editor.open := true
-                },
-                "▴ New query"
-              )
+              span()
           }
       ),
       Inspector(state, openInEditor)

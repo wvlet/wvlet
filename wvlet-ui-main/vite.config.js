@@ -13,7 +13,6 @@
  */
 
 import { defineConfig } from "vite";
-import monacoEditorPlugin from "vite-plugin-monaco-editor";
 import fs from 'fs'
 import replace from '@rollup/plugin-replace';
 
@@ -44,7 +43,6 @@ export default defineConfig({
     minify: 'esbuild'
   },
   plugins: [
-    monacoEditorPlugin, // plugin for awaiting Monaco Editor loading
     replace({
       preventAssignment: true,
       __target__: scalaJsTarget

@@ -17,7 +17,14 @@
 import './target/uni-ui.css'
 import './index.css'
 
-// The query editor: Monaco with Wvlet highlighting, shared with the playground
+// The query editor: Monaco with Wvlet highlighting, shared with the playground. Vite bundles
+// Monaco's editor worker as its own file, so the editor's background work runs off the page
+import EditorWorker from '../node_modules/monaco-editor/esm/vs/editor/editor.worker.js?worker'
+self.MonacoEnvironment = {
+  getWorker() {
+    return new EditorWorker()
+  }
+}
 import { MonacoEditor } from '../wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
 import '../wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
 

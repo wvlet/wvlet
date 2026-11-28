@@ -31,8 +31,11 @@ import java.time.Instant
   *
   * @param openInEditor
   *   loads a query's text into the editor
+  * @param newQuery
+  *   opens the editor
   */
-class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxElement:
+class QueryPane(state: ConsoleState, openInEditor: String => Unit, newQuery: () => Unit)
+    extends RxElement:
   import QueryPane.*
 
   private def chip(label: String, count: Int, on: Boolean, title: String)(
@@ -70,27 +73,43 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxEle
       set: Option[String] => Unit
   ): Seq[RxElement] =
     // Keep the chosen value visible even when no kept query has it any more
-    val shown =
+    val all =
       current match
         case Some(c) if !values.exists(_.value == c) =>
           values :+ FacetCount(c, 0)
         case _ =>
           values
-    if shown.size <= 1 && current.isEmpty then
+    // A stable order (chosen value first, then by name), so chips don't move when counts change
+    val sorted = all.sortBy(f => (!current.contains(f.value), f.value))
+    val shown  = sorted.take(MaxValueChips)
+    if all.size <= 1 && current.isEmpty then
       Nil
     else
-      span(cls -> "wv-chips__name", name) +:
-        shown.map { f =>
-          val on = current.contains(f.value)
-          chip(f.value, f.count, on, s"${name} ${f.value}") { () =>
-            set(
-              if on then
-                None
-              else
-                Some(f.value)
-            )
+      (
+        span(cls -> "wv-chips__name", name) +:
+          shown.map { f =>
+            val on = current.contains(f.value)
+            chip(f.value, f.count, on, s"${name} ${f.value}") { () =>
+              set(
+                if on then
+                  None
+                else
+                  Some(f.value)
+              )
+            }
           }
-        }
+      ) ++
+        Option
+          .when(sorted.size > shown.size)(
+            span(
+              cls       -> "wv-chips__more",
+              titleAttr -> sorted.drop(shown.size).map(_.value).mkString(", "),
+              s"+${sorted.size - shown.size}"
+            )
+          )
+          .toSeq
+
+  end valueChips
 
   private def searchBox: RxElement = div(
     cls -> "wv-search",
@@ -109,9 +128,76 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxEle
 
   private def toolbar: RxElement = div(
     cls -> "wv-toolbar",
-    searchBox,
-    Rx.join(state.list, state.statuses, state.session, state.profile)
-      .map { (l, st, se, pr) =>
+    div(
+      cls -> "wv-toolbar__row",
+      searchBox,
+      button(
+        tpe       -> "button",
+        cls       -> "wv-button wv-button--primary",
+        titleAttr -> "Write and run a query ( e )",
+        onclick   -> { (_: dom.MouseEvent) =>
+          newQuery()
+        },
+        "New query"
+      ),
+      div(cls -> "wv-grow"),
+      state
+        .view
+        .map { v =>
+          div(
+            cls       -> "wv-segmented",
+            role      -> "group",
+            ariaLabel -> "View",
+            ListView
+              .values
+              .toSeq
+              .map { opt =>
+                button(
+                  tpe             -> "button",
+                  cls             -> "wv-segmented__item",
+                  aria("pressed") -> (opt == v).toString,
+                  titleAttr       -> "Switch view ( v )",
+                  onclick         -> { (_: dom.MouseEvent) =>
+                    state.view := opt
+                  },
+                  opt match
+                    case ListView.Rows =>
+                      "List"
+                    case ListView.Timeline =>
+                      "Timeline"
+                )
+              }
+          )
+        },
+      state
+        .paused
+        .map { p =>
+          button(
+            tpe -> "button",
+            cls -> (
+              if p then
+                "wv-live wv-live--off"
+              else
+                "wv-live"
+            ),
+            titleAttr -> (
+              if p then
+                "Resume live updates"
+              else
+                "Pause live updates"
+            ),
+            onclick -> { (_: dom.MouseEvent) =>
+              state.paused := !p
+            },
+            if p then
+              "Paused"
+            else
+              "Live"
+          )
+        }
+    ),
+    Rx.join(state.list, state.statuses, state.session, state.profile, state.text)
+      .map { (l, st, se, pr, tx) =>
         val facets = l.map(_.facets)
         div(
           cls       -> "wv-chips",
@@ -120,7 +206,7 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxEle
           statusChips(l, st),
           valueChips("Session", facets.map(_.sessions).getOrElse(Nil), se, state.filterSession),
           valueChips("Profile", facets.map(_.profiles).getOrElse(Nil), pr, state.filterProfile),
-          if st.nonEmpty || se.nonEmpty || pr.nonEmpty then
+          if st.nonEmpty || se.nonEmpty || pr.nonEmpty || tx.trim.nonEmpty then
             button(
               cls     -> "wv-link-button",
               tpe     -> "button",
@@ -134,61 +220,6 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxEle
             )
           else
             span()
-        )
-      },
-    div(cls -> "wv-grow"),
-    state
-      .view
-      .map { v =>
-        div(
-          cls       -> "wv-segmented",
-          role      -> "group",
-          ariaLabel -> "View",
-          ListView
-            .values
-            .toSeq
-            .map { opt =>
-              button(
-                tpe             -> "button",
-                cls             -> "wv-segmented__item",
-                aria("pressed") -> (opt == v).toString,
-                titleAttr       -> "Switch view ( v )",
-                onclick         -> { (_: dom.MouseEvent) =>
-                  state.view := opt
-                },
-                opt match
-                  case ListView.Rows =>
-                    "List"
-                  case ListView.Timeline =>
-                    "Timeline"
-              )
-            }
-        )
-      },
-    state
-      .paused
-      .map { p =>
-        button(
-          tpe -> "button",
-          cls -> (
-            if p then
-              "wv-live wv-live--off"
-            else
-              "wv-live"
-          ),
-          titleAttr -> (
-            if p then
-              "Resume live updates"
-            else
-              "Pause live updates"
-          ),
-          onclick -> { (_: dom.MouseEvent) =>
-            state.paused := !p
-          },
-          if p then
-            "Paused"
-          else
-            "Live"
         )
       }
   )
@@ -310,9 +341,9 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxEle
         if !q.status.isFinished then
           actionButton(
             if isCanceling then
-              "…"
+              "Canceling…"
             else
-              "■"
+              "Cancel"
             ,
             "Cancel query",
             "danger"
@@ -320,8 +351,8 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxEle
         else
           span()
         ,
-        actionButton("✎", "Open in editor")(() => openInEditor(q.queryId)),
-        actionButton("⧉", "Copy query id")(() => copy(q.queryId))
+        actionButton("Edit", "Open in editor ( Enter )")(() => openInEditor(q.queryId)),
+        actionButton("Copy id", "Copy query id")(() => copy(q.queryId))
       )
     )
 
@@ -339,22 +370,38 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxEle
       val mems  = ConsoleLayout.memoryBars(l.queries)
       val pool  = c.flatMap(_.memoryPool.capacityBytes)
       div(
-        cls       -> "wv-rows",
-        role      -> "listbox",
-        ariaLabel -> "Queries",
-        l.queries
-          .map { q =>
-            row(
-              q,
-              now,
-              times(q.queryId),
-              mems.get(q.queryId),
-              pool,
-              sel.contains(q.queryId),
-              chk.contains(q.queryId),
-              canc.contains(q.queryId)
-            )
-          }
+        div(
+          cls            -> "wv-row wv-row--header",
+          aria("hidden") -> "true",
+          span(),
+          span(),
+          span("Query"),
+          span(
+            cls -> "wv-row__legend",
+            span(cls -> "wv-legend wv-legend--queued", "queued"),
+            span(cls -> "wv-legend wv-legend--run", "running")
+          ),
+          span(cls -> "wv-row__mem", "Memory"),
+          span()
+        ),
+        div(
+          cls       -> "wv-rows",
+          role      -> "listbox",
+          ariaLabel -> "Queries",
+          l.queries
+            .map { q =>
+              row(
+                q,
+                now,
+                times(q.queryId),
+                mems.get(q.queryId),
+                pool,
+                sel.contains(q.queryId),
+                chk.contains(q.queryId),
+                canc.contains(q.queryId)
+              )
+            }
+        )
       )
     }
 
@@ -366,6 +413,15 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit) extends RxEle
       val live   = l.queries.exists(!_.status.isFinished)
       div(
         cls -> "wv-gantt",
+        if layout.hidden > 0 then
+          div(
+            cls -> "wv-muted wv-count",
+            s"Last ${Fmt.duration(ConsoleLayout.TimelineWindowMillis)}; ${layout
+                .hidden} earlier queries are in the list"
+          )
+        else
+          span()
+        ,
         div(
           cls -> "wv-gantt__axis",
           span(cls -> "wv-gantt__lane-name", ""),
@@ -518,6 +574,9 @@ object QueryPane:
     QueryStatus.FAILED,
     QueryStatus.CANCELED
   )
+
+  /** Session and profile chips shown before the rest collapse into "+n" */
+  val MaxValueChips: Int = 5
 
   /** The height of one sub-row of a timeline lane */
   val GanttRowPx: Int = 18
