@@ -44,7 +44,9 @@ trait TaskRunnerCompatImpl extends TaskRunnerCompat:
   *
   * A task submitted from a thread in a [[TaskGroup]] (a query, with `fair_task_scheduling`) runs on
   * a pool that picks tasks fairly across groups ([[FairTaskQueue]]); other tasks run on a pool with
-  * one FIFO queue. Each pool is started on its first task
+  * one FIFO queue. With `fair_coordinators`, a group's coordinator tasks likewise run on a fair
+  * pool of coordinator threads, by the groups' coordinator run time. Each pool is started on its
+  * first task
   */
 class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
   private val counter = AtomicInteger(0)
@@ -64,6 +66,9 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
   private var fairStarted = false
 
   @volatile
+  private var fairCoordinatorsStarted = false
+
+  @volatile
   private var shutDown = false
 
   private def checkRunning(): Unit =
@@ -78,8 +83,14 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
     fairStarted = true
     FairPool(parallelism, daemons("wvlet-engine-fair"))
 
+  private def coordinatorThreads: Int = math.max(1, parallelism / 2)
+
+  private lazy val fairCoordinators: FairPool =
+    fairCoordinatorsStarted = true
+    FairPool(coordinatorThreads, daemons("wvlet-engine-coordinator-fair"), coordinators = true)
+
   private val coordinators: ThreadPoolExecutor =
-    val n = math.max(1, parallelism / 2)
+    val n = coordinatorThreads
     val e = ThreadPoolExecutor(
       n,
       n,
@@ -101,8 +112,13 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
 
   override def coordinate[A](task: () => A): TaskRunner.Handle[A] =
     val g = TaskGroup.current
-    // The coordinator's own tasks stay in the submitter's group
-    handle(coordinators.submit(() => TaskGroup.withGroup(g)(task())))
+    if g != null && g.fairCoordinators then
+      checkRunning()
+      // The fair pool runs the task in its group
+      handle(fairCoordinators.submit(g, task))
+    else
+      // The coordinator's own tasks stay in the submitter's group
+      handle(coordinators.submit(() => TaskGroup.withGroup(g)(task())))
 
   private def handle[A](f: Future[A]): TaskRunner.Handle[A] =
     new TaskRunner.Handle[A]:
@@ -120,19 +136,22 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
       pool.shutdownNow()
     if fairStarted then
       fair.shutdown()
+    if fairCoordinatorsStarted then
+      fairCoordinators.shutdown()
     coordinators.shutdownNow()
 
 end ThreadPoolRunner
 
 /**
   * `n` threads running the tasks of a [[FairTaskQueue]], each in its task's group, and accounting
-  * each task's wall time to its group. Submitters only append to an inbox and release a permit, so
-  * they never wait for the workers' lock on the queue
+  * each task's wall time to its group (to its coordinator time with `coordinators`). Submitters
+  * only append to an inbox and release a permit, so they never wait for the workers' lock on the
+  * queue
   */
-private final class FairPool(n: Int, threads: ThreadFactory):
+private final class FairPool(n: Int, threads: ThreadFactory, coordinators: Boolean = false):
   private val inbox   = ConcurrentLinkedQueue[(TaskGroup, FutureTask[?])]()
-  private val permits = Semaphore(0)                   // One per submitted task not taken yet
-  private val queue   = FairTaskQueue[FutureTask[?]]() // Guarded by itself
+  private val permits = Semaphore(0) // One per submitted task not taken yet
+  private val queue = FairTaskQueue[FutureTask[?]](coordinators = coordinators) // Guarded by itself
   @volatile
   private var shutDown = false
 

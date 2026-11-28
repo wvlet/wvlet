@@ -64,6 +64,9 @@ DuckDB's 2026 [Quack](https://duckdb.org/2026/05/12/quack-remote-protocol) clien
 - Give `ThreadPoolRunner` a task queue per query and pick across queries round-robin, or by a multilevel feedback queue on accumulated task time, instead of one FIFO.
 - Measure with a mixed workload: one long TPC-DS query plus a stream of short queries; the target is short-query latency close to running alone.
 - Done: per-query `TaskGroup`s and a multilevel feedback queue counting running tasks, behind `fair_task_scheduling` ([plan](2026-11-27-fair-task-scheduling.md), [engine](../design/engine.md#fair-task-scheduling)). No TPC-H/TPC-DS query runs long enough at SF10, so `EngineMixedWorkloadBench` uses a lineitem group-by as the long query. Short-query p90 dropped by about 1.5x next to it; the median still ran 1.5–4.8x the alone time, from non-preemptible long-query morsels and GC pauses.
+- [x] Follow-ups ([plan](2026-11-27-fair-cpu-follow-ups.md)): coordinator tasks picked fairly per query, and plan-time shared CTE results computed on the caller when no coordinator has started them, behind `fair_coordinators`.
+- [x] Yielding long-query tasks to waiting short queries: measured, no win, not shipped (parts are one batch; free threads already reach the short query within ~1 ms).
+- [x] GC finding: in the mixed bench, stop-the-world pauses take 12–30% of the wall time while both queries run (0.5–1.4 s per ~4.5 s round, longest 47–187 ms), roughly a quarter of the short query's extra latency; the rest is CPU contention. Handed to the memory follow-ups.
 
 ### Phase 4 (only when needed): resource groups
 

@@ -44,6 +44,11 @@ import java.util.concurrent.atomic.AtomicInteger
   *     one to q6
   *   - `WVLET_ENGINE_MIXED_RUNS`: short queries timed per case (default 20)
   *   - `WVLET_ENGINE_MIXED_ROUNDS`: on/off rounds (default 2)
+  *   - `WVLET_ENGINE_MIXED_TOGGLE`: the toggles to turn off in the "off" rounds, comma-separated
+  *     (default `fair_task_scheduling`), e.g. `fair_coordinators`
+  *
+  * Each round also logs the GC pauses while the queries ran together: their count, total, and the
+  * longest one
   */
 class EngineMixedWorkloadBench extends UniTest with LogSupport:
   import EngineTPCHBench.*
@@ -66,7 +71,20 @@ class EngineMixedWorkloadBench extends UniTest with LogSupport:
 
     val on = WvletEngine(baseDir = "spec/tpch")
     tables.foreach(t => on.catalog.registerParquet(t, s"${dataDir}/${t}.parquet"))
-    val off = on.withOptimizer(OptimizerOptions().withDisabled(Optimization.FairTaskScheduling))
+    val toggles =
+      sys
+        .env
+        .getOrElse("WVLET_ENGINE_MIXED_TOGGLE", Optimization.FairTaskScheduling.name)
+        .split(",")
+        .map(_.trim)
+        .filter(_.nonEmpty)
+        .map(n =>
+          Optimization.fromName(n).getOrElse(throw IllegalArgumentException(s"No toggle ${n}"))
+        )
+        .toSeq
+    info(s"off rounds disable ${toggles.map(_.name).mkString(", ")}")
+    val off    = on.withOptimizer(OptimizerOptions().withDisabled(toggles*))
+    val pauses = GcPauses()
 
     val compiler = Compiler(
       CompilerOptions(sourceFolders = List("spec/tpch"), workEnv = WorkEnv("spec/tpch"))
@@ -143,18 +161,64 @@ class EngineMixedWorkloadBench extends UniTest with LogSupport:
         else
           Seq("off" -> off, "on" -> on)
       order.foreach { (label, e) =>
-        val alone          = shortStream(e)
-        val gc0            = gcMillis()
+        val alone = shortStream(e)
+        val gc0   = gcMillis()
+        pauses.reset()
         val (shorts, long) = mixed(e)
         val gc             = gcMillis() - gc0
+        val gcPauses       = pauses.summary()
         info(
           f"round ${r} ${label}: ${shortName} alone ${fmt(alone)}; next to ${longLabel} ${fmt(
               shorts
             )} (${median(shorts) / median(alone)}%.2fx); ${long
-              .size} ${longLabel} runs, median ${median(long)}%.1f ms; GC ${gc} ms"
+              .size} ${longLabel} runs, median ${median(long)}%.1f ms; GC ${gc} ms, ${gcPauses}"
         )
       }
     }
   }
 
 end EngineMixedWorkloadBench
+
+/** Collects the stop-the-world GC pauses the JVM reports, from GC notifications */
+private class GcPauses:
+  import com.sun.management.GarbageCollectionNotificationInfo
+  import java.lang.management.ManagementFactory
+  import javax.management.NotificationEmitter
+  import javax.management.openmbean.CompositeData
+  import scala.jdk.CollectionConverters.*
+
+  private val durations = java.util.concurrent.ConcurrentLinkedQueue[Long]()
+
+  ManagementFactory
+    .getGarbageCollectorMXBeans
+    .asScala
+    // Concurrent cycles (e.g. G1's) don't stop the application
+    .filterNot(_.getName.contains("Concurrent"))
+    .foreach {
+      case b: NotificationEmitter =>
+        b.addNotificationListener(
+          (n, _) =>
+            if n.getType == GarbageCollectionNotificationInfo.GARBAGE_COLLECTION_NOTIFICATION then
+              val info = GarbageCollectionNotificationInfo.from(
+                n.getUserData.asInstanceOf[CompositeData]
+              )
+              durations.add(info.getGcInfo.getDuration),
+          null,
+          null
+        )
+      case _ =>
+    }
+
+  def reset(): Unit = durations.clear()
+
+  /** The pauses since the last reset: count, total, and longest, in ms */
+  def summary(): String =
+    val xs = durations.asScala.toSeq
+    val mx =
+      if xs.isEmpty then
+        0L
+      else
+        xs.max
+    s"${xs.size} GC pauses, ${xs.sum} ms in total, longest ${mx} ms"
+
+end GcPauses
