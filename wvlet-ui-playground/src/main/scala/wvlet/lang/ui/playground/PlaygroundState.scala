@@ -291,13 +291,6 @@ class PlaygroundState extends LogSupport:
     cells       := cs.patch(i, Seq(c), 0)
     c
 
-  def moveCell(c: Cell, delta: Int): Unit =
-    val cs = cells.get
-    val i  = cs.indexWhere(_.id == c.id)
-    val j  = i + delta
-    if i >= 0 && j >= 0 && j < cs.size then
-      cells := cs.updated(i, cs(j)).updated(j, c)
-
   def deleteCell(c: Cell): Unit =
     cells.update(_.filterNot(_.id == c.id))
     if focused.get.contains(c.id) then

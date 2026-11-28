@@ -75,25 +75,9 @@ object NotebookView:
     )
   )
 
-  /** Move, add, and delete buttons, shown on a cell's hover */
+  /** Add and delete buttons, shown on a cell's hover */
   def toolbar(state: PlaygroundState, c: Cell): RxElement = div(
     cls -> "pg-cell__toolbar",
-    button(
-      cls       -> "pg-cell-btn",
-      titleAttr -> "Move up",
-      onclick   -> { () =>
-        state.moveCell(c, -1)
-      },
-      "↑"
-    ),
-    button(
-      cls       -> "pg-cell-btn",
-      titleAttr -> "Move down",
-      onclick   -> { () =>
-        state.moveCell(c, 1)
-      },
-      "↓"
-    ),
     addButtons(state, Some(c)),
     button(
       cls       -> "pg-cell-btn pg-cell-btn--danger",

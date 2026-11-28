@@ -12,7 +12,7 @@ The middle of the page is a notebook, like Jupyter's: **text cells** (markdown) 
 
 - A query cell runs after you stop typing, or with Cmd/Ctrl + Enter (the statement at the cursor); `[n]` beside it counts its runs. **Run all** in the header runs every cell from the top.
 - A query cell sees the `val`s and models of the cells above it, so a notebook can build a query step by step.
-- **+ Query** and **+ Text** add a cell; hover a cell to move, add after, or delete it. Double-click a text cell to edit its markdown (headings, **bold**, `code`, links, and lists); Esc or Cmd/Ctrl + Enter finishes.
+- **+ Query** and **+ Text** add a cell; hover a cell to add a cell after it or delete it. Double-click a text cell to edit its markdown (headings, **bold**, `code`, links, and lists); Esc or Cmd/Ctrl + Enter finishes.
 - The right panel (**SQL**, **Plan**, **Engine**, **Lineage**, **Debug**, **Docs**) follows the focused cell; ◨ in the header folds it away to give the notebook the full width.
 - An example opens as a notebook of its title and description and its query; a function opens as a notebook of its docs and one cell per example.
 - In a file, a notebook is a `.wv` file whose cells are separated by `-- %%` lines (`-- %% [markdown]` for a text cell), the convention of jupytext; since these are comments, the file compiles as is. **Share** copies a link to the whole notebook.

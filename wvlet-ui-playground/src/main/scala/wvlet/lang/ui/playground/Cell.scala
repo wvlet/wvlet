@@ -21,7 +21,7 @@ import wvlet.uni.rx.RxVar
   * A cell of the notebook: a query with its last result, or a text in markdown.
   *
   * @param id
-  *   unique in the page, so a cell keeps its editor when cells are added, moved, or removed
+  *   unique in the page, so a cell keeps its editor when other cells are added or removed
   */
 class Cell(val id: Int, val kind: CellKind, initial: String):
   val text: RxVar[String] = Rx.variable(initial)
