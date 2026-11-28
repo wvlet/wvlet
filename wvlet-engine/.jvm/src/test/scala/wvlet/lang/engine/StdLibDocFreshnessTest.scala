@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.compiler.codegen
+package wvlet.lang.engine
 
 import wvlet.lang.compiler.SourceIO
 import wvlet.uni.test.UniTest
@@ -19,7 +19,8 @@ import wvlet.uni.test.UniTest
 /**
   * Guard against drift between the standard-library sources and the generated reference page
   * (website/docs/syntax/stdlib-reference.md). When stdlib definitions are added or changed, this
-  * test fails with the command that regenerates the page.
+  * test fails with the command that regenerates the page. Generating the page runs every
+  * `-- @example` of the stdlib on the engine, so a failing example fails this test too.
   */
 class StdLibDocFreshnessTest extends UniTest:
 

@@ -27,6 +27,7 @@ trait decimal = {
   def abs: decimal = sql"abs(${this})"
   def ceil: decimal = sql"ceil(${this})"
   def floor: decimal = sql"floor(${this})"
+  -- @example 10.5.mod(3)
   def mod(divisor:decimal): decimal = sql"mod(${this},${divisor})"
 
   -- Drop the fractional part of this value

@@ -59,6 +59,23 @@ class MonacoEditor(
 
 end MonacoEditor
 
+/** Static members of the MonacoEditor class */
+@js.native
+@JSGlobal("MonacoEditor")
+object MonacoEditor extends js.Object:
+  /**
+    * Register hover and completion for the `wvlet` language on every editor of the page (only the
+    * first call takes effect). Both callbacks get the editor text and a 0-origin offset: `hover`
+    * returns `{content, startLine, startColumn, endLine, endColumn}` (markdown, 1-origin range) or
+    * null, and `complete` returns an array of `{label, kind, detail}` with LSP item kinds.
+    */
+  def registerLanguageServices(
+      hover: js.Function2[String, Int, js.Any],
+      complete: js.Function2[String, Int, js.Array[js.Dynamic]]
+  ): Unit = js.native
+
+end MonacoEditor
+
 // uni's RxElement does not extend LogSupport (airframe's did). EditorBase brings it back as
 // a mixin so subclasses (WvletMonacoEditor, QueryEditor, SQLPreview) keep their warn/info calls
 // without each one having to add the trait individually.

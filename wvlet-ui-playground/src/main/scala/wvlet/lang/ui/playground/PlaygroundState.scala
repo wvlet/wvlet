@@ -35,6 +35,7 @@ enum OutputTab(val label: String) derives StorageCodec:
   case PhysicalPlan extends OutputTab("Engine")
   case Lineage      extends OutputTab("Lineage")
   case Debug        extends OutputTab("Debug")
+  case Docs         extends OutputTab("Docs")
 
 /** The view of the bottom panel: the rows of the statement, or the file's test results */
 enum ResultTab(val label: String) derives StorageCodec:
@@ -63,8 +64,9 @@ enum EngineStage(val label: String, val description: String) derives StorageCode
 
 /** The tabs of the sidebar */
 enum SidebarTab(val label: String) derives StorageCodec:
-  case Examples extends SidebarTab("Examples")
-  case Tables   extends SidebarTab("Tables")
+  case Examples  extends SidebarTab("Examples")
+  case Tables    extends SidebarTab("Tables")
+  case Reference extends SidebarTab("Reference")
 
 /** What the user asked to run: the editor text, where the cursor was, and what to select */
 case class RunRequest(
@@ -114,6 +116,9 @@ class PlaygroundState extends LogSupport:
   val status: RxVar[String]                  = Rx.variable("Generating TPC-H tables...")
   val filter: RxVar[String]                  = Rx.variable("")
   val selectedExample: RxVar[Option[String]] = Rx.variable(None)
+  // The Reference tab: its search text and the selected function's FunctionEntry.key
+  val referenceFilter: RxVar[String]          = Rx.variable("")
+  val selectedFunction: RxVar[Option[String]] = Rx.variable(None)
 
   private var engineOpt: Option[PlaygroundEngine] = None
   // Whether the last run that compiled had debug blocks

@@ -1,15 +1,19 @@
 package wvlet.standard
 
--- Functions of map values (e.g. map {'a': 1, 'b': 2})
+-- Functions of map values (e.g. map {"a": 1, "b": 2})
 trait map[K,V] = {
   -- Number of entries in the map
+  -- @example map {"a": 1, "b": 2}.size
   def size: int = sql"cardinality(${this})"
   def size in hive: int = sql"size(${this})"
 
+  -- @example map {"a": 1, "b": 2}.keys
   def keys: array[K] = sql"map_keys(${this})"
+  -- @example map {"a": 1, "b": 2}.values
   def values: array[V] = sql"map_values(${this})"
 
   -- True if the map contains the given key
+  -- @example map {"a": 1, "b": 2}.contains_key("a")
   def contains_key(key:K): boolean = sql"contains(map_keys(${this}),${key})"
   def contains_key(key:K) in hive: boolean = sql"array_contains(map_keys(${this}),${key})"
 
@@ -17,6 +21,7 @@ trait map[K,V] = {
   def contains_key(key:K) in snowflake: boolean = sql"map_contains_key(${key},${this})"
 
   -- The value for the given key, or null if the key is absent
+  -- @example map {"a": 1, "b": 2}.get("b")
   def get(key:K) in duckdb: V = sql"${this}[${key}]"
   def get(key:K) in trino: V = sql"element_at(${this},${key})"
   def get(key:K) in hive: V = sql"${this}[${key}]"

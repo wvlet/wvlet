@@ -2,6 +2,7 @@ package wvlet.standard
 
 trait double = {
   -- Truncate toward zero (2.5 -> 2, -2.5 -> -2); use round to round
+  -- @example 3.7.to_int
   def to_int: int = sql"cast(trunc(${this}) as bigint)"
   def to_int in trino: int = sql"cast(truncate(${this}) as bigint)"
   def to_int in hive: int = sql"cast(${this} as bigint)"
@@ -18,38 +19,54 @@ trait double = {
   -- Non-zero is true, NaN included
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_boolean in bigquery: boolean = sql"(${this} != 0)"
+  -- @example 3.5.to_string
   def to_string: string = sql"cast(${this} as varchar)"
   def to_string in hive: string = sql"cast(${this} as string)"
   def to_string in bigquery: string = sql"cast(${this} as string)"
 
   def or_else(other:double): double = sql"coalesce(${this},${other})"
 
+  -- @example (-3.5).abs
   def abs: double = sql"abs(${this})"
+  -- @example 3.2.ceil
   def ceil: double = sql"ceil(${this})"
+  -- @example 3.8.floor
   def floor: double = sql"floor(${this})"
 
+  -- @example 3.141592653589793.to_double.degrees
   def degrees: double = sql"degrees(${this})"
+  -- @example 180.0.to_double.radians
   def radians: double = sql"radians(${this})"
+  -- @example 0.0.to_double.sin
   def sin: double = sql"sin(${this})"
+  -- @example 0.0.to_double.cos
   def cos: double = sql"cos(${this})"
+  -- @example 0.0.to_double.tan
   def tan: double = sql"tan(${this})"
+  -- @example 1.0.to_double.asin
   def asin: double = sql"asin(${this})"
+  -- @example 1.0.to_double.acos
   def acos: double = sql"acos(${this})"
+  -- @example 1.0.to_double.atan
   def atan: double = sql"atan(${this})"
 
   -- Drop the fractional part of this value
+  -- @example (-3.7).truncate
   def truncate in duckdb: double = sql"trunc(${this})"
   def truncate in trino: double = sql"truncate(${this})"
   def truncate in hive: double = sql"cast(cast(${this} as bigint) as double)"
   def truncate in snowflake: double = sql"trunc(${this})"
   def truncate in bigquery: double = sql"trunc(${this})"
 
+  -- @example 0.0.to_double.is_nan
   def is_nan in duckdb: boolean = sql"isnan(${this})"
   def is_nan in trino: boolean = sql"is_nan(${this})"
   def is_nan in bigquery: boolean = sql"is_nan(${this})"
+  -- @example 1.0.to_double.is_finite
   def is_finite in duckdb: boolean = sql"isfinite(${this})"
   def is_finite in trino: boolean = sql"is_finite(${this})"
   def is_finite in bigquery: boolean = sql"(not is_nan(${this}) and not is_inf(${this}))"
+  -- @example 1.0.to_double.is_infinite
   def is_infinite in duckdb: boolean = sql"isinf(${this})"
   def is_infinite in trino: boolean = sql"is_infinite(${this})"
   def is_infinite in bigquery: boolean = sql"is_inf(${this})"

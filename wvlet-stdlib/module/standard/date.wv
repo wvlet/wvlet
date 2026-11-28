@@ -1,46 +1,67 @@
 package wvlet.standard
 
 trait date = {
+  -- @example '2024-03-15'.to_date.extract('dow')
   def extract(field:string): int = sql"extract(${field} from ${this})"
 
+  -- @example '2024-03-15'.to_date.year
   def year: int = sql"extract(year from ${this})"
+  -- @example '2024-03-15'.to_date.month
   def month: int = sql"extract(month from ${this})"
+  -- @example '2024-03-15'.to_date.day
   def day: int = sql"extract(day from ${this})"
+  -- @example '2024-03-15'.to_date.quarter
   def quarter: int = sql"extract(quarter from ${this})"
+  -- @example '2024-03-15'.to_date.week
   def week: int = sql"extract(week from ${this})"
 
   def or_else(other:date): date = sql"coalesce(${this},${other})"
 
   -- Truncate to the given unit ('year', 'quarter', 'month', 'week', 'day')
+  -- @example '2024-03-15'.to_date.truncate_to('month')
   def truncate_to(unit:string): date = sql"cast(date_trunc(${unit},${this}) as date)"
 
   -- Difference between this and the other date, in the given unit
+  -- @example '2024-03-15'.to_date.diff_days('2024-03-25'.to_date)
   def diff_days(other:date): long = sql"date_diff('day',${this},${other})"
+  -- @example '2024-03-15'.to_date.diff_months('2024-06-15'.to_date)
   def diff_months(other:date): long = sql"date_diff('month',${this},${other})"
+  -- @example '2020-03-15'.to_date.diff_years('2024-03-15'.to_date)
   def diff_years(other:date): long = sql"date_diff('year',${this},${other})"
 
+  -- @example '2024-03-15'.to_date.between('2024-01-01'.to_date, '2024-12-31'.to_date)
   def between(l:date, r:date): boolean = sql"${this} between ${l} and ${r}"
 }
 
 trait date in duckdb = {
   -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
+  -- @example '2024-03-15'.to_date.day_of_week
   def day_of_week: int = sql"extract(isodow from ${this})"
+  -- @example '2024-03-15'.to_date.day_of_year
   def day_of_year: int = sql"extract(dayofyear from ${this})"
 
+  -- @example '2024-03-15'.to_date.add_days(20)
   def add_days(n:int): date = sql"cast(${this} + INTERVAL (${n}) DAY as date)"
+  -- @example '2024-01-31'.to_date.add_months(1)
   def add_months(n:int): date = sql"cast(${this} + INTERVAL (${n}) MONTH as date)"
+  -- @example '2024-02-29'.to_date.add_years(1)
   def add_years(n:int): date = sql"cast(${this} + INTERVAL (${n}) YEAR as date)"
 
   -- Format the date with a strftime-style pattern (e.g. '%Y-%m-%d')
+  -- @example '2024-03-15'.to_date.format('%Y/%m/%d')
   def format(pattern:string): string = sql"strftime(${this},${pattern})"
 
   -- The last day of the month of this date
+  -- @example '2024-02-10'.to_date.last_day
   def last_day: date = sql"last_day(${this})"
 
   -- Full English day and month names ('Monday', 'January')
+  -- @example '2024-03-15'.to_date.day_name
   def day_name: string = sql"dayname(${this})"
+  -- @example '2024-03-15'.to_date.month_name
   def month_name: string = sql"monthname(${this})"
   -- ISO-8601 week-numbering year: the year of the Thursday of this date's ISO week
+  -- @example '2024-12-30'.to_date.iso_year
   def iso_year: int = sql"isoyear(${this})"
 }
 

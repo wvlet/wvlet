@@ -8,11 +8,17 @@ The stdlib is freshness-gated in CI. After changing `wvlet-stdlib/module/standar
 
 - The DuckDB catalog: `./sbt "runnerJVM/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator"`
 - The Trino catalog: `./sbt "runnerJVM/Test/runMain wvlet.lang.runner.StdLibTrinoFunctionCatalogGenerator"`
-- The docs reference page: `./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.StdLibDocGenerator"`
+- The docs reference page, with the results of the `-- @example` lines run on the engine: `./sbt "engineJVM/Test/runMain wvlet.lang.engine.StdLibDocGenerator"`
 - The engine's function names (`WvletEngineFunctionNames`, after adding or removing an engine function): `./sbt "engineJVM/Test/runMain wvlet.lang.engine.EngineFunctionNamesGenerator"`
 - The Snowflake SQL of the stdlib specs (`spec/snowflake-sql/`, after a change to a stdlib function or a stdlib spec): `./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.SnowflakeSqlGolden"`
 
 `StdLibCatalogFreshnessTest`, `StdLibDocFreshnessTest`, `EngineFunctionNamesTest`, and `SnowflakeSqlGoldenTest` fail on drift and print the exact command to run.
+
+## Reference page and examples
+
+- The [reference page](../website/docs/syntax/stdlib-reference.md) and the playground's Reference tab are built from one model, `StdLibReference` (wvlet-lang): entries by category, one entry per function name and arity, merged across receiver types (`T.abs: T` with T: int, long, ...) and dialect variants.
+- `StdLibCategories` assigns categories by receiver type, with name overrides (`regexp_*` → Pattern Matching, `sum` on arrays → Aggregate). A new function always gets a category; add a name override when the type default is wrong.
+- A `-- @example <expr or query>` line in a definition's doc comment adds an example. `StdLibExamples` (wvlet-engine) runs it on the engine; the page shows that result and the playground computes it live, so results are never written by hand. Generating the page fails when an example fails, so `StdLibDocFreshnessTest` gates both. Keep examples deterministic (no `uuid`, `current_date`), on inline values, and without backslashes (the stdlib is embedded as a Scala string literal).
 
 ## Snowflake variants
 

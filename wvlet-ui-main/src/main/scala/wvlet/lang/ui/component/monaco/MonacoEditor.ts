@@ -16,6 +16,60 @@ export class MonacoEditor {
         this.action = action;
     }
 
+    private static languageServicesRegistered: boolean = false;
+
+    /**
+     * Register hover and completion for the `wvlet` language, once per page. Monaco providers are
+     * global per language, so every Wvlet editor on the page gets them. `hover` returns markdown
+     * and a 1-origin range, or null; `complete` returns LSP-style items (`kind` is an LSP
+     * CompletionItemKind number). Both take the editor text and a 0-origin UTF-16 offset.
+     */
+    static registerLanguageServices(
+        hover: (text: string, offset: number) => {content: string, startLine: number, startColumn: number, endLine: number, endColumn: number} | null,
+        complete: (text: string, offset: number) => {label: string, kind: number, detail: string}[]
+    ): void {
+        if (MonacoEditor.languageServicesRegistered) {
+            return;
+        }
+        MonacoEditor.languageServicesRegistered = true;
+        // LSP CompletionItemKind -> Monaco's enum, for the kinds Wvlet completions use
+        const K = monaco.languages.CompletionItemKind;
+        const kinds: {[lsp: number]: monaco.languages.CompletionItemKind} = {
+            3: K.Function, 5: K.Field, 6: K.Variable, 7: K.Class, 14: K.Keyword, 22: K.Struct,
+        };
+        monaco.languages.registerHoverProvider('wvlet', {
+            provideHover: (model, position) => {
+                const h = hover(model.getValue(), model.getOffsetAt(position));
+                if (!h) {
+                    return null;
+                }
+                return {
+                    contents: [{value: h.content}],
+                    range: new monaco.Range(h.startLine, h.startColumn, h.endLine, h.endColumn),
+                };
+            }
+        });
+        monaco.languages.registerCompletionItemProvider('wvlet', {
+            triggerCharacters: ['.'],
+            provideCompletionItems: (model, position) => {
+                const word = model.getWordUntilPosition(position);
+                const range = new monaco.Range(
+                    position.lineNumber, word.startColumn, position.lineNumber, word.endColumn
+                );
+                const items = complete(model.getValue(), model.getOffsetAt(position));
+                return {
+                    suggestions: items.map(i => ({
+                        label: i.label,
+                        kind: kinds[i.kind] ?? K.Text,
+                        detail: i.detail,
+                        insertText: i.label,
+                        range: range,
+                    }))
+                };
+            }
+        });
+    }
+
     hello(): void {
         console.log("Hello, MonacoEditor");
     }

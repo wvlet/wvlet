@@ -7,25 +7,33 @@ trait int = {
   def to_long in bigquery: long = sql"cast(${this} as int64)"
   def to_float: float = sql"cast(${this} as double)"
   def to_float in bigquery: float = sql"cast(${this} as float64)"
+  -- @example 42.to_double
   def to_double: double = sql"cast(${this} as double)"
   def to_double in bigquery: double = sql"cast(${this} as float64)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_boolean in bigquery: boolean = sql"cast(${this} as bool)"
+  -- @example 42.to_string
   def to_string: string = sql"cast(${this} as varchar)"
   def to_string in hive: string = sql"cast(${this} as string)"
   def to_string in bigquery: string = sql"cast(${this} as string)"
 
+  -- @example from [[1], [null]] as t(x) select x.or_else(0)
   def or_else(other:int): int = sql"coalesce(${this},${other})"
 
+  -- @example from [[-5]] as t(x) select x.abs
   def abs: int = sql"abs(${this})"
   def ceil: int = sql"ceil(${this})"
   def floor: int = sql"floor(${this})"
+  -- @example 17.mod(5)
   def mod(divisor:int): int = sql"mod(${this},${divisor})"
 
   -- Greatest common divisor and least common multiple (non-negative; 0 when both are 0)
+  -- @example 12.gcd(18)
   def gcd(other:long) in duckdb: long = sql"gcd(${this},${other})"
+  -- @example 4.lcm(6)
   def lcm(other:long) in duckdb: long = sql"lcm(${this},${other})"
   -- n! for n in 0..20 (an error for negative n or when the result exceeds a long)
+  -- @example 5.factorial
   def factorial in duckdb: long = sql"cast(factorial(cast(${this} as integer)) as bigint)"
 
   -- Interpret this value as a unix epoch second (in UTC)
@@ -35,5 +43,6 @@ trait int = {
   def from_unixtime in snowflake: timestamp = sql"to_timestamp_ntz(${this})"
   def from_unixtime in bigquery: timestamp = sql"timestamp_seconds(${this})"
 
+  -- @example 5.between(1, 10)
   def between(l:int, r:int): boolean = sql"${this} between ${l} and ${r}"
 }

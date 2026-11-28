@@ -15,6 +15,7 @@ package wvlet.lang.ui.playground
 
 import org.scalajs.dom
 import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.ui.component.monaco.MonacoEditor
 import wvlet.uni.dom.RxElement
 import wvlet.uni.dom.all.{*, given}
 import wvlet.uni.log.LogSupport
@@ -40,12 +41,43 @@ object PlaygroundUI extends LogSupport:
   def main(args: Array[String]): Unit =
     val state = PlaygroundState()
     ColorScheme.bind(state.theme)
+    registerEditorServices(state)
     PlaygroundUI(state).renderTo("main")
     // Generate the tables and run the first query after the page has painted
     js.timers
       .setTimeout(30) {
         state.openFromHash()
       }
+
+  /**
+    * Hover tooltips and completion in the Wvlet editors: column types and stdlib function docs from
+    * the language server's providers, compiled against the current TPC-H tables
+    */
+  private def registerEditorServices(state: PlaygroundState): Unit = MonacoEditor
+    .registerLanguageServices(
+      (text, offset) =>
+        state
+          .engine
+          .hover(text, offset)
+          .map { h =>
+            js.Dynamic
+              .literal(
+                content = h.content,
+                startLine = h.startLine,
+                startColumn = h.startColumn,
+                endLine = h.endLine,
+                endColumn = h.endColumn
+              )
+          }
+          .orNull,
+      (text, offset) =>
+        js.Array(
+          state
+            .engine
+            .complete(text, offset)
+            .map(i => js.Dynamic.literal(label = i.label, kind = i.kind, detail = i.detail))*
+        )
+    )
 
 end PlaygroundUI
 

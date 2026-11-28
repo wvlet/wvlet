@@ -3,79 +3,99 @@ package wvlet.standard
 -- Functions of array values. A column reference after 'group by' also has an array type,
 -- so aggregation functions (count, sum, max_by, etc.) are defined here as well
 trait array[A] = {
+  -- @example [1, 2, 3].length
   def length in duckdb: int = sql"length(${this})"
   def length in trino: int = sql"cardinality(${this})"
   def length in hive: int = sql"size(${this})"
   def length in snowflake: int = sql"array_size(${this})"
   def length in bigquery: int = sql"array_length(${this})"
+  -- @example [1, 2, 3].size
   def size in duckdb: int = sql"length(${this})"
   def size in trino: int = sql"cardinality(${this})"
   def size in hive: int = sql"size(${this})"
   def size in snowflake: int = sql"array_size(${this})"
   def size in bigquery: int = sql"array_length(${this})"
+  -- @example ['a', 'b', 'c'].get(2)
   def get(index: int): A = sql"${this}[${index}]"
   -- Hive and Snowflake arrays are 0-indexed, so shift the 1-origin index
   def get(index: int) in hive: A = sql"${this}[${index} - 1]"
   def get(index: int) in snowflake: A = sql"get(${this},${index} - 1)"
   def get(index: int) in bigquery: A = sql"${this}[ordinal(${index})]"
+  -- @example from [[1], [2], [2]] as t(x) agg x.count
   def count: int = sql"count(*)"
+  -- @example from [[1], [2], [2]] as t(x) agg x.count_distinct
   def count_distinct: int = sql"count(distinct ${this})"
+  -- @example from [[1], [2], [3]] as t(x) agg x.count_if(x > 1)
   def count_if(cond:boolean): int = sql"count_if(${cond})"
   def count_if(cond:boolean) in hive: int = sql"cast(sum(if(${cond},1,0)) as bigint)"
   def count_if(cond:boolean) in bigquery: int = sql"countif(${cond})"
 
   -- Fast and memory-efficient approximate counting of distinct elements
+  -- @example from [[1], [2], [2]] as t(x) agg x.count_approx_distinct
   def count_approx_distinct in trino: int = sql"approx_distinct(${this})"
   def count_approx_distinct in duckdb: int = sql"approx_count_distinct(${this})"
   def count_approx_distinct in snowflake: int = sql"approx_count_distinct(${this})"
   def count_approx_distinct in bigquery: int = sql"approx_count_distinct(${this})"
 
+  -- @example from [[7], [7]] as t(x) agg x.arbitrary
   def arbitrary: A = sql"arbitrary(${this})"
   def arbitrary in snowflake: A = sql"any_value(${this})"
   def arbitrary in bigquery: A = sql"any_value(${this})"
+  -- @example from [[7], [7]] as t(x) agg x.any
   def any: A = sql"arbitrary(${this})"
   def any in snowflake: A = sql"any_value(${this})"
   def any in bigquery: A = sql"any_value(${this})"
 
+  -- @example from [[3], [1], [2]] as t(x) agg x.min
   def min: A = sql"min(${this})"
+  -- @example from [[3], [1], [2]] as t(x) agg x.max
   def max: A = sql"max(${this})"
 
+  -- @example from [['a', 3], ['b', 1]] as t(name, score) agg name.min_by(score)
   def min_by(expr: sql): A = sql"min_by(${this}, ${expr})"
+  -- @example from [['a', 3], ['b', 1]] as t(name, score) agg name.max_by(score)
   def max_by(expr: sql): A = sql"max_by(${this}, ${expr})"
 
   -- Map each grouped key (this column) to the value of the same row, e.g. key.map_agg(value).
   -- Rows with a NULL key are skipped; NULL values are kept; a group with no key gives NULL. Keys
   -- must be unique: a duplicate is an error on DuckDB and the engine, while Trino keeps one value.
   -- Use a column as the key: DuckDB's variant repeats the key expression
+  -- @example from [['a', 1], ['b', 2]] as t(k, v) agg k.map_agg(v)
   def map_agg(value: sql) in duckdb: map[A,any] = sql"map(list(${this}) filter (where ${this} is not null), list(${value}) filter (where ${this} is not null))"
   def map_agg(value: sql) in trino: map[A,any] = sql"map_agg(${this}, ${value})"
 
+  -- @example from [['a', 1], ['a', 2], ['b', 3]] as t(g, x) group by g agg x.to_array order by g
   def to_array: array[A] = sql"array_agg(${this})"
   def to_array in hive: array[A] = sql"collect_list(${this})"
   -- Collect the values in ascending order of the given key, e.g. item.to_array(ts). Rows with equal
   -- keys may come in any order
+  -- @example from [['b', 2], ['a', 1]] as t(s, k) agg s.to_array(k)
   def to_array(order_by: sql) in duckdb: array[A] = sql"array_agg(${this} order by ${order_by})"
   def to_array(order_by: sql) in trino: array[A] = sql"array_agg(${this} order by ${order_by})"
   def to_array(order_by: sql) in snowflake: array[A] = sql"array_agg(${this}) within group (order by ${order_by})"
   def to_array(order_by: sql) in bigquery: array[A] = sql"array_agg(${this} order by ${order_by})"
 
   -- Aggregate boolean values of a grouped column
+  -- @example from [[true], [false]] as t(b) agg b.bool_and
   def bool_and: boolean = sql"bool_and(${this})"
   def bool_and in hive: boolean = sql"min(${this})"
   def bool_and in snowflake: boolean = sql"booland_agg(${this})"
   def bool_and in bigquery: boolean = sql"logical_and(${this})"
+  -- @example from [[true], [false]] as t(b) agg b.bool_or
   def bool_or: boolean = sql"bool_or(${this})"
   def bool_or in hive: boolean = sql"max(${this})"
   def bool_or in snowflake: boolean = sql"boolor_agg(${this})"
   def bool_or in bigquery: boolean = sql"logical_or(${this})"
 
   -- Concatenate grouped string values with the separator
+  -- @example from [['a'], ['b']] as t(s) agg s.string_agg(',')
   def string_agg(separator:string) in duckdb: string = sql"string_agg(${this},${separator})"
   def string_agg(separator:string) in trino: string = sql"array_join(array_agg(${this}),${separator})"
   def string_agg(separator:string) in hive: string = sql"concat_ws(${separator},collect_list(${this}))"
   def string_agg(separator:string) in snowflake: string = sql"listagg(${this},${separator})"
   def string_agg(separator:string) in bigquery: string = sql"string_agg(${this},${separator})"
 
+  -- @example [1, 2, 3, 4].exclude([2, 4])
   def exclude(arr: sql) in duckdb: array[A] = sql"array_filter(${this}, lambda x: NOT array_contains(${arr}, x))"
   def exclude(arr: sql) in trino: array[A] = sql"array_except(${this}, ${arr})"
 
@@ -83,12 +103,14 @@ trait array[A] = {
   def not_exists: boolean = sql"not exists(${this})"
 
   -- True if the array contains the given element
+  -- @example [1, 2, 3].contains(2)
   def contains(elem:A): boolean = sql"contains(${this},${elem})"
   def contains(elem:A) in hive: boolean = sql"array_contains(${this},${elem})"
   def contains(elem:A) in snowflake: boolean = sql"array_contains(to_variant(${elem}),${this})"
   def contains(elem:A) in bigquery: boolean = sql"${elem} in unnest(${this})"
 
   -- Concatenate the array elements into a string without a separator
+  -- @example ['a', 'b', 'c'].mk_string
   def mk_string in duckdb: string = sql"array_to_string(${this},'')"
   def mk_string in trino: string = sql"array_join(${this},'')"
   def mk_string in hive: string = sql"concat_ws('',${this})"
@@ -96,6 +118,7 @@ trait array[A] = {
   def mk_string in bigquery: string = sql"array_to_string(${this},'')"
 
   -- Concatenate the array elements into a string with the separator
+  -- @example ['a', 'b', 'c'].mk_string(', ')
   def mk_string(separator:string) in duckdb: string = sql"array_to_string(${this},${separator})"
   def mk_string(separator:string) in trino: string = sql"array_join(${this},${separator})"
   def mk_string(separator:string) in hive: string = sql"concat_ws(${separator},${this})"
@@ -103,26 +126,31 @@ trait array[A] = {
   def mk_string(separator:string) in bigquery: string = sql"array_to_string(${this},${separator})"
 
   -- Remove duplicate elements
+  -- @example [3, 1, 3, 2].distinct.sort
   def distinct: array[A] = sql"array_distinct(${this})"
 
   -- Flatten an array of arrays into a single array
   def flatten: array[A] = sql"flatten(${this})"
 
+  -- @example [3, 1, 2].sort
   def sort in duckdb: array[A] = sql"list_sort(${this})"
   def sort in trino: array[A] = sql"array_sort(${this})"
   def sort in hive: array[A] = sql"sort_array(${this})"
   def sort in snowflake: array[A] = sql"array_sort(${this})"
 
+  -- @example [1, 2, 3].reverse
   def reverse in duckdb: array[A] = sql"list_reverse(${this})"
   def reverse in trino: array[A] = sql"reverse(${this})"
   def reverse in snowflake: array[A] = sql"array_reverse(${this})"
   def reverse in bigquery: array[A] = sql"array_reverse(${this})"
 
   -- 1-origin position of the first occurrence of the element (0 if not found)
+  -- @example ['a', 'b', 'c'].index_of('b')
   def index_of(elem:A) in duckdb: int = sql"coalesce(list_position(${this},${elem}), 0)"
   def index_of(elem:A) in trino: int = sql"array_position(${this},${elem})"
   def index_of(elem:A) in snowflake: int = sql"coalesce(array_position(to_variant(${elem}),${this}) + 1, 0)"
 
+  -- @example [1, 2].concat([3, 4])
   def concat(other:any) in duckdb: array[A] = sql"list_concat(${this},${other})"
   def concat(other:any) in trino: array[A] = sql"concat(${this},${other})"
   def concat(other:any) in snowflake: array[A] = sql"array_cat(${this},${other})"
@@ -131,31 +159,38 @@ trait array[A] = {
   -- Higher-order functions taking a lambda, e.g. [1, 2, 3].transform(x -> x * 2).filter(x -> x > 2)
 
   -- Apply the lambda to each element
+  -- @example [1, 2, 3].transform(x -> x * 10)
   def transform(f: sql) in duckdb: array[any] = sql"list_transform(${this}, ${f})"
   def transform(f: sql) in trino: array[any] = sql"transform(${this}, ${f})"
   -- Keep the elements for which the lambda returns true
+  -- @example [1, 2, 3, 4].filter(x -> x % 2 = 0)
   def filter(f: sql) in duckdb: array[A] = sql"list_filter(${this}, ${f})"
   def filter(f: sql) in trino: array[A] = sql"filter(${this}, ${f})"
   -- Fold the elements from the first one with a two-argument lambda (acc, x) -> ..., e.g.
   -- [1, 2, 3].reduce((a, b) -> a + b) = 6. An empty array is an error
+  -- @example [1, 2, 3, 4].reduce((a, b) -> a + b)
   def reduce(f: sql) in duckdb: A = sql"list_reduce(${this}, ${f})"
   def reduce(f: sql) in trino: A = sql"reduce(slice(${this}, 2, cardinality(${this})), ${this}[1], ${f}, s -> s)"
   -- Fold the elements from an initial value with (acc, x) -> ..., e.g.
   -- [1, 2, 3].reduce(10, (acc, x) -> acc + x) = 16. An empty array gives the initial value
+  -- @example [1, 2, 3].reduce(100, (acc, x) -> acc + x)
   def reduce(init: any, f: sql) in duckdb: any = sql"list_reduce(${this}, ${f}, ${init})"
   def reduce(init: any, f: sql) in trino: any = sql"reduce(${this}, ${init}, ${f}, s -> s)"
   -- True if the lambda is true for some element, e.g. [1, 5].exists(x -> x > 3). False for an
   -- empty array. When no element gives true and some give NULL, the result is NULL, as SQL `or`
+  -- @example [1, 2, 3].exists(x -> x > 2)
   def exists(f: sql) in duckdb: boolean = sql"list_reduce(list_transform(${this}, ${f}), lambda a, b: a or b, false)"
   def exists(f: sql) in trino: boolean = sql"any_match(${this}, ${f})"
   -- True if the lambda is true for every element, e.g. [1, 5].forall(x -> x > 0). True for an
   -- empty array. When no element gives false and some give NULL, the result is NULL, as SQL `and`
+  -- @example [1, 2, 3].forall(x -> x > 0)
   def forall(f: sql) in duckdb: boolean = sql"list_reduce(list_transform(${this}, ${f}), lambda a, b: a and b, true)"
   def forall(f: sql) in trino: boolean = sql"all_match(${this}, ${f})"
 
   -- Combine the elements at the same position with a two-argument lambda, e.g.
   -- [1, 2].zip_with([10, 20], (x, y) -> x + y) = [11, 22]. The shorter array is padded with
   -- NULL, and a NULL array gives NULL
+  -- @example [1, 2].zip_with([10, 20], (a, b) -> a + b)
   def zip_with(other: any, f: sql) in duckdb: array[any] = sql"case when ${this} is null or ${other} is null then null else list_transform(range(1, greatest(len(${this}), len(${other})) + 1), lambda __wv_i: ${f(this[__wv_i], other[__wv_i])}) end"
   def zip_with(other: any, f: sql) in trino: array[any] = sql"zip_with(${this}, ${other}, ${f})"
   -- The engine has no lambdas over outer values, so it binds zip_with itself
@@ -165,82 +200,113 @@ trait array[A] = {
   -- e.g. v.lag(1) over (partition by g order by k)
 
   -- Value of the column at a preceding row of the window
+  -- @example from [[10], [20], [30]] as t(x) select x.lag over (order by x)
   def lag: A = sql"lag(${this})"
+  -- @example from [[10], [20], [30]] as t(x) select x.lag(2) over (order by x)
   def lag(offset:int): A = sql"lag(${this},${offset})"
+  -- @example from [[10], [20], [30]] as t(x) select x.lag(1, 0) over (order by x)
   def lag(offset:int, default:any): A = sql"lag(${this},${offset},${default})"
   -- Value of the column at a following row of the window
+  -- @example from [[10], [20], [30]] as t(x) select x.lead over (order by x)
   def lead: A = sql"lead(${this})"
+  -- @example from [[10], [20], [30]] as t(x) select x.lead(2) over (order by x)
   def lead(offset:int): A = sql"lead(${this},${offset})"
+  -- @example from [[10], [20], [30]] as t(x) select x.lead(1, 0) over (order by x)
   def lead(offset:int, default:any): A = sql"lead(${this},${offset},${default})"
   -- First value of the window
+  -- @example from [[10], [20], [30]] as t(x) select x.first_value over (order by x)
   def first_value: A = sql"first_value(${this})"
   -- Last value of the window
+  -- @example from [[10], [20], [30]] as t(x) select x.last_value over (order by x rows [,])
   def last_value: A = sql"last_value(${this})"
   -- Value at the n-th row (1-origin) of the window
+  -- @example from [[10], [20], [30]] as t(x) select x.nth_value(2) over (order by x)
   def nth_value(n:int): A = sql"nth_value(${this},${n})"
 }
 
 -- array functions specific to numeric elements
 trait array[A of numeric] = {
+  -- @example from [[1], [2], [3]] as t(x) agg x.sum
   def sum: A = sql"sum(${this})"
+  -- @example from [[1], [2], [3], [4]] as t(x) agg x.avg
   def avg: A = sql"avg(${this})"
+  -- @example from [[1], [2], [10]] as t(x) agg x.median
   def median: A = sql"median(${this})"
   def median in trino: A = sql"approx_percentile(${this}, 0.5)"
   def median in hive: A = sql"percentile_approx(${this}, 0.5)"
   def median in bigquery: A = sql"approx_quantiles(${this}, 2)[offset(1)]"
+  -- @example from [[1], [2], [3], [4]] as t(x) agg x.variance
   def variance: A = sql"variance(${this})"
+  -- @example from [[1], [2], [3], [4]] as t(x) agg x.stddev
   def stddev: A = sql"stddev(${this})"
+  -- @example from [[1], [2], [3], [4]] as t(x) agg x.stddev_pop
   def stddev_pop: A = sql"stddev_pop(${this})"
+  -- @example from [[1], [2], [3], [4]] as t(x) agg x.stddev_samp
   def stddev_samp: A = sql"stddev_samp(${this})"
+  -- @example from [[1], [2], [3], [4]] as t(x) agg x.var_pop
   def var_pop: A = sql"var_pop(${this})"
+  -- @example from [[1], [2], [3], [4]] as t(x) agg x.var_samp
   def var_samp: A = sql"var_samp(${this})"
 
   -- Correlation and covariance of (this, x) pairs, skipping pairs with a NULL
+  -- @example from [[1, 2], [2, 4], [3, 7]] as t(x, y) agg y.corr(x)
   def corr(x: sql): double = sql"corr(${this}, ${x})"
+  -- @example from [[1, 2], [2, 4], [3, 7]] as t(x, y) agg y.covar_pop(x)
   def covar_pop(x: sql): double = sql"covar_pop(${this}, ${x})"
+  -- @example from [[1, 2], [2, 4], [3, 7]] as t(x, y) agg y.covar_samp(x)
   def covar_samp(x: sql): double = sql"covar_samp(${this}, ${x})"
 
   -- Least-squares line of this (dependent) over x (independent), skipping pairs with a NULL
+  -- @example from [[1, 2], [2, 4], [3, 6]] as t(x, y) agg y.regr_slope(x)
   def regr_slope(x: sql) in duckdb: double = sql"regr_slope(${this}, ${x})"
   def regr_slope(x: sql) in trino: double = sql"regr_slope(${this}, ${x})"
   def regr_slope(x: sql) in hive: double = sql"regr_slope(${this}, ${x})"
   def regr_slope(x: sql) in snowflake: double = sql"regr_slope(${this}, ${x})"
+  -- @example from [[1, 3], [2, 5], [3, 7]] as t(x, y) agg y.regr_intercept(x)
   def regr_intercept(x: sql) in duckdb: double = sql"regr_intercept(${this}, ${x})"
   def regr_intercept(x: sql) in trino: double = sql"regr_intercept(${this}, ${x})"
   def regr_intercept(x: sql) in hive: double = sql"regr_intercept(${this}, ${x})"
   def regr_intercept(x: sql) in snowflake: double = sql"regr_intercept(${this}, ${x})"
   -- Coefficient of determination of the line, and the number of non-NULL pairs
+  -- @example from [[1, 2], [2, 4], [3, 7]] as t(x, y) agg y.regr_r2(x)
   def regr_r2(x: sql) in duckdb: double = sql"regr_r2(${this}, ${x})"
   def regr_r2(x: sql) in hive: double = sql"regr_r2(${this}, ${x})"
   def regr_r2(x: sql) in snowflake: double = sql"regr_r2(${this}, ${x})"
+  -- @example from [[1, 2], [2, null], [3, 7]] as t(x, y) agg y.regr_count(x)
   def regr_count(x: sql) in duckdb: long = sql"regr_count(${this}, ${x})"
   def regr_count(x: sql) in hive: long = sql"regr_count(${this}, ${x})"
   def regr_count(x: sql) in snowflake: long = sql"regr_count(${this}, ${x})"
 
   -- Sample excess kurtosis (NULL for fewer than 4 values) and sample skewness (fewer than 3)
+  -- @example from [[1], [2], [3], [10]] as t(x) agg x.kurtosis
   def kurtosis in duckdb: double = sql"kurtosis(${this})"
   -- NULL for equal values, as DuckDB (Trino's 0 / 0 would be NaN)
   def kurtosis in trino: double = sql"if(stddev_pop(${this}) > 0, kurtosis(${this}))"
   def kurtosis in snowflake: double = sql"kurtosis(${this})"
+  -- @example from [[1], [2], [3], [10]] as t(x) agg x.skewness
   def skewness in duckdb: double = sql"skewness(${this})"
   -- Trino's skewness is the population form: apply the sample correction
   def skewness in trino: double = sql"if(count(${this}) > 2 and stddev_pop(${this}) > 0, skewness(${this}) * sqrt(count(${this}) * (count(${this}) - 1.0)) / (count(${this}) - 2))"
   def skewness in snowflake: double = sql"skew(${this})"
 
   -- Bitwise AND / OR / XOR of the integer values
+  -- @example from [[12], [10]] as t(x) agg x.bit_and
   def bit_and in duckdb: A = sql"bit_and(${this})"
   def bit_and in trino: A = sql"bitwise_and_agg(${this})"
   def bit_and in snowflake: A = sql"bitand_agg(${this})"
   def bit_and in bigquery: A = sql"bit_and(${this})"
+  -- @example from [[12], [10]] as t(x) agg x.bit_or
   def bit_or in duckdb: A = sql"bit_or(${this})"
   def bit_or in trino: A = sql"bitwise_or_agg(${this})"
   def bit_or in snowflake: A = sql"bitor_agg(${this})"
   def bit_or in bigquery: A = sql"bit_or(${this})"
+  -- @example from [[12], [10]] as t(x) agg x.bit_xor
   def bit_xor in duckdb: A = sql"bit_xor(${this})"
   def bit_xor in trino: A = sql"bitwise_xor_agg(${this})"
   def bit_xor in snowflake: A = sql"bitxor_agg(${this})"
   def bit_xor in bigquery: A = sql"bit_xor(${this})"
 
+  -- @example from [[1], [2], [3], [4], [5]] as t(x) agg x.approx_quantile(0.5)
   def approx_quantile(pos:double) in trino: A = sql"approx_percentile(${this}, ${pos})"
   def approx_quantile(pos:double) in duckdb: A = sql"approx_quantile(${this}, ${pos})"
   def approx_quantile(pos:double) in hive: A = sql"percentile_approx(${this}, ${pos})"
@@ -250,11 +316,13 @@ trait array[A of numeric] = {
 
 -- Integers from start (inclusive) to stop (exclusive), e.g. range(1, 4) = [1, 2, 3].
 -- An empty array when stop <= start. Trino limits a range to 10000 elements
+-- @example range(1, 5)
 def range(start: long, stop: long) in duckdb: array[long] = sql"range(${start}, ${stop})"
 def range(start: long, stop: long) in trino: array[long] = sql"if(${start} < ${stop}, sequence(${start}, ${stop} - 1), array[])"
 
 -- Integers from start (inclusive) to stop (exclusive) in increments of step, e.g.
 -- range(0, 10, 3) = [0, 3, 6, 9] and range(3, 0, -1) = [3, 2, 1]. A step of 0 is an error
 -- on DuckDB and yields an empty array on Trino
+-- @example range(0, 10, 3)
 def range(start: long, stop: long, step: long) in duckdb: array[long] = sql"range(${start}, ${stop}, ${step})"
 def range(start: long, stop: long, step: long) in trino: array[long] = sql"if((${step} > 0 and ${start} < ${stop}) or (${step} < 0 and ${start} > ${stop}), sequence(${start}, ${stop} - sign(${step}), ${step}), array[])"
