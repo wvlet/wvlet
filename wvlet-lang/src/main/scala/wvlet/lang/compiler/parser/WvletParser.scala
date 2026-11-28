@@ -3151,8 +3151,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           }
         consume(WvletToken.L_PAREN)
         val size = samplingSize
-        consume(WvletToken.R_PAREN)
-        Sample(input, method, size, spanFrom(t))
+        if method.contains(SamplingMethod.rendezvous) then
+          rendezvousSample(input, size, t)
+        else
+          consume(WvletToken.R_PAREN)
+          Sample(input, method, size, spanFrom(t))
       case WvletToken.INTEGER_LITERAL =>
         val size = samplingSize
         Sample(input, None, size, spanFrom(t))
@@ -3163,6 +3166,62 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case _ =>
         unexpected(st)
   }
+
+  /**
+    * The rest of `sample rendezvous(p%[, seed = n]) by key, ...` or `sample rendezvous(k[, seed =
+    * n]) by key, ...` after the sampling size: the optional seed, the closing parenthesis, and the
+    * sampling keys
+    */
+  private def rendezvousSample(input: Relation, size: SamplingSize, t: TokenData[WvletToken]) =
+    size match
+      case _: SamplingSize.Percentage | _: SamplingSize.Rows =>
+      case _                                                 =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            "rendezvous sampling takes a percentage or a row count, e.g., sample rendezvous(10%) by user_id",
+            t.sourceLocation
+          )
+    val seed =
+      scanner.lookAhead().token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          val name = consume(WvletToken.IDENTIFIER)
+          if name.str != "seed" then
+            unexpected(name)
+          consume(WvletToken.EQ)
+          val negative =
+            scanner.lookAhead().token match
+              case WvletToken.MINUS =>
+                consume(WvletToken.MINUS)
+                true
+              case _ =>
+                false
+          val lit = consume(WvletToken.INTEGER_LITERAL)
+          val n   = lit
+            .str
+            .replace("_", "")
+            .toLongOption
+            .getOrElse {
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Invalid seed: ${lit.str}", lit.sourceLocation)
+            }
+          if negative then
+            -n
+          else
+            n
+        case _ =>
+          0L
+    consume(WvletToken.R_PAREN)
+    consume(WvletToken.BY)
+    val keys = ListBuffer(expression())
+    while scanner.lookAhead().token == WvletToken.COMMA do
+      consume(WvletToken.COMMA)
+      keys += expression()
+    Sample(input, Some(SamplingMethod.rendezvous), size, spanFrom(t), keys.toList, seed)
+
+  end rendezvousSample
 
   def debugExpr(input: Relation): Debug = node {
     def loop(r: Relation): Relation =

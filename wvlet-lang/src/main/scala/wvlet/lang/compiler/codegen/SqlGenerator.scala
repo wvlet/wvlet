@@ -934,6 +934,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           relation(d.child, block.copy(isDistinct = true))
         else
           nestedSelect(d, block)
+      case s: Sample if s.method.contains(SamplingMethod.rendezvous) =>
+        // A filter on the key hash, which is a function of the key values only
+        val child = relation(s.child, SQLBlock())(using InFromClause)
+        val body  = group(wl("select", "*", "from", child, "where", rendezvousCondition(s)))
+        if sc.inFromClause then
+          indentedParen(body)
+        else
+          selectExpr(body)
       case s: Sample =>
         val child          = relation(s.child, SQLBlock())(using InFromClause)
         val samplingMethod = s.method.getOrElse(reservoir)
@@ -1459,6 +1467,67 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           relation(child, merged.copy(selectItems = s.selectItems, aggregated = true))
     else
       nestedSelect(node, block)
+
+  /**
+    * The condition of a rendezvous sample: non-null keys whose 64-bit hash, seeded with the
+    * sample's seed, has its top [[RendezvousSampling.HashBits]] bits under the threshold of the
+    * sampling rate. DuckDB (and the wvlet engine's dialect, which follows DuckDB) uses hash(seed,
+    * keys...), which the engine computes the same way; Trino uses xxhash64 over the keys' text
+    */
+  private def rendezvousCondition(s: Sample)(using sc: SyntaxContext): Doc =
+    val percentage =
+      s.size match
+        case SamplingSize.Percentage(p) =>
+          p
+        case other =>
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(
+              s"rendezvous sampling of ${other} per key runs only in the wvlet engine",
+              s.sourceLocation
+            )
+    val threshold     = RendezvousSampling.threshold(percentage)
+    val keys          = s.keys.map(expr)
+    val shift         = 64 - RendezvousSampling.HashBits
+    val hashBits: Doc =
+      dbType match
+        case DBType.DuckDB | DBType.Wvlet =>
+          paren(
+            wl(text("hash") + paren(cl(text(s.seed.toString) :: keys)), ">>", text(s"${shift}"))
+          )
+        case DBType.Trino =>
+          val strs =
+            text(s"cast(${s.seed} as varchar)") ::
+              keys.map(k => text("cast") + paren(wl(k, "as", "varchar")))
+          text("bitwise_right_shift") +
+            paren(
+              cl(
+                text("from_big_endian_64") +
+                  paren(
+                    text("xxhash64") +
+                      paren(
+                        text("to_utf8") +
+                          paren(text("concat_ws") + paren(cl(text("chr(1)") :: strs)))
+                      )
+                  ),
+                text(s"${shift}")
+              )
+            )
+        case other =>
+          throw StatusCode
+            .NOT_IMPLEMENTED
+            .newException(s"rendezvous sampling is not supported for ${other}", s.sourceLocation)
+    val notNull = keys.map(k => wl(k, "is not null"))
+    val conds   =
+      if threshold <= 0 then
+        List(text("false"))
+      else if threshold >= (1L << RendezvousSampling.HashBits) then
+        notNull
+      else
+        notNull :+ wl(hashBits, "<", text(threshold.toString))
+    wl(conds.head :: conds.tail.flatMap(c => List(text("and"), c)))
+
+  end rendezvousCondition
 
   /**
     * Render `r` as a nested SELECT that becomes the FROM source of `block`

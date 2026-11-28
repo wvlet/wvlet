@@ -1494,7 +1494,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           case _ =>
             unexpected(t)
       try
-        SamplingMethod.valueOf(methodName.toLowerCase)
+        SamplingMethod.valueOf(methodName.toLowerCase) match
+          case SamplingMethod.rendezvous =>
+            // Rendezvous sampling needs sampling keys, which SQL TABLESAMPLE has no place for
+            unexpected(t)
+          case m =>
+            m
       catch
         case e: IllegalArgumentException =>
           unexpected(t)

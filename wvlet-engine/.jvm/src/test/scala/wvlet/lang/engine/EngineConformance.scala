@@ -136,6 +136,8 @@ class EngineConformance(
         d = x
     q.traverse { case s: Sample =>
       s.size match
+        case _ if s.method.contains(SamplingMethod.rendezvous) =>
+        // A rendezvous sample depends on the key values only: the rows must match
         case SamplingSize.Rows(_) =>
           weaken(Determinism.RowCountOnly)
         case _ =>

@@ -1342,14 +1342,53 @@ case class Describe(child: Relation, span: Span) extends RelationInspector:
       ListMap("column_name" -> f.name.name, "column_type" -> f.dataType.typeDescription)
     }
 
-case class Sample(child: Relation, method: Option[SamplingMethod], size: SamplingSize, span: Span)
-    extends FilteringRelation:
+/**
+  * Sample rows of `child`. With [[SamplingMethod.rendezvous]], `keys` are the sampling keys and
+  * `seed` the hash seed: a row is kept when the hash of its keys falls under the sampling rate, so
+  * that every relation sampled by the same keys, rate, and seed keeps the same key values
+  */
+case class Sample(
+    child: Relation,
+    method: Option[SamplingMethod],
+    size: SamplingSize,
+    span: Span,
+    keys: List[Expression] = Nil,
+    seed: Long = 0L
+) extends FilteringRelation:
   override def relationType: RelationType = child.relationType
 
 enum SamplingMethod:
   case reservoir
   case system
   case bernoulli
+
+  /**
+    * Key-consistent (rendezvous) sampling: keep the rows whose keys hash under the sampling rate.
+    * Rows of different relations with the same key values are kept or dropped together, so joins
+    * over sampled relations see the same keys, and sampling by a privacy unit (e.g., a user id)
+    * keeps or drops all rows of the unit. With a row count `k`, keep instead at most `k` rows of
+    * each key: the rows whose hash of all their columns is the smallest, which bounds the rows (or,
+    * after a `group by` of the key, the groups) each privacy unit contributes
+    */
+  case rendezvous
+
+/** Hash thresholds of [[SamplingMethod.rendezvous]] */
+object RendezvousSampling:
+  /** The number of hash bits compared with the threshold */
+  val HashBits: Int = 53
+
+  /**
+    * The threshold of the top [[HashBits]] bits of the unsigned 64-bit key hash: a row is kept when
+    * `(hash >>> (64 - HashBits)) < threshold(percentage)`. 0 keeps no rows, and `1 << HashBits`
+    * keeps every row with non-null keys
+    */
+  def threshold(percentage: Double): Long =
+    if percentage.isNaN || percentage <= 0 then
+      0L
+    else if percentage >= 100 then
+      1L << HashBits
+    else
+      math.floor(percentage / 100 * (1L << HashBits).toDouble).toLong
 
 enum SamplingSize:
   case Rows(rows: Long)                 extends SamplingSize

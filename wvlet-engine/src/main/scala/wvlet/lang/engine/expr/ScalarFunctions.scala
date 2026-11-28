@@ -399,50 +399,6 @@ object ScalarFunctions:
       i += 1
     prev(b.length)
 
-  // DuckDB's hash functions (src/common/types/hash.cpp)
-  private def murmurHash64(v: Long): Long =
-    var x = v
-    x ^= x >>> 32
-    x *= 0xd6e8feb86659fd93L
-    x ^= x >>> 32
-    x *= 0xd6e8feb86659fd93L
-    x ^= x >>> 32
-    x
-
-  private def hashBytes(bytes: Array[Byte]): Long =
-    var h   = 0xe17a1465L ^ (bytes.length.toLong * 0xc6a4a7935bd1e995L)
-    var pos = 0
-    while pos < bytes.length do
-      var block = 0L
-      var k     = 0
-      while k < 8 && pos + k < bytes.length do
-        block |= (bytes(pos + k) & 0xffL) << (8 * k)
-        k += 1
-      h ^= block
-      h *= 0xd6e8feb86659fd93L
-      pos += 8
-    murmurHash64(h)
-
-  private def duckdbHash(v: Any): Long =
-    v match
-      case s: String =>
-        hashBytes(s.getBytes("UTF-8"))
-      case i: Int =>
-        murmurHash64(i.toLong)
-      case l: Long =>
-        murmurHash64(l)
-      case b: Boolean =>
-        murmurHash64(
-          if b then
-            1L
-          else
-            0L
-        )
-      case other =>
-        hashBytes(other.toString.getBytes("UTF-8"))
-
-  private def combineHash(a: Long, b: Long): Long = (a * 0xbf58476d1ce4e5b9L) ^ b
-
   private def regex(p: String): java.util.regex.Pattern = java.util.regex.Pattern.compile(p)
 
   private val regexCache = scala.collection.mutable.HashMap.empty[String, java.util.regex.Pattern]
@@ -1548,7 +1504,7 @@ object ScalarFunctions:
     reg("hash") { args =>
       // DuckDB's hash() returns a UBIGINT
       fn("hash", args, PType.Decimal(20, 0)) { a =>
-        val h = a.iterator.map(duckdbHash).reduceLeft((x, y) => combineHash(x, y))
+        val h = DuckDBHash.hashAll(a)
         JBigDecimal(java.lang.Long.toUnsignedString(h))
       }
     }
