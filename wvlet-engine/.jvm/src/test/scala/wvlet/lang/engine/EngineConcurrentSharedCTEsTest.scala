@@ -147,11 +147,25 @@ class EngineConcurrentSharedCTEsTest extends UniTest:
     try
       started.await()
       // The query's coordinators wait behind the blockers; its own thread computes the results
-      val result = java.util.concurrent.atomic.AtomicReference[Seq[String]]()
-      val t      = Thread(() => result.set(rows(engine, joinedQuery)))
+      val result = java.util.concurrent.atomic.AtomicReference[Either[Throwable, Seq[String]]]()
+      val t      = Thread { () =>
+        result.set(
+          try
+            Right(rows(engine, joinedQuery))
+          catch
+            case e: Throwable =>
+              Left(e)
+        )
+      }
       t.start()
       t.join(60000)
-      result.get() shouldBe expected
+      if t.isAlive then
+        fail("The query is still waiting for a coordinator after 60 s")
+      result.get() match
+        case Right(r) =>
+          r shouldBe expected
+        case Left(e) =>
+          throw e
     finally
       release.countDown()
       blockers.foreach(_.get())

@@ -94,6 +94,10 @@ class ThreadPoolRunnerFairTest extends UniTest:
         }
       inCoordinator shouldBeTheSameInstanceAs g
       inTask shouldBeTheSameInstanceAs g
+      // A worker accounts a task after completing its future: wait for it
+      val deadline = System.nanoTime() + 10000000000L
+      while (g.finishedCoordinators < 1 || g.finishedTasks < 1) && System.nanoTime() < deadline do
+        Thread.sleep(1)
       g.finishedCoordinators shouldBe 1L
       g.coordinatorNanos >= 2000000L shouldBe true
       // Only the pool task counts as run time

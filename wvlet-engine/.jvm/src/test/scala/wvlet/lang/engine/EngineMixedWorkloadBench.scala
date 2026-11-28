@@ -154,27 +154,28 @@ class EngineMixedWorkloadBench extends UniTest with LogSupport:
     info(f"${longLabel} alone: median ${median(longAlone)}%.1f ms")
     poolShare(longLabel, longQ, longCtx)
     poolShare(shortName, shortQ, shortCtx)
-    (1 to rounds).foreach { r =>
-      val order =
-        if r % 2 == 1 then
-          Seq("on" -> on, "off" -> off)
-        else
-          Seq("off" -> off, "on" -> on)
-      order.foreach { (label, e) =>
-        val alone = shortStream(e)
-        val gc0   = gcMillis()
-        pauses.reset()
-        val (shorts, long) = mixed(e)
-        val gc             = gcMillis() - gc0
-        val gcPauses       = pauses.summary()
-        info(
-          f"round ${r} ${label}: ${shortName} alone ${fmt(alone)}; next to ${longLabel} ${fmt(
-              shorts
-            )} (${median(shorts) / median(alone)}%.2fx); ${long
-              .size} ${longLabel} runs, median ${median(long)}%.1f ms; GC ${gc} ms, ${gcPauses}"
-        )
+    try (1 to rounds).foreach { r =>
+        val order =
+          if r % 2 == 1 then
+            Seq("on" -> on, "off" -> off)
+          else
+            Seq("off" -> off, "on" -> on)
+        order.foreach { (label, e) =>
+          val alone = shortStream(e)
+          val gc0   = gcMillis()
+          pauses.reset()
+          val (shorts, long) = mixed(e)
+          val gc             = gcMillis() - gc0
+          val gcPauses       = pauses.summary()
+          info(
+            f"round ${r} ${label}: ${shortName} alone ${fmt(alone)}; next to ${longLabel} ${fmt(
+                shorts
+              )} (${median(shorts) / median(alone)}%.2fx); ${long
+                .size} ${longLabel} runs, median ${median(long)}%.1f ms; GC ${gc} ms, ${gcPauses}"
+          )
+        }
       }
-    }
+    finally pauses.close()
   }
 
 end EngineMixedWorkloadBench
@@ -189,27 +190,30 @@ private class GcPauses:
 
   private val durations = java.util.concurrent.ConcurrentLinkedQueue[Long]()
 
-  ManagementFactory
-    .getGarbageCollectorMXBeans
-    .asScala
-    // Concurrent cycles (e.g. G1's) don't stop the application
-    .filterNot(_.getName.contains("Concurrent"))
-    .foreach {
-      case b: NotificationEmitter =>
-        b.addNotificationListener(
-          (n, _) =>
-            if n.getType == GarbageCollectionNotificationInfo.GARBAGE_COLLECTION_NOTIFICATION then
-              val info = GarbageCollectionNotificationInfo.from(
-                n.getUserData.asInstanceOf[CompositeData]
-              )
-              durations.add(info.getGcInfo.getDuration),
-          null,
-          null
-        )
-      case _ =>
-    }
+  private val listener: javax.management.NotificationListener =
+    (n, _) =>
+      if n.getType == GarbageCollectionNotificationInfo.GARBAGE_COLLECTION_NOTIFICATION then
+        val info = GarbageCollectionNotificationInfo.from(n.getUserData.asInstanceOf[CompositeData])
+        durations.add(info.getGcInfo.getDuration)
+
+  // G1's "G1 Concurrent GC" bean reports its Remark and Cleanup pauses (JDK 20+), so it stays;
+  // ZGC's and Shenandoah's "Cycles" beans time whole concurrent cycles, not pauses
+  private val beans =
+    ManagementFactory
+      .getGarbageCollectorMXBeans
+      .asScala
+      .filterNot(_.getName.endsWith("Cycles"))
+      .collect { case b: NotificationEmitter =>
+        b
+      }
+      .toSeq
+
+  beans.foreach(_.addNotificationListener(listener, null, null))
 
   def reset(): Unit = durations.clear()
+
+  /** Stop collecting */
+  def close(): Unit = beans.foreach(_.removeNotificationListener(listener))
 
   /** The pauses since the last reset: count, total, and longest, in ms */
   def summary(): String =

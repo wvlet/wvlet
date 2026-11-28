@@ -37,7 +37,7 @@
 
 ## GC finding
 
-- Per mixed round (about 4.5 s with both queries running): 29–60 stop-the-world pauses, 0.5–1.4 s in total, the longest 47–187 ms.
+- Per mixed round (about 4.5 s with both queries running): 29–60 stop-the-world pauses, 0.5–1.4 s in total, the longest 47–187 ms. These counts leave out G1's Remark and Cleanup pauses (reported by the "G1 Concurrent GC" bean, which the bench now includes), so they are a lower bound.
 - So pauses take 12–30% of the wall time while the queries overlap, about 30–70 ms of a short run's 120–270 ms extra latency: a large share, not the dominant one. The rest is CPU contention, since the long query keeps every thread busy on a machine already at load 7–10.
 
 ## Alternatives and Why Not?
