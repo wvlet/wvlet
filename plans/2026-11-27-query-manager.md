@@ -47,7 +47,7 @@ DuckDB's 2026 [Quack](https://duckdb.org/2026/05/12/quack-remote-protocol) clien
 
 ### Phase 2: engine memory accounting (wvlet-engine) — done
 
-- [x] Landed in #2573 (pool, context, toggle, join builds, buffered results), #2574 (aggregation, sort, window, shared CTE results), and #PR3 (server pool, admission, `--max-query-memory` / `--memory-pool-size`); see the [design note](2026-11-27-engine-memory-accounting.md).
+- [x] Landed in #2573 (pool, context, toggle, join builds, buffered results), #2574 (aggregation, sort, window, shared CTE results), and #2575 (server pool, admission, `--max-query-memory` / `--memory-pool-size`); see the [design note](2026-11-27-engine-memory-accounting.md).
 - Remaining follow-ups: the low-memory killer (fail the largest query when the pool stays over capacity), releasing reservations before the query ends (no per-operator child contexts yet), and counting `DistinctOp`, set operations, and nested-loop builds.
 
 - A per-query `MemoryContext` that reserves bytes from a server-wide `MemoryPool`; child contexts per operator.
