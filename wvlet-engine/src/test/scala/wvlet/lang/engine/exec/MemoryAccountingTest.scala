@@ -397,6 +397,19 @@ class MemoryAccountingTest extends UniTest:
     rows.distinct.size shouldBe 1
   }
 
+  test("should release a CTE read by the body of a CTE computed while planning") {
+    // Joins read b, so planning computes it (and its read of a) before the query runs
+    val q =
+      """with a as { from orders where o_orderkey < 20000 select o_orderkey, o_custkey }
+        |with b as { from a where o_custkey < 500 select o_custkey }
+        |from b
+        |join customer on b.o_custkey = c_custkey
+        |select k = c_custkey
+        |concat { from b join customer on b.o_custkey = c_custkey select k = c_nationkey }
+        |concat { from a select k = o_custkey }""".stripMargin
+    drainedIn(q, OptimizerOptions()).reservedBytes shouldBe 0L
+  }
+
   test("should read a shared CTE result in full after a reader stopped early") {
     val q =
       """with c as { from orders where o_orderkey < 20000 select o_orderkey }

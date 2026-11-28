@@ -714,7 +714,10 @@ trait SharedResults:
       val kept  = mutable.Set.empty[SharedResult]
       def scanOf(r: SharedResult, t: CountedReads): Unit = scans(r) = t :: scans.getOrElse(r, Nil)
       val visited                                        = java.util.IdentityHashMap[AnyRef, Unit]()
-      def walk(op: Operator): Unit                       =
+      // The bodies of results computed while planning (to re-plan with their row counts) have
+      // read their inputs already: their scans would never report
+      sharedResultsOf(Seq(root)).filter(_.isComputed).foreach(r => visited.put(r.op, ()))
+      def walk(op: Operator): Unit =
         if !visited.containsKey(op) then
           visited.put(op, ())
           op match
