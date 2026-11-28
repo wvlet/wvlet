@@ -73,6 +73,13 @@ trait SpillCompat:
     */
   def defaultThresholdBytes: Long
 
+  /**
+    * The default threshold leaving headroom for untracked memory of `threads` workers
+    * ([[SpillThreshold.withHeadroom]], `spill_headroom`) on the JVM; the same as
+    * [[defaultThresholdBytes]] elsewhere
+    */
+  def headroomThresholdBytes(threads: Int): Long = defaultThresholdBytes
+
   /** The folder under which queries create their spill folders by default */
   def defaultDirectory: String
 
