@@ -66,15 +66,12 @@ end WvletMain
 /**
   * The JVM `wvlet` command: the commands shared with the npm and Native distributions
   * ([[WvletCliCommands]]), run with the JVM connectors (`build` runs on the flow executor), plus
-  * the JVM-only `ui`, `flow`, and `catalog` commands
+  * the JVM-only `server`, `flow`, and `catalog` commands
   */
 class WvletMain(opts: WvletCliGlobalOption) extends WvletCliCommands:
 
-  @command(description = "Start a local WebUI server")
-  def ui(serverConfig: WvletServerConfig): Unit = WvletServer.startServer(
-    serverConfig,
-    openBrowser = true
-  )
+  @command(description = "Start the wvlet server and its web UI")
+  def server(serverConfig: WvletServerConfig): Unit = WvletServer.startServer(serverConfig)
 
   private def handleError[U](body: => U): U =
     try

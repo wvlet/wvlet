@@ -22,7 +22,7 @@ import wvlet.uni.cli.TerminalIO
   *
   * Each platform (JVM, Node.js, Native) wires its own `main` that reads argv and dispatches through
   * `Launcher.of[WvletCli]`. The JVM CLI's `WvletMain` implements the same commands with the JVM
-  * connectors, runs the REPL and builds on them, and adds `ui`, `flow`, and `catalog`.
+  * connectors, runs the REPL and builds on them, and adds `server`, `flow`, and `catalog`.
   */
 class WvletCli(opts: WvletCliGlobalOption) extends WvletCliCommands:
 
@@ -118,7 +118,7 @@ end WvletCli
 object WvletCli:
 
   /** Commands that only the JVM CLI (`WvletMain`) has */
-  val jvmOnlyCommands: Set[String] = Set("ui", "flow", "catalog")
+  val jvmOnlyCommands: Set[String] = Set("server", "flow", "catalog")
 
   // The options of WvletCliGlobalOption that take a value, so their value is not taken for the
   // command name. Update together with WvletCliGlobalOption

@@ -3,9 +3,14 @@ package wvlet.lang.server
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryCancelRequest
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryInfoRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC
+import wvlet.lang.api.v1.query.QueryDetailRequest
 import wvlet.lang.api.v1.query.QueryInfo
+import wvlet.lang.api.v1.query.QueryListRequest
+import wvlet.lang.api.v1.query.QueryStatus
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.test.WvletDITest
+
+import java.time.Instant
 
 /**
   * Query ids (strings) and request ids (`wvlet.uni.util.ULID`) must survive the RPC round-trip.
@@ -71,6 +76,40 @@ class QueryIdRpcRoundTripTest extends WvletDITest:
     val response = client.FrontendApi.submitQuery(QueryRequest(query = "select 1"))
     val info     = client.FrontendApi.cancelQuery(QueryCancelRequest(response.queryId))
     info.status.isFinished shouldBe true
+  }
+
+  test("listQueries, getQueryDetail, and getClusterInfo round-trip over RPC") {
+    val client   = dep[FrontendRPC.RPCSyncClient]
+    val response = client.FrontendApi.submitQuery(QueryRequest(query = "select 7 as rpc_list"))
+    val deadline = System.currentTimeMillis() + 30000
+    while !client
+        .FrontendApi
+        .getQueryInfo(QueryInfoRequest(response.queryId, pageToken = "0"))
+        .status
+        .isFinished && System.currentTimeMillis() < deadline
+    do
+      Thread.sleep(50)
+
+    // Instants, enums in a Seq, and options must survive the Weaver round-trip
+    val list = client
+      .FrontendApi
+      .listQueries(
+        QueryListRequest(
+          statuses = Seq(QueryStatus.FINISHED),
+          createdAfter = Some(Instant.EPOCH),
+          text = Some("rpc_list")
+        )
+      )
+    list.queries.map(_.queryId) shouldBe Seq(response.queryId)
+    list.queries.head.createdAt.isAfter(Instant.EPOCH) shouldBe true
+
+    val detail = client.FrontendApi.getQueryDetail(QueryDetailRequest(response.queryId))
+    detail.query shouldBe "select 7 as rpc_list"
+    detail.summary.status shouldBe QueryStatus.FINISHED
+
+    val cluster = client.FrontendApi.getClusterInfo
+    QueryIdGenerator.isServerId(cluster.serverId) shouldBe true
+    (cluster.queries.maxRunning > 0) shouldBe true
   }
 
 end QueryIdRpcRoundTripTest

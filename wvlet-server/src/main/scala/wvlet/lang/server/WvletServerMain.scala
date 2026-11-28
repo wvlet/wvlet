@@ -16,5 +16,5 @@ object WvletServerMain:
   * @param opts
   */
 class WvletServerMain(serverConfig: WvletServerConfig) extends LogSupport:
-  @command(description = "Start a local WebUI server", isDefault = true)
-  def server(): Unit = WvletServer.startServer(serverConfig, openBrowser = false)
+  @command(description = "Start the wvlet server and its web UI", isDefault = true)
+  def server(): Unit = WvletServer.startServer(serverConfig)

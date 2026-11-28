@@ -775,7 +775,7 @@ Runs are managed with `wvlet flow session` subcommands:
 
 ### Flow Runs in the Web UI
 
-`wvlet ui -w <folder>` serves a **Flow Runs** page next to the query editor: recent runs
+`wvlet server -w <folder>` serves a **Flow Runs** page next to the query editor: recent runs
 with state badges, per-run stage states, attempts, and errors, and a flow-name filter. The
 page reads the same run store as the `wvlet flow session` commands, so runs triggered from
 the CLI or a scheduler daemon on the same working folder appear as they happen, and the

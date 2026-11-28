@@ -190,21 +190,22 @@ wvlet build
 wvlet build -s stg_orders+
 ```
 
-### `wvlet ui`
+### `wvlet server`
 
-*JVM CLI.* Start the Wvlet Web UI server.
+*JVM CLI.* Start the wvlet server: it runs queries for remote clients and serves the [web UI](./ui.md).
 
 ```bash
-wvlet ui [options]
+wvlet server [options]
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `-p, --port <port>` | Server port (default: 8080) |
-| `--host <host>` | Server host (default: localhost) |
-| `--no-browser` | Don't open browser automatically |
+| `-p, --port <port>` | Server port (default: 9090) |
+| `--open` | Open the web UI in a browser (macOS) |
+| `--tpch` | Load small demo TPC-H tables |
+| `--auth-token <token>` | Require this bearer token on RPC requests (or set `WVLET_SERVER_TOKEN`) |
 | `--max-running-queries <n>` | Queries running at once; others wait in the queue (default: half the CPUs) |
 | `--max-queued-queries <n>` | Queries waiting to run; submissions past it fail with `RESOURCE_EXHAUSTED` (default: 1000). See [Remote Wvlet Server](./remote-server.md#query-queue-and-logs) |
 | `--max-query-memory <size>` | Memory one wvlet-engine query may hold, e.g. `2GB`, before it fails with `RESOURCE_EXHAUSTED` (default: no limit) |
@@ -214,14 +215,11 @@ wvlet ui [options]
 **Examples:**
 
 ```bash
-# Start UI on default port
-wvlet ui
+# Start the server on the default port 9090
+wvlet server
 
-# Start on custom port
-wvlet ui --port 9000
-
-# Start without opening browser
-wvlet ui --no-browser
+# Start on a custom port and open the web UI
+wvlet server --port 9000 --open
 ```
 
 
@@ -300,8 +298,8 @@ wvlet compile -f query.wv
 # 2. Run queries against database
 wvlet run -f query.wv
 
-# 3. Start UI for interactive development
-wvlet ui
+# 3. Start the server and its web UI for interactive development
+wvlet server --open
 ```
 
 ### CI/CD Pipeline Example

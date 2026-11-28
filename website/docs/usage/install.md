@@ -33,7 +33,7 @@ Without Homebrew, for example on Windows, download a package from the [release p
 npm install -g @wvlet/cli
 ```
 
-It runs the same command lines on the in-process [Wvlet engine](../engines/wvlet-engine.md): the [REPL](repl.md), `run`, `compile`, and `build` (one model at a time). `flow`, `catalog`, `ui`, and the JDBC connectors need the Homebrew or release-package `wvlet`. It runs on macOS, Linux, and Windows on x64 and arm64; `pnpm add -g` and `bun add -g` work too.
+It runs the same command lines on the in-process [Wvlet engine](../engines/wvlet-engine.md): the [REPL](repl.md), `run`, `compile`, and `build` (one model at a time). `flow`, `catalog`, `server`, and the JDBC connectors need the Homebrew or release-package `wvlet`. It runs on macOS, Linux, and Windows on x64 and arm64; `pnpm add -g` and `bun add -g` work too.
 
 - **Updates**: once a day it checks for a new release in the background and prints a one-line notice; `wvlet upgrade` reinstalls with the package manager you used. Set `WVLET_NO_UPDATE_CHECK=1` to turn the check off.
 - **With Homebrew too**: the first `wvlet` on your `PATH` is the one that runs; check with `which wvlet`.

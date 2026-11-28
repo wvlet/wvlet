@@ -47,7 +47,7 @@ class WvletMainTest extends UniTest:
   }
 
   test("start server test") {
-    WvletMain.main("ui --quit-immediately")
+    WvletMain.main("server --quit-immediately")
   }
 
 end WvletMainTest

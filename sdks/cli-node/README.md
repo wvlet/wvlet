@@ -21,7 +21,7 @@ wvlet run "from 'data.parquet' limit 10"
 wvlet run -f query.wv --format csv
 ```
 
-Run `wvlet` on a terminal (or `wvlet repl`) to open the interactive shell. `wvlet build` builds materialized models one model at a time (see [Model Pipelines](https://wvlet.org/docs/syntax/model-pipelines)). The JVM-only commands (`wvlet flow`, `catalog`, `ui`), parallel builds with run records, and JDBC connectors such as Snowflake are not in this package; install the JVM CLI for them (see [Installation](https://wvlet.org/docs/usage/install)).
+Run `wvlet` on a terminal (or `wvlet repl`) to open the interactive shell. `wvlet build` builds materialized models one model at a time (see [Model Pipelines](https://wvlet.org/docs/syntax/model-pipelines)). The JVM-only commands (`wvlet flow`, `catalog`, `server`), parallel builds with run records, and JDBC connectors such as Snowflake are not in this package; install the JVM CLI for them (see [Installation](https://wvlet.org/docs/usage/install)).
 
 ## Updating
 

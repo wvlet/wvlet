@@ -19,7 +19,11 @@ import wvlet.uni.util.ElapsedTime
 import wvlet.uni.util.ULID
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.LinePosition
+import wvlet.lang.api.v1.query.QueryDetail
+import wvlet.lang.api.v1.query.QueryDetailRequest
 import wvlet.lang.api.v1.query.QueryInfo
+import wvlet.lang.api.v1.query.QueryList
+import wvlet.lang.api.v1.query.QueryListRequest
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection
 
@@ -48,6 +52,23 @@ trait FrontendApi:
     * already-finished query is a no-op returning its final state.
     */
   def cancelQuery(request: QueryCancelRequest): QueryInfo
+
+  /**
+    * List running, queued, and kept finished queries, newest first. Finished queries stay listed
+    * for the server's finished-query retention
+    */
+  def listQueries(request: QueryListRequest): QueryList
+
+  /**
+    * Read what the server keeps about one query: its text, SQL, engine plans, errors, and memory.
+    * Fails with INVALID_ARGUMENT for an unknown or evicted query id
+    */
+  def getQueryDetail(request: QueryDetailRequest): QueryDetail
+
+  /** Query counts, memory pool usage, and thread load of the server */
+  def getClusterInfo: ClusterInfo
+
+end FrontendApi
 
 object FrontendApi extends RxRouterProvider:
   override def router = RxRouter.of[FrontendApi]

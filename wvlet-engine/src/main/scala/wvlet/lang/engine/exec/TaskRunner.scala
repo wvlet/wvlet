@@ -31,7 +31,25 @@ trait TaskRunner:
     */
   def coordinate[A](task: () => A): TaskRunner.Handle[A] = TaskRunner.Sequential.submit(task)
 
+  /** How busy the runner's task threads are now, for monitoring; a snapshot, not synchronized */
+  def load: TaskRunner.Load = TaskRunner.Load(threads = parallelism, busy = 0, waitingTasks = 0)
+
 object TaskRunner extends TaskRunnerCompatImpl:
+
+  /**
+    * A snapshot of a runner's task threads.
+    *
+    * @param busy
+    *   Threads running a task
+    * @param waitingTasks
+    *   Submitted tasks no thread has started yet
+    */
+  case class Load(threads: Int, busy: Int, waitingTasks: Int):
+    def add(busy: Int, waitingTasks: Int): Load = Load(
+      threads,
+      this.busy + busy,
+      this.waitingTasks + waitingTasks
+    )
 
   /** A submitted task */
   trait Handle[A]:
