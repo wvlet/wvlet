@@ -159,11 +159,30 @@ object MemoryPool:
   * reserve from worker threads.
   *
   * Operators capture the context of the thread that builds them ([[MemoryContext.current]]), set by
-  * `WvletEngine.execute` and re-entered by the planner, so no constructor takes one
+  * `WvletEngine.execute` and re-entered by the planner, so no constructor takes one.
+  *
+  * A holder that drops its rows before the query ends reserves through a [[child]] and calls
+  * [[release]] once it no longer references them: the child's bytes return to the query and the
+  * pool then, instead of at [[close]]
   */
-final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long):
+final class MemoryContext private[exec] (
+    pool: MemoryPool,
+    val limitBytes: Long,
+    private val parent: MemoryContext = null
+):
   private val reserved = AtomicLong(0L)
-  private val peak     = AtomicLong(0L)
+  // The query's context: limits, kills, and closing are the root's
+  private val root: MemoryContext =
+    if parent == null then
+      this
+    else
+      parent.root
+
+  // Guarded by the root: releases after the query closed (or after a released ancestor, whose
+  // release covered this child's bytes) return nothing
+  private var closed = false
+  // The most bytes the query held at once (the root's)
+  private val peak = AtomicLong(0L)
   // Set by the pool's low-memory killer: the query fails at its next check
   @volatile
   private var killedMessage: String = null
@@ -174,9 +193,6 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
   /** Bytes this query holds */
   def reservedBytes: Long = reserved.get()
 
-  /** The most bytes this query held at once, kept after [[close]] */
-  def peakBytes: Long = peak.get()
-
   /**
     * Reserve `bytes` for a structure about to be allocated or just received. Throws
     * RESOURCE_EXHAUSTED when the query's total exceeds its limit; the bytes stay reserved until
@@ -184,9 +200,18 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
     */
   def reserve(bytes: Long): Unit =
     if pool != null then
-      checkKilled()
+      root.checkKilled()
       if bytes > 0 then
-        add(bytes)
+        if parent == null then
+          add(bytes)
+        else
+          parent.reserve(bytes)
+          reserved.addAndGet(bytes)
+
+  /**
+    * The most bytes the query held at once, counting releases before it ended; kept after [[close]]
+    */
+  def peakBytes: Long = root.peak.get()
 
   private def add(bytes: Long): Unit =
     val total = reserved.addAndGet(bytes)
@@ -206,7 +231,7 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
         )
 
   /** Whether the pool's low-memory killer chose this query */
-  def isKilled: Boolean = killedMessage != null
+  def isKilled: Boolean = root.killedMessage != null
 
   private[exec] def kill(message: String): Unit = killedMessage = message
 
@@ -216,7 +241,7 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
     * check interrupts
     */
   def checkKilled(): Unit =
-    val m = killedMessage
+    val m = root.killedMessage
     if m != null then
       throw StatusCode.RESOURCE_EXHAUSTED.newException(m)
 
@@ -253,12 +278,55 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
     */
   def growing(unitBytes: Long): MemoryContext.Growing = MemoryContext.Growing(this, unitBytes)
 
-  /** Return every reservation to the pool. Idempotent */
+  /**
+    * A context for one holder of this query: its reservations count in this context (and the
+    * query's limit) until the holder calls [[release]]. [[MemoryContext.NoOp]] for a no-op context
+    */
+  def child(): MemoryContext =
+    if pool == null then
+      this
+    else
+      MemoryContext(pool, limitBytes, this)
+
+  /**
+    * Return a child's reservations to the query and the pool, once its holder no longer references
+    * the rows they counted. Idempotent; a no-op after the query closed. On the query's own context,
+    * the same as [[close]]
+    */
+  def release(): Unit =
+    if pool != null then
+      if parent == null then
+        close()
+      else
+        root.synchronized {
+          val r       = reserved.getAndSet(0L)
+          var covered = root.closed
+          var a       = parent
+          while !covered && a != null do
+            covered = a.closed
+            a = a.parent
+          closed = true
+          if r != 0 && !covered then
+            var c = parent
+            while c != null do
+              c.reserved.addAndGet(-r)
+              if c.parent == null then
+                pool.add(-r)
+              c = c.parent
+        }
+
+  /** Return every reservation of the query to the pool. Idempotent; on a child, [[release]] */
   def close(): Unit =
     if pool != null then
-      val r = reserved.getAndSet(0L)
-      pool.add(-r)
-      pool.closed(this)
+      if parent != null then
+        release()
+      else
+        synchronized {
+          closed = true
+          val r = reserved.getAndSet(0L)
+          pool.add(-r)
+        }
+        pool.closed(this)
 
   override def toString: String =
     if pool == null then

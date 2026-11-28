@@ -97,7 +97,8 @@ class MorselOpTest extends UniTest:
       Nil,
       List(() => source.close()),
       Nil,
-      Some(() => buildRows)
+      Some(() => buildRows),
+      Nil
     )
     import scala.jdk.CollectionConverters.*
     (values(op), runs.asScala.toSeq, threads.asScala.toSet)

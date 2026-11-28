@@ -146,7 +146,8 @@ object Parallelizer:
       prepare: List[() => Unit],
       close: List[() => Unit],
       hasWork: Boolean = false,
-      buildRows: List[() => Long] = Nil
+      buildRows: List[() => Long] = Nil,
+      done: List[() => Unit] = Nil
   ):
     /** The scan of the first segment */
     def scan: ScanOp = segments.head.scan
@@ -167,7 +168,7 @@ object Parallelizer:
     /** The parts of every segment in order, as one [[MorselOp]] */
     def morsels(schema: Schema, runner: TaskRunner, prepareSteps: List[() => Unit])(using
         AboveBreakers
-    ): MorselOp = MorselOp(segments, schema, runner, prepareSteps, close, tails, sliceRows)
+    ): MorselOp = MorselOp(segments, schema, runner, prepareSteps, close, tails, sliceRows, done)
 
     /**
       * The rows of the builds, for a run over one in-memory batch to decide whether to slice it
@@ -243,6 +244,8 @@ object Parallelizer:
           val shared = p.copy(
             prepare = p.prepare :+ (() => template.joinBuild.ensureBuilt()),
             close = p.close :+ (() => template.right.close()),
+            // The build is read by this pipeline's parts and tail only
+            done = p.done :+ (() => template.joinBuild.free()),
             buildRows =
               p.buildRows :+ (() => Option(template.joinBuild.build).fold(0L)(_.size.toLong))
           )
@@ -299,6 +302,8 @@ object Parallelizer:
         pipeline(j.left, runner).map { p =>
           val right       = rewrite(j.right, runner)
           var rows: Batch = null
+          // The right rows' reservation, returned once every part has joined them
+          val memory = MemoryContext.current.child()
           // Not a child: parts must not close the shared right input, released once below
           def shared: Operator =
             new IteratorOp(right.schema, () => Iterator.single(rows), "CrossInput"):
@@ -307,11 +312,23 @@ object Parallelizer:
               )
               override def sharedInputs: Seq[Operator] = Seq(right)
           p.copy(
-              prepare = p.prepare :+ (() => rows = Operator.materialize(right)),
+              prepare = p.prepare :+ (() => rows = memory.materialize(right)),
               close = p.close :+ (() => right.close()),
+              done =
+                p.done :+ { () =>
+                  if memory.isTracking then
+                    rows = null
+                    memory.release()
+                },
               buildRows = p.buildRows :+ (() => Option(rows).fold(0L)(_.size.toLong))
             )
-            .map(x => NestedLoopJoinOp(x, shared, None, JoinKind.Cross, j.schema))
+            // The right rows count once, above: a copy on the calling thread must not count them
+            // again under the query's context
+            .map(x =>
+              MemoryContext.withCurrent(MemoryContext.NoOp)(
+                NestedLoopJoinOp(x, shared, None, JoinKind.Cross, j.schema)
+              )
+            )
         }
       case _ =>
         None
@@ -351,7 +368,8 @@ object Parallelizer:
             ps.flatMap(_.prepare).toList,
             ps.flatMap(_.close).toList,
             ps.exists(_.hasWork),
-            ps.flatMap(_.buildRows).toList
+            ps.flatMap(_.buildRows).toList,
+            ps.flatMap(_.done).toList
           )
         )
 
@@ -519,7 +537,8 @@ object Parallelizer:
             o.selectedInputs,
             o.longGroupTables,
             o.sortedGroupRuns,
-            p.sliceRows
+            p.sliceRows,
+            p.done
           )
         case None if a.keys.nonEmpty =>
           PartitionedAggOp(
@@ -860,7 +879,8 @@ private[plan] object TwoPhaseAgg:
       selectedInputs: Boolean = true,
       longGroupTables: Boolean = true,
       sortedGroupRuns: Boolean = true,
-      buildRows: Option[() => Long] = None
+      buildRows: Option[() => Long] = None,
+      done: List[() => Unit] = Nil
   ): Operator =
     val nk = a.keys.size
     // Partial aggregates, and for each original aggregate the partial columns it reads
@@ -917,7 +937,8 @@ private[plan] object TwoPhaseAgg:
             .withSortedGroupRuns(sortedGroupRuns)
         )
       ),
-      buildRows
+      buildRows,
+      done
     )
     def col(i: Int): VExpr = ColRef(i, partialSchema(i).ptype, partialSchema(i).name)
     // Combine partial results by key

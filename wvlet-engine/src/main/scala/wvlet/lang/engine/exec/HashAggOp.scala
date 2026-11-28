@@ -41,7 +41,7 @@ class HashAggOp(
   private var done    = false
   private var passing = false
   // The query's memory budget, captured where the aggregation is planned
-  private val memory                   = MemoryContext.current
+  private val memory                   = MemoryContext.current.child()
   override def children: Seq[Operator] = Seq(child)
   override protected def details       =
     s"(keys=[${keys.map(_.sig).mkString(", ")}], aggs=[${aggs.map(_.sig).mkString(", ")}])"
@@ -335,10 +335,13 @@ class HashAggOp(
     if passing then
       val b = child.next()
       return if b == null then
+        memory.release()
         null
       else
         passThrough(b)
     if done then
+      // The groups were emitted: the table is dropped
+      memory.release()
       return null
     done = true
     val adaptive = skip != null && keys.nonEmpty
