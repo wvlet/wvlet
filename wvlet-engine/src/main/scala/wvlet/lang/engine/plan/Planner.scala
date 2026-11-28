@@ -156,6 +156,7 @@ class Planner(
           replanJoinedCTEs(bound, optimized).getOrElse(op)
         else
           op
+      armSharedReads(root)
       startingSharedResults(root)
     finally
       runtimeBinder.clearBoundInputs()

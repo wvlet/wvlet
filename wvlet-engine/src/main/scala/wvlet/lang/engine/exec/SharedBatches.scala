@@ -64,6 +64,18 @@ final class ComputeOnce[A](compute: () => A):
       TaskRunner.awaitNotify(this)
   }
 
+  /**
+    * Replace a computed value with the failure `e`, so that the value can be collected and later
+    * reads raise `e`. Whether the value was computed (nothing changes otherwise)
+    */
+  def discard(e: Throwable): Boolean = synchronized {
+    if state == 2 then
+      value = Left(e)
+      true
+    else
+      false
+  }
+
   /** The value, computed on this thread if no thread has started it; raises its failure */
   def get(): A =
     run()

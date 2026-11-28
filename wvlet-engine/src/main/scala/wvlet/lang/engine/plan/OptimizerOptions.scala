@@ -1221,6 +1221,15 @@ enum Optimization(val name: String):
     */
   case SpillAggregation extends Optimization("spill_aggregation")
 
+  /**
+    * With `memory_accounting`, a shared CTE result (or grouping-set input) drops its batches and
+    * returns its reservation once every scan that reads it in the planned query has finished,
+    * instead of when the query ends, so a query holds only the results still being read. Counted
+    * from the final operator tree; a reader that stops early (a limit) keeps the result. Changes no
+    * plan
+    */
+  case ReleaseCTEResults extends Optimization("release_cte_results")
+
 end Optimization
 
 object Optimization:

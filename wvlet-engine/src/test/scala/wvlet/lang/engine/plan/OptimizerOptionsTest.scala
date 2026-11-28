@@ -192,7 +192,8 @@ class OptimizerOptionsTest extends UniTest:
         "memory_accounting",
         "fair_task_scheduling",
         "fair_coordinators",
-        "spill_aggregation"
+        "spill_aggregation",
+        "release_cte_results"
       )
   }
 

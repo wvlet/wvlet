@@ -44,10 +44,36 @@ trait SharedResults:
     * CTE referenced more than once, or the input of grouping sets)
     */
   private[plan] class SharedResult(val op: Operator) extends SharedBatches:
+    // The result's own reservation, returned once its last reader finishes ([[armReads]])
+    private val holder = memory.child()
     private val result = ComputeOnce { () =>
       debug(s"Materializing a shared result:\n${op.explain()}")
-      memory.drain(op)
+      holder.drain(op)
     }
+
+    // Reads by the planned query's readers still to finish; -1 until armed (`release_cte_results`)
+    private val pendingReads = java.util.concurrent.atomic.AtomicInteger(-1)
+    @volatile
+    private var released = false
+
+    /** Whether the batches were dropped after the last reader finished */
+    def isReleased: Boolean = released
+
+    /**
+      * Drop the batches once `reads` more reads finish ([[readDone]]): the reads of the planned
+      * query's readers, counted from its operator tree
+      */
+    def armReads(reads: Int): Unit = pendingReads.set(reads)
+
+    /** One read of the planned query finished: the last one drops the batches */
+    def readDone(): Unit =
+      if pendingReads.get() > 0 && pendingReads.decrementAndGet() == 0 then
+        val e = StatusCode
+          .UNEXPECTED_STATE
+          .newException("A shared result is read after its last reader finished")
+        if result.discard(e) then
+          released = true
+          holder.release()
 
     /** The batches, computed on this thread unless another thread has started them */
     def batches: Seq[Batch] = result.get()
@@ -89,10 +115,13 @@ trait SharedResults:
 
   /** Batches computed on first read, scanned as a table whose parts are the batches */
   private[plan] class SharedTable(val name: String, val schema: Schema, val shared: SharedResult)
-      extends TableSource:
+      extends TableSource
+      with CountedReads:
+    protected def sharedResult: Option[SharedResult] = Some(shared)
+
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = selector(spec)
-      shared.batches.iterator.map(sel)
+      counted(shared.batches.iterator.map(sel))
 
     /** Selects the requested columns of a batch; the positions are looked up once per scan */
     private def selector(spec: ScanSpec): Batch => Batch =
@@ -112,17 +141,19 @@ trait SharedResults:
       else
         val sel = selector(spec)
         Some(
-          ScanSplits(
-            bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))),
-            () => (),
-            bs.toIndexedSeq.map(_.size.toLong)
+          counted(
+            ScanSplits(
+              bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))),
+              () => (),
+              bs.toIndexedSeq.map(_.size.toLong)
+            )
           )
         )
 
     override def sliceSplits(spec: ScanSpec, parts: Int): Option[ScanSplits] =
       shared.batches.filter(_.size > 0) match
         case Seq(b) =>
-          ScanSplits.slices(selector(spec)(b), parts)
+          ScanSplits.slices(selector(spec)(b), parts).map(counted)
         case _ =>
           None
 
@@ -257,7 +288,8 @@ trait SharedResults:
       * enough that a pass over it costs little next to the query
       */
     private def hasResultStats: Boolean =
-      rowCount.exists(_ <= Planner.MaxResultStatsRows) && enabled(Optimization.CTEReaderStats)
+      rowCount.exists(_ <= Planner.MaxResultStatsRows) && enabled(Optimization.CTEReaderStats) &&
+        !sharedResult.exists(_.isReleased)
 
     override def distinct(position: Int): Option[Double] =
       if !hasResultStats then
@@ -582,10 +614,13 @@ trait SharedResults:
       val schema: Schema,
       val cte: DeferredCTE,
       val setContext: Boolean = false
-  ) extends TableSource:
+  ) extends TableSource
+      with CountedReads:
+    protected def sharedResult: Option[SharedResult] = cte.sharedResult
+
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = cte.selector(spec.columns)
-      cte.batches.iterator.map(sel)
+      counted(cte.batches.iterator.map(sel))
 
     override def estimatedRows: Option[Long] = cte.rows
 
@@ -605,17 +640,19 @@ trait SharedResults:
       else
         val sel = cte.selector(spec.columns)
         Some(
-          ScanSplits(
-            bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))),
-            () => (),
-            bs.toIndexedSeq.map(_.size.toLong)
+          counted(
+            ScanSplits(
+              bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))),
+              () => (),
+              bs.toIndexedSeq.map(_.size.toLong)
+            )
           )
         )
 
     override def sliceSplits(spec: ScanSpec, parts: Int): Option[ScanSplits] =
       cte.batches.filter(_.size > 0) match
         case Seq(b) =>
-          ScanSplits.slices(cte.selector(spec.columns)(b), parts)
+          ScanSplits.slices(cte.selector(spec.columns)(b), parts).map(counted)
         case _ =>
           None
 
@@ -664,5 +701,80 @@ trait SharedResults:
       pending = pending.filterNot(next.contains)
 
   end finalizeCTEs
+
+  /**
+    * Let each shared result that `root` reads drop its batches once the scans that read it in
+    * `root` (and in the results it reads) have finished (`release_cte_results`), instead of when
+    * the query ends. Counted from the final operator tree, as readers made while binding may be
+    * discarded. A result with a reader of another kind (over duplicate column names) is kept
+    */
+  private[plan] def armSharedReads(root: Operator): Unit =
+    if enabled(Optimization.ReleaseCTEResults) && memory.isTracking then
+      val scans = mutable.LinkedHashMap.empty[SharedResult, List[CountedReads]]
+      val kept  = mutable.Set.empty[SharedResult]
+      def scanOf(r: SharedResult, t: CountedReads): Unit = scans(r) = t :: scans.getOrElse(r, Nil)
+      val visited                                        = java.util.IdentityHashMap[AnyRef, Unit]()
+      def walk(op: Operator): Unit                       =
+        if !visited.containsKey(op) then
+          visited.put(op, ())
+          op match
+            case s: ScanOp =>
+              s.source match
+                case t: CTETable =>
+                  t.cte.sharedResult.foreach(r => scanOf(r, t))
+                  t.cte.resultOp.foreach(walk)
+                case t: SharedTable =>
+                  scanOf(t.shared, t)
+                  walk(t.shared.op)
+                case _ =>
+            case r: SharedReader =>
+              kept += r.shared
+            case r: CTEIteratorReader =>
+              r.cte.sharedResult.foreach(kept += _)
+            case _ =>
+          (op.children ++ op.sharedInputs).foreach(walk)
+      walk(root)
+      scans.foreach { (r, ts) =>
+        if !kept.contains(r) then
+          ts.foreach(_.armRead())
+          r.armReads(ts.size)
+      }
+
+  /**
+    * A reader table of a shared result that reports to it when a read of the planned query has
+    * finished: a scan's iterator ran out, or the splits a [[MorselOp]] read were closed
+    */
+  private[plan] trait CountedReads:
+    protected def sharedResult: Option[SharedResult]
+    // Reads of the planned query through this table not yet finished
+    private val armed = java.util.concurrent.atomic.AtomicInteger(0)
+
+    def armRead(): Unit = armed.incrementAndGet()
+
+    private def finished(): Unit =
+      if armed.getAndUpdate(n => math.max(0, n - 1)) > 0 then
+        sharedResult.foreach(_.readDone())
+
+    protected def counted(it: Iterator[Batch]): Iterator[Batch] =
+      new Iterator[Batch]:
+        private var done     = false
+        def hasNext: Boolean =
+          val h = it.hasNext
+          if !h && !done then
+            done = true
+            finished()
+          h
+        def next(): Batch = it.next()
+
+    protected def counted(s: ScanSplits): ScanSplits =
+      val once = java.util.concurrent.atomic.AtomicBoolean(false)
+      s.copy(close =
+        () =>
+          s.close()
+          if once.compareAndSet(false, true) then
+            finished()
+      )
+
+  end CountedReads
 
 end SharedResults
