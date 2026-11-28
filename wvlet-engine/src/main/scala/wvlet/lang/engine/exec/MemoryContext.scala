@@ -310,14 +310,13 @@ object MemoryContext:
         s" (peak tracked memory ${mb(memory.peakBytes)})"
       else
         ""
+    val detail = Option(e.getMessage).filter(_.nonEmpty).map(m => s" (${m})").getOrElse("")
     StatusCode
       .RESOURCE_EXHAUSTED
       .newException(
-        s"Query ran out of heap memory${tracked}: ${Option(e.getMessage).getOrElse(
-            ""
-          )}. Give the process more heap " +
-          "(-Xmx in JAVA_OPTS on the JVM, GC_MAXIMUM_HEAP_SIZE on Scala Native), or set a " +
-          "per-query memory limit (--max-query-memory) to fail such queries before the heap runs out",
+        s"Query ran out of heap memory${detail}${tracked}. Give the process more heap " +
+          "(-Xmx in JAVA_OPTS on the JVM, GC_MAXIMUM_HEAP_SIZE on Scala Native); a server can " +
+          "also fail such queries earlier with --max-query-memory",
         e
       )
 

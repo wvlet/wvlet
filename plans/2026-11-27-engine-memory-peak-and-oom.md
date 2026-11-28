@@ -19,7 +19,7 @@ Lane: Express (bench column and an error conversion, no plan change, no always-g
 
 - `MemoryContext` keeps the highest total it reached (`peakBytes`), updated where reservations add up, so child contexts from the parallel branch still count at the query's root.
 - The bench opens a query context in `plannedRun` the way `execute` does and reports the median peak as `engine_peak_mb` in the TSV and the markdown table. Reservations now run in the bench too, which matches what `execute` pays.
-- `WvletEngine.execute` catches `OutOfMemoryError` after its `finally` blocks have closed the operators and released the context, and throws RESOURCE_EXHAUSTED naming the max heap, the query's peak tracked memory, and how to raise it (`-Xmx` in `JAVA_OPTS` for the JVM CLI, `GC_MAXIMUM_HEAP_SIZE` for the Native one) or set `--max-query-memory` to fail earlier.
+- `WvletEngine.execute` catches `OutOfMemoryError` after its `finally` blocks have closed the operators and released the context, and throws RESOURCE_EXHAUSTED naming the query's peak tracked memory and how to raise the heap (`-Xmx` in `JAVA_OPTS` for the JVM CLI, `GC_MAXIMUM_HEAP_SIZE` for the Native one), or, on a server, `--max-query-memory` to fail earlier. The max heap isn't named: `Runtime.maxMemory` isn't on every platform.
 - The conversion is not behind a toggle: it changes no plan and no hot path, only the error a dying query reports.
 - Tests: peak stays after release and covers a tiny-limit failure; an `OutOfMemoryError` thrown from an operator surfaces as RESOURCE_EXHAUSTED with the heap hint and leaves the pool at zero.
 
