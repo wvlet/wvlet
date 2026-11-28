@@ -330,11 +330,15 @@ object EngineTPCHBench extends LogSupport:
               else
                 timed(countRows(conn, sql))
             // Wall time and busy cores of one DuckDB run (DuckDB runs in this process)
+            // (0 ms and 0 cores without DuckDB runs)
             def duckdbTimed(): (Double, Double) =
-              val cpu0    = processCpuNanos()
-              val (ms, _) = duckdbOnce()
-              val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
-              (ms, cpuMs / math.max(ms, 0.001))
+              if opts.engineOnly then
+                (0.0, 0.0)
+              else
+                val cpu0    = processCpuNanos()
+                val (ms, _) = duckdbOnce()
+                val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
+                (ms, cpuMs / math.max(ms, 0.001))
             def engineOnce(e: WvletEngine): PlannedRun = plannedRun(e, q)
             // Wall time, busy cores (process CPU time / wall time), GC time, allocated MB,
             // planning time, live heap, and peak tracked memory of one engine run
@@ -402,7 +406,7 @@ object EngineTPCHBench extends LogSupport:
               }
               val duck = duckRuns.result()
               val eng  = engRuns.result()
-              if opts.duckdbProfile then
+              if opts.duckdbProfile && !opts.engineOnly then
                 val out = File(outDir, s"${label}-${name}.duckdb.json").getAbsolutePath
                 execute(conn, "set enable_profiling = 'json'")
                 execute(conn, s"set profiling_output = '${out}'")
