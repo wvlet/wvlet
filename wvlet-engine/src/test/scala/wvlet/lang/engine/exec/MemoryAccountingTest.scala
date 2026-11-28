@@ -257,6 +257,34 @@ class MemoryAccountingTest extends UniTest:
     pool.reservedBytes shouldBe 0L
   }
 
+  test("should stop a failed query's other tasks and run the next query normally") {
+    val pool                  = MemoryPool()
+    val engine                = engineOf(pool)
+    var failed: MemoryContext = null
+    val e                     = intercept[WvletLangException] {
+      withQuery("from orders select o_orderkey") { r =>
+        engine.runQuery(r) { (op, memory) =>
+          failed = memory
+          throw OutOfMemoryError("Java heap space")
+        }
+      }
+    }
+    e.statusCode shouldBe StatusCode.RESOURCE_EXHAUSTED
+    // Tasks still running for the failed query fail at their next check
+    failed.isKilled shouldBe true
+    intercept[WvletLangException](failed.checkKilled()).statusCode shouldBe
+      StatusCode.RESOURCE_EXHAUSTED
+    pool.reservedBytes shouldBe 0L
+    pool.openQueries shouldBe 0
+    // The shared untracked context is never marked
+    MemoryContext.NoOp.abandon()
+    MemoryContext.NoOp.isKilled shouldBe false
+    // The next query in the same engine runs as usual
+    withQuery("from orders select o_orderkey") { r =>
+      engine.execute(r).numRows shouldBe 15000
+    }
+  }
+
   test("should return a child's reservations on release, once") {
     val pool  = MemoryPool()
     val q     = pool.newQuery(limitBytes = 100)

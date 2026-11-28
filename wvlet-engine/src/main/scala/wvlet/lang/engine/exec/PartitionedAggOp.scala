@@ -323,7 +323,7 @@ class PartitionedAggOp(
         IndexedSeq(input)
     def eachRun[A](f: IndexedSeq[Batch] => A): IndexedSeq[A] =
       if parallelRuns then
-        runs.map(run => runner.submit(() => f(run))).map(_.get())
+        TaskRunner.runAll(runner, runs.size)(i => f(runs(i)))
       else
         runs.map(f)
     val types = keys.map(_.ptype)

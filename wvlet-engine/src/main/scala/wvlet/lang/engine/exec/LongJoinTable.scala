@@ -352,7 +352,7 @@ object LongJoinTable:
     if parts == 1 then
       insertPart(0)
     else
-      (0 until parts).map(p => runner.submit(() => insertPart(p))).foreach(_.get())
+      TaskRunner.runAll(runner, parts)(insertPart)
     (table, !unique.contains(false))
 
   end build

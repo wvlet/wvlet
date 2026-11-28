@@ -116,7 +116,7 @@ class MorselOp(
   private def runTail(t: Tail, from: Int, until: Int): Seq[Batch] =
     val sc = t.scan.getOrElse(scan)
     val op = t.run(from, until)(IteratorOp(sc.schema, () => Iterator.empty, sc.name))
-    try op.drain()
+    try drainPart(op)
     finally op.close()
 
   /**
@@ -148,8 +148,22 @@ class MorselOp(
     // A part's partial tables are dropped once drained, bounded by the part: counting them until
     // the query ends would overcount, also when parts run on the calling thread
     val op = MemoryContext.withCurrent(MemoryContext.NoOp)(seg.pipeline(part))
-    try op.drain()
+    try drainPart(op)
     finally op.close()
+
+  /**
+    * [[Operator.drain]], failing at the next batch once the query has failed elsewhere
+    * ([[MemoryContext.abandon]]) or was killed: a part probing a large join can run for seconds,
+    * and the failed query's close waits for it
+    */
+  private def drainPart(op: Operator): Seq[Batch] =
+    val b = Seq.newBuilder[Batch]
+    var x = op.next()
+    while x != null do
+      b += x.compact()
+      queryMemory.checkKilled()
+      x = op.next()
+    b.result()
 
   /** Starts submitting the parts of seg */
   private def openParts(seg: Segment, s: ScanSplits): Unit =

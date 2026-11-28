@@ -37,8 +37,7 @@ object JoinBuildSteps:
         f(i)
         i += 1
     else
-      val handles = Array.tabulate(n)(i => runner.submit(() => f(i)))
-      handles.foreach(_.get())
+      TaskRunner.runAll(runner, n)(f)
 
   /** An array of n copies of v, filled in chunks on the runner */
   private[exec] def filledInts(n: Int, v: Int, runner: TaskRunner): Array[Int] =

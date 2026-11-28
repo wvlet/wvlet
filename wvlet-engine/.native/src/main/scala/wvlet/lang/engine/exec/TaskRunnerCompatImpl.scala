@@ -112,22 +112,29 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
   def submit[A](task: () => A): TaskRunner.Handle[A] =
     checkRunning()
     val g = TaskGroup.current
+    val s = StartGate()
     if g == null then
-      handle(pool.submit(() => task()))
+      handle(pool.submit(() => s.run(task)), s)
     else
-      handle(fair.submit(g, task))
+      handle(fair.submit(g, () => s.run(task)), s)
 
   override def coordinate[A](task: () => A): TaskRunner.Handle[A] =
     val g = TaskGroup.current
+    val s = StartGate()
     if g != null && g.fairCoordinators then
       checkRunning()
       // The fair pool runs the task in its group
-      handle(fairCoordinators.submit(g, task))
+      handle(fairCoordinators.submit(g, () => s.run(task)), s)
     else
       // The coordinator's own tasks stay in the submitter's group
-      handle(coordinators.submit(() => TaskGroup.withGroup(g)(task())))
+      handle(coordinators.submit(() => TaskGroup.withGroup(g)(s.run(task))), s)
 
-  private def handle[A](f: Future[A]): TaskRunner.Handle[A] =
+  /**
+    * A handle whose cancel drops the task only if it hasn't started: Future.cancel would also mark
+    * a running task cancelled, so that get() returned at once while the task ran on, and a closing
+    * operator (e.g. a failed query's MorselOp) would stop waiting for it
+    */
+  private def handle[A](f: Future[A], s: StartGate): TaskRunner.Handle[A] =
     new TaskRunner.Handle[A]:
       def get(): A =
         try
@@ -135,7 +142,10 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
         catch
           case e: ExecutionException if e.getCause != null =>
             throw e.getCause
-      def cancel(): Unit = f.cancel(false)
+      def cancel(): Unit =
+        if s.cancel() then
+          // Drops the queued task's closure now instead of when a thread dequeues it
+          f.cancel(false)
 
   /**
     * Busy threads and waiting tasks of the task pools (not the coordinator pools), against
@@ -247,3 +257,18 @@ private final class FairPool(n: Int, threads: ThreadFactory, coordinators: Boole
     workers.foreach(_.interrupt())
 
 end FairPool
+
+/**
+  * Whether a submitted task has started or was cancelled first: [[ThreadPoolRunner]]'s handles
+  * cancel only tasks that haven't started
+  */
+private final class StartGate extends AtomicInteger(0):
+  /** Run `task` unless it was cancelled first */
+  def run[A](task: () => A): A =
+    if compareAndSet(0, 1) then
+      task()
+    else
+      throw java.util.concurrent.CancellationException("The task was cancelled before it started")
+
+  /** Cancel the task unless it has started; whether it was cancelled */
+  def cancel(): Boolean = compareAndSet(0, 2) || get() == 2

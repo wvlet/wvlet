@@ -269,28 +269,55 @@ class WvletEngine(
       MemoryContext.NoOp
 
   /** Expand model references, plan, and run a query relation */
-  def execute(r: Relation)(using ctx: Context): EngineResult = asQuery {
-    // Opened before planning, which runs plan-time subqueries, and closed after the result is
-    // drained: the caller owns the result batches from then on
-    val memory = newQueryMemory()
-    try
+  def execute(r: Relation)(using ctx: Context): EngineResult =
+    runQuery(r) { (op, memory) =>
+      // Printed only when the debug log or a monitor reads it
+      lazy val planText = op.explain()
+      debug(s"[physical plan]\n${planText}")
+      ctx.queryProgressMonitor.engineQueryStarted(planText, memory)
+      EngineResult(op.schema, memory.drain(op))
+    }
+
+  /**
+    * Plan `r` and pass its operators and memory context to `run`, as one query: what every caller
+    * that runs a query (execute, benchmarks) goes through, so that a failed query leaves nothing
+    * behind for later ones.
+    *
+    *   - The memory context opens before planning, which runs plan-time subqueries, and closes
+    *     after `run` returns: the caller owns the result batches from then on.
+    *   - On a failure, the query is marked failed before its operators close, so that its pool
+    *     tasks stop at their next check (a morsel part, a reservation) instead of running to the
+    *     end while closing waits for them ([[MemoryContext.abandon]]).
+    *   - An `OutOfMemoryError` becomes RESOURCE_EXHAUSTED: by then the query's operators and rows
+    *     are unreachable, so the heap is free again.
+    */
+  def runQuery[A](r: Relation)(run: (Operator, MemoryContext) => A)(using ctx: Context): A =
+    asQuery {
+      val memory = newQueryMemory()
       try
-        MemoryContext.withCurrent(memory) {
-          val expanded = GenSQL.expand(r, ctx)
-          val op       = physicalPlan(expanded)
-          // Printed only when the debug log or a monitor reads it
-          lazy val planText = op.explain()
-          debug(s"[physical plan]\n${planText}")
-          ctx.queryProgressMonitor.engineQueryStarted(planText, memory)
-          try EngineResult(op.schema, memory.drain(op))
-          finally op.close()
-        }
-      finally memory.close()
-    catch
-      case e: OutOfMemoryError =>
-        // The query's operators and rows are unreachable by now, so the heap is free again
-        throw MemoryContext.outOfHeap(memory, e)
-  }
+        try
+          MemoryContext.withCurrent(memory) {
+            val op =
+              try
+                physicalPlan(GenSQL.expand(r, ctx))
+              catch
+                case e: Throwable =>
+                  memory.abandon()
+                  throw e
+            try
+              run(op, memory)
+            catch
+              case e: Throwable =>
+                memory.abandon()
+                throw e
+            finally
+              op.close()
+          }
+        finally memory.close()
+      catch
+        case e: OutOfMemoryError =>
+          throw MemoryContext.outOfHeap(memory, e)
+    }
 
   /**
     * Run `body` (planning and running one query) as one query of the engine's task pool: with
