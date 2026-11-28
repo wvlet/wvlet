@@ -135,10 +135,13 @@ class WindowOp(
     if result.hasNext then
       result.next()
     else
+      // Done: the buffer is dropped, so its reservation returns before the query ends
+      result = Iterator.empty
+      memory.release()
       null
 
   // The query's memory budget, captured where the window is planned
-  private val memory = MemoryContext.current
+  private val memory = MemoryContext.current.child()
 
   private def compute(): Iterator[Batch] =
     val all =

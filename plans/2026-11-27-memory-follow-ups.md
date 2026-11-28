@@ -22,8 +22,8 @@ Lane: Standard (new server behaviour and option), pre-approved by the launch pro
   - The pool checks on reservations made while over capacity; the server also checks on a timer, since a query holding its memory without growing never reserves.
   - The message names the query's share, the pool total and capacity, and how to recover (retry, or a larger `--memory-pool-size`).
   - A single query over capacity is not killed: it frees nothing for others, and `--max-query-memory` bounds it.
-- **Early release (PR 2).** A holder that drops its rows returns its reservation then: join builds once their probes finish, sort and window buffers once emitted, shared CTE results after their last reader. Each holder keeps its own reservation (a child of the query's context) and releases it when it drops the buffer, never while it still references it.
-- **More holders (PR 2 or 3).** `DistinctOp` tables, INTERSECT/EXCEPT build sides, and nested-loop join builds reserve like hash joins and aggregations.
+- **Early release (PR 2).** A holder that drops its rows returns its reservation then: join builds once their probes finish, sort and window buffers once emitted. Shared CTE results after their last reader are a separate follow-up (another session owns it). Each holder keeps its own reservation (a child of the query's context) and releases it when it drops the buffer, never while it still references it.
+- **More holders (PR 2).** `DistinctOp` tables, INTERSECT/EXCEPT build sides, and nested-loop join builds reserve like hash joins and aggregations.
 - **GC pressure (investigation).** Profile the mixed-workload bench's GC pauses from large aggregations; ship a change only if an A/B shows a win, otherwise record findings in the query manager plan.
 - Engine changes stay behind `memory_accounting`; each PR carries an A/B under the bench lock. Tests: a two-query pool over capacity kills the larger and lets the other finish; releases return the pool to its live holders' total mid-query; new holders fail a tiny limit.
 

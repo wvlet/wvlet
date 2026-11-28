@@ -155,7 +155,7 @@ class PartitionedAggOp(
   private[engine] var usedSortedSplits: Boolean = false
 
   // The query's memory budget, captured where the aggregation is planned
-  private val memory = MemoryContext.current
+  private val memory = MemoryContext.current.child()
 
   def next(): Batch =
     if result == null then
@@ -163,6 +163,9 @@ class PartitionedAggOp(
     if result.hasNext then
       result.next()
     else
+      // Done: the buffer is dropped, so its reservation returns before the query ends
+      result = Iterator.empty
+      memory.release()
       null
 
   private def aggregate(): Iterator[Batch] =
@@ -197,7 +200,8 @@ class PartitionedAggOp(
           .withColumnMajorSums(columnMajorSums)
           .withLongGroupTables(longGroupTables)
           .withSortedGroupRuns(sortedGroupRuns)
-        try op.drain()
+        // The partition's table returns its groups once drained; its output counts here
+        try memory.drain(op)
         finally op.close()
       val keyVecs =
         if routed.isEmpty && packKeys && AggKeyPacking.packable(keys.map(_.ptype), longDecimalKeys)

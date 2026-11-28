@@ -334,9 +334,13 @@ class SortOp(
     if result.hasNext then
       result.next()
     else
+      // Done: the buffer is dropped, so its reservation returns before the query ends
+      result = Iterator.empty
+      memory.release()
       null
 
-  private val memory = MemoryContext.current // captured where the sort is planned
+  // The query's memory budget, captured where the sort is planned
+  private val memory                     = MemoryContext.current.child()
   private def sortAll(): Iterator[Batch] =
     val all = memory.materialize(child)
     if all.size == 0 then
@@ -726,6 +730,11 @@ class UnionAllOp(val inputs: Seq[Operator], val schema: Schema) extends Operator
 /** Removes duplicate rows */
 class DistinctOp(val child: Operator) extends Operator:
   private var table: GroupIndex = null
+  // The query's memory budget, captured where the distinct is planned: the seen rows' keys
+  private val memory                        = MemoryContext.current.child()
+  private val groups: MemoryContext.Growing = memory.growing(
+    child.schema.types.map(MemoryContext.valueBytes).sum + HashAggOp.GroupTableBytes
+  )
 
   /** Whether several integer, date, or decimal columns group by one packed key */
   var packKeys: Boolean = true
@@ -746,6 +755,9 @@ class DistinctOp(val child: Operator) extends Operator:
     while out == null do
       val b = child.next()
       if b == null then
+        // Every row was seen: the table is dropped
+        table = null
+        memory.release()
         return null
       if table == null then
         table = PackedGroupTable.forKeys(
@@ -757,6 +769,7 @@ class DistinctOp(val child: Operator) extends Operator:
         )
       val before = table.numGroups
       val ids    = table.groupIds(b.columns, b.size)
+      groups.ensure(table.numGroups)
       // Keep the first row of every new group
       val keep = new Array[Int](b.size)
       var k    = 0
@@ -770,6 +783,7 @@ class DistinctOp(val child: Operator) extends Operator:
         i += 1
       if k > 0 then
         out = b.gather(keep, k)
+    end while
     out
 
   end next
@@ -792,10 +806,15 @@ class SetOpOp(
     else
       "Except"
 
+  // The query's memory budget, captured where the set operation is planned: its key maps
+  private val memory = MemoryContext.current.child()
+
   def next(): Batch =
     if done then
       return null
     done = true
+    // A map entry per distinct row: its key's values and the entry around them
+    val keys   = memory.growing(schema.types.map(MemoryContext.valueBytes).sum + SetOpOp.EntryBytes)
     val counts = mutable.HashMap.empty[AnyRef, Int]
     var b      = right.next()
     while b != null do
@@ -805,6 +824,7 @@ class SetOpOp(
         val k = GroupKey.of(cols, i)
         counts(k) = counts.getOrElse(k, 0) + 1
         i += 1
+      keys.ensure(counts.size)
       b = right.next()
     val emitted = mutable.HashMap.empty[AnyRef, Int]
     val out     = schema.types.map(t => VecBuilder(t)).toArray
@@ -839,8 +859,11 @@ class SetOpOp(
         else if isIntersect && !all then
           ()
         i += 1
+      keys.ensure(counts.size + emitted.size)
       lb = left.next()
     end while
+    // The maps are dropped on return
+    memory.release()
     val vecs = out.map(_.result())
     val n    =
       if vecs.isEmpty then
@@ -855,6 +878,10 @@ class SetOpOp(
   end next
 
 end SetOpOp
+
+object SetOpOp:
+  // Bytes around one row's values in a key map: the entry, its key object, and boxed values
+  private val EntryBytes = 64L
 
 enum JoinKind:
   case Inner,
@@ -900,17 +927,29 @@ class NestedLoopJoinOp(
   private var build: Batch                 = null
   private var buildMatched: Array[Boolean] = null
   private var emittedUnmatched             = false
+  private var finished                     = false
+  // The query's memory budget, captured where the join is planned: the build rows
+  private val memory = MemoryContext.current.child()
 
   def next(): Batch =
+    if finished then
+      return null
     if build == null then
-      build = Operator.materialize(right)
+      build = memory.materialize(right)
       if kind == JoinKind.Right || kind == JoinKind.Full then
         buildMatched = new Array[Boolean](build.size)
     var out: Batch = null
     while out == null do
       val probe = left.next()
       if probe == null then
-        return emitUnmatchedBuild()
+        val rest = emitUnmatchedBuild()
+        if rest == null then
+          // Probed and emitted: the build is dropped
+          finished = true
+          build = null
+          buildMatched = null
+          memory.release()
+        return rest
       out = probeBatch(probe)
     out
 

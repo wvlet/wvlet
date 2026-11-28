@@ -36,8 +36,39 @@ final class JoinBuild(
   private var built = false
 
   // The query's memory budget, captured where the build is planned: the build runs on whichever
-  // thread probes first
-  private val memory = MemoryContext.current
+  // thread probes first. A child: the build's reservation returns once no probe reads it
+  private val memory = MemoryContext.current.child()
+
+  // Whether copies of the join probe this build (parallel parts): only their pipeline may free it
+  @volatile
+  private var copied = false
+
+  /** Whether copies of the join probe this build */
+  def hasCopies: Boolean = copied
+
+  private[exec] def markCopied(): Unit = copied = true
+
+  /**
+    * Drop the table and return its reservation, once every probe of it has finished (the last part
+    * and tail of its pipeline, or a join probing it alone). Only with memory accounting on, so
+    * turning it off keeps the tables to the query's end as before
+    */
+  def free(): Unit =
+    if memory.isTracking then
+      synchronized {
+        build = null
+        hasher = null
+        tables = null
+        heads = null
+        chain = null
+        packer = null
+        directHeads = null
+        directStore = null
+        flat = null
+        matched = null
+        excluded = null
+      }
+      memory.release()
 
   // Runtime filters drop NULL probe keys, which match NULL build keys here
   require(!nullsEqual || filters.isEmpty, "A join with NULL-equal keys takes no runtime filters")
@@ -653,6 +684,7 @@ class HashJoinOp(
   /** The build this join probes */
   val joinBuild: JoinBuild =
     if shared != null then
+      shared.markCopied()
       shared
     else
       JoinBuild(
@@ -783,9 +815,20 @@ class HashJoinOp(
     while out == null do
       val probe = left.next()
       if probe == null then
-        return emitUnmatchedBuild()
+        val rest = emitUnmatchedBuild()
+        if rest == null then
+          freeOwnBuild()
+        return rest
       out = probeBatch(probe)
     out
+
+  /** A join probing its build alone frees it once its probe input and unmatched rows are done */
+  private def freeOwnBuild(): Unit =
+    if shared == null && !joinBuild.hasCopies && build != null then
+      build = null
+      buildMatched = null
+      buildExcluded = null
+      joinBuild.free()
 
   private def emitUnmatchedBuild(): Batch =
     if buildMatched == null || emittedUnmatched || outerMode == OuterMode.Part then

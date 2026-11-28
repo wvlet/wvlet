@@ -53,7 +53,8 @@ class MorselOp(
     prepare: List[() => Unit],
     release: List[() => Unit],
     tails: Seq[MorselOp.Tail],
-    buildRows: Option[() => Long]
+    buildRows: Option[() => Long],
+    done: List[() => Unit]
 ) extends Operator:
   import MorselOp.*
 
@@ -73,7 +74,8 @@ class MorselOp(
     prepare,
     release,
     tail.toSeq,
-    None
+    None,
+    Nil
   )
 
   require(segments.nonEmpty, "MorselOp needs a segment")
@@ -221,7 +223,10 @@ class MorselOp(
             // A single run is both the only part and the tail
             sequential = tails.headOption.map(_.run(0, Int.MaxValue)).getOrElse(s.pipeline)(s.scan)
     if sequential != null then
-      return sequential.next()
+      val b = sequential.next()
+      if b == null then
+        finish()
+      return b
     while !current.hasNext do
       if streaming != null then
         val b = streaming.next()
@@ -232,6 +237,7 @@ class MorselOp(
       fill()
       if inFlight.isEmpty then
         if tails.isEmpty || tailDone then
+          finish()
           return null
         tailDone = true
         startTails()
@@ -249,6 +255,17 @@ class MorselOp(
     current.next()
 
   end next
+
+  private var finished = false
+
+  /**
+    * Every part and tail has run: `done` frees what only they read (join build tables), so their
+    * memory returns before the query ends
+    */
+  private def finish(): Unit =
+    if !finished then
+      finished = true
+      done.foreach(_())
 
   override def close(): Unit =
     if sequential != null then

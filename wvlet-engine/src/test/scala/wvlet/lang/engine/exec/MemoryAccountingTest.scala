@@ -72,10 +72,12 @@ class MemoryAccountingTest extends UniTest:
     withQuery(query)(engine.execute(_))
 
   /**
-    * The bytes the operators of a query reserve while it runs, without its result batches: planned
-    * and drained under a context of the test's own
+    * The most bytes the operators of a query held at once while it ran, without its result batches:
+    * planned and drained under a context of the test's own. Holders that finished return their
+    * bytes before the query ends, so nothing is left reserved after the drain unless `kept` (shared
+    * CTE results stay until the query ends)
     */
-  private def reservedBy(query: String): Long =
+  private def reservedBy(query: String, kept: Boolean = false): Long =
     val engine = engineOf(MemoryPool())
     val memory = MemoryPool().newQuery()
     withQuery(query) { r =>
@@ -85,7 +87,9 @@ class MemoryAccountingTest extends UniTest:
         finally op.close()
       }
     }
-    memory.reservedBytes
+    if !kept then
+      memory.reservedBytes shouldBe 0L
+    memory.peakBytes
 
   private val joinQuery =
     """from lineitem
@@ -248,6 +252,60 @@ class MemoryAccountingTest extends UniTest:
     pool.reservedBytes shouldBe 0L
   }
 
+  test("should return a child's reservations on release, once") {
+    val pool  = MemoryPool()
+    val q     = pool.newQuery(limitBytes = 100)
+    val child = q.child()
+    val inner = child.child()
+    q.reserve(10)
+    child.reserve(20)
+    inner.reserve(30)
+    (q.reservedBytes, child.reservedBytes, inner.reservedBytes) shouldBe (60L, 50L, 30L)
+    pool.reservedBytes shouldBe 60L
+    // A child's reservations count in the query's limit
+    intercept[WvletLangException] {
+      inner.reserve(41)
+    }.statusCode shouldBe StatusCode.RESOURCE_EXHAUSTED
+    inner.release()
+    inner.release()
+    // The failed reservation stays in the query until it closes
+    (q.reservedBytes, child.reservedBytes) shouldBe (71L, 20L)
+    pool.reservedBytes shouldBe 71L
+    q.peakBytes shouldBe 101L
+    q.close()
+    pool.reservedBytes shouldBe 0L
+    // Releases after the query closed return nothing
+    child.release()
+    pool.reservedBytes shouldBe 0L
+    MemoryContext.NoOp.child() shouldBeTheSameInstanceAs MemoryContext.NoOp
+    // A child released after its parent returns nothing more
+    val q2    = pool.newQuery()
+    val outer = q2.child()
+    val leaf  = outer.child()
+    leaf.reserve(5)
+    outer.release()
+    leaf.release()
+    (q2.reservedBytes, pool.reservedBytes) shouldBe (0L, 0L)
+    q2.close()
+  }
+
+  test("should release join builds, distincts, set operations, and nested-loop builds early") {
+    Seq(
+      // The serial join and the parallel pipeline both free their builds
+      joinQuery,
+      "from orders select distinct o_custkey",
+      "from orders select o_custkey intersect { from customer select c_custkey }",
+      "from orders select o_custkey except { from customer select c_custkey }",
+      """from orders
+        |join customer on o_custkey < c_custkey and c_custkey < 3
+        |select o_orderkey""".stripMargin
+    ).foreach { q =>
+      reservedBy(q) shouldMatch {
+        case n: Long if n > 0 =>
+      }
+    }
+  }
+
   test("should give new engines the process pool and its per-query limit") {
     val prev = MemoryPool.process
     val pool = MemoryPool(queryLimitBytes = 64 * 1024)
@@ -302,9 +360,12 @@ class MemoryAccountingTest extends UniTest:
     ) shouldMatch {
       case n: Long if n > 0 =>
     }
-    reservedBy("""with c as { from orders where o_orderkey < 100 select o_orderkey }
+    reservedBy(
+      """with c as { from orders where o_orderkey < 100 select o_orderkey }
         |from c
-        |concat { from c }""".stripMargin) shouldMatch {
+        |concat { from c }""".stripMargin,
+      kept = true
+    ) shouldMatch {
       case n: Long if n > 0 =>
     }
   }
@@ -331,9 +392,12 @@ class MemoryAccountingTest extends UniTest:
         )
       }
     op.drain().map(_.size).sum shouldBe n
-    // The input, and at least 28 bytes per group (key, slot, and count) in the partitions
-    memory.reservedBytes shouldMatch {
-      case b: Long if b >= MemoryContext.estimatedBytes(input) + 28L * n =>
+    // Returned once the aggregation emitted its groups
+    memory.reservedBytes shouldBe 0L
+    // The input, and the partitions' groups: a partition's table returns its bytes once drained,
+    // while its output (16 bytes per group) stays counted until the aggregation emits it
+    memory.peakBytes shouldMatch {
+      case b: Long if b >= MemoryContext.estimatedBytes(input) + 16L * n =>
     }
   }
 
