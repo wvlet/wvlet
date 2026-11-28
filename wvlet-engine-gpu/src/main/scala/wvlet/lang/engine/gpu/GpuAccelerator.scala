@@ -84,6 +84,10 @@ class GpuAccelerator(config: GpuConfig = GpuConfig.fromEnv())
       else
         None
 
+  override def recomputesSharedCTEs: Boolean =
+    GpuRuntime.isAvailable && config.isEnabled(GpuFeature.InlineCTEs) &&
+      config.isEnabled(GpuFeature.SkipCTEReplan)
+
   /** Whether all of `p` runs on the GPU; if not, log why at debug */
   private def supported(p: RuntimePlan): Boolean =
     GpuPlans.unsupported(p)(using config) match

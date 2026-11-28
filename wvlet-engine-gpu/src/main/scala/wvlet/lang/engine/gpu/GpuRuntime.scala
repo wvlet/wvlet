@@ -145,6 +145,13 @@ enum GpuFeature(val featureName: String):
   case InlineCTEs extends GpuFeature("inline_ctes")
 
   /**
+    * With `inline_ctes`, ask the engine planner not to compute shared CTEs at plan time for
+    * re-planning their joins: the GPU readers compute them again from the cached columns (TPC-H q15
+    * and q22 shared a filtered scan that the CPU computed and the GPU never read)
+    */
+  case SkipCTEReplan extends GpuFeature("skip_cte_replan")
+
+  /**
     * Run `any_value` in group-bys, which the CPU planner adds for group keys that another key
     * determines (TPC-H q10's customer columns, grouped by c_custkey)
     */
