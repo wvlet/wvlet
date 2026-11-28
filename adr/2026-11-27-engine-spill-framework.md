@@ -1,6 +1,6 @@
 # ADR: Spill files hold the engine's own column blocks, past a soft threshold below the limit
 
-Date: 2026-11-27 · PR #TBD
+Date: 2026-11-27 · PR #2584
 
 ## Context
 

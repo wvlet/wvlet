@@ -1,6 +1,6 @@
 # ADR: Aggregations spill their input rows by key hash
 
-Date: 2026-11-27 · PR #TBD
+Date: 2026-11-27 · PR #2584
 
 ## Context
 
