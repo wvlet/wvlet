@@ -1686,9 +1686,49 @@ summary.pg-engine-section__title {
     border-radius: 6px;
     box-shadow: 2px 3px 6px rgb(0 0 0 / 0.22);
     background: var(--uni-panel);
-    /* A wide table scrolls sideways here, so the scrollbar sits below the rows, not over them */
+    overflow: hidden;
+}
+
+/* Sideways scrolling with no native scrollbar (no room taken below the rows); a thin thumb shows on hover */
+.pg-hscroll {
+    position: relative;
+    max-width: 100%;
+}
+
+.pg-hscroll__view {
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
+    scrollbar-width: none;
+}
+
+.pg-hscroll__view::-webkit-scrollbar {
+    display: none;
+}
+
+.pg-hscroll__bar {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    bottom: 2px;
+    height: 6px;
+    pointer-events: none;
+}
+
+.pg-hscroll__thumb {
+    display: none;
+    height: 100%;
+    border-radius: 3px;
+    background: rgb(128 128 128 / 0.5);
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: auto;
+    cursor: grab;
+}
+
+.pg-hscroll:hover .pg-hscroll__thumb,
+.pg-hscroll[data-dragging="true"] .pg-hscroll__thumb {
+    opacity: 1;
 }
 
 .pg-cell__table-rows {
@@ -1703,21 +1743,16 @@ summary.pg-engine-section__title {
 }
 
 /* Translucent scrollbars, so the grid stays visible under them */
-.pg-cell__table,
-.pg-cell__table:hover,
 .pg-cell__table .uni-table,
 .pg-cell__table .uni-table:hover {
     scrollbar-width: thin;
     scrollbar-color: rgb(128 128 128 / 0.45) transparent;
 }
 
-.pg-cell__table::-webkit-scrollbar-track,
-.pg-cell__table::-webkit-scrollbar-corner,
 .pg-cell__table .uni-table::-webkit-scrollbar-track {
     background: transparent;
 }
 
-.pg-cell__table::-webkit-scrollbar-thumb,
 .pg-cell__table .uni-table::-webkit-scrollbar-thumb {
     background: rgb(128 128 128 / 0.45);
     border-radius: 4px;

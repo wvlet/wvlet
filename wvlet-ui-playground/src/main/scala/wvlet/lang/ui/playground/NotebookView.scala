@@ -247,10 +247,12 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
                     div(
                       cls             -> "pg-cell__table",
                       data("scrolls") -> scrollsDown.toString,
-                      div(
-                        cls       -> "pg-cell__table-rows",
-                        styleAttr -> s"height: ${Cell.tableHeight(shown)}px",
-                        results.table(r, rowNumbers = false)
+                      HScroll(
+                        div(
+                          cls       -> "pg-cell__table-rows",
+                          styleAttr -> s"height: ${Cell.tableHeight(shown)}px",
+                          results.table(r, rowNumbers = false)
+                        )
                       )
                     )
                   },
