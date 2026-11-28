@@ -187,6 +187,38 @@ export class MonacoEditor {
         }
     }
 
+    /**
+     * Size the editor to its text, between `min` and `max` pixels, for an editor in a page that
+     * scrolls (a notebook cell). The mouse wheel scrolls the page unless the editor itself has
+     * more to scroll.
+     */
+    enableAutoHeight(min: number, max: number): void {
+        if (!this.editor) {
+            return;
+        }
+        this.editor.updateOptions({
+            scrollBeyondLastLine: false,
+            scrollbar: {alwaysConsumeMouseWheel: false, vertical: 'auto', horizontal: 'auto'},
+        });
+        const container = document.getElementById(this.id);
+        const update = () => {
+            const h = Math.min(max, Math.max(min, this.editor.getContentHeight()));
+            container.style.height = `${h}px`;
+            this.editor.layout({width: container.clientWidth, height: h});
+        };
+        this.editor.onDidContentSizeChange(update);
+        update();
+    }
+
+    /** Release the editor, e.g. when its page or notebook cell goes away */
+    dispose(): void {
+        if (this.editor) {
+            this.editor.dispose();
+            this.editor = null;
+            this.markers = null;
+        }
+    }
+
     render(): void {
         MonacoEditor.defineThemes();
         const theme: string = this.themeName();
@@ -218,6 +250,10 @@ export class MonacoEditor {
             automaticLayout: true,
             tabSize: 2
         })
+
+        this.markers = null;
+        // Tell the page which editor has the focus, e.g. to select its notebook cell
+        this.editor.onDidFocusEditorText(() => this.action('focus'));
 
         // Add shortcut key commands
         this.editor.addAction({
@@ -273,10 +309,6 @@ export class MonacoEditor {
         })
 
     };
-
-    dispose(): void {
-        this.editor?.dispose();
-    }
 
     setReadOnly(): void {
         // disable text edit

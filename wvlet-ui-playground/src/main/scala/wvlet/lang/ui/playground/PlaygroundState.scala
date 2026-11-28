@@ -16,6 +16,8 @@ package wvlet.lang.ui.playground
 import org.scalajs.dom
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.compiler.lsp.StdLibEntry
+import wvlet.lang.compiler.lsp.StdLibReference
 import wvlet.lang.engine.plan.Optimization
 import wvlet.uni.dom.SizeRange
 import wvlet.uni.dom.Storage
@@ -36,11 +38,6 @@ enum OutputTab(val label: String) derives StorageCodec:
   case Lineage      extends OutputTab("Lineage")
   case Debug        extends OutputTab("Debug")
   case Docs         extends OutputTab("Docs")
-
-/** The view of the bottom panel: the rows of the statement, or the file's test results */
-enum ResultTab(val label: String) derives StorageCodec:
-  case Result extends ResultTab("Result")
-  case Tests  extends ResultTab("Tests")
 
 /** The stage of the engine's plan shown in the Engine tab */
 enum EngineStage(val label: String, val description: String) derives StorageCodec:
@@ -68,17 +65,10 @@ enum SidebarTab(val label: String) derives StorageCodec:
   case Tables    extends SidebarTab("Tables")
   case Reference extends SidebarTab("Reference")
 
-/** What the user asked to run: the editor text, where the cursor was, and what to select */
-case class RunRequest(
-    text: String,
-    mode: InputMode,
-    position: LinePosition = LinePosition.NoPosition,
-    selection: QuerySelection = QuerySelection.Single
-)
-
 /**
-  * The state of the playground: layout (saved in localStorage), the current example and editor
-  * text, and the last run's output. Running is synchronous, on the in-browser engine.
+  * The state of the playground: layout (saved in localStorage), the notebook's cells, and the
+  * output of the focused cell for the right panel. Running is synchronous, on the in-browser
+  * engine.
   */
 class PlaygroundState extends LogSupport:
   import PlaygroundState.*
@@ -89,9 +79,7 @@ class PlaygroundState extends LogSupport:
   val sidebarWidth: RxVar[Int]      = Storage.local(s"${prefix}sidebarWidth", sidebarRange.default)
   val outputOpen: RxVar[Boolean]    = Storage.local(s"${prefix}outputOpen", true)
   val outputWidth: RxVar[Int]       = Storage.local(s"${prefix}outputWidth", outputRange.default)
-  val resultHeight: RxVar[Int]      = Storage.local(s"${prefix}resultHeight", 320)
   val outputTab: RxVar[OutputTab]   = Storage.local(s"${prefix}outputTab", OutputTab.Translation)
-  val resultTab: RxVar[ResultTab]   = Storage.local(s"${prefix}resultTab", ResultTab.Result)
   val sidebarTab: RxVar[SidebarTab] = Rx.variable(SidebarTab.Examples)
   val dialect: RxVar[SqlDialect]    = Rx.variable(SqlDialect.DuckDB)
   val engineStage: RxVar[EngineStage] = Storage.local(
@@ -103,22 +91,23 @@ class PlaygroundState extends LogSupport:
   // Engine optimizations turned off in the Engine tab
   val disabledOptimizations: RxVar[Set[Optimization]] = Rx.variable(Set.empty)
 
-  /** Select a line of the query in the editor; set by the editor when it mounts */
-  var revealLine: Int => Unit    = _ => ()
   val scaleFactor: RxVar[Double] = Rx.variable(PlaygroundEngine.defaultScaleFactor)
 
-  // The query
-  val mode: RxVar[InputMode]                 = Rx.variable(InputMode.Wvlet)
-  val example: RxVar[Option[Example]]        = Rx.variable(None)
-  val text: RxVar[String]                    = Rx.variable("")
-  val lastRequest: RxVar[RunRequest]         = Rx.variable(RunRequest("", InputMode.Wvlet))
+  // The notebook
+  val mode: RxVar[InputMode]          = Rx.variable(InputMode.Wvlet)
+  val example: RxVar[Option[Example]] = Rx.variable(None)
+  val cells: RxVar[Seq[Cell]]         = Rx.variable(Nil)
+  // The cell whose output the right panel shows
+  val focused: RxVar[Option[Int]]            = Rx.variable(None)
   val output: RxVar[RunOutput]               = Rx.variable(RunOutput())
   val status: RxVar[String]                  = Rx.variable("Generating TPC-H tables...")
   val filter: RxVar[String]                  = Rx.variable("")
   val selectedExample: RxVar[Option[String]] = Rx.variable(None)
-  // The Reference tab: its search text and the selected function's FunctionEntry.key
+  // The Reference tab: its search text and the selected function's StdLibEntry.key
   val referenceFilter: RxVar[String]          = Rx.variable("")
   val selectedFunction: RxVar[Option[String]] = Rx.variable(None)
+
+  private var nextCellId = 0
 
   private var engineOpt: Option[PlaygroundEngine] = None
   // Whether the last run that compiled had debug blocks
@@ -142,97 +131,216 @@ class PlaygroundState extends LogSupport:
     if PlaygroundState.isNarrow then
       sidebarOpen := false
 
-  /** Show an example in the editor and run it */
+  private def newCell(src: CellSource): Cell =
+    nextCellId += 1
+    Cell(nextCellId, src.kind, src.text)
+
+  /** Replace the notebook with these cells and run them */
+  def openNotebook(sources: Seq[CellSource]): Unit =
+    val cs =
+      if sources.exists(_.kind == CellKind.Code) then
+        sources
+      else
+        sources :+ CellSource(CellKind.Code, "")
+    cells := cs.map(newCell)
+    runAll(opened = true)
+
+  /** Show an example as a notebook and run it */
   def open(e: Example): Unit =
-    example         := Some(e)
-    selectedExample := Some(e.path)
-    mode            := e.mode
-    text            := e.text
+    example          := Some(e)
+    selectedExample  := Some(e.path)
+    selectedFunction := None
+    mode             := e.mode
     setHash(s"example=${e.path}")
-    run(RunRequest(e.text, e.mode), opened = true)
+    openNotebook(NotebookText.ofExample(e))
+
+  /** Show a stdlib function as a notebook: its docs, then a cell per example */
+  def openFunction(e: StdLibEntry): Unit =
+    example          := None
+    selectedFunction := Some(e.key)
+    mode             := InputMode.Wvlet
+    setHash(s"function=${e.key}")
+    openNotebook(NotebookText.ofFunction(e))
+
+  /** Show a query text (with or without cell markers) as a notebook */
+  def openText(t: String, m: InputMode): Unit =
+    example := None
+    mode    := m
+    openNotebook(NotebookText.parse(t))
+
+  /** The notebook as text: what a share link and a saved file hold */
+  def notebookText: String = NotebookText.render(cells.get.map(_.source)).text
+
+  /** Run every code cell in order, then show the first one's output */
+  def runAll(opened: Boolean = false): Unit =
+    val code = cells.get.filter(_.isCode)
+    code.foreach(c => runCell(c, opened = opened))
+    code
+      .headOption
+      .foreach { c =>
+        focus(c)
+      }
+
+  /** Run the focused cell again, e.g., after the dialect changed */
+  def rerun(): Unit = focusedCell.foreach(c => runCell(c))
+
+  def focusedCell: Option[Cell] = focused.get.flatMap(id => cells.get.find(_.id == id))
+
+  /** Make a cell the one the right panel follows */
+  def focus(c: Cell): Unit =
+    if !focused.get.contains(c.id) then
+      focused := Some(c.id)
+      c.output.get.foreach(o => output := o)
 
   /**
-    * Run a request and publish its output. The right panel shows the Debug tab when a newly opened
-    * file has `debug` blocks, or when an edit adds the file's first one.
+    * Run a code cell. It compiles with the cells above it, so their vals and models are in scope,
+    * and runs the statement at `position` (a line of the cell), by default the cell's last one.
     *
     * @param opened
-    *   true when the text was just opened (an example or a shared link), not edited
+    *   true when the notebook was just opened (an example or a shared link), not edited
     */
-  def run(req: RunRequest, opened: Boolean = false): Unit =
-    lastRequest := req
-    val ran = engine.run(
-      req.text,
-      req.mode,
-      dialect.get,
-      req.position,
-      req.selection,
-      PlaygroundEngine.defaultRowLimit,
-      disabledOptimizations.get
-    )
-    // While an edit doesn't compile, keep the last checks: the markers and the Tests tab would
-    // otherwise blink out on every half-typed line. Monaco moves the markers with the edited text
-    val out =
-      if !opened && ran.hasError && ran.checks.isEmpty then
-        ran.copy(checks = output.get.checks)
-      else
-        ran
-    output := out
-    // A run that failed to compile (e.g., mid-edit) says nothing about the file's debug blocks
+  def runCell(
+      c: Cell,
+      position: Option[LinePosition] = None,
+      selection: QuerySelection = QuerySelection.Single,
+      opened: Boolean = false
+  ): Unit =
+    val cs = cells.get
+    val i  = cs.indexWhere(_.id == c.id)
+    if i >= 0 && c.isCode then
+      // SQL cells run on their own; Wvlet cells see the definitions above them
+      val (text, offset) =
+        mode.get match
+          case InputMode.SQL =>
+            (c.text.get, 0)
+          case InputMode.Wvlet =>
+            val layout = NotebookText.render(cs.take(i + 1).map(_.source))
+            (layout.text, layout.startLines(i) - 1)
+      c.lineOffset = offset
+      val local = position.filter(_.line > 0).getOrElse(LinePosition(c.lastLine, 1))
+      val ran   = engine.run(
+        text,
+        mode.get,
+        dialect.get,
+        LinePosition(local.line + offset, local.column),
+        selection,
+        PlaygroundEngine.defaultRowLimit,
+        disabledOptimizations.get
+      )
+      // While an edit doesn't compile, keep the last checks: the markers would otherwise blink
+      // out on every half-typed line
+      val out =
+        if !opened && ran.hasError && ran.checks.isEmpty then
+          ran.copy(checks = c.output.get.map(_.checks).getOrElse(Nil))
+        else
+          ran
+      c.lastRunText = c.text.get
+      c.output := Some(out)
+      c.runCount.update(_ + 1)
+      focused := Some(c.id)
+      output  := out
+      showDebugTab(c, out, opened)
+      val failed =
+        c.checksOf(out).count(_.isFailure) match
+          case 0 =>
+            ""
+          case 1 =>
+            " · 1 check failed"
+          case n =>
+            s" · ${n} checks failed"
+      status := (
+        if out.hasError then
+          "Error"
+        else
+          out.result.map(r => f"${r.totalRows}%,d rows").getOrElse("Done") + failed
+      )
+    end if
+
+  end runCell
+
+  // The right panel shows the Debug tab when a newly opened cell has `debug` blocks, or when an
+  // edit adds a cell's first one
+  private def showDebugTab(c: Cell, out: RunOutput, opened: Boolean): Unit =
     if opened || !out.hasError then
-      val hasDebug = out.debugBlocks.nonEmpty
+      val hasDebug = c.checksOf(out).exists(_.isInstanceOf[Check.Debug])
       if hasDebug && (opened || !hadDebugBlocks) then
         outputOpen := true
         outputTab  := OutputTab.Debug
       else if opened && !hasDebug && outputTab.get == OutputTab.Debug then
         outputTab := OutputTab.Translation
       hadDebugBlocks = hasDebug
-    val failed =
-      out.failedChecks match
-        case 0 =>
-          ""
-        case 1 =>
-          " · 1 check failed"
-        case n =>
-          s" · ${n} checks failed"
-    status := (
-      if out.hasError then
-        "Error"
-      else
-        out.result.map(r => f"${r.totalRows}%,d rows").getOrElse("Done") + failed
-    )
 
-  end run
+  /** Select a 1-origin line of the notebook text in its cell's editor */
+  def revealLine(line: Int): Unit =
+    val cs     = cells.get
+    val starts = NotebookText.render(cs.map(_.source)).startLines
+    cs.indices
+      .reverse
+      .find(i => starts(i) <= line)
+      .foreach { i =>
+        val c = cs(i)
+        c.reveal(line - starts(i) + 1)
+      }
 
-  /** Run the last request again, e.g., after the dialect or scale factor changed */
-  def rerun(): Unit = run(lastRequest.get.copy(text = text.get, mode = mode.get))
+  /** Add a cell after `after` (or at the end), and focus its editor */
+  def insertCell(kind: CellKind, after: Option[Cell] = None): Cell =
+    val c  = newCell(CellSource(kind, ""))
+    val cs = cells.get
+    val i  = after.map(a => cs.indexWhere(_.id == a.id) + 1).getOrElse(cs.size)
+    if kind == CellKind.Markdown then
+      c.editing := true
+    cells       := cs.patch(i, Seq(c), 0)
+    c
 
-  /** Switch the editor language; the text is converted between Wvlet and SQL when it can be */
+  def moveCell(c: Cell, delta: Int): Unit =
+    val cs = cells.get
+    val i  = cs.indexWhere(_.id == c.id)
+    val j  = i + delta
+    if i >= 0 && j >= 0 && j < cs.size then
+      cells := cs.updated(i, cs(j)).updated(j, c)
+
+  def deleteCell(c: Cell): Unit =
+    cells.update(_.filterNot(_.id == c.id))
+    if focused.get.contains(c.id) then
+      focused := None
+
+  /** Switch the language; each code cell is converted between Wvlet and SQL when it can be */
   def switchMode(m: InputMode): Unit =
     if m != mode.get then
-      val current   = text.get
-      val converted =
-        m match
-          case InputMode.Wvlet =>
-            Try(engine.toWvlet(current)).toOption
-          case InputMode.SQL =>
-            val out = engine.run(current, InputMode.Wvlet, SqlDialect.DuckDB)
-            Option.when(!out.hasError && out.sql.nonEmpty)(out.sql)
-      mode := m
-      converted.foreach(t => text := t)
+      cells
+        .get
+        .filter(_.isCode)
+        .foreach { c =>
+          val current   = c.text.get
+          val converted =
+            m match
+              case InputMode.Wvlet =>
+                Try(engine.toWvlet(current)).toOption
+              case InputMode.SQL =>
+                val out = engine.run(current, InputMode.Wvlet, SqlDialect.DuckDB)
+                Option.when(!out.hasError && out.sql.nonEmpty)(out.sql)
+          converted.foreach(t => c.text := t)
+        }
+      mode    := m
       example := None
-      run(RunRequest(text.get, m))
+      runAll()
 
-  /** A link to the current query, to share */
+  /** A link to the current notebook, to share */
   def shareUrl: String =
-    val base = dom.window.location.href.takeWhile(_ != '#')
+    val base                        = dom.window.location.href.takeWhile(_ != '#')
+    val text                        = notebookText
+    def same(srcs: Seq[CellSource]) = NotebookText.render(srcs).text == text
+    val fn                          = selectedFunction.get.flatMap(StdLibReference.find)
     example.get match
-      case Some(e) if e.text == text.get =>
+      case Some(e) if same(NotebookText.ofExample(e)) =>
         s"${base}#example=${js.URIUtils.encodeURIComponent(e.path)}"
+      case _ if fn.exists(f => same(NotebookText.ofFunction(f))) =>
+        s"${base}#function=${js.URIUtils.encodeURIComponent(fn.get.key)}"
       case _ =>
         val m = mode.get.label.toLowerCase
-        s"${base}#${m}=${js.URIUtils.encodeURIComponent(text.get)}"
+        s"${base}#${m}=${js.URIUtils.encodeURIComponent(text)}"
 
-  /** Open what the URL hash names: an example, or a query text */
+  /** Open what the URL hash names: an example, a function, or a notebook text */
   def openFromHash(): Unit =
     val hash                                = dom.window.location.hash.stripPrefix("#")
     def param(name: String): Option[String] = hash
@@ -245,14 +353,17 @@ class PlaygroundState extends LogSupport:
       case Some(e) =>
         open(e)
       case None =>
-        (param("wvlet").map(_ -> InputMode.Wvlet) orElse param("sql").map(_ -> InputMode.SQL)) match
-          case Some((t, m)) =>
-            example := None
-            mode    := m
-            text    := t
-            run(RunRequest(t, m), opened = true)
+        param("function").flatMap(StdLibReference.find) match
+          case Some(f) =>
+            openFunction(f)
           case None =>
-            open(Examples.default)
+            (
+              param("wvlet").map(_ -> InputMode.Wvlet) orElse param("sql").map(_ -> InputMode.SQL)
+            ) match
+              case Some((t, m)) =>
+                openText(t, m)
+              case None =>
+                open(Examples.default)
 
   private def setHash(h: String): Unit = Try(dom.window.history.replaceState(null, "", s"#${h}"))
 
@@ -269,4 +380,3 @@ object PlaygroundState:
 
   val sidebarRange = SizeRange(min = 200, default = 280, max = 520)
   val outputRange  = SizeRange(min = 280, default = 520, max = 1200)
-  val resultRange  = SizeRange(min = 120, default = 320, max = 1200)

@@ -1,0 +1,317 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package wvlet.lang.ui.playground
+
+import org.scalajs.dom
+import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
+import wvlet.uni.rx.Cancelable
+import wvlet.uni.ui.Textarea
+
+import scala.collection.mutable
+import scala.scalajs.js
+
+/**
+  * The notebook: text cells and query cells, each query with its result right below it. Cells keep
+  * their views (and editors) across adds, moves, and removals of other cells.
+  */
+class NotebookView(state: PlaygroundState) extends RxElement:
+  private val views = mutable.Map.empty[Int, RxElement]
+
+  private def viewOf(c: Cell): RxElement = views.getOrElseUpdate(
+    c.id,
+    c.kind match
+      case CellKind.Code =>
+        CodeCellView(state, c)
+      case CellKind.Markdown =>
+        TextCellView(state, c)
+  )
+
+  override def render: RxElement = div(
+    cls -> "pg-notebook",
+    state
+      .cells
+      .map { cs =>
+        val ids = cs.map(_.id).toSet
+        views.filterInPlace((id, _) => ids.contains(id))
+        div(cls -> "pg-notebook__cells", cs.map(viewOf))
+      },
+    div(cls -> "pg-notebook__add", NotebookView.addButtons(state, None))
+  )
+
+end NotebookView
+
+object NotebookView:
+  /** Buttons that add a query or a text cell after `after` (at the end when None) */
+  def addButtons(state: PlaygroundState, after: Option[Cell]): Seq[RxElement] = Seq(
+    button(
+      cls       -> "pg-cell-btn",
+      titleAttr -> "Add a query cell",
+      onclick   -> { () =>
+        val c = state.insertCell(CellKind.Code, after)
+        js.timers.setTimeout(50)(c.focusEditor())
+      },
+      "+ Query"
+    ),
+    button(
+      cls       -> "pg-cell-btn",
+      titleAttr -> "Add a text cell",
+      onclick   -> { () =>
+        state.insertCell(CellKind.Markdown, after)
+      },
+      "+ Text"
+    )
+  )
+
+  /** Move, add, and delete buttons, shown on a cell's hover */
+  def toolbar(state: PlaygroundState, c: Cell): RxElement = div(
+    cls -> "pg-cell__toolbar",
+    button(
+      cls       -> "pg-cell-btn",
+      titleAttr -> "Move up",
+      onclick   -> { () =>
+        state.moveCell(c, -1)
+      },
+      "↑"
+    ),
+    button(
+      cls       -> "pg-cell-btn",
+      titleAttr -> "Move down",
+      onclick   -> { () =>
+        state.moveCell(c, 1)
+      },
+      "↓"
+    ),
+    addButtons(state, Some(c)),
+    button(
+      cls       -> "pg-cell-btn pg-cell-btn--danger",
+      titleAttr -> "Delete this cell",
+      onclick   -> { () =>
+        state.deleteCell(c)
+      },
+      "✕"
+    )
+  )
+
+end NotebookView
+
+/** A query cell: the editor, a run button, and the result of its last run */
+class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
+  private val results = ResultPanel(state)
+
+  private val editor: CodeEditor = CodeEditor(
+    s"pg-cell-${c.id}",
+    c.text,
+    language = state.mode.map(_.editorLanguage),
+    theme = state.theme,
+    onAction = {
+      case "run-query" | "run-production-query" =>
+        state.runCell(c, Some(editor.cursor))
+      case "run-subquery" =>
+        state.runCell(c, Some(editor.cursor), QuerySelection.Subquery)
+      case "describe-query" =>
+        state.runCell(c, Some(editor.cursor), QuerySelection.Describe)
+      case "focus" =>
+        state.focus(c)
+      case _ =>
+    },
+    // The gutter markers of the cell's test and debug lines, in the cell's own line numbers
+    markers = c
+      .output
+      .map(
+        _.map(out =>
+            ChecksPanel.lineMarkers(c.checksOf(out)).map(m => m.copy(line = m.line - c.lineOffset))
+          )
+          .getOrElse(Nil)
+      ),
+    autoHeight = Some((22, 520))
+  )
+
+  private var subscription: Cancelable                       = Cancelable.empty
+  private var pendingRun: Option[js.timers.SetTimeoutHandle] = None
+
+  override def onMount(node: Any): Unit =
+    c.cursor = () => editor.cursor
+    c.reveal = line => editor.revealLine(line)
+    c.focusEditor = () => editor.focus()
+    // Run the cell shortly after typing stops
+    subscription = c
+      .text
+      .run { t =>
+        if t != c.lastRunText && t.trim.nonEmpty then
+          pendingRun.foreach(js.timers.clearTimeout)
+          pendingRun = Some(
+            js.timers
+              .setTimeout(400) {
+                pendingRun = None
+                if c.text.get == t then
+                  state.runCell(c, Some(editor.cursor))
+              }
+          )
+      }
+
+  override def beforeUnmount: Unit =
+    subscription.cancel
+    pendingRun.foreach(js.timers.clearTimeout)
+    pendingRun = None
+
+  private def output(out: RunOutput): RxElement =
+    val checks = c.checksOf(out)
+    val tests  = checks.collect { case t: Check.Test =>
+      t
+    }
+    div(
+      cls -> "pg-cell__output",
+      out.error match
+        case Some(err) =>
+          div(cls -> "pg-result__error", role -> "alert", pre(err))
+        case None =>
+          out.result match
+            case Some(r) if r.columns.nonEmpty =>
+              // Tall enough for a few rows; the table scrolls inside for more
+              val visible = math.min(math.max(r.rows.size, 1), 10)
+              div(
+                div(
+                  cls       -> "pg-cell__table",
+                  styleAttr -> s"height: ${visible * 32 + 66}px",
+                  results.table(r)
+                ),
+                div(
+                  cls -> "pg-cell__meta",
+                  span(
+                    if r.isTruncated then
+                      f"${r.rows.size}%,d of ${r.totalRows}%,d rows"
+                    else
+                      ChecksPanel.rowCount(r.totalRows)
+                  ),
+                  span(f"${out.elapsedMillis}%.1f ms")
+                )
+              )
+            case _ =>
+              div(cls -> "pg-cell__meta", "Done: no rows to show.")
+      ,
+      when(
+        tests.nonEmpty,
+        div(
+          cls -> "pg-cell__tests",
+          tests.map { t =>
+            val (kind, icon) = ChecksPanel.marker(t.status)
+            div(
+              cls -> s"pg-cell__test pg-cell__test--${kind}",
+              span(cls -> "pg-run-check__icon", icon),
+              code(t.source),
+              when(t.status != TestStatus.Passed, pre(cls -> "pg-cell__test-msg", t.message))
+            )
+          }
+        )
+      )
+    )
+
+  end output
+
+  override def render: RxElement = div(
+    cls             -> "pg-cell pg-cell--code",
+    data("cell")    -> c.id.toString,
+    data("focused") -> state.focused.map(_.contains(c.id).toString),
+    div(
+      cls -> "pg-cell__gutter",
+      button(
+        cls       -> "pg-cell__run",
+        titleAttr -> "Run this cell (⌘↵ runs the statement at the cursor)",
+        onclick   -> { () =>
+          state.runCell(c)
+        },
+        "▶"
+      ),
+      c.runCount
+        .map(n =>
+          span(
+            cls -> "pg-cell__count",
+            if n == 0 then
+              "[ ]"
+            else
+              s"[${n}]"
+          )
+        )
+    ),
+    div(
+      cls     -> "pg-cell__body",
+      onclick -> { (_: dom.MouseEvent) =>
+        state.focus(c)
+      },
+      editor,
+      c.output.map(_.map(output).getOrElse(span()))
+    ),
+    NotebookView.toolbar(state, c)
+  )
+
+end CodeCellView
+
+/** A text cell: markdown, rendered; double-click (or Edit) to change it */
+class TextCellView(state: PlaygroundState, c: Cell) extends RxElement:
+
+  private def editorView: RxElement = div(
+    cls       -> "pg-cell__md-editor",
+    onkeydown -> { (e: dom.KeyboardEvent) =>
+      if e.key == "Escape" || (e.key == "Enter" && (e.ctrlKey || e.metaKey)) then
+        e.preventDefault()
+        c.editing := false
+    },
+    Textarea(c.text)
+      .withRows(math.max(3, c.text.get.split("\n", -1).length + 1))
+      .withPlaceholder(
+        "Write markdown: # headings, **bold**, `code`, [links](https://...), - lists"
+      )
+      .withLabel("Text cell"),
+    div(
+      cls -> "pg-cell__md-actions",
+      button(
+        cls     -> "pg-cell-btn",
+        onclick -> { () =>
+          c.editing := false
+        },
+        "Done"
+      ),
+      span(cls -> "pg-cell__hint", "⌘↵ or Esc to finish")
+    )
+  )
+
+  override def render: RxElement = div(
+    cls -> "pg-cell pg-cell--text",
+    div(cls -> "pg-cell__gutter"),
+    div(
+      cls -> "pg-cell__body",
+      c.editing
+        .map { editing =>
+          if editing then
+            editorView
+          else
+            div(
+              cls        -> "pg-cell__md",
+              titleAttr  -> "Double-click to edit",
+              ondblclick -> { (_: dom.MouseEvent) =>
+                c.editing := true
+              },
+              if c.text.get.trim.isEmpty then
+                p(cls -> "pg-cell__hint", "Empty text cell: double-click to write.")
+              else
+                Markdown.render(c.text.get)
+            )
+        }
+    ),
+    NotebookView.toolbar(state, c)
+  )
+
+end TextCellView

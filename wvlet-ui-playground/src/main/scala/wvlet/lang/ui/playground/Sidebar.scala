@@ -154,11 +154,7 @@ class Sidebar(state: PlaygroundState) extends RxElement:
     .withRowHeight(24)
     .onSelect {
       case TableNode.Table(n, _, _) =>
-        val q = s"from ${n}\nlimit 100\n"
-        state.example := None
-        state.mode    := InputMode.Wvlet
-        state.text    := q
-        state.run(RunRequest(q, InputMode.Wvlet))
+        state.openText(s"from ${n}\nlimit 100", InputMode.Wvlet)
         state.closeSidebarOnNarrow()
       case _ =>
     }
@@ -208,9 +204,8 @@ class Sidebar(state: PlaygroundState) extends RxElement:
     }
     .onSelect {
       case ReferenceNode.Function(e) =>
-        // The details need room: show them in the output panel's Docs tab
-        state.selectedFunction := Some(e.key)
-        state.outputTab        := OutputTab.Docs
+        // A function opens as a notebook: its docs, then a cell per example
+        state.openFunction(e)
         state.closeSidebarOnNarrow()
       case s: ReferenceNode.Section =>
         // One category open at a time, so the list stays short

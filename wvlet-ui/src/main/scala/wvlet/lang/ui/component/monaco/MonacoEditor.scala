@@ -38,6 +38,9 @@ class MonacoEditor(
   def focus(): Unit                    = js.native
   def revealLine(line: Int): Unit      = js.native
 
+  /** Size the editor to its text, between `min` and `max` pixels (for notebook cells) */
+  def enableAutoHeight(min: Int, max: Int): Unit = js.native
+
   /**
     * Show a marker in the glyph margin of lines: each element has `line` (1-origin), `kind` (CSS
     * class `wv-line-marker--<kind>`), and `message` (shown on hover). An empty array clears them.

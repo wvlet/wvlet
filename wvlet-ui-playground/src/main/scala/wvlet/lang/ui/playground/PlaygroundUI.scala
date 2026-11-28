@@ -48,6 +48,8 @@ object PlaygroundUI extends LogSupport:
       .setTimeout(30) {
         state.openFromHash()
       }
+    // Links in text cells (#example=..., #function=...) open in place
+    dom.window.addEventListener("hashchange", (_: dom.Event) => state.openFromHash())
 
   /**
     * Hover tooltips and completion in the Wvlet editors: column types and stdlib function docs from
@@ -82,70 +84,25 @@ object PlaygroundUI extends LogSupport:
 end PlaygroundUI
 
 /**
-  * The Wvlet playground: an example library on the left, the query editor in the middle with its
-  * translation and plans beside it, and the result table below. Queries run in the browser on
-  * Wvlet's columnar engine over generated TPC-H tables.
+  * The Wvlet playground: an example library on the left, a notebook of text and query cells (each
+  * query with its result below it) in the middle, and the focused cell's SQL, plans, and docs on
+  * the right. Queries run in the browser on Wvlet's columnar engine over generated TPC-H tables.
   */
 class PlaygroundUI(state: PlaygroundState) extends RxElement:
   private val toasts = Toaster()
 
-  private val editor: CodeEditor = CodeEditor(
-    "pg-query-editor",
-    state.text,
-    language = state.mode.map(_.editorLanguage),
-    theme = state.theme,
-    markers = state.output.map(o => ChecksPanel.lineMarkers(o.checks)),
-    onAction = {
-      case "run-query" =>
-        runAtCursor(QuerySelection.Single)
-      case "run-subquery" =>
-        runAtCursor(QuerySelection.Subquery)
-      case "describe-query" =>
-        runAtCursor(QuerySelection.Describe)
-      case "run-production-query" =>
-        runAtCursor(QuerySelection.Single)
-      case _ =>
-    }
-  )
+  private def describeFocused(): Unit = state
+    .focusedCell
+    .orElse(state.cells.get.find(_.isCode))
+    .foreach(c => state.runCell(c, Some(c.cursor()), QuerySelection.Describe))
 
-  private def runAtCursor(selection: QuerySelection): Unit = state.run(
-    RunRequest(state.text.get, state.mode.get, editor.cursor, selection)
-  )
-
-  private var subscriptions: Seq[Cancelable]                 = Nil
-  private var pendingRun: Option[js.timers.SetTimeoutHandle] = None
+  private var subscriptions: Seq[Cancelable] = Nil
 
   override def onMount(node: Any): Unit =
-    state.revealLine = line => editor.revealLine(line)
     subscriptions = Seq(
       narrowScreenDrawer(),
-      // Run the statement being edited shortly after typing stops
-      state
-        .text
-        .run { t =>
-          if t != state.lastRequest.get.text && t.nonEmpty then
-            pendingRun.foreach(js.timers.clearTimeout)
-            pendingRun = Some(
-              js.timers
-                .setTimeout(400) {
-                  pendingRun = None
-                  if state.text.get == t then
-                    state.run(RunRequest(t, state.mode.get, editor.cursor))
-                }
-            )
-        },
-      state
-        .dialect
-        .run(_ =>
-          if state.lastRequest.get.text.nonEmpty then
-            state.rerun()
-        ),
-      state
-        .disabledOptimizations
-        .run(_ =>
-          if state.lastRequest.get.text.nonEmpty then
-            state.rerun()
-        )
+      state.dialect.run(_ => state.rerun()),
+      state.disabledOptimizations.run(_ => state.rerun())
     )
 
   end onMount
@@ -200,8 +157,13 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
       div(cls -> "pg-header__mode", modeTabs),
       Button("Describe")
         .withSize(ButtonSize.Small)
-        .withLabel("Show the columns of the query at the cursor (Shift+Enter)")
-        .onClick(() => runAtCursor(QuerySelection.Describe)),
+        .withLabel("Show the columns of the focused cell's query at the cursor (Shift+Enter)")
+        .onClick(() => describeFocused()),
+      Button("Run all")
+        .withSize(ButtonSize.Small)
+        .withVariant(ButtonVariant.Ghost)
+        .withLabel("Run every query cell from the top")
+        .onClick(() => state.runAll()),
       span(cls -> "pg-grow"),
       label(
         cls -> "pg-field",
@@ -213,14 +175,17 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
         ).withLabel("TPC-H scale factor")
           .onChange { _ =>
             state.status := "Generating TPC-H tables..."
-            js.timers.setTimeout(30)(state.rerun())
+            js.timers.setTimeout(30)(state.runAll())
           }
       ),
       ThemeSwitch(state.theme),
+      IconButton("Toggle the SQL, plan, and docs panel", span(cls -> "pg-icon", "◨"))
+        .withVariant(ButtonVariant.Ghost)
+        .onClick(() => state.outputOpen.update(!_)),
       Button("Share")
         .withSize(ButtonSize.Small)
         .withVariant(ButtonVariant.Ghost)
-        .withLabel("Copy a link to this query")
+        .withLabel("Copy a link to this notebook")
         .onClick { () =>
           js.Dynamic.global.navigator.clipboard.writeText(state.shareUrl)
           toasts.success("Link copied")
@@ -235,84 +200,6 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
     )
 
   end headerBar
-
-  private def exampleInfo: RxElement = div(
-    cls -> "pg-info",
-    Rx.join(state.example, state.mode)
-      .map {
-        case (Some(e), _) =>
-          div(
-            cls -> "pg-info__body",
-            span(cls -> "pg-info__category", Examples.categoryLabel(e.category)),
-            span(cls -> "pg-info__title", e.title),
-            when(e.description.nonEmpty, span(cls -> "pg-info__desc", e.description))
-          )
-        case (None, m) =>
-          div(
-            cls -> "pg-info__body",
-            span(cls -> "pg-info__title", s"Your ${m.label} query"),
-            span(
-              cls -> "pg-info__desc",
-              "Edits run automatically. Pick an example on the left to start from."
-            )
-          )
-      }
-  )
-
-  // The Result and Tests tabs; the second shows how many tests passed and failed
-  private val resultTabs = TabList(
-    state.resultTab,
-    label = "Result",
-    tabs = Seq(
-      Tab(ResultTab.Result, ResultTab.Result.label),
-      Tab(
-        ResultTab.Tests,
-        ResultTab.Tests.label,
-        state
-          .output
-          .map { out =>
-            val tests  = out.tests
-            val failed = out.failedTests
-            val passed = tests.count(_.status == TestStatus.Passed)
-            if tests.isEmpty then
-              span()
-            else if failed > 0 then
-              span(cls -> "pg-badge pg-badge--danger", s"${failed} failed")
-            else
-              span(cls -> "pg-badge pg-badge--success", s"${passed} passed")
-          }
-      )
-    )
-  )
-
-  private def resultHeader: RxElement = div(
-    cls -> "pg-panel-header pg-result-header",
-    resultTabs,
-    state
-      .output
-      .map { out =>
-        span(
-          cls -> "pg-result-meta",
-          when(out.statement.nonEmpty, span(cls -> "pg-result-stmt", out.statement)),
-          out.result match
-            case Some(r) if !out.hasError =>
-              span(
-                cls -> "pg-badge",
-                if r.isTruncated then
-                  f"${r.rows.size}%,d of ${r.totalRows}%,d rows"
-                else
-                  f"${r.totalRows}%,d rows"
-              )
-            case _ =>
-              span()
-          ,
-          when(
-            out.elapsedMillis > 0,
-            span(cls -> "pg-badge pg-badge--muted", f"${out.elapsedMillis}%.1f ms")
-          )
-        )
-      }
-  )
 
   override def render: RxElement = div(
     cls -> "pg-app",
@@ -340,7 +227,7 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
         cls -> "pg-main",
         div(
           cls -> "pg-top",
-          div(cls -> "pg-editor-pane", exampleInfo, div(cls -> "pg-editor-wrap", editor)),
+          div(cls -> "pg-notebook-pane", NotebookView(state)),
           FoldablePane(
             state.outputOpen,
             width = state.outputWidth,
@@ -354,20 +241,6 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
               "Resize output panel"
             )
           )
-        ),
-        VerticalSplitter(state.resultHeight, PlaygroundState.resultRange, "Resize result panel"),
-        div(
-          cls       -> "pg-bottom",
-          styleAttr -> state.resultHeight.map(h => s"height: ${h}px"),
-          resultHeader,
-          state
-            .resultTab
-            .map {
-              case ResultTab.Result =>
-                ResultPanel(state)
-              case ResultTab.Tests =>
-                TestsPanel(state)
-            }
         )
       )
     ),
@@ -382,7 +255,7 @@ class PlaygroundUI(state: PlaygroundState) extends RxElement:
       span(
         cls -> "pg-status__keys",
         Kbd("⌘↵"),
-        " run ",
+        " run cell ",
         Kbd("⇧↵"),
         " describe ",
         Kbd("⌃↵"),

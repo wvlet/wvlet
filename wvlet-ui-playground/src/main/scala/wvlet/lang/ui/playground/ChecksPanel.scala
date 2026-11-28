@@ -16,42 +16,6 @@ package wvlet.lang.ui.playground
 import wvlet.uni.dom.RxElement
 import wvlet.uni.dom.all.{*, given}
 
-/** The results of the file's `test` assertions, in source order, each linked to its line */
-class TestsPanel(state: PlaygroundState) extends RxElement:
-
-  private def entry(t: Check.Test): RxElement =
-    val (kind, icon) = ChecksPanel.marker(t.status)
-    div(
-      cls          -> s"pg-run-check pg-run-check--${kind}",
-      data("line") -> t.line.toString,
-      div(
-        cls -> "pg-run-check__head",
-        span(cls -> "pg-run-check__icon", aria("label") -> kind, icon),
-        span(cls -> "pg-run-check__source", t.source),
-        ChecksPanel.lineButton(state, t.line)
-      ),
-      pre(cls -> "pg-run-check__message", t.message)
-    )
-
-  override def render: RxElement = div(
-    cls -> "pg-run-checks",
-    state
-      .output
-      .map { out =>
-        if out.tests.isEmpty then
-          div(
-            cls -> "pg-result__empty",
-            "No ",
-            code("test"),
-            " statements in this file. Try the Testing & Debugging examples."
-          )
-        else
-          div(cls -> "pg-run-checks__list", out.tests.map(entry))
-      }
-  )
-
-end TestsPanel
-
 /**
   * The rows of each `debug { ... }` block of the file, in source order, for the right panel. A
   * block's line is a button that selects it in the editor.

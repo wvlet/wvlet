@@ -345,13 +345,24 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
         .newContext(Symbol.NoSymbol)
       val selected = QuerySelector.selectQuery(unit, position, selection)
       // Drop the `-- wvlet version=..., src=...` header line of each statement
-      GenSQL
-        .generateSQL(unit, targetPlan = Some(selected))
-        .linesIterator
-        .filterNot(_.startsWith("-- wvlet version="))
-        .mkString("\n")
+      val lines =
+        GenSQL
+          .generateSQL(unit, targetPlan = Some(selected))
+          .linesIterator
+          .filterNot(_.startsWith("-- wvlet version="))
+          .toSeq
+      // In a notebook, the cell markers and text cells above a statement are comments that attach
+      // to it; they are not part of the query
+      val sql =
+        if text.contains("-- %%") then
+          lines.dropWhile(_.trim.startsWith("--"))
+        else
+          lines
+      sql.mkString("\n")
     finally
       compiler.releaseUnit(unit)
+
+  end translate
 
   private def newUnit(text: String, mode: InputMode): CompilationUnit =
     mode match
