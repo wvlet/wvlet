@@ -213,12 +213,21 @@ class Sidebar(state: PlaygroundState) extends RxElement:
         state.outputTab        := OutputTab.Docs
         state.closeSidebarOnNarrow()
       case s: ReferenceNode.Section =>
+        // One category open at a time, so the list stays short
         referenceExpanded.update(x =>
           if x.contains(s.key) then
             x - s.key
           else
-            x + s.key
+            Set(s.key)
         )
+    }
+    .onChange { c =>
+      // Opening a category with the chevron or the arrow keys also folds the others
+      if c.key == "expanded" then
+        val opened = c.value.asInstanceOf[Set[String]] -- c.previous.asInstanceOf[Set[String]]
+        if opened.nonEmpty && c.value != opened then
+          c.cancel()
+          referenceExpanded := opened
     }
 
   override def render: RxElement =
