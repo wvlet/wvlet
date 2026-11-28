@@ -1626,6 +1626,8 @@ summary.pg-engine-section__title {
 .pg-cell__out {
     grid-column: 2;
     min-width: 0;
+    /* Line up with the code in the editor above (set by the editor) */
+    padding-left: var(--pg-code-left, 0);
 }
 
 .pg-cell__fold {
@@ -1732,4 +1734,30 @@ summary.pg-engine-section__title {
 .pg-cell__table .uni-list__row:last-child > .uni-table__cell {
     border-bottom: none;
     box-shadow: none;
+}
+
+/* uni's list keeps scrolls to itself; let sideways wheel and trackpad scrolls reach the wrapper */
+.pg-cell__table .uni-table {
+    overscroll-behavior: auto;
+}
+
+/* Rows on the plain panel color (white or dark); a click doesn't leave a row highlighted */
+.pg-cell__table .uni-list__row,
+.pg-cell__table .uni-list__row[aria-selected='true'] {
+    background: var(--uni-panel);
+}
+
+.pg-cell__table .uni-list__row:hover {
+    background: var(--uni-hover);
+}
+
+.pg-cell__table .uni-table .uni-list__row .uni-table__cell[aria-selected='true'],
+.pg-cell__table .uni-table:focus-visible .uni-table__cell[data-active='true'] {
+    background: inherit;
+    box-shadow: 0 1px var(--uni-line);
+}
+
+/* A header shade that stands apart from the rows, in light and dark themes */
+.pg-cell__table .uni-table__header-row > .uni-table__cell {
+    background: color-mix(in srgb, var(--uni-fg) 9%, var(--uni-panel));
 }

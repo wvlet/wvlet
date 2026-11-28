@@ -196,8 +196,12 @@ export class MonacoEditor {
         if (!this.editor) {
             return;
         }
+        // A notebook cell shows no line numbers, like Jupyter's
         this.editor.updateOptions({
             scrollBeyondLastLine: false,
+            lineNumbers: 'off',
+            folding: false,
+            lineDecorationsWidth: 10,
             scrollbar: {alwaysConsumeMouseWheel: false, vertical: 'auto', horizontal: 'auto'},
         });
         const container = document.getElementById(this.id);
@@ -206,8 +210,16 @@ export class MonacoEditor {
             container.style.height = `${h}px`;
             this.editor.layout({width: container.clientWidth, height: h});
         };
+        // Tell the page where the code starts, so content below (a result) can line up with it
+        const publishCodeLeft = () => {
+            const left = this.editor.getLayoutInfo().contentLeft;
+            const cell = container.closest('[data-cell]') as HTMLElement | null;
+            (cell ?? container).style.setProperty('--pg-code-left', `${left}px`);
+        };
         this.editor.onDidContentSizeChange(update);
+        this.editor.onDidLayoutChange(publishCodeLeft);
         update();
+        publishCodeLeft();
     }
 
     /** Release the editor, e.g. when its page or notebook cell goes away */
