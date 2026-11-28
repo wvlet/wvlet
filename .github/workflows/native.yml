@@ -52,7 +52,7 @@ jobs:
               - 'flake.nix'
               - 'flake.lock'
               - SCALA_VERSION
-            # Pull requests build the library only for these; the required "Scala Native" job in
+            # Pull requests build the library only for these; the "Scala Native" job in
             # test.yml already compiles wvc-lib with the rest of projectNative
             wvc_lib:
               - '.github/workflows/native.yml'
