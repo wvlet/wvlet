@@ -150,6 +150,9 @@ final class JoinSpill(
       pendingTotal -= pendingBytes(p)
       pendingBytes(p) = 0
 
+  /** The rows written to build files */
+  def spilledRows: Long = buildFiles.iterator.filter(_ != null).map(_.rows).sum
+
   /** Whether any partition was written out */
   def anyEvicted: Boolean = evicted.contains(true)
 
@@ -191,15 +194,12 @@ final class JoinSpill(
     }
   }
 
-  /** Delete the files of partition `p`, once joined */
+  /** Delete the files of partition `p`, once joined (or after an early close) */
   def delete(p: Int): Unit =
     Option(buildFiles(p)).foreach(_.delete())
     Option(probeFiles(p)).foreach(_.delete())
     buildFiles(p) = null
     probeFiles(p) = null
-
-  /** Delete every file left (after a failure or an early close) */
-  def deleteAll(): Unit = (0 until Partitions).foreach(delete)
 
   /** A router of probe rows for one probe copy of the join */
   def probeRouter(probeSchema: Schema, probeKeys: IndexedSeq[VExpr]): ProbeRouter = ProbeRouter(
@@ -232,6 +232,9 @@ object JoinSpill:
 
   /** Partitions written out (for tests) */
   val partitionsEvicted: AtomicLong = AtomicLong(0)
+
+  /** Spill tails split into one task per partition (for tests) */
+  val splitTails: AtomicLong = AtomicLong(0)
 
   /** Spilled partitions joined (for tests) */
   val partitionsJoined: AtomicLong = AtomicLong(0)

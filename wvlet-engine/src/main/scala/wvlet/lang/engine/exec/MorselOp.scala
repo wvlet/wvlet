@@ -49,7 +49,8 @@ import scala.collection.mutable
   * With `spillTails` (`spill_join`), when some hash join build of the pipeline spilled (`spilled`,
   * checked after `prepare`), those runs replace `tails`: one streamed run per tail on the calling
   * thread, whose joins join their spilled partitions once their input ends, and whose right / full
-  * joins emit every unmatched build row.
+  * joins emit every unmatched build row. A single `splittable` spill tail over one spilled build
+  * runs instead as one task per spilled partition, at most the runner's parallelism at once.
   */
 class MorselOp(
     val segments: Seq[MorselOp.Segment],
@@ -115,6 +116,8 @@ class MorselOp(
   private var tailDone                 = false
   // Whether a build of the pipeline spilled, so `spillTails` replace `tails`
   private var spilling = false
+  // The runs of a spill tail split by spilled partition, not submitted yet
+  private var pendingTails: Iterator[() => Seq[Batch]] = Iterator.empty
 
   /** The number of steps run before the parts start (for tests) */
   def prepareSteps: Int = prepare.size
@@ -137,6 +140,16 @@ class MorselOp(
     */
   private def startTails(): Unit =
     if spilling then
+      spillTails match
+        case Seq(t) if t.splittable && runner.parallelism > 1 && spilled.count(_()) == 1 =>
+          // One task per spilled partition, at most `parallelism` in flight (see fill)
+          tailTaskCount = JoinSpill.Partitions
+          JoinSpill.splitTails.incrementAndGet()
+          pendingTails = (0 until JoinSpill.Partitions)
+            .iterator
+            .map(p => () => runTail(t, p, p + 1))
+          return
+        case _ =>
       // Streamed: the joins of spilled partitions emit about as many rows as the parts
       spillTails.foreach { t =>
         val sc = t.scan.getOrElse(scan)
@@ -156,6 +169,8 @@ class MorselOp(
         inFlight.enqueue(Item.Task(runner.submit(() => runTail(t, from, until)), null))
         running += 1
       }
+
+  end startTails
 
   private def runPart(seg: Segment, s: ScanSplits, k: Int): Seq[Batch] =
     queryMemory.checkKilled()
@@ -209,6 +224,12 @@ class MorselOp(
         inFlight.enqueue(Item.Task(runner.submit(() => runPart(seg, s, k)), last))
         running += 1
         nextPart += 1
+      else if pendingTails.hasNext then
+        if running < runner.parallelism then
+          inFlight.enqueue(Item.Task(runner.submit(pendingTails.next()), null))
+          running += 1
+        else
+          more = false
       else
         splits = null
         more = openNext()

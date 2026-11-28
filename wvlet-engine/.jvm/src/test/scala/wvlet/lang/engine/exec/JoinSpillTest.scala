@@ -138,6 +138,61 @@ class JoinSpillTest extends UniTest:
     spillFolders shouldBe Nil
   }
 
+  /** A Parquet file of DuckDB's `select` over range(rows), in row groups of `rowGroup` rows */
+  private def writeParquet(name: String, select: String, rows: Int, rowGroup: Int): String =
+    val path = spillRoot.toPath.getParent.resolve(s"${spillRoot.getName}-${name}.parquet")
+    Class.forName("org.duckdb.DuckDBDriver")
+    val conn = java.sql.DriverManager.getConnection("jdbc:duckdb:")
+    try
+      val st = conn.createStatement()
+      try st.execute(
+          s"copy (select ${select} from range(${rows})) to '${path}' " +
+            s"(format parquet, row_group_size ${rowGroup})"
+        )
+      finally st.close()
+    finally
+      conn.close()
+    path.toFile.deleteOnExit()
+    path.toString
+
+  test("should join spilled partitions after a parallel probe, as tasks without outer joins") {
+    // A probe of 20 row groups runs as parts, after which the spill tail joins the spilled
+    // partitions: a task per partition when one build spilled and no join is right / full
+    val fact = writeParquet(
+      "fact",
+      "range::bigint as id, (range % 60000)::bigint as k, (range % 7)::bigint as g",
+      200000,
+      10000
+    )
+    val dim    = writeParquet("dim", "range::bigint as k, 'name#' || range as name", 50000, 50000)
+    def engine =
+      val e = engineOf()
+      e.catalog.registerParquet("fact", fact)
+      e.catalog.registerParquet("dim", dim)
+      e
+    val inMemory = engine
+    val spilling = engine.withSpillThreshold(512L * 1024)
+    val split    = JoinSpill.splitTails.get()
+    Seq(
+      "select f.id, d.name from fact f join dim d on f.k = d.k",
+      "select f.id, d.name from fact f left join dim d on f.k = d.k",
+      "select f.id, d.name from fact f full join dim d on f.k = d.k",
+      "select id from fact where k in (select k from dim where k % 3 = 0)",
+      "select id from fact f where not exists (select 1 from dim d where d.k = f.k and d.k % 2 = 0)",
+      "select f.id, d.name, e.name from fact f join dim d on f.k = d.k " +
+        "join dim e on f.id % 50000 = e.k",
+      "select f.g, count(*), max(d.name) from fact f join dim d on f.k = d.k group by f.g"
+    ).foreach { q =>
+      val expected                  = sortedRows(run(inMemory, q))
+      val (actual, evicted, joined) = spills(sortedRows(run(spilling, q)))
+      debug(s"${q}: ${evicted} partitions evicted, ${joined} joined")
+      evicted > 0 shouldBe true
+      actual shouldBe expected
+    }
+    JoinSpill.splitTails.get() > split shouldBe true
+    spillFolders shouldBe Nil
+  }
+
   test("should split a spilled partition again when it does not fit") {
     val inMemory = engineOf()
     // No headroom: every partition is written, and every partition's build splits once more

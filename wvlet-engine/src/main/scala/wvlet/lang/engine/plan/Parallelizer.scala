@@ -151,7 +151,7 @@ object Parallelizer:
       // The runs after every part when a join build spilled (`spill_join`): each over an empty
       // input of its scan (the first segment's when None), with every join a copy that joins its
       // spilled partitions and every right / full join emitting all its unmatched rows
-      spillTails: Seq[MorselOp.Tail] = Seq(MorselOp.Tail.whole(x => x)),
+      spillTails: Seq[MorselOp.Tail] = Seq(MorselOp.Tail((_, _) => x => x, splittable = true)),
       // Whether each spillable build of the pipeline spilled, known once built
       spilled: List[() => Boolean] = Nil
   ):
@@ -265,22 +265,25 @@ object Parallelizer:
             // The build is read by this pipeline's parts and tail only
             done = p.done :+ (() => template.joinBuild.free()),
             buildRows =
-              p.buildRows :+ (() => Option(template.joinBuild.build).fold(0L)(_.size.toLong))
+              p.buildRows :+ (() => template.joinBuild.rows)
           )
           // The spill tail: this join's copy that joins its spilled partitions, over the spill
           // tails below it, so the rows of their spilled partitions probe this join too
-          def finishing(x: Operator): HashJoinOp =
+          def finishing(x: Operator, from: Int, until: Int): HashJoinOp =
             if isOuterBuild(j.kind) then
-              template.withLeft(x, OuterMode.Tail).withSpillFinish()
+              template.withLeft(x, OuterMode.Tail).withSpillFinish().withSpillRange(from, until)
             else
-              template.withLeft(x).withSpillFinish()
+              template.withLeft(x).withSpillFinish().withSpillRange(from, until)
           val spillTail =
             p.spillTails match
               case Seq(inner) =>
-                MorselOp
-                  .Tail
-                  .whole(x => finishing(inner.run(0, Int.MaxValue)(x)))
-                  .copy(scan = inner.scan)
+                // Split by spilled partition only without right / full joins, whose unmatched
+                // rows must be emitted once, after every partition
+                MorselOp.Tail(
+                  (from, until) => x => finishing(inner.run(from, until)(x), from, until),
+                  splittable = inner.splittable && p.tails.isEmpty && !isOuterBuild(j.kind),
+                  scan = inner.scan
+                )
               case inner =>
                 MorselOp
                   .Tail
@@ -291,7 +294,9 @@ object Parallelizer:
                           t.run(0, Int.MaxValue)(emptyInput(t.scan.getOrElse(p.scan)))
                         ),
                         j.left.schema
-                      )
+                      ),
+                      0,
+                      Int.MaxValue
                     )
                   )
           val spilled =

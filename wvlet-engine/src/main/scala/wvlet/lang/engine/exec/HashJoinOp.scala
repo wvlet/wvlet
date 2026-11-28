@@ -60,6 +60,11 @@ final class JoinBuild(
   /** The build's spilled state once built, null when it fits in memory */
   def spillState: JoinSpill = spilled
 
+  /** The build's rows once built, the spilled ones included (0 once freed, unless spilled) */
+  def rows: Long =
+    val kept = Option(build).fold(0L)(_.size.toLong)
+    Option(spilled).fold(kept)(s => kept + s.spilledRows)
+
   /** Whether the build spilled some of its partitions (known once built) */
   def isSpilled: Boolean = spilled != null
 
@@ -835,7 +840,7 @@ class HashJoinOp(
       partJoin = null
     // The last probe of a spilled build: its files are no longer read (also after an early close)
     if finishesSpill && joinBuild.isSpilled then
-      joinBuild.spillState.deleteAll()
+      (spillRange._1 until spillRange._2).foreach(joinBuild.spillState.delete)
     // A shared build's right input belongs to the join that made the build
     if shared == null then
       super.close()
@@ -951,6 +956,15 @@ class HashJoinOp(
     finishesSpill = true
     this
 
+  // The spilled partitions [from, until) this copy joins: all of them, or one range of a spill
+  // tail split into tasks
+  private var spillRange = (0, JoinSpill.Partitions)
+
+  /** Join only the spilled partitions [from, until) (a spill tail split into tasks) */
+  def withSpillRange(from: Int, until: Int): this.type =
+    spillRange = (from, math.min(until, JoinSpill.Partitions))
+    this
+
   // The router of this copy's probe rows, once the build spilled
   private var router: JoinSpill.ProbeRouter = null
   // 0: probing, 1: emitting the unmatched rows of the in-memory build, 2: joining the spilled
@@ -981,6 +995,7 @@ class HashJoinOp(
             if finishesSpill && joinBuild.isSpilled then
               // Every probe routed its rows: the in-memory build is done with
               joinBuild.spillState.finishProbes()
+              nextPartition = spillRange._1
               build = null
               buildMatched = null
               buildExcluded = null
@@ -1022,10 +1037,10 @@ class HashJoinOp(
     var out: Batch = null
     while out == null do
       if partJoin == null then
-        while nextPartition < JoinSpill.Partitions && !needsJoin(s, nextPartition) do
+        while nextPartition < spillRange._2 && !needsJoin(s, nextPartition) do
           s.delete(nextPartition)
           nextPartition += 1
-        if nextPartition >= JoinSpill.Partitions then
+        if nextPartition >= spillRange._2 then
           return null
         partJoin = partitionJoin(s, nextPartition)
       out = partJoin.next()
