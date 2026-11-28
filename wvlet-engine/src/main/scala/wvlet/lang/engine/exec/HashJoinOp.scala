@@ -833,6 +833,9 @@ class HashJoinOp(
     if partJoin != null then
       partJoin.close()
       partJoin = null
+    // The last probe of a spilled build: its files are no longer read (also after an early close)
+    if finishesSpill && joinBuild.isSpilled then
+      joinBuild.spillState.deleteAll()
     // A shared build's right input belongs to the join that made the build
     if shared == null then
       super.close()

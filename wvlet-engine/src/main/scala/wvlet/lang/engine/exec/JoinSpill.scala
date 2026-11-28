@@ -57,14 +57,18 @@ final class JoinSpill(
   /** Whether each partition was written to its build file */
   val evicted: Array[Boolean] = new Array[Boolean](Partitions)
 
-  private val hasher      = GroupTable(types)
-  private val kept        = Array.fill(Partitions)(mutable.ArrayBuffer.empty[Batch])
-  private val keptBytes   = new Array[Long](Partitions)
-  private val keptMemory  = Array.fill(Partitions)(memory.child())
-  private var keptTotal   = 0L
-  private val keptCap     = math.max(1L, memory.spillThresholdBytes / 2)
-  private val pending     = Array.fill(Partitions)(mutable.ArrayBuffer.empty[Batch])
-  private val pendingRows = new Array[Int](Partitions)
+  private val hasher     = GroupTable(types)
+  private val kept       = Array.fill(Partitions)(mutable.ArrayBuffer.empty[Batch])
+  private val keptBytes  = new Array[Long](Partitions)
+  private val keptMemory = Array.fill(Partitions)(memory.child())
+  private var keptTotal  = 0L
+  private val keptCap    = math.max(1L, memory.spillThresholdBytes / 2)
+  // Rows of evicted partitions not written yet: per partition at most BlockRows rows or
+  // BlockBytes, and at most MaxPendingBytes over all of them (estimated)
+  private val pending      = Array.fill(Partitions)(mutable.ArrayBuffer.empty[Batch])
+  private val pendingRows  = new Array[Int](Partitions)
+  private val pendingBytes = new Array[Long](Partitions)
+  private var pendingTotal = 0L
 
   /** Route the rows of a compacted batch to their partitions */
   def add(c: Batch): Unit =
@@ -126,10 +130,15 @@ final class JoinSpill(
     partitionsEvicted.incrementAndGet()
 
   private def addPending(p: Int, piece: Batch): Unit =
+    val bytes = MemoryContext.estimatedBytes(piece)
     pending(p) += piece
     pendingRows(p) += piece.size
-    if pendingRows(p) >= BlockRows then
+    pendingBytes(p) += bytes
+    pendingTotal += bytes
+    if pendingRows(p) >= BlockRows || pendingBytes(p) >= BlockBytes then
       flush(p)
+    else if pendingTotal >= MaxPendingBytes then
+      (0 until Partitions).foreach(flush)
 
   private def flush(p: Int): Unit =
     if pending(p).nonEmpty then
@@ -138,6 +147,8 @@ final class JoinSpill(
       buildFiles(p).append(Batch.concat(schema, pending(p).toSeq))
       pending(p).clear()
       pendingRows(p) = 0
+      pendingTotal -= pendingBytes(p)
+      pendingBytes(p) = 0
 
   /** Whether any partition was written out */
   def anyEvicted: Boolean = evicted.contains(true)
@@ -206,8 +217,14 @@ object JoinSpill:
 
   private inline val PartitionShift = 26
 
-  /** Rows of one partition gathered into each block of its file */
+  /** Rows of one partition gathered into each block of its file, at most */
   inline val BlockRows = 65536
+
+  /** Estimated bytes of one partition's rows gathered into each block of its file, at most */
+  inline val BlockBytes = 4L << 20
+
+  /** Estimated bytes of evicted partitions' rows a build holds before writing them, at most */
+  inline val MaxPendingBytes = 32L << 20
 
   // Hash seeds of a build split for the first and the second time; nonzero, so that the bits
   // routing a row to a spill partition don't pick the in-memory table's partition too
