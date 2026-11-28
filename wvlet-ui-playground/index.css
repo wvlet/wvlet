@@ -1719,7 +1719,7 @@ summary.pg-engine-section__title {
     display: none;
     height: 100%;
     border-radius: 3px;
-    background: rgb(128 128 128 / 0.5);
+    background: rgb(128 128 128 / 0.28);
     opacity: 0;
     transition: opacity 0.15s;
     pointer-events: auto;
@@ -1793,4 +1793,9 @@ summary.pg-engine-section__title {
 /* A header shade that stands apart from the rows, in light and dark themes */
 .pg-cell__table .uni-table__header-row > .uni-table__cell {
     background: color-mix(in srgb, var(--uni-fg) 9%, var(--uni-panel));
+}
+
+.pg-hscroll__thumb:hover,
+.pg-hscroll[data-dragging="true"] .pg-hscroll__thumb {
+    background: rgb(128 128 128 / 0.45);
 }
