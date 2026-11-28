@@ -38,6 +38,9 @@ class MonacoEditor(
   def focus(): Unit                    = js.native
   def revealLine(line: Int): Unit      = js.native
 
+  /** Size the editor to its text, between `min` and `max` pixels (for notebook cells) */
+  def enableAutoHeight(min: Int, max: Int): Unit = js.native
+
   /**
     * Show a marker in the glyph margin of lines: each element has `line` (1-origin), `kind` (CSS
     * class `wv-line-marker--<kind>`), and `message` (shown on hover). An empty array clears them.
@@ -55,10 +58,12 @@ object MonacoEditor extends js.Object:
     * first call takes effect). Both callbacks get the editor text and a 0-origin offset: `hover`
     * returns `{content, startLine, startColumn, endLine, endColumn}` (markdown, 1-origin range) or
     * null, and `complete` returns an array of `{label, kind, detail}` with LSP item kinds.
+    * `functionNames` are highlighted as function calls after a dot (`name.upper`).
     */
   def registerLanguageServices(
       hover: js.Function2[String, Int, js.Any],
-      complete: js.Function2[String, Int, js.Array[js.Dynamic]]
+      complete: js.Function2[String, Int, js.Array[js.Dynamic]],
+      functionNames: js.Array[String]
   ): Unit = js.native
 
 end MonacoEditor

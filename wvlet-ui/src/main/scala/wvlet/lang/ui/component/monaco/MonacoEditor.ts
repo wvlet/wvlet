@@ -1,5 +1,6 @@
 import * as monaco from 'monaco-editor';
 import {KeyCode, KeyMod} from "monaco-editor";
+import {setFunctionNames} from './WvletLanguage';
 
 export class MonacoEditor {
     private id: string;
@@ -23,15 +24,20 @@ export class MonacoEditor {
      * global per language, so every Wvlet editor on the page gets them. `hover` returns markdown
      * and a 1-origin range, or null; `complete` returns LSP-style items (`kind` is an LSP
      * CompletionItemKind number). Both take the editor text and a 0-origin UTF-16 offset.
+     * `functionNames` are highlighted as functions after a dot.
      */
     static registerLanguageServices(
         hover: (text: string, offset: number) => {content: string, startLine: number, startColumn: number, endLine: number, endColumn: number} | null,
-        complete: (text: string, offset: number) => {label: string, kind: number, detail: string}[]
+        complete: (text: string, offset: number) => {label: string, kind: number, detail: string}[],
+        functionNames: string[] = []
     ): void {
         if (MonacoEditor.languageServicesRegistered) {
             return;
         }
         MonacoEditor.languageServicesRegistered = true;
+        if (functionNames.length > 0) {
+            setFunctionNames(functionNames);
+        }
         // LSP CompletionItemKind -> Monaco's enum, for the kinds Wvlet completions use
         const K = monaco.languages.CompletionItemKind;
         const kinds: {[lsp: number]: monaco.languages.CompletionItemKind} = {
@@ -88,6 +94,8 @@ export class MonacoEditor {
             {token: 'string.sql', foreground: 'f4c099'},
             {token: 'comment', foreground: '7282a4'},
             {token: 'operator', foreground: 'bd93f9'},
+            {token: 'function', foreground: '58ccf0'},
+            {token: 'number', foreground: 'b5cea8'},
             {token: 'invalid', foreground: 'ff0000'},
         ];
         const lightRules = [
@@ -102,6 +110,8 @@ export class MonacoEditor {
             {token: 'string.sql', foreground: 'b35900'},
             {token: 'comment', foreground: '6a737d'},
             {token: 'operator', foreground: '7c3aed'},
+            {token: 'function', foreground: '0b6bcb'},
+            {token: 'number', foreground: '098658'},
             {token: 'invalid', foreground: 'd00000'},
         ];
         for (const name of ['vs-wvlet', 'vs-sql']) {
@@ -187,6 +197,42 @@ export class MonacoEditor {
         }
     }
 
+    /**
+     * Size the editor to its text, between `min` and `max` pixels, for an editor in a page that
+     * scrolls (a notebook cell). The mouse wheel scrolls the page unless the editor itself has
+     * more to scroll.
+     */
+    enableAutoHeight(min: number, max: number): void {
+        if (!this.editor) {
+            return;
+        }
+        // A notebook cell shows no line numbers, like Jupyter's
+        this.editor.updateOptions({
+            scrollBeyondLastLine: false,
+            lineNumbers: 'off',
+            folding: false,
+            lineDecorationsWidth: 10,
+            scrollbar: {alwaysConsumeMouseWheel: false, vertical: 'auto', horizontal: 'auto'},
+        });
+        const container = document.getElementById(this.id);
+        const update = () => {
+            const h = Math.min(max, Math.max(min, this.editor.getContentHeight()));
+            container.style.height = `${h}px`;
+            this.editor.layout({width: container.clientWidth, height: h});
+        };
+        this.editor.onDidContentSizeChange(update);
+        update();
+    }
+
+    /** Release the editor, e.g. when its page or notebook cell goes away */
+    dispose(): void {
+        if (this.editor) {
+            this.editor.dispose();
+            this.editor = null;
+            this.markers = null;
+        }
+    }
+
     render(): void {
         MonacoEditor.defineThemes();
         const theme: string = this.themeName();
@@ -218,6 +264,10 @@ export class MonacoEditor {
             automaticLayout: true,
             tabSize: 2
         })
+
+        this.markers = null;
+        // Tell the page which editor has the focus, e.g. to select its notebook cell
+        this.editor.onDidFocusEditorText(() => this.action('focus'));
 
         // Add shortcut key commands
         this.editor.addAction({
@@ -273,10 +323,6 @@ export class MonacoEditor {
         })
 
     };
-
-    dispose(): void {
-        this.editor?.dispose();
-    }
 
     setReadOnly(): void {
         // disable text edit

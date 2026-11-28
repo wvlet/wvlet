@@ -41,6 +41,9 @@ case class LineMarker(line: Int, kind: String, message: String)
   *   called with the id of a Monaco action bound to a key, e.g. `run-query` for Cmd/Ctrl+Enter
   * @param markers
   *   gutter markers to show, e.g. the outcome of each `test` line
+  * @param autoHeight
+  *   the min and max height in pixels, for an editor sized to its text (a notebook cell); without
+  *   it, the editor fills its container
   */
 class CodeEditor(
     editorId: String,
@@ -49,7 +52,8 @@ class CodeEditor(
     theme: Rx[ColorScheme],
     readOnly: Boolean = false,
     onAction: String => Unit = _ => (),
-    markers: Rx[Seq[LineMarker]] = Rx.const(Nil)
+    markers: Rx[Seq[LineMarker]] = Rx.const(Nil),
+    autoHeight: Option[(Int, Int)] = None
 ) extends RxElement:
   private val editor = new MonacoEditor(editorId, "wvlet", text.get, action = cmd => onAction(cmd))
 
@@ -68,6 +72,7 @@ class CodeEditor(
 
   override def onMount(node: Any): Unit =
     editor.render()
+    autoHeight.foreach((min, max) => editor.enableAutoHeight(min, max))
     if readOnly then
       editor.setReadOnly()
       editor.enableWordWrap()
@@ -98,8 +103,17 @@ class CodeEditor(
   override def beforeUnmount: Unit =
     subscriptions.foreach(_.cancel)
     subscriptions = Nil
+    editor.dispose()
 
-  override def render: RxElement = div(cls -> "pg-editor", id -> editorId)
+  override def render: RxElement = div(
+    cls -> (
+      if autoHeight.isDefined then
+        "pg-editor pg-editor--auto"
+      else
+        "pg-editor"
+    ),
+    id -> editorId
+  )
 
 end CodeEditor
 

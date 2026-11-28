@@ -65,9 +65,10 @@ class ReferenceTest extends UniTest:
   private val engine = PlaygroundEngine(0.001)
 
   test("should run a function's examples on the engine") {
-    engine.runExample("'Wvlet'.upper") shouldBe Right("'WVLET'")
-    engine.runExample("from [[1], [2], [3]] as t(x) agg x.sum") shouldBe Right("6")
-    engine.runExample("no_such_column.upper").isLeft shouldBe true
+    val examples = wvlet.lang.engine.StdLibExamples()
+    examples.run("'Wvlet'.upper") shouldBe Right("'WVLET'")
+    examples.run("from [[1], [2], [3]] as t(x) agg x.sum") shouldBe Right("6")
+    examples.run("no_such_column.upper").isLeft shouldBe true
   }
 
   test("should open an example as a query") {
