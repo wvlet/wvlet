@@ -35,6 +35,10 @@ final class JoinBuild(
   @volatile
   private var built = false
 
+  // The query's memory budget, captured where the build is planned: the build runs on whichever
+  // thread probes first
+  private val memory = MemoryContext.current
+
   // Runtime filters drop NULL probe keys, which match NULL build keys here
   require(!nullsEqual || filters.isEmpty, "A join with NULL-equal keys takes no runtime filters")
 
@@ -132,8 +136,10 @@ final class JoinBuild(
       }
 
   private def buildTable(): Unit =
-    val batches = right.drain()
+    val batches = memory.drain(right)
     val rows    = batches.iterator.map(_.size.toLong).sum
+    // The row chains and hash tables or direct index, before they are allocated
+    memory.reserve(rows * JoinBuild.IndexBytesPerRow)
     // The runner of the build steps after the input (`parallel_join_build`): small builds stay on
     // the calling thread
     val steps =
@@ -543,6 +549,12 @@ final class JoinBuild(
 end JoinBuild
 
 object JoinBuild:
+  /**
+    * Bytes per build row a memory reservation counts for the row chains (4) and the hash tables or
+    * direct index (~8 at their load factors)
+    */
+  private[exec] val IndexBytesPerRow = 12L
+
   /** Builds with fewer rows use one hash table, built on the calling thread */
   def MinParallelRows: Int = sys
     .props

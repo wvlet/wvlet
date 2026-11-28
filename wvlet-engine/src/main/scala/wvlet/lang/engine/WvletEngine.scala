@@ -73,12 +73,18 @@ case class EnginePlanStages(
   * against `baseDir`. `optimizer` selects the planner optimizations to run (by default, all but
   * those named in the `wvlet.engine.optimizer.disabled` system property). With an `accelerator`,
   * the plan subtrees it supports run on it (e.g. a GPU), and the rest on the CPU.
+  *
+  * Each query reserves the bytes of its large structures from `memoryPool` (shared by the engines
+  * of a server) and fails with RESOURCE_EXHAUSTED past `queryMemoryLimit` bytes
+  * (`memory_accounting`).
   */
 class WvletEngine(
     val catalog: EngineCatalog = EngineCatalog(),
     baseDir: String = ".",
     val optimizer: OptimizerOptions = OptimizerOptions.fromSystem(),
-    val accelerator: Option[PlanAccelerator] = None
+    val accelerator: Option[PlanAccelerator] = None,
+    val memoryPool: MemoryPool = MemoryPool(),
+    val queryMemoryLimit: Option[Long] = None
 ) extends LogSupport:
 
   private class DefaultResolver(using ctx: Context) extends SourceResolver:
@@ -192,35 +198,63 @@ class WvletEngine(
         names <- BenchmarkCatalogs.tableNames(c, sc)
       yield names
 
-  /** An engine running only the given planner optimizations, over the same catalog and folder */
-  def withOptimizer(o: OptimizerOptions): WvletEngine = WvletEngine(
-    catalog,
-    baseDir,
-    o,
-    accelerator
-  )
-
-  /** An engine over another catalog, resolving files against the same folder */
-  def withCatalog(c: EngineCatalog): WvletEngine = WvletEngine(c, baseDir, optimizer, accelerator)
-
-  /** An engine running the plan subtrees `a` supports on it */
-  def withAccelerator(a: PlanAccelerator): WvletEngine = WvletEngine(
+  private def copy(
+      catalog: EngineCatalog = catalog,
+      optimizer: OptimizerOptions = optimizer,
+      accelerator: Option[PlanAccelerator] = accelerator,
+      memoryPool: MemoryPool = memoryPool,
+      queryMemoryLimit: Option[Long] = queryMemoryLimit
+  ): WvletEngine = WvletEngine(
     catalog,
     baseDir,
     optimizer,
-    Some(a)
+    accelerator,
+    memoryPool,
+    queryMemoryLimit
   )
 
+  /** An engine running only the given planner optimizations, over the same catalog and folder */
+  def withOptimizer(o: OptimizerOptions): WvletEngine = copy(optimizer = o)
+
+  /** An engine over another catalog, resolving files against the same folder */
+  def withCatalog(c: EngineCatalog): WvletEngine = copy(catalog = c)
+
+  /** An engine running the plan subtrees `a` supports on it */
+  def withAccelerator(a: PlanAccelerator): WvletEngine = copy(accelerator = Some(a))
+
   /** An engine running every plan on the CPU */
-  def noAccelerator(): WvletEngine = WvletEngine(catalog, baseDir, optimizer, None)
+  def noAccelerator(): WvletEngine = copy(accelerator = None)
+
+  /** An engine whose queries reserve memory from `pool` (e.g. one shared by a server's sessions) */
+  def withMemoryPool(pool: MemoryPool): WvletEngine = copy(memoryPool = pool)
+
+  /** An engine failing a query that reserves more than `bytes` */
+  def withQueryMemoryLimit(bytes: Long): WvletEngine = copy(queryMemoryLimit = Some(bytes))
+
+  /** An engine with no per-query memory limit */
+  def noQueryMemoryLimit(): WvletEngine = copy(queryMemoryLimit = None)
+
+  /** The memory context of a new query: counting nothing with `memory_accounting` off */
+  private def newQueryMemory(): MemoryContext =
+    if optimizer.isEnabled(Optimization.MemoryAccounting) then
+      memoryPool.newQuery(queryMemoryLimit.getOrElse(Long.MaxValue))
+    else
+      MemoryContext.NoOp
 
   /** Expand model references, plan, and run a query relation */
   def execute(r: Relation)(using ctx: Context): EngineResult =
-    val expanded = GenSQL.expand(r, ctx)
-    val op       = physicalPlan(expanded)
-    debug(s"[physical plan]\n${op.explain()}")
-    try EngineResult(op.schema, op.drain())
-    finally op.close()
+    // Opened before planning, which runs plan-time subqueries, and closed after the result is
+    // drained: the caller owns the result batches from then on
+    val memory = newQueryMemory()
+    try
+      MemoryContext.withCurrent(memory) {
+        val expanded = GenSQL.expand(r, ctx)
+        val op       = physicalPlan(expanded)
+        debug(s"[physical plan]\n${op.explain()}")
+        try EngineResult(op.schema, memory.drain(op))
+        finally op.close()
+      }
+    finally memory.close()
 
   def explain(r: Relation)(using ctx: Context): String = physicalPlan(GenSQL.expand(r, ctx))
     .explain()

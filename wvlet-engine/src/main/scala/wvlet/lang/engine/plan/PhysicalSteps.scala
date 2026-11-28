@@ -28,8 +28,14 @@ import wvlet.lang.engine.vector.*
 trait PhysicalSteps:
   this: Planner =>
 
-  /** Lower a runtime plan into operators, with runtime join filters when enabled */
-  private[engine] def lower(p: RuntimePlan, inSet: Boolean = false): Operator = Lowering(
+  /**
+    * Lower a runtime plan into operators, with runtime join filters when enabled, under the query's
+    * memory context (also when a lazily computed result lowers its plan on a worker thread)
+    */
+  private[engine] def lower(p: RuntimePlan, inSet: Boolean = false): Operator =
+    MemoryContext.withCurrent(memory)(lowered(p, inSet))
+
+  private def lowered(p: RuntimePlan, inSet: Boolean): Operator = Lowering(
     p,
     joinFilters = enabled(Optimization.RuntimeJoinFilters),
     rowJoinFilters = enabled(Optimization.RowJoinFilters),
@@ -79,7 +85,8 @@ trait PhysicalSteps:
     * The physical passes over a lowered subquery computed at plan time, as [[plan]] runs them for a
     * nested relation, so that it runs in parallel
     */
-  private[engine] def physical(op: Operator): Operator = optimizePhysical(op)
+  private[engine] def physical(op: Operator): Operator =
+    MemoryContext.withCurrent(memory)(optimizePhysical(op))
 
   /**
     * The join toggles of [[optimizePhysical]] for one hash join: the planned joins, and the

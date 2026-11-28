@@ -15,6 +15,7 @@ package wvlet.lang.engine.plan
 
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.engine.exec.Aggregates
+import wvlet.lang.engine.exec.MemoryContext
 import wvlet.lang.engine.vector.PType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -60,7 +61,7 @@ private[engine] object InSubqueryAggregates extends LogSupport:
     try
       rewriteInput(planner, groupBy, having, items)
     catch
-      case NonFatal(e) =>
+      case NonFatal(e) if !MemoryContext.exceededLimit(e) =>
         debug(s"Not reusing IN subquery aggregates: ${e.getMessage}")
         None
 
