@@ -272,8 +272,9 @@ class JoinSpillTest extends UniTest:
   }
 
   test("should delete a query's spill files when it fails") {
-    // Spills past 1 byte, then fails at the 1 MB limit
-    val engine = engineOf().withSpillThreshold(1).withQueryMemoryLimit(1L << 20)
+    // Spills past 1 byte, then fails at the 256 KB limit (its gathered c_name rows count as
+    // references to the customer build's strings)
+    val engine = engineOf().withSpillThreshold(1).withQueryMemoryLimit(256L << 10)
     val e      = intercept[WvletLangException](run(engine, queries(3)))
     e.statusCode shouldBe StatusCode.RESOURCE_EXHAUSTED
     spillFolders shouldBe Nil

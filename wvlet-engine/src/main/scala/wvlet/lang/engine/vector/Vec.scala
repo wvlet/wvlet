@@ -342,7 +342,10 @@ final class StrVec(
     codeIndex: Array[Int] = null,
     entries: Array[String] = null,
     rows: Int = -1,
-    initBytes: StrVec.Bytes = null
+    initBytes: StrVec.Bytes = null,
+    // Whether the Strings are another vector's (a gather that repeats or reorders rows, or the
+    // group keys of an aggregation): memory accounting counts the references, not the strings
+    val sharesStrings: Boolean = false
 ) extends Vec:
   // The rows' bytes until the Strings are built, then null: a vector that built its Strings
   // doesn't keep its source page's bytes (or a view its source's Strings) alive. Written after
@@ -485,11 +488,18 @@ final class StrVec(
           StrVec.gatherCodes(codeIndex, idx, n)
       return StrVec(null, outNulls, null, dictSize, dict, src, at, entries, n)
     val out = new Array[String](n)
-    var i   = 0
+    // Whether rows repeat or move (a join's build side): a filter or compaction keeps each row once,
+    // in order, and so owns the Strings once its source is dropped
+    var repeats = sharesStrings
+    var prev    = -1
+    var i       = 0
     while i < n do
       val k = idx(i)
       if k >= 0 then
         out(i) = initValues(k)
+        if k <= prev then
+          repeats = true
+        prev = k
       i += 1
     if c != null then
       StrVec(out, outNulls, null, dictSize, dict, c, java.util.Arrays.copyOf(idx, n))
@@ -497,7 +507,7 @@ final class StrVec(
       // Positions in the codes this vector would gather
       StrVec(out, outNulls, null, dictSize, dict, codeSource, StrVec.gatherCodes(codeIndex, idx, n))
     else
-      StrVec(out, outNulls)
+      StrVec(out, outNulls, sharesStrings = repeats)
 
   end gather
 

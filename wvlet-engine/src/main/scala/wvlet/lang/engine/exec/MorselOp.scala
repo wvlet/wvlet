@@ -182,11 +182,15 @@ class MorselOp(
     val src  = s.parts(k)
     val sc   = seg.scan
     val part = IteratorOp(sc.schema, () => src().map(sc.narrow), sc.name, rows)
-    // A part's partial tables are dropped once drained, bounded by the part: counting them until
-    // the query ends would overcount, also when parts run on the calling thread
-    val op = MemoryContext.withCurrent(MemoryContext.NoOp)(seg.pipeline(part))
-    try drainPart(op)
-    finally op.close()
+    // A part's partial tables count while the part runs (20 parts hold one each), and return once
+    // it is drained, also on the calling thread. Its output batches, queued until read, don't count
+    val memory = queryMemory.child()
+    val op     = MemoryContext.withCurrent(memory)(seg.pipeline(part))
+    try
+      drainPart(op)
+    finally
+      op.close()
+      memory.release()
 
   /**
     * [[Operator.drain]], failing at the next batch once the query has failed elsewhere

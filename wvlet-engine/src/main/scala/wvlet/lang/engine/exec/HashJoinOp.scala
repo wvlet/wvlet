@@ -315,32 +315,48 @@ final class JoinBuild(
       matched = new Array[Boolean](build.size)
     if trackExclusions then
       excluded = new Array[Boolean](build.size)
+    // The table at its real size: flat tables at their load factor, per-partition hash tables with
+    // their key copies, and packed keys take more than the ahead estimate
+    val structure =
+      structureBytes + (
+        if packer == null then
+          0L
+        else
+          MemoryContext.estimatedBytes(keyVecs(0))
+      )
     if spillable then
       // The table and its rows, counted at their sizes, replace the input's ahead reservation
-      val held = MemoryContext.estimatedBytes(build) + structureBytes
+      val held = MemoryContext.estimatedBytes(build) + structure
       if input != null then
         input.release()
       if spilled != null then
         spilled.releaseKept()
       memory.reserve(held)
+    else
+      memory.reserve(structure - rows * JoinBuild.IndexBytesPerRow)
 
   end buildTable
 
   /** The bytes of the build's chains, tables or direct index, and match marks */
   private def structureBytes: Long =
-    val n     = build.size.toLong
-    var bytes = 4L * n
-    if directHeads != null then
-      bytes += 4L * directHeads.length
-    else if flat != null then
-      bytes += flat.sizeBytes
-    else
-      bytes += JoinBuild.HashedBytesPerRow * n
-    if matched != null then
-      bytes += n
-    if excluded != null then
-      bytes += n
-    bytes
+    def ints(a: Array[Int]): Long =
+      if a == null then
+        0L
+      else
+        4L * a.length
+    def flags(a: Array[Boolean]): Long =
+      if a == null then
+        0L
+      else
+        a.length.toLong
+    var b = ints(chain) + ints(directHeads) + flags(matched) + flags(excluded)
+    if heads != null then
+      heads.foreach(h => b += ints(h))
+    if tables != null then
+      tables.foreach(t => b += t.memoryBytes)
+    if flat != null then
+      b += flat.sizeBytes
+    b
 
   /**
     * The direct index of a single Int32 / Date / Int64 key whose range over the valid rows spans at
@@ -691,8 +707,8 @@ end JoinBuild
 
 object JoinBuild:
   /**
-    * Bytes per build row a memory reservation counts for the row chains (4) and the hash tables or
-    * direct index (~8 at their load factors)
+    * Bytes per build row reserved before the build for the row chains (4) and the hash tables or
+    * direct index (~8 at their load factors); raised to the index's real size once built
     */
   private[exec] val IndexBytesPerRow = 12L
 
