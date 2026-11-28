@@ -1702,3 +1702,8 @@ summary.pg-engine-section__title {
     font-size: 12.5px;
     font-variant-numeric: tabular-nums;
 }
+
+/* A preview shows its first rows without scrolling down; only an expanded long result scrolls */
+.pg-cell__table[data-scrolls="false"] .uni-table {
+    overflow-y: hidden;
+}

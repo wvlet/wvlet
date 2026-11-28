@@ -265,13 +265,23 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
                         math.min(n, Cell.expandedRows)
                       else
                         math.min(n, Cell.previewRows)
-                    // As wide as its columns: lines stop at the last one, and a wider table
-                    // scrolls sideways in the card
+                    // As wide as its columns, so lines stop at the last one; a wider table
+                    // scrolls sideways in the card. A preview doesn't scroll down (sorting still
+                    // orders all rows); an expanded table past 30 rows does, with room for the
+                    // scrollbar where it takes space
+                    val scrollsDown = all && n > Cell.expandedRows
+                    val width       =
+                      results.tableWidth(r, rowNumbers = false) + (
+                        if scrollsDown then
+                          Cell.scrollbarRoom
+                        else
+                          0
+                      )
                     div(
-                      cls       -> "pg-cell__table",
-                      styleAttr ->
-                        s"height: ${Cell.tableHeight(shown)}px; width: min(100%, ${results
-                            .tableWidth(r, rowNumbers = false) + 1}px)",
+                      cls             -> "pg-cell__table",
+                      data("scrolls") -> scrollsDown.toString,
+                      styleAttr       ->
+                        s"height: ${Cell.tableHeight(shown)}px; width: min(100%, ${width}px)",
                       results.table(r, rowNumbers = false)
                     )
                   },
@@ -294,11 +304,18 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
               )
             case None =>
               div(cls -> "pg-result__empty", "Done: the cell defines no query result.")
-    // The card shrinks to a narrow result's width, but keeps room for its header
-    val width = result.map(r => results.tableWidth(r, rowNumbers = false) + 2)
+    // The card shrinks to the table's width, but keeps room for its header
+    val width = result.map { r =>
+      val room =
+        if r.rows.size > Cell.expandedRows then
+          Cell.scrollbarRoom
+        else
+          0
+      results.tableWidth(r, rowNumbers = false) + room + 2
+    }
     div(
       cls       -> "pg-cell__result",
-      styleAttr -> width.map(w => s"width: min(100%, max(380px, ${w}px))").getOrElse(""),
+      styleAttr -> width.map(w => s"width: min(100%, max(240px, ${w}px))").getOrElse(""),
       header,
       c.resultOpen
         .map { open =>
