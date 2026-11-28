@@ -154,6 +154,30 @@ class CTESpillTest extends UniTest:
     spillFolders shouldBe Nil
   }
 
+  test("should spill one large batch as several blocks that readers split") {
+    val schema = Schema(IndexedSeq(Field("k", PType.Int64)))
+    val n      = 2 << 20
+    val big    = Batch(Array[Vec](LongVec(PType.Int64, Array.tabulate(n)(_.toLong), null)), n)
+    val small  = Batch(Array[Vec](LongVec(PType.Int64, Array(-1L, -2L), null)), 2)
+    val memory = MemoryPool().newQuery().withSpill(1, spillRoot.getPath)
+    try
+      val rows = SharedRows.drain(
+        memory.child(),
+        IteratorOp(schema, () => Iterator(small, big, small), "input"),
+        spill = true
+      )
+      rows.isSpilled shouldBe true
+      rows.rows shouldBe n + 4L
+      rows.parts.size > 2 shouldBe true
+      rows.parts.map(_._2).sum shouldBe n + 4L
+      val keys = rows.iterator.flatMap(b => (0 until b.size).map(b.column(0).get(_))).toSeq
+      keys shouldBe (Seq(-1L, -2L) ++ (0L until n) ++ Seq(-1L, -2L))
+      memory.reservedBytes shouldBe 0L
+    finally
+      memory.close()
+    spillFolders shouldBe Nil
+  }
+
   test("should read ranges of spill blocks from several threads at once") {
     val schema = Schema(IndexedSeq(Field("k", PType.Int64), Field("s", PType.Str)))
     val blocks = (0 until 8).map { b =>
@@ -183,7 +207,8 @@ class CTESpillTest extends UniTest:
       keys(file.readBlocks(2, 5)) shouldBe parts.slice(2, 5).flatten
       keys(file.readBlocks(3, 3)) shouldBe Nil
       file.delete()
-      keys(file.readBlocks(0, 8)) shouldBe Nil
+      intercept[WvletLangException](file.readBlocks(0, 8)).statusCode shouldBe
+        StatusCode.UNEXPECTED_STATE
     finally
       space.close()
     spillFolders shouldBe Nil

@@ -1,6 +1,6 @@
 # ADR: Shared CTE results past the spill threshold go to one spill file read by block
 
-Date: 2026-11-28 · PR #TBD
+Date: 2026-11-28 · PR #2604
 
 ## Context
 

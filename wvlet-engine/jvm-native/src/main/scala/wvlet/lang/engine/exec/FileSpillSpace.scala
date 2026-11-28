@@ -224,7 +224,13 @@ final class FileSpillFile private[exec] (space: FileSpillSpace, file: File, val 
   def readBlocks(from: Int, until: Int): Iterator[Batch] =
     require(finished, "Reading an unfinished spill file")
     space.checkOpen()
-    if from >= until || deleted then
+    // A shared result's readers read its file until its last one finished: a read after that
+    // must fail rather than return no rows
+    if deleted then
+      throw StatusCode
+        .UNEXPECTED_STATE
+        .newException(s"Reading spill file ${file.getName} after it was deleted")
+    if from >= until then
       return Iterator.empty
     val in = RandomAccessFile(file, "r")
     readers.add(in)

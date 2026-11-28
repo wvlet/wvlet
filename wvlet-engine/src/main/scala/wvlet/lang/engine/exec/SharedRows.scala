@@ -90,41 +90,50 @@ object SharedRows:
     else
       val held            = mutable.ArrayBuffer.empty[Batch]
       var file: SpillFile = null
-      var pendingBytes    = 0L
-      def flush(): Unit   =
-        if held.nonEmpty then
+      // Batches not appended yet, cut into or appended together as blocks of about BlockBytes
+      val pending       = mutable.ArrayBuffer.empty[Batch]
+      var pendingBytes  = 0L
+      def flush(): Unit =
+        if pending.nonEmpty then
           file.append(
-            if held.size == 1 then
-              held.head
+            if pending.size == 1 then
+              pending.head
             else
-              Batch.concat(op.schema, held.toSeq)
+              Batch.concat(op.schema, pending.toSeq)
           )
-          held.clear()
+          pending.clear()
           pendingBytes = 0L
+      def write(b: Batch, bytes: Long): Unit =
+        if b.size > 1 && bytes > 2 * BlockBytes then
+          // A large batch (e.g. an aggregation's output) as several blocks, so readers split it
+          flush()
+          val n = math.min(b.size.toLong, (bytes + BlockBytes - 1) / BlockBytes).toInt
+          (0 until n).foreach { i =>
+            val from = (b.size.toLong * i / n).toInt
+            val size = (b.size.toLong * (i + 1) / n).toInt - from
+            file.append(b.take(Array.tabulate(size)(from + _), size))
+          }
+        else if b.size > 0 then
+          pending += b
+          pendingBytes += bytes
+          if pendingBytes >= BlockBytes then
+            flush()
       try
         var x = op.next()
         while x != null do
           val c     = x.compact()
           val bytes = MemoryContext.estimatedBytes(c)
-          if file == null then
-            if ctx.tryReserve(bytes) then
-              held += c
-            else
-              file = ctx.spillSpace.newFile(op.schema)
-              resultsSpilled.incrementAndGet()
-              held.foreach(b =>
-                if b.size > 0 then
-                  file.append(b)
-              )
-              held.clear()
-              ctx.release()
-              held += c
-              pendingBytes = bytes
-          else if c.size > 0 then
+          if file != null then
+            write(c, bytes)
+          else if ctx.tryReserve(bytes) then
             held += c
-            pendingBytes += bytes
-          if file != null && pendingBytes >= BlockBytes then
-            flush()
+          else
+            file = ctx.spillSpace.newFile(op.schema)
+            resultsSpilled.incrementAndGet()
+            held.foreach(b => write(b, MemoryContext.estimatedBytes(b)))
+            held.clear()
+            ctx.release()
+            write(c, bytes)
           x = op.next()
         if file == null then
           InMemory(held.toSeq)
