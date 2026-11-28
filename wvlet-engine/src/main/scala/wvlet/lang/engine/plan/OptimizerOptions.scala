@@ -1259,7 +1259,7 @@ enum Optimization(val name: String):
 
   /**
     * The default spill threshold (no `WvletEngine.withSpillThreshold`) leaves room for the memory
-    * the engine doesn't track, which grows with the worker threads: half the JVM's max heap less 32
+    * the engine doesn't track, which grows with the worker threads: half the JVM's max heap less 16
     * MB per thread, at least an eighth of the heap ([[wvlet.lang.engine.exec.SpillThreshold]]).
     * Without it, half the max heap. Changes no plan
     */

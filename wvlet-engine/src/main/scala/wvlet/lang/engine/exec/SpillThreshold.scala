@@ -21,8 +21,12 @@ package wvlet.lang.engine.exec
   * threads still holds some rows before spilling.
   */
 object SpillThreshold:
-  /** The untracked bytes allowed per worker thread by default (about one Parquet row group) */
-  val defaultThreadAllowanceBytes: Long = 32L << 20
+  /**
+    * The untracked bytes allowed per worker thread by default. 16 MB rather than a full row group's
+    * decode bytes: on the calibrated accounting (#2598), 32 MB made TPC-DS q67 spill 1 GB at a 2 GB
+    * heap and run 2.9x slower, where 16 MB keeps it in memory
+    */
+  val defaultThreadAllowanceBytes: Long = 16L << 20
 
   /**
     * max(maxHeap / 8, maxHeap / 2 − threads × threadAllowance) bytes; Long.MaxValue for an
