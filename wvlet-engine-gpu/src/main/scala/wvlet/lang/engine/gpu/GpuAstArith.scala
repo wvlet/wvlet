@@ -55,14 +55,25 @@ private[gpu] object GpuAstArith:
       case _ =>
         0
 
+  /** Whether the tree under `n` reads a column, which sets the kernel's output rows */
+  private def readsColumn(n: Node): Boolean =
+    n match
+      case Op(_, l, r) =>
+        readsColumn(l) || readsColumn(r)
+      case Lit(_) =>
+        false
+      case _ =>
+        true
+
   /**
-    * `a` computed as one AST kernel, or None when `a` itself doesn't fuse or fewer than two
-    * operators would (a single operator gains nothing over cudf's binary operator)
+    * `a` computed as one AST kernel, or None when `a` itself doesn't fuse, fewer than two operators
+    * would (a single operator gains nothing over cudf's binary operator), or it reads only
+    * constants
     */
   def eval(a: Arith, input: IndexedSeq[ColumnVector], rows: Int)(using Bounds): Option[Operand] =
     val out = GpuExprs.arithOut(a)
     arith(a, out, input) match
-      case Some(tree) if ops(tree) >= 2 =>
+      case Some(tree) if ops(tree) >= 2 && readsColumn(tree) =>
         Some(run(tree, input, rows))
       case _ =>
         None

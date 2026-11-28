@@ -14,7 +14,7 @@ Date: 2026-11-27
 - **Each node computes in the type the per-operator path uses.** A decimal node fuses only where the value bounds narrow it to DECIMAL64 (the AST has no 128-bit decimals), and each side keeps its own scale. A probe on the DGX Spark (cudf 26.10.2) showed the AST applies the binary operators' scale rules: a product's scale is the sum of its sides' scales, and a sum aligns to the larger scale. So results are identical without rescaling.
 - **Anything else is a leaf**: a child that doesn't fuse (CASE, LIKE, a cast that changes the scale, a DECIMAL128 node, an integer column under a decimal) is evaluated per operator first and read by the kernel as one more input column. Constants become AST literals only when they convert exactly.
 - **Division, modulo, and integer `+ - *` stay per operator**: the CPU returns NULL on division by zero and raises on integer overflow, and the AST does neither.
-- **A tree fuses only with at least two operators**; one operator gains nothing over cudf's binary operator.
+- **A tree fuses only with at least two operators and a column read**; one operator gains nothing over cudf's binary operator, and a tree of constants has no column to set the kernel's output rows.
 - Computing on unscaled INT64 values (`bitCastTo`) and relabelling the result also worked in the probe; it wasn't needed.
 
 ## Consequences
