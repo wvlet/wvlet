@@ -1505,7 +1505,7 @@ summary.pg-engine-section__title {
 /* The editor's token colors (MonacoEditor.ts themes), so docs and editor highlight alike */
 :root[data-theme="light"],
 :root:not([data-theme]) {
-    --wv-fn: #795e26;
+    --wv-fn: #0b6bcb;
     --wv-type: #8a3ffc;
     --wv-string: #b35900;
     --wv-number: #098658;
@@ -1513,7 +1513,7 @@ summary.pg-engine-section__title {
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-        --wv-fn: #dcdcaa;
+        --wv-fn: #58ccf0;
         --wv-type: #cc99cc;
         --wv-string: #f4c099;
         --wv-number: #b5cea8;
@@ -1521,7 +1521,7 @@ summary.pg-engine-section__title {
 }
 
 :root[data-theme="dark"] {
-    --wv-fn: #dcdcaa;
+    --wv-fn: #58ccf0;
     --wv-type: #cc99cc;
     --wv-string: #f4c099;
     --wv-number: #b5cea8;

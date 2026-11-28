@@ -94,7 +94,7 @@ export class MonacoEditor {
             {token: 'string.sql', foreground: 'f4c099'},
             {token: 'comment', foreground: '7282a4'},
             {token: 'operator', foreground: 'bd93f9'},
-            {token: 'function', foreground: 'dcdcaa'},
+            {token: 'function', foreground: '58ccf0'},
             {token: 'number', foreground: 'b5cea8'},
             {token: 'invalid', foreground: 'ff0000'},
         ];
@@ -110,7 +110,7 @@ export class MonacoEditor {
             {token: 'string.sql', foreground: 'b35900'},
             {token: 'comment', foreground: '6a737d'},
             {token: 'operator', foreground: '7c3aed'},
-            {token: 'function', foreground: '795e26'},
+            {token: 'function', foreground: '0b6bcb'},
             {token: 'number', foreground: '098658'},
             {token: 'invalid', foreground: 'd00000'},
         ];
