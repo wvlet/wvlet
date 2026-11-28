@@ -151,9 +151,11 @@ class QueryManagerTest extends UniTest:
     QueryManagerConfig.parseBytes("4gb") shouldBe 4L * 1024 * 1024 * 1024
     QueryManagerConfig.parseBytes("1.5G") shouldBe 3L * 512 * 1024 * 1024
     QueryManagerConfig.parseBytes("2048") shouldBe 2048L
-    intercept[WvletLangException] {
-      QueryManagerConfig.parseBytes("lots")
-    }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    Seq("lots", "0", "1.5", "99999999TB", "-1GB").foreach { bad =>
+      intercept[WvletLangException] {
+        QueryManagerConfig.parseBytes(bad)
+      }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    }
     val pool = QueryManagerConfig().withMemoryPoolSize(1024).withMaxQueryMemory(64).newMemoryPool()
     pool.capacityBytes shouldBe 1024L
     pool.newQuery().limitBytes shouldBe 64L

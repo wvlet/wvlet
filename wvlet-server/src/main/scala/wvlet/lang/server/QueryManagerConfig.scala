@@ -64,11 +64,15 @@ object QueryManagerConfig:
 
   /**
     * Bytes of a size such as `512MB`, `4GB`, `1.5g`, or `1048576` (units are powers of 1024).
-    * Throws INVALID_ARGUMENT for anything else
+    * Throws INVALID_ARGUMENT for anything else, including zero, sizes past Long.MaxValue, and a
+    * fraction without a unit (`1.5` is likely meant as GB, not 1 byte)
     */
   def parseBytes(s: String): Long =
+    def invalid = StatusCode
+      .INVALID_ARGUMENT
+      .newException(s"Invalid memory size: ${s} (use e.g. 512MB or 4GB)")
     s match
-      case sizePattern(n, unit) =>
+      case sizePattern(n, unit) if unit.nonEmpty || !n.contains('.') =>
         val scale =
           unit.toUpperCase match
             case "K" =>
@@ -81,10 +85,11 @@ object QueryManagerConfig:
               1L << 40
             case _ =>
               1L
-        (BigDecimal(n) * scale).toLong
+        val bytes = BigDecimal(n) * scale
+        if bytes < 1 || bytes > Long.MaxValue then
+          throw invalid
+        bytes.toLong
       case _ =>
-        throw StatusCode
-          .INVALID_ARGUMENT
-          .newException(s"Invalid memory size: ${s} (use e.g. 512MB or 4GB)")
+        throw invalid
 
 end QueryManagerConfig

@@ -275,10 +275,7 @@ object WvletServer extends LogSupport:
     // WvletServerConfig observe the same port the Netty server is listening on.
     val port         = unusedPortFrom(config.port)
     val resolvedConf = config.copy(port = port)
-    // Every in-process engine the sessions create from now on shares the server's pool
-    val memoryPool = resolvedConf.queryManagerConfig.newMemoryPool()
-    MemoryPool.setProcessPool(memoryPool)
-    info(s"Engine memory: ${memoryPool}")
+    val queryConfig  = resolvedConf.queryManagerConfig
     Design
       .newSilentDesign
       .bindInstance[WvletServerConfig](resolvedConf)
@@ -320,9 +317,14 @@ object WvletServer extends LogSupport:
       // Explicit provider: the config, listener, and id generator have no DI bindings. Events go
       // to JSON lines next to the server log
       .bindProvider { (sessions: ScriptRunnerSessions) =>
+        // Set when the service starts, not when the design is built: every in-process engine the
+        // sessions create from now on shares the server's pool
+        val memoryPool = queryConfig.newMemoryPool()
+        MemoryPool.setProcessPool(memoryPool)
+        info(s"Engine memory: ${memoryPool}")
         QueryService(
           sessions,
-          resolvedConf.queryManagerConfig,
+          queryConfig,
           JsonLinesQueryEventLogger(resolvedConf.queryEventLogFolder),
           QueryIdGenerator(),
           memoryPool
