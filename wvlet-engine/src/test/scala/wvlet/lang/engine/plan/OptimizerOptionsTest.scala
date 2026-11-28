@@ -189,7 +189,8 @@ class OptimizerOptionsTest extends UniTest:
         "gpu_offload",
         "union_all_pipelines",
         "size_partitions_by_rows",
-        "memory_accounting"
+        "memory_accounting",
+        "fair_task_scheduling"
       )
   }
 

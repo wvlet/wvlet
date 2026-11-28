@@ -242,7 +242,7 @@ class WvletEngine(
       MemoryContext.NoOp
 
   /** Expand model references, plan, and run a query relation */
-  def execute(r: Relation)(using ctx: Context): EngineResult =
+  def execute(r: Relation)(using ctx: Context): EngineResult = asQuery {
     // Opened before planning, which runs plan-time subqueries, and closed after the result is
     // drained: the caller owns the result batches from then on
     val memory = newQueryMemory()
@@ -255,16 +255,29 @@ class WvletEngine(
         finally op.close()
       }
     finally memory.close()
+  }
 
-  def explain(r: Relation)(using ctx: Context): String = physicalPlan(GenSQL.expand(r, ctx))
-    .explain()
+  /**
+    * Run `body` (planning and running one query) as one query of the engine's task pool: with
+    * `fair_task_scheduling`, its pool tasks form a [[TaskGroup]] scheduled fairly against other
+    * queries' tasks. A query run inside another one's `body` stays in its group
+    */
+  def asQuery[A](body: => A): A =
+    if optimizer.isEnabled(Optimization.FairTaskScheduling) then
+      TaskGroup.asQuery(body)
+    else
+      body
+
+  def explain(r: Relation)(using ctx: Context): String = asQuery {
+    physicalPlan(GenSQL.expand(r, ctx)).explain()
+  }
 
   /**
     * Plan a query and return each stage, for tools that show how the engine plans it: the runtime
     * plan as bound, after the logical passes, the rules that fired, and the physical operators. The
     * operators are not run; [[EnginePlanStages.close]] releases them.
     */
-  def planStages(r: Relation)(using ctx: Context): EnginePlanStages =
+  def planStages(r: Relation)(using ctx: Context): EnginePlanStages = asQuery {
     val planner = Planner(catalog, DefaultResolver(), optimizer, accelerator)
     val op      = planner.plan(lowerShow(GenSQL.expand(r, ctx)))
     EnginePlanStages(
@@ -273,5 +286,6 @@ class WvletEngine(
       firedRules = planner.firedRules,
       physical = op
     )
+  }
 
 end WvletEngine

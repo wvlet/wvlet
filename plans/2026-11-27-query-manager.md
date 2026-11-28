@@ -55,10 +55,11 @@ DuckDB's 2026 [Quack](https://duckdb.org/2026/05/12/quack-remote-protocol) clien
 - Over a per-query limit: fail the query with `RESOURCE_EXHAUSTED`. Over the pool: the query manager stops admitting; if reservations still block, fail the largest query (Trino's low-memory killer). Spill is out of scope.
 - Behind an `Optimization` toggle per [engine.md](../design/engine.md); bench to confirm reservation bookkeeping costs nothing measurable.
 
-### Phase 3: fair CPU sharing (wvlet-engine)
+### Phase 3: fair CPU sharing (wvlet-engine) — done
 
 - Give `ThreadPoolRunner` a task queue per query and pick across queries round-robin, or by a multilevel feedback queue on accumulated task time, instead of one FIFO.
 - Measure with a mixed workload: one long TPC-DS query plus a stream of short queries; the target is short-query latency close to running alone.
+- Done: per-query `TaskGroup`s and a multilevel feedback queue counting running tasks, behind `fair_task_scheduling` ([plan](2026-11-27-fair-task-scheduling.md), [engine](../design/engine.md#fair-task-scheduling)). No TPC-H/TPC-DS query runs long enough at SF10, so `EngineMixedWorkloadBench` uses a lineitem group-by as the long query. Short-query p90 dropped by about 1.5x next to it; the median still ran 1.5–4.8x the alone time, from non-preemptible long-query morsels and GC pauses.
 
 ### Phase 4 (only when needed): resource groups
 

@@ -1197,6 +1197,14 @@ enum Optimization(val name: String):
     */
   case MemoryAccounting extends Optimization("memory_accounting")
 
+  /**
+    * Each query's pool tasks form a [[wvlet.lang.engine.exec.TaskGroup]], and the engine's thread
+    * pool picks tasks across queries by a multilevel feedback queue on their run time
+    * ([[wvlet.lang.engine.exec.FairTaskQueue]]) instead of one FIFO queue, so a short query running
+    * next to a long one isn't queued behind the long query's morsels. Changes no plan
+    */
+  case FairTaskScheduling extends Optimization("fair_task_scheduling")
+
 end Optimization
 
 object Optimization:
