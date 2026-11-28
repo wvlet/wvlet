@@ -527,6 +527,25 @@ object MemoryContext:
           if s.holdsEntries then
             // Codes into shared entries
             4L * n
+          else if s.bytesView != null then
+            // The rows' share of the source's UTF-8 bytes, their offsets, and a view's index
+            val hb   = s.bytesView
+            val rows =
+              if hb.source == null then
+                s.size
+              else
+                hb.source.size
+            val avg =
+              if rows > 0 then
+                (hb.offsets(rows) - hb.offsets(0)).toDouble / rows
+              else
+                0.0
+            (n * avg).toLong + 4L * n + (
+              if hb.index != null then
+                4L * n
+              else
+                0L
+            )
           else if s.hasCodes then
             // Per-row references to the dictionary's strings, and their codes
             12L * n
@@ -537,6 +556,8 @@ object MemoryContext:
         case _ =>
           n * width(v.ptype)
     values + nulls
+
+  end estimatedBytes
 
   private def width(t: PType): Long =
     t match

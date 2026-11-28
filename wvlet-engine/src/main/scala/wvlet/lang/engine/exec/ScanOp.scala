@@ -85,7 +85,8 @@ class ScanOp(
       dictionaryEntries,
       lazyStrings,
       Option(decodeRunner).filter(_ => parallelColumnDecode),
-      parallelStringDecode
+      parallelStringDecode,
+      plainStringBytes
     )
 
   private lazy val it: Iterator[Batch] = source.scan(spec)
@@ -129,6 +130,16 @@ class ScanOp(
 
   def withLazyStrings(enabled: Boolean): this.type =
     lazyStrings = enabled
+    this
+
+  /**
+    * Whether Parquet strings without a dictionary are held as their bytes (`plain_string_bytes`,
+    * [[ScanSpec.plainStringBytes]])
+    */
+  var plainStringBytes: Boolean = false
+
+  def withPlainStringBytes(enabled: Boolean): this.type =
+    plainStringBytes = enabled
     this
 
   /**
@@ -216,6 +227,7 @@ class ScanOp(
     .withDictionaryCodes(s.dictionaryCodes)
     .withDictionaryEntries(s.dictionaryEntries)
     .withLazyStrings(s.lazyStrings)
+    .withPlainStringBytes(s.plainStringBytes)
     .withSourceJoinFilters(s.sourceJoinFilters)
     .withJoinFiltersFirst(s.joinFiltersFirst)
     .withSparseKeyPassRates(s.sparseKeyPassRates)

@@ -54,7 +54,8 @@ object Lowering:
     * `dictionaryCodes`, Parquet strings decoded from a dictionary carry their codes
     * ([[ScanOp.dictionaryCodes]]); with `dictionaryEntries`, such rows are read as their dictionary
     * entries only ([[ScanOp.dictionaryEntries]]); with `lazyStrings`, such vectors hold only their
-    * codes and entries ([[ScanOp.lazyStrings]]). With `maskedCaseWhen`, a CASE of one WHEN without
+    * codes and entries ([[ScanOp.lazyStrings]]); with `plainStringBytes`, PLAIN strings are held as
+    * their bytes ([[ScanOp.plainStringBytes]]). With `maskedCaseWhen`, a CASE of one WHEN without
     * ELSE masks its THEN vector ([[MaskCaseWhen]]). With `windowSharePartitions`, window calls with
     * the same PARTITION BY and ORDER BY are partitioned and sorted once ([[WindowOp.callGroups]]).
     * With `constCaseSelect`, a CASE of one WHEN with constant THEN and ELSE picks one per row
@@ -91,6 +92,7 @@ object Lowering:
       dictionaryCodes: Boolean = false,
       dictionaryEntries: Boolean = false,
       lazyStrings: Boolean = false,
+      plainStringBytes: Boolean = false,
       selectiveRowFilters: Boolean = false,
       maskedCaseWhen: Boolean = false,
       windowSharePartitions: Boolean = false,
@@ -123,6 +125,7 @@ object Lowering:
       dictionaryCodes,
       dictionaryEntries,
       lazyStrings,
+      plainStringBytes,
       selectiveRowFilters,
       maskedCaseWhen,
       windowSharePartitions,
@@ -173,6 +176,7 @@ object Lowering:
       dictionaryCodes: Boolean,
       dictionaryEntries: Boolean,
       lazyStrings: Boolean,
+      plainStringBytes: Boolean,
       selectiveRowFilters: Boolean,
       maskedCaseWhen: Boolean,
       windowSharePartitions: Boolean,
@@ -230,6 +234,7 @@ object Lowering:
               dictionaryCodes = dictionaryCodes,
               dictionaryEntries = dictionaryEntries,
               lazyStrings = lazyStrings,
+              plainStringBytes = plainStringBytes,
               selectiveRowFilters = selectiveRowFilters,
               maskedCaseWhen = maskedCaseWhen,
               constCaseSelect = constCaseSelect,
@@ -301,6 +306,7 @@ object Lowering:
             .withDictionaryCodes(dictionaryCodes)
             .withDictionaryEntries(dictionaryEntries)
             .withLazyStrings(lazyStrings)
+            .withPlainStringBytes(plainStringBytes)
         case Values(columns, rows) if columns.isEmpty && rows.size == 1 =>
           // One row without columns (a query without FROM), as the planner plans it
           SingleRowOp()

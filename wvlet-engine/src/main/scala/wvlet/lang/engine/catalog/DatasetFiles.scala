@@ -200,7 +200,16 @@ private[catalog] final class DatasetFiles(
         val ds = dataset.withFiles(Seq(f))
         ParquetSource.closing(
           ds.readBatches(options)
-            .map(ParquetSource.toBatch(_, cols, types, spec.dictionaryCodes, spec.lazyStrings)),
+            .map(
+              ParquetSource.toBatch(
+                _,
+                cols,
+                types,
+                spec.dictionaryCodes,
+                spec.lazyStrings,
+                spec.plainStringBytes
+              )
+            ),
           () => ds.close()
         )
       }

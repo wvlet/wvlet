@@ -37,7 +37,8 @@ import scala.collection.mutable
   * per-row strings on first use ([[StrVec.ofEntries]]). With `decodeRunner`, a Parquet scan that
   * reads a single row group without a row filter decodes its columns as tasks of that runner
   * (`parallel_column_decode`); with `parallelStrings` too, the Strings of its PLAIN string columns
-  * are built by row ranges as tasks of their own (`parallel_string_decode`)
+  * are built by row ranges as tasks of their own (`parallel_string_decode`). With
+  * `plainStringBytes`, strings without a dictionary are held as their bytes ([[StrVec.ofBytes]])
   */
 case class ScanSpec(
     columns: Option[Seq[String]] = None,
@@ -48,7 +49,8 @@ case class ScanSpec(
     dictionaryEntries: Boolean = false,
     lazyStrings: Boolean = false,
     decodeRunner: Option[TaskRunner] = None,
-    parallelStrings: Boolean = false
+    parallelStrings: Boolean = false,
+    plainStringBytes: Boolean = false
 )
 
 /** A readable table: its columns and a batch iterator over the requested columns */
@@ -900,7 +902,8 @@ class ParquetSource(
               cols,
               types,
               spec.dictionaryCodes,
-              spec.lazyStrings
+              spec.lazyStrings,
+              spec.plainStringBytes
             )
           )
         }
@@ -927,7 +930,8 @@ class ParquetSource(
       cols,
       types,
       spec.dictionaryCodes,
-      spec.lazyStrings
+      spec.lazyStrings,
+      spec.plainStringBytes
     )
 
   def scan(spec: ScanSpec): Iterator[Batch] =
@@ -937,7 +941,8 @@ class ParquetSource(
       cols,
       types,
       spec.dictionaryCodes,
-      spec.lazyStrings
+      spec.lazyStrings,
+      spec.plainStringBytes
     )
     if isSingleFile then
       val f                   = openFile(spec.footerCache).file
@@ -1021,15 +1026,16 @@ class ParquetSource(
         .foreach { k =>
           b.column(names(k)) match
             case x: ColumnVector.BinaryColumn
-                if spec.parallelStrings && types(k) == PType.Str && x.dictionarySize == 0 &&
-                  x.size >= 2 * ParquetSource.StringRangeRows =>
+                if spec.parallelStrings && !spec.plainStringBytes && types(k) == PType.Str &&
+                  x.dictionarySize == 0 && x.size >= 2 * ParquetSource.StringRangeRows =>
               plain(positions(k)) = x
             case c =>
               vecs(positions(k)) = ParquetSource.toVec(
                 c,
                 types(k),
                 spec.dictionaryCodes,
-                spec.lazyStrings
+                spec.lazyStrings,
+                spec.plainStringBytes
               )
         }
     }
@@ -1399,26 +1405,29 @@ object ParquetSource:
       cols: Seq[String],
       types: Seq[PType],
       dictionaryCodes: Boolean = false,
-      lazyStrings: Boolean = false
+      lazyStrings: Boolean = false,
+      plainBytes: Boolean = false
   ): Batch =
     val vecs = cols
       .indices
       .map { k =>
         val c = b.column(cols(k))
-        toVec(c, types(k), dictionaryCodes, lazyStrings)
+        toVec(c, types(k), dictionaryCodes, lazyStrings, plainBytes)
       }
     Batch(vecs.toArray, b.numRows)
 
   /**
     * The engine vector of a uni column. With `dictionaryCodes`, strings decoded from a dictionary
     * page carry their dictionary codes ([[StrVec.codes]]); with `lazyStrings` too, the vector holds
-    * only the codes and the entries' strings when every non-NULL row has a code
+    * only the codes and the entries' strings when every non-NULL row has a code. With `plainBytes`,
+    * strings without a dictionary share the column's bytes ([[StrVec.ofBytes]])
     */
   def toVec(
       c: ColumnVector,
       ptype: PType,
       dictionaryCodes: Boolean = false,
-      lazyStrings: Boolean = false
+      lazyStrings: Boolean = false,
+      plainBytes: Boolean = false
   ): Vec =
     val nulls = nullsOf(c)
     (c, ptype) match
@@ -1459,6 +1468,9 @@ object ParquetSource:
           entryStrings(x, nulls)
         else
           stringsWithCodes(x, nulls)
+      case (x: ColumnVector.BinaryColumn, PType.Str) if plainBytes && x.dictionarySize == 0 =>
+        // Without a dictionary every row holds its own bytes in `data`
+        StrVec.ofBytes(x.data, x.offsets, nulls, x.size)
       case (x: ColumnVector.BinaryColumn, PType.Str) =>
         val n   = x.size
         val out = new Array[String](n)
