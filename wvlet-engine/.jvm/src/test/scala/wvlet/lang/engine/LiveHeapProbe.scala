@@ -24,11 +24,31 @@ import scala.jdk.CollectionConverters.*
 class LiveHeapProbe private ():
   private val maxBytes = AtomicLong(-1L)
 
+  private val heapPools: Set[String] =
+    ManagementFactory
+      .getMemoryPoolMXBeans
+      .asScala
+      .collect {
+        case p if p.getType == java.lang.management.MemoryType.HEAP =>
+          p.getName
+      }
+      .toSet
+
   private val listener: NotificationListener =
     (n: Notification, _: AnyRef) =>
       if n.getType == GarbageCollectionNotificationInfo.GARBAGE_COLLECTION_NOTIFICATION then
         val info = GarbageCollectionNotificationInfo.from(n.getUserData.asInstanceOf[CompositeData])
-        val used = info.getGcInfo.getMemoryUsageAfterGc.values().asScala.map(_.getUsed).sum
+        // The map has every pool, Metaspace and code caches too: sum the heap pools only
+        val used =
+          info
+            .getGcInfo
+            .getMemoryUsageAfterGc
+            .asScala
+            .collect {
+              case (pool, u) if heapPools.contains(pool) =>
+                u.getUsed
+            }
+            .sum
         maxBytes.accumulateAndGet(used, math.max)
 
   private def emitters: Seq[NotificationEmitter] = ManagementFactory
