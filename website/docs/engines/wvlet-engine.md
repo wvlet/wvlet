@@ -53,6 +53,10 @@ Relative file paths resolve against the working folder (`-w`).
 `-t wvlet` *without* `--host` runs the in-process engine; with `--host` it connects to a [remote wvlet server](../usage/remote-server.md) instead.
 
 
+## Memory and spilling
+
+On the JVM, an aggregation whose input would take the query's large in-memory structures (join tables, aggregation inputs, sort buffers) past half of the JVM's max heap (`-Xmx`) writes that input to temporary files and aggregates it in parts, instead of running out of memory. The files go in a folder of their own under the system temp folder (`java.io.tmpdir`), readable only by you, and are deleted when the query ends. Joins, sorts, and window functions don't spill yet. The browser and Node.js builds never spill, and the Native binary spills only when an embedding application sets a threshold. To spill earlier or later, pass a threshold in bytes to the JVM, e.g. `JAVA_OPTS=-Dwvlet.engine.spillThreshold=4000000000`; `-Djava.io.tmpdir=<folder>` moves the files. Applications that [embed the engine](wvlet-engine-embedding.md) set both with `WvletEngine.withSpillThreshold` and `withSpillDirectory`.
+
 ## Functions
 
 Queries on the engine can call the [standard library](../syntax/stdlib.md) functions and the functions the engine implements. The engine has its own `wvlet` dialect context: it runs the DuckDB variants of the standard library (`def ... in duckdb`), and an engine-only variant can be written as `def ... in wvlet`. A function it lacks, such as DuckDB's `array_unique`, fails at compile time instead of at run time:

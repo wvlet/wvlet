@@ -1213,6 +1213,14 @@ enum Optimization(val name: String):
     */
   case FairCoordinators extends Optimization("fair_coordinators")
 
+  /**
+    * A partitioned aggregation whose input would take the query past its spill threshold
+    * (`WvletEngine.withSpillThreshold`, by default half the JVM's max heap) splits the input by key
+    * hash into spill files and aggregates them in waves that fit, instead of holding it all
+    * ([[wvlet.lang.engine.exec.AggSpill]]). Changes no plan, and nothing when the input fits
+    */
+  case SpillAggregation extends Optimization("spill_aggregation")
+
 end Optimization
 
 object Optimization:

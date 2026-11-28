@@ -334,7 +334,10 @@ class EngineOptimizerToggleTest extends UniTest:
     // FairTaskQueueTest and ThreadPoolRunnerFairTest check the scheduling
     Optimization.FairTaskScheduling -> "Changes which query's pool task runs next, not the plan",
     Optimization.FairCoordinators   ->
-      "Changes which query's coordinator task runs next, not the plan"
+      "Changes which query's coordinator task runs next, not the plan",
+    // AggSpillTest checks that the flag keeps a spilling aggregation's input in memory
+    Optimization.SpillAggregation ->
+      "Changes whether aggregations past the spill threshold spill their input, not the plan"
   )
 
   override def afterAll: Unit =

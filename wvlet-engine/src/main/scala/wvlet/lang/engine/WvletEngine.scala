@@ -76,7 +76,10 @@ case class EnginePlanStages(
   *
   * Each query reserves the bytes of its large structures from `memoryPool` (by default the
   * process's, shared by the engines of a server) and fails with RESOURCE_EXHAUSTED past
-  * `queryMemoryLimit` bytes, or the pool's per-query limit (`memory_accounting`).
+  * `queryMemoryLimit` bytes, or the pool's per-query limit (`memory_accounting`). Past
+  * `spillThreshold` bytes (by default the smaller of the limit and [[SpillCompat]]'s default, half
+  * the JVM's max heap), aggregations spill their input to files under `spillDirectory` (by default
+  * the system temp folder), deleted when the query ends (`spill_aggregation`).
   */
 class WvletEngine(
     val catalog: EngineCatalog = EngineCatalog(),
@@ -84,7 +87,9 @@ class WvletEngine(
     val optimizer: OptimizerOptions = OptimizerOptions.fromSystem(),
     val accelerator: Option[PlanAccelerator] = None,
     val memoryPool: MemoryPool = MemoryPool.process,
-    val queryMemoryLimit: Option[Long] = None
+    val queryMemoryLimit: Option[Long] = None,
+    val spillThreshold: Option[Long] = None,
+    val spillDirectory: Option[String] = None
 ) extends LogSupport:
 
   private class DefaultResolver(using ctx: Context) extends SourceResolver:
@@ -203,14 +208,18 @@ class WvletEngine(
       optimizer: OptimizerOptions = optimizer,
       accelerator: Option[PlanAccelerator] = accelerator,
       memoryPool: MemoryPool = memoryPool,
-      queryMemoryLimit: Option[Long] = queryMemoryLimit
+      queryMemoryLimit: Option[Long] = queryMemoryLimit,
+      spillThreshold: Option[Long] = spillThreshold,
+      spillDirectory: Option[String] = spillDirectory
   ): WvletEngine = WvletEngine(
     catalog,
     baseDir,
     optimizer,
     accelerator,
     memoryPool,
-    queryMemoryLimit
+    queryMemoryLimit,
+    spillThreshold,
+    spillDirectory
   )
 
   /** An engine running only the given planner optimizations, over the same catalog and folder */
@@ -234,10 +243,28 @@ class WvletEngine(
   /** An engine with no per-query memory limit */
   def noQueryMemoryLimit(): WvletEngine = copy(queryMemoryLimit = None)
 
+  /** An engine whose queries spill past `bytes` (capped by the query's memory limit) */
+  def withSpillThreshold(bytes: Long): WvletEngine = copy(spillThreshold = Some(bytes))
+
+  /** An engine whose queries spill past the default threshold ([[SpillCompat]]) */
+  def noSpillThreshold(): WvletEngine = copy(spillThreshold = None)
+
+  /** An engine whose queries write spill files in a folder of their own under `dir` */
+  def withSpillDirectory(dir: String): WvletEngine = copy(spillDirectory = Some(dir))
+
+  /** An engine whose queries spill under the system temp folder */
+  def noSpillDirectory(): WvletEngine = copy(spillDirectory = None)
+
   /** The memory context of a new query: counting nothing with `memory_accounting` off */
   private[engine] def newQueryMemory(): MemoryContext =
     if optimizer.isEnabled(Optimization.MemoryAccounting) then
-      memoryPool.newQuery(queryMemoryLimit.getOrElse(memoryPool.queryLimitBytes))
+      val limit = queryMemoryLimit.getOrElse(memoryPool.queryLimitBytes)
+      memoryPool
+        .newQuery(limit)
+        .withSpill(
+          math.min(limit, spillThreshold.getOrElse(SpillCompat.defaultThresholdBytes)),
+          spillDirectory.getOrElse(SpillCompat.defaultDirectory)
+        )
     else
       MemoryContext.NoOp
 
