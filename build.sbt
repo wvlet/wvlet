@@ -885,7 +885,7 @@ lazy val ui = project
     skipPublish,
     rxHtmlSettings,
     name        := "wvlet-ui",
-    description := "UI components that can be testable with Node.js",
+    description := "The server web UI's pages and shared UI components, tested in Chromium",
     // Run UI tests in headless Chromium via Playwright — gives real DOM APIs plus ES-module
     // support, unlike jsdom. Def.uncached wraps the JSEnv because it isn't JSON-serializable
     // and sbt 2 caches setting values by default.
@@ -896,22 +896,25 @@ lazy val ui = project
     libraryDependencies ++=
       Seq(
         "org.wvlet.uni" %% "uni"         % UNI_VERSION,
+        "org.wvlet.uni" %% "uni-ui"      % UNI_VERSION,
         "org.scala-js"  %% "scalajs-dom" % SCALAJS_DOM_VERSION
       )
   )
   .dependsOn(api.js, client.js)
 
+// The web UI app `wvlet server` serves from web/ (see the cli pack settings)
 lazy val uiMain = project
-  .enablePlugins(ScalaJSPlugin)
+  // UniPlugin copies uni-ui.css out of the uni-ui jar to target/uni-ui.css after every compile
+  .enablePlugins(ScalaJSPlugin, UniPlugin)
   .in(file("wvlet-ui-main"))
   .settings(
     buildSettings,
     skipPublish,
     uiSettings,
     name        := "wvlet-ui-main",
-    description := "UI main code for the wvlet server web UI"
+    description := "The web UI app of wvlet server"
   )
-  .dependsOn(ui, lang.js)
+  .dependsOn(ui)
 
 lazy val playground = project
   // UniPlugin copies uni-ui.css out of the uni-ui jar to target/uni-ui.css after every compile
@@ -937,7 +940,7 @@ lazy val playground = project
     libraryDependencies += "org.wvlet.uni" %% "uni-ui" % UNI_VERSION
   )
   // Queries run on the in-process columnar engine, in the browser
-  .dependsOn(uiMain, lang.js, engine.js, runner.js)
+  .dependsOn(ui, lang.js, engine.js, runner.js)
 
 // uni's rx-html embeds plain strings and DOM nodes as element children through `given
 // Conversion`s (wvlet.uni.dom.all.stringToDomNode etc.), which Scala 3 gates behind the

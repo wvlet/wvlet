@@ -1,31 +1,12 @@
 package wvlet.lang.ui.component.monaco
 
-import org.scalajs.dom
-import org.scalajs.dom.HTMLElement
-import org.scalajs.dom.ResizeObserver
-import wvlet.uni.dom.RxElement
-import wvlet.uni.dom.all.{*, given}
-import wvlet.uni.rx.Cancelable
-import wvlet.uni.rx.Rx
-import wvlet.uni.rx.RxVar
-import wvlet.lang.api.LinePosition
-import wvlet.lang.api.WvletLangException
-import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.CompilationUnit
-import wvlet.lang.compiler.Compiler
-import wvlet.lang.compiler.Symbol
-import wvlet.lang.ui.component.MainFrame
-import wvlet.lang.ui.component.WindowSize
-import wvlet.lang.ui.component.MainFrame.NavBar
-import wvlet.uni.log.LogSupport
-
-import java.util.concurrent.TimeUnit
-import org.scalajs.dom
-import wvlet.lang.ui.WvletUIMain
-
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSGlobal
 
+/**
+  * The Scala.js facade of the Monaco editor wrapper in `MonacoEditor.ts`, which an app's `main.js`
+  * imports and assigns to `window.MonacoEditor`
+  */
 @js.native
 @JSGlobal("MonacoEditor")
 class MonacoEditor(
@@ -75,43 +56,3 @@ object MonacoEditor extends js.Object:
   ): Unit = js.native
 
 end MonacoEditor
-
-// uni's RxElement does not extend LogSupport (airframe's did). EditorBase brings it back as
-// a mixin so subclasses (WvletMonacoEditor, QueryEditor, SQLPreview) keep their warn/info calls
-// without each one having to add the trait individually.
-abstract class EditorBase(
-    windowSize: WindowSize,
-    editorId: String,
-    lang: String,
-    marginHeight: Int = MainFrame.navBarHeightPx
-) extends RxElement
-    with LogSupport:
-  protected def initialText: String
-
-  protected val editor = new MonacoEditor(editorId, lang, initialText, action = action)
-
-  protected def currentLinePosition(): LinePosition = LinePosition(
-    editor.getLinePosition().toInt,
-    editor.getColumnPosition().toInt
-  )
-
-  protected def action: String => Unit = cmd => logger.info(s"Action: ${cmd}")
-
-  private var c = Cancelable.empty
-
-  override def onMount(node: Any): Unit =
-    editor.render()
-    c = windowSize
-      .getSize
-      .map { (w, h) =>
-        editor.adjustHeight(h - marginHeight)
-      }
-      .subscribe()
-
-  override def beforeUnmount: Unit = c.cancel
-  override def render: RxElement   = div(cls -> "h-full", id -> editor.id)
-
-  def getText: String            = editor.getText()
-  def setText(txt: String): Unit = editor.setText(txt)
-
-end EditorBase

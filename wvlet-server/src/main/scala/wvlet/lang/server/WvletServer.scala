@@ -133,20 +133,20 @@ object WvletServer extends LogSupport:
     private val routeMap: Map[String, (RPCRoute, Any)] =
       routers.flatMap(r => r.routes.map(route => route.path -> (route, r.instance))).toMap
 
+    // Paths that are not RPC routes answer 404, so the static fallback serves the web UI
     override def handle(request: Request): Rx[Response] =
-      if request.method != HttpMethod.POST then
-        Rx.single(
-          ServiceStatus
-            .INVALID_REQUEST_U1
-            .newException(s"RPC requires POST method, got: ${request.method}")
-            .toResponse
-        )
-      else
-        routeMap.get(request.path) match
-          case Some((route, instance)) =>
-            handleRPC(request, route, instance)
-          case None =>
-            Rx.single(Response.notFound)
+      routeMap.get(request.path) match
+        case None =>
+          Rx.single(Response.notFound)
+        case Some(_) if request.method != HttpMethod.POST =>
+          Rx.single(
+            ServiceStatus
+              .INVALID_REQUEST_U1
+              .newException(s"RPC requires POST method, got: ${request.method}")
+              .toResponse
+          )
+        case Some((route, instance)) =>
+          handleRPC(request, route, instance)
 
     private def handleRPC(request: Request, route: RPCRoute, instance: Any): Rx[Response] =
       try

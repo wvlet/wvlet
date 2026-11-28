@@ -16,7 +16,7 @@ package wvlet.lang.http.server.static
 import java.io.{File, IOException}
 import java.net.URL
 import wvlet.uni.control.{Control, IO}
-import wvlet.uni.http.{HttpHeader, HttpStatus, Response}
+import wvlet.uni.http.{ContentType, HttpContent, HttpHeader, HttpStatus, Response}
 import wvlet.uni.log.LogSupport
 
 import java.nio.file.Paths
@@ -131,8 +131,12 @@ object StaticContent extends LogSupport:
         "application/json"
       case "zip" =>
         "application/zip"
-      case "js" =>
-        "application/javascript"
+      case "js" | "mjs" =>
+        "text/javascript"
+      case "map" =>
+        "application/json"
+      case "woff2" =>
+        "font/woff2"
       case _ =>
         "application/octet-stream"
 
@@ -203,8 +207,10 @@ case class StaticContent(resourcePaths: List[StaticContent.ResourceType] = List.
           Control.withResource(uri.openStream()) { in =>
             val content = IO.readFully(in)
             // TODO cache control (e.g., max-age, last-updated)
+            // The content carries the type: the server writes the content's type over a
+            // Content-Type header, and browsers refuse module scripts sent as octet-stream
             Response(HttpStatus.Ok_200)
-              .withBytesContent(content)
+              .withContent(HttpContent.bytes(content, ContentType(mediaType)))
               .setHeader(HttpHeader.ContentType, mediaType)
           }
         }

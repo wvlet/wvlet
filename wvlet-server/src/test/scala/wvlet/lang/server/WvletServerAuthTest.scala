@@ -65,4 +65,26 @@ class WvletServerAuthTest extends WvletDITest:
     }
   }
 
+  test("pass non-RPC paths to the static web UI without a token") {
+    val server = dep[NettyHttpServer]
+    val http   = java.net.http.HttpClient.newHttpClient()
+    def get(path: String): Int =
+      http
+        .send(
+          java
+            .net
+            .http
+            .HttpRequest
+            .newBuilder(java.net.URI.create(s"http://localhost:${server.localPort}${path}"))
+            .GET()
+            .build(),
+          java.net.http.HttpResponse.BodyHandlers.discarding()
+        )
+        .statusCode()
+    // No web/ folder in tests: the static handler answers, with 404 instead of an RPC error
+    get("/assets/no-such-file.js") shouldBe 404
+    // An RPC route still requires POST
+    get("/wvlet.lang.api.v1.frontend.FrontendApi/status") shouldBe 400
+  }
+
 end WvletServerAuthTest

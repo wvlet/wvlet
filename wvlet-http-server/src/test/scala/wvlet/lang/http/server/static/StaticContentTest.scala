@@ -43,6 +43,15 @@ class StaticContentTest extends UniTest:
     resp.header("Content-Type") shouldBe Some("image/svg+xml")
   }
 
+  // The server writes the content's own type, so it must be the file's type too: browsers refuse
+  // to run the web UI's module scripts sent as application/octet-stream
+  test("serve JavaScript as text/javascript in the header and the content") {
+    val resp = content("app.js")
+    resp.status shouldBe HttpStatus.Ok_200
+    resp.header("Content-Type") shouldBe Some("text/javascript")
+    resp.content.contentType.map(_.toString) shouldBe Some("text/javascript")
+  }
+
   test("404 on missing file") {
     val resp = content("does-not-exist")
     resp.status shouldBe HttpStatus.NotFound_404
