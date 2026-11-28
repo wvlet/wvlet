@@ -70,15 +70,6 @@ class ResultPanel(state: PlaygroundState) extends RxElement:
         col.sortBy(r => r.values(i).getOrElse(""))
     sorted.withWidth(columnWidth(i, c, rows))
 
-  /** The width of [[table]]'s columns in pixels */
-  def tableWidth(r: ResultTable, rowNumbers: Boolean = true): Int =
-    val rows = r.rows.zipWithIndex.map((v, i) => ResultRow(i, v))
-    val cols = r.columns.zipWithIndex.map((c, i) => columnPx(i, c, rows)).sum
-    if rowNumbers then
-      cols + 56
-    else
-      cols
-
   /** A sortable table of rows; each column header shows the column's name and type */
   def table(r: ResultTable, rowNumbers: Boolean = true): RxElement =
     if r.columns.isEmpty then

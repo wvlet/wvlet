@@ -73,9 +73,6 @@ object Cell:
   /** Rows shown at most when expanded; the table scrolls for the rest */
   val expandedRows: Int = 30
 
-  /** Width for a vertical scrollbar, where the browser's scrollbars take space */
-  val scrollbarRoom: Int = 12
-
   /** The height of a result table showing `rows` rows */
   def tableHeight(rows: Int): Int =
     math.max(1, rows) * ResultPanel.rowHeight + ResultPanel.headerHeight + 2

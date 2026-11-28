@@ -265,23 +265,14 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
                         math.min(n, Cell.expandedRows)
                       else
                         math.min(n, Cell.previewRows)
-                    // As wide as its columns, so lines stop at the last one; a wider table
-                    // scrolls sideways in the card. A preview doesn't scroll down (sorting still
-                    // orders all rows); an expanded table past 30 rows does, with room for the
-                    // scrollbar where it takes space
+                    // CSS sizes the table to its columns (lines stop at the last one) and the
+                    // card to the table; a wider table scrolls sideways. A preview doesn't scroll
+                    // down (sorting still orders all rows); an expanded table past 30 rows does
                     val scrollsDown = all && n > Cell.expandedRows
-                    val width       =
-                      results.tableWidth(r, rowNumbers = false) + (
-                        if scrollsDown then
-                          Cell.scrollbarRoom
-                        else
-                          0
-                      )
                     div(
                       cls             -> "pg-cell__table",
                       data("scrolls") -> scrollsDown.toString,
-                      styleAttr       ->
-                        s"height: ${Cell.tableHeight(shown)}px; width: min(100%, ${width}px)",
+                      styleAttr       -> s"height: ${Cell.tableHeight(shown)}px",
                       results.table(r, rowNumbers = false)
                     )
                   },
@@ -304,18 +295,8 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
               )
             case None =>
               div(cls -> "pg-result__empty", "Done: the cell defines no query result.")
-    // The card shrinks to the table's width, but keeps room for its header
-    val width = result.map { r =>
-      val room =
-        if r.rows.size > Cell.expandedRows then
-          Cell.scrollbarRoom
-        else
-          0
-      results.tableWidth(r, rowNumbers = false) + room + 2
-    }
     div(
-      cls       -> "pg-cell__result",
-      styleAttr -> width.map(w => s"width: min(100%, max(240px, ${w}px))").getOrElse(""),
+      cls -> "pg-cell__result",
       header,
       c.resultOpen
         .map { open =>
@@ -364,7 +345,7 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
       },
       editor
     ),
-    // The result spans the cell's whole width, under the run button too: tables need the room
+    // The result sits under the editor, aligned with the query
     div(
       cls     -> "pg-cell__out",
       onclick -> { (_: dom.MouseEvent) =>

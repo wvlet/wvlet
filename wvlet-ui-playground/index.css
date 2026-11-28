@@ -1610,6 +1610,10 @@ summary.pg-engine-section__title {
 
 /* A cell's result card (Treasure Work's table style): header, summary, compact grid, more rows */
 .pg-cell__result {
+    width: fit-content;
+    min-width: 160px;
+    max-width: 100%;
+    box-sizing: border-box;
     margin: 12px 0 4px;
     border: 1px solid var(--uni-line);
     border-radius: 10px;
@@ -1668,6 +1672,38 @@ summary.pg-engine-section__title {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    max-width: 100%;
+}
+
+/* The table is as wide as its columns, up to the card; wider ones scroll sideways */
+.pg-cell__table .uni-table {
+    width: max-content;
+    max-width: 100%;
+}
+
+/* Scrollbars float over the rows in a translucent color, so the grid stays visible under them */
+.pg-cell__table .uni-table,
+.pg-cell__table .uni-table:hover {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(128 128 128 / 0.45) transparent;
+}
+
+.pg-cell__table .uni-table::-webkit-scrollbar-track,
+.pg-cell__table .uni-table::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+.pg-cell__table .uni-table::-webkit-scrollbar-thumb {
+    background: rgb(128 128 128 / 0.45);
+    border-radius: 4px;
+}
+
+/* The header, summary, tests, and footer take the card's width without widening it */
+.pg-cell__result-header,
+.pg-cell__summary,
+.pg-cell__tests,
+.pg-cell__more {
+    contain: inline-size;
 }
 
 /* Grid lines between cells; the header is shaded only over the columns */
