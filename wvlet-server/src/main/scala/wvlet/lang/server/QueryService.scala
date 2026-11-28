@@ -6,7 +6,9 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryInfoRequest
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryResponse
 import wvlet.lang.api.v1.query.Column
+import wvlet.lang.api.v1.query.FacetCount
 import wvlet.lang.api.v1.query.QueryDetail
+import wvlet.lang.api.v1.query.QueryFacets
 import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.api.v1.query.QueryInfo
 import wvlet.lang.api.v1.query.QueryList
@@ -259,24 +261,50 @@ class QueryService(
             throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid page token: ${t}")
           }
       }
-    val text    = request.text.map(_.toLowerCase(Locale.ROOT)).filter(_.nonEmpty)
-    val now     = Instant.now()
-    val matched = mutable.ArrayBuffer.empty[(Submitted, QueryInfo)]
+    val text = request.text.map(_.toLowerCase(Locale.ROOT)).filter(_.nonEmpty)
+    val now  = Instant.now()
+    val kept = mutable.ArrayBuffer.empty[(Submitted, QueryInfo)]
     submittedMap.forEach { (id, s) =>
       val info = queryMap.get(id)
-      if info != null && matches(request, text, s, info) then
-        matched += s -> info
+      if info != null then
+        kept += s -> info
     }
+    val matched = kept.filter((s, info) => matches(request, text, s, info))
     val sorted = matched.sortBy(-_._1.seq)
     val page   = sorted.iterator.filter((s, _) => after.forall(s.seq < _)).take(limit).toSeq
     val more   = page.nonEmpty && sorted.last._1.seq < page.last._1.seq
     QueryList(
       queries = page.map((s, info) => summaryOf(s, info, now)),
       totalMatched = sorted.size,
-      nextPageToken = Option.when(more)(page.last._1.seq.toString)
+      nextPageToken = Option.when(more)(page.last._1.seq.toString),
+      facets = facetsOf(request, text, kept)
     )
 
   end list
+
+  /** Counts per facet value over the queries matching every filter but the facet's own */
+  private def facetsOf(
+      r: QueryListRequest,
+      text: Option[String],
+      kept: collection.Seq[(Submitted, QueryInfo)]
+  ): QueryFacets =
+    def counts(filter: QueryListRequest, key: (Submitted, QueryInfo) => Option[String]) =
+      kept
+        .iterator
+        .filter((s, info) => matches(filter, text, s, info))
+        .flatMap((s, info) => key(s, info))
+        .toSeq
+        .groupMapReduce(identity)(_ => 1)(_ + _)
+        .toSeq
+        .sortBy((v, n) => (-n, v))
+        .map((v, n) => FacetCount(v, n))
+    QueryFacets(
+      statuses = counts(r.copy(statuses = Nil), (_, info) => Some(info.status.toString)),
+      sessions = counts(r.copy(sessionId = None), (s, _) => s.request.sessionId)
+        .take(QueryFacets.MaxValues),
+      profiles = counts(r.copy(profile = None), (s, _) => s.request.profile)
+        .take(QueryFacets.MaxValues)
+    )
 
   private def matches(
       r: QueryListRequest,

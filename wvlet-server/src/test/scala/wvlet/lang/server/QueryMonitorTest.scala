@@ -126,6 +126,10 @@ class QueryMonitorTest extends UniTest:
     // Text matches ignore case
     api.listQueries(QueryListRequest(text = Some("FILTER_OK"))).queries.map(_.queryId) shouldBe
       Seq(ok)
+    // Each facet counts the queries matching the other filters
+    val facets = api.listQueries(QueryListRequest(text = Some("filter_"), statuses = Seq(QueryStatus.FAILED))).facets
+    facets.statuses.map(f => f.value -> f.count).toSet shouldBe Set("FINISHED" -> 1, "FAILED" -> 1)
+    facets.sessions.map(f => f.value -> f.count) shouldBe Seq("other" -> 1)
     // A failed query carries its first error
     api
       .listQueries(QueryListRequest(text = Some("filter_missing")))
