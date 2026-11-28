@@ -210,16 +210,8 @@ export class MonacoEditor {
             container.style.height = `${h}px`;
             this.editor.layout({width: container.clientWidth, height: h});
         };
-        // Tell the page where the code starts, so content below (a result) can line up with it
-        const publishCodeLeft = () => {
-            const left = this.editor.getLayoutInfo().contentLeft;
-            const cell = container.closest('[data-cell]') as HTMLElement | null;
-            (cell ?? container).style.setProperty('--pg-code-left', `${left}px`);
-        };
         this.editor.onDidContentSizeChange(update);
-        this.editor.onDidLayoutChange(publishCodeLeft);
         update();
-        publishCodeLeft();
     }
 
     /** Release the editor, e.g. when its page or notebook cell goes away */

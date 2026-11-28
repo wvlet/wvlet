@@ -1626,8 +1626,6 @@ summary.pg-engine-section__title {
 .pg-cell__out {
     grid-column: 2;
     min-width: 0;
-    /* Line up with the code in the editor above (set by the editor) */
-    padding-left: var(--pg-code-left, 0);
 }
 
 .pg-cell__fold {
@@ -1683,10 +1681,10 @@ summary.pg-engine-section__title {
 .pg-cell__table {
     width: fit-content;
     max-width: 100%;
-    /* A clearer edge than the grid lines inside, now that no card frames the table */
-    border: 1px solid color-mix(in srgb, var(--uni-fg) 24%, transparent);
+    /* A faint edge, and a shadow toward the bottom right that sets the table off the page */
+    border: 1px solid var(--uni-line);
     border-radius: 6px;
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+    box-shadow: 2px 3px 6px rgb(0 0 0 / 0.22);
     background: var(--uni-panel);
     /* A wide table scrolls sideways here, so the scrollbar sits below the rows, not over them */
     overflow-x: auto;
