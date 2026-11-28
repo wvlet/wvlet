@@ -102,7 +102,20 @@ class EnginePlanAcceleratorTest extends UniTest:
       val expected    = engine().withAccelerator(replanning).execute(q).rows.toList
       val offeredBy   = replanning.offered
       engine().withAccelerator(recomputing).execute(q).rows.toList shouldBe expected
-      (recomputing.offered < offeredBy) shouldBe true
+      // Lowered once instead of twice (counts in the failure message)
+      (recomputing.offered, offeredBy) shouldMatch {
+        case (n: Int, m: Int) if n < m =>
+      }
+      // The skip follows gpu_offload: with it off, the accelerator gets no plan and the query is
+      // re-planned as on the CPU
+      val off = Stub(recomputes = true)
+      engine()
+        .withAccelerator(off)
+        .withOptimizer(plan.OptimizerOptions().withDisabled(Optimization.GpuOffload))
+        .execute(q)
+        .rows
+        .toList shouldBe expected
+      off.offered shouldBe 0
     }
   }
 
