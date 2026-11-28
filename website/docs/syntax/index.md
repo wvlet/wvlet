@@ -128,6 +128,7 @@ These operators help you filter rows and select specific columns from your data.
 | [__limit__ `n`](#limit) | Limit to n rows | `LIMIT n` |
 | [__sample__ `n`](#sample) | Random sample of n rows | `TABLESAMPLE` |
 | [__sample__ `n%`](#sample) | Random sample percentage | `TABLESAMPLE n PERCENT` |
+| [__sample__ rendezvous(`n%`) by `keys`](#rendezvous-sampling) | Sample the rows of n% of the key values, consistently across relations | `WHERE hash(seed, keys) < ...` |
 | __exists__ { `subquery` } | Check if subquery has results | `EXISTS (subquery)` |
 
 ## Column Operations
@@ -1903,6 +1904,28 @@ sample bernoulli (10%)
 :::tip
 Reservoir sampling guarantees the exact number of rows in the output (if available), while system and bernoulli sampling may return approximately the requested percentage of rows.
 :::
+
+#### Rendezvous sampling
+
+`sample rendezvous (p%) by key, ...` keeps a row when the hash of its keys falls under the rate `p%`. The sample depends only on the key values, so every relation sampled by the same keys, rate, and seed keeps the same key values, and all rows of a key are kept or dropped together. Use it to sample by a privacy unit (e.g., a user id) for differentially private queries, or to sample both sides of a join consistently:
+
+```wvlet
+-- Orders and users sampled by the user id still join: each sampled order finds its user
+from orders
+sample rendezvous (10%) by user_id
+join {
+  from users
+  sample rendezvous (10%) by id
+} as u on user_id = u.id
+
+-- A seed draws a different sample; several keys hash together
+from page_views
+sample rendezvous (1%, seed = 42) by user_id, session_id
+```
+
+- Rows with a null key are never sampled.
+- The wvlet engine and DuckDB both use DuckDB's `hash(seed, keys...)`, so they keep the same rows; Trino uses `xxhash64` over the keys' text, so its sample differs. Other databases don't support it yet.
+- The hash is not cryptographic: for differential privacy, choose a random seed per release and keep it secret, since an adversary who knows the seed knows which keys are sampled.
 
 ### with
 

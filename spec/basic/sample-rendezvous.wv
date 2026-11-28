@@ -1,0 +1,55 @@
+-- Rendezvous sampling keeps a row when the hash of its keys falls under the sampling rate, so
+-- relations sampled by the same keys, rate, and seed keep the same key values
+val rv_users(user_id, user_name) = [
+  [1, "a"], [2, "b"], [3, "c"], [4, "d"], [5, "e"],
+  [6, "f"], [7, "g"], [8, "h"], [9, "i"], [10, "j"],
+  [11, "k"], [12, "l"], [13, "m"], [14, "n"], [15, "o"],
+  [16, "p"], [17, "q"], [18, "r"], [19, "s"], [20, "t"]
+]
+
+val rv_orders(order_id, buyer_id, amount) = [
+  [101, 1, 10], [102, 1, 20], [103, 2, 30], [104, 3, 40], [105, 3, 50],
+  [106, 4, 60], [107, 5, 70], [108, 6, 80], [109, 7, 90], [110, 8, 100],
+  [111, 9, 110], [112, 10, 120], [113, 11, 130], [114, 12, 140], [115, 13, 150],
+  [116, 14, 160], [117, 15, 170], [118, 16, 180], [119, 17, 190], [120, 20, 200],
+  [121, null, 210]
+]
+
+-- The sampled users
+from rv_users
+sample rendezvous(50%) by user_id
+order by user_id
+
+-- Orders sampled by the buyer: every sampled order's buyer is a sampled user
+from rv_orders
+sample rendezvous(50%) by buyer_id
+join {
+  from rv_users
+  sample rendezvous(50%) by user_id
+} as u on buyer_id = u.user_id
+select order_id, buyer_id, u.user_name
+order by order_id
+
+-- The same as above with an anti-join: no sampled order lost its buyer
+from rv_orders
+sample rendezvous(50%) by buyer_id
+where buyer_id not in (
+  from rv_users
+  sample rendezvous(50%) by user_id
+  select user_id
+)
+test _.size should be 0
+
+-- Null keys are never sampled
+from rv_orders
+sample rendezvous(100%) by buyer_id
+test _.size should be 20
+
+from rv_orders
+sample rendezvous(0%) by buyer_id
+test _.size should be 0
+
+-- A different seed draws a different sample; multiple keys hash together
+from rv_orders
+sample rendezvous(30%, seed = 42) by buyer_id, order_id
+order by order_id

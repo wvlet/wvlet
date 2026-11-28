@@ -81,7 +81,7 @@ The usual order is `from` → `where` → `add` → `group by` → `agg` → `wh
 | `group by` + `agg` | `group by k agg _.count as n, v.sum as total` |
 | `count` | `from orders count` |
 | `order by`, `limit` | `order by total desc, id limit 10` |
-| `dedup`, `sample` | `dedup`, `sample 1000`, `sample 10%` |
+| `dedup`, `sample` | `dedup`, `sample 1000`, `sample 10%`, `sample rendezvous (10%) by user_id` |
 | `join` (`left`, `right`, `full`, `cross`, `asof`) | `join customers on orders.customer_id = customers.id` |
 | `concat`, `intersect`, `except` | `concat { from archived_orders }` |
 | `pivot`, `unpivot` | `pivot on month group by k agg v.sum` |

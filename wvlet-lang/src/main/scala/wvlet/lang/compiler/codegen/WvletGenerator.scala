@@ -525,6 +525,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               case SamplingSize.PercentageExpr(e) =>
                 expr(e)
           s.method match
+            case Some(SamplingMethod.rendezvous) =>
+              val args =
+                if s.seed == 0L then
+                  sizeDoc
+                else
+                  cl(sizeDoc, text(s"seed = ${s.seed}"))
+              wl(text("rendezvous") + paren(args), "by", cl(s.keys.map(expr)))
             case Some(m) =>
               text(m.toString) + paren(sizeDoc)
             case None =>

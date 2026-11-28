@@ -85,6 +85,7 @@ Keywords are lower-case. Each operator takes the output of the previous line as 
 | `count` | Count all rows | `from orders count` |
 | `dedup` | Remove duplicate rows | `select status dedup` |
 | `sample` | Random sample | `sample 1000` |
+| `sample rendezvous (p%) by keys` | Sample n% of the key values (all their rows), the same keys in every relation; for joins and differential privacy | `sample rendezvous (10%) by user_id` |
 | `join` / `left join` | Join another relation | `join customers on orders.customer_id = customers.id` |
 | `concat` | Union all rows of another query | `concat { from archived_orders }` |
 | `with` | Name a subquery | `with paid as { from orders where status = 'paid' }` |

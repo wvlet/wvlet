@@ -30,6 +30,7 @@ import wvlet.lang.engine.expr.AndExpr
 import wvlet.lang.engine.expr.Const
 import wvlet.lang.engine.expr.IsNullExpr
 import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.expr.DuckDBHash
 import wvlet.lang.engine.expr.OrExpr
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.plan.BindScope
@@ -215,11 +216,21 @@ class RuntimeBinder(planner: Planner):
 
   /**
     * A sample as the planner plans it: a row count as a limit, a percentage as a
-    * [[RuntimePlan.Sample]], and a percentage given by an expression keeps every row
+    * [[RuntimePlan.Sample]], and a percentage given by an expression keeps every row. A rendezvous
+    * sample is a filter on the hash of its keys: it depends on the key values only, so the
+    * optimizer moves it like any other filter, e.g., to both sides of a join on the keys
     */
   private def sample(s: Sample): RuntimePlan =
     val in = bind(s.child)
     s.size match
+      case SamplingSize.Percentage(p) if s.method.contains(SamplingMethod.rendezvous) =>
+        val binder = Binder(planner, BindScope(in.schema))
+        val cond   = DuckDBHash.rendezvousSample(s.keys.map(binder.bind), p, s.seed)
+        RuntimePlan.Filter(in, BExpr.of(cond, in.output))
+      case _ if s.method.contains(SamplingMethod.rendezvous) =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"rendezvous sampling takes a percentage: ${s.size}")
       case SamplingSize.Rows(n) =>
         RuntimePlan.Limit(in, n, 0)
       case SamplingSize.Percentage(p) =>
