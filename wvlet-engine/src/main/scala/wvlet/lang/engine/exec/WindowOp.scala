@@ -143,11 +143,56 @@ class WindowOp(
   // The query's memory budget, captured where the window is planned
   private val memory = MemoryContext.current.child()
 
+  /** Whether an input past the spill threshold is split into spill files (`spill_window`) */
+  var spill: Boolean = true
+
+  /** Set [[spill]] */
+  def withSpill(enabled: Boolean): this.type =
+    spill = enabled
+    this
+
+  // 0 for a planned window, 1 or 2 for a window over a spill file ([[WindowSpill]])
+  private var spillDepth = 0
+
+  // The expressions to split a spilling input by; empty when this window holds its input
+  private def spillKeys: IndexedSeq[VExpr] =
+    if spill && memory.canSpill && SpillBlocks.spillable(child.schema) then
+      WindowSpill.keysOf(calls, spillDepth)
+    else
+      IndexedSeq.empty
+
+  // The same window over the rows of one spill file
+  private def overFile(f: SpillFile): Operator =
+    val in = IteratorOp(child.schema, () => f.read(), "SpilledWindowInput")
+    val w  = WindowOp(
+      in,
+      calls,
+      schema,
+      runner,
+      minParallelRows,
+      runningFrames,
+      topN,
+      runningKernels,
+      sortKernels,
+      sharePartitions,
+      streamTopN,
+      topNChunkRows
+    )
+    w.spillDepth = spillDepth + 1
+    w
+
   private def compute(): Iterator[Batch] =
-    val all =
+    val keys = spillKeys
+    val all  =
       topN match
         case Some(t) if streamTopN =>
           topInput(t)
+        case _ if keys.nonEmpty =>
+          WindowSpill.readInput(child, keys, calls.size, memory, runner, spillDepth) match
+            case Left(files) =>
+              return WindowSpill.evaluate(files, memory, overFile)
+            case Right(in) =>
+              in
         case _ =>
           memory.materialize(child)
     val n = all.size

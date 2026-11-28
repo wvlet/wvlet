@@ -218,6 +218,12 @@ trait PhysicalSteps:
       Planner.disableSizePartitionsByRows(physical)
     if !enabled(Optimization.SpillAggregation) then
       Planner.disableSpillAggregation(physical)
+    if !enabled(Optimization.SpillSort) || !enabled(Optimization.SpillWindow) then
+      Planner.disableSpillSortWindow(
+        physical,
+        sort = !enabled(Optimization.SpillSort),
+        window = !enabled(Optimization.SpillWindow)
+      )
     physical
 
   end optimizePhysical
@@ -529,5 +535,16 @@ trait PhysicalWalkers:
       case _ =>
     op.children.foreach(disableSpillAggregation)
     op.sharedInputs.foreach(disableSpillAggregation)
+
+  /** Make sorts (`sort`) and windows (`window`) hold their whole input past the spill threshold */
+  private[engine] def disableSpillSortWindow(op: Operator, sort: Boolean, window: Boolean): Unit =
+    op match
+      case s: SortOp if sort =>
+        s.withSpill(false)
+      case w: WindowOp if window =>
+        w.withSpill(false)
+      case _ =>
+    op.children.foreach(disableSpillSortWindow(_, sort, window))
+    op.sharedInputs.foreach(disableSpillSortWindow(_, sort, window))
 
 end PhysicalWalkers

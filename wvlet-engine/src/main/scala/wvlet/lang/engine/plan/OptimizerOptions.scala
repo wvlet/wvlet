@@ -1273,6 +1273,22 @@ enum Optimization(val name: String):
     */
   case SpillCTEResults extends Optimization("spill_cte_results")
 
+  /**
+    * A sort whose input would take the query past its spill threshold sorts what fits, writes it as
+    * a sorted run file, and merges the runs as it emits its rows (external merge sort,
+    * [[wvlet.lang.engine.exec.SortSpill]]); with a limit, a full buffer is first cut to its top
+    * rows instead. Changes no plan, and nothing when the input fits
+    */
+  case SpillSort extends Optimization("spill_sort")
+
+  /**
+    * A window whose input would take the query past its spill threshold routes its rows by the
+    * PARTITION BY keys every call shares into spill files, and evaluates one file at a time
+    * ([[wvlet.lang.engine.exec.WindowSpill]]). Streamed top-N windows stay in memory. Changes no
+    * plan, and nothing when the input fits
+    */
+  case SpillWindow extends Optimization("spill_window")
+
 end Optimization
 
 object Optimization:

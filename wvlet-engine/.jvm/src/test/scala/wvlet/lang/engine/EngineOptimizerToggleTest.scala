@@ -349,6 +349,12 @@ class EngineOptimizerToggleTest extends UniTest:
       "Changes whether join builds past the spill threshold spill partitions, not the plan",
     // SpillThresholdTest checks the default threshold with and without the flag
     Optimization.SpillHeadroom -> "Changes the default spill threshold, not the plan",
+    // SortSpillTest checks that the flag keeps a spilling sort's input in memory
+    Optimization.SpillSort ->
+      "Changes whether sorts past the spill threshold write sorted runs, not the plan",
+    // WindowSpillTest checks that the flag keeps a spilling window's input in memory
+    Optimization.SpillWindow ->
+      "Changes whether windows past the spill threshold spill their input, not the plan",
     // MemoryAccountingTest checks that shared results return their memory after their last reader
     Optimization.ReleaseCTEResults ->
       "Changes when shared CTE results drop their rows, not the plan",
