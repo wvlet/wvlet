@@ -17,5 +17,12 @@
 import './target/uni-ui.css'
 import './index.css'
 
+// The query editor: Monaco with Wvlet highlighting, shared with the playground
+import { MonacoEditor } from '../wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
+import '../wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
+
+// Make the MonacoEditor class accessible from @JSGlobal in Scala.js
+window.MonacoEditor = MonacoEditor;
+
 // Start Scala.js code
 import('__target__/main.js')

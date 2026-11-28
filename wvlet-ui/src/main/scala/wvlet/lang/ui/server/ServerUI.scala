@@ -22,18 +22,21 @@ import wvlet.uni.ui.ButtonVariant
 import wvlet.uni.ui.Input
 
 /**
-  * The web UI of `wvlet server`: a header with the pages (overview, queries, flow runs) and the
-  * current page below it, chosen by the URL hash. Asks for the bearer token when the server
+  * The web UI of `wvlet server`: a header with the screens (workload console, flow runs) and the
+  * current screen below it, chosen by the URL hash. Asks for the bearer token when the server
   * rejects a call for one
   */
 class ServerUI(conn: ServerConnection) extends RxElement:
 
   private val tokenInput = Rx.variable("")
 
+  private val state  = ConsoleState(conn)
+  private val editor = EditorState(state)
+
   private def navItem(name: String, target: Page, current: Page): RxElement =
     val selected =
       (target, current) match
-        case (Page.Queries, Page.Query(_)) =>
+        case (Page.Console(_), Page.Console(_)) =>
           true
         case _ =>
           target == current
@@ -52,29 +55,38 @@ class ServerUI(conn: ServerConnection) extends RxElement:
       name
     )
 
-  private def headerBar: RxElement = wvlet.uni.dom.HtmlTags.tag("header")(
-    cls -> "wv-header",
-    a(
-      cls  -> "wv-brand",
-      href -> "#/",
-      img(cls -> "wv-brand__logo", src -> "./img/wvlet-icon.svg", alt -> ""),
-      span("Wvlet"),
-      span(cls -> "wv-brand__sub", "server")
-    ),
-    Page
-      .current
-      .map { r =>
-        nav(
-          cls       -> "wv-nav",
-          ariaLabel -> "Pages",
-          navItem("Overview", Page.Overview, r),
-          navItem("Queries", Page.Queries, r),
-          navItem("Flow runs", Page.Flows, r)
+  private def headerBar: RxElement =
+    wvlet
+      .uni
+      .dom
+      .HtmlTags
+      .tag("header")(
+        cls -> "wv-header",
+        a(
+          cls  -> "wv-brand",
+          href -> "#/",
+          img(cls -> "wv-brand__logo", src -> "./img/wvlet-icon.svg", alt -> ""),
+          span("Wvlet"),
+          span(cls -> "wv-brand__sub", "server")
+        ),
+        Page
+          .current
+          .map { r =>
+            nav(
+              cls       -> "wv-nav",
+              ariaLabel -> "Pages",
+              navItem("Workload", Page.Console(), r),
+              navItem("Flow runs", Page.Flows, r)
+            )
+          },
+        div(cls -> "wv-grow"),
+        a(
+          cls    -> "wv-header__link",
+          href   -> "https://wvlet.org/wvlet/docs/usage/ui",
+          target -> "_blank",
+          "Docs"
         )
-      },
-    div(cls -> "wv-grow"),
-    a(cls -> "wv-header__link", href -> "https://wvlet.org/wvlet/docs/usage/ui", target -> "_blank", "Docs")
-  )
+      )
 
   private def tokenPrompt: RxElement = conn
     .needsToken
@@ -83,8 +95,8 @@ class ServerUI(conn: ServerConnection) extends RxElement:
         span()
       else
         div(
-          cls  -> "wv-token",
-          role -> "dialog",
+          cls       -> "wv-token",
+          role      -> "dialog",
           ariaLabel -> "Server token",
           div(
             cls -> "wv-token__box",
@@ -104,16 +116,12 @@ class ServerUI(conn: ServerConnection) extends RxElement:
         )
     }
 
-  private def page(r: Page): RxElement =
-    r match
-      case Page.Overview =>
-        OverviewPage(conn)
-      case Page.Queries =>
-        QueryListPage(conn)
-      case Page.Query(id) =>
-        QueryDetailPage(conn, id)
+  private def page(p: Page): RxElement =
+    p match
       case Page.Flows =>
         FlowRunsPage(conn)
+      case Page.Console(_) =>
+        WorkloadConsole(state, editor)
 
   override def render: RxElement = div(
     cls -> "wv-app",

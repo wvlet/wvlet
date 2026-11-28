@@ -306,6 +306,14 @@ export class MonacoEditor {
         }
     }
 
+    getSelectedText(): string {
+        const sel = this.editor.getSelection();
+        if (!sel || sel.isEmpty()) {
+            return "";
+        }
+        return this.editor.getModel()?.getValueInRange(sel) ?? "";
+    }
+
     getLinePosition(): number {
         return this.editor.getPosition().lineNumber;
     }

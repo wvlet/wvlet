@@ -14,6 +14,18 @@ $ wvlet server --tpch --open
 
 ![Web UI](./wvlet-ui-screenshot.png)
 
+## Workload console
+
+The UI is one screen that refreshes every second:
+
+- **Health strip**: running queries against the slots, the queue, failed queries, engine memory against the pool, busy engine threads, heap, and low-memory kills, each with a line of its last two minutes. Click Running, Queued, or Failed to show only those queries.
+- **Query list**: newest first, with filter chips counted per status, session, and profile, and a search over the query text. Each row shows its status, query, id, session, age, a time bar (amber: queued, then running), and a memory bar relative to the largest query in view. Hover a row to cancel it, open it in the editor, or copy its id; check rows to cancel several at once. **Timeline** shows the same queries as bars, one lane per session.
+- **Inspector**: click a row to see its timing, memory, errors, query text, engine plan, and generated SQL beside the list. The URL (`#/q/<query id>`) links to it.
+- **Editor**: **New query** (or `e`) opens a Wvlet editor below the list. Runs show up in the list, and their results appear next to the editor. The editor's runs share a session id per browser tab, so a `use` statement affects only that tab.
+- **Flow runs**: the second tab lists [flow](../syntax/flow.md) runs.
+
+With `--auth-token`, the UI asks for the token once and keeps it until the browser tab closes.
+
 ## Usage
 
 ```bash
@@ -47,9 +59,19 @@ usage: server
 
 ## Shortcut Keys
 
-- `ctrl-enter`: Execute the sub query at the current line
-- `shift-enter`: Describe the schema at the line
-- `ctrl-j ctrl-d`: Describe the schema at the line
-- `⌘-enter`: Run the current query
-- `ctrl-j ctrl-r`: Run the current query
-- `⌘-shift-enter`: Run the current query with production mode (e.g., skip debug/test expressions)
+In the console:
+
+- `j` / `k` (or arrow keys): select the next or previous query
+- `Enter`: open the selected query in the editor
+- `x`: check the selected query
+- `c` `c`: cancel the selected query (press twice)
+- `/`: search the query text
+- `e`: show or hide the editor
+- `v`: switch between the list and the timeline
+- `Space`: pause or resume live updates
+- `Esc`: close the inspector, or clear the checked queries
+
+In the editor:
+
+- `⌘-enter` (`ctrl-enter` on Windows and Linux): run the selected text, or the whole editor when nothing is selected
+- `⌘-shift-enter` (`ctrl-shift-enter`): run the statement at the cursor

@@ -66,7 +66,6 @@ object Fmt:
       clock(t)
 
   /** How long ago `t` was, relative to `now`, e.g. 5 s ago */
-  def ago(t: Instant, now: Instant): String =
-    s"${duration(now.toEpochMilli - t.toEpochMilli)} ago"
+  def ago(t: Instant, now: Instant): String = s"${duration(now.toEpochMilli - t.toEpochMilli)} ago"
 
 end Fmt

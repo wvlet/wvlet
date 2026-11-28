@@ -39,9 +39,9 @@ object Widgets:
       else
         ""
     div(
-      cls          -> s"wv-meter${level}",
-      role         -> "meter",
-      ariaLabel    -> label,
+      cls           -> s"wv-meter${level}",
+      role          -> "meter",
+      ariaLabel     -> label,
       data("value") -> percent.toString,
       div(cls -> "wv-meter__fill", styleAttr -> s"width: ${percent.max(0).min(100)}%")
     )
@@ -51,29 +51,38 @@ object Widgets:
     * 0), drawn as inline SVG
     */
   def sparkline(values: Seq[Double], max: Double = 0, label: String): RxElement =
-    val w    = 200.0
-    val h    = 36.0
-    val top  = if max > 0 then max else values.maxOption.getOrElse(0.0).max(1.0)
-    val step = if values.size > 1 then w / (values.size - 1) else w
-    val pts =
-      values
-        .zipWithIndex
-        .map((v, i) => f"${i * step}%.1f,${h - 2 - (v.min(top) / top) * (h - 4)}%.1f")
-        .mkString(" ")
+    val w   = 200.0
+    val h   = 36.0
+    val top =
+      if max > 0 then
+        max
+      else
+        values.maxOption.getOrElse(0.0).max(1.0)
+    val step =
+      if values.size > 1 then
+        w / (values.size - 1)
+      else
+        w
+    val pts = values
+      .zipWithIndex
+      .map((v, i) => f"${i * step}%.1f,${h - 2 - (v.min(top) / top) * (h - 4)}%.1f")
+      .mkString(" ")
     div(
       cls -> "wv-spark-box",
       svg(
-        cls                       -> "wv-spark",
-        viewBox                   -> s"0 0 ${w.toInt} ${h.toInt}",
+        cls                                                -> "wv-spark",
+        viewBox                                            -> s"0 0 ${w.toInt} ${h.toInt}",
         wvlet.uni.dom.HtmlTags.attr("preserveAspectRatio") -> "none",
-        role                      -> "img",
-        ariaLabel                 -> label,
+        role                                               -> "img",
+        ariaLabel                                          -> label,
         if values.size > 1 then
           polyline(cls -> "wv-spark__line", points -> pts)
         else
           span()
       )
     )
+
+  end sparkline
 
   /** A link to another page of the UI */
   def link(r: Page, content: DomNode*): RxElement = a(
@@ -92,6 +101,8 @@ object Widgets:
     case None =>
       span()
   }
+
+end Widgets
 
 /**
   * A page that reloads its data every `intervalMillis` while it is mounted, and once right away.

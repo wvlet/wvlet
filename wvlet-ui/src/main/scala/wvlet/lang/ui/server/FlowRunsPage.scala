@@ -60,7 +60,12 @@ class FlowRunsPage(conn: ServerConnection) extends Polling:
       loadError := None
       runs      := Some(lst)
       // Terminal runs never change, so only a still-running selection is re-fetched
-      selectedRun.get.foreach(d => if d.run.state == "running" then showRun(d.run.runId))
+      selectedRun
+        .get
+        .foreach(d =>
+          if d.run.state == "running" then
+            showRun(d.run.runId)
+        )
     }
     .recover { case e: Throwable =>
       loadError := Some(conn.errorMessage(e))
@@ -124,7 +129,10 @@ class FlowRunsPage(conn: ServerConnection) extends Polling:
           .lastPollAtMillis
           .map(p => s", last poll ${Fmt.duration(now - p)} ago")
           .getOrElse("")
-        span(stateBadge("waiting"), span(cls -> "wv-muted", s" for ${Fmt.duration(now - since)}${lastPoll}"))
+        span(
+          stateBadge("waiting"),
+          span(cls -> "wv-muted", s" for ${Fmt.duration(now - since)}${lastPoll}")
+        )
       case None =>
         stateBadge(s.state)
 
@@ -136,7 +144,9 @@ class FlowRunsPage(conn: ServerConnection) extends Polling:
     case Some(lst) =>
       table(
         cls -> "wv-table wv-table--select",
-        thead(tr(th("Run id"), th("Flow"), th("State"), th("Run time"), th("Started"), th("Elapsed"))),
+        thead(
+          tr(th("Run id"), th("Flow"), th("State"), th("Run time"), th("Started"), th("Elapsed"))
+        ),
         tbody(
           lst.map { r =>
             tr(
@@ -148,7 +158,10 @@ class FlowRunsPage(conn: ServerConnection) extends Polling:
               td(stateBadge(r.state)),
               td(r.runTimeMillis.map(time).getOrElse("-")),
               td(time(r.startedAtMillis)),
-              td(cls -> "wv-num", r.finishedAtMillis.map(f => Fmt.duration(f - r.startedAtMillis)).getOrElse("-"))
+              td(
+                cls -> "wv-num",
+                r.finishedAtMillis.map(f => Fmt.duration(f - r.startedAtMillis)).getOrElse("-")
+              )
             )
           }
         )
@@ -167,7 +180,9 @@ class FlowRunsPage(conn: ServerConnection) extends Polling:
       span(
         cls -> "wv-confirm",
         span(s"${action.capitalize} run ${runId}?"),
-        Button("Confirm").withVariant(ButtonVariant.Danger).onClick(() => performAction(action, runId)),
+        Button("Confirm")
+          .withVariant(ButtonVariant.Danger)
+          .onClick(() => performAction(action, runId)),
         Button("Dismiss").withVariant(ButtonVariant.Ghost).onClick(() => pendingAction := None)
       )
     case None =>

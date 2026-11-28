@@ -32,8 +32,10 @@ import scala.util.Try
 class ServerConnection:
   private val storageKey = "wvlet.server.token"
 
-  private var token: Option[String] =
-    Try(Option(dom.window.sessionStorage.getItem(storageKey))).toOption.flatten.filter(_.nonEmpty)
+  private var token: Option[String] = Try(Option(dom.window.sessionStorage.getItem(storageKey)))
+    .toOption
+    .flatten
+    .filter(_.nonEmpty)
 
   private var client: RPCAsyncClient = newClient(token)
 
@@ -72,7 +74,9 @@ class ServerConnection:
   private def newClient(t: Option[String]): RPCAsyncClient = FrontendRPC.newRPCAsyncClient(
     Http
       .client
-      .withRequestFilter(req => t.map(v => req.setHeader("Authorization", s"Bearer ${v}")).getOrElse(req))
+      .withRequestFilter(req =>
+        t.map(v => req.setHeader("Authorization", s"Bearer ${v}")).getOrElse(req)
+      )
       .newAsyncClient
   )
 

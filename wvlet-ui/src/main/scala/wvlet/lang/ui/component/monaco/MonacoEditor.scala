@@ -25,12 +25,15 @@ class MonacoEditor(
   def getText(): String                               = js.native
   def setText(txt: String): Unit                      = js.native
   def getLinePosition(): Double                       = js.native
-  def getColumnPosition(): Double                     = js.native
-  def enableWordWrap(): Unit                          = js.native
-  def setDarkMode(dark: Boolean): Unit                = js.native
-  def setLanguage(lang: String): Unit                 = js.native
-  def focus(): Unit                                   = js.native
-  def revealLine(line: Int): Unit                     = js.native
+
+  /** The selected text, or an empty string when nothing is selected */
+  def getSelectedText(): String        = js.native
+  def getColumnPosition(): Double      = js.native
+  def enableWordWrap(): Unit           = js.native
+  def setDarkMode(dark: Boolean): Unit = js.native
+  def setLanguage(lang: String): Unit  = js.native
+  def focus(): Unit                    = js.native
+  def revealLine(line: Int): Unit      = js.native
 
   /**
     * Show a marker in the glyph margin of lines: each element has `line` (1-origin), `kind` (CSS
