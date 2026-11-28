@@ -374,6 +374,55 @@ class MemoryAccountingTest extends UniTest:
     MemoryContext.estimatedBytes(StrVec(Array("abcd", "efghij"), null)) shouldBe 2L * (8 + 45)
   }
 
+  test("should count references, not strings, for gathered and grouped strings") {
+    val plain = StrVec(Array("abcd", "efghij", "klm"), null)
+    // A gather holds references to the same Strings
+    val gathered = plain.gather(Array(0, 0, 1, 2), 4).asInstanceOf[StrVec]
+    gathered.sharesStrings shouldBe true
+    MemoryContext.estimatedBytes(gathered) shouldBe 4L * 8
+    // A filter keeps each row once, in order: the strings are its own once the source is dropped
+    plain.gather(Array(0, 2), 2).asInstanceOf[StrVec].sharesStrings shouldBe false
+    // A group key referencing shared strings holds one reference; other string keys 48 bytes
+    val key = IndexedSeq(ColRef(0, PType.Str, "s"))
+    MemoryContext.keyBytes(key, Batch(Array[Vec](gathered), 4)) shouldBe 8L
+    MemoryContext.keyBytes(key, Batch(Array[Vec](plain), 3)) shouldBe 48L
+    MemoryContext.keyBytes(key, null) shouldBe 48L
+  }
+
+  test("should reserve a join build's index at its real size once built") {
+    val n    = 20000
+    val keys = Array[Vec](
+      LongVec(PType.Int64, Array.tabulate(n)(i => i * 7919L), null),
+      LongVec(PType.Int64, Array.tabulate(n)(i => i % 13L), null)
+    )
+    val schema = Schema(IndexedSeq(Field("a", PType.Int64), Field("b", PType.Int64)))
+    val batch  = Batch(keys, n)
+    Seq(true, false).foreach { flat =>
+      val pool = MemoryPool()
+      val q    = pool.newQuery()
+      val jb   =
+        MemoryContext.withCurrent(q)(
+          JoinBuild(
+            BatchesOp(schema, Seq(batch)),
+            IndexedSeq(ColRef(0, PType.Int64, "a"), ColRef(1, PType.Int64, "b")),
+            packKeys = false,
+            flatTable = flat
+          )
+        )
+      jb.directIndex = false
+      jb.ensureBuilt()
+      jb.usesFlatTable shouldBe false
+      // Two-column keys use per-partition hash tables: slots, hashes, and key copies past the
+      // 12 bytes per row reserved before the build
+      q.reservedBytes shouldMatch {
+        case r: Long if r > MemoryContext.estimatedBytes(batch) + n * JoinBuild.IndexBytesPerRow =>
+      }
+      jb.free()
+      q.reservedBytes shouldBe 0L
+      q.close()
+    }
+  }
+
   test("should reserve nothing for a query without large holders") {
     reservedBy("from orders select o_orderkey") shouldBe 0L
   }

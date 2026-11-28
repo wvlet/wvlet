@@ -364,13 +364,15 @@ class HashAggOp(
       sortedRuns = sortedGroupRuns
     )
     val accs = aggs.map(_.newAccumulator())
-    // The group table's key and the aggregates' state of each group; one group without keys
+    var b    = child.next()
+    // The group table's key and the aggregates' state of each group; one group without keys. A
+    // string key costs what the first batch's rows hold (references to shared strings, or Strings)
     val groupMemory =
       if keys.isEmpty then
         MemoryContext.NoOp.growing(0L)
       else
         memory.growing(
-          keys.map(k => MemoryContext.valueBytes(k.ptype)).sum + HashAggOp.GroupTableBytes +
+          MemoryContext.keyBytes(keys, b) + HashAggOp.GroupTableBytes +
             aggs.map(a => MemoryContext.valueBytes(a.ptype)).sum
         )
     groupMemory.ensure(presize)
@@ -380,7 +382,6 @@ class HashAggOp(
     var rows              = 0L
     // Whether grouping stopped before the input ended: the rest of it passes through
     var stopped = false
-    var b       = child.next()
     while b != null do
       val groups =
         if keys.isEmpty then

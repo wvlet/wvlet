@@ -120,6 +120,12 @@ final class GroupTable(
     else
       count
 
+  override def memoryBytes: Long =
+    var b = 8L * slots.length + 4L * groupHash.length + stores.iterator.map(_.bytes).sum
+    if coded != null then
+      b += coded.memoryBytes
+    b
+
   private def normalize(keys: Array[Vec]): Array[Vec] =
     val out = new Array[Vec](width)
     var k   = 0
@@ -685,6 +691,9 @@ trait GroupIndex:
   /** Key values of every group, in group id order */
   def keyVectors(): Array[Vec]
 
+  /** Bytes of the index's arrays (slots, hashes, and key stores), for memory accounting */
+  def memoryBytes: Long = 0L
+
 object GroupTable:
   /** An unused slot: no entry has a negative group id */
   private inline val Empty = -1L
@@ -784,6 +793,19 @@ object GroupTable:
   abstract class KeyStore:
     protected var nulls: Array[Boolean] = null
     protected def capacity: Int
+
+    // Bytes per key in the store's array (4 for a compressed reference)
+    protected def unitBytes: Int = 8
+
+    /** Bytes of the store's arrays */
+    def bytes: Long =
+      capacity.toLong * unitBytes + (
+        if nulls == null then
+          0L
+        else
+          nulls.length.toLong
+      )
+
     protected def grow(cap: Int): Unit
 
     /** The vector in the representation this store reads */
@@ -864,6 +886,8 @@ object GroupTable:
     b.result()
 
   final class IntStore(t: PType) extends KeyStore:
+    override protected def unitBytes: Int = 4
+
     private var values                 = new Array[Int](16)
     protected def capacity: Int        = values.length
     protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
@@ -965,6 +989,8 @@ object GroupTable:
   end DoubleStore
 
   final class StrStore extends KeyStore:
+    override protected def unitBytes: Int = 4
+
     private var values                 = new Array[String](16)
     protected def capacity: Int        = values.length
     protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
@@ -990,9 +1016,17 @@ object GroupTable:
 
     protected def addValue(g: Int, v: Vec, i: Int): Unit = values(g) = v.asInstanceOf[StrVec].str(i)
 
-    def result(n: Int): Vec = StrVec(java.util.Arrays.copyOf(values, n), resultNulls(n))
+    def result(n: Int): Vec = StrVec(
+      java.util.Arrays.copyOf(values, n),
+      resultNulls(n),
+      sharesStrings = true
+    )
+
+  end StrStore
 
   final class BoolStore extends KeyStore:
+    override protected def unitBytes: Int = 1
+
     private var values                 = new Array[Boolean](16)
     protected def capacity: Int        = values.length
     protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)
@@ -1037,7 +1071,14 @@ object GroupTable:
   final class DecimalStore(t: PType.Decimal) extends KeyStore:
     private var values = new Array[Long](16)
     // The values that don't fit in a Long, or null while none has been added
-    private var big: Array[AnyRef]     = null
+    private var big: Array[AnyRef] = null
+    // The longs, and a reference per key once a value is too big for a Long
+    override protected def unitBytes: Int =
+      if big == null then
+        8
+      else
+        12
+
     protected def capacity: Int        = values.length
     protected def grow(cap: Int): Unit =
       values = java.util.Arrays.copyOf(values, cap)
@@ -1133,6 +1174,8 @@ object GroupTable:
 
   /** Any other type, through boxed engine values and their equals / hashCode */
   final class ObjStore(t: PType) extends KeyStore:
+    override protected def unitBytes: Int = 4
+
     private var values                 = new Array[AnyRef](16)
     protected def capacity: Int        = values.length
     protected def grow(cap: Int): Unit = values = java.util.Arrays.copyOf(values, cap)

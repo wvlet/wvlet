@@ -16,6 +16,8 @@ package wvlet.lang.engine.exec
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.query.QueryMemoryUsage
+import wvlet.lang.engine.expr.ColRef
+import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.vector.*
 
 import java.util.concurrent.atomic.AtomicLong
@@ -508,6 +510,47 @@ object MemoryContext:
   /** Estimated bytes of one value of type `t` in a vector or a group's key or state */
   private[exec] def valueBytes(t: PType): Long = width(t)
 
+  /**
+    * Estimated bytes of one group's `keys`, given a first input batch `b` (or null), read without
+    * evaluating or gathering: a string column whose rows reference strings another holder counts
+    * ([[StrVec.sharesStrings]]) costs a reference, a dictionary-coded one a reference plus its
+    * dictionary's share per row; other keys as [[valueBytes]]
+    */
+  private[exec] def keyBytes(keys: Seq[VExpr], b: Batch): Long =
+    keys
+      .map {
+        case ColRef(i, PType.Str, _) if b != null =>
+          val src = b.deferredSource(i)
+          (
+            if src != null then
+              src
+            else
+              b.column(i)
+          ) match
+            case s: StrVec =>
+              stringKeyBytes(s)
+            case _ =>
+              width(PType.Str)
+        case k =>
+          width(k.ptype)
+      }
+      .sum
+
+  private def stringKeyBytes(s: StrVec): Long =
+    val distinct =
+      if s.holdsEntries then
+        s.entryStrings.length
+      else if s.hasCodes && s.dictSize > 0 then
+        s.dictSize
+      else
+        -1
+    if s.sharesStrings then
+      8L
+    else if distinct >= 0 then
+      math.min(width(PType.Str), 8L + width(PType.Str) * distinct / math.max(1, s.size))
+    else
+      width(PType.Str)
+
   private[exec] def mb(bytes: Long): String = f"${bytes.toDouble / (1024 * 1024)}%.1f MB"
 
   // Strings sampled per vector to estimate their sizes
@@ -569,6 +612,9 @@ object MemoryContext:
           else if s.hasCodes then
             // Per-row references to the dictionary's strings, and their codes
             12L * n
+          else if s.sharesStrings then
+            // References to strings another holder counts: a dimension's rows gathered to many
+            8L * n
           else
             n * (8L + sampledStringBytes(s))
         case o: ObjVec =>
