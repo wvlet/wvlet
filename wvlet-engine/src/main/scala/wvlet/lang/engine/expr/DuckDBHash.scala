@@ -21,6 +21,9 @@ import wvlet.lang.model.plan.RendezvousSampling
   * strings, integers, and booleans. Other values hash their text
   */
 object DuckDBHash:
+  /** The hash of a null value */
+  val NullHash: Long = 0xbf58476d1ce4e5b9L
+
   /** DuckDB's MurmurHash64 finalizer of a 64-bit value */
   def murmurHash64(v: Long): Long =
     var x = v
@@ -49,6 +52,8 @@ object DuckDBHash:
   /** DuckDB's hash of one value */
   def hash(v: Any): Long =
     v match
+      case null =>
+        NullHash
       case s: String =>
         hashBytes(s.getBytes("UTF-8"))
       case i: Int =>
@@ -110,6 +115,28 @@ object DuckDBHash:
           i += 1
         (h >>> shift) < threshold
       }
+    )
+
+  /**
+    * The order of rows within a key of a rendezvous sample of `k` rows per key: `hash(seed,
+    * columns...)` of every column of the row, nulls included. The name carries the seed, since
+    * passes match expressions by signature
+    */
+  def rendezvousRowHash(columns: Seq[VExpr], seed: Long): VExpr =
+    val seedHash = murmurHash64(seed)
+    RowFn(
+      s"rendezvous_row_hash[seed=${seed}]",
+      columns,
+      PType.Int64,
+      { row =>
+        var h = seedHash
+        var i = 0
+        while i < row.length do
+          h = combineHash(h, hash(row(i)))
+          i += 1
+        h
+      },
+      nullSafe = true
     )
 
 end DuckDBHash

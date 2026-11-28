@@ -50,7 +50,7 @@ test _.rows should be [[1, 10]]
 - `limit n` keeps the first n rows. `n` is an integer or a constant expression: a `val`, a model argument, or a `def` parameter (`def top(k: int) = order by v desc | limit k`); a column is an error.
 - `sample 1000`, `sample 10%`, `sample reservoir (1000)`, `sample system (10%)`,
   `sample bernoulli (10%)`.
-- `sample rendezvous (10%) by user_id` keeps the rows of the keys whose hash falls under 10%: relations sampled by the same keys, rate, and seed (`sample rendezvous (10%, seed = 42) by user_id`) keep the same key values, so sampled tables still join. Null keys are never sampled.
+- `sample rendezvous (10%) by user_id` keeps the rows of the keys whose hash falls under 10%: relations sampled by the same keys, rate, and seed (`sample rendezvous (10%, seed = 42) by user_id`) keep the same key values, so sampled tables still join. Null keys are never sampled. `sample rendezvous (3) by user_id` keeps at most 3 rows per key (the smallest seeded row hashes), e.g., after `group by user_id, g` to bound the groups each user contributes to; it runs only in the wvlet engine.
 
 ## Column operations
 

@@ -76,22 +76,32 @@ class RendezvousSampleTest extends UniTest:
   }
 
   test("should print the sample back as Wvlet") {
-    val printed = print("""from t
+    // Scala.js prints 10.0 as 10
+    def normalized(wv: String): String = print(wv).replace(".0%", "%")
+    val printed                        = normalized("""from t
         |sample rendezvous(10%, seed = 42) by user_id, day""".stripMargin)
-    printed shouldContain "sample rendezvous(10.0%, seed = 42) by user_id, day"
-    print(printed) shouldContain "sample rendezvous(10.0%, seed = 42) by user_id, day"
-    print("from t\nsample rendezvous(5%) by user_id") shouldContain
-      "sample rendezvous(5.0%) by user_id"
+    printed shouldContain "sample rendezvous(10%, seed = 42) by user_id, day"
+    normalized(printed) shouldContain "sample rendezvous(10%, seed = 42) by user_id, day"
+    normalized("from t\nsample rendezvous(5%) by user_id") shouldContain
+      "sample rendezvous(5%) by user_id"
+    print("from t\nsample rendezvous(3, seed = 7) by user_id") shouldContain
+      "sample rendezvous(3, seed = 7) by user_id"
   }
 
-  test("should require a percentage and sampling keys") {
-    val rows = intercept[WvletLangException] {
-      print("from t\nsample rendezvous(10) by user_id")
+  test("should generate SQL only for percentages") {
+    val e = intercept[WvletLangException] {
+      generateSQL(query.replace("10%", "3"))
     }
-    rows.statusCode shouldBe StatusCode.SYNTAX_ERROR
-    rows.getMessage shouldContain "takes a percentage"
+    e.statusCode shouldBe StatusCode.NOT_IMPLEMENTED
+    e.getMessage shouldContain "only in the wvlet engine"
+  }
+
+  test("should require sampling keys") {
     intercept[WvletLangException] {
       print("from t\nsample rendezvous(10%)")
+    }.statusCode shouldBe StatusCode.SYNTAX_ERROR
+    intercept[WvletLangException] {
+      print("from t\nsample rendezvous(3)")
     }.statusCode shouldBe StatusCode.SYNTAX_ERROR
   }
 

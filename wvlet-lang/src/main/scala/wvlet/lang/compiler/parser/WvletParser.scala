@@ -3168,17 +3168,18 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   }
 
   /**
-    * The rest of `sample rendezvous(p%[, seed = n]) by key, ...` after the sampling size: the
-    * optional seed, the closing parenthesis, and the sampling keys
+    * The rest of `sample rendezvous(p%[, seed = n]) by key, ...` or `sample rendezvous(k[, seed =
+    * n]) by key, ...` after the sampling size: the optional seed, the closing parenthesis, and the
+    * sampling keys
     */
   private def rendezvousSample(input: Relation, size: SamplingSize, t: TokenData[WvletToken]) =
     size match
-      case _: SamplingSize.Percentage =>
-      case _                          =>
+      case _: SamplingSize.Percentage | _: SamplingSize.Rows =>
+      case _                                                 =>
         throw StatusCode
           .SYNTAX_ERROR
           .newException(
-            "rendezvous sampling takes a percentage, e.g., sample rendezvous(10%) by user_id",
+            "rendezvous sampling takes a percentage or a row count, e.g., sample rendezvous(10%) by user_id",
             t.sourceLocation
           )
     val seed =

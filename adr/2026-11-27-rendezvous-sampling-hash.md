@@ -18,4 +18,4 @@ Differentially private queries sample by a privacy unit (e.g., a user id): every
 - Hashes are type-sensitive as in DuckDB: integers hash by their 64-bit value (int and bigint keys agree), strings by their UTF-8 bytes; other types hash their text in the engine, which can differ from DuckDB.
 - Trino samples differ from the engine's and DuckDB's for the same seed.
 - Fixed along the way: the engine's multi-argument `hash(a, b)` used DuckDB's pre-2.0 hash combination and disagreed with DuckDB.
-- Fixed-size samples (`sample rendezvous (1000) by k`, the k smallest key hashes) are not supported yet.
+- `sample rendezvous (k) by uid` keeps at most k rows per key, the rows with the smallest seeded hash of all their columns, for user-contribution bounding as in [Wilson et al. 2019](https://arxiv.org/abs/1909.01917) (`TABLESAMPLE RESERVOIR (C_u ROWS PARTITION BY uid)`). The hash makes the choice deterministic: a re-run with the same seed keeps the same rows, so retries reveal nothing new. The engine binds it as `row_number()` per key ordered by the row hash, then `rn <= k`; it runs only in the engine, as the SQL generators reject it.

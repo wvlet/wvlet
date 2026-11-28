@@ -1366,7 +1366,9 @@ enum SamplingMethod:
     * Key-consistent (rendezvous) sampling: keep the rows whose keys hash under the sampling rate.
     * Rows of different relations with the same key values are kept or dropped together, so joins
     * over sampled relations see the same keys, and sampling by a privacy unit (e.g., a user id)
-    * keeps or drops all rows of the unit
+    * keeps or drops all rows of the unit. With a row count `k`, keep instead at most `k` rows of
+    * each key: the rows whose hash of all their columns is the smallest, which bounds the rows (or,
+    * after a `group by` of the key, the groups) each privacy unit contributes
     */
   case rendezvous
 

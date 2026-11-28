@@ -1481,8 +1481,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           p
         case other =>
           throw StatusCode
-            .SYNTAX_ERROR
-            .newException(s"rendezvous sampling takes a percentage: ${other}", s.sourceLocation)
+            .NOT_IMPLEMENTED
+            .newException(
+              s"rendezvous sampling of ${other} per key runs only in the wvlet engine",
+              s.sourceLocation
+            )
     val threshold     = RendezvousSampling.threshold(percentage)
     val keys          = s.keys.map(expr)
     val shift         = 64 - RendezvousSampling.HashBits

@@ -121,6 +121,58 @@ class EngineRendezvousSampleTest extends UniTest:
       "rendezvous_sample[10.0%,seed=0]("
   }
 
+  test("should keep at most k rows per key") {
+    // No customer keeps more than 2 orders, and every customer with orders keeps some
+    count("""from orders
+        |sample rendezvous(2) by o_custkey
+        |group by o_custkey
+        |agg _.count as n
+        |where n > 2""".stripMargin) shouldBe 0
+    val customers = count("from orders group by o_custkey agg _.count as n")
+    count(
+      "from orders sample rendezvous(2) by o_custkey group by o_custkey agg _.count as n"
+    ) shouldBe customers
+    // Each customer keeps min(orders, 2) rows
+    val bounded =
+      withQuery("""from orders
+        |group by o_custkey
+        |agg _.count as n
+        |select if n > 2 then 2 else n as m
+        |agg m.sum as total""".stripMargin)(q => engine.execute(q).batches.head.column(0).get(0))
+    count("from orders sample rendezvous(2) by o_custkey") shouldBe bounded.toString.toLong
+  }
+
+  test("should keep the same rows for the same seed") {
+    val q1 = "from orders sample rendezvous(1, seed = 3) by o_custkey select o_orderkey"
+    val q2 = "from orders sample rendezvous(1, seed = 4) by o_custkey select o_orderkey"
+    val n  = count(q1)
+    count(s"from { ${q1} } as a join { ${q1} } as b on a.o_orderkey = b.o_orderkey") shouldBe n
+    val same = count(s"from { ${q1} } as a join { ${q2} } as b on a.o_orderkey = b.o_orderkey")
+    (same < n) shouldBe true
+  }
+
+  test("should bound the groups each key contributes to after a group by") {
+    // Contribution bounding: each customer adds to at most 2 order-priority groups
+    val query =
+      """from orders
+        |group by o_custkey, o_orderpriority
+        |agg _.count as n
+        |sample rendezvous(2) by o_custkey""".stripMargin
+    count(s"""from { ${query} }
+         |group by o_custkey
+         |agg _.count as groups
+         |where groups > 2""".stripMargin) shouldBe 0
+    val users = count(s"""from { ${query} }
+         |group by o_orderpriority
+         |agg o_custkey.count_distinct as users""".stripMargin)
+    users shouldBe 5
+  }
+
+  test("should drop rows with null keys when keeping k rows per key") {
+    count("""from [[1, 'a'], [1, 'b'], [null, 'c'], [null, 'd']] as rv(k, v)
+        |sample rendezvous(5) by k""".stripMargin) shouldBe 2
+  }
+
   test("should return the same rows as DuckDB's hash()") {
     // The spec compares the engine with DuckDB, which runs the generated hash(seed, keys...) SQL
     val conformance = EngineConformance("spec/basic", Nil, _ => (), options)
