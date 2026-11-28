@@ -57,8 +57,13 @@ private[gpu] final class LitOperand(val s: Scalar) extends Operand:
 /**
   * Upper bounds of the absolute values in each input column (None: unknown), for choosing DECIMAL64
   * over DECIMAL128 by the data rather than by the declared precision. `narrow` turns this off.
+  * `ast` runs trees of arithmetic as one cudf AST kernel ([[GpuAstArith]]).
   */
-private[gpu] final case class Bounds(of: IndexedSeq[Option[JBigDecimal]], narrow: Boolean)
+private[gpu] final case class Bounds(
+    of: IndexedSeq[Option[JBigDecimal]],
+    narrow: Boolean,
+    ast: Boolean = false
+)
 
 private[gpu] object Bounds:
   val none: Bounds = Bounds(IndexedSeq.empty, narrow = false)
@@ -116,7 +121,7 @@ object GpuExprs:
   private def inListType(p: PType): Boolean =
     p == PType.Str || p == PType.Int32 || p == PType.Int64 || p == PType.Date
 
-  private def scaleOf(p: PType): Option[Int] =
+  private[gpu] def scaleOf(p: PType): Option[Int] =
     p match
       case PType.Decimal(_, s) =>
         Some(s)
@@ -279,7 +284,12 @@ object GpuExprs:
       case Const(v, p) =>
         LitOperand(scalarOf(v, p).get)
       case a: Arith =>
-        arith(a, input, rows)
+        val fused =
+          if summon[Bounds].ast then
+            GpuAstArith.eval(a, input, rows)
+          else
+            None
+        fused.getOrElse(arith(a, input, rows))
       case Negate(c) =>
         val d = dtype(c.ptype)
         // In the declared type: a narrowed DECIMAL64 child would not match the zero's type
@@ -708,29 +718,35 @@ object GpuExprs:
       }
     }
 
-  private def arith(a: Arith, input: IndexedSeq[ColumnVector], rows: Int)(using Bounds): Operand =
+  /**
+    * The type `a` computes in: its declared type, or DECIMAL64 at its scale when the value bounds
+    * show that the result and both sides fit 18 digits
+    */
+  private[gpu] def arithOut(a: Arith)(using Bounds): DType =
     val declared = dtype(a.ptype)
-    val out      =
-      a.ptype match
-        case d: PType.Decimal if declared.getTypeId == DType.DTypeEnum.DECIMAL128 =>
-          // The declared precision needs 128 bits, but the values may not: when the bounds of the
-          // result and of each side fit 18 digits at their scales, compute in DECIMAL64
-          val (ls, rs)   = (scaleOf(a.left.ptype).get, scaleOf(a.right.ptype).get)
-          val sideScales =
-            a.op match
-              case ArithOp.Mul =>
-                (ls, rs)
-              case _ =>
-                // Add and subtract rescale both sides to the result's scale
-                (d.scale, d.scale)
-          if fits64(bound(a), d.scale) && fits64(bound(a.left), sideScales._1) &&
-            fits64(bound(a.right), sideScales._2)
-          then
-            DType.create(DType.DTypeEnum.DECIMAL64, -d.scale)
-          else
-            declared
-        case _ =>
+    a.ptype match
+      case d: PType.Decimal if declared.getTypeId == DType.DTypeEnum.DECIMAL128 =>
+        // The declared precision needs 128 bits, but the values may not: when the bounds of the
+        // result and of each side fit 18 digits at their scales, compute in DECIMAL64
+        val (ls, rs)   = (scaleOf(a.left.ptype).get, scaleOf(a.right.ptype).get)
+        val sideScales =
+          a.op match
+            case ArithOp.Mul =>
+              (ls, rs)
+            case _ =>
+              // Add and subtract rescale both sides to the result's scale
+              (d.scale, d.scale)
+        if fits64(bound(a), d.scale) && fits64(bound(a.left), sideScales._1) &&
+          fits64(bound(a.right), sideScales._2)
+        then
+          DType.create(DType.DTypeEnum.DECIMAL64, -d.scale)
+        else
           declared
+      case _ =>
+        declared
+
+  private def arith(a: Arith, input: IndexedSeq[ColumnVector], rows: Int)(using Bounds): Operand =
+    val out = arithOut(a)
     a.ptype match
       case d: PType.Decimal =>
         // Each side keeps its own scale, in the output's width (DECIMAL64 or DECIMAL128)
