@@ -378,4 +378,4 @@ object PlaygroundState:
   def isNarrow: Boolean = dom.window.matchMedia(s"(max-width: ${narrowMaxWidth}px)").matches
 
   val sidebarRange = SizeRange(min = 200, default = 280, max = 520)
-  val outputRange  = SizeRange(min = 280, default = 520, max = 1200)
+  val outputRange  = SizeRange(min = 280, default = 440, max = 1200)

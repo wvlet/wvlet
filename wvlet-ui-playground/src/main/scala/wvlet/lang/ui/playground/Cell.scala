@@ -72,4 +72,4 @@ object Cell:
   /** A table height that shows up to 12 rows of a result */
   def fitHeight(rows: Int): Int =
     val visible = math.min(math.max(rows, 1), 12)
-    math.max(resultRange.min, visible * 32 + 56)
+    math.max(resultRange.min, visible * 32 + 50)

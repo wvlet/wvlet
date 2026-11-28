@@ -1273,9 +1273,9 @@ summary.pg-engine-section__title {
 }
 
 .pg-notebook {
-    max-width: 1100px;
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 16px 16px 64px 8px;
+    padding: 16px 12px 64px 4px;
 }
 
 .pg-cell {
@@ -1470,6 +1470,12 @@ summary.pg-engine-section__title {
 }
 
 /* A cell's result: the playground's result panel (header, badges, sortable table), resizable */
+.pg-cell__out {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding-left: 6px;
+}
+
 .pg-cell__result {
     margin: 12px 0 4px;
     border: 1px solid var(--uni-line);

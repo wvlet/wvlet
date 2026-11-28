@@ -283,7 +283,14 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
       onclick -> { (_: dom.MouseEvent) =>
         state.focus(c)
       },
-      editor,
+      editor
+    ),
+    // The result spans the cell's whole width, under the run button too: tables need the room
+    div(
+      cls     -> "pg-cell__out",
+      onclick -> { (_: dom.MouseEvent) =>
+        state.focus(c)
+      },
       c.output.map(_.map(output).getOrElse(span()))
     ),
     NotebookView.toolbar(state, c)
