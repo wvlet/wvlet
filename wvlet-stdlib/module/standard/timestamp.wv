@@ -1,28 +1,39 @@
 package wvlet.standard
 
 trait timestamp = {
+  -- @example '2024-03-15 10:30:45'.to_timestamp.extract('hour')
   def extract(field:string): int = sql"extract(${field} from ${this})"
 
+  -- @example '2024-03-15 10:30:45'.to_timestamp.year
   def year: int = sql"extract(year from ${this})"
   def month: int = sql"extract(month from ${this})"
   def day: int = sql"extract(day from ${this})"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.hour
   def hour: int = sql"extract(hour from ${this})"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.minute
   def minute: int = sql"extract(minute from ${this})"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.second
   def second: int = sql"extract(second from ${this})"
   def quarter: int = sql"extract(quarter from ${this})"
   def week: int = sql"extract(week from ${this})"
 
   def or_else(other:timestamp): timestamp = sql"coalesce(${this},${other})"
 
+  -- @example '2024-03-15 10:30:45'.to_timestamp.to_date
   def to_date: date = sql"cast(${this} as date)"
 
   -- Truncate to the given unit ('year', 'month', 'day', 'hour', 'minute', 'second')
+  -- @example '2024-03-15 10:30:45'.to_timestamp.truncate_to('hour')
   def truncate_to(unit:string): timestamp = sql"date_trunc(${unit},${this})"
 
   -- Difference between this and the other timestamp, in the given unit
+  -- @example '2024-03-15 10:30:00'.to_timestamp.diff_seconds('2024-03-15 10:31:30'.to_timestamp)
   def diff_seconds(other:timestamp): long = sql"date_diff('second',${this},${other})"
+  -- @example '2024-03-15 10:30:00'.to_timestamp.diff_minutes('2024-03-15 12:00:00'.to_timestamp)
   def diff_minutes(other:timestamp): long = sql"date_diff('minute',${this},${other})"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.diff_hours('2024-03-15 13:30:45'.to_timestamp)
   def diff_hours(other:timestamp): long = sql"date_diff('hour',${this},${other})"
+  -- @example '2024-03-15 10:00:00'.to_timestamp.diff_days('2024-03-18 09:00:00'.to_timestamp)
   def diff_days(other:timestamp): long = sql"date_diff('day',${this},${other})"
 
   def between(l:timestamp, r:timestamp): boolean = sql"${this} between ${l} and ${r}"
@@ -33,30 +44,42 @@ trait timestamp in duckdb = {
   def day_of_week: int = sql"extract(isodow from ${this})"
   def day_of_year: int = sql"extract(dayofyear from ${this})"
 
+  -- @example '2024-03-15 10:30:45'.to_timestamp.add_seconds(30)
   def add_seconds(n:int): timestamp = sql"${this} + INTERVAL (${n}) SECOND"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.add_minutes(45)
   def add_minutes(n:int): timestamp = sql"${this} + INTERVAL (${n}) MINUTE"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.add_hours(3)
   def add_hours(n:int): timestamp = sql"${this} + INTERVAL (${n}) HOUR"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.add_days(1)
   def add_days(n:int): timestamp = sql"${this} + INTERVAL (${n}) DAY"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.add_months(1)
   def add_months(n:int): timestamp = sql"${this} + INTERVAL (${n}) MONTH"
+  -- @example '2024-03-15 10:30:45'.to_timestamp.add_years(1)
   def add_years(n:int): timestamp = sql"${this} + INTERVAL (${n}) YEAR"
 
   -- Format the timestamp with a strftime-style pattern (e.g. '%Y-%m-%d %H:%M:%S')
+  -- @example '2024-03-15 10:30:45'.to_timestamp.format('%Y-%m-%d %H:%M')
   def format(pattern:string): string = sql"strftime(${this},${pattern})"
 
   -- Unix epoch seconds of this timestamp, floored to a whole second
+  -- @example '2024-03-15 10:30:45'.to_timestamp.to_unixtime
   def to_unixtime: long = sql"cast(floor(epoch(${this})) as bigint)"
 
   -- Render as 'YYYY-MM-DD HH:MM:SS'. Overridden per engine so the rendering is identical
+  -- @example '2024-03-15 10:30:45'.to_timestamp.to_string
   def to_string: string = sql"cast(${this} as varchar)"
 
   -- Full English day and month names ('Monday', 'January')
+  -- @example '2024-03-15 10:30:45'.to_timestamp.day_name
   def day_name: string = sql"dayname(${this})"
   def month_name: string = sql"monthname(${this})"
   -- ISO-8601 week-numbering year: the year of the Thursday of this timestamp's ISO week
   def iso_year: int = sql"isoyear(${this})"
 
   -- This UTC wall-clock time as wall-clock time in the zone (e.g. 'Asia/Tokyo'), and the inverse
+  -- @example '2024-03-15 10:00:00'.to_timestamp.to_time_zone('Asia/Tokyo')
   def to_time_zone(zone:string): timestamp = sql"(${this} AT TIME ZONE 'UTC') AT TIME ZONE ${zone}"
+  -- @example '2024-03-15 19:00:00'.to_timestamp.from_time_zone('Asia/Tokyo')
   def from_time_zone(zone:string): timestamp = sql"(${this} AT TIME ZONE ${zone}) AT TIME ZONE 'UTC'"
 }
 

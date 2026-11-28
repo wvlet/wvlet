@@ -7,57 +7,78 @@ package wvlet.standard
 -- truncate, or_else, between) stay defined per type.
 trait numeric = {
   -- Round to the given number of decimal places
+  -- @example 3.14159.round(2)
   def round(decimal:int=0): double = sql"round(${this},${decimal})"
 
+  -- @example 16.sqrt
   def sqrt: double = sql"sqrt(${this})"
+  -- @example 27.cbrt
   def cbrt: double = sql"cbrt(${this})"
+  -- @example 1.exp
   def exp: double = sql"exp(${this})"
+  -- @example 1.ln
   def ln: double = sql"ln(${this})"
+  -- @example 1000.log10
   def log10: double = sql"log10(${this})"
   def log10 in snowflake: double = sql"log(10,${this})"
+  -- @example 8.log2
   def log2: double = sql"log2(${this})"
   def log2 in snowflake: double = sql"log(2,${this})"
   def log2 in bigquery: double = sql"log(${this}, 2)"
+  -- @example 2.power(10)
   def power(exponent:double): double = sql"power(${this},${exponent})"
+  -- @example (-5).sign
   def sign: int = sql"sign(${this})"
 
   -- Interpret this value as unix epoch seconds (in UTC), keeping the fraction to the microsecond
   -- (to the millisecond on Trino, whose from_unixtime(double) is a timestamp(3))
+  -- @example 1710498645.from_unixtime
   def from_unixtime in duckdb: timestamp = sql"make_timestamp(cast(${this} * 1000000 as bigint))"
   def from_unixtime in trino: timestamp = sql"cast(from_unixtime(${this}) AT TIME ZONE 'UTC' as timestamp(6))"
   def from_unixtime in snowflake: timestamp = sql"to_timestamp_ntz(${this})"
   def from_unixtime in bigquery: timestamp = sql"timestamp_micros(cast(${this} * 1000000 as int64))"
 
   -- Hyperbolic sine, cosine, and tangent
+  -- @example 1.0.sinh
   def sinh: double = sql"sinh(${this})"
   def sinh in hive: double = sql"((exp(cast(${this} as double)) - exp(-cast(${this} as double))) / 2)"
+  -- @example 1.0.cosh
   def cosh: double = sql"cosh(${this})"
   def cosh in hive: double = sql"((exp(cast(${this} as double)) + exp(-cast(${this} as double))) / 2)"
+  -- @example 1.0.tanh
   def tanh: double = sql"tanh(${this})"
   def tanh in hive: double = sql"(1 - 2 / (exp(2 * cast(${this} as double)) + 1))"
   -- Inverse hyperbolic sine, cosine (NaN below 1), and tangent (NaN outside -1..1, infinite at -1 and 1)
+  -- @example 1.0.asinh
   def asinh: double = sql"asinh(${this})"
   def asinh in trino: double = sql"(sign(cast(${this} as double)) * ln(abs(cast(${this} as double)) + sqrt(cast(${this} as double) * cast(${this} as double) + 1)))"
   def asinh in hive: double = sql"(sign(cast(${this} as double)) * ln(abs(cast(${this} as double)) + sqrt(cast(${this} as double) * cast(${this} as double) + 1)))"
+  -- @example 2.0.acosh
   def acosh in duckdb: double = sql"acosh(${this})"
   def acosh in trino: double = sql"ln(cast(${this} as double) + sqrt(cast(${this} as double) - 1) * sqrt(cast(${this} as double) + 1))"
   def acosh in snowflake: double = sql"acosh(${this})"
   def acosh in bigquery: double = sql"acosh(${this})"
+  -- @example 0.5.atanh
   def atanh in duckdb: double = sql"atanh(${this})"
   def atanh in trino: double = sql"(0.5 * ln((1 + cast(${this} as double)) / (1 - cast(${this} as double))))"
   def atanh in snowflake: double = sql"atanh(${this})"
   def atanh in bigquery: double = sql"atanh(${this})"
   -- Cotangent (1 / tan)
+  -- @example 1.0.cot
   def cot: double = sql"cot(${this})"
   def cot in trino: double = sql"(1 / tan(${this}))"
   def cot in hive: double = sql"(1 / tan(${this}))"
 
   -- Round to an integer, or to the given number of decimal places, rounding ties to the even neighbor (banker's rounding)
+  -- @example 2.5.round_half_even
   def round_half_even in duckdb: double = sql"round_even(${this},0)"
   def round_half_even in hive: double = sql"bround(${this},0)"
+  -- @example 2.345.round_half_even(2)
   def round_half_even(decimal:int) in duckdb: double = sql"round_even(${this},${decimal})"
   def round_half_even(decimal:int) in hive: double = sql"bround(${this},${decimal})"
 
+  -- @example 2.in(1, 2, 3)
   def in(v:any*): boolean = sql"${this} in (${v})"
+  -- @example 5.not_in(1, 2, 3)
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
 }

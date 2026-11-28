@@ -142,7 +142,7 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
               span(cls -> "pg-toolbar", columnsToggle, copyButton(state.output.get.logicalPlan))
             case OutputTab.PhysicalPlan =>
               span(cls -> "pg-toolbar", columnsToggle, copyButton(enginePlanText))
-            case OutputTab.Lineage | OutputTab.Debug =>
+            case OutputTab.Lineage | OutputTab.Debug | OutputTab.Docs =>
               span()
           }
       ),
@@ -186,6 +186,8 @@ class OutputPanel(state: PlaygroundState) extends RxElement:
               LineageView(state)
             case OutputTab.Debug =>
               DebugPanel(state)
+            case OutputTab.Docs =>
+              DocsPanel(state)
           }
       )
     )

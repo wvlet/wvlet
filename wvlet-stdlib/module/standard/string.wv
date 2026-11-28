@@ -1,116 +1,175 @@
 package wvlet.standard
 
 trait string = {
+  -- @example '42'.to_int
   def to_int: int = sql"cast(${this} as bigint)"
+  -- @example '42'.to_long
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
+  -- @example '3.14'.to_double
   def to_double: double = sql"cast(${this} as double)"
+  -- @example 'true'.to_boolean
   def to_boolean: boolean = sql"cast(${this} as boolean)"
+  -- @example '2024-03-15'.to_date
   def to_date: date = sql"cast(${this} as date)"
+  -- @example '2024-03-15 10:30:00'.to_timestamp
   def to_timestamp: timestamp = sql"cast(${this} as timestamp)"
 
   -- if the string is null, return the default value
+  -- @example from [['a'], [null]] as t(s) select s.or_else('-')
   def or_else(other:string): string = sql"coalesce(${this},${other})"
 
   -- TODO: Decide how to handle infix operators
   -- def +(other:string): string = sql"${this} || ${other}"
 
   -- Number of characters in the string
+  -- @example 'Wvlet'.length
   def length: int = sql"length(${this})"
+  -- @example 'Wvlet'.upper
   def upper: string = sql"upper(${this})"
+  -- @example 'Wvlet'.lower
   def lower: string = sql"lower(${this})"
+  -- @example '  Wvlet  '.trim
   def trim: string = sql"trim(${this})"
+  -- @example '  Wvlet'.ltrim
   def ltrim: string = sql"ltrim(${this})"
+  -- @example 'Wvlet  '.rtrim
   def rtrim: string = sql"rtrim(${this})"
+  -- @example 'Wvlet'.reverse
   def reverse: string = sql"reverse(${this})"
 
   -- Concatenate the given string after this string
+  -- @example 'Wv'.concat('let')
   def concat(other:string): string = sql"${this} || ${other}"
 
   -- Replace all occurrences of the search string with the replacement string
+  -- @example 'a-b-c'.replace('-', '/')
   def replace(search:string, replacement:string): string = sql"replace(${this},${search},${replacement})"
 
   -- Pad the string to the given length by prepending (lpad) or appending (rpad) the pad string
+  -- @example '42'.lpad(5, '0')
   def lpad(length:int, pad:string): string = sql"lpad(${this},${length},${pad})"
+  -- @example 'ab'.rpad(5, '.')
   def rpad(length:int, pad:string): string = sql"rpad(${this},${length},${pad})"
 
   -- 1-origin position of the first occurrence of the substring (0 if not found)
+  -- @example 'Wvlet'.strpos('let')
   def strpos(substr:string): int = sql"strpos(${this},${substr})"
 
+  -- @example 'Wvlet'.like('Wv%')
   def like(pattern:string): boolean = sql"${this} like ${pattern}"
 
   -- Substring from the 1-origin start position (to the end, or of the given length)
+  -- @example 'Wvlet'.substring(3)
   def substring(start:int): string = sql"substring(${this},${start})"
+  -- @example 'Wvlet'.substring(2, 3)
   def substring(start:int,length:int): string = sql"substring(${this},${start},${length})"
 
   -- Extract the first substring matching the regular expression (the whole match, or the given
   -- capture group). NULL when the pattern does not match; an empty match is ''
+  -- @example from [['order-123']] as t(s) select s.regexp_extract('[0-9]+')
   def regexp_extract(pattern:string): string = sql"regexp_extract(${this},${pattern})"
+  -- @example from [['key=value']] as t(s) select s.regexp_extract('([a-z]+)=([a-z]+)', 2)
   def regexp_extract(pattern:string, group_index:int): string = sql"regexp_extract(${this},${pattern},${group_index})"
 
+  -- @example 'Wvlet'.starts_with('Wv')
   def starts_with(prefix:string): boolean = sql"starts_with(${this},${prefix})"
 
   -- Replace each character of `source` with the character at the same position in `target`;
   -- characters of `source` with no counterpart in `target` are removed
+  -- @example '2024-03-15'.translate('-', '/')
   def translate(source:string, target:string): string = sql"translate(${this},${source},${target})"
 
+  -- @example 'b'.in('a', 'b', 'c')
   def in(v:any*): boolean = sql"${this} in (${v})"
+  -- @example 'd'.not_in('a', 'b', 'c')
   def not_in(expr:any*): boolean = sql"${this} not in (${expr})"
 }
 
 -- Using query engine specific dialects
 trait string in duckdb = {
+  -- @example 'abc123'.regexp_like('^[a-z]+[0-9]+$')
   def regexp_like(pattern:string): boolean = sql"regexp_matches(${this},${pattern})"
   -- Replace every substring matching the regular expression with the replacement
+  -- @example 'a1b22c333'.regexp_replace('[0-9]+', '#')
   def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement},'g')"
+  -- @example 'Wvlet'.contains('vle')
   def contains(substr:string): boolean = sql"contains(${this},${substr})"
+  -- @example 'Wvlet'.ends_with('let')
   def ends_with(suffix:string): boolean = sql"ends_with(${this},${suffix})"
   -- Split the string by the separator into an array of strings
+  -- @example 'a,b,c'.split(',')
   def split(separator:string): array[string] = sql"string_split(${this},${separator})"
   -- Hex-encoded digest strings
+  -- @example 'Wvlet'.md5
   def md5: string = sql"md5(${this})"
+  -- @example 'Wvlet'.sha256
   def sha256: string = sql"sha256(${this})"
+  -- @example 'Wvlet'.sha1
   def sha1: string = sql"sha1(${this})"
   -- Base64 and lowercase hex encodings of the string's UTF-8 bytes, and their inverses
+  -- @example 'Wvlet'.to_base64
   def to_base64: string = sql"to_base64(encode(${this}))"
+  -- @example 'V3ZsZXQ='.from_base64
   def from_base64: string = sql"decode(from_base64(${this}))"
+  -- @example 'Wvlet'.to_hex
   def to_hex: string = sql"lower(hex(${this}))"
+  -- @example '57766C6574'.from_hex
   def from_hex: string = sql"decode(unhex(${this}))"
   -- Number of bytes in the UTF-8 encoding of the string
+  -- @example 'é'.octet_length
   def octet_length: int = sql"strlen(${this})"
   -- Unicode NFC normalization
+  -- @example 'Wvlet'.normalize
   def normalize: string = sql"nfc_normalize(${this})"
   -- All matches of the regular expression (the whole match, or the given capture group)
+  -- @example 'a1b22c333'.regexp_extract_all('[0-9]+')
   def regexp_extract_all(pattern:string): array[string] = sql"regexp_extract_all(${this},${pattern})"
+  -- @example 'a=1, b=2'.regexp_extract_all('([a-z])=([0-9])', 1)
   def regexp_extract_all(pattern:string, group_index:int): array[string] = sql"regexp_extract_all(${this},${pattern},${group_index})"
   -- Split the string around matches of the regular expression, keeping empty strings
+  -- @example 'a1b22c'.regexp_split('[0-9]+')
   def regexp_split(pattern:string): array[string] = sql"regexp_split_to_array(${this},${pattern})"
   -- Percent-encode the UTF-8 bytes except A-Z a-z 0-9 - _ . ~ (a space becomes %20), and decode it
+  -- @example 'a b&c'.url_encode
   def url_encode: string = sql"url_encode(${this})"
+  -- @example 'a%20b%26c'.url_decode
   def url_decode: string = sql"url_decode(${this})"
   -- Number of positions with different characters; the strings must have the same length
+  -- @example 'karolin'.hamming_distance('kathrin')
   def hamming_distance(other:string): int = sql"hamming(${this},${other})"
   -- Jaro-Winkler similarity from 0 (different) to 1 (equal); case-sensitive
+  -- @example 'martha'.jaro_winkler_similarity('marhta')
   def jaro_winkler_similarity(other:string): double = sql"jaro_winkler_similarity(${this},${other})"
   -- Edit distance between two strings
+  -- @example 'kitten'.levenshtein('sitting')
   def levenshtein(other:string): int = sql"levenshtein(${this},${other})"
   -- DuckDB's regexp_extract returns '' when nothing matches, so return it only on a match
   def regexp_extract(pattern:string): string = sql"case when regexp_matches(${this},${pattern}) then regexp_extract(${this},${pattern}) end"
   def regexp_extract(pattern:string, group_index:int): string = sql"case when regexp_matches(${this},${pattern}) then regexp_extract(${this},${pattern},${group_index}) end"
   -- Extract a JSON value from a string holding JSON text
+  -- @example from [['{"a": {"b": 1}}']] as t(j) select j.json_extract('$.a')
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
+  -- @example '{"name": "Wvlet"}'.json_extract_string('$.name')
   def json_extract_string(path:string): string = sql"json_extract_string(${this},${path})"
   -- Parse the string as a timestamp with strftime codes (e.g. '%Y-%m-%d %H:%M:%S'); the whole
   -- string must match. try_to_timestamp returns NULL where to_timestamp fails
+  -- @example '2024/03/15 10:30'.to_timestamp('%Y/%m/%d %H:%M')
   def to_timestamp(format:string): timestamp = sql"strptime(${this},${format})"
+  -- @example '2024/03/15'.try_to_timestamp('%Y/%m/%d')
   def try_to_timestamp(format:string): timestamp = sql"try_strptime(${this},${format})"
   -- printf-style formatting with this string as the format: each %s takes the next argument's
   -- text and %% is a literal %, e.g. '%s:%s'.format(a, b). Pass strings (to_string others); other
   -- specifiers are engine-specific. A NULL argument gives NULL. Up to 5 arguments
+  -- @example 'Hello, %s!'.format('Wvlet')
   def format(a:any): string = sql"printf(${this},${a})"
+  -- @example '%s-%s'.format('a', 'b')
   def format(a:any, b:any): string = sql"printf(${this},${a},${b})"
+  -- @example '%s/%s/%s'.format('a', 'b', 'c')
   def format(a:any, b:any, c:any): string = sql"printf(${this},${a},${b},${c})"
+  -- @example '%s %s %s %s'.format('a', 'b', 'c', 'd')
   def format(a:any, b:any, c:any, d:any): string = sql"printf(${this},${a},${b},${c},${d})"
+  -- @example '%s%s%s%s%s'.format('W', 'v', 'l', 'e', 't')
   def format(a:any, b:any, c:any, d:any, e:any): string = sql"printf(${this},${a},${b},${c},${d},${e})"
 }
 

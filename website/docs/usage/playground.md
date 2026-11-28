@@ -9,6 +9,9 @@ The [Wvlet Playground](https://wvlet.org/wvlet/playground/) runs Wvlet queries i
 ## What it shows
 
 - **Examples by category**: the left panel lists runnable examples of every major operator and function (basics, column operations, aggregation, joins, set operations, subqueries and models, window functions, expressions, functions, TPC-H queries, dbt-style models, testing and debugging). Search filters them by title, description, or a word in the query. Use it as a syntax and function reference.
+- **Reference**: every [standard library function](../syntax/stdlib-reference.md) by category (text, pattern matching, numeric, date and time, aggregate, window, array, ...), with a search box. Select a function to open it in the **Docs** tab.
+- **Docs**: the selected function's signature, description, and examples with their results computed in your browser; **Try** opens an example in the editor, **Used in** lists the bundled examples that call it, and **All functions** shows every function by category.
+- **Editor help**: hover a function in the editor to see its signature, description, and example, or a column to see its type; type `.` after a value to list the functions you can call on it, and press Ctrl + Space for keywords and columns.
 - **Tables**: the TPC-H tables and their column types; click a table to read it. Choose the scale factor (0.001 to 0.1) in the header.
 - **SQL**: the SQL that Wvlet generates for the query, in the DuckDB, Trino, Snowflake, Hive, or BigQuery dialect.
 - **SQL to Wvlet**: switch the editor to **SQL** to write SQL and see the equivalent Wvlet query. Switching converts the editor text between the two languages when it can.

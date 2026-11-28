@@ -13,6 +13,9 @@
  */
 package wvlet.lang.ui.playground
 
+import wvlet.lang.compiler.lsp.StdLibEntry
+import wvlet.lang.compiler.lsp.StdLibReference
+import wvlet.lang.compiler.lsp.StdLibReferenceSection
 import wvlet.uni.dom.RxElement
 import wvlet.uni.dom.all.{*, given}
 import wvlet.uni.rx.Rx
@@ -46,9 +49,21 @@ enum TableNode:
       case Column(t, c) =>
         s"${t}.${c.name}"
 
+/** A row of the function reference: a receiver-type section or a function in it */
+enum ReferenceNode:
+  case Section(s: StdLibReferenceSection)
+  case Function(e: StdLibEntry)
+
+  def key: String =
+    this match
+      case Section(s) =>
+        s"category:${s.category.id}"
+      case Function(e) =>
+        e.key
+
 /**
-  * The left side panel: the example library by category (filtered by a search box), and the TPC-H
-  * tables with their columns.
+  * The left side panel: the example library by category (filtered by a search box), the TPC-H
+  * tables with their columns, and the stdlib function reference.
   */
 class Sidebar(state: PlaygroundState) extends RxElement:
 
@@ -148,6 +163,64 @@ class Sidebar(state: PlaygroundState) extends RxElement:
       case _ =>
     }
 
+  private val referenceExpanded = Rx.variable(Set.empty[String])
+
+  private def referenceTree = Tree[ReferenceNode, String](
+    state
+      .referenceFilter
+      .map { q =>
+        val secs = StdLibReference.filter(q)
+        // A search opens every section with a match; clearing it folds them again
+        referenceExpanded := (
+          if q.trim.isEmpty then
+            Set.empty
+          else
+            secs.map(s => ReferenceNode.Section(s).key).toSet
+        )
+        secs.map(ReferenceNode.Section(_))
+      },
+    children = {
+      case ReferenceNode.Section(s) =>
+        s.entries.map(ReferenceNode.Function(_))
+      case _ =>
+        Nil
+    },
+    key = _.key,
+    render = {
+      case ReferenceNode.Section(s) =>
+        span(
+          cls -> "pg-tree-category",
+          s.category.title,
+          span(cls -> "pg-tree-count", s.entries.size.toString)
+        )
+      case ReferenceNode.Function(e) =>
+        span(cls -> "pg-tree-leaf pg-function", titleAttr -> e.description, e.label)
+    }
+  ).withLabel("Functions")
+    .withExpanded(referenceExpanded)
+    .withSelected(state.selectedFunction)
+    .withRowHeight(24)
+    .withTypeahead {
+      case ReferenceNode.Section(s) =>
+        s.category.title
+      case ReferenceNode.Function(e) =>
+        e.name
+    }
+    .onSelect {
+      case ReferenceNode.Function(e) =>
+        // The details need room: show them in the output panel's Docs tab
+        state.selectedFunction := Some(e.key)
+        state.outputTab        := OutputTab.Docs
+        state.closeSidebarOnNarrow()
+      case s: ReferenceNode.Section =>
+        referenceExpanded.update(x =>
+          if x.contains(s.key) then
+            x - s.key
+          else
+            x + s.key
+        )
+    }
+
   override def render: RxElement =
     val tabs = TabList(
       state.sidebarTab,
@@ -184,6 +257,18 @@ class Sidebar(state: PlaygroundState) extends RxElement:
                   )
               ),
               div(cls -> "pg-sidebar__tree", tableTree)
+            )
+          case SidebarTab.Reference =>
+            div(
+              cls -> "pg-sidebar__panel",
+              div(
+                cls -> "pg-sidebar__search",
+                Input(state.referenceFilter)
+                  .withType("search")
+                  .withPlaceholder("Search functions")
+                  .withLabel("Search functions")
+              ),
+              div(cls -> "pg-sidebar__tree", referenceTree)
             )
         }
       )

@@ -4,9 +4,11 @@ package wvlet.standard
 -- text (see string.wv)
 trait json = {
   -- Extract the JSON value at the JSONPath expression (e.g. '$.store.book')
+  -- @example from [['{"a": [1, 2]}']] as t(j) select j.json_extract('$.a').json_extract('$[1]')
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
 
   -- Extract the value at the JSONPath expression as a plain string
+  -- @example from [['{"a": {"b": "x"}}']] as t(j) select j.json_extract('$.a').json_extract_string('$.b')
   def json_extract_string(path:string) in duckdb: string = sql"json_extract_string(${this},${path})"
   def json_extract_string(path:string) in trino: string = sql"json_extract_scalar(${this},${path})"
 }

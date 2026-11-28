@@ -1,10 +1,12 @@
 package wvlet.standard
 
 trait boolean = {
+  -- @example true.to_int
   def to_int: int = sql"cast(${this} as bigint)"
   def to_int in bigquery: int = sql"cast(${this} as int64)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_long in bigquery: long = sql"cast(${this} as int64)"
+  -- @example true.to_string
   def to_string: string = sql"cast(${this} as varchar)"
   def to_string in hive: string = sql"cast(${this} as string)"
   def to_string in bigquery: string = sql"cast(${this} as string)"

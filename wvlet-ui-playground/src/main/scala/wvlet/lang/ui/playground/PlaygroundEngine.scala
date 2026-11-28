@@ -27,10 +27,15 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.WvletGenerator
+import wvlet.lang.compiler.lsp.CompletionItem
+import wvlet.lang.compiler.lsp.CompletionProvider
+import wvlet.lang.compiler.lsp.HoverProvider
+import wvlet.lang.compiler.lsp.HoverResult
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.query.QuerySelector
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.engine.EngineResult
+import wvlet.lang.engine.StdLibExamples
 import wvlet.lang.engine.WvletEngine
 import wvlet.lang.engine.catalog.EngineCatalog
 import wvlet.lang.engine.catalog.MemTable
@@ -133,19 +138,53 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
   private val compilers = mutable.Map.empty[DBType, Compiler]
 
   private def compilerFor(dbType: DBType): Compiler = compilers.getOrElseUpdate(
-    dbType, {
-      val c = Compiler(
-        CompilerOptions(
-          sourceFolders = Nil,
-          workEnv = WorkEnv(".", logLevel = LogLevel.WARN),
-          dbType = dbType
-        )
-      )
-      c.setDefaultCatalog(EngineCatalog.toCompileCatalog(tables, dbType))
-      c.setDefaultSchema(EngineCatalog.SchemaName)
-      c
-    }
+    dbType,
+    newCompiler(dbType)
   )
+
+  private def newCompiler(dbType: DBType): Compiler =
+    val c = Compiler(
+      CompilerOptions(
+        sourceFolders = Nil,
+        workEnv = WorkEnv(".", logLevel = LogLevel.WARN),
+        dbType = dbType
+      )
+    )
+    c.setDefaultCatalog(EngineCatalog.toCompileCatalog(tables, dbType))
+    c.setDefaultSchema(EngineCatalog.SchemaName)
+    c
+
+  // Hovers and completions compile partial text on every request; a compiler of their own keeps
+  // those units out of the one that runs queries
+  private lazy val editorCompiler = newCompiler(DBType.Wvlet)
+
+  /**
+    * The editor tooltip at a 0-origin `offset` of Wvlet `text`: a column's type, a step's schema,
+    * or a stdlib function's signatures and docs
+    */
+  def hover(text: String, offset: Int): Option[HoverResult] =
+    try
+      HoverProvider.hover(text, offset, editorCompiler)
+    catch
+      case NonFatal(e) =>
+        None
+
+  private lazy val stdlibExamples = StdLibExamples(engine, newCompiler(DBType.Wvlet))
+  private val exampleResults      = mutable.Map.empty[String, Either[String, String]]
+
+  /** The result of a stdlib `@example` on the engine (cached), or Left with the error */
+  def runExample(example: String): Either[String, String] = exampleResults.getOrElseUpdate(
+    example,
+    stdlibExamples.run(example)
+  )
+
+  /** Completion candidates at a 0-origin `offset`: keywords, definitions, columns, or members */
+  def complete(text: String, offset: Int): List[CompletionItem] =
+    try
+      CompletionProvider.complete(text, offset, editorCompiler)
+    catch
+      case NonFatal(e) =>
+        Nil
 
   // The engine with some optimizations turned off, over the same tables
   private def engineFor(disabled: Set[Optimization]): WvletEngine =

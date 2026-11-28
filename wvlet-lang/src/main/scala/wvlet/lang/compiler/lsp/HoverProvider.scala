@@ -325,11 +325,12 @@ object HoverProvider:
           .find(_.nonEmpty)
           .orElse(defs.map(_.description).find(_.nonEmpty))
           .getOrElse("")
-        val block = codeBlock((header :: sigLines).mkString("\n"))
-        if desc.isEmpty then
-          block
-        else
-          s"${block}\n${desc}"
+        val block    = codeBlock((header :: sigLines).mkString("\n"))
+        val examples = defs.flatMap(_.examples).distinct.map(e => s"`${e}`")
+        val parts    =
+          List(block) ++ Option.when(desc.nonEmpty)(desc) ++
+            Option.when(examples.nonEmpty)(s"Example: ${examples.mkString(", ")}")
+        parts.mkString("\n")
       }
     val more =
       if groups.size > MaxHoverGroups then

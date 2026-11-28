@@ -39,6 +39,11 @@ import wvlet.lang.model.plan.*
   *   dialect-neutral definition serving every engine
   * @param description
   *   The `--` doc comment lines directly above the definition, joined into one line
+  * @param arity
+  *   the number of arguments, which tells overloads apart
+  * @param examples
+  *   The `-- @example <expr>` lines of the doc comment: an expression (`'Wvlet'.upper`) or a query
+  *   (`from [[1], [2]] as t(x) agg x.sum`) whose result shows how the function works
   */
 case class StdLibFunctionDoc(
     name: String,
@@ -46,7 +51,9 @@ case class StdLibFunctionDoc(
     signature: String,
     returnType: String,
     dialects: List[String],
-    description: String
+    description: String,
+    examples: List[String] = Nil,
+    arity: Int = 0
 )
 
 /**
@@ -55,6 +62,45 @@ case class StdLibFunctionDoc(
   * language server and the Scala.js editor integrations can serve signatures and docs from it.
   */
 object StdLibIndex:
+
+  /** Receiver types in reference order; other types follow, and top-level functions come last */
+  val typeOrder: List[String] = List(
+    "any",
+    "numeric",
+    "int",
+    "long",
+    "float",
+    "real",
+    "double",
+    "decimal",
+    "boolean",
+    "string",
+    "date",
+    "timestamp",
+    "json",
+    "null",
+    "array",
+    "map"
+  )
+
+  /**
+    * The stdlib functions by category, in [[StdLibCategories.all]] order. Within a category,
+    * functions are ordered by receiver type, then by source order; categories with no function are
+    * left out
+    */
+  lazy val byCategory: List[StdLibCategoryFunctions] =
+    def typeRank(t: String): Int =
+      if t.isEmpty then
+        Int.MaxValue
+      else
+        typeOrder.indexOf(t) match
+          case -1 =>
+            typeOrder.size
+          case i =>
+            i
+    val ordered = allFunctions.zipWithIndex.sortBy((f, i) => (typeRank(f.ownerType), i)).map(_._1)
+    val grouped = ordered.groupBy(StdLibCategories.categoryOf)
+    StdLibCategories.all.flatMap(c => grouped.get(c).map(fs => StdLibCategoryFunctions(c, fs)))
 
   /** Render a data type for signatures: `array[A]`, `any*`, plain `decimal` */
   def typeStr(dt: DataType): String =
@@ -83,7 +129,7 @@ object StdLibIndex:
     * The doc comment of a definition: the run of `--` comment lines immediately above it. Comment
     * lines separated by a blank line (file headers, section notes) are not part of the doc
     */
-  def commentText(sf: SourceFile, t: SyntaxTreeNode): String =
+  def commentLines(sf: SourceFile, t: SyntaxTreeNode): List[String] =
     var expected = sf.offsetToLine(t.span.start) - 1
     val adjacent = List.newBuilder[String]
     // comments are stored innermost-first; walk upward from the definition line
@@ -94,23 +140,27 @@ object StdLibIndex:
           adjacent += c.str.trim.stripPrefix("--").trim
           expected = line - 1
       }
-    adjacent.result().reverse.filter(_.nonEmpty).mkString(" ")
+    adjacent.result().reverse.filter(_.nonEmpty)
+
+  private val ExampleTag = "@example"
 
   private def entryOf(
-      sf: SourceFile,
       ownerType: String,
       typeContexts: List[String],
       fn: FunctionDef,
-      description: String
+      comment: List[String]
   ): StdLibFunctionDoc =
-    val own = fn.defContexts.map(_.contextType.leafName.toLowerCase)
+    val own              = fn.defContexts.map(_.contextType.leafName.toLowerCase)
+    val (examples, docs) = comment.partition(_.startsWith(ExampleTag))
     StdLibFunctionDoc(
       name = fn.name.name,
       ownerType = ownerType,
       signature = signatureOf(fn),
       returnType = fn.retType.map(typeStr).getOrElse(""),
       dialects = (typeContexts ++ own).distinct,
-      description = description
+      description = docs.mkString(" "),
+      examples = examples.map(_.stripPrefix(ExampleTag).trim).filter(_.nonEmpty),
+      arity = fn.args.size
     )
 
   /**
@@ -137,17 +187,17 @@ object StdLibIndex:
                   t.elems
                     .foreach {
                       case f: FunctionDef =>
-                        entries += entryOf(sf, t.name.name, typeContexts, f, commentText(sf, f))
+                        entries += entryOf(t.name.name, typeContexts, f, commentLines(sf, f))
                       case _ =>
                     }
                 case t: TopLevelFunctionDef =>
-                  val desc =
-                    commentText(sf, t) match
-                      case "" =>
-                        commentText(sf, t.functionDef)
-                      case s =>
-                        s
-                  entries += entryOf(sf, "", Nil, t.functionDef, desc)
+                  val comment =
+                    commentLines(sf, t) match
+                      case Nil =>
+                        commentLines(sf, t.functionDef)
+                      case c =>
+                        c
+                  entries += entryOf("", Nil, t.functionDef, comment)
                 case _ =>
               }
           case _ =>
