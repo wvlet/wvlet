@@ -117,7 +117,7 @@ object Markdown:
     case MdInline.Text(s) =>
       span(s)
     case MdInline.Code(s) =>
-      code(s)
+      code(highlight(s))
     case MdInline.Bold(s) =>
       strong(s)
     case MdInline.Link(label, h) =>
@@ -126,6 +126,116 @@ object Markdown:
         a(href -> h, label)
       else
         a(href -> h, target -> "_blank", rel -> "noopener", label)
+  }
+
+  /** A token of inline code, with its CSS class (empty for plain text) */
+  case class Token(text: String, kind: String)
+
+  private val typeNames = Set(
+    "int",
+    "long",
+    "float",
+    "real",
+    "double",
+    "decimal",
+    "boolean",
+    "string",
+    "date",
+    "timestamp",
+    "json",
+    "array",
+    "map",
+    "any",
+    "numeric",
+    "null",
+    "sql",
+    "A",
+    "K",
+    "V",
+    "T"
+  )
+
+  /**
+    * Light coloring of inline code, e.g. a signature `string.substring(start: int): string`: a name
+    * before `(` or after `.` is a function, a name after `:` (or a type name) is a type, and quoted
+    * text and numbers are literals
+    */
+  def tokens(s: String): Seq[Token] =
+    val out                = Seq.newBuilder[Token]
+    var i                  = 0
+    def prevNonSpace: Char =
+      var j = i - 1
+      while j >= 0 && s.charAt(j) == ' ' do
+        j -= 1
+      if j >= 0 then
+        s.charAt(j)
+      else
+        ' '
+    while i < s.length do
+      val c = s.charAt(i)
+      if c == '\'' || c == '"' then
+        val end =
+          s.indexOf(c, i + 1) match
+            case -1 =>
+              s.length
+            case e =>
+              e + 1
+        out += Token(s.substring(i, end), "string")
+        i = end
+      else if c.isDigit then
+        val end =
+          s.indexWhere(ch => !(ch.isDigit || ch == '.'), i) match
+            case -1 =>
+              s.length
+            case e =>
+              e
+        out += Token(s.substring(i, end), "number")
+        i = end
+      else if c.isLetter || c == '_' then
+        val end =
+          s.indexWhere(ch => !(ch.isLetterOrDigit || ch == '_'), i) match
+            case -1 =>
+              s.length
+            case e =>
+              e
+        val word = s.substring(i, end)
+        val next =
+          if end < s.length then
+            s.charAt(end)
+          else
+            ' '
+        val kind =
+          if prevNonSpace == ':' || (typeNames(word) && next != '(' && prevNonSpace != '.') then
+            "type"
+          else if next == '(' || prevNonSpace == '.' then
+            "fn"
+          else
+            ""
+        out += Token(word, kind)
+        i = end
+      else
+        out += Token(c.toString, "punct")
+        i += 1
+      end if
+    end while
+    // Merge neighbors of the same kind, so the DOM stays small
+    out
+      .result()
+      .foldLeft(Vector.empty[Token]) { (acc, t) =>
+        acc.lastOption match
+          case Some(l) if l.kind == t.kind =>
+            acc.init :+ Token(l.text + t.text, t.kind)
+          case _ =>
+            acc :+ t
+      }
+
+  end tokens
+
+  private def highlight(s: String): Seq[RxElement] = tokens(s).map { t =>
+    if t.kind.isEmpty then
+      span(t.text)
+    else
+      span(cls -> s"pg-tok-${t.kind}", t.text)
   }
 
   def render(text: String): RxElement = div(

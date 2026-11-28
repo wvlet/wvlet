@@ -80,6 +80,14 @@ class NotebookTest extends UniTest:
       )
   }
 
+  test("should color the function, types, and literals of a signature") {
+    val ts = wvlet.lang.ui.playground.Markdown.tokens("string.substring(start: int): string")
+    ts.filter(_.kind == "fn").map(_.text) shouldBe Seq("substring")
+    ts.filter(_.kind == "type").map(_.text) shouldBe Seq("string", "int", "string")
+    wvlet.lang.ui.playground.Markdown.tokens("'Wvlet'.upper").map(_.kind) shouldBe
+      Seq("string", "punct", "fn")
+  }
+
   private val engine = PlaygroundEngine(0.001)
 
   test("should run a cell with the definitions of the cells above it") {

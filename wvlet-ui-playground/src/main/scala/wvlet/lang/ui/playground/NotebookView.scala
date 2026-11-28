@@ -167,56 +167,88 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
     pendingRun.foreach(js.timers.clearTimeout)
     pendingRun = None
 
-  private def output(out: RunOutput): RxElement =
-    val checks = c.checksOf(out)
-    val tests  = checks.collect { case t: Check.Test =>
-      t
-    }
+  private def testEntry(t: Check.Test): RxElement =
+    val (kind, icon) = ChecksPanel.marker(t.status)
     div(
-      cls -> "pg-cell__output",
+      cls          -> s"pg-run-check pg-run-check--${kind}",
+      data("line") -> t.line.toString,
+      div(
+        cls -> "pg-run-check__head",
+        span(cls -> "pg-run-check__icon", aria("label") -> kind, icon),
+        span(cls -> "pg-run-check__source", t.source),
+        ChecksPanel.lineButton(state, t.line)
+      ),
+      when(t.status != TestStatus.Passed, pre(cls -> "pg-run-check__message", t.message))
+    )
+
+  /** The result panel under the editor: the same header, table, and badges as a full result */
+  private def output(out: RunOutput): RxElement =
+    val tests = c
+      .checksOf(out)
+      .collect { case t: Check.Test =>
+        t
+      }
+    val failed = tests.count(_.status == TestStatus.Failed)
+    val header = div(
+      cls -> "pg-panel-header pg-cell__result-header",
+      span(cls -> "pg-cell__result-title", "Result"),
+      when(
+        tests.nonEmpty,
+        if failed > 0 then
+          span(cls -> "pg-badge pg-badge--danger", s"${failed} failed")
+        else
+          span(cls -> "pg-badge pg-badge--success", s"${tests.size} passed")
+      ),
+      span(
+        cls -> "pg-result-meta",
+        when(out.statement.nonEmpty, span(cls -> "pg-result-stmt", out.statement)),
+        out.result match
+          case Some(r) if !out.hasError =>
+            span(
+              cls -> "pg-badge",
+              if r.isTruncated then
+                f"${r.rows.size}%,d of ${r.totalRows}%,d rows"
+              else
+                ChecksPanel.rowCount(r.totalRows)
+            )
+          case _ =>
+            span()
+        ,
+        when(
+          out.elapsedMillis > 0,
+          span(cls -> "pg-badge pg-badge--muted", f"${out.elapsedMillis}%.1f ms")
+        )
+      )
+    )
+    val body =
       out.error match
         case Some(err) =>
           div(cls -> "pg-result__error", role -> "alert", pre(err))
         case None =>
           out.result match
             case Some(r) if r.columns.nonEmpty =>
-              // Tall enough for a few rows; the table scrolls inside for more
-              val visible = math.min(math.max(r.rows.size, 1), 10)
+              if !c.resultResized then
+                c.resultHeight := Cell.fitHeight(r.rows.size)
               div(
                 div(
                   cls       -> "pg-cell__table",
-                  styleAttr -> s"height: ${visible * 32 + 66}px",
+                  styleAttr -> c.resultHeight.map(h => s"height: ${h}px"),
                   results.table(r)
                 ),
-                div(
-                  cls -> "pg-cell__meta",
-                  span(
-                    if r.isTruncated then
-                      f"${r.rows.size}%,d of ${r.totalRows}%,d rows"
-                    else
-                      ChecksPanel.rowCount(r.totalRows)
-                  ),
-                  span(f"${out.elapsedMillis}%.1f ms")
+                VerticalSplitter(
+                  c.resultHeight,
+                  Cell.resultRange,
+                  "Resize the result",
+                  onResize = () => c.resultResized = true
                 )
               )
             case _ =>
-              div(cls -> "pg-cell__meta", "Done: no rows to show.")
-      ,
-      when(
-        tests.nonEmpty,
-        div(
-          cls -> "pg-cell__tests",
-          tests.map { t =>
-            val (kind, icon) = ChecksPanel.marker(t.status)
-            div(
-              cls -> s"pg-cell__test pg-cell__test--${kind}",
-              span(cls -> "pg-run-check__icon", icon),
-              code(t.source),
-              when(t.status != TestStatus.Passed, pre(cls -> "pg-cell__test-msg", t.message))
-            )
-          }
-        )
-      )
+              div(cls -> "pg-result__empty", "Done: the cell defines no query result.")
+    div(
+      cls -> "pg-cell__result",
+      header,
+      body,
+      when(tests.nonEmpty, div(cls -> "pg-cell__tests", tests.map(testEntry)))
     )
 
   end output

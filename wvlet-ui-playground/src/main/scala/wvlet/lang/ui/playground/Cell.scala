@@ -32,6 +32,10 @@ class Cell(val id: Int, val kind: CellKind, initial: String):
   /** How many times the cell ran, shown next to it like a notebook's execution count */
   val runCount: RxVar[Int] = Rx.variable(0)
 
+  /** The height of the result table; it follows the row count until the user resizes it */
+  val resultHeight: RxVar[Int] = Rx.variable(Cell.resultRange.default)
+  var resultResized: Boolean   = false
+
   /** A text cell shows its editor instead of the rendered markdown */
   val editing: RxVar[Boolean] = Rx.variable(false)
 
@@ -61,3 +65,11 @@ class Cell(val id: Int, val kind: CellKind, initial: String):
     out.checks.filter(c => c.line > lineOffset && c.line <= lineOffset + n)
 
 end Cell
+
+object Cell:
+  val resultRange = wvlet.uni.dom.SizeRange(min = 96, default = 360, max = 1200)
+
+  /** A table height that shows up to 12 rows of a result */
+  def fitHeight(rows: Int): Int =
+    val visible = math.min(math.max(rows, 1), 12)
+    math.max(resultRange.min, visible * 32 + 56)

@@ -16,6 +16,8 @@ package wvlet.lang.ui.playground
 import wvlet.lang.compiler.lsp.StdLibReference
 import wvlet.uni.dom.RxElement
 import wvlet.uni.dom.all.{*, given}
+import wvlet.uni.rx.Rx
+import wvlet.uni.ui.Input
 
 /**
   * The Docs tab of the output panel: every stdlib function by category. A function opens as a
@@ -42,12 +44,20 @@ class DocsPanel(state: PlaygroundState) extends RxElement:
         ),
         " list the same functions."
       ),
-      state
-        .selectedFunction
-        .map { selected =>
-          StdLibReference
-            .sections
-            .map { sec =>
+      div(
+        cls -> "pg-docs__search pg-search-box",
+        Input(state.referenceFilter)
+          .withType("search")
+          .withPlaceholder("Search functions by name or description")
+          .withLabel("Search functions")
+      ),
+      Rx.join(state.selectedFunction, state.referenceFilter)
+        .map { (selected, q) =>
+          val sections = StdLibReference.filter(q)
+          if sections.isEmpty then
+            Seq(p(cls -> "pg-docs__section-intro", s"No function matches '${q.trim}'."))
+          else
+            sections.map { sec =>
               div(
                 cls -> "pg-docs__section",
                 h3(cls -> "pg-docs__section-title", sec.category.title),
@@ -64,7 +74,8 @@ class DocsPanel(state: PlaygroundState) extends RxElement:
                         onclick         -> { () =>
                           state.openFunction(e)
                         },
-                        e.label
+                        span(cls -> "pg-fn-name", e.name),
+                        span(cls -> "pg-fn-args", e.label.drop(e.name.length))
                       )
                     }
                 )

@@ -11,7 +11,7 @@ The [playground](../website/docs/usage/playground.md) runs every example in the 
 ## Phase 1: reference manual (this PR)
 
 - **Editor hover and completion.** Wire the shared `HoverProvider` and `CompletionProvider` (`wvlet-lang/.../compiler/lsp`, already used by the language server) into the playground's Monaco editor. Monaco providers are registered per language, so `MonacoEditor.registerLanguageServices(hover, complete)` registers them once for `wvlet`, calling back into Scala.js with the text and offset. The playground compiles with its TPC-H catalog, so hovers show column types and stdlib function docs.
-- **A function reference organized like DuckDB's.** `StdLibCategories` groups functions by purpose (Text, Pattern Matching, Numeric, Date and Time, Aggregate, Window, Array, ...); `StdLibReference` merges a function defined on several types into one entry (`T.abs: T`, T: int, long, ...). The docs page ([stdlib-reference.md](../website/docs/syntax/stdlib-reference.md)) and the playground both read it: the sidebar's Reference tab lists and searches functions, and the output panel's Docs tab shows the selected one with room for its examples (the sidebar was too narrow for details).
+- **A function reference organized like DuckDB's.** `StdLibCategories` groups functions by purpose (Text, Pattern Matching, Numeric, Date and Time, Aggregate, Window, Array, ...); `StdLibReference` merges a function defined on several types into one entry (`T.abs: T`, T: int, long, ...). The docs page ([stdlib-reference.md](../website/docs/syntax/stdlib-reference.md)) and the playground both read it: the output panel's Docs tab lists and searches every function by category (the sidebar was too narrow to glance at them all), and a function opens as a notebook (phase 1b).
 - **Examples with computed results.** `-- @example` lines in the stdlib sources; `StdLibExamples` runs them on the engine, for the docs page at generation time and in the playground live (with a Try button). The docs generator moves to engineJVM so it can run the engine; a failing example fails `StdLibDocFreshnessTest`.
 - Syntax and operators stay in the Examples tab, which is already organized by feature.
 
@@ -35,10 +35,10 @@ The [playground](../website/docs/usage/playground.md) runs every example in the 
 
 ## Phase 4: docs links
 
-- "Try it" buttons on `website/docs` code blocks open the playground with the query through the existing `#q=` share hash; the Reference tab links to the full docs pages.
+- "Try it" buttons on `website/docs` code blocks open the playground with the query through the existing `#q=` share hash; the Docs tab links to the full docs pages.
 
 ## Testing
 
 - `PlaygroundEngineTest`-style JS tests for the hover and completion bridge (offset conversion, TPC-H columns) and for the reference index (sections, examples that use a function).
 - `StdLibDocFreshnessTest` (now in engineJVM) regenerates the page, running every example.
-- Check the Reference tab and hovers in Chromium after `playground/fastLinkJS`.
+- Check the Docs tab, notebooks, and hovers in Chromium after `playground/fastLinkJS`.

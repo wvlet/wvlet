@@ -61,9 +61,8 @@ enum EngineStage(val label: String, val description: String) derives StorageCode
 
 /** The tabs of the sidebar */
 enum SidebarTab(val label: String) derives StorageCodec:
-  case Examples  extends SidebarTab("Examples")
-  case Tables    extends SidebarTab("Tables")
-  case Reference extends SidebarTab("Reference")
+  case Examples extends SidebarTab("Examples")
+  case Tables   extends SidebarTab("Tables")
 
 /**
   * The state of the playground: layout (saved in localStorage), the notebook's cells, and the
@@ -103,7 +102,7 @@ class PlaygroundState extends LogSupport:
   val status: RxVar[String]                  = Rx.variable("Generating TPC-H tables...")
   val filter: RxVar[String]                  = Rx.variable("")
   val selectedExample: RxVar[Option[String]] = Rx.variable(None)
-  // The Reference tab: its search text and the selected function's StdLibEntry.key
+  // The Docs tab: its search text and the selected function's StdLibEntry.key
   val referenceFilter: RxVar[String]          = Rx.variable("")
   val selectedFunction: RxVar[Option[String]] = Rx.variable(None)
 
