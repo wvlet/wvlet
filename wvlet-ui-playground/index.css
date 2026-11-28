@@ -1295,23 +1295,7 @@ summary.pg-engine-section__title {
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    padding-top: 2px;
-}
-
-.pg-cell__run {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    border: 1px solid var(--uni-line);
-    background: var(--uni-surface);
-    color: var(--uni-accent);
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-}
-
-.pg-cell__run:hover {
-    border-color: var(--uni-accent);
+    padding-top: 4px;
 }
 
 .pg-cell__count {

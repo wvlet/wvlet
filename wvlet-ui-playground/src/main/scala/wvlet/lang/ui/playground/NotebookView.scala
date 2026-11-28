@@ -107,7 +107,7 @@ object NotebookView:
 
 end NotebookView
 
-/** A query cell: the editor, a run button, and the result of its last run */
+/** A query cell: the editor, its run count, and the result of its last run */
 class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
   private val results = ResultPanel(state)
 
@@ -297,14 +297,6 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
     data("focused") -> state.focused.map(_.contains(c.id).toString),
     div(
       cls -> "pg-cell__gutter",
-      button(
-        cls       -> "pg-cell__run",
-        titleAttr -> "Run this cell (⌘↵ runs the statement at the cursor)",
-        onclick   -> { () =>
-          state.runCell(c)
-        },
-        "▶"
-      ),
       c.runCount
         .map(n =>
           span(
