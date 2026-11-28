@@ -191,43 +191,8 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
       .collect { case t: Check.Test =>
         t
       }
-    val failed = tests.count(_.status == TestStatus.Failed)
-    val result = out.result.filter(r => !out.hasError && r.columns.nonEmpty)
-    val header = div(
-      cls -> "pg-cell__result-header",
-      button(
-        cls       -> "pg-cell__fold",
-        titleAttr -> "Show or hide the result",
-        onclick   -> { () =>
-          c.resultOpen.update(!_)
-        },
-        c.resultOpen
-          .map(open =>
-            if open then
-              "▾"
-            else
-              "▸"
-          )
-      ),
-      span(cls -> "pg-cell__result-icon", "▦"),
-      span(
-        cls -> "pg-cell__result-title",
-        if out.statement.nonEmpty then
-          out.statement.linesIterator.map(_.trim).mkString(" ")
-        else
-          "Result"
-      ),
-      result.map { r =>
-        button(
-          cls       -> "pg-cell-btn",
-          titleAttr -> "Copy the rows as tab-separated text",
-          onclick   -> { () =>
-            js.Dynamic.global.navigator.clipboard.writeText(ResultPanel.toTsv(r))
-          },
-          "Copy"
-        )
-      }
-    )
+    val failed  = tests.count(_.status == TestStatus.Failed)
+    val result  = out.result.filter(r => !out.hasError && r.columns.nonEmpty)
     val summary = div(
       cls -> "pg-cell__summary",
       span(
@@ -247,7 +212,17 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
           span(cls -> "pg-badge pg-badge--danger", s"${failed} of ${tests.size} tests failed")
         else
           span(cls -> "pg-badge pg-badge--success", s"${tests.size} tests passed")
-      )
+      ),
+      result.map { r =>
+        button(
+          cls       -> "pg-cell__link",
+          titleAttr -> "Copy the rows as tab-separated text",
+          onclick   -> { () =>
+            js.Dynamic.global.navigator.clipboard.writeText(ResultPanel.toTsv(r))
+          },
+          "Copy"
+        )
+      }
     )
     val body =
       out.error match
@@ -272,14 +247,17 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
                     div(
                       cls             -> "pg-cell__table",
                       data("scrolls") -> scrollsDown.toString,
-                      styleAttr       -> s"height: ${Cell.tableHeight(shown)}px",
-                      results.table(r, rowNumbers = false)
+                      div(
+                        cls       -> "pg-cell__table-rows",
+                        styleAttr -> s"height: ${Cell.tableHeight(shown)}px",
+                        results.table(r, rowNumbers = false)
+                      )
                     )
                   },
                 when(
                   n > Cell.previewRows,
                   button(
-                    cls     -> "pg-cell__more",
+                    cls     -> "pg-cell__link pg-cell__more",
                     onclick -> { () =>
                       c.showAllRows.update(!_)
                     },
@@ -295,17 +273,15 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
               )
             case None =>
               div(cls -> "pg-result__empty", "Done: the cell defines no query result.")
+    // No card around the result: the summary line, then the table with its own border, so the
+    // border always meets the last column. Folding keeps the summary
     div(
       cls -> "pg-cell__result",
-      header,
+      summary,
       c.resultOpen
         .map { open =>
           if open then
-            div(
-              summary,
-              body,
-              when(tests.nonEmpty, div(cls -> "pg-cell__tests", tests.map(testEntry)))
-            )
+            div(body, when(tests.nonEmpty, div(cls -> "pg-cell__tests", tests.map(testEntry))))
           else
             span()
         }
@@ -344,6 +320,30 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
         state.focus(c)
       },
       editor
+    ),
+    // The fold button sits in the gutter, beside the result it folds
+    div(
+      cls -> "pg-cell__out-gutter",
+      c.output
+        .map(
+          _.map(_ =>
+              button(
+                cls       -> "pg-cell__fold",
+                titleAttr -> "Show or hide the result",
+                onclick   -> { () =>
+                  c.resultOpen.update(!_)
+                },
+                c.resultOpen
+                  .map(open =>
+                    if open then
+                      "▾"
+                    else
+                      "▸"
+                  )
+              )
+            )
+            .getOrElse(span())
+        )
     ),
     // The result sits under the editor, aligned with the query
     div(

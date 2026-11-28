@@ -1469,11 +1469,6 @@ summary.pg-engine-section__title {
     color: var(--uni-accent);
 }
 
-.pg-cell__out {
-    grid-column: 2;
-    min-width: 0;
-}
-
 .pg-result-meta {
     display: flex;
     align-items: center;
@@ -1608,104 +1603,6 @@ summary.pg-engine-section__title {
     display: none;
 }
 
-/* A cell's result card (Treasure Work's table style): header, summary, compact grid, more rows */
-.pg-cell__result {
-    width: fit-content;
-    min-width: 160px;
-    max-width: 100%;
-    box-sizing: border-box;
-    margin: 12px 0 4px;
-    border: 1px solid var(--uni-line);
-    border-radius: 10px;
-    overflow: hidden;
-    background: var(--uni-panel);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
-}
-
-.pg-cell__result-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 36px;
-    padding: 0 8px;
-    background: var(--uni-accent-soft);
-    border-bottom: 1px solid var(--uni-line);
-}
-
-.pg-cell__fold {
-    width: 20px;
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--uni-muted);
-    cursor: pointer;
-    font-size: 12px;
-}
-
-.pg-cell__result-icon {
-    color: var(--uni-accent);
-}
-
-.pg-cell__result-title {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--uni-font-mono);
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--uni-fg);
-}
-
-.pg-cell__summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    color: var(--uni-muted);
-    font-size: 12px;
-    border-bottom: 1px solid var(--uni-line);
-}
-
-.pg-cell__table {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    max-width: 100%;
-}
-
-/* The table is as wide as its columns, up to the card; wider ones scroll sideways */
-.pg-cell__table .uni-table {
-    width: max-content;
-    max-width: 100%;
-}
-
-/* Scrollbars float over the rows in a translucent color, so the grid stays visible under them */
-.pg-cell__table .uni-table,
-.pg-cell__table .uni-table:hover {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(128 128 128 / 0.45) transparent;
-}
-
-.pg-cell__table .uni-table::-webkit-scrollbar-track,
-.pg-cell__table .uni-table::-webkit-scrollbar-corner {
-    background: transparent;
-}
-
-.pg-cell__table .uni-table::-webkit-scrollbar-thumb {
-    background: rgb(128 128 128 / 0.45);
-    border-radius: 4px;
-}
-
-/* The header, summary, tests, and footer take the card's width without widening it */
-.pg-cell__result-header,
-.pg-cell__summary,
-.pg-cell__tests,
-.pg-cell__more {
-    contain: inline-size;
-}
-
 /* Grid lines between cells; the header is shaded only over the columns */
 .pg-cell__result .uni-table__header {
     background: transparent;
@@ -1713,24 +1610,6 @@ summary.pg-engine-section__title {
 
 .pg-cell__result .uni-table__cell {
     border-right: 1px solid var(--uni-line);
-}
-
-.pg-cell__more {
-    display: block;
-    width: 100%;
-    padding: 6px;
-    border: none;
-    border-top: 1px solid var(--uni-line);
-    background: none;
-    color: var(--uni-muted);
-    cursor: pointer;
-    font: inherit;
-    font-size: 12px;
-}
-
-.pg-cell__more:hover {
-    color: var(--uni-fg);
-    background: var(--uni-hover);
 }
 
 .pg-cell__result .uni-table {
@@ -1742,4 +1621,110 @@ summary.pg-engine-section__title {
 /* A preview shows its first rows without scrolling down; only an expanded long result scrolls */
 .pg-cell__table[data-scrolls="false"] .uni-table {
     overflow-y: hidden;
+}
+
+/* A cell's result: a summary line, then the table in its own border (Treasure Work's grid) */
+.pg-cell__out-gutter {
+    grid-column: 1;
+    display: flex;
+    justify-content: center;
+    padding-top: 10px;
+}
+
+.pg-cell__out {
+    grid-column: 2;
+    min-width: 0;
+}
+
+.pg-cell__fold {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--uni-muted);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.pg-cell__fold:hover {
+    background: var(--uni-hover);
+    color: var(--uni-fg);
+}
+
+.pg-cell__result {
+    margin: 8px 0 4px;
+}
+
+.pg-cell__summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 22px;
+    margin-bottom: 4px;
+    color: var(--uni-muted);
+    font-size: 12px;
+}
+
+.pg-cell__link {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--uni-accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+}
+
+.pg-cell__link:hover {
+    text-decoration: underline;
+}
+
+.pg-cell__more {
+    margin-top: 4px;
+}
+
+/* The table is as wide as its columns (up to the cell) and carries the border itself */
+.pg-cell__table {
+    width: fit-content;
+    max-width: 100%;
+    border: 1px solid var(--uni-line);
+    border-radius: 8px;
+    background: var(--uni-panel);
+    /* A wide table scrolls sideways here, so the scrollbar sits below the rows, not over them */
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.pg-cell__table-rows {
+    display: flex;
+    flex-direction: column;
+    width: max-content;
+}
+
+.pg-cell__table .uni-table {
+    width: max-content;
+    overflow-x: hidden;
+}
+
+/* Translucent scrollbars, so the grid stays visible under them */
+.pg-cell__table,
+.pg-cell__table:hover,
+.pg-cell__table .uni-table,
+.pg-cell__table .uni-table:hover {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(128 128 128 / 0.45) transparent;
+}
+
+.pg-cell__table::-webkit-scrollbar-track,
+.pg-cell__table::-webkit-scrollbar-corner,
+.pg-cell__table .uni-table::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.pg-cell__table::-webkit-scrollbar-thumb,
+.pg-cell__table .uni-table::-webkit-scrollbar-thumb {
+    background: rgb(128 128 128 / 0.45);
+    border-radius: 4px;
 }
