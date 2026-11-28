@@ -4,7 +4,7 @@
 
 ## Query lifecycle
 
-- [`QueryService`](../wvlet-server/src/main/scala/wvlet/lang/server/QueryService.scala) issues a ULID per query and tracks QUEUED → RUNNING → FINISHED / FAILED / CANCELED ([`QueryStatus`](../wvlet-api/src/main/scala/wvlet/lang/api/v1/query/QueryStatus.scala)). Clients poll `fetchNext` by id.
+- [`QueryService`](../wvlet-server/src/main/scala/wvlet/lang/server/QueryService.scala) issues a ULID per query (the plan replaces it with Trino-style ids) and tracks QUEUED → RUNNING → FINISHED / FAILED / CANCELED ([`QueryStatus`](../wvlet-api/src/main/scala/wvlet/lang/api/v1/query/QueryStatus.scala)). Clients poll `fetchNext` by id.
 - Cancel is best effort: the status becomes CANCELED at once and later completion is discarded; a query cancelled while queued never starts.
 - [`ScriptRunnerSessions`](../wvlet-server/src/main/scala/wvlet/lang/server/ScriptRunnerSessions.scala) gives each client session its own runner, so `use` changes only that session. Statements of one session are serialized because the compiler is not thread-safe; sessions run in parallel. Idle sessions are evicted after an hour.
 

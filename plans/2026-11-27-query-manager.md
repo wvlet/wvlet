@@ -36,7 +36,12 @@ DuckDB's 2026 [Quack](https://duckdb.org/2026/05/12/quack-remote-protocol) clien
 - Events: `QueryEventListener` with `queryCreated(QueryCreatedEvent)`, `queryStarted`, `queryCompleted(QueryCompletedEvent)`. A completed event carries query id, session id, profile, status, status code, error message, created/started/completed times, queued and run wall time, and result rows. Listener failures are logged and never fail a query.
 - Default listener: a JSON-lines file under the server's work folder (e.g. `.wvlet/logs/query-events.jsonl`), rotated daily; plus a debug log line per event.
 - Retention: evict finished queries older than the retention or beyond `maxFinishedQueries` (oldest first) on each enqueue; drop result rows of evicted queries. `fetchNext` of an evicted id returns INVALID_ARGUMENT as for an unknown id.
-- Ids: keep ULIDs. They sort by creation time and already round-trip through the API ([`UlidRpcRoundTripTest`](../wvlet-server/src/test/scala/wvlet/lang/server/UlidRpcRoundTripTest.scala)).
+- Ids: replace ULIDs with Trino-style `yyyyMMdd_HHmmss_<seq>_<server>`, e.g. `20261127_155437_00042_x7k2p`. Two ULIDs (or UUIDv7s) issued close together share their leading characters and differ only in the trailing random part, so people cannot tell queries apart at a glance.
+  - Time: the query's creation time in UTC, to the second, so ids sort by time and show when the query ran.
+  - Sequence: a 5-digit counter per server process (wrapping at 99999) that changes at a fixed position between neighboring queries.
+  - Server: 5 random lowercase base-32 characters chosen at server start, so ids from multiple servers, or from one server across restarts, never collide without a persisted counter.
+  - A `QueryId` value type in `wvlet-api` with `parse` and `toString`; `QueryInfo.queryId`, `QueryResponse`, `QueryInfoRequest`, and `QueryCancelRequest` carry it as a string on the wire. Update the UI, `WvletServerClient`, and replace `UlidRpcRoundTripTest` with a `QueryId` round-trip test.
+  - Clients may pass their own id through `QueryRequest.requestId` for idempotent retries: a repeated request id returns the existing query instead of starting a new one.
 - Applies to every engine the runner targets (Wvlet engine, DuckDB, Trino): admission does not depend on the engine.
 - Expose current counts (running, queued, finished in memory) through a small status API for the UI and tests.
 
@@ -63,9 +68,12 @@ DuckDB's 2026 [Quack](https://duckdb.org/2026/05/12/quack-remote-protocol) clien
 - Cancel: queued and running cancellation still end CANCELED and free the slot.
 - Events: an in-memory listener sees created → started → completed for success, failure, and cancel, in order, with consistent times.
 - Retention: finished queries past the retention are evicted, unfinished ones never.
+- Query ids: format and parse round-trip, neighboring ids differ in the sequence, two server instances never issue the same id, and a repeated request id returns the existing query.
 
 ## Alternatives and Why Not?
 
 - Trino-style resource groups first: a flat group covers single-user and small-team servers; groups add config and selectors before anyone needs them.
 - Queue in the engine's `TaskRunner` only: it controls CPU, not queries routed to DuckDB or Trino, and gives no query-level events.
-- Trino's query id format (`yyyyMMdd_HHmmss_seq_node`): ULIDs already sort by time and are in the API.
+- Keep ULIDs or switch to UUIDv7: both put the timestamp first and the random part last, so neighboring queries look alike.
+- Random UUIDv4 (ClickHouse, Athena): differs from the first character but does not sort by time and is long to quote.
+- A persisted integer counter (Treasure Data jobs, Redshift): easiest to quote, but multiple servers need a shared counter service.
