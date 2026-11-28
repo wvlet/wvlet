@@ -351,7 +351,10 @@ class EngineOptimizerToggleTest extends UniTest:
     Optimization.SpillHeadroom -> "Changes the default spill threshold, not the plan",
     // MemoryAccountingTest checks that shared results return their memory after their last reader
     Optimization.ReleaseCTEResults ->
-      "Changes when shared CTE results drop their rows, not the plan"
+      "Changes when shared CTE results drop their rows, not the plan",
+    // CTESpillTest checks spilled results against in-memory runs
+    Optimization.SpillCTEResults ->
+      "Changes whether shared CTE results past the spill threshold go to a file, not the plan"
   )
 
   override def afterAll: Unit =

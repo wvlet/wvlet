@@ -15,6 +15,7 @@ The language-wide design principles (left-to-right flow, modularity, composabili
 
 ## Index
 
+- [2026-11-28 — Shared CTE results past the spill threshold go to one spill file read by block](2026-11-28-engine-cte-result-spill.md) — why a shared CTE result spills whole to one file whose blocks are its readers' parts, and is freed with its last reader
 - [2026-11-27 — Aggregations spill their input rows by key hash](2026-11-27-engine-aggregation-spill.md) — why `PartitionedAggOp` spills input rows into 64 hash partitions read back in waves, with one re-partition, instead of spilling partial aggregation state
 - [2026-11-27 — Operators capture an ambient per-query memory context](2026-11-27-engine-ambient-memory-context.md) — why memory-holding engine operators read `MemoryContext.current` at construction, set by `WvletEngine.execute` and re-entered by the planner, instead of taking a context parameter at every construction and rebuild site
 - [2026-11-27 — Compare the engine with DuckDB at steady state, with the same caches on both sides](2026-11-27-engine-benchmark-fairness.md) — why the benchmark gives DuckDB its Parquet footer cache and alternating runs instead of turning the engine's caches off, and discloses the file statistics (3.0x TPC-DS when recomputed per query) and declared keys (4–7%) that only the engine has

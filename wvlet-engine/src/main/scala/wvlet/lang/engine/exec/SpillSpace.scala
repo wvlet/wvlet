@@ -59,8 +59,19 @@ trait SpillFile:
   /** The appended batches, in order, read from disk as the iterator advances */
   def read(): Iterator[Batch]
 
+  /** The rows of each appended block, in order. After [[finish]] */
+  def blockRows: IndexedSeq[Int]
+
+  /**
+    * The blocks `from` until `until`, read from disk by position as the iterator advances, so that
+    * several threads can read parts of one file at once. After [[finish]]
+    */
+  def readBlocks(from: Int, until: Int): Iterator[Batch]
+
   /** Delete the file. Idempotent */
   def delete(): Unit
+
+end SpillFile
 
 /** How each platform spills (no spilling on Scala.js) */
 trait SpillCompat:

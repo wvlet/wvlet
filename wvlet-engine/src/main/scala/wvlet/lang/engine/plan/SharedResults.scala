@@ -46,9 +46,16 @@ trait SharedResults:
   private[plan] class SharedResult(val op: Operator) extends SharedBatches:
     // The result's own reservation, returned once its last reader finishes ([[armReads]])
     private val holder = memory.child()
+    private val spill  = enabled(Optimization.SpillCTEResults)
+    // The computed rows, kept to delete a spill file when the result is released
+    @volatile
+    private var computed: SharedRows = null
+
     private val result = ComputeOnce { () =>
       debug(s"Materializing a shared result:\n${op.explain()}")
-      holder.drain(op)
+      val r = SharedRows.drain(holder, op, spill)
+      computed = r
+      r
     }
 
     // Reads by the planned query's readers still to finish; -1 until armed (`release_cte_results`)
@@ -74,9 +81,16 @@ trait SharedResults:
         if result.discard(e) then
           released = true
           holder.release()
+          Option(computed).foreach(_.free())
+          computed = null
 
-    /** The batches, computed on this thread unless another thread has started them */
-    def batches: Seq[Batch] = result.get()
+    /** The rows, computed on this thread unless another thread has started them */
+    def rows: SharedRows = result.get()
+
+    /** Whether the computed rows went to a spill file (`spill_cte_results`) */
+    def isSpilled: Boolean =
+      val r = computed
+      r != null && r.isSpilled
 
     /** Whether the batches are computed (or being computed) */
     def isComputed: Boolean = result.isStarted
@@ -109,7 +123,7 @@ trait SharedResults:
 
   /** A reader of a shared result over duplicate column names, which a scan can't select by name */
   private[plan] class SharedReader(val shared: SharedResult, schema: Schema, label: String)
-      extends IteratorOp(schema, () => shared.batches.iterator, label):
+      extends IteratorOp(schema, () => shared.rows.iterator, label):
     override protected def extraInputs(indent: Int): Seq[String] = shared.sharedPlan(indent).toSeq
     override def sharedInputs: Seq[Operator]                     = Seq(shared.op)
 
@@ -121,7 +135,7 @@ trait SharedResults:
 
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = selector(spec)
-      counted(shared.batches.iterator.map(sel))
+      counted(shared.rows.iterator.map(sel))
 
     /** Selects the requested columns of a batch; the positions are looked up once per scan */
     private def selector(spec: ScanSpec): Batch => Batch =
@@ -134,25 +148,13 @@ trait SharedResults:
 
     override def canSplit: Boolean = true
 
-    override def scanSplits(spec: ScanSpec): Option[ScanSplits] =
-      val bs = shared.batches.filter(_.size > 0)
-      if bs.size <= 1 then
-        None
-      else
-        val sel = selector(spec)
-        Some(
-          counted(
-            ScanSplits(
-              bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))),
-              () => (),
-              bs.toIndexedSeq.map(_.size.toLong)
-            )
-          )
-        )
+    override def scanSplits(spec: ScanSpec): Option[ScanSplits] = SharedResults
+      .splits(shared.rows, selector(spec))
+      .map(counted)
 
     override def sliceSplits(spec: ScanSpec, parts: Int): Option[ScanSplits] =
-      shared.batches.filter(_.size > 0) match
-        case Seq(b) =>
+      SharedResults.single(shared.rows) match
+        case Some(b) =>
           ScanSplits.slices(selector(spec)(b), parts).map(counted)
         case _ =>
           None
@@ -289,7 +291,7 @@ trait SharedResults:
       */
     private def hasResultStats: Boolean =
       rowCount.exists(_ <= Planner.MaxResultStatsRows) && enabled(Optimization.CTEReaderStats) &&
-        !sharedResult.exists(_.isReleased)
+        !sharedResult.exists(r => r.isReleased || r.isSpilled)
 
     override def distinct(position: Int): Option[Double] =
       if !hasResultStats then
@@ -342,7 +344,7 @@ trait SharedResults:
     /** Compute the result now, and record its exact row count for planning */
     def materialize(): Unit =
       if rowCount.isEmpty then
-        rowCount = Some(batches.map(_.size.toLong).sum)
+        rowCount = Some(sharedRows.rows)
 
     override def reader(
         schema: Schema,
@@ -518,14 +520,18 @@ trait SharedResults:
       else
         b => b.select(idx)
 
-    def batches: Seq[Batch]                     = result._2.batches
+    def sharedRows: SharedRows = result._2.rows
+
+    // The batches in memory, for statistics ([[hasResultStats]]: never over a spilled result)
+    private def batches: Seq[Batch] = sharedRows.inMemory.getOrElse(Nil)
+
     def sharedPlan(indent: Int): Option[String] = result._2.sharedPlan(indent)
 
   end DeferredCTE
 
   /** A reader of every column and row of a deferred CTE, for bodies with duplicate column names */
   private[plan] class CTEIteratorReader(val cte: DeferredCTE, schema: Schema, label: String)
-      extends IteratorOp(schema, () => cte.batches.iterator, label):
+      extends IteratorOp(schema, () => cte.sharedRows.iterator, label):
     override protected def extraInputs(indent: Int): Seq[String] = cte.sharedPlan(indent).toSeq
     override def sharedInputs: Seq[Operator]                     = cte.resultOp.toSeq
 
@@ -620,7 +626,7 @@ trait SharedResults:
 
     def scan(spec: ScanSpec): Iterator[Batch] =
       val sel = cte.selector(spec.columns)
-      counted(cte.batches.iterator.map(sel))
+      counted(cte.sharedRows.iterator.map(sel))
 
     override def estimatedRows: Option[Long] = cte.rows
 
@@ -633,25 +639,13 @@ trait SharedResults:
 
     override def canSplit: Boolean = true
 
-    override def scanSplits(spec: ScanSpec): Option[ScanSplits] =
-      val bs = cte.batches.filter(_.size > 0)
-      if bs.size <= 1 then
-        None
-      else
-        val sel = cte.selector(spec.columns)
-        Some(
-          counted(
-            ScanSplits(
-              bs.toIndexedSeq.map(b => () => Iterator.single(sel(b))),
-              () => (),
-              bs.toIndexedSeq.map(_.size.toLong)
-            )
-          )
-        )
+    override def scanSplits(spec: ScanSpec): Option[ScanSplits] = SharedResults
+      .splits(cte.sharedRows, cte.selector(spec.columns))
+      .map(counted)
 
     override def sliceSplits(spec: ScanSpec, parts: Int): Option[ScanSplits] =
-      cte.batches.filter(_.size > 0) match
-        case Seq(b) =>
+      SharedResults.single(cte.sharedRows) match
+        case Some(b) =>
           ScanSplits.slices(cte.selector(spec.columns)(b), parts).map(counted)
         case _ =>
           None
@@ -781,3 +775,22 @@ trait SharedResults:
   end CountedReads
 
 end SharedResults
+
+object SharedResults:
+  /** The parts of shared rows read through `sel`, when there are several */
+  private[plan] def splits(rows: SharedRows, sel: Batch => Batch): Option[ScanSplits] =
+    val ps = rows.parts
+    Option.when(ps.size > 1)(
+      ScanSplits(ps.map((read, _) => () => read().map(sel)), () => (), ps.map(_._2))
+    )
+
+  /** The one non-empty batch of shared rows held in memory */
+  private[plan] def single(rows: SharedRows): Option[Batch] = rows
+    .inMemory
+    .flatMap { bs =>
+      bs.filter(_.size > 0) match
+        case Seq(b) =>
+          Some(b)
+        case _ =>
+          None
+    }

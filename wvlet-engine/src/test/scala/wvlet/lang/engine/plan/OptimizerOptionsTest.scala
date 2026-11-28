@@ -197,7 +197,8 @@ class OptimizerOptionsTest extends UniTest:
         "spill_aggregation",
         "spill_join",
         "release_cte_results",
-        "spill_headroom"
+        "spill_headroom",
+        "spill_cte_results"
       )
   }
 

@@ -24,6 +24,7 @@ import java.io.EOFException
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicInteger
@@ -137,10 +138,15 @@ final class FileSpillFile private[exec] (space: FileSpillSpace, file: File, val 
   @volatile
   private var deleted = false
 
-  private val readers = ConcurrentHashMap.newKeySet[java.io.InputStream]()
+  private val readers = ConcurrentHashMap.newKeySet[java.io.Closeable]()
 
   private var rowCount    = 0L
   private var memoryBytes = 0L
+  // The file position of each block (after its length prefix), its length, and its rows
+  private val offsets  = scala.collection.mutable.ArrayBuffer.empty[Long]
+  private val lengths  = scala.collection.mutable.ArrayBuffer.empty[Int]
+  private val rowsOf   = scala.collection.mutable.ArrayBuffer.empty[Int]
+  private var position = 0L
 
   def rows: Long           = rowCount
   def estimatedBytes: Long = memoryBytes
@@ -153,6 +159,10 @@ final class FileSpillFile private[exec] (space: FileSpillSpace, file: File, val 
     out.writeInt(block.length)
     out.write(block)
     space.wrote(4L + block.length)
+    offsets += position + 4
+    lengths += block.length
+    rowsOf += rows
+    position += 4L + block.length
     rowCount += rows
     memoryBytes += estimatedBytes
 
@@ -206,6 +216,57 @@ final class FileSpillFile private[exec] (space: FileSpillSpace, file: File, val 
     end new
 
   end read
+
+  def blockRows: IndexedSeq[Int] =
+    require(finished, "Reading an unfinished spill file")
+    rowsOf.toIndexedSeq
+
+  def readBlocks(from: Int, until: Int): Iterator[Batch] =
+    require(finished, "Reading an unfinished spill file")
+    space.checkOpen()
+    // A shared result's readers read its file until its last one finished: a read after that
+    // must fail rather than return no rows
+    if deleted then
+      throw StatusCode
+        .UNEXPECTED_STATE
+        .newException(s"Reading spill file ${file.getName} after it was deleted")
+    if from >= until then
+      return Iterator.empty
+    val in = RandomAccessFile(file, "r")
+    readers.add(in)
+    def close(): Unit =
+      readers.remove(in)
+      in.close()
+    new Iterator[Batch]:
+      private var i = from
+
+      def hasNext: Boolean =
+        if i < until then
+          true
+        else
+          if i == until then
+            i += 1
+            close()
+          false
+
+      def next(): Batch =
+        if i >= until then
+          throw java.util.NoSuchElementException("No more spill blocks")
+        try
+          space.checkOpen()
+          val bytes = new Array[Byte](lengths(i))
+          in.seek(offsets(i))
+          in.readFully(bytes)
+          i += 1
+          SpillBlocks.decode(schema, bytes)
+        catch
+          case e: Throwable =>
+            i = until + 1
+            close()
+            throw e
+    end new
+
+  end readBlocks
 
   def delete(): Unit =
     if !deleted then

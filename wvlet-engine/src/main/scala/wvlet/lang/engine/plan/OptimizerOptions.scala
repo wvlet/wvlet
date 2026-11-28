@@ -1265,6 +1265,14 @@ enum Optimization(val name: String):
     */
   case SpillHeadroom extends Optimization("spill_headroom")
 
+  /**
+    * A shared CTE result (or grouping-set input) that would take the query past its spill threshold
+    * goes to one spill file, which its readers read back block by block, instead of the heap
+    * ([[wvlet.lang.engine.exec.SharedRows]]); the file is deleted once its last reader finishes, or
+    * with the query. Changes no plan, and nothing when the result fits
+    */
+  case SpillCTEResults extends Optimization("spill_cte_results")
+
 end Optimization
 
 object Optimization:
