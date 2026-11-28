@@ -568,6 +568,11 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jvmSettings(
     specRunnerSettings,
+    // WVLET_ENGINE_TEST_HEAP sets the test JVM's -Xmx (e.g. 32g for SF100 benchmarks); without
+    // it, the JVM default (a quarter of RAM) applies. Uncached: sbt's task cache doesn't see
+    // environment variables
+    Test / javaOptions ++=
+      Def.uncached(sys.env.get("WVLET_ENGINE_TEST_HEAP").map(h => s"-Xmx${h}").toSeq),
     libraryDependencies ++=
       Seq(
         // uni decodes Snappy pages with snappy-java's native library when it is on the classpath

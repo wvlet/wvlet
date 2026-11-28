@@ -62,6 +62,9 @@ import java.util.concurrent.TimeoutException
   *     files: before every engine run, the Parquet footers and file statistics (distinct counts,
   *     value samples) are dropped and the tables registered again, and DuckDB's footer cache is
   *     off. The OS page cache stays warm for both
+  *   - `WVLET_ENGINE_TEST_HEAP`: the test JVM's `-Xmx`, e.g. `32g` (default: the JVM's, a quarter
+  *     of RAM). The TSV's `engine_live_heap_mb` is the largest heap used after a GC during the
+  *     timed engine runs, an approximate live set (see [[LiveHeapProbe]])
   *   - `WVLET_ENGINE_BENCH_TIMEOUT`: seconds to wait for all engine runs of one query, warm-up
   *     included (default 300); the remaining queries are skipped after a timeout
   *   - `WVLET_ENGINE_BENCH_DUCKDB_PROFILE`: set 1 to write DuckDB's JSON profile (per-operator
@@ -320,22 +323,26 @@ object EngineTPCHBench extends LogSupport:
               val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
               (ms, cpuMs / math.max(ms, 0.001))
             def engineOnce(e: WvletEngine): (Double, Long, Double) = plannedRun(e, q)
-            // Wall time, busy cores (process CPU time / wall time), GC time, allocated MB, and
-            // planning time of one engine run
+            // Wall time, busy cores (process CPU time / wall time), GC time, allocated MB,
+            // planning time, and live heap of one engine run
             def engineTimed(): EngineRun =
               // A cold run's fresh engine is set up before the measurements start
               val e               = engineForRun()
               val cpu0            = processCpuNanos()
               val gc0             = gcMillis()
               val alloc0          = allocatedBytes()
-              val (ms, _, planMs) = engineOnce(e)
-              val cpuMs           = (processCpuNanos() - cpu0) / 1000000.0
+              val heap            = LiveHeapProbe.start()
+              val (ms, _, planMs) =
+                try engineOnce(e)
+                finally heap.stop()
+              val cpuMs = (processCpuNanos() - cpu0) / 1000000.0
               EngineRun(
                 ms,
                 cpuMs / math.max(ms, 0.001),
                 (gcMillis() - gc0).toDouble,
                 (allocatedBytes() - alloc0) / 1048576.0,
-                planMs
+                planMs,
+                heap.maxMb
               )
             try
               if opts.explain then
@@ -393,7 +400,8 @@ object EngineTPCHBench extends LogSupport:
                 eng.map(_.allocMb).sorted,
                 eng.map(_.planMs).sorted,
                 duckFirst,
-                engineFirst
+                engineFirst,
+                eng.map(_.liveHeapMb)
               )
               info(r.logLine)
               r
@@ -572,12 +580,13 @@ object EngineTPCHBench extends LogSupport:
 
     val tsv   = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.tsv")
     val lines =
-      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb\tengine_plan_ms\tduckdb_first_ms\tengine_first_ms" +:
+      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb\tengine_plan_ms\tduckdb_first_ms\tengine_first_ms\tengine_live_heap_mb" +:
         results.map { r =>
           f"${r.name}\t${r.duckdbMedian}%.1f\t${r.engineMedian}%.1f\t${r.ratio}%.2f\t${r
               .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}\t${r.engineCores}%.2f\t${r
               .duckdbCores}%.2f\t${r.cpuRatio}%.2f\t${r.engineGcMs}%.1f\t${r.engineAllocMb}%.1f\t${r
-              .enginePlanMs}%.1f\t${r.duckdbFirstMs}%.1f\t${r.engineFirstMs}%.1f"
+              .enginePlanMs}%.1f\t${r.duckdbFirstMs}%.1f\t${r.engineFirstMs}%.1f\t${r
+              .engineLiveHeapMb}%.1f"
         }
     Files.writeString(tsv.toPath, lines.mkString("", "\n", "\n"))
     info(s"Wrote ${tsv.getPath}")
@@ -597,8 +606,15 @@ object EngineTPCHBench extends LogSupport:
       engineAllocMbPerRun: Seq[Double] = Nil,
       enginePlanMsPerRun: Seq[Double] = Nil,
       duckdbFirstMs: Double = -1,
-      engineFirstMs: Double = -1
+      engineFirstMs: Double = -1,
+      engineLiveHeapMbPerRun: Seq[Double] = Nil
   ):
+    /**
+      * The largest live heap (heap used after a GC, see [[LiveHeapProbe]]) of the engine runs in
+      * MB, or -1 when no GC ended during them
+      */
+    def engineLiveHeapMb: Double = engineLiveHeapMbPerRun.maxOption.getOrElse(-1.0)
+
     /**
       * The median planning time of the engine runs: model expansion and building the physical
       * operators, including plan-time subqueries and statistics reads, before any operator runs
@@ -655,8 +671,18 @@ object EngineTPCHBench extends LogSupport:
     else
       (xs(xs.size / 2 - 1) + xs(xs.size / 2)) / 2
 
-  /** Wall time, busy cores, GC time, allocated MB, and planning time of one engine run */
-  case class EngineRun(ms: Double, cores: Double, gcMs: Double, allocMb: Double, planMs: Double)
+  /**
+    * Wall time, busy cores, GC time, allocated MB, planning time, and live heap MB (-1 without a
+    * GC) of one engine run
+    */
+  case class EngineRun(
+      ms: Double,
+      cores: Double,
+      gcMs: Double,
+      allocMb: Double,
+      planMs: Double,
+      liveHeapMb: Double
+  )
 
   /**
     * Plans and runs a query on an engine as [[WvletEngine.execute]] does, returning the wall time,
