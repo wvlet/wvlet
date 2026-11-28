@@ -163,6 +163,7 @@ object MemoryPool:
   */
 final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long):
   private val reserved = AtomicLong(0L)
+  private val peak     = AtomicLong(0L)
   // Set by the pool's low-memory killer: the query fails at its next check
   @volatile
   private var killedMessage: String = null
@@ -172,6 +173,9 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
 
   /** Bytes this query holds */
   def reservedBytes: Long = reserved.get()
+
+  /** The most bytes this query held at once, kept after [[close]] */
+  def peakBytes: Long = peak.get()
 
   /**
     * Reserve `bytes` for a structure about to be allocated or just received. Throws
@@ -186,6 +190,9 @@ final class MemoryContext private[exec] (pool: MemoryPool, val limitBytes: Long)
 
   private def add(bytes: Long): Unit =
     val total = reserved.addAndGet(bytes)
+    var p     = peak.get()
+    while total > p && !peak.compareAndSet(p, total) do
+      p = peak.get()
     if pool.add(bytes) then
       pool.killLargestIfStillOver()
       checkKilled()
@@ -292,6 +299,27 @@ object MemoryContext:
         w.statusCode == StatusCode.RESOURCE_EXHAUSTED
       case _ =>
         false
+
+  /**
+    * The RESOURCE_EXHAUSTED error of a query that ran the process out of heap (`e`), naming its
+    * peak tracked memory and how to give the engine more heap or fail such queries earlier
+    */
+  def outOfHeap(memory: MemoryContext, e: OutOfMemoryError): WvletLangException =
+    val tracked =
+      if memory.isTracking then
+        s" (peak tracked memory ${mb(memory.peakBytes)})"
+      else
+        ""
+    StatusCode
+      .RESOURCE_EXHAUSTED
+      .newException(
+        s"Query ran out of heap memory${tracked}: ${Option(e.getMessage).getOrElse(
+            ""
+          )}. Give the process more heap " +
+          "(-Xmx in JAVA_OPTS on the JVM, GC_MAXIMUM_HEAP_SIZE on Scala Native), or set a " +
+          "per-query memory limit (--max-query-memory) to fail such queries before the heap runs out",
+        e
+      )
 
   // Bytes a growing structure reserves ahead of its size, at least
   private val MinAheadBytes = 64L << 10

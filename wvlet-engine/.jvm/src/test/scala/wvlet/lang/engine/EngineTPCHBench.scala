@@ -16,6 +16,7 @@ package wvlet.lang.engine
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.engine.catalog.BenchmarkKeys
+import wvlet.lang.engine.exec.MemoryContext
 import wvlet.lang.engine.plan.OptimizerOptions
 import wvlet.lang.engine.vector.Batch
 import wvlet.lang.model.plan.*
@@ -37,7 +38,8 @@ import java.util.concurrent.TimeoutException
   * Opt-in benchmark of the columnar engine against DuckDB on the TPC-H queries in spec/tpch, both
   * reading the same Parquet files. No assertion on timings; the numbers are logged and written to
   * `target/engine-bench/tpch-sf<sf>.tsv` for before/after comparison on one machine. Engine runs
-  * also report the JVM's GC time and the bytes all threads allocated during the run (medians).
+  * also report the JVM's GC time, the bytes all threads allocated during the run, and the peak
+  * memory the query reserved in its `MemoryContext` (`engine_peak_mb`; medians).
   *
   * {{{
   *   WVLET_ENGINE_BENCH_SF=1 ./sbt "engineJVM/testOnly *EngineTPCHBench"
@@ -322,27 +324,28 @@ object EngineTPCHBench extends LogSupport:
               val (ms, _) = duckdbOnce()
               val cpuMs   = (processCpuNanos() - cpu0) / 1000000.0
               (ms, cpuMs / math.max(ms, 0.001))
-            def engineOnce(e: WvletEngine): (Double, Long, Double) = plannedRun(e, q)
+            def engineOnce(e: WvletEngine): PlannedRun = plannedRun(e, q)
             // Wall time, busy cores (process CPU time / wall time), GC time, allocated MB,
-            // planning time, and live heap of one engine run
+            // planning time, live heap, and peak tracked memory of one engine run
             def engineTimed(): EngineRun =
               // A cold run's fresh engine is set up before the measurements start
-              val e               = engineForRun()
-              val cpu0            = processCpuNanos()
-              val gc0             = gcMillis()
-              val alloc0          = allocatedBytes()
-              val heap            = LiveHeapProbe.start()
-              val (ms, _, planMs) =
+              val e      = engineForRun()
+              val cpu0   = processCpuNanos()
+              val gc0    = gcMillis()
+              val alloc0 = allocatedBytes()
+              val heap   = LiveHeapProbe.start()
+              val run    =
                 try engineOnce(e)
                 finally heap.stop()
               val cpuMs = (processCpuNanos() - cpu0) / 1000000.0
               EngineRun(
-                ms,
-                cpuMs / math.max(ms, 0.001),
+                run.ms,
+                cpuMs / math.max(run.ms, 0.001),
                 (gcMillis() - gc0).toDouble,
                 (allocatedBytes() - alloc0) / 1048576.0,
-                planMs,
-                heap.maxMb
+                run.planMs,
+                heap.maxMb,
+                run.peakMb
               )
             try
               if opts.explain then
@@ -365,8 +368,9 @@ object EngineTPCHBench extends LogSupport:
                   budgetNanos -= System.nanoTime() - start
               // Warm-ups: the engine's first run also computes the file statistics that later
               // runs (and queries) reuse, so its time is reported as engine_first_ms
-              val (duckFirst, duckRows)        = duckdbOnce()
-              val (engineFirst, engineRows, _) = onWorker(engineOnce(engineForRun()))
+              val (duckFirst, duckRows)     = duckdbOnce()
+              val first                     = onWorker(engineOnce(engineForRun()))
+              val (engineFirst, engineRows) = (first.ms, first.rows)
               // DuckDB and engine runs alternate, each going first every other run, so that a
               // load change on a shared machine hits both alike
               val duckRuns = Seq.newBuilder[(Double, Double)]
@@ -401,7 +405,8 @@ object EngineTPCHBench extends LogSupport:
                 eng.map(_.planMs).sorted,
                 duckFirst,
                 engineFirst,
-                eng.map(_.liveHeapMb)
+                eng.map(_.liveHeapMb),
+                eng.map(_.peakMb).sorted
               )
               info(r.logLine)
               r
@@ -552,12 +557,12 @@ object EngineTPCHBench extends LogSupport:
           .getOrElse("default")}"
     val table = Seq.newBuilder[String]
     table +=
-      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | DuckDB busy cores | engine busy cores | engine / DuckDB CPU | engine GC (ms) | engine alloc (MB) | engine plan (ms) | rows |"
-    table += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"
+      "| query | DuckDB median (ms) | engine median (ms) | engine / DuckDB | DuckDB busy cores | engine busy cores | engine / DuckDB CPU | engine GC (ms) | engine alloc (MB) | engine plan (ms) | engine peak (MB) | rows |"
+    table += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"
     results.foreach { r =>
       r.error match
         case Some(e) =>
-          table += s"| ${r.name} | | | | | | | | | | error: ${e.take(80)} |"
+          table += s"| ${r.name} | | | | | | | | | | | error: ${e.take(80)} |"
         case None =>
           val rows =
             if r.rowsMatch then
@@ -567,7 +572,8 @@ object EngineTPCHBench extends LogSupport:
           table +=
             f"| ${r.name} | ${r.duckdbMedian}%.1f | ${r.engineMedian}%.1f | ${r.ratio}%.1fx | ${r
                 .duckdbCores}%.1f | ${r.engineCores}%.1f | ${r.cpuRatio}%.1fx | ${r
-                .engineGcMs}%.0f | ${r.engineAllocMb}%.0f | ${r.enginePlanMs}%.1f | ${rows} |"
+                .engineGcMs}%.0f | ${r.engineAllocMb}%.0f | ${r.enginePlanMs}%.1f | ${r
+                .enginePeakMb}%.0f | ${rows} |"
     }
     val duckCpu = ok.map(r => r.duckdbMedian * r.duckdbCores).sum
     val engCpu  = ok.map(r => r.engineMedian * r.engineCores).sum
@@ -575,18 +581,21 @@ object EngineTPCHBench extends LogSupport:
       f"| total | ${duckTotal}%.1f | ${engTotal}%.1f | ${engTotal / duckTotal}%.1fx | ${duckCpu /
           duckTotal}%.1f | ${engCpu / engTotal}%.1f | ${engCpu / duckCpu}%.1fx | ${ok
           .map(_.engineGcMs)
-          .sum}%.0f | ${ok.map(_.engineAllocMb).sum}%.0f | ${ok.map(_.enginePlanMs).sum}%.1f | |"
+          .sum}%.0f | ${ok.map(_.engineAllocMb).sum}%.0f | ${ok.map(_.enginePlanMs).sum}%.1f | ${ok
+          .map(_.enginePeakMb)
+          .maxOption
+          .getOrElse(0.0)}%.0f | |"
     info(s"${header}\n${table.result().mkString("\n")}")
 
     val tsv   = File("target/engine-bench", s"${label}-sf${sfLabel(opts.sf)}.tsv")
     val lines =
-      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb\tengine_plan_ms\tduckdb_first_ms\tengine_first_ms\tengine_live_heap_mb" +:
+      "query\tduckdb_median_ms\tengine_median_ms\tratio\tduckdb_rows\tengine_rows\terror\tengine_cores\tduckdb_cores\tcpu_ratio\tengine_gc_ms\tengine_alloc_mb\tengine_plan_ms\tduckdb_first_ms\tengine_first_ms\tengine_live_heap_mb\tengine_peak_mb" +:
         results.map { r =>
           f"${r.name}\t${r.duckdbMedian}%.1f\t${r.engineMedian}%.1f\t${r.ratio}%.2f\t${r
               .duckdbRows}\t${r.engineRows}\t${r.error.getOrElse("")}\t${r.engineCores}%.2f\t${r
               .duckdbCores}%.2f\t${r.cpuRatio}%.2f\t${r.engineGcMs}%.1f\t${r.engineAllocMb}%.1f\t${r
               .enginePlanMs}%.1f\t${r.duckdbFirstMs}%.1f\t${r.engineFirstMs}%.1f\t${r
-              .engineLiveHeapMb}%.1f"
+              .engineLiveHeapMb}%.1f\t${r.enginePeakMb}%.1f"
         }
     Files.writeString(tsv.toPath, lines.mkString("", "\n", "\n"))
     info(s"Wrote ${tsv.getPath}")
@@ -607,8 +616,12 @@ object EngineTPCHBench extends LogSupport:
       enginePlanMsPerRun: Seq[Double] = Nil,
       duckdbFirstMs: Double = -1,
       engineFirstMs: Double = -1,
-      engineLiveHeapMbPerRun: Seq[Double] = Nil
+      engineLiveHeapMbPerRun: Seq[Double] = Nil,
+      enginePeakMbPerRun: Seq[Double] = Nil
   ):
+    /** The median peak memory the engine runs reserved (MemoryContext.peakBytes) */
+    def enginePeakMb: Double = median(enginePeakMbPerRun)
+
     /**
       * The largest live heap (heap used after a GC, see [[LiveHeapProbe]]) of the engine runs in
       * MB, or -1 when no GC ended during them
@@ -672,8 +685,8 @@ object EngineTPCHBench extends LogSupport:
       (xs(xs.size / 2 - 1) + xs(xs.size / 2)) / 2
 
   /**
-    * Wall time, busy cores, GC time, allocated MB, planning time, and live heap MB (-1 without a
-    * GC) of one engine run
+    * Wall time, busy cores, GC time, allocated MB, planning time, live heap MB (-1 without a GC),
+    * and peak tracked memory MB of one engine run
     */
   case class EngineRun(
       ms: Double,
@@ -681,24 +694,39 @@ object EngineTPCHBench extends LogSupport:
       gcMs: Double,
       allocMb: Double,
       planMs: Double,
-      liveHeapMb: Double
+      liveHeapMb: Double,
+      peakMb: Double
   )
 
   /**
     * Plans and runs a query on an engine as [[WvletEngine.execute]] does, returning the wall time,
     * the result rows, and the milliseconds spent planning (before any operator ran)
     */
-  def plannedRun(engine: WvletEngine, q: Relation)(using ctx: Context): (Double, Long, Double) =
-    engine.asQuery {
-      val start   = System.nanoTime()
-      val op      = engine.physicalPlan(GenSQL.expand(q, ctx))
-      val planned = System.nanoTime()
+  def plannedRun(engine: WvletEngine, q: Relation)(using ctx: Context): PlannedRun = engine
+    .asQuery {
+      // Reserve memory as WvletEngine.execute does, to report the query's peak
+      val memory = engine.newQueryMemory()
       try
-        val rows = readAll(op.drain())
-        ((System.nanoTime() - start) / 1000000.0, rows, (planned - start) / 1000000.0)
-      finally
-        op.close()
+        MemoryContext.withCurrent(memory) {
+          val start   = System.nanoTime()
+          val op      = engine.physicalPlan(GenSQL.expand(q, ctx))
+          val planned = System.nanoTime()
+          try
+            val rows = readAll(memory.drain(op))
+            PlannedRun(
+              (System.nanoTime() - start) / 1000000.0,
+              rows,
+              (planned - start) / 1000000.0,
+              memory.peakBytes / 1048576.0
+            )
+          finally
+            op.close()
+        }
+      finally memory.close()
     }
+
+  /** Wall time, result rows, planning time, and peak tracked memory of one engine run */
+  case class PlannedRun(ms: Double, rows: Long, planMs: Double, peakMb: Double)
 
   /**
     * Read every value of every row as a boxed value, as [[countRows]] makes DuckDB's JDBC driver

@@ -85,7 +85,7 @@ class EngineMixedWorkloadBench extends UniTest with LogSupport:
     val (longQ, longCtx)   = compiled(longName)
     val (shortQ, shortCtx) = compiled(shortName)
 
-    def runMs(e: WvletEngine, q: Relation, ctx: Context): Double = plannedRun(e, q)(using ctx)._1
+    def runMs(e: WvletEngine, q: Relation, ctx: Context): Double = plannedRun(e, q)(using ctx).ms
 
     def shortStream(e: WvletEngine): Seq[Double] = (1 to runs).map(_ => runMs(e, shortQ, shortCtx))
 

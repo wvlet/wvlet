@@ -56,6 +56,7 @@ DuckDB settings of the run in `target/engine-bench/tpch-sf<sf>.env.txt`. Engine 
 planning and execution of an already compiled query and reading every value of the result;
 DuckDB time covers running the generated SQL over JDBC and reading every value of every row.
 DuckDB and engine runs alternate, and the `*_first_ms` columns hold each engine's warm-up run.
+`engine_peak_mb` is the median peak memory a run reserved in its per-query memory context (join builds, aggregation tables, sort, window, and CTE buffers, and result batches); scan and decode buffers are not counted.
 Row counts are compared too, and a mismatch is flagged in the table.
 
 DuckDB caches Parquet footers (`parquet_metadata_cache`) and doesn't keep insertion order, as
