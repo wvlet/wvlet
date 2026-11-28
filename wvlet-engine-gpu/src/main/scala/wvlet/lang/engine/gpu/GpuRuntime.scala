@@ -131,6 +131,13 @@ enum GpuFeature(val featureName: String):
   case AstFilters extends GpuFeature("ast_filters")
 
   /**
+    * Evaluate a tree of decimal or FLOAT64 `+ - *` (projections, aggregate arguments, CASE
+    * branches) as one cudf AST kernel instead of one kernel per operator (TPC-H q1's
+    * `l_extendedprice * (1 - l_discount) * (1 + l_tax)`)
+    */
+  case AstProjections extends GpuFeature("ast_projections")
+
+  /**
     * Run a read of a shared CTE (`CTERef`) as the CTE's body. The CPU computes a CTE once for all
     * its readers; on the GPU each reader recomputes it from the cached columns instead (the
     * filtered scans TPC-H q15 and q22 share between a plan-time subquery and the main query)

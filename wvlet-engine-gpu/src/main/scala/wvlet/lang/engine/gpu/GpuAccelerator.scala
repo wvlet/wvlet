@@ -574,7 +574,8 @@ private[gpu] class GpuPlans(cache: GpuColumnCache, config: GpuConfig) extends Lo
   /** The value bounds of `t`'s columns, for evaluating expressions over them */
   private def boundsOf(t: GTable): Bounds = Bounds(
     t.bounds,
-    config.isEnabled(GpuFeature.DecimalNarrow)
+    config.isEnabled(GpuFeature.DecimalNarrow),
+    config.isEnabled(GpuFeature.AstProjections)
   )
 
   /**
