@@ -29,7 +29,7 @@
 | `wvlet skill [file]`, `wvlet skill files` | Print this skill (or a reference) as shipped with the installed version |
 | `wvlet skill install [--agent claude,codex,pi] [--global]` | Install or update this skill for coding agents; `list` and `remove --yes` manage it |
 | `wvlet repl`, `wvlet repl -c "<query>"` | REPL, or run one query and exit; `wv` is an alias on the JVM CLI |
-| `wvlet ui [--max-running-queries n] [--max-queued-queries n] [--max-query-memory 2GB] [--memory-pool-size 8GB]` | Start the server and Web UI (JVM CLI); past the queue limit, submissions fail with `RESOURCE_EXHAUSTED`; a wvlet-engine query over `--max-query-memory` fails with `RESOURCE_EXHAUSTED`, and queued queries wait while engine queries hold more than `--memory-pool-size` (default 70% of the heap) |
+| `wvlet ui [--max-running-queries n] [--max-queued-queries n] [--max-query-memory 2GB] [--memory-pool-size 8GB] [--low-memory-killer-delay 5s]` | Start the server and Web UI (JVM CLI); past the queue limit, submissions fail with `RESOURCE_EXHAUSTED`; a wvlet-engine query over `--max-query-memory` fails with `RESOURCE_EXHAUSTED`, and queued queries wait while engine queries hold more than `--memory-pool-size` (default 70% of the heap); staying over it for `--low-memory-killer-delay` (default `5s`, or `off`) fails the largest of several running engine queries |
 
 `compile`, `to_wvlet`, `run`, and `repl` share `-p, --profile <name>`, `-t <engine>`,
 `-w <folder>` (working folder), `--catalog`, and `--schema`; `-l debug` gives debug logs. A bare

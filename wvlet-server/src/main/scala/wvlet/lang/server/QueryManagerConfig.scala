@@ -22,6 +22,9 @@ import scala.concurrent.duration.*
   * @param maxQueryMemory
   *   Bytes one in-process engine query may hold before it fails with RESOURCE_EXHAUSTED; None for
   *   no limit
+  * @param lowMemoryKillerDelay
+  *   How long the memory pool may stay over its capacity, with more than one query running, before
+  *   the query holding the most memory fails with RESOURCE_EXHAUSTED; None never kills
   */
 case class QueryManagerConfig(
     maxRunningQueries: Int = QueryManagerConfig.defaultMaxRunningQueries,
@@ -29,7 +32,8 @@ case class QueryManagerConfig(
     finishedQueryRetention: FiniteDuration = 1.hour,
     maxFinishedQueries: Int = 1000,
     memoryPoolSize: Option[Long] = None,
-    maxQueryMemory: Option[Long] = None
+    maxQueryMemory: Option[Long] = None,
+    lowMemoryKillerDelay: Option[FiniteDuration] = Some(5.seconds)
 ):
   require(maxRunningQueries >= 1, s"maxRunningQueries must be >= 1: ${maxRunningQueries}")
   require(maxQueuedQueries >= 1, s"maxQueuedQueries must be >= 1: ${maxQueuedQueries}")
@@ -46,12 +50,20 @@ case class QueryManagerConfig(
   def noMemoryPoolSize(): QueryManagerConfig              = copy(memoryPoolSize = None)
   def withMaxQueryMemory(bytes: Long): QueryManagerConfig = copy(maxQueryMemory = Some(bytes))
   def noMaxQueryMemory(): QueryManagerConfig              = copy(maxQueryMemory = None)
+  def withLowMemoryKillerDelay(d: FiniteDuration): QueryManagerConfig = copy(lowMemoryKillerDelay =
+    Some(d)
+  )
+
+  def noLowMemoryKiller(): QueryManagerConfig = copy(lowMemoryKillerDelay = None)
 
   /** The memory pool these limits describe, for the server's engines and admission */
   def newMemoryPool(): MemoryPool = MemoryPool(
     capacityBytes = memoryPoolSize.getOrElse(QueryManagerConfig.defaultMemoryPoolSize),
-    queryLimitBytes = maxQueryMemory.getOrElse(Long.MaxValue)
+    queryLimitBytes = maxQueryMemory.getOrElse(Long.MaxValue),
+    killDelay = lowMemoryKillerDelay
   )
+
+end QueryManagerConfig
 
 object QueryManagerConfig:
   /** Half the processors (at least one): the in-process engine parallelizes each query itself */
@@ -91,5 +103,27 @@ object QueryManagerConfig:
         bytes.toLong
       case _ =>
         throw invalid
+
+  /**
+    * The low-memory killer delay of a server option: a duration such as `5s`, `500ms`, or `1min`,
+    * or `off` to never kill. Throws INVALID_ARGUMENT for anything else, including negative values
+    */
+  def parseKillerDelay(s: String): Option[FiniteDuration] =
+    if s.trim.equalsIgnoreCase("off") then
+      None
+    else
+      val d =
+        try
+          Duration(s.trim)
+        catch
+          case _: NumberFormatException =>
+            Duration.Undefined
+      d match
+        case f: FiniteDuration if f >= Duration.Zero =>
+          Some(f)
+        case _ =>
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(s"Invalid delay: ${s} (use e.g. 5s, 500ms, or off)")
 
 end QueryManagerConfig

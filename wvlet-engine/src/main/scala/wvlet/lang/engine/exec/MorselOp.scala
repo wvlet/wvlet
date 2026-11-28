@@ -78,6 +78,10 @@ class MorselOp(
 
   require(segments.nonEmpty, "MorselOp needs a segment")
 
+  // The query's context, checked per part: a query the low-memory killer chose stops at its next
+  // part even when its pipeline reserves nothing more
+  private val queryMemory = MemoryContext.current
+
   /** The scan of the first segment */
   def scan: ScanOp = segments.head.scan
 
@@ -130,6 +134,7 @@ class MorselOp(
       }
 
   private def runPart(seg: Segment, s: ScanSplits, k: Int): Seq[Batch] =
+    queryMemory.checkKilled()
     val rows =
       if k < s.rows.size then
         s.rows(k)

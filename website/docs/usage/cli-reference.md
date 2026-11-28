@@ -209,6 +209,7 @@ wvlet ui [options]
 | `--max-queued-queries <n>` | Queries waiting to run; submissions past it fail with `RESOURCE_EXHAUSTED` (default: 1000). See [Remote Wvlet Server](./remote-server.md#query-queue-and-logs) |
 | `--max-query-memory <size>` | Memory one wvlet-engine query may hold, e.g. `2GB`, before it fails with `RESOURCE_EXHAUSTED` (default: no limit) |
 | `--memory-pool-size <size>` | Memory wvlet-engine queries may hold together before queued queries wait (default: 70% of the heap) |
+| `--low-memory-killer-delay <duration>` | How long wvlet-engine queries may stay over the memory pool size, with more than one running, before the one holding the most memory fails with `RESOURCE_EXHAUSTED`, e.g. `10s` or `off` (default: `5s`) |
 
 **Examples:**
 
