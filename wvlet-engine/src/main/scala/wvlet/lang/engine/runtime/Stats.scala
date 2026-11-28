@@ -345,6 +345,25 @@ object Stats:
         None
 
   /**
+    * The distinct values of a string column expression over p from its source's value sample
+    * ([[ValueCounts.sampledDistinct]]), for keys [[distinct]] has no count of
+    * (`sampled_string_distinct`). None for other expressions, CTE results, or unsaturated samples
+    */
+  def sampledDistinct(p: RuntimePlan, e: VExpr): Option[Double] =
+    e match
+      case c: ColRef =>
+        sourceStat(
+          p,
+          ColumnId(c.index),
+          (s, i) => s.source.valueCounts(s.sourceColumnName(i)).flatMap(_.sampledDistinct),
+          (_, _) => None
+        )
+      case c: CastExpr =>
+        sampledDistinct(p, c.child)
+      case _ =>
+        None
+
+  /**
     * Estimated rows of p passing all of `conds`: counted from the result for a read of a computed
     * shared CTE, and rows(p) times each condition's [[selectivity]] otherwise
     */

@@ -503,6 +503,15 @@ enum Optimization(val name: String):
     */
   case RankFilterRows extends Optimization("rank_filter_rows")
 
+  /**
+    * A string join key with no distinct count (files over `ParquetSource.DistinctScanLimit` rows)
+    * takes the distinct values of the column's value sample when the sample has seen almost every
+    * value (`ValueCounts.sampledDistinct`), instead of the unknown-keys rule that treats the
+    * smaller side as unique: TPC-DS q85 at SF100 joined customer_demographics to itself on
+    * (cd_marital_status, cd_education_status) first, estimated 1.9M rows for ~9B
+    */
+  case SampledStringDistinct extends Optimization("sampled_string_distinct")
+
   // --- Shared CTEs and results, and replanning -------------------------------------------------
 
   /** Compute a CTE referenced more than once only once */

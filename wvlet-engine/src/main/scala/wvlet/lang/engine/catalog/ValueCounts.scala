@@ -34,6 +34,25 @@ final class ValueCounts(
 ):
 
   /**
+    * The column's distinct values, when the sample has seen almost all of them: at least
+    * [[ValueCounts.MinSaturatedRows]] non-null rows, and values seen once (the Good-Turing estimate
+    * of the share of rows holding an unseen value) at most [[ValueCounts.MaxSingletonShare]] of
+    * them. None otherwise, as for a key with a value per row or a sample too small to tell
+    */
+  def sampledDistinct: Option[Double] =
+    val nonNull    = rows - nulls
+    var singletons = 0L
+    var i          = 0
+    while i < counts.length do
+      if counts(i) == 1 then
+        singletons += 1
+      i += 1
+    Option.when(
+      values.nonEmpty && nonNull >= ValueCounts.MinSaturatedRows &&
+        singletons <= nonNull * ValueCounts.MaxSingletonShare
+    )(values.length.toDouble)
+
+  /**
     * The fraction of the sampled rows for which `cond`, a condition reading the column as column 0,
     * is TRUE: evaluated once per distinct value and once for NULL, and at least 1 / rows, as a
     * value missing from the sample may still be in the unsampled rows. None for an empty sample or
@@ -92,6 +111,12 @@ final class ValueCounts(
 end ValueCounts
 
 object ValueCounts:
+
+  /** The fewest non-null sampled rows for [[ValueCounts.sampledDistinct]] */
+  val MinSaturatedRows: Long = 10000
+
+  /** The largest share of sampled rows holding a value seen once, for `sampledDistinct` */
+  val MaxSingletonShare: Double = 0.001
 
   /**
     * Counts the strings of the sampled batches' column 0, or None when they hold more than

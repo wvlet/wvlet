@@ -334,6 +334,9 @@ class EngineOptimizerToggleTest extends UniTest:
     // the toggle flips its build side at SF10
     Optimization.RankFilterRows ->
       "Changes TPC-DS q44's join order at SF10, not at the golden plans' SF0.1",
+    // SampledStringDistinctTest checks the join order; golden plans' string columns all have counts
+    Optimization.SampledStringDistinct ->
+      "Changes join order only over string keys of files past 1M rows (TPC-DS q85 at SF100)",
     // FairTaskQueueTest and ThreadPoolRunnerFairTest check the scheduling
     Optimization.FairTaskScheduling -> "Changes which query's pool task runs next, not the plan",
     Optimization.FairCoordinators   ->

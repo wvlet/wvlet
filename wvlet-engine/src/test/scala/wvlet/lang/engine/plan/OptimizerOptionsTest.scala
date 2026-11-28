@@ -100,6 +100,7 @@ class OptimizerOptionsTest extends UniTest:
         "or_equals_selectivity",
         "nested_group_estimates",
         "rank_filter_rows",
+        "sampled_string_distinct",
         "share_ctes",
         "push_down_cte_filters",
         "cte_filters_through_filters",
