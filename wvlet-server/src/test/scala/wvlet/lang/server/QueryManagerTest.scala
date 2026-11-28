@@ -176,6 +176,12 @@ class QueryManagerTest extends UniTest:
     }
     QueryManagerConfig().newMemoryPool().killDelay shouldBe Some(5.seconds)
     QueryManagerConfig().noLowMemoryKiller().newMemoryPool().killDelay shouldBe None
+    intercept[WvletLangException] {
+      QueryManagerConfig.parseKillerDelay("1000000d")
+    }.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    intercept[IllegalArgumentException] {
+      QueryManagerConfig().withLowMemoryKillerDelay(-1.second)
+    }
   }
 
   test("parse memory sizes of the server options") {

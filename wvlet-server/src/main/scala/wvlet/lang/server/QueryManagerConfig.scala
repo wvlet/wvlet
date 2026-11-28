@@ -38,6 +38,10 @@ case class QueryManagerConfig(
   require(maxRunningQueries >= 1, s"maxRunningQueries must be >= 1: ${maxRunningQueries}")
   require(maxQueuedQueries >= 1, s"maxQueuedQueries must be >= 1: ${maxQueuedQueries}")
   require(maxFinishedQueries >= 0, s"maxFinishedQueries must be >= 0: ${maxFinishedQueries}")
+  require(
+    lowMemoryKillerDelay.forall(_ >= Duration.Zero),
+    s"lowMemoryKillerDelay must be >= 0: ${lowMemoryKillerDelay}"
+  )
 
   def withMaxRunningQueries(n: Int): QueryManagerConfig = copy(maxRunningQueries = n)
   def withMaxQueuedQueries(n: Int): QueryManagerConfig  = copy(maxQueuedQueries = n)
@@ -116,7 +120,8 @@ object QueryManagerConfig:
         try
           Duration(s.trim)
         catch
-          case _: NumberFormatException =>
+          // Also out-of-range durations such as 1000000d
+          case _: IllegalArgumentException =>
             Duration.Undefined
       d match
         case f: FiniteDuration if f >= Duration.Zero =>

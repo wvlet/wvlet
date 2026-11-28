@@ -41,6 +41,12 @@ final class MemoryPool(
   private val overSince = AtomicLong(MemoryPool.NotOver)
   // The open tracking contexts; guarded by `this`
   private val open = mutable.LinkedHashSet.empty[MemoryContext]
+  // The killed query until it closes, and the open count, read without the lock on reservations
+  @volatile
+  private var victim: MemoryContext = null
+
+  @volatile
+  private var openCount = 0
 
   /** Bytes the open queries hold */
   def reservedBytes: Long = reserved.get()
@@ -49,15 +55,26 @@ final class MemoryPool(
   def isOverCapacity: Boolean = reserved.get() > capacityBytes
 
   /** Queries with an open context */
-  def openQueries: Int = synchronized(open.size)
+  def openQueries: Int = openCount
 
   /** A context for one query, failing it past `limitBytes` */
   def newQuery(limitBytes: Long = queryLimitBytes): MemoryContext =
     val c = MemoryContext(this, limitBytes)
-    synchronized(open += c)
+    synchronized {
+      open += c
+      openCount = open.size
+    }
     c
 
-  private[exec] def closed(c: MemoryContext): Unit = synchronized(open -= c)
+  private[exec] def closed(c: MemoryContext): Unit = synchronized {
+    open -= c
+    openCount = open.size
+    if victim eq c then
+      victim = null
+      // The delay starts again once the killed query has released its memory
+      if isOverCapacity then
+        overSince.set(System.nanoTime())
+  }
 
   /** Add (or with a negative value, return) bytes; returns whether the pool is over capacity */
   private[exec] def add(bytes: Long): Boolean =
@@ -73,34 +90,38 @@ final class MemoryPool(
     * Kill the open query holding the most bytes when the pool has been over its capacity for at
     * least `killDelay` and more than one query is open: a single query frees nothing for others,
     * and its own limit bounds it. One query at a time: none while a killed one is still open, and
-    * the delay starts again after a kill. Returns the killed context, if any. Called on
+    * the delay starts again when it closes. Returns the killed context, if any. Called on
     * reservations past the capacity and by a server's timer, since a query that holds without
     * growing never reserves
     */
   def killLargestIfStillOver(): Option[MemoryContext] =
     killDelay match
-      case Some(delay) if isOverCapacity =>
+      case Some(delay) if victim == null && openCount > 1 && isOverCapacity =>
+        val now = System.nanoTime()
+        // A release racing a reservation across the capacity can clear the stamp while the pool
+        // is over: start the delay here, so a pool that holds without reserving is still checked
+        if overSince.get() == MemoryPool.NotOver then
+          overSince.compareAndSet(MemoryPool.NotOver, now)
         val since = overSince.get()
-        val now   = System.nanoTime()
         if since == MemoryPool.NotOver || now - since < delay.toNanos then
           None
         else
           synchronized {
-            if open.size <= 1 || open.exists(_.isKilled) || !isOverCapacity then
+            if open.size <= 1 || victim != null || !isOverCapacity then
               None
             else
-              val victim = open.maxBy(_.reservedBytes)
-              victim.kill(
+              val v = open.maxBy(_.reservedBytes)
+              victim = v
+              v.kill(
                 s"Query was killed to free memory: it held ${MemoryContext.mb(
-                    victim.reservedBytes
+                    v.reservedBytes
                   )} of the ${MemoryContext.mb(reservedBytes)} that ${open
                     .size} queries held, over the memory pool's capacity of ${MemoryContext.mb(
                     capacityBytes
                   )} for ${delay
                     .toMillis} ms. Retry when fewer queries run, or raise the memory pool size"
               )
-              overSince.set(now)
-              Some(victim)
+              Some(v)
           }
       case _ =>
         None
