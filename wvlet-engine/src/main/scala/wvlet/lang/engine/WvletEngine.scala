@@ -255,6 +255,16 @@ class WvletEngine(
   /** An engine whose queries spill under the system temp folder */
   def noSpillDirectory(): WvletEngine = copy(spillDirectory = None)
 
+  /**
+    * The spill threshold without `withSpillThreshold`: with `spill_headroom`, half the max heap
+    * less an allowance per worker thread for untracked memory, else half the max heap
+    */
+  private def defaultSpillThreshold: Long =
+    if optimizer.isEnabled(Optimization.SpillHeadroom) then
+      SpillCompat.headroomThresholdBytes(TaskRunner.default.parallelism)
+    else
+      SpillCompat.defaultThresholdBytes
+
   /** The memory context of a new query: counting nothing with `memory_accounting` off */
   private[engine] def newQueryMemory(): MemoryContext =
     if optimizer.isEnabled(Optimization.MemoryAccounting) then
@@ -262,7 +272,7 @@ class WvletEngine(
       memoryPool
         .newQuery(limit)
         .withSpill(
-          math.min(limit, spillThreshold.getOrElse(SpillCompat.defaultThresholdBytes)),
+          math.min(limit, spillThreshold.getOrElse(defaultSpillThreshold)),
           spillDirectory.getOrElse(SpillCompat.defaultDirectory)
         )
     else

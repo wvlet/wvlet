@@ -1257,6 +1257,14 @@ enum Optimization(val name: String):
     */
   case ReleaseCTEResults extends Optimization("release_cte_results")
 
+  /**
+    * The default spill threshold (no `WvletEngine.withSpillThreshold`) leaves room for the memory
+    * the engine doesn't track, which grows with the worker threads: half the JVM's max heap less 32
+    * MB per thread, at least an eighth of the heap ([[wvlet.lang.engine.exec.SpillThreshold]]).
+    * Without it, half the max heap. Changes no plan
+    */
+  case SpillHeadroom extends Optimization("spill_headroom")
+
 end Optimization
 
 object Optimization:
