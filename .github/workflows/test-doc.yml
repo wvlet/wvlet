@@ -1,7 +1,10 @@
 name: Doc
 
+# Called by test.yml (CI) on pull requests and pushes to main, so its jobs report to the single
+# required check "CI passed". No concurrency block: a called workflow shares the caller's
+# github.workflow, so the same group would cancel the caller.
 on:
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 
 jobs:

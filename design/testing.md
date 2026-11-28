@@ -34,3 +34,13 @@ Run one spec file with `./sbt "runnerJVM/testOnly *RunnerSpecBasic -- spec:basic
 - `./sbt -Dx=y` does not reach the forked test JVM.
 - Plain `test` in engine, lang, and runner can skip classes as cached; run gates and spec classes with `testOnly`.
 - Python SDK: quick tests run on every PR; full wheel tests run on tags, PRs labeled `test-wheels`, and a weekly schedule. Add the label for platform-specific changes.
+
+## CI runner budget
+
+The wvlet org's Free plan runs at most 20 GitHub-hosted jobs (5 macOS) at once, shared by every PR and every push to main, so CI time is mostly time spent waiting for a runner. Keep the number of jobs per push low:
+
+- The main ruleset requires one status check, "CI passed" (the `ci_passed` job in `test.yml`). It fails when any job it `needs` failed or was cancelled; a job skipped by its path filter passes. `test.yml` calls the doc, VS Code, highlight.js, and Prism.js workflows (`workflow_call`), so their jobs are part of it. A new PR check goes into `test.yml` or a workflow it calls, and into `ci_passed`'s `needs`, never into the ruleset.
+- `test.yml` and `native.yml` set `concurrency` keyed on the PR number with `cancel-in-progress` for `pull_request` events, so a rebase or new push cancels the older run. Runs on main and tags use `run_id` as their group, so they are never cancelled. A called workflow has no `concurrency` block: it shares the caller's `github.workflow`, so the same group would cancel the caller.
+- `native.yml` builds `wvcLib` on mac, linux-arm64, and Windows only in its nightly run and on manual dispatch. Pushes to main build linux-x64; PRs build linux-x64 only when they touch `wvc-lib/`, `project/`, `*.sbt`, the Nix flake, or `SCALA_VERSION`. The "Scala Native" job in `test.yml` (part of "CI passed") still compiles and tests every Native project on each PR. To check a branch on every platform, run `gh workflow run native.yml --ref <branch>`.
+- A matrix lists only the entries that run (see `native.yml`'s "Plan platforms" step). A job with every step skipped still takes a runner.
+- Only full-matrix `native.yml` runs upload the merged `wvc-lib` artifact. `python-publish.yml` packages the newest one from main.

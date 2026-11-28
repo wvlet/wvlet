@@ -1,14 +1,15 @@
 name: VS Code
 
+# Called by test.yml (CI) on pull requests and pushes to main, so its jobs report to the single
+# required check "CI passed"; release tags and dispatches run it directly. No concurrency block:
+# a called workflow shares the caller's github.workflow, so the same group would cancel the caller.
 on:
+  workflow_call:
   push:
-    branches: [ main ]
     # Release tags publish the extension together with the other artifacts (npm, Maven).
     # The tag must match vscode-wvlet/package.json; a -rc/-pre suffix publishes a pre-release.
     tags:
       - 'v*.*.*'
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       publish:

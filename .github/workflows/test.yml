@@ -7,6 +7,12 @@ on:
       - main
   workflow_dispatch:
 
+# Cancel a pull request's older run when a new commit (e.g., a rebase) arrives; other runs get a
+# group of their own (run_id), so pushes to main and tags are never cancelled or held back.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -180,3 +186,57 @@ jobs:
           check_name: Test Report Scala Native
           annotate_only: true
           detailed_summary: true
+  # Workflows that also run on their own (dispatch, release tags) are called here, so their jobs
+  # report to "CI passed" below. Each one applies its own path filter.
+  doc:
+    name: Doc
+    uses: ./.github/workflows/test-doc.yml
+    permissions:
+      contents: read
+      pull-requests: read
+  vscode:
+    name: VS Code
+    uses: ./.github/workflows/vscode-extension.yml
+    permissions:
+      contents: read
+      pull-requests: read
+  highlightjs:
+    name: highlight.js
+    uses: ./.github/workflows/highlightjs.yml
+    permissions:
+      contents: read
+      pull-requests: read
+  prismjs:
+    name: Prism.js
+    uses: ./.github/workflows/prismjs.yml
+    permissions:
+      contents: read
+      pull-requests: read
+  # The only required status check in the main ruleset. It fails when any job above failed or
+  # was cancelled; jobs skipped by a path filter count as passing. Add new PR jobs to `needs`.
+  ci_passed:
+    name: CI passed
+    if: ${{ always() }}
+    needs:
+      - changes
+      - code_format
+      - test_scala_3
+      - test_js
+      - test_playground
+      - test_native
+      - doc
+      - vscode
+      - highlightjs
+      - prismjs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          failed=$(echo "$RESULTS" | jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(", ")')
+          if [ -n "$failed" ]; then
+            echo "::error::Failed or cancelled: $failed"
+            exit 1
+          fi

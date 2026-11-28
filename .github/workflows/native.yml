@@ -1,11 +1,24 @@
 name: Native
 
+# Runner budget: the wvlet org's Free plan runs at most 20 jobs (5 macOS) at once, shared by
+# every PR and every push to main. So the full platform matrix (mac, linux-arm64, Windows)
+# runs nightly and on manual dispatch, not on each merge; pushes to main build linux-x64 only,
+# and pull requests build linux-x64 only when they touch wvc-lib or the native build setup.
+# To check a branch on every platform: gh workflow run native.yml --ref <branch>
 on:
   pull_request:
   push:
     branches:
       - main
+  schedule:
+    - cron: '0 18 * * *'
   workflow_dispatch:
+
+# Cancel a pull request's older run when a new commit (e.g., a rebase) arrives; runs on main
+# get a group of their own (run_id), so none of them is cancelled or held back.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # The Nix / Chocolatey sbt launchers default to a 1 GB heap, which Scala Native's codegen for
@@ -19,10 +32,13 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
-      src: ${{ steps.filter.outputs.src }}
+      full: ${{ steps.plan.outputs.full }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
+        # Schedule payloads have no default branch to diff against, and the full runs read no filter
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
         id: filter
         with:
           filters: |
@@ -36,60 +52,77 @@ jobs:
               - 'flake.nix'
               - 'flake.lock'
               - SCALA_VERSION
+            # Pull requests build the library only for these; the "Scala Native" job in
+            # test.yml already compiles wvc-lib with the rest of projectNative
+            wvc_lib:
+              - '.github/workflows/native.yml'
+              - 'wvc-lib/**'
+              - 'project/**'
+              - '**.sbt'
+              - 'flake.nix'
+              - 'flake.lock'
+              - SCALA_VERSION
+      - name: Plan platforms
+        id: plan
+        # Lists only the platforms that run, so a skipped platform never takes a runner
+        env:
+          EVENT: ${{ github.event_name }}
+          SRC: ${{ steps.filter.outputs.src }}
+          WVC_LIB: ${{ steps.filter.outputs.wvc_lib }}
+        run: |
+          full=false
+          linux_x64=false
+          case "$EVENT" in
+            schedule|workflow_dispatch) full=true; linux_x64=true ;;
+            push) linux_x64=$SRC ;;
+            pull_request) linux_x64=$WVC_LIB ;;
+          esac
+          entries=()
+          if [ "$full" = true ]; then
+            entries+=('{"os":"macos-latest","arch":"arm64","name":"mac","suffix":"dylib"}')
+            entries+=('{"os":"ubuntu-24.04-arm","arch":"arm64","name":"linux","suffix":"so"}')
+          fi
+          if [ "$linux_x64" = true ]; then
+            entries+=('{"os":"ubuntu-latest","arch":"x64","name":"linux","suffix":"so"}')
+          fi
+          matrix="[$(IFS=,; echo "${entries[*]}")]"
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "full=$full matrix=$matrix"
   build_native:
     name: Build native on ${{ matrix.name }}-${{ matrix.arch }}
     needs: changes
-    if: ${{ needs.changes.outputs.src == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.changes.outputs.matrix != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            arch: arm64
-            name: mac
-            suffix: dylib
-            skip: ${{ !(github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            name: linux
-            suffix: so
-            skip: ${{ !(github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
-          - os: ubuntu-latest
-            arch: x64
-            name: linux
-            suffix: so
-            skip: false
+        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-        if: ${{ !matrix.skip }}
       - uses: actions/setup-java@v6
-        if: ${{ !matrix.skip }}
         with:
           distribution: 'temurin'
           java-version: '25'
-          # Linux x64 runs on every PR, so it restores the shared cache built by sbt-cache.yml
-          # instead of saving its own; the other runners only run on main and keep setup-java's.
+          # Linux x64 runs on main and on PRs, so it restores the shared cache built by sbt-cache.yml
+          # instead of saving its own; the other runners only run nightly and keep setup-java's.
           cache: ${{ matrix.os != 'ubuntu-latest' && 'sbt' || '' }}
       - uses: ./.github/actions/sbt-cache
-        if: ${{ !matrix.skip && matrix.os == 'ubuntu-latest' }}
+        if: ${{ matrix.os == 'ubuntu-latest' }}
       - name: Install Nix
-        if: ${{ !matrix.skip }}
         uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-24.11
       - name: Set SCALA_VERSION env
-        if: ${{ !matrix.skip }}
         run: |
           SCALA_VERSION=$(cat SCALA_VERSION)
           echo SCALA_VERSION: $SCALA_VERSION
           echo "SCALA_VERSION=$SCALA_VERSION" >> $GITHUB_ENV
       - name: Build native binary
-        if: ${{ !matrix.skip }}
         run: |
           nix develop .#ci --command sbt wvcLib/nativeLinkReleaseFast
       - name: Ad-hoc sign macOS library
-        if: ${{ !matrix.skip && runner.os == 'macOS' }}
+        if: ${{ runner.os == 'macOS' }}
         run: |
           echo "Signing macOS library with ad-hoc signature..."
           # Sign the library
@@ -104,26 +137,26 @@ jobs:
           # Display signature info
           codesign --display --verbose=2 target/out/native0.5/scala-${{ env.SCALA_VERSION }}/wvc-lib/libwvlet.dylib
       - name: Install Rust for native tests
-        if: ${{ !matrix.skip && runner.os == 'Linux' }}
+        if: ${{ runner.os == 'Linux' }}
         run: rustup update
       - name: Test native library
-        if: ${{ !matrix.skip }}
         run: |
           echo "Testing native library..."
           nix develop .#ci --command make test
         working-directory: wvc-lib
       - name: Upload native binary
-        if: ${{ !matrix.skip }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}-${{ matrix.arch }}
           path: target/out/native0.5/scala-${{ env.SCALA_VERSION }}/wvc-lib/libwvlet.${{ matrix.suffix }}
+          # Full runs merge (and delete) these into wvc-lib; keep linux-x64-only uploads briefly
+          retention-days: ${{ needs.changes.outputs.full == 'true' && 90 || 3 }}
 
   build_windows:
     name: Build native on Windows (${{ matrix.arch }})
     needs: changes
-    # Only run on push to main branch, or on manual dispatch (to verify a branch on every platform)
-    if: ${{ github.event_name == 'workflow_dispatch' || (needs.changes.outputs.src == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    # Only in the nightly run, or on manual dispatch (to verify a branch on every platform)
+    if: ${{ needs.changes.outputs.full == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -251,9 +284,10 @@ jobs:
   collect_artifact:
     name: Collect wvc dll
     runs-on: ubuntu-latest
-    needs: [build_native, build_windows]
-    # Only run if at least one upstream job succeeded (skip when all are skipped or failed)
-    if: ${{ always() && (needs.build_native.result == 'success' || needs.build_windows.result == 'success') }}
+    needs: [changes, build_native, build_windows]
+    # Only for the full matrix: python-publish.yml packages the newest wvc-lib artifact, so a
+    # linux-x64-only run must not publish one. Still runs when some platforms failed.
+    if: ${{ always() && needs.changes.outputs.full == 'true' && (needs.build_native.result == 'success' || needs.build_windows.result == 'success') }}
     steps:
       - name: Merge artifacts
         uses: actions/upload-artifact/merge@v7

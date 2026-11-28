@@ -33,6 +33,10 @@ jobs:
         id: download-artifacts
         with:
           workflow: native.yml
+          # Only native.yml's nightly and dispatched runs build every platform and upload
+          # wvc-lib; search back to the newest one on main instead of the latest run
+          branch: main
+          search_artifacts: true
           workflow_conclusion: success
           name: wvc-lib
           path: native-libs/

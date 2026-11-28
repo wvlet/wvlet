@@ -16,6 +16,8 @@ Pushing a tag `vX.Y.Z` publishes all artifacts, including the npm packages and t
 - Every build smoke-tests the packaged vsix over LSP stdio (`vscode-wvlet/scripts/lsp-smoke.mjs`) before it can be published. Never bypass this gate.
 - Out-of-band extension releases run the "VS Code" workflow dispatch with `publish=true`; a patch other than 0 publishes as a pre-release.
 
+The Python wheels (`.github/workflows/python-publish.yml`) package the newest `wvc-lib` artifact from a full-matrix `native.yml` run on main, which runs nightly or on dispatch (see [CI runner budget](testing.md#ci-runner-budget)). If `wvc-lib` or its dependencies changed since the last nightly run, run `gh workflow run native.yml --ref main` and wait for it to pass before pushing the tag.
+
 ## JVM CLI packages
 
 Every `v*` tag uploads these packages to the GitHub release (`.github/workflows/release.yml`):
