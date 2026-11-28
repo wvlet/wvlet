@@ -1187,6 +1187,16 @@ enum Optimization(val name: String):
     */
   case SizePartitionsByRows extends Optimization("size_partitions_by_rows")
 
+  // --- Execution: resource accounting ---------------------------------------------------------
+
+  /**
+    * Count the bytes of each query's large in-memory structures (join builds, buffered results)
+    * against its [[wvlet.lang.engine.exec.MemoryContext]] and the engine's
+    * [[wvlet.lang.engine.exec.MemoryPool]], failing a query past its limit with RESOURCE_EXHAUSTED.
+    * Off, nothing is counted and no limit applies
+    */
+  case MemoryAccounting extends Optimization("memory_accounting")
+
 end Optimization
 
 object Optimization:

@@ -188,7 +188,8 @@ class OptimizerOptionsTest extends UniTest:
         "parallel_above_breakers",
         "gpu_offload",
         "union_all_pipelines",
-        "size_partitions_by_rows"
+        "size_partitions_by_rows",
+        "memory_accounting"
       )
   }
 

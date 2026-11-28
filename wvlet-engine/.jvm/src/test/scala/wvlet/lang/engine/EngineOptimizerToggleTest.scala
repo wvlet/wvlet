@@ -303,6 +303,9 @@ class EngineOptimizerToggleTest extends UniTest:
     // per-entry selection keeps the same rows
     Optimization.DictionarySelection ->
       "Changes how filters select rows of dictionary-coded strings, not the plan",
+    // MemoryAccountingTest checks that the flag turns reservations and limits off
+    Optimization.MemoryAccounting ->
+      "Changes whether queries count their memory against a limit, not the plan",
     // ParquetFooterCacheTest checks that the flag reuses parsed footers
     Optimization.ParquetFooterCache -> "Changes how often Parquet footers are parsed, not the plan",
     // EngineMaskedCaseWhenTest checks that the flag reaches the projections, and CaseWhenTest that

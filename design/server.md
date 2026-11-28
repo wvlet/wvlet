@@ -15,7 +15,8 @@
 
 ## Limits
 
-- The engine shares one FIFO task pool across queries and has no memory budget. The [query manager plan](../plans/2026-11-27-query-manager.md) covers memory accounting and fair CPU sharing (phases 2 and 3).
+- The engine shares one FIFO task pool across queries ([phase 3](../plans/2026-11-27-query-manager.md) covers fair CPU sharing).
+- Memory: each in-process engine query counts its join builds and buffered results against a `MemoryContext` ([engine](engine.md#memory-accounting)) and fails with RESOURCE_EXHAUSTED past its limit. The server does not yet set a limit or share a pool across sessions, and aggregation, sort, window, and CTE results are not counted yet ([plan](../plans/2026-11-27-engine-memory-accounting.md)).
 
 ## Tests
 

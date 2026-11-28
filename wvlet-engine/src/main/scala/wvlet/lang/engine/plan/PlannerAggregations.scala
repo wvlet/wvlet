@@ -90,7 +90,7 @@ trait PlannerAggregations:
       try
         Some(aggregation(r, items, defaultItems, plan, filter, builder))
       catch
-        case NonFatal(e) =>
+        case NonFatal(e) if !MemoryContext.exceededLimit(e) =>
           // Plan the original input when the rewritten one fails to plan
           debug(s"Not reusing IN subquery aggregates: ${e.getMessage}")
           hiddenSeq = hiddenSeqAtStart

@@ -60,6 +60,12 @@ class Planner(
 
   private[engine] def enabled(o: Optimization): Boolean = options.isEnabled(o)
 
+  /**
+    * The memory budget of the query this planner plans, current while it builds operators so that
+    * they capture it, also when plans are built later on another thread
+    */
+  private[engine] val memory: MemoryContext = MemoryContext.current
+
   private[plan] var hiddenSeq                            = 0
   private[engine] def hiddenName(prefix: String): String =
     hiddenSeq += 1
@@ -103,7 +109,9 @@ class Planner(
   private[engine] var rootPlans: Option[RootPlans] = None
 
   /** Plan a relation, then drop columns no operator needs so that scans read fewer columns */
-  def plan(rel: Relation): Operator =
+  def plan(rel: Relation): Operator = MemoryContext.withCurrent(memory)(planInScope(rel))
+
+  private def planInScope(rel: Relation): Operator =
     planDepth += 1
     try
       val deduped =

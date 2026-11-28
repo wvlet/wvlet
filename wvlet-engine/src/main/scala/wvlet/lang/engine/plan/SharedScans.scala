@@ -15,6 +15,7 @@ package wvlet.lang.engine.plan
 
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.engine.catalog.TableSource
+import wvlet.lang.engine.exec.MemoryContext
 import wvlet.lang.engine.expr.VExpr
 import wvlet.lang.engine.runtime.PushDownFilters
 import wvlet.lang.engine.vector.Schema
@@ -82,7 +83,7 @@ private[engine] object SharedScans extends LogSupport:
     try
       rewriteSites(planner, r)
     catch
-      case NonFatal(e) =>
+      case NonFatal(e) if !MemoryContext.exceededLimit(e) =>
         debug(s"Not sharing subquery scans: ${e.getMessage}")
         r
 
