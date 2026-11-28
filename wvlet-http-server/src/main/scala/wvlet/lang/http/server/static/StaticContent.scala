@@ -139,6 +139,7 @@ object StaticContent extends LogSupport:
         "font/woff2"
       case _ =>
         "application/octet-stream"
+    end match
 
   end findContentType
 
