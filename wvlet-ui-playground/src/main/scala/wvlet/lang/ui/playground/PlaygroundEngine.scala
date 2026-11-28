@@ -35,7 +35,6 @@ import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.query.QuerySelector
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.engine.EngineResult
-import wvlet.lang.engine.StdLibExamples
 import wvlet.lang.engine.WvletEngine
 import wvlet.lang.engine.catalog.EngineCatalog
 import wvlet.lang.engine.catalog.MemTable
@@ -168,15 +167,6 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
     catch
       case NonFatal(e) =>
         None
-
-  private lazy val stdlibExamples = StdLibExamples(engine, newCompiler(DBType.Wvlet))
-  private val exampleResults      = mutable.Map.empty[String, Either[String, String]]
-
-  /** The result of a stdlib `@example` on the engine (cached), or Left with the error */
-  def runExample(example: String): Either[String, String] = exampleResults.getOrElseUpdate(
-    example,
-    stdlibExamples.run(example)
-  )
 
   /** Completion candidates at a 0-origin `offset`: keywords, definitions, columns, or members */
   def complete(text: String, offset: Int): List[CompletionItem] =
@@ -355,7 +345,7 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
       // to it; they are not part of the query
       val sql =
         if text.contains("-- %%") then
-          lines.dropWhile(_.trim.startsWith("--"))
+          PlaygroundEngine.dropNotebookComments(lines)
         else
           lines
       sql.mkString("\n")
@@ -480,6 +470,23 @@ class PlaygroundEngine(val scaleFactor: Double = PlaygroundEngine.defaultScaleFa
 end PlaygroundEngine
 
 object PlaygroundEngine:
+  /**
+    * The leading comment lines of a statement without the notebook's own: cell markers and text
+    * cells. A query cell's comments right above its statement stay
+    */
+  def dropNotebookComments(lines: Seq[String]): Seq[String] =
+    val head   = lines.takeWhile(_.trim.startsWith("--"))
+    var inText = false
+    val kept   = head.filter { l =>
+      val t = l.trim
+      if t.startsWith("-- %%") then
+        inText = t.startsWith("-- %% [markdown]")
+        false
+      else
+        !inText
+    }
+    kept ++ lines.drop(head.size)
+
   val defaultScaleFactor: Double = 0.01
   val defaultRowLimit: Int       = 1000
 

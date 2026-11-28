@@ -61,7 +61,9 @@ class HScroll(content: RxElement, extraCls: String = "") extends RxElement:
           e.preventDefault()
           val startX    = e.clientX
           val startLeft = view.scrollLeft
-          val ratio     = view.scrollWidth.toDouble / view.clientWidth
+          // Content pixels per thumb pixel, also when the thumb is held at its minimum width
+          val ratio = (view.scrollWidth - view.clientWidth).toDouble /
+            math.max(1.0, view.clientWidth - thumb.getBoundingClientRect().width)
           thumb.setPointerCapture(e.pointerId)
           root.foreach(_.setAttribute("data-dragging", "true"))
           lazy val move: js.Function1[dom.PointerEvent, Unit] =

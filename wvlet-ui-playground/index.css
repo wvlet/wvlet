@@ -229,22 +229,6 @@ body {
     font-size: 12px;
 }
 
-.pg-result__types {
-    display: flex;
-    gap: 4px;
-    padding: 4px 8px;
-    overflow-x: auto;
-    flex: none;
-    scrollbar-width: thin;
-}
-
-.pg-type-chip {
-    color: var(--uni-faint);
-    font-family: var(--uni-font-mono);
-    font-size: 11px;
-    white-space: nowrap;
-}
-
 .pg-null {
     color: var(--uni-faint);
     font-style: italic;
@@ -1444,24 +1428,6 @@ summary.pg-engine-section__title {
 .pg-docs__chip[data-current="true"] {
     border-color: var(--uni-accent);
     color: var(--uni-accent);
-}
-
-.pg-result-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    flex: 1 1 auto;
-}
-
-.pg-result-stmt {
-    color: var(--uni-muted);
-    font-family: var(--uni-font-mono);
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1 1 auto;
 }
 
 .pg-cell__result .pg-result__error {

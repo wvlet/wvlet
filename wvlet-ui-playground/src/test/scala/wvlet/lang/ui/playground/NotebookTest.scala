@@ -49,6 +49,17 @@ class NotebookTest extends UniTest:
     NotebookText.parse(l.text) shouldBe cells
   }
 
+  test("should keep a commented query cell a query cell through its text") {
+    val cells = Seq(CellSource(Code, "-- my note\nfrom nation"))
+    NotebookText.parse(NotebookText.render(cells).text) shouldBe cells
+  }
+
+  test("should drop only the notebook's comments above a statement's SQL") {
+    PlaygroundEngine.dropNotebookComments(
+      Seq("-- %% [markdown]", "-- ## Title", "-- %%", "-- my note", "select 1")
+    ) shouldBe Seq("-- my note", "select 1")
+  }
+
   test("should open a function as its docs and one cell per example") {
     val lower = StdLibReference.entries.find(_.name == "lower").get
     val cells = NotebookText.ofFunction(lower)

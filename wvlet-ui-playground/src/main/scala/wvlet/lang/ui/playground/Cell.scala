@@ -42,6 +42,9 @@ class Cell(val id: Int, val kind: CellKind, initial: String):
   /** The line of the notebook text before the cell's first line, at its last run */
   var lineOffset: Int = 0
 
+  /** Whether the cell's last compiled run had debug blocks */
+  var hadDebugBlocks: Boolean = false
+
   /** The text of the last run, so an edit runs the cell again only when the text changed */
   var lastRunText: String = ""
 

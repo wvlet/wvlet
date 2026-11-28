@@ -112,7 +112,8 @@ object NotebookText:
     */
   def render(cells: Seq[CellSource]): Layout =
     cells match
-      case Seq(CellSource(CellKind.Code, t)) =>
+      // Plain only when it reads back the same: leading comments would parse as a text cell
+      case Seq(CellSource(CellKind.Code, t)) if !t.trim.startsWith("--") =>
         Layout(t, IndexedSeq(1))
       case _ =>
         val out    = Seq.newBuilder[String]

@@ -121,11 +121,14 @@ object Markdown:
     case MdInline.Bold(s) =>
       strong(s)
     case MdInline.Link(label, h) =>
-      // In-page links (#example=..., #function=...) open in the playground; others in a new tab
+      // In-page links (#example=..., #function=...) open in the playground; web links in a new
+      // tab. Other schemes (javascript:, data:) from a shared notebook show as plain text
       if h.startsWith("#") then
         a(href -> h, label)
-      else
+      else if h.startsWith("https://") || h.startsWith("http://") then
         a(href -> h, target -> "_blank", rel -> "noopener", label)
+      else
+        span(label)
   }
 
   /** A token of inline code, with its CSS class (empty for plain text) */

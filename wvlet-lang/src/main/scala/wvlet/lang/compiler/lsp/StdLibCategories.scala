@@ -89,6 +89,8 @@ object StdLibCategories:
     "Hash and encode values, and generate unique identifiers."
   )
 
+  val Other = StdLibCategory("other", "Other", "Functions not in the categories above.")
+
   /** Categories in reference order */
   val all: List[StdLibCategory] = List(
     Text,
@@ -103,7 +105,8 @@ object StdLibCategories:
     Array,
     Map,
     Json,
-    Encoding
+    Encoding,
+    Other
   )
 
   private val numericTypes = Set("numeric", "int", "long", "float", "real", "double", "decimal")
@@ -241,8 +244,10 @@ object StdLibCategories:
           Window
         case "" if n == "range" =>
           Array
-        case "" =>
+        case "" if encodingNames(n) =>
           Encoding
+        case "" =>
+          Other
         case "array" if aggregateNames(n) =>
           Aggregate
         case "array" if statisticalNames(n) =>

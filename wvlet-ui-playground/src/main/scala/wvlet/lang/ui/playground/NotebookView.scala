@@ -134,7 +134,12 @@ class CodeCellView(state: PlaygroundState, c: Cell) extends RxElement:
     subscription = c
       .text
       .run { t =>
-        if t != c.lastRunText && t.trim.nonEmpty then
+        if t.trim.isEmpty && c.output.get.nonEmpty then
+          // An emptied cell has no result
+          pendingRun.foreach(js.timers.clearTimeout)
+          c.lastRunText = t
+          c.output := None
+        else if t != c.lastRunText && t.trim.nonEmpty then
           pendingRun.foreach(js.timers.clearTimeout)
           pendingRun = Some(
             js.timers

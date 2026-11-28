@@ -109,8 +109,6 @@ class PlaygroundState extends LogSupport:
   private var nextCellId = 0
 
   private var engineOpt: Option[PlaygroundEngine] = None
-  // Whether the last run that compiled had debug blocks
-  private var hadDebugBlocks = false
 
   /** The engine over tables of the current scale factor, generated on first use */
   def engine: PlaygroundEngine =
@@ -207,14 +205,17 @@ class PlaygroundState extends LogSupport:
     val cs = cells.get
     val i  = cs.indexWhere(_.id == c.id)
     if i >= 0 && c.isCode then
-      // SQL cells run on their own; Wvlet cells see the definitions above them
+      // SQL cells run on their own; Wvlet cells compile with the cells above them. Line numbers
+      // follow the whole notebook's layout, the one revealLine maps lines back with
       val (text, offset) =
         mode.get match
           case InputMode.SQL =>
             (c.text.get, 0)
           case InputMode.Wvlet =>
-            val layout = NotebookText.render(cs.take(i + 1).map(_.source))
-            (layout.text, layout.startLines(i) - 1)
+            val layout = NotebookText.render(cs.map(_.source))
+            val start  = layout.startLines(i)
+            val upTo   = start - 1 + c.text.get.split("\n", -1).length
+            (layout.text.split("\n", -1).take(upTo).mkString("\n"), start - 1)
       c.lineOffset = offset
       val local = position.filter(_.line > 0).getOrElse(LinePosition(c.lastLine, 1))
       val ran   = engine.run(
@@ -262,24 +263,28 @@ class PlaygroundState extends LogSupport:
   private def showDebugTab(c: Cell, out: RunOutput, opened: Boolean): Unit =
     if opened || !out.hasError then
       val hasDebug = c.checksOf(out).exists(_.isInstanceOf[Check.Debug])
-      if hasDebug && (opened || !hadDebugBlocks) then
+      if hasDebug && (opened || !c.hadDebugBlocks) then
         outputOpen := true
         outputTab  := OutputTab.Debug
       else if opened && !hasDebug && outputTab.get == OutputTab.Debug then
         outputTab := OutputTab.Translation
-      hadDebugBlocks = hasDebug
+      c.hadDebugBlocks = hasDebug
 
   /** Select a 1-origin line of the notebook text in its cell's editor */
   def revealLine(line: Int): Unit =
-    val cs     = cells.get
-    val starts = NotebookText.render(cs.map(_.source)).startLines
-    cs.indices
-      .reverse
-      .find(i => starts(i) <= line)
-      .foreach { i =>
-        val c = cs(i)
-        c.reveal(line - starts(i) + 1)
-      }
+    val cs = cells.get
+    if mode.get == InputMode.SQL then
+      // A SQL cell runs on its own, so its lines are the focused cell's
+      focusedCell.foreach(_.reveal(line))
+    else
+      val starts = NotebookText.render(cs.map(_.source)).startLines
+      cs.indices
+        .reverse
+        .find(i => starts(i) <= line)
+        .foreach { i =>
+          val c = cs(i)
+          c.reveal(line - starts(i) + 1)
+        }
 
   /** Add a cell after `after` (or at the end), and focus its editor */
   def insertCell(kind: CellKind, after: Option[Cell] = None): Cell =
