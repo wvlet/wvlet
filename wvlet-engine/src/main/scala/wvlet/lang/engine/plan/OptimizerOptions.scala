@@ -1240,6 +1240,15 @@ enum Optimization(val name: String):
   case SpillAggregation extends Optimization("spill_aggregation")
 
   /**
+    * A hash join build whose input would take the query past its spill threshold splits its rows by
+    * key hash into partitions, keeps those that fit, and writes the rest to spill files; probe rows
+    * of the written partitions go to files too, and each written partition is joined on its own
+    * after the probe input ends (grace hash join, [[wvlet.lang.engine.exec.JoinSpill]]). Changes no
+    * plan, and nothing when the build fits
+    */
+  case SpillJoin extends Optimization("spill_join")
+
+  /**
     * With `memory_accounting`, a shared CTE result (or grouping-set input) drops its batches and
     * returns its reservation once every scan that reads it in the planned query has finished,
     * instead of when the query ends, so a query holds only the results still being read. Counted

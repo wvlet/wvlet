@@ -344,6 +344,9 @@ class EngineOptimizerToggleTest extends UniTest:
     // AggSpillTest checks that the flag keeps a spilling aggregation's input in memory
     Optimization.SpillAggregation ->
       "Changes whether aggregations past the spill threshold spill their input, not the plan",
+    // JoinSpillTest checks that the flag keeps a spilling join's build in memory
+    Optimization.SpillJoin ->
+      "Changes whether join builds past the spill threshold spill partitions, not the plan",
     // MemoryAccountingTest checks that shared results return their memory after their last reader
     Optimization.ReleaseCTEResults ->
       "Changes when shared CTE results drop their rows, not the plan"

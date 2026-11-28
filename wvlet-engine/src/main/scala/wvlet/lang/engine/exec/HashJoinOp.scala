@@ -16,6 +16,8 @@ package wvlet.lang.engine.exec
 import wvlet.lang.engine.expr.*
 import wvlet.lang.engine.vector.*
 
+import scala.collection.mutable
+
 /**
   * The hash table of a join's build (right) input: its rows, and for each distinct key the chain of
   * rows holding it. Built once on first use, then only read, so probes may share it across threads
@@ -37,7 +39,40 @@ final class JoinBuild(
 
   // The query's memory budget, captured where the build is planned: the build runs on whichever
   // thread probes first. A child: the build's reservation returns once no probe reads it
-  private val memory = MemoryContext.current.child()
+  private val queryMemory = MemoryContext.current
+  private val memory      = queryMemory.child()
+
+  /**
+    * Whether a build past the query's spill threshold spills its partitions that don't fit
+    * (`spill_join`); set before the build is made
+    */
+  var spill: Boolean = false
+
+  /**
+    * 0 for a join's own build, 1 for the build of a spilled partition (which may split once more)
+    */
+  private[exec] var spillDepth: Int = 0
+
+  /** The spilled partitions, or null when the build fits in memory */
+  @volatile
+  private var spilled: JoinSpill = null
+
+  /** The build's spilled state once built, null when it fits in memory */
+  def spillState: JoinSpill = spilled
+
+  /** The build's rows once built, the spilled ones included (0 once freed, unless spilled) */
+  def rows: Long =
+    val kept = Option(build).fold(0L)(_.size.toLong)
+    Option(spilled).fold(kept)(s => kept + s.spilledRows)
+
+  /** Whether the build spilled some of its partitions (known once built) */
+  def isSpilled: Boolean = spilled != null
+
+  /** The query's memory context, under which the joins of spilled partitions build */
+  private[exec] def queryContext: MemoryContext = queryMemory
+
+  /** The runner of the build steps */
+  private[exec] def buildRunner: TaskRunner = runner
 
   // Whether copies of the join probe this build (parallel parts): only their pipeline may free it
   @volatile
@@ -166,11 +201,57 @@ final class JoinBuild(
           built = true
       }
 
+  /**
+    * The build input with `spill`: read with [[MemoryContext.tryReserve]] of each batch and what
+    * building on it adds ([[JoinBuild.inputBytes]]), routed to [[JoinSpill]] partitions once the
+    * query would pass its spill threshold. Returns the rows to build the table over (the kept
+    * partitions when spilled) and the context counting them until the table is built
+    */
+  private def readSpillable(): (Seq[Batch], MemoryContext) =
+    val input = memory.child()
+    val b     = mutable.ArrayBuffer.empty[Batch]
+    var x     = right.next()
+    while x != null do
+      val c = x.compact()
+      if spilled == null && !input.tryReserve(JoinBuild.inputBytes(c)) then
+        // The buffered rows move to the partitions, which count them again
+        val s = JoinSpill(right.schema, rightKeys, memory, spillDepth)
+        input.release()
+        filterKeys = FilterKeys.of(filters, rightKeys)
+        b.foreach { y =>
+          if filterKeys != null then
+            filterKeys.add(y)
+          s.add(y)
+        }
+        b.clear()
+        spilled = s
+      if spilled != null then
+        if filterKeys != null then
+          filterKeys.add(c)
+        spilled.add(c)
+      else
+        b += c
+      x = right.next()
+    if spilled != null then
+      (spilled.finish(), null)
+    else
+      (b.toSeq, input)
+
+  // The build keys of a spilled build that its runtime filters need, collected while routing
+  private var filterKeys: FilterKeys = null
+
   private def buildTable(): Unit =
-    val batches = memory.drain(right)
-    val rows    = batches.iterator.map(_.size.toLong).sum
-    // The row chains and hash tables or direct index, before they are allocated
-    memory.reserve(rows * JoinBuild.IndexBytesPerRow)
+    val spillable        = spill && memory.canSpill
+    val (batches, input) =
+      if spillable then
+        readSpillable()
+      else
+        (memory.drain(right), null)
+    val rows = batches.iterator.map(_.size.toLong).sum
+    // The row chains and hash tables or direct index, before they are allocated (counted ahead
+    // with the input when spillable)
+    if !spillable then
+      memory.reserve(rows * JoinBuild.IndexBytesPerRow)
     // The runner of the build steps after the input (`parallel_join_build`): small builds stay on
     // the calling thread
     val steps =
@@ -202,9 +283,14 @@ final class JoinBuild(
       build.size,
       steps
     )
-    filters
-      .groupBy(_.key)
-      .foreach((k, fs) => RuntimeFilter.setAll(fs, rawKeys(k), valid, nv, steps))
+    if spilled == null then
+      filters
+        .groupBy(_.key)
+        .foreach((k, fs) => RuntimeFilter.setAll(fs, rawKeys(k), valid, nv, steps))
+    else if filterKeys != null then
+      // From every build key, not only the kept partitions'
+      filterKeys.set(steps)
+      filterKeys = null
     val keySteps =
       if parallelKeys then
         steps
@@ -229,8 +315,32 @@ final class JoinBuild(
       matched = new Array[Boolean](build.size)
     if trackExclusions then
       excluded = new Array[Boolean](build.size)
+    if spillable then
+      // The table and its rows, counted at their sizes, replace the input's ahead reservation
+      val held = MemoryContext.estimatedBytes(build) + structureBytes
+      if input != null then
+        input.release()
+      if spilled != null then
+        spilled.releaseKept()
+      memory.reserve(held)
 
   end buildTable
+
+  /** The bytes of the build's chains, tables or direct index, and match marks */
+  private def structureBytes: Long =
+    val n     = build.size.toLong
+    var bytes = 4L * n
+    if directHeads != null then
+      bytes += 4L * directHeads.length
+    else if flat != null then
+      bytes += flat.sizeBytes
+    else
+      bytes += JoinBuild.HashedBytesPerRow * n
+    if matched != null then
+      bytes += n
+    if excluded != null then
+      bytes += n
+    bytes
 
   /**
     * The direct index of a single Int32 / Date / Int64 key whose range over the valid rows spans at
@@ -586,6 +696,17 @@ object JoinBuild:
     */
   private[exec] val IndexBytesPerRow = 12L
 
+  /** Bytes per row of hashed tables: slots at half load, group hashes, and the stored keys */
+  private[exec] val HashedBytesPerRow = 24L
+
+  /**
+    * The bytes a spillable build reserves for a batch of its input ahead (`spill_join`): the batch,
+    * its copy in the concatenated build, and per row its valid-row list, packed key, chain, and
+    * table entries, so the build spills before building it would take the heap past the threshold
+    */
+  private[exec] def inputBytes(b: Batch): Long =
+    2 * MemoryContext.estimatedBytes(b) + b.size.toLong * (8L + 4L + 4L + HashedBytesPerRow)
+
   /** Builds with fewer rows use one hash table, built on the calling thread */
   def MinParallelRows: Int = sys
     .props
@@ -714,6 +835,12 @@ class HashJoinOp(
   ).withLateGather(lateGather).withUnmatchedOnly(unmatchedOnly)
 
   override def close(): Unit =
+    if partJoin != null then
+      partJoin.close()
+      partJoin = null
+    // The last probe of a spilled build: its files are no longer read (also after an early close)
+    if finishesSpill && joinBuild.isSpilled then
+      (spillRange._1 until spillRange._2).foreach(joinBuild.spillState.delete)
     // A shared build's right input belongs to the join that made the build
     if shared == null then
       super.close()
@@ -808,19 +935,165 @@ class HashJoinOp(
       buildExcluded = BuildExclusions.marks(joinBuild, outerMode, shared != null, build.size)
     built = true
 
+  /**
+    * Whether a build past the spill threshold spills its partitions that don't fit (`spill_join`)
+    */
+  def spills: Boolean = joinBuild.spill
+
+  def withSpill(enabled: Boolean): this.type =
+    // Probe rows of spilled partitions are written to files too
+    joinBuild.spill =
+      enabled && SpillBlocks.spillable(left.schema) && SpillBlocks.spillable(right.schema)
+    this
+
+  // Whether this join joins its build's spilled partitions once its probe input ends: the join
+  // that owns its build, or the copy in a pipeline's spill tail ([[withSpillFinish]]); the copies
+  // probing parts only route their rows
+  private var finishesSpill = shared == null
+
+  /** Make this copy the one that joins the spilled partitions, after every other probe of them */
+  def withSpillFinish(): this.type =
+    finishesSpill = true
+    this
+
+  // The spilled partitions [from, until) this copy joins: all of them, or one range of a spill
+  // tail split into tasks
+  private var spillRange = (0, JoinSpill.Partitions)
+
+  /** Join only the spilled partitions [from, until) (a spill tail split into tasks) */
+  def withSpillRange(from: Int, until: Int): this.type =
+    spillRange = (from, math.min(until, JoinSpill.Partitions))
+    this
+
+  // The router of this copy's probe rows, once the build spilled
+  private var router: JoinSpill.ProbeRouter = null
+  // 0: probing, 1: emitting the unmatched rows of the in-memory build, 2: joining the spilled
+  // partitions, 3: done
+  private var phase = 0
+  // The next spilled partition to join, and the join of the current one
+  private var nextPartition        = 0
+  private var partJoin: HashJoinOp = null
+
   def next(): Batch =
     if !built then
       buildTable()
     var out: Batch = null
     while out == null do
-      val probe = left.next()
-      if probe == null then
-        val rest = emitUnmatchedBuild()
-        if rest == null then
+      phase match
+        case 0 =>
+          val probe = left.next()
+          if probe == null then
+            if router != null then
+              router.flush()
+            phase = 1
+          else
+            out = probeOrRoute(probe)
+        case 1 =>
+          out = emitUnmatchedBuild()
+          if out == null then
+            phase = 2
+            if finishesSpill && joinBuild.isSpilled then
+              // Every probe routed its rows: the in-memory build is done with
+              joinBuild.spillState.finishProbes()
+              nextPartition = spillRange._1
+              build = null
+              buildMatched = null
+              buildExcluded = null
+              joinBuild.free()
+            else
+              phase = 3
+        case 2 =>
+          out = nextSpilled()
+          if out == null then
+            phase = 3
+        case _ =>
           freeOwnBuild()
-        return rest
-      out = probeBatch(probe)
+          return null
+    end while
     out
+
+  end next
+
+  private def probeOrRoute(probe: Batch): Batch =
+    val s = joinBuild.spillState
+    if s == null then
+      probeBatch(probe)
+    else
+      if router == null then
+        router = s.probeRouter(left.schema, leftKeys)
+      val kept = router.route(probe)
+      if kept == null then
+        null
+      else
+        probeBatch(kept)
+
+  /**
+    * The next rows of the spilled partitions' joins: each partition's build file joined with its
+    * probe file on its own, with the same join kind, then its files deleted. Null once every
+    * partition is joined
+    */
+  private def nextSpilled(): Batch =
+    val s          = joinBuild.spillState
+    var out: Batch = null
+    while out == null do
+      if partJoin == null then
+        while nextPartition < spillRange._2 && !needsJoin(s, nextPartition) do
+          s.delete(nextPartition)
+          nextPartition += 1
+        if nextPartition >= spillRange._2 then
+          return null
+        partJoin = partitionJoin(s, nextPartition)
+      out = partJoin.next()
+      if out == null then
+        partJoin.close()
+        partJoin = null
+        s.delete(nextPartition)
+        nextPartition += 1
+    out
+
+  // Whether spilled partition p can emit rows: it has build rows, and probe rows unless the join
+  // emits unmatched build rows
+  private def needsJoin(s: JoinSpill, p: Int): Boolean =
+    s.buildFiles(p) != null &&
+      (s.probeFiles(p) != null || (kind.tracksBuildMatches && kind != JoinKind.RightSemi))
+
+  private def partitionJoin(s: JoinSpill, p: Int): HashJoinOp =
+    val bf    = s.buildFiles(p)
+    val pf    = s.probeFiles(p)
+    val probe = IteratorOp(
+      left.schema,
+      () =>
+        if pf == null then
+          Iterator.empty
+        else
+          pf.read()
+      ,
+      "SpilledProbe"
+    )
+    val buildInput = IteratorOp(right.schema, () => bf.read(), "SpilledBuild")
+    MemoryContext.withCurrent(joinBuild.queryContext) {
+      val j = HashJoinOp(
+        probe,
+        buildInput,
+        leftKeys,
+        rightKeys,
+        kind,
+        residual,
+        schema,
+        buildRunner = joinBuild.buildRunner,
+        nullsEqual = nullsEqual,
+        exclude = exclude
+      ).withFlagsOf(this)
+      // Its output outlives the partition's build, which its next partition frees
+      j.withLateGather(false)
+      // A partition that doesn't fit splits once more, by another hash
+      j.joinBuild.spillDepth = joinBuild.spillDepth + 1
+      j.withSpill(joinBuild.spillDepth < JoinSpill.MaxDepth)
+      JoinSpill.partitionsJoined.incrementAndGet()
+      j
+    }
+
+  end partitionJoin
 
   /** A join probing its build alone frees it once its probe input and unmatched rows are done */
   private def freeOwnBuild(): Unit =

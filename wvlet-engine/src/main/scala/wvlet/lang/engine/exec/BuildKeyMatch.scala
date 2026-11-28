@@ -55,7 +55,8 @@ final class BuildKeyMatch(val sources: IndexedSeq[BuildKeyMatch.Source]) extends
 
   def eval(b: Batch): Vec =
     val n = b.size
-    if off || sources.exists(s => s.build == null || !s.build.isBuilt) then
+    // A spilled build holds only some keys in memory: keep every row
+    if off || sources.exists(s => s.build == null || !s.build.isBuilt || s.build.isSpilled) then
       return Vec.constant(PType.Bool, true, n)
     val out  = new Array[Boolean](n)
     var left = n
