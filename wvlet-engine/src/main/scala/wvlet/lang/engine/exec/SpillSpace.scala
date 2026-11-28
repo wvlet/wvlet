@@ -91,6 +91,13 @@ trait SpillCompat:
     */
   def headroomThresholdBytes(threads: Int): Long = defaultThresholdBytes
 
+  /**
+    * The default [[ScanDecodeBudget]]: on the JVM, the larger of an eighth of the max heap and all
+    * but 1 GB of it (or the bytes of the wvlet.engine.scanDecodeBudget system property); none on
+    * Native, whose heap has no cap by default, and on Scala.js
+    */
+  def defaultScanDecodeBudgetBytes: Long
+
   /** The folder under which queries create their spill folders by default */
   def defaultDirectory: String
 

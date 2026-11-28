@@ -44,6 +44,35 @@ trait SpillCompatImpl extends SpillCompat:
     SpillThreshold.withHeadroom(Runtime.getRuntime.maxMemory(), threads, allowance)
   }
 
+  def defaultScanDecodeBudgetBytes: Long =
+    SpillCompatImpl.heapShare("wvlet.engine.scanDecodeBudget")(max =>
+      math.max(max / 8, max - SpillCompatImpl.DecodeReserveBytes)
+    )
+
   def defaultDirectory: String = System.getProperty("java.io.tmpdir")
 
   def newSpace(directory: String): SpillSpace = FileSpillSpace(directory)
+
+end SpillCompatImpl
+
+object SpillCompatImpl:
+  /**
+    * The heap the default scan decode budget leaves to everything else on a large heap. On spark1
+    * at TPC-H SF10 (1M-row row groups), -Xmx768m ran out of heap with a 192 MB budget and finished
+    * q4 and q6 with 128 MB; leaving 2 GB slowed 2g 2.25x and 1536m 2.4x on q1, while leaving 1 GB
+    * gave 1536m 21 of 22 queries and 2g 1.13x
+    */
+  val DecodeReserveBytes: Long = 1L << 30
+
+  /** The bytes of system property `property`, or `share` of the max heap (none without a cap) */
+  def heapShare(property: String)(share: Long => Long): Long = sys
+    .props
+    .get(property)
+    .flatMap(_.trim.toLongOption)
+    .getOrElse {
+      val max = Runtime.getRuntime.maxMemory()
+      if max == Long.MaxValue then
+        Long.MaxValue
+      else
+        share(max)
+    }

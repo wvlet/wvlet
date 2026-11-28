@@ -200,7 +200,8 @@ class OptimizerOptionsTest extends UniTest:
         "spill_headroom",
         "spill_cte_results",
         "spill_sort",
-        "spill_window"
+        "spill_window",
+        "bound_scan_decode"
       )
   }
 

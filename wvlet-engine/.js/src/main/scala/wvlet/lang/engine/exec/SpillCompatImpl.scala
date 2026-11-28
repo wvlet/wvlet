@@ -17,6 +17,7 @@ package wvlet.lang.engine.exec
 trait SpillCompatImpl extends SpillCompat:
   def isSupported: Boolean                    = false
   def defaultThresholdBytes: Long             = Long.MaxValue
+  def defaultScanDecodeBudgetBytes: Long      = Long.MaxValue
   def defaultDirectory: String                = ""
   def newSpace(directory: String): SpillSpace =
     throw UnsupportedOperationException("Scala.js cannot spill to files")

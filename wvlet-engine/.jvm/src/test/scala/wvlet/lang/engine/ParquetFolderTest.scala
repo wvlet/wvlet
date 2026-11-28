@@ -115,6 +115,9 @@ class ParquetFolderTest extends UniTest:
     try
       splits.parts.size shouldBe 10
       splits.rows shouldBe Seq.fill(10)(2048L)
+      // Each row group's estimated decode bytes, from its column chunks' sizes
+      splits.bytes.size shouldBe 10
+      splits.bytes.forall(_ > 0) shouldBe true
       splits.parts.flatMap(_()).map(_.size).sum shouldBe 20480
     finally
       splits.close()

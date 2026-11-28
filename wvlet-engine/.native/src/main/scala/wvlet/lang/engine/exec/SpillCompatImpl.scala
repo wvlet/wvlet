@@ -18,9 +18,10 @@ package wvlet.lang.engine.exec
   * (`GC_MAXIMUM_HEAP_SIZE`), so there is no default threshold
   */
 trait SpillCompatImpl extends SpillCompat:
-  def isSupported: Boolean        = true
-  def defaultThresholdBytes: Long = Long.MaxValue
-  def defaultDirectory: String    = Option(System.getProperty("java.io.tmpdir"))
+  def isSupported: Boolean               = true
+  def defaultThresholdBytes: Long        = Long.MaxValue
+  def defaultScanDecodeBudgetBytes: Long = Long.MaxValue
+  def defaultDirectory: String           = Option(System.getProperty("java.io.tmpdir"))
     .orElse(sys.env.get("TMPDIR"))
     .getOrElse("/tmp")
 

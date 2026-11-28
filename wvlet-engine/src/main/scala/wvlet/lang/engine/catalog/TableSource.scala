@@ -14,6 +14,7 @@
 package wvlet.lang.engine.catalog
 
 import wvlet.lang.api.StatusCode
+import wvlet.lang.engine.exec.ScanDecodeBudget
 import wvlet.lang.engine.exec.TaskRunner
 import wvlet.lang.engine.vector.*
 import wvlet.uni.cloud.parquet.*
@@ -161,12 +162,15 @@ end TableSource
 /**
   * Independently readable parts of a scan; `close` releases what the parts share. `rows` holds the
   * row count of each part when the source knows it (e.g. from Parquet row-group metadata), and is
-  * empty otherwise
+  * empty otherwise. `bytes` holds the estimated bytes reading each part holds at once (a Parquet
+  * row group's decode, [[ScanDecodeBudget.rowGroupBytes]]) when the source knows them, and is empty
+  * otherwise
   */
 case class ScanSplits(
     parts: IndexedSeq[() => Iterator[Batch]],
     close: () => Unit,
-    rows: IndexedSeq[Long] = IndexedSeq.empty
+    rows: IndexedSeq[Long] = IndexedSeq.empty,
+    bytes: IndexedSeq[Long] = IndexedSeq.empty
 )
 
 object ScanSplits:
@@ -908,14 +912,29 @@ class ParquetSource(
           )
         }
         val meta = f.rowGroups
-        Some(ScanSplits(parts, () => f.close(), groups.map(g => meta(g).numRows)))
+        val read = cols.toSet
+        Some(
+          ScanSplits(
+            parts,
+            () => f.close(),
+            groups.map(g => meta(g).numRows),
+            groups.map(g => ParquetSource.decodeBytes(meta(g), read))
+          )
+        )
 
-  /** The single file's row groups that `spec` doesn't skip, with their row counts */
-  private[catalog] def selectedRowGroups(spec: ScanSpec): IndexedSeq[(Int, Long)] =
+  /**
+    * The single file's row groups that `spec` doesn't skip, with their row counts and estimated
+    * decode bytes ([[ParquetSource.decodeBytes]])
+    */
+  private[catalog] def selectedRowGroups(spec: ScanSpec): IndexedSeq[(Int, Long, Long)] =
     val f = openForScan(spec)
     try
-      val meta = f.rowGroups
-      ParquetSource.selectRowGroups(f, spec, readOptions(spec)._3).map(g => (g, meta(g).numRows))
+      val meta              = f.rowGroups
+      val (cols, _, option) = readOptions(spec)
+      val read              = cols.toSet
+      ParquetSource
+        .selectRowGroups(f, spec, option)
+        .map(g => (g, meta(g).numRows, ParquetSource.decodeBytes(meta(g), read)))
     finally
       f.close()
 
@@ -1089,6 +1108,24 @@ object ParquetSource:
           i += 1
       }
       cols.indices.foreach(j => vecs(cols(j)) = StrVec(out(j), plain(cols(j)).nullFlags))
+
+  /**
+    * The estimated bytes of decoding the column chunks of `cols` in row group `meta`
+    * ([[ScanDecodeBudget.rowGroupBytes]]); a nested column counts all its leaves
+    */
+  def decodeBytes(meta: RowGroupMeta, read: Set[String]): Long =
+    var c = 0L
+    var u = 0L
+    var n = 0
+    meta
+      .columns
+      .foreach { x =>
+        if read(x.path.head) then
+          c += x.totalCompressedSize
+          u += x.totalUncompressedSize
+          n += 1
+      }
+    ScanDecodeBudget.rowGroupBytes(c, u, meta.numRows, n)
 
   /**
     * The positions of `cols` grouped into the tasks decoding row group `meta` in parallel, largest

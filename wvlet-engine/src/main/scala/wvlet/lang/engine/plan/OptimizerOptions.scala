@@ -1289,6 +1289,16 @@ enum Optimization(val name: String):
     */
   case SpillWindow extends Optimization("spill_window")
 
+  /**
+    * A morsel pipeline submits its next Parquet row-group part only while the estimated decode
+    * bytes of the parts running in the process (compressed chunks, decompressed pages, decoded
+    * vectors) stay within [[wvlet.lang.engine.exec.ScanDecodeBudget]] (by default the larger of an
+    * eighth of the JVM's max heap and all but 1 GB of it), instead of up to twice the parallelism
+    * of parts. At -Xmx768m, TPC-H SF10 q1 and q6 ran out of heap decoding ~20 lineitem row groups
+    * at once. Changes no plan, and nothing when the parts fit
+    */
+  case BoundScanDecode extends Optimization("bound_scan_decode")
+
 end Optimization
 
 object Optimization:

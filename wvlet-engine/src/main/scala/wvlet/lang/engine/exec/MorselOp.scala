@@ -119,6 +119,42 @@ class MorselOp(
   // The runs of a spill tail split by spilled partition, not submitted yet
   private var pendingTails: Iterator[() => Seq[Batch]] = Iterator.empty
 
+  // The process's scan decode budget (`bound_scan_decode`); null to submit parts up to the window
+  private var decodeBudget: ScanDecodeBudget = ScanDecodeBudget.process
+
+  /**
+    * Submit a part only while the estimated bytes of the parts in flight stay within `budget`
+    * ([[ScanSplits.bytes]]); null for no bound
+    */
+  def withDecodeBudget(budget: ScanDecodeBudget): this.type =
+    decodeBudget = budget
+    this
+
+  /** The decode budget its parts are submitted within; null for none */
+  def decodeBudgetOrNull: ScanDecodeBudget = decodeBudget
+
+  /** How many times a part waited for the decode budget (for tests) */
+  def budgetWaits: Int        = budgetWaitCount
+  private var budgetWaitCount = 0
+
+  /** The estimated bytes of part k of s; 0 when unknown */
+  private def partBytes(s: ScanSplits, k: Int): Long =
+    if decodeBudget != null && k < s.bytes.size then
+      s.bytes(k)
+    else
+      0L
+
+  /** Whether part bytes may be submitted now, acquiring them from the decode budget */
+  private def acquire(bytes: Long): Boolean =
+    if bytes <= 0 then
+      true
+    else if decodeBudget.tryAcquire(bytes, force = running == 0) then
+      queryMemory.addScanBytes(bytes)
+      true
+    else
+      budgetWaitCount += 1
+      false
+
   /** The number of steps run before the parts start (for tests) */
   def prepareSteps: Int = prepare.size
 
@@ -166,7 +202,7 @@ class MorselOp(
     else
       tailTaskCount = runs.size
       runs.foreach { case (t, (from, until)) =>
-        inFlight.enqueue(Item.Task(runner.submit(() => runTail(t, from, until)), null))
+        inFlight.enqueue(Item.Task(runner.submit(() => runTail(t, from, until)), null, null))
         running += 1
       }
 
@@ -233,24 +269,43 @@ class MorselOp(
     while more && running < window do
       if splits != null && nextPart < splits.parts.size then
         val (seg, s, k) = (openSegment, splits, nextPart)
-        // The segment's last part closes its splits once its batches are taken
-        val last =
-          if k == s.parts.size - 1 then
-            s
-          else
-            null
-        inFlight.enqueue(Item.Task(runner.submit(() => runPart(seg, s, k)), last))
-        running += 1
-        nextPart += 1
+        val bytes       = partBytes(s, k)
+        if !acquire(bytes) then
+          // Past the decode budget: wait until a part of this operator is taken
+          more = false
+        else
+          // The segment's last part closes its splits once its batches are taken
+          val last =
+            if k == s.parts.size - 1 then
+              s
+            else
+              null
+          val grant = Grant(bytes, decodeBudget, queryMemory)
+          val h     =
+            try
+              runner.submit { () =>
+                try runPart(seg, s, k)
+                finally grant.release()
+              }
+            catch
+              case e: Throwable =>
+                grant.release()
+                throw e
+          inFlight.enqueue(Item.Task(h, last, grant))
+          running += 1
+          nextPart += 1
       else if pendingTails.hasNext then
         if running < runner.parallelism then
-          inFlight.enqueue(Item.Task(runner.submit(pendingTails.next()), null))
+          inFlight.enqueue(Item.Task(runner.submit(pendingTails.next()), null, null))
           running += 1
         else
           more = false
       else
         splits = null
         more = openNext()
+    end while
+
+  end fill
 
   /** Whether a run over one in-memory batch may run over row ranges of it (for tests) */
   def slicesOneBatch: Boolean = buildRows.isDefined
@@ -309,9 +364,12 @@ class MorselOp(
         startTails()
       else
         inFlight.dequeue() match
-          case Item.Task(h, last) =>
+          case Item.Task(h, last, grant) =>
             running -= 1
-            current = h.get().iterator
+            try current = h.get().iterator
+            finally
+              if grant != null then
+                grant.release()
             if last != null then
               // Every part of its segment has finished: release what the splits hold
               last.close()
@@ -320,6 +378,7 @@ class MorselOp(
             streaming = seg.pipeline(seg.scan)
           case Item.Stream(run) =>
             streaming = run()
+    end while
     current.next()
 
   end next
@@ -342,15 +401,18 @@ class MorselOp(
       streaming.close()
       streaming = null
     // Parts that haven't started are dropped; running ones finish before the sources close
-    val tasks = inFlight.collect { case Item.Task(h, _) =>
-      h
+    val tasks = inFlight.collect { case t: Item.Task =>
+      t
     }
-    tasks.foreach(_.cancel())
-    tasks.foreach { h =>
+    tasks.foreach(_.handle.cancel())
+    tasks.foreach { t =>
       try
-        h.get()
+        t.handle.get()
       catch
         case _: Throwable =>
+      finally
+        if t.grant != null then
+          t.grant.release()
     }
     inFlight.clear()
     opened.foreach(_.close())
@@ -421,9 +483,24 @@ object MorselOp:
         )
       )
 
+  /**
+    * A part's bytes acquired from the decode budget, returned once: by the part's task when it
+    * finishes (its decode buffers are garbage then), or when the part is taken or dropped
+    */
+  private final class Grant(bytes: Long, budget: ScanDecodeBudget, memory: MemoryContext):
+    private val done = java.util.concurrent.atomic.AtomicBoolean(bytes <= 0)
+
+    def release(): Unit =
+      if done.compareAndSet(false, true) then
+        budget.release(bytes)
+        memory.addScanBytes(-bytes)
+
   private enum Item:
-    /** A part; `last`, when it is its segment's last part, the segment's splits */
-    case Task(handle: TaskRunner.Handle[Seq[Batch]], last: ScanSplits)
+    /**
+      * A part; `last`, when it is its segment's last part, the segment's splits; `grant`, its bytes
+      * acquired from the decode budget (null for tails)
+      */
+    case Task(handle: TaskRunner.Handle[Seq[Batch]], last: ScanSplits, grant: Grant)
     case OnCaller(segment: Segment)
 
     /** A spill tail run, streamed on the calling thread */
