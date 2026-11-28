@@ -207,6 +207,8 @@ wvlet ui [options]
 | `--no-browser` | Don't open browser automatically |
 | `--max-running-queries <n>` | Queries running at once; others wait in the queue (default: half the CPUs) |
 | `--max-queued-queries <n>` | Queries waiting to run; submissions past it fail with `RESOURCE_EXHAUSTED` (default: 1000). See [Remote Wvlet Server](./remote-server.md#query-queue-and-logs) |
+| `--max-query-memory <size>` | Memory one wvlet-engine query may hold, e.g. `2GB`, before it fails with `RESOURCE_EXHAUSTED` (default: no limit) |
+| `--memory-pool-size <size>` | Memory wvlet-engine queries may hold together before queued queries wait (default: 70% of the heap) |
 
 **Examples:**
 

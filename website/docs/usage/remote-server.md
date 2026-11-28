@@ -63,12 +63,14 @@ The server runs a bounded number of queries at once and queues the rest; a clien
 
 - `--max-running-queries N` sets how many queries run at once (default: half the CPUs). Others wait as `QUEUED`.
 - `--max-queued-queries N` sets how many queries can wait (default: 1000). Past it, a submission fails with `RESOURCE_EXHAUSTED`; retry after running queries finish.
+- `--max-query-memory SIZE` (e.g. `2GB`) fails a query on the in-process wvlet engine with `RESOURCE_EXHAUSTED` once its join, aggregation, sort, window, and CTE tables and buffered results exceed it (default: no limit).
+- `--memory-pool-size SIZE` (e.g. `8GB`) is how much memory the in-process engine's queries may hold together (default: 70% of the JVM heap). While they hold more, queued queries wait for running ones to finish instead of starting. Sizes take `KB`, `MB`, `GB`, or `TB` (powers of 1024); memory is estimated from the engine's vectors, so leave headroom below the heap. Other engines (DuckDB, Trino) are not counted.
 - Each query gets an id like `20261127_155437_00042_x7k2p`: the UTC creation time, a per-server sequence number, and a server instance id, so ids sort by time and neighboring queries differ in the sequence.
 - Finished queries stay readable by id for an hour (at most 1000 are kept).
 - Query events (`CREATED`, `STARTED`, `COMPLETED`, with status, times, row counts, and errors) are appended as JSON lines to `query-events-yyyy-MM-dd.jsonl` in the `logs` folder next to the server log; the server prints the folder at startup.
 
 ```bash
-wvlet ui --port 9090 --max-running-queries 4 --max-queued-queries 100
+wvlet ui --port 9090 --max-running-queries 4 --max-queued-queries 100 --max-query-memory 2GB
 ```
 
 ## Authentication

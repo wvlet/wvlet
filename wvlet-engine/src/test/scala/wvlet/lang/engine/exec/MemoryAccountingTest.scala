@@ -145,6 +145,22 @@ class MemoryAccountingTest extends UniTest:
     pool.reservedBytes shouldBe 0L
   }
 
+  test("should give new engines the process pool and its per-query limit") {
+    val prev = MemoryPool.process
+    val pool = MemoryPool(queryLimitBytes = 64 * 1024)
+    MemoryPool.setProcessPool(pool)
+    try
+      val engine = WvletEngine()
+      tables.foreach(engine.catalog.register)
+      engine.memoryPool shouldBeTheSameInstanceAs pool
+      intercept[WvletLangException] {
+        run(engine, joinQuery)
+      }.statusCode shouldBe StatusCode.RESOURCE_EXHAUSTED
+      pool.reservedBytes shouldBe 0L
+    finally
+      MemoryPool.setProcessPool(prev)
+  }
+
   test("should scope the current context to a block") {
     val c = MemoryPool().newQuery()
     MemoryContext.current shouldBeTheSameInstanceAs MemoryContext.NoOp

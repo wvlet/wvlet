@@ -16,7 +16,9 @@
 ## Limits
 
 - The engine shares one FIFO task pool across queries ([phase 3](../plans/2026-11-27-query-manager.md) covers fair CPU sharing).
-- Memory: each in-process engine query counts its join builds, aggregation tables, sort and window buffers, shared CTE results, and buffered results against a `MemoryContext` ([engine](engine.md#memory-accounting)) and fails with RESOURCE_EXHAUSTED past its limit. The server does not yet set a limit or share a pool across sessions ([plan](../plans/2026-11-27-engine-memory-accounting.md)).
+- Memory: each in-process engine query counts its join builds, aggregation tables, sort and window buffers, shared CTE results, and buffered results against a `MemoryContext` ([engine](engine.md#memory-accounting)) and fails with RESOURCE_EXHAUSTED past `--max-query-memory` (`QueryManagerConfig.maxQueryMemory`, default none).
+- At startup the server makes `QueryManagerConfig.newMemoryPool()` the process pool (`MemoryPool.setProcessPool`), so every session's engine shares it. `--memory-pool-size` (default 70% of the max heap) is a soft capacity: the dispatcher starts no queued query while the pool is over it and some query is running (only running queries release memory), and re-checks on every completion. No spill, and no killing of the largest query yet ([plan](../plans/2026-11-27-engine-memory-accounting.md)).
+- Memory counts only in-process engine queries; DuckDB and remote engines are not counted.
 
 ## Tests
 
