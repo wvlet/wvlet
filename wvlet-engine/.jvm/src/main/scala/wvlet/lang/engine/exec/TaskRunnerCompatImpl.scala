@@ -137,17 +137,19 @@ class ThreadPoolRunner(val parallelism: Int) extends TaskRunner:
             throw e.getCause
       def cancel(): Unit = f.cancel(false)
 
-  /** Threads, busy threads, and waiting tasks of the task pools started so far */
+  /**
+    * Busy threads and waiting tasks of the task pools (not the coordinator pools), against
+    * `parallelism` threads: queries use the fair pool with `fair_task_scheduling` and the FIFO pool
+    * without it, so only one is busy at a time
+    */
   override def load: TaskRunner.Load =
-    var l = TaskRunner.Load(threads = 0, busy = 0, waitingTasks = 0)
+    var l = TaskRunner.Load(threads = parallelism, busy = 0, waitingTasks = 0)
     if poolStarted then
-      l = l + TaskRunner.Load(parallelism, pool.getActiveCount, pool.getQueue.size)
+      l = l.add(busy = pool.getActiveCount, waitingTasks = pool.getQueue.size)
     if fairStarted then
-      l = l + fair.load
-    if l.threads == 0 then
-      TaskRunner.Load(threads = parallelism, busy = 0, waitingTasks = 0)
-    else
-      l
+      val f = fair.load
+      l = l.add(busy = f.busy, waitingTasks = f.waitingTasks)
+    l
 
   def shutdown(): Unit =
     shutDown = true

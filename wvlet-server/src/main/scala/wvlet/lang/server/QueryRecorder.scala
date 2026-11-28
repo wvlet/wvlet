@@ -9,7 +9,8 @@ import wvlet.lang.compiler.query.QueryProgressMonitor
   * Records what one server query sent to its engines: SQL statements for SQL engines, physical
   * plans and memory contexts of the in-process engine's statements. The runner reports to it from
   * the query's worker thread while monitoring threads read it, so access is synchronized. Bounded:
-  * a script running many statements keeps the first [[QueryRecorder.MaxStatements]] of each kind.
+  * a script running many statements keeps the first [[QueryRecorder.MaxStatements]] SQL statements
+  * and plans, and only the memory contexts still holding memory.
   */
 class QueryRecorder extends QueryProgressMonitor:
   private var sqls     = Vector.empty[String]
@@ -36,14 +37,13 @@ class QueryRecorder extends QueryProgressMonitor:
         if plans.size < QueryRecorder.MaxStatements then
           plans :+= t
       )
-      if memory.isTracked then
-        // Keep the open contexts for live bytes; fold finished ones into the dropped peak so a long
-        // script does not keep every context
-        if memories.size >= QueryRecorder.MaxStatements then
-          val (done, open) = memories.partition(_.reservedBytes == 0L)
-          droppedPeak = (droppedPeak +: done.map(_.peakBytes)).max
-          memories = open
-        memories :+= memory
+      if memory.isTracking then
+        // A query's statements run one after another, so earlier contexts holding nothing have
+        // finished: fold them into the dropped peak and keep only those still holding memory
+        // (statements an engine runs inside another one)
+        val (done, open) = memories.partition(_.reservedBytes == 0L)
+        droppedPeak = (droppedPeak +: done.map(_.peakBytes)).max
+        memories = open :+ memory
     }
 
   private def plansFull: Boolean = synchronized(plans.size >= QueryRecorder.MaxStatements)
@@ -67,5 +67,5 @@ class QueryRecorder extends QueryProgressMonitor:
 end QueryRecorder
 
 object QueryRecorder:
-  /** Statements of each kind a recorder keeps */
+  /** SQL statements and engine plans a recorder keeps */
   val MaxStatements: Int = 100

@@ -108,6 +108,7 @@ case class QueryList(
     nextPageToken: Option[String] = None
 )
 
+/** Which query [[wvlet.lang.api.v1.frontend.FrontendApi.getQueryDetail]] reads */
 case class QueryDetailRequest(queryId: String)
 
 /**

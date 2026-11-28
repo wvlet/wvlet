@@ -220,9 +220,6 @@ final class MemoryContext private[exec] (
     */
   def peakBytes: Long = root.peak.get()
 
-  /** Whether this context counts memory: false for [[MemoryContext.NoOp]] */
-  def isTracked: Boolean = pool != null
-
   private def add(bytes: Long): Unit =
     val total = reserved.addAndGet(bytes)
     var p     = peak.get()

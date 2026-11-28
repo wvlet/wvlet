@@ -33,7 +33,7 @@ trait QueryMetric
 /** The memory one engine statement holds, as its memory context reports it */
 trait QueryMemoryUsage:
   /** Whether the statement counts its memory (false with memory accounting off) */
-  def isTracked: Boolean
+  def isTracking: Boolean
 
   /** Bytes held now; 0 once the statement has finished */
   def reservedBytes: Long

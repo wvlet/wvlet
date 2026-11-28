@@ -45,7 +45,11 @@ object TaskRunner extends TaskRunnerCompatImpl:
     *   Submitted tasks no thread has started yet
     */
   case class Load(threads: Int, busy: Int, waitingTasks: Int):
-    def +(o: Load): Load = Load(threads + o.threads, busy + o.busy, waitingTasks + o.waitingTasks)
+    def add(busy: Int, waitingTasks: Int): Load = Load(
+      threads,
+      this.busy + busy,
+      this.waitingTasks + waitingTasks
+    )
 
   /** A submitted task */
   trait Handle[A]:

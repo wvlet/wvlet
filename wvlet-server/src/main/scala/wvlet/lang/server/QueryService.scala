@@ -27,6 +27,7 @@ import wvlet.uni.util.ULID
 
 import java.time.Duration
 import java.time.Instant
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -86,7 +87,9 @@ class QueryService(
       sessionKey: String,
       createdAt: Instant,
       recorder: QueryRecorder
-  )
+  ):
+    // For the list's case-insensitive text filter, computed once per query
+    lazy val lowerQuery: String = request.query.toLowerCase(Locale.ROOT)
 
   private val workers: ExecutorService = Executors.newFixedThreadPool(
     config.maxRunningQueries,
@@ -256,7 +259,7 @@ class QueryService(
             throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid page token: ${t}")
           }
       }
-    val text    = request.text.map(_.toLowerCase).filter(_.nonEmpty)
+    val text    = request.text.map(_.toLowerCase(Locale.ROOT)).filter(_.nonEmpty)
     val now     = Instant.now()
     val matched = mutable.ArrayBuffer.empty[(Submitted, QueryInfo)]
     submittedMap.forEach { (id, s) =>
@@ -286,7 +289,7 @@ class QueryService(
       r.profile.forall(p => s.request.profile.contains(p)) &&
       r.createdAfter.forall(t => !s.createdAt.isBefore(t)) &&
       r.createdBefore.forall(t => s.createdAt.isBefore(t)) &&
-      text.forall(t => s.request.query.toLowerCase.contains(t))
+      text.forall(t => s.lowerQuery.contains(t))
 
   /**
     * The query's text, SQL, engine plans, errors, and memory

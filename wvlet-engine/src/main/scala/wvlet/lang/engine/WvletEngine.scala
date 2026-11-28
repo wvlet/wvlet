@@ -251,8 +251,10 @@ class WvletEngine(
         MemoryContext.withCurrent(memory) {
           val expanded = GenSQL.expand(r, ctx)
           val op       = physicalPlan(expanded)
-          debug(s"[physical plan]\n${op.explain()}")
-          ctx.queryProgressMonitor.engineQueryStarted(op.explain(), memory)
+          // Printed only when the debug log or a monitor reads it
+          lazy val planText = op.explain()
+          debug(s"[physical plan]\n${planText}")
+          ctx.queryProgressMonitor.engineQueryStarted(planText, memory)
           try EngineResult(op.schema, memory.drain(op))
           finally op.close()
         }
