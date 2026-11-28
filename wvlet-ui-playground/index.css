@@ -1327,13 +1327,6 @@ summary.pg-engine-section__title {
 .pg-editor.pg-editor--auto {
     position: relative;
     inset: auto;
-    border: 1px solid var(--uni-line);
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-.pg-cell[data-focused="true"] .pg-editor--auto {
-    border-color: var(--uni-accent);
 }
 
 .pg-cell__toolbar {
@@ -1569,16 +1562,15 @@ summary.pg-engine-section__title {
 }
 
 .pg-result__table .uni-table__sort {
-    max-width: 100%;
+    max-width: none;
     margin: 0;
+    overflow: visible;
     justify-content: center;
 }
 
 .pg-result__table .uni-table__sort > span:first-child {
     display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
     white-space: pre;
     line-height: 1.2;
     font-family: var(--uni-font-mono);
@@ -1689,8 +1681,10 @@ summary.pg-engine-section__title {
 .pg-cell__table {
     width: fit-content;
     max-width: 100%;
-    border: 1px solid var(--uni-line);
-    border-radius: 8px;
+    /* A clearer edge than the grid lines inside, now that no card frames the table */
+    border: 1px solid color-mix(in srgb, var(--uni-fg) 24%, transparent);
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
     background: var(--uni-panel);
     /* A wide table scrolls sideways here, so the scrollbar sits below the rows, not over them */
     overflow-x: auto;
@@ -1727,4 +1721,15 @@ summary.pg-engine-section__title {
 .pg-cell__table .uni-table::-webkit-scrollbar-thumb {
     background: rgb(128 128 128 / 0.45);
     border-radius: 4px;
+}
+
+/* The outer border closes the grid: no doubled line after the last column or under the last row */
+.pg-cell__table .uni-table__cell:last-child {
+    border-right: none;
+}
+
+.pg-cell__table .uni-list__row:last-child,
+.pg-cell__table .uni-list__row:last-child > .uni-table__cell {
+    border-bottom: none;
+    box-shadow: none;
 }
