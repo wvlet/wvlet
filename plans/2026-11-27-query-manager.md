@@ -52,7 +52,7 @@ DuckDB's 2026 [Quack](https://duckdb.org/2026/05/12/quack-remote-protocol) clien
   - [x] Low-memory killer: fail the largest query when the pool stays over capacity (`--low-memory-killer-delay`).
   - [x] Release reservations before the query ends: per-holder child contexts for sorts, windows, aggregations, join builds, distincts, and nested-loop builds. Shared CTE results still hold until the query ends.
   - [x] Count `DistinctOp`, set operations, and nested-loop builds.
-  - [ ] GC pressure from large aggregations: profile first.
+  - [x] GC pressure from large aggregations: profiled, no engine change ([findings](2026-11-27-memory-follow-ups.md#gc-pause-findings)).
 
 - A per-query `MemoryContext` that reserves bytes from a server-wide `MemoryPool`; child contexts per operator.
 - Instrument only the large holders: join build tables, hash aggregation tables, sort and window buffers, CTE materializations, buffered results.
