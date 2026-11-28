@@ -13,73 +13,24 @@
  */
 package wvlet.lang.ui
 
-import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
-import wvlet.lang.api.v1.frontend.FrontendRPC
-import wvlet.lang.api.v1.query.QueryError
-import wvlet.lang.ui.component.MainFrame
-import wvlet.lang.ui.component.editor.FileNav
-import wvlet.lang.ui.component.editor.WvletEditor
-import wvlet.lang.ui.component.flow.FlowRunsPage
-import wvlet.uni.design.Design
+import org.scalajs.dom
+import wvlet.lang.ui.server.ServerConnection
+import wvlet.lang.ui.server.ServerUI
 import wvlet.uni.dom.all.{*, given}
-import wvlet.uni.http.Http
-import wvlet.uni.log.LogSupport
-import wvlet.uni.rx.Rx
-import wvlet.uni.rx.RxVar
 
-object WvletUIMain extends LogSupport:
-  def main(args: Array[String]): Unit = render
-
-  // The JS HTTP channel factory is auto-installed by wvlet.uni.http.HttpCompat
-  // when the uni module is loaded.
-  private val rpcClient = FrontendRPC.newRPCAsyncClient(Http.client.newAsyncClient)
-
-  protected[ui] def design: Design = Design
-    .newDesign
-    .bindSingleton[WvletEditor]
-    .bindInstance[RxVar[List[QueryError]]](RxVar(List.empty))
-    .bindInstance[FrontendRPC.RPCAsyncClient](rpcClient)
-
-  def render: Unit = rpcClient
-    .FrontendApi
-    .status
-    .map { status =>
-      info(s"Connected to the server: ${status}")
-      val frame = MainFrame()
-      // Let the uni Design build UI components for WvletEditor
-      val editor   = design.newSession.build[WvletEditor]
-      val flowRuns = FlowRunsPage(rpcClient)
-      // Both pages stay mounted (the editor keeps its state); the nav bar toggles visibility
-      val content = div(
-        div(
-          MainFrame
-            .currentPage
-            .map(page =>
-              cls -> (
-                if page == MainFrame.PAGE_EDITOR then
-                  ""
-                else
-                  "hidden"
-              )
-            ),
-          editor
-        ),
-        div(
-          MainFrame
-            .currentPage
-            .map(page =>
-              cls -> (
-                if page == MainFrame.PAGE_FLOW_RUNS then
-                  ""
-                else
-                  "hidden"
-              )
-            ),
-          flowRuns
-        )
+/** Entry point of the web UI that `wvlet server` serves */
+object WvletUIMain:
+  def main(args: Array[String]): Unit =
+    // uni-ui's themes follow data-theme on <html>; start from the system's preference
+    val dark = dom.window.matchMedia("(prefers-color-scheme: dark)").matches
+    dom
+      .document
+      .documentElement
+      .setAttribute(
+        "data-theme",
+        if dark then
+          "dark"
+        else
+          "light"
       )
-      frame(content).renderTo("main")
-    }
-    .run()
-
-end WvletUIMain
+    ServerUI(ServerConnection()).renderTo("main")

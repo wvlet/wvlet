@@ -274,6 +274,10 @@ export class MonacoEditor {
 
     };
 
+    dispose(): void {
+        this.editor?.dispose();
+    }
+
     setReadOnly(): void {
         // disable text edit
         this.editor.updateOptions({
@@ -304,6 +308,14 @@ export class MonacoEditor {
                 height: newHeight
             });
         }
+    }
+
+    getSelectedText(): string {
+        const sel = this.editor.getSelection();
+        if (!sel || sel.isEmpty()) {
+            return "";
+        }
+        return this.editor.getModel()?.getValueInRange(sel) ?? "";
     }
 
     getLinePosition(): number {

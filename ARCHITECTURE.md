@@ -33,7 +33,7 @@ flowchart LR
 | `wvlet-cli`, `wvlet-cli-core` | JVM (+JS, Native core) | The `wvlet` command: shared commands, options, and the REPL (`WvletREPL`) in `wvlet-cli-core`, JVM-only commands in `WvletMain`; the JVM REPL runs on `WvletScriptRunner` and npm/Native on `PlanScriptRunner`; `wv` (`WvletREPLMain`) is an alias of `wvlet repl` |
 | `wvc`, `wvc-lib` | Native | Standalone native compiler and the C library for C/C++/Rust bindings |
 | `wvlet-server`, `wvlet-http-server`, `wvlet-client` | JVM (+JS, Native client) | HTTP API server and client |
-| `wvlet-ui`, `wvlet-ui-main`, `wvlet-ui-playground` | JS | Scala.js + React web UI and the playground |
+| `wvlet-ui`, `wvlet-ui-main`, `wvlet-ui-playground` | JS | Scala.js + uni-dom/uni-ui: the server web UI's screens and shared Monaco facade, the Vite app `wvlet server` serves, and the playground |
 | `sdks/` | Node, Python, TS | npm CLI (`@wvlet/cli`), Python and TypeScript SDKs |
 | `vscode-wvlet`, `prismjs-wvlet`, `highlightjs-wvlet`, `website` | JS | Editor extension, syntax highlighters, docs site |
 | `wvlet-stdlib` | `.wv` | Standard function library ([design](design/stdlib.md)) |

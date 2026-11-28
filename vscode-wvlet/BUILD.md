@@ -26,7 +26,7 @@ This directory contains the VS Code extension for Wvlet language support.
 ## Building from Monaco Editor
 
 This extension was created by converting the Monaco Editor language definition from:
-- `wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts`
+- `wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts`
 
 The conversion process involved:
 1. Converting Monaco's IMonarchLanguage to TextMate grammar format

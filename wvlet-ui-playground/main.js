@@ -17,8 +17,8 @@
 import './target/uni-ui.css'
 import './index.css'
 
-import { MonacoEditor } from '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
-import '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
+import { MonacoEditor } from '../wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
+import '../wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
 
 // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
 window.MonacoEditor = MonacoEditor;

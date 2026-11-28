@@ -94,6 +94,28 @@ object QueryListRequest:
   val DefaultLimit: Int = 100
   val MaxLimit: Int     = 1000
 
+/** How many queries have one value of a facet, such as a status or a session id */
+case class FacetCount(value: String, count: Int)
+
+/**
+  * Query counts by status, session, and profile, for filter chips. Each facet counts the queries
+  * matching every filter except its own dimension, so its chips show what selecting them would
+  * give.
+  *
+  * @param sessions
+  *   The sessions with the most queries, at most [[QueryFacets.MaxValues]]
+  * @param profiles
+  *   The profiles with the most queries, at most [[QueryFacets.MaxValues]]
+  */
+case class QueryFacets(
+    statuses: Seq[FacetCount] = Nil,
+    sessions: Seq[FacetCount] = Nil,
+    profiles: Seq[FacetCount] = Nil
+)
+
+object QueryFacets:
+  val MaxValues: Int = 8
+
 /**
   * A page of the query list, newest first.
   *
@@ -101,11 +123,14 @@ object QueryListRequest:
   *   Queries matching the filter across all pages
   * @param nextPageToken
   *   Pass as `pageToken` to read the next (older) page; None on the last page
+  * @param facets
+  *   Counts by status, session, and profile
   */
 case class QueryList(
     queries: Seq[QuerySummary],
     totalMatched: Int,
-    nextPageToken: Option[String] = None
+    nextPageToken: Option[String] = None,
+    facets: QueryFacets = QueryFacets()
 )
 
 /** Which query [[wvlet.lang.api.v1.frontend.FrontendApi.getQueryDetail]] reads */

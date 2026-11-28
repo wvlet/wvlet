@@ -12,31 +12,24 @@
  * limitations under the License.
  */
 
-// Import Tailwind CSS
+// uni-ui's component styles (copied from the uni-ui jar by sbt-uni after each compile), then the
+// server UI's own layout
+import './target/uni-ui.css'
 import './index.css'
 
-// Typescript
-import {DuckDBWasm} from './src/main/scala/wvlet/lang/ui/component/duckdb/DuckDBWasm.ts'
-window.duckdb = DuckDBWasm
+// The query editor: Monaco with Wvlet highlighting, shared with the playground. Vite bundles
+// Monaco's editor worker as its own file, so the editor's background work runs off the page
+import EditorWorker from '../node_modules/monaco-editor/esm/vs/editor/editor.worker.js?worker'
+self.MonacoEnvironment = {
+  getWorker() {
+    return new EditorWorker()
+  }
+}
+import { MonacoEditor } from '../wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
+import '../wvlet-ui/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
 
-import * as arrow from 'apache-arrow'
-window.arrow = arrow
+// Make the MonacoEditor class accessible from @JSGlobal in Scala.js
+window.MonacoEditor = MonacoEditor;
 
-import { MonacoEditor } from './src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
-import './src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
-
-// Ensure that Monaco is loaded before assigning it to the window object
-document.addEventListener('DOMContentLoaded', () => {
-    import('monaco-editor').then((monaco) => {
-        console.log("Monaco Editor loaded successfully");
-
-        // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
-        window.MonacoEditor = MonacoEditor;
-
-        // Start Scala.js code
-        import('__target__/main.js')
-    }).catch((error) => {
-        console.error('Failed to load Monaco Editor:', error);
-    });
-});
-
+// Start Scala.js code
+import('__target__/main.js')

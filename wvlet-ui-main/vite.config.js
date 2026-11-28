@@ -13,7 +13,6 @@
  */
 
 import { defineConfig } from "vite";
-import tailwindcss from "@tailwindcss/vite";
 import fs from 'fs'
 import replace from '@rollup/plugin-replace';
 
@@ -28,6 +27,8 @@ const suffix = isDev() ? "-fastopt" : "-opt";
 const scalaJsTarget = `../target/out/sjs1/scala-${scalaVersion}/wvlet-ui-main/wvlet-ui-main${suffix}`;
 
 export default defineConfig({
+  // Relative asset paths, so the built app works from the server's web/ folder
+  base: "./",
   server: {
     open: true,
     proxy: {
@@ -42,7 +43,6 @@ export default defineConfig({
     minify: 'esbuild'
   },
   plugins: [
-    tailwindcss(),
     replace({
       preventAssignment: true,
       __target__: scalaJsTarget

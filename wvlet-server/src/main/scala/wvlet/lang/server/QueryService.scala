@@ -6,7 +6,9 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryInfoRequest
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryResponse
 import wvlet.lang.api.v1.query.Column
+import wvlet.lang.api.v1.query.FacetCount
 import wvlet.lang.api.v1.query.QueryDetail
+import wvlet.lang.api.v1.query.QueryFacets
 import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.api.v1.query.QueryInfo
 import wvlet.lang.api.v1.query.QueryList
@@ -259,24 +261,66 @@ class QueryService(
             throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid page token: ${t}")
           }
       }
-    val text    = request.text.map(_.toLowerCase(Locale.ROOT)).filter(_.nonEmpty)
-    val now     = Instant.now()
-    val matched = mutable.ArrayBuffer.empty[(Submitted, QueryInfo)]
+    val text = request.text.map(_.toLowerCase(Locale.ROOT)).filter(_.nonEmpty)
+    val now  = Instant.now()
+    val kept = mutable.ArrayBuffer.empty[(Submitted, QueryInfo)]
     submittedMap.forEach { (id, s) =>
       val info = queryMap.get(id)
-      if info != null && matches(request, text, s, info) then
-        matched += s -> info
+      if info != null then
+        kept += s -> info
     }
-    val sorted = matched.sortBy(-_._1.seq)
-    val page   = sorted.iterator.filter((s, _) => after.forall(s.seq < _)).take(limit).toSeq
-    val more   = page.nonEmpty && sorted.last._1.seq < page.last._1.seq
+    val matched = kept.filter((s, info) => matches(request, text, s, info))
+    val sorted  = matched.sortBy(-_._1.seq)
+    val page    = sorted.iterator.filter((s, _) => after.forall(s.seq < _)).take(limit).toSeq
+    val more    = page.nonEmpty && sorted.last._1.seq < page.last._1.seq
     QueryList(
       queries = page.map((s, info) => summaryOf(s, info, now)),
       totalMatched = sorted.size,
-      nextPageToken = Option.when(more)(page.last._1.seq.toString)
+      nextPageToken = Option.when(more)(page.last._1.seq.toString),
+      facets = facetsOf(request, text, kept)
     )
 
   end list
+
+  /**
+    * Counts per facet value over the queries matching every filter but the facet's own, in one pass
+    * over the kept queries
+    */
+  private def facetsOf(
+      r: QueryListRequest,
+      text: Option[String],
+      kept: collection.Seq[(Submitted, QueryInfo)]
+  ): QueryFacets =
+    val statusCounts  = mutable.HashMap.empty[String, Int]
+    val sessionCounts = mutable.HashMap.empty[String, Int]
+    val profileCounts = mutable.HashMap.empty[String, Int]
+    def add(m: mutable.HashMap[String, Int], key: Option[String]): Unit = key.foreach(k =>
+      m.update(k, m.getOrElse(k, 0) + 1)
+    )
+    kept.foreach { (s, info) =>
+      val statusOk  = r.statuses.isEmpty || r.statuses.contains(info.status)
+      val sessionOk = r.sessionId.forall(id => s.request.sessionId.contains(id))
+      val profileOk = r.profile.forall(p => s.request.profile.contains(p))
+      // Time and text apply to every facet
+      if matches(r.copy(statuses = Nil, sessionId = None, profile = None), text, s, info) then
+        if sessionOk && profileOk then
+          add(statusCounts, Some(info.status.toString))
+        if statusOk && profileOk then
+          add(sessionCounts, s.request.sessionId)
+        if statusOk && sessionOk then
+          add(profileCounts, s.request.profile)
+    }
+    def sorted(m: mutable.HashMap[String, Int]): Seq[FacetCount] = m
+      .toSeq
+      .sortBy((v, n) => (-n, v))
+      .map((v, n) => FacetCount(v, n))
+    QueryFacets(
+      statuses = sorted(statusCounts),
+      sessions = sorted(sessionCounts).take(QueryFacets.MaxValues),
+      profiles = sorted(profileCounts).take(QueryFacets.MaxValues)
+    )
+
+  end facetsOf
 
   private def matches(
       r: QueryListRequest,
