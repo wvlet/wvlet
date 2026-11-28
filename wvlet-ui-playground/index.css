@@ -1156,3 +1156,11 @@ summary.pg-engine-section__title {
 .pg-lineage__error {
     color: var(--uni-danger);
 }
+
+/*
+ * Monaco adds a floating keyboard button (iPadShowKeyboard) to editable editors on iOS and iPadOS.
+ * Tapping the editor already opens the on-screen keyboard, so the button only covers the code.
+ */
+.monaco-editor .iPadShowKeyboard {
+    display: none !important;
+}
