@@ -324,10 +324,18 @@ object ReorderJoins extends Pass:
     override def keys(current: RuntimePlan, next: RuntimePlan, pairs: Seq[(BExpr, BExpr)]): Keys =
       (pairs.map(_._1).toIndexedSeq, pairs.map(_._2).toIndexedSeq)
 
+    private val sampledStrings = options.isEnabled(Optimization.SampledStringDistinct)
+
     override def distinct(input: RuntimePlan, side: BExpr): Option[Double] = Stats.distinct(
       input,
       side.expr
     )
+
+    override def sampledDistinct(input: RuntimePlan, side: BExpr): Option[Double] =
+      if sampledStrings then
+        Stats.sampledDistinct(input, side.expr)
+      else
+        None
 
     override def outputRows(
         current: RuntimePlan,

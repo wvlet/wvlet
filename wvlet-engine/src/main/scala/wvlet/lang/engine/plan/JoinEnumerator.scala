@@ -655,6 +655,22 @@ object JoinEnumerator:
         search.distinct(g.inputs(refs.head), side)
       else
         None
+    def sampled(side: C, refs: Set[Int]): Option[Double] =
+      if refs.size == 1 then
+        search.sampledDistinct(g.inputs(refs.head), side)
+      else
+        None
+    // Distinct counts of both sides, sampled ones only when both sides have one
+    def counts(sd: JoinEdge.Sides[C]): (Option[Double], Option[Double]) =
+      (distinct(sd.left, sd.leftRefs), distinct(sd.right, sd.rightRefs)) match
+        case (None, None) =>
+          (sampled(sd.left, sd.leftRefs), sampled(sd.right, sd.rightRefs)) match
+            case both @ (Some(_), Some(_)) =>
+              both
+            case _ =>
+              (None, None)
+        case known =>
+          known
     def partition(side: C, refs: Set[Int]): Boolean =
       partitions && refs.size == 1 && search.partitionKey(g.inputs(refs.head), side)
     g.edges
@@ -665,12 +681,13 @@ object JoinEnumerator:
             val a = mask(sd.leftRefs)
             val b = mask(sd.rightRefs)
             if a != 0 && b != 0 && (a & b) == 0 then
+              val (ld, rd) = counts(sd)
               Edge(
                 refs,
                 a,
                 b,
-                distinct(sd.left, sd.leftRefs),
-                distinct(sd.right, sd.rightRefs),
+                ld,
+                rd,
                 leftInput = single(a),
                 leftPartition = partition(sd.left, sd.leftRefs),
                 rightPartition = partition(sd.right, sd.rightRefs),

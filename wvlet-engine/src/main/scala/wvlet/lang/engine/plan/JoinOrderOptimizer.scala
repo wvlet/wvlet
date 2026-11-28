@@ -102,6 +102,13 @@ trait JoinSearch[P, C, K]:
   def distinct(input: P, side: C): Option[Double]
 
   /**
+    * Distinct values of a side from a sample (`sampled_string_distinct`), used for an equality
+    * whose sides both have no [[distinct]] count and both have a sampled one: a sample can miss
+    * values of a clustered column, so it never stands against an unknown side. None by default
+    */
+  def sampledDistinct(input: P, side: C): Option[Double] = None
+
+  /**
     * What the unique keys `input`'s table declares say about the equality sides `sides`, which read
     * only `input` ([[KeyCoverage.Unknown]] unless the plan form reads declared keys)
     */

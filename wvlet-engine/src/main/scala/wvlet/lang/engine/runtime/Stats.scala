@@ -285,8 +285,7 @@ object Stats:
       rightKeys: IndexedSeq[VExpr],
       options: OptimizerOptions
   ): Double =
-    val ld        = leftKeys.map(distinct(left, _))
-    val rd        = rightKeys.map(distinct(right, _))
+    val (ld, rd)  = keyDistinct(left, leftKeys, right, rightKeys, options)
     val composite =
       if leftKeys.size > 1 && options.isEnabled(Optimization.KeyJoinEstimates) then
         CardinalityEstimator.compositeDivisor(
@@ -341,6 +340,54 @@ object Stats:
         distinct(p, ColumnId(c.index), throughGroups)
       case c: CastExpr =>
         distinct(p, c.child, throughGroups)
+      case _ =>
+        None
+
+  /**
+    * The distinct counts of each join key pair's sides; with `sampled_string_distinct`, a pair with
+    * no count on either side takes both sides' [[sampledDistinct]] when both have one
+    */
+  private def keyDistinct(
+      left: RuntimePlan,
+      leftKeys: IndexedSeq[VExpr],
+      right: RuntimePlan,
+      rightKeys: IndexedSeq[VExpr],
+      options: OptimizerOptions
+  ): (IndexedSeq[Option[Double]], IndexedSeq[Option[Double]]) =
+    val ld = leftKeys.map(distinct(left, _))
+    val rd = rightKeys.map(distinct(right, _))
+    if !options.isEnabled(Optimization.SampledStringDistinct) then
+      (ld, rd)
+    else
+      ld.indices
+        .map { k =>
+          if ld(k).isEmpty && rd(k).isEmpty then
+            (sampledDistinct(left, leftKeys(k)), sampledDistinct(right, rightKeys(k))) match
+              case both @ (Some(_), Some(_)) =>
+                both
+              case _ =>
+                (None, None)
+          else
+            (ld(k), rd(k))
+        }
+        .unzip
+
+  /**
+    * The distinct values of a string column expression over p from its source's value sample
+    * ([[ValueCounts.sampledDistinct]]), for keys [[distinct]] has no count of
+    * (`sampled_string_distinct`). None for other expressions, CTE results, or unsaturated samples
+    */
+  def sampledDistinct(p: RuntimePlan, e: VExpr): Option[Double] =
+    e match
+      case c: ColRef =>
+        sourceStat(
+          p,
+          ColumnId(c.index),
+          (s, i) => s.source.valueCounts(s.sourceColumnName(i)).flatMap(_.sampledDistinct),
+          (_, _) => None
+        )
+      case c: CastExpr =>
+        sampledDistinct(p, c.child)
       case _ =>
         None
 
