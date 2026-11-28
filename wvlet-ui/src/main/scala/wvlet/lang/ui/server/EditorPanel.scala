@@ -56,6 +56,7 @@ class EditorState(val state: ConsoleState):
   val run: RxVar[Option[EditorRun]]                     = Rx.variable(None)
   val sessionId: String                                 = EditorState.tabSessionId()
   private var poll: Option[js.timers.SetIntervalHandle] = None
+  private var runSeq: Long                              = 0L
 
   /** The editor panel's height in CSS pixels, changed by dragging its top edge */
   val height: RxVar[Int] = Rx.variable(EditorState.DefaultHeight)
@@ -97,6 +98,8 @@ class EditorState(val state: ConsoleState):
   ): Unit =
     if query.trim.nonEmpty then
       stopPolling()
+      runSeq += 1
+      val seq = runSeq
       saved = text.get
       run := Some(EditorRun(label))
       state
@@ -113,31 +116,37 @@ class EditorState(val state: ConsoleState):
           )
         )
         .map { r =>
-          run := Some(EditorRun(label, queryId = Some(r.queryId)))
-          state.select(Some(r.queryId))
-          state.reloadList()
-          startPolling(label, r.queryId)
+          // Only the latest run owns the result pane
+          if runSeq == seq then
+            run := Some(EditorRun(label, queryId = Some(r.queryId)))
+            state.select(Some(r.queryId))
+            state.reloadList()
+            startPolling(label, r.queryId)
         }
         .recover { case e: Throwable =>
-          run := Some(EditorRun(label, error = Some(state.conn.errorMessage(e))))
+          if runSeq == seq then
+            run := Some(EditorRun(label, error = Some(state.conn.errorMessage(e))))
         }
         .run()
 
   private def startPolling(label: String, id: String): Unit =
-    def check(): Unit = state
+    stopPolling()
+    def current: Boolean = run.get.flatMap(_.queryId).contains(id)
+    def check(): Unit    = state
       .conn
       .rpc
       .FrontendApi
       .getQueryInfo(QueryInfoRequest(id, "0"))
       .map { info =>
-        if run.get.flatMap(_.queryId).contains(id) then
+        if current then
           run := Some(EditorRun(label, Some(id), Some(info)))
           if info.status.isFinished then
             stopPolling()
       }
       .recover { case e: Throwable =>
-        stopPolling()
-        run := Some(EditorRun(label, Some(id), error = Some(state.conn.errorMessage(e))))
+        if current then
+          stopPolling()
+          run := Some(EditorRun(label, Some(id), error = Some(state.conn.errorMessage(e))))
       }
       .run()
     check()
@@ -233,6 +242,7 @@ class EditorPanel(editor: EditorState) extends RxElement:
   override def beforeUnmount: Unit =
     subscriptions.foreach(_.cancel)
     subscriptions = Nil
+    monaco.foreach(_.dispose())
     monaco = None
 
   private given Ordering[Option[BigDecimal]] = Ordering.Option(using Ordering.BigDecimal)

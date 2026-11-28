@@ -52,25 +52,35 @@ class FlowRunsPage(conn: ServerConnection) extends Polling:
     if runs.get.forall(_.exists(_.state == "running")) then
       load()
 
-  private def load(): Unit = conn
-    .rpc
-    .FlowApi
-    .listRuns(FlowRunListRequest(flowName = Some(flowNameFilter.get.trim).filter(_.nonEmpty)))
-    .map { lst =>
-      loadError := None
-      runs      := Some(lst)
-      // Terminal runs never change, so only a still-running selection is re-fetched
-      selectedRun
-        .get
-        .foreach(d =>
-          if d.run.state == "running" then
-            showRun(d.run.runId)
-        )
-    }
-    .recover { case e: Throwable =>
-      loadError := Some(conn.errorMessage(e))
-    }
-    .run()
+  // Numbers loads, so a slow response for an older filter never replaces a newer one
+  private var loadSeq: Long = 0L
+
+  private def load(): Unit =
+    loadSeq += 1
+    val seq = loadSeq
+    conn
+      .rpc
+      .FlowApi
+      .listRuns(FlowRunListRequest(flowName = Some(flowNameFilter.get.trim).filter(_.nonEmpty)))
+      .map { lst =>
+        if seq == loadSeq then
+          showRuns(lst)
+      }
+      .recover { case e: Throwable =>
+        loadError := Some(conn.errorMessage(e))
+      }
+      .run()
+
+  private def showRuns(lst: List[FlowRunSummary]): Unit =
+    loadError := None
+    runs      := Some(lst)
+    // Terminal runs never change, so only a still-running selection is re-fetched
+    selectedRun
+      .get
+      .foreach(d =>
+        if d.run.state == "running" then
+          showRun(d.run.runId)
+      )
 
   private def showRun(runId: String): Unit = conn
     .rpc

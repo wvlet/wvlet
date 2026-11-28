@@ -102,7 +102,13 @@ class HealthStrip(state: ConsoleState) extends RxElement:
       tile(
         "Failed",
         s"${failed}",
-        "kept in history",
+        // The count follows the session, profile, and text filters, like the chips
+        if state.session.get.nonEmpty || state.profile.get.nonEmpty || state.text.get.trim.nonEmpty
+        then
+          "matching the filters"
+        else
+          "kept in history"
+        ,
         filter = Some(QueryStatus.FAILED),
         tone =
           if failed > 0 then

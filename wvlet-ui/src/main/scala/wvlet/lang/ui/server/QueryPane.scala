@@ -119,7 +119,9 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit, newQuery: () 
       placeholder -> "Search query text  ( / )",
       ariaLabel   -> "Search query text",
       spellcheck  -> "false",
-      oninput     -> { (e: dom.Event) =>
+      // The filter outlives this box (switching to Flow runs and back), so show it again
+      value   -> state.text.get,
+      oninput -> { (e: dom.Event) =>
         state.text := e.target.asInstanceOf[dom.html.Input].value
         state.reloadList()
       }
@@ -359,8 +361,23 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit, newQuery: () 
   end row
 
   private def copy(text: String): Unit =
-    dom.window.navigator.clipboard.writeText(text)
-    state.notice := Some(s"Copied ${text}")
+    // navigator.clipboard exists only on secure origins (https or localhost)
+    val clipboard = dom.window.navigator.asInstanceOf[scala.scalajs.js.Dynamic].clipboard
+    if scala.scalajs.js.isUndefined(clipboard) then
+      state.notice := Some(s"Copy is unavailable on this connection: ${text}")
+    else
+      dom
+        .window
+        .navigator
+        .clipboard
+        .writeText(text)
+        .toFuture
+        .onComplete {
+          case scala.util.Success(_) =>
+            state.notice := Some(s"Copied ${text}")
+          case scala.util.Failure(_) =>
+            state.notice := Some(s"Could not copy ${text}")
+        }(using scala.scalajs.concurrent.JSExecutionContext.queue)
 
   private def rows(l: QueryList): RxElement = Rx
     .join(state.selected, state.checked, state.canceling, state.cluster)
@@ -533,7 +550,7 @@ class QueryPane(state: ConsoleState, openInEditor: String => Unit, newQuery: () 
         case (Some(l), _) if l.queries.isEmpty =>
           div(
             cls -> "wv-empty",
-            if l.totalMatched == 0 && state.statuses.get.isEmpty && state.text.get.isEmpty then
+            if l.totalMatched == 0 && !state.hasFilters then
               "No query yet. Write one in the editor below and press ⌘↵."
             else
               "No query matches the filters."

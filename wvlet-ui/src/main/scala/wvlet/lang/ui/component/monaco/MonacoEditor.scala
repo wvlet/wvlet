@@ -17,9 +17,12 @@ class MonacoEditor(
       // do nothing by default
     }
 ) extends js.Object:
-  def hello(): Unit                                   = js.native
-  def render(): Unit                                  = js.native
-  def setReadOnly(): Unit                             = js.native
+  def hello(): Unit       = js.native
+  def render(): Unit      = js.native
+  def setReadOnly(): Unit = js.native
+
+  /** Release the editor and its model; call when its element leaves the page */
+  def dispose(): Unit                                 = js.native
   def adjustHeight(newHeight: Int): Unit              = js.native
   def adjustSize(newWidth: Int, newHeight: Int): Unit = js.native
   def getText(): String                               = js.native

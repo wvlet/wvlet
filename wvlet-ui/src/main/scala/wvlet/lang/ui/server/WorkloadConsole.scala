@@ -14,10 +14,8 @@
 package wvlet.lang.ui.server
 
 import org.scalajs.dom
-import wvlet.uni.dom.RxElement
 import wvlet.uni.dom.all.{*, given}
 import wvlet.uni.rx.Cancelable
-import wvlet.uni.rx.Rx
 
 import scala.scalajs.js
 
@@ -26,8 +24,7 @@ import scala.scalajs.js
   * editor below. Everything refreshes every second unless paused, and the keyboard drives the list
   * (see [[WorkloadConsole.Shortcuts]])
   */
-class WorkloadConsole(state: ConsoleState, editor: EditorState) extends RxElement:
-  private var timer: Cancelable                                         = Cancelable.empty
+class WorkloadConsole(state: ConsoleState, editor: EditorState) extends Polling:
   private var keyHandler: Option[js.Function1[dom.KeyboardEvent, Unit]] = None
   private var armedCancel: Option[(String, Double)]                     = None
   private var noticeTimer: Option[js.timers.SetTimeoutHandle]           = None
@@ -35,15 +32,23 @@ class WorkloadConsole(state: ConsoleState, editor: EditorState) extends RxElemen
 
   private def openInEditor(id: String): Unit = editor.openQuery(id)
 
-  /** Whether a key press belongs to a text field or the editor rather than the console */
+  /**
+    * Whether a key press belongs to a text field, the editor, or a focused control (a button's
+    * Space and Enter, a resize grip's arrows) rather than the console
+    */
   private def typing(e: dom.KeyboardEvent): Boolean =
     e.target match
       case el: dom.Element =>
         val tag = el.tagName.toLowerCase
-        tag == "input" || tag == "textarea" || tag == "select" ||
+        tag == "input" || tag == "textarea" || tag == "select" || tag == "button" || tag == "a" ||
+        el.getAttribute("role") == "separator" ||
         el.asInstanceOf[dom.html.Element].isContentEditable || el.closest(".monaco-editor") != null
       case _ =>
         false
+
+  override protected def refresh(): Unit =
+    if !state.paused.get then
+      state.refresh()
 
   private def onKey(e: dom.KeyboardEvent): Unit =
     if e.key == "Escape" then
@@ -108,14 +113,7 @@ class WorkloadConsole(state: ConsoleState, editor: EditorState) extends RxElemen
       case Page.Console(sel) =>
         state.select(sel)
       case _ =>
-    state.refresh()
-    timer = Rx
-      .intervalMillis(1000)
-      .map { _ =>
-        if !state.paused.get then
-          state.refresh()
-      }
-      .subscribe()
+    super.onMount(node)
     val h: js.Function1[dom.KeyboardEvent, Unit] = (e: dom.KeyboardEvent) => onKey(e)
     dom.document.addEventListener("keydown", h)
     keyHandler = Some(h)
@@ -130,7 +128,7 @@ class WorkloadConsole(state: ConsoleState, editor: EditorState) extends RxElemen
       }
 
   override def beforeUnmount: Unit =
-    timer.cancel
+    super.beforeUnmount
     noticeSub.cancel
     keyHandler.foreach(h => dom.document.removeEventListener("keydown", h))
     keyHandler = None

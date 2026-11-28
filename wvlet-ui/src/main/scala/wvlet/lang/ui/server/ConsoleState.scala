@@ -35,26 +35,27 @@ enum ListView:
   * console calls it every second while live.
   */
 class ConsoleState(val conn: ServerConnection):
-  val cluster: RxVar[Option[ClusterInfo]]   = Rx.variable(None)
-  val history: RxVar[Vector[ClusterInfo]]   = Rx.variable(Vector.empty)
-  val list: RxVar[Option[QueryList]]        = Rx.variable(None)
-  val error: RxVar[Option[String]]          = Rx.variable(None)
-  val statuses: RxVar[Set[QueryStatus]]     = Rx.variable(Set.empty)
-  val session: RxVar[Option[String]]        = Rx.variable(None)
-  val profile: RxVar[Option[String]]        = Rx.variable(None)
-  val text: RxVar[String]                   = Rx.variable("")
-  val paused: RxVar[Boolean]                = Rx.variable(false)
-  val view: RxVar[ListView]                 = Rx.variable(ListView.Rows)
-  val selected: RxVar[Option[String]]       = Rx.variable(None)
-  val checked: RxVar[Set[String]]           = Rx.variable(Set.empty)
-  val detail: RxVar[Option[QueryDetail]]    = Rx.variable(None)
-  val detailError: RxVar[Option[String]]    = Rx.variable(None)
-  val canceling: RxVar[Set[String]]         = Rx.variable(Set.empty)
-  val notice: RxVar[Option[String]]         = Rx.variable(None)
-  private var lastLoaded: Option[QueryList] = None
+  val cluster: RxVar[Option[ClusterInfo]] = Rx.variable(None)
+  val history: RxVar[Vector[ClusterInfo]] = Rx.variable(Vector.empty)
+  val list: RxVar[Option[QueryList]]      = Rx.variable(None)
+  val error: RxVar[Option[String]]        = Rx.variable(None)
+  val statuses: RxVar[Set[QueryStatus]]   = Rx.variable(Set.empty)
+  val session: RxVar[Option[String]]      = Rx.variable(None)
+  val profile: RxVar[Option[String]]      = Rx.variable(None)
+  val text: RxVar[String]                 = Rx.variable("")
+  val paused: RxVar[Boolean]              = Rx.variable(false)
+  val view: RxVar[ListView]               = Rx.variable(ListView.Rows)
+  val selected: RxVar[Option[String]]     = Rx.variable(None)
+  val checked: RxVar[Set[String]]         = Rx.variable(Set.empty)
+  val detail: RxVar[Option[QueryDetail]]  = Rx.variable(None)
+  val detailError: RxVar[Option[String]]  = Rx.variable(None)
+  val canceling: RxVar[Set[String]]       = Rx.variable(Set.empty)
+  val notice: RxVar[Option[String]]       = Rx.variable(None)
+  // Numbers list requests, so a slow response never replaces a newer one
+  private var listSeq: Long = 0L
 
   /** The queries shown now, newest first */
-  def queries: Seq[QuerySummary] = lastLoaded.map(_.queries).getOrElse(Nil)
+  def queries: Seq[QuerySummary] = list.get.map(_.queries).getOrElse(Nil)
 
   private def request: QueryListRequest = QueryListRequest(
     statuses = statuses.get.toSeq.sortBy(_.ordinal),
@@ -82,23 +83,30 @@ class ConsoleState(val conn: ServerConnection):
     reloadList()
     reloadDetail()
 
+  /** Whether any filter narrows the list */
+  def hasFilters: Boolean =
+    statuses.get.nonEmpty || session.get.nonEmpty || profile.get.nonEmpty || text.get.trim.nonEmpty
+
   /** Reload the list now, e.g. after a filter changed */
-  def reloadList(): Unit = conn
-    .rpc
-    .FrontendApi
-    .listQueries(request)
-    .map { l =>
-      lastLoaded = Some(l)
-      list := Some(l)
-      // Forget checks of queries no longer in view
-      val ids = l.queries.iterator.map(_.queryId).toSet
-      if !checked.get.subsetOf(ids) then
-        checked := checked.get.intersect(ids)
-    }
-    .recover { case e: Throwable =>
-      error := Some(conn.errorMessage(e))
-    }
-    .run()
+  def reloadList(): Unit =
+    listSeq += 1
+    val seq = listSeq
+    conn
+      .rpc
+      .FrontendApi
+      .listQueries(request)
+      .map { l =>
+        if seq == listSeq then
+          list := Some(l)
+          // Forget checks of queries no longer in view
+          val ids = l.queries.iterator.map(_.queryId).toSet
+          if !checked.get.subsetOf(ids) then
+            checked := checked.get.intersect(ids)
+      }
+      .recover { case e: Throwable =>
+        error := Some(conn.errorMessage(e))
+      }
+      .run()
 
   private def reloadDetail(): Unit = selected
     .get
@@ -190,8 +198,16 @@ class ConsoleState(val conn: ServerConnection):
     text     := ""
     reloadList()
 
-  /** Cancel the queries `ids`, reporting how many the server stopped */
-  def cancel(ids: Seq[String]): Unit = ids.foreach { id =>
+  /** Cancel the queries `ids`, then refresh once all the server's answers are in */
+  def cancel(ids: Seq[String]): Unit =
+    var pending      = ids.size
+    def done(): Unit =
+      pending -= 1
+      if pending == 0 then
+        refresh()
+    ids.foreach(cancelOne(_, () => done()))
+
+  private def cancelOne(id: String, done: () => Unit): Unit =
     canceling := canceling.get + id
     conn
       .rpc
@@ -202,14 +218,14 @@ class ConsoleState(val conn: ServerConnection):
         checked   := checked.get - id
         if selected.get.contains(id) then
           detail := None
-        refresh()
+        done()
       }
       .recover { case e: Throwable =>
         canceling := canceling.get - id
         notice    := Some(s"Could not cancel ${id}: ${conn.errorMessage(e)}")
+        done()
       }
       .run()
-  }
 
 end ConsoleState
 

@@ -64,9 +64,9 @@ object Page:
       .addEventListener(
         "hashchange",
         (_: dom.Event) =>
-          val p = parse(dom.window.location.hash)
-          if v.get != p then
-            v := p
+          // Console selections rewrite the hash without updating `v`, so a hash typed or pasted
+          // into the address bar always reloads the screen it names
+          v := parse(dom.window.location.hash)
       )
     v
 

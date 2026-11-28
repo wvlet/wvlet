@@ -274,6 +274,10 @@ export class MonacoEditor {
 
     };
 
+    dispose(): void {
+        this.editor?.dispose();
+    }
+
     setReadOnly(): void {
         // disable text edit
         this.editor.updateOptions({

@@ -270,9 +270,9 @@ class QueryService(
         kept += s -> info
     }
     val matched = kept.filter((s, info) => matches(request, text, s, info))
-    val sorted = matched.sortBy(-_._1.seq)
-    val page   = sorted.iterator.filter((s, _) => after.forall(s.seq < _)).take(limit).toSeq
-    val more   = page.nonEmpty && sorted.last._1.seq < page.last._1.seq
+    val sorted  = matched.sortBy(-_._1.seq)
+    val page    = sorted.iterator.filter((s, _) => after.forall(s.seq < _)).take(limit).toSeq
+    val more    = page.nonEmpty && sorted.last._1.seq < page.last._1.seq
     QueryList(
       queries = page.map((s, info) => summaryOf(s, info, now)),
       totalMatched = sorted.size,
@@ -282,29 +282,45 @@ class QueryService(
 
   end list
 
-  /** Counts per facet value over the queries matching every filter but the facet's own */
+  /**
+    * Counts per facet value over the queries matching every filter but the facet's own, in one pass
+    * over the kept queries
+    */
   private def facetsOf(
       r: QueryListRequest,
       text: Option[String],
       kept: collection.Seq[(Submitted, QueryInfo)]
   ): QueryFacets =
-    def counts(filter: QueryListRequest, key: (Submitted, QueryInfo) => Option[String]) =
-      kept
-        .iterator
-        .filter((s, info) => matches(filter, text, s, info))
-        .flatMap((s, info) => key(s, info))
-        .toSeq
-        .groupMapReduce(identity)(_ => 1)(_ + _)
-        .toSeq
-        .sortBy((v, n) => (-n, v))
-        .map((v, n) => FacetCount(v, n))
-    QueryFacets(
-      statuses = counts(r.copy(statuses = Nil), (_, info) => Some(info.status.toString)),
-      sessions = counts(r.copy(sessionId = None), (s, _) => s.request.sessionId)
-        .take(QueryFacets.MaxValues),
-      profiles = counts(r.copy(profile = None), (s, _) => s.request.profile)
-        .take(QueryFacets.MaxValues)
+    val statusCounts  = mutable.HashMap.empty[String, Int]
+    val sessionCounts = mutable.HashMap.empty[String, Int]
+    val profileCounts = mutable.HashMap.empty[String, Int]
+    def add(m: mutable.HashMap[String, Int], key: Option[String]): Unit = key.foreach(k =>
+      m.update(k, m.getOrElse(k, 0) + 1)
     )
+    kept.foreach { (s, info) =>
+      val statusOk  = r.statuses.isEmpty || r.statuses.contains(info.status)
+      val sessionOk = r.sessionId.forall(id => s.request.sessionId.contains(id))
+      val profileOk = r.profile.forall(p => s.request.profile.contains(p))
+      // Time and text apply to every facet
+      if matches(r.copy(statuses = Nil, sessionId = None, profile = None), text, s, info) then
+        if sessionOk && profileOk then
+          add(statusCounts, Some(info.status.toString))
+        if statusOk && profileOk then
+          add(sessionCounts, s.request.sessionId)
+        if statusOk && sessionOk then
+          add(profileCounts, s.request.profile)
+    }
+    def sorted(m: mutable.HashMap[String, Int]): Seq[FacetCount] = m
+      .toSeq
+      .sortBy((v, n) => (-n, v))
+      .map((v, n) => FacetCount(v, n))
+    QueryFacets(
+      statuses = sorted(statusCounts),
+      sessions = sorted(sessionCounts).take(QueryFacets.MaxValues),
+      profiles = sorted(profileCounts).take(QueryFacets.MaxValues)
+    )
+
+  end facetsOf
 
   private def matches(
       r: QueryListRequest,
