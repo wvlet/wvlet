@@ -191,7 +191,8 @@ class OptimizerOptionsTest extends UniTest:
         "size_partitions_by_rows",
         "memory_accounting",
         "fair_task_scheduling",
-        "fair_coordinators"
+        "fair_coordinators",
+        "spill_aggregation"
       )
   }
 

@@ -556,6 +556,11 @@ lazy val testUtil = project
 
 // In-process, cross-platform columnar query engine that executes Wvlet logical plans directly,
 // reading Parquet / Iceberg through uni's pure-Scala readers (no JDBC, parquet-java, or Hadoop)
+// Engine code shared by the JVM and Native, which have files and threads (spill files)
+lazy val engineJvmNativeSources =
+  Compile / unmanagedSourceDirectories +=
+    (ThisBuild / baseDirectory).value / "wvlet-engine" / "jvm-native" / "src" / "main" / "scala"
+
 lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-engine"))
@@ -567,6 +572,7 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     scalacOptions += "-Wconf:id=E029:e"
   )
   .jvmSettings(
+    engineJvmNativeSources,
     specRunnerSettings,
     // WVLET_ENGINE_TEST_HEAP sets the test JVM's -Xmx (e.g. 32g for SF100 benchmarks); without
     // it, the JVM default (a quarter of RAM) applies. Uncached: sbt's task cache doesn't see
@@ -590,7 +596,7 @@ lazy val engine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       _.withModuleKind(ModuleKind.CommonJSModule)
     }
   )
-  .nativeSettings(uniNativeCurlLinking)
+  .nativeSettings(uniNativeCurlLinking, engineJvmNativeSources)
   .dependsOn(lang)
 
 // Example GPU executor for the in-process engine: runs the plan subtrees it supports on an NVIDIA

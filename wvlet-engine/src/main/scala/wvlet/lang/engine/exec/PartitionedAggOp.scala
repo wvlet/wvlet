@@ -43,6 +43,10 @@ import scala.collection.mutable
   * With `packKeys`, each partition whose key columns are integers or dates that fit in one Int64
   * groups by the packed key ([[AggKeyPacking]], from the ranges of the partition's rows) and
   * unpacks the key columns of its groups.
+  *
+  * With `spill` (`spill_aggregation`), an input that would take the query past its spill threshold
+  * ([[MemoryContext.tryReserve]]) is split by key hash into [[AggSpill.Partitions]] spill files
+  * instead, buffered rows first, and the files are aggregated in waves that fit ([[AggSpill]]).
   */
 class PartitionedAggOp(
     val child: Operator,
@@ -148,6 +152,17 @@ class PartitionedAggOp(
     sizeByRows = enabled
     this
 
+  /** Whether an input past the query's spill threshold spills to files (`spill_aggregation`) */
+  var spill: Boolean = true
+
+  /** Set [[spill]] */
+  def withSpill(enabled: Boolean): this.type =
+    spill = enabled
+    this
+
+  // Routes the input to spill files past the threshold, or null while it fits in memory
+  private var spilled: AggSpillRouter = null
+
   /** Whether the last aggregation routed its rows by a packed key (for tests) */
   private[engine] var usedPackedRouting: Boolean = false
 
@@ -156,6 +171,9 @@ class PartitionedAggOp(
 
   // The query's memory budget, captured where the aggregation is planned
   private val memory = MemoryContext.current.child()
+
+  // The buffered input's reservation, released when the input spills
+  private val inputMemory = memory.child()
 
   def next(): Batch =
     if result == null then
@@ -171,6 +189,47 @@ class PartitionedAggOp(
   private def aggregate(): Iterator[Batch] =
     // Deferred columns are gathered by the tasks that route the batches
     val input = readInput()
+    if spilled != null then
+      aggregateSpilled()
+    else
+      aggregateInput(input, memory, expectedGroups, parallel = true)
+
+  /** The groups of the spilled input, partition by partition ([[AggSpill]]) */
+  private def aggregateSpilled(): Iterator[Batch] =
+    val files = spilled.finish()
+    spilled = null
+    // A file that does not fit alone is split again with another seed
+    def split(f: SpillFile): IndexedSeq[SpillFile] =
+      val sub = AggSpillRouter(child.schema, keys, longDecimalKeys, memory, runner, seed = 1)
+      try
+        f.read().foreach(sub.add)
+      catch
+        case e: Throwable =>
+          sub.abort()
+          throw e
+      val parts = sub.finish()
+      f.delete()
+      parts
+    val groups = expectedGroups / AggSpill.Partitions
+    AggSpill.aggregate(
+      files,
+      memory,
+      runner,
+      0,
+      split,
+      (bs, ctx, parallel) => aggregateInput(bs.toIndexedSeq, ctx, groups, parallel).toSeq
+    )
+
+  /**
+    * The groups of `input` (in memory), reserving the partitions' groups in `ctx`. Without
+    * `parallel`, on the calling thread (a task of `runner` must not wait for its tasks)
+    */
+  private def aggregateInput(
+      input: IndexedSeq[Batch],
+      ctx: MemoryContext,
+      expectedGroups: Int,
+      parallel: Boolean
+  ): Iterator[Batch] =
     val total = input.map(_.size).sum
     // The packed key column appended to the input columns
     val packedIn = Schema(child.schema.fields :+ Field("__packed_key", PType.Int64))
@@ -193,7 +252,7 @@ class PartitionedAggOp(
       def run(in: Schema, bs: Seq[Batch], ks: IndexedSeq[VExpr], out: Schema): Seq[Batch] =
         // Built on a task's thread: the partition's groups count in this aggregation's query
         val op = MemoryContext
-          .withCurrent(memory)(HashAggOp(BatchesOp(in, bs), ks, aggs, out, presize))
+          .withCurrent(ctx)(HashAggOp(BatchesOp(in, bs), ks, aggs, out, presize))
           // The keys are packed here from the partition's exact ranges, when they can be
           .withKeyOptions(pack = false, longDecimals = longDecimalKeys)
           .withFusedAccumulators(fuseAccumulators)
@@ -201,7 +260,7 @@ class PartitionedAggOp(
           .withLongGroupTables(longGroupTables)
           .withSortedGroupRuns(sortedGroupRuns)
         // The partition's table returns its groups once drained; its output counts here
-        try memory.drain(op)
+        try ctx.drain(op)
         finally op.close()
       val keyVecs =
         if routed.isEmpty && packKeys && AggKeyPacking.packable(keys.map(_.ptype), longDecimalKeys)
@@ -234,7 +293,7 @@ class PartitionedAggOp(
         case None =>
           run(child.schema, batches, keys, schema)
     end aggregateAll
-    if total < minParallelRows || runner.parallelism <= 1 then
+    if total < minParallelRows || runner.parallelism <= 1 || !parallel then
       return aggregateAll(input.map(_.compact()), expectedGroups).iterator
     val parts  = GroupTable.partitionCount(runner.parallelism)
     val splits =
@@ -335,18 +394,49 @@ class PartitionedAggOp(
     }
     handles.iterator.flatMap(_.get())
 
-  end aggregate
+  end aggregateInput
 
-  /** Every input batch, in order, with deferred columns left deferred (see [[Batch.take]]) */
+  /**
+    * Every input batch, in order, with deferred columns left deferred (see [[Batch.take]]). Past
+    * the spill threshold, the rows go to [[spilled]] instead, and the result is empty
+    */
   private def readInput(): IndexedSeq[Batch] =
-    val b = IndexedSeq.newBuilder[Batch]
-    var x = child.next()
-    while x != null do
-      // Deferred columns count without being gathered here
-      memory.reserve(x)
-      b += x
-      x = child.next()
-    b.result()
+    val canSpill = spill && memory.canSpill && SpillBlocks.spillable(child.schema)
+    val b        = mutable.ArrayBuffer.empty[Batch]
+    try
+      var x = child.next()
+      while x != null do
+        if spilled != null then
+          spilled.add(x)
+        else if !canSpill then
+          // Deferred columns count without being gathered here
+          inputMemory.reserve(x)
+          b += x
+        else if inputMemory.tryReserve(MemoryContext.estimatedBytes(x)) then
+          b += x
+        else
+          spilled = AggSpillRouter(child.schema, keys, longDecimalKeys, memory, runner)
+          // The router reserves the buffered rows again until they are routed
+          inputMemory.release()
+          // Drop each buffered batch once it is handed to the router
+          var i = 0
+          while i < b.size do
+            spilled.add(b(i))
+            b(i) = null
+            i += 1
+          b.clear()
+          spilled.add(x)
+        x = child.next()
+    catch
+      case e: Throwable =>
+        // No routing task may write after the query's spill files close
+        if spilled != null then
+          spilled.abort()
+        throw e
+    end try
+    b.toIndexedSeq
+
+  end readInput
 
 end PartitionedAggOp
 

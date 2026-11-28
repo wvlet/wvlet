@@ -187,6 +187,16 @@ final class MemoryContext private[exec] (
   @volatile
   private var killedMessage: String = null
 
+  // The spill threshold and folder (the root's, set by the engine with [[withSpill]])
+  @volatile
+  private var spillThreshold: Long = Long.MaxValue
+
+  @volatile
+  private var spillDirectory: String = null
+
+  // Created on the query's first spill; guarded by the root
+  private var space: SpillSpace = null
+
   /** Whether reservations are counted (false for [[MemoryContext.NoOp]]) */
   def isTracking: Boolean = pool != null
 
@@ -207,6 +217,71 @@ final class MemoryContext private[exec] (
         else
           parent.reserve(bytes)
           reserved.addAndGet(bytes)
+
+  /**
+    * Let this query's holders spill to files under `directory` once it holds more than
+    * `thresholdBytes` (on the query's own context). No-op on [[MemoryContext.NoOp]] and where
+    * [[SpillCompat]] can't spill
+    */
+  def withSpill(thresholdBytes: Long, directory: String): this.type =
+    if pool != null && parent == null && SpillCompat.isSupported then
+      spillThreshold = thresholdBytes
+      spillDirectory = directory
+    this
+
+  /** Whether holders of this query can spill: a threshold is set and files can be written */
+  def canSpill: Boolean =
+    pool != null && root.spillDirectory != null && root.spillThreshold < Long.MaxValue
+
+  /** The bytes the query holds above which spillable holders spill (Long.MaxValue for none) */
+  def spillThresholdBytes: Long = root.spillThreshold
+
+  /** The bytes the query can still reserve before it reaches its spill threshold */
+  def spillHeadroom: Long =
+    if canSpill then
+      root.spillThreshold - root.reserved.get()
+    else
+      Long.MaxValue
+
+  /**
+    * Reserve `bytes` for a holder that can spill instead: false, reserving nothing, when the query
+    * would pass its spill threshold, so the holder spills and releases. Without spilling (no-op
+    * contexts, Scala.js, no threshold), the same as [[reserve]]
+    */
+  def tryReserve(bytes: Long): Boolean =
+    if !canSpill then
+      reserve(bytes)
+      true
+    else if root.reserved.get() + bytes > root.spillThreshold then
+      root.checkKilled()
+      false
+    else
+      reserve(bytes)
+      true
+
+  /**
+    * The spill files of this query, created on first use and deleted when the query closes. Only
+    * when [[canSpill]]
+    */
+  def spillSpace: SpillSpace =
+    val r = root
+    r.synchronized {
+      if r.closed then
+        throw StatusCode.RESOURCE_EXHAUSTED.newException("The query has ended")
+      if r.space == null then
+        r.space = SpillCompat.newSpace(r.spillDirectory)
+      r.space
+    }
+
+  /** Bytes the query wrote to spill files so far */
+  def spilledBytes: Long =
+    val r = root
+    r.synchronized {
+      if r.space == null then
+        0L
+      else
+        r.space.bytesWritten
+    }
 
   /**
     * The most bytes the query held at once, counting releases before it ended; kept after [[close]]
@@ -321,11 +396,15 @@ final class MemoryContext private[exec] (
       if parent != null then
         release()
       else
-        synchronized {
+        val s = synchronized {
           closed = true
           val r = reserved.getAndSet(0L)
           pool.add(-r)
+          space
         }
+        // The spill files go with the query, on success, failure, or kill
+        if s != null then
+          s.close()
         pool.closed(this)
 
   override def toString: String =

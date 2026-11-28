@@ -358,6 +358,9 @@ final class StrVec(
   /** Whether the rows are held as codes into `entries`, without a per-row array yet */
   def holdsEntries: Boolean = initValues == null
 
+  /** The batch's dictionary entries of a vector that [[holdsEntries]] (null otherwise) */
+  private[engine] def entryStrings: Array[String] = entries
+
   /** The string of each row (null for NULL rows), built from the entries on first use */
   def values: Array[String] =
     if initValues != null then

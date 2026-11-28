@@ -213,6 +213,8 @@ trait PhysicalSteps:
       Planner.disablePackedAggRouting(physical)
     if !enabled(Optimization.SizePartitionsByRows) then
       Planner.disableSizePartitionsByRows(physical)
+    if !enabled(Optimization.SpillAggregation) then
+      Planner.disableSpillAggregation(physical)
     physical
 
   end optimizePhysical
@@ -515,5 +517,14 @@ trait PhysicalWalkers:
       case _ =>
     op.children.foreach(disableSizePartitionsByRows)
     op.sharedInputs.foreach(disableSizePartitionsByRows)
+
+  /** Make partitioned aggregations hold their whole input past the spill threshold */
+  private[engine] def disableSpillAggregation(op: Operator): Unit =
+    op match
+      case a: PartitionedAggOp =>
+        a.withSpill(false)
+      case _ =>
+    op.children.foreach(disableSpillAggregation)
+    op.sharedInputs.foreach(disableSpillAggregation)
 
 end PhysicalWalkers
